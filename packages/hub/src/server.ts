@@ -193,6 +193,9 @@ export class HubServer {
    * POST /mcp — MCP Streamable HTTP endpoint.
    * Parses JSON-RPC, creates/validates session, dispatches to McpHandler.
    * Requirements: requirements-hub.md §2.1
+   *
+   * Body is read before any session is created or headers are written,
+   * so we can return 400 on malformed JSON without committing to 200.
    */
   private handleMcp(
     req: http.IncomingMessage,
@@ -206,27 +209,20 @@ export class HubServer {
       return;
     }
 
-    // §2.1: Session handling — validate or create
+    // §2.1: Session handling — validate existing session synchronously before body read
+    // (fail-fast: if the session ID is unknown we can reject without reading the body)
     const incomingSessionId = req.headers["mcp-session-id"] as string | undefined;
-    let session: Session;
+    let existingSession: Session | undefined;
     if (incomingSessionId) {
-      const found = this.mcpHandler.getSession(incomingSessionId);
-      if (!found) {
+      existingSession = this.mcpHandler.getSession(incomingSessionId);
+      if (!existingSession) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Unknown session" }));
         return;
       }
-      session = found;
-    } else {
-      session = this.mcpHandler.createSession();
-      // Set Mcp-Session-Id synchronously so tests can observe it
-      res.writeHead(200, {
-        "Content-Type": "application/json",
-        "Mcp-Session-Id": session.id,
-      });
     }
 
-    // Read body and dispatch
+    // Read body first — headers/session are finalised only after successful parse
     let body = "";
     req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
     req.on("end", () => {
@@ -234,9 +230,24 @@ export class HubServer {
       try {
         request = JSON.parse(body) as JsonRpcRequest;
       } catch {
+        res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Invalid JSON" }));
         return;
       }
+
+      // Create or reuse session and write headers now that the body is validated
+      let session: Session;
+      if (existingSession) {
+        session = existingSession;
+        res.writeHead(200, { "Content-Type": "application/json" });
+      } else {
+        session = this.mcpHandler.createSession();
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Mcp-Session-Id": session.id,
+        });
+      }
+
       this.mcpHandler
         .handleRequest(request, session)
         .then((response) => {
@@ -289,17 +300,19 @@ export class HubServer {
     let body = "";
     req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
     req.on("end", () => {
-      let parsed: Record<string, unknown>;
+      let newToken: string | undefined;
+      let newSecret: string | undefined;
       try {
-        parsed = body ? (JSON.parse(body) as Record<string, unknown>) : {};
+        const raw = JSON.parse(body) as Record<string, unknown>;
+        const t = raw["newToken"];
+        const s = raw["newSecret"];
+        if (typeof t === "string") newToken = t;
+        if (typeof s === "string") newSecret = s;
       } catch {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Invalid JSON" }));
         return;
       }
-
-      const newToken = parsed["newToken"] as string | undefined;
-      const newSecret = parsed["newSecret"] as string | undefined;
 
       if (!newToken || !newSecret) {
         res.writeHead(400, { "Content-Type": "application/json" });
@@ -351,7 +364,8 @@ export class HubServer {
   async stop(): Promise<void> {
     if (this.httpServer) {
       await new Promise<void>((resolve, reject) => {
-        // Non-null assertion safe: checked above
+        // Non-null assertion is safe: we checked `this.httpServer` immediately above
+        // and `stop()` is not re-entrant (callers must await before calling again).
         this.httpServer!.close((err) => (err ? reject(err) : resolve()));
       });
       this.httpServer = null;

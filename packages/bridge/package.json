@@ -1,0 +1,31 @@
+{
+  "name": "accordo-bridge",
+  "version": "0.1.0",
+  "description": "Accordo IDE Bridge — VSCode extension connecting editor to Hub",
+  "type": "module",
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'no lint configured yet'"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@accordo/bridge-types": "workspace:*",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.100.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20",
+    "vscode": "^1.100.0"
+  },
+  "license": "MIT"
+}

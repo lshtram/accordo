@@ -122,7 +122,13 @@ export class WsClient {
 
     ws.on("message", (data: Buffer) => {
       if (data.length > MAX_MESSAGE_SIZE) return;
-      const msg = JSON.parse(data.toString()) as HubToBridgeMessage;
+      let msg: HubToBridgeMessage;
+      try {
+        msg = JSON.parse(data.toString()) as HubToBridgeMessage;
+      } catch {
+        // Drop malformed messages — Hub should never send non-JSON, but guard defensively.
+        return;
+      }
       if (msg.type === "ping") {
         this.sendPong((msg as PingMessage).ts);
         return;

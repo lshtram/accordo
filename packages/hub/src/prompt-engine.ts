@@ -144,10 +144,19 @@ export function renderPrompt(
       }
     }
   }
-  const toolSection =
+  let toolSection =
     toolLines.length > 0
       ? `## Registered Tools\n\n${toolLines.join("\n")}`
       : `## Registered Tools\n\nNo tools registered.`;
+
+  // Post-render budget guard: if the dynamic section (state + tools) still exceeds
+  // the effective token budget, fall back to name-only format for ALL tools.
+  // This protects against extensions violating the 120-char description cap.
+  const dynamicEstimate = estimateTokens(stateSection + "\n\n" + toolSection);
+  if (dynamicEstimate > PROMPT_EFFECTIVE_TOKEN_BUDGET && tools.length > 0) {
+    const nameOnlyLines = tools.map((t) => `- ${t.name}`);
+    toolSection = `## Registered Tools\n\n${nameOnlyLines.join("\n")}`;
+  }
 
   return `${fixed}\n\n${stateSection}\n\n${toolSection}`;
 }

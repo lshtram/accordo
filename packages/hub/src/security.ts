@@ -7,6 +7,7 @@
  */
 
 import type http from "node:http";
+import { timingSafeEqual } from "node:crypto";
 
 /**
  * Validate the Origin header on an incoming HTTP request.
@@ -43,7 +44,11 @@ export function validateBearer(
 ): boolean {
   const auth = req.headers["authorization"];
   if (!auth) return false;
-  return auth === `Bearer ${token}`;
+  const expected = `Bearer ${token}`;
+  // Use constant-time comparison to prevent timing side-channels on the token value.
+  // Length check first is safe: token length is not secret (Bearer prefix is fixed).
+  if (auth.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(auth), Buffer.from(expected));
 }
 
 /**

@@ -280,9 +280,9 @@ export interface HealthResponse {
  */
 export interface ReauthRequest {
   /** New Bridge→Hub shared secret */
-  secret: string;
+  newSecret: string;
   /** New bearer token for MCP/instructions auth */
-  token: string;
+  newToken: string;
 }
 
 // ─── Concurrency Stats ──────────────────────────────────────────────────────

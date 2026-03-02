@@ -34,9 +34,15 @@ function makeReq(opts: {
   method?: string;
   url?: string;
   headers?: Record<string, string>;
+  body?: string;
 }): http.IncomingMessage {
   const stream = new PassThrough();
-  stream.end();
+  // Schedule stream data/end on next tick so that req.on() listeners can
+  // be attached first by handleHttpRequest. This mirrors real TCP delivery.
+  process.nextTick(() => {
+    if (opts.body !== undefined) stream.push(opts.body);
+    stream.push(null); // EOF
+  });
   return Object.assign(stream, {
     method: opts.method ?? "GET",
     url: opts.url ?? "/",
@@ -414,24 +420,33 @@ describe("HubServer", () => {
       expect(statusCode()).not.toBe(415);
     });
 
-    it("§2.1: Mcp-Session-Id header is set on initialize response", () => {
-      // After implementation: first POST /mcp with initialize method → Mcp-Session-Id in response
-      // RED on stub: handleMcp throws before session can be created/returned
+    it("§2.1: Mcp-Session-Id header is set on initialize response", async () => {
+      // Session is only created after the request body is successfully parsed,
+      // so the test must provide a valid JSON body and await async processing.
       const { res, getHeader } = makeRes();
-      try {
-        server.handleHttpRequest(
-          makeReq({
-            method: "POST",
-            url: "/mcp",
-            headers: {
-              authorization: "Bearer test-bearer-token",
-              "content-type": "application/json",
+      server.handleHttpRequest(
+        makeReq({
+          method: "POST",
+          url: "/mcp",
+          headers: {
+            authorization: "Bearer test-bearer-token",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "init-1",
+            method: "initialize",
+            params: {
+              protocolVersion: "1",
+              capabilities: {},
+              clientInfo: { name: "test", version: "1" },
             },
           }),
-          res,
-        );
-      } catch { /* stub throws */ }
-      // After implementation: Mcp-Session-Id must be a non-empty string
+        }),
+        res,
+      );
+      // Wait for process.nextTick (stream delivery) + async mcpHandler.handleRequest
+      await new Promise<void>((r) => setTimeout(r, 10));
       const sessionId = getHeader("mcp-session-id");
       expect(typeof sessionId).toBe("string");
       expect((sessionId ?? "").length).toBeGreaterThan(0);

@@ -30,8 +30,14 @@ const mockCpState = vi.hoisted(() => ({
   } | null,
   lastProcess: null as {
     emit(event: string, ...args: unknown[]): void;
-    stdout: { on(event: string, cb: (data: Buffer) => void): void };
-    stderr: { on(event: string, cb: (data: Buffer) => void): void };
+    stdout: {
+      on(event: string, cb: (data: Buffer) => void): void;
+      emit(event: string, data: Buffer): boolean;
+    };
+    stderr: {
+      on(event: string, cb: (data: Buffer) => void): void;
+      emit(event: string, data: Buffer): boolean;
+    };
     kill(signal?: string): void;
     exitCode: number | null;
   } | null,
