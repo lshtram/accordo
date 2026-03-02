@@ -1,16 +1,19 @@
 /**
- * Tests for server.ts (HubServer + /health)
- * Requirements: requirements-hub.md §2.4, §8
+ * Tests for server.ts (HubServer)
+ * Requirements: requirements-hub.md §2.1, §2.3, §2.4, §2.6, §5.6, §8
  *
- * Week 1 Module #7: Hub server wiring + /health endpoint
- *
- * Integration-level tests (start, bind, PID file) are deferred to Week 2.
- * Unit tests here cover:
- *   - HealthResponse shape and defaults before start
- *   - getHealth() field values on an unstarted server
+ * API checklist:
+ * ✓ getHealth() — 11 tests
+ * ✓ handleHttpRequest() — 14 tests (routing + security + endpoint behaviour)
+ * ✓ updateToken() — 2 tests
+ * ✓ start() — 1 test
+ * ✓ stop() — 1 test
+ * ✓ constructor — 4 tests
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
+import { PassThrough } from "node:stream";
+import type http from "node:http";
 import { HubServer } from "../server.js";
 import type { HubServerOptions } from "../server.js";
 
@@ -23,6 +26,59 @@ function makeOptions(overrides: Partial<HubServerOptions> = {}): HubServerOption
     token: "test-bearer-token",
     bridgeSecret: "test-bridge-secret",
     ...overrides,
+  };
+}
+
+// Minimal mock IncomingMessage
+function makeReq(opts: {
+  method?: string;
+  url?: string;
+  headers?: Record<string, string>;
+}): http.IncomingMessage {
+  const stream = new PassThrough();
+  stream.end();
+  return Object.assign(stream, {
+    method: opts.method ?? "GET",
+    url: opts.url ?? "/",
+    headers: opts.headers ?? {},
+  }) as unknown as http.IncomingMessage;
+}
+
+// Minimal mock ServerResponse that captures status + body
+interface MockRes {
+  res: http.ServerResponse;
+  statusCode: () => number;
+  body: () => string;
+  getHeader: (name: string) => string | undefined;
+}
+
+function makeRes(): MockRes {
+  let status = 200;
+  let responseBody = "";
+  const capturedHeaders: Record<string, string | string[]> = {};
+
+  const res = {
+    writeHead(code: number, headers?: Record<string, string>) {
+      status = code;
+      if (headers) {
+        for (const [k, v] of Object.entries(headers)) {
+          capturedHeaders[k.toLowerCase()] = v;
+        }
+      }
+    },
+    end(body?: string) {
+      if (body) responseBody += body;
+    },
+    getHeader(name: string) {
+      return capturedHeaders[name.toLowerCase()] as string | undefined;
+    },
+  } as unknown as http.ServerResponse;
+
+  return {
+    res,
+    statusCode: () => status,
+    body: () => responseBody,
+    getHeader: (name: string) => capturedHeaders[name.toLowerCase()] as string | undefined,
   };
 }
 
@@ -39,22 +95,17 @@ describe("HubServer", () => {
 
   describe("getHealth (§2.4: GET /health response shape)", () => {
     it("§2.4: returns ok: true", () => {
-      // req-hub §2.4: { "ok": true, ... }
-      const health = server.getHealth();
-      expect(health.ok).toBe(true);
+      expect(server.getHealth().ok).toBe(true);
     });
 
     it("§2.4: returns uptime as a non-negative number", () => {
-      // req-hub §2.4: uptime in seconds
       const health = server.getHealth();
       expect(typeof health.uptime).toBe("number");
       expect(health.uptime).toBeGreaterThanOrEqual(0);
     });
 
     it("§2.4: returns bridge: 'disconnected' before any Bridge connects", () => {
-      // req-hub §2.4: bridge field is 'connected' | 'disconnected'
-      const health = server.getHealth();
-      expect(health.bridge).toBe("disconnected");
+      expect(server.getHealth().bridge).toBe("disconnected");
     });
 
     it("§2.4: returns toolCount as a non-negative integer", () => {
@@ -84,32 +135,366 @@ describe("HubServer", () => {
       expect(Number.isInteger(health.queued)).toBe(true);
     });
 
-    it("§2.4: returns all seven required fields with no extras missing", () => {
-      // req-hub §2.4: exact shape { ok, uptime, bridge, toolCount, protocolVersion, inflight, queued }
+    it("§2.4: returns all seven required fields", () => {
       const health = server.getHealth();
-      expect(health).toHaveProperty("ok");
-      expect(health).toHaveProperty("uptime");
-      expect(health).toHaveProperty("bridge");
-      expect(health).toHaveProperty("toolCount");
-      expect(health).toHaveProperty("protocolVersion");
-      expect(health).toHaveProperty("inflight");
-      expect(health).toHaveProperty("queued");
+      for (const field of ["ok", "uptime", "bridge", "toolCount", "protocolVersion", "inflight", "queued"]) {
+        expect(health).toHaveProperty(field);
+      }
     });
 
     it("§2.4: toolCount is 0 before any tool registry update", () => {
-      // No tools registered yet on fresh server
-      const health = server.getHealth();
-      expect(health.toolCount).toBe(0);
+      expect(server.getHealth().toolCount).toBe(0);
     });
 
     it("§2.4: inflight is 0 before any invocations", () => {
-      const health = server.getHealth();
-      expect(health.inflight).toBe(0);
+      expect(server.getHealth().inflight).toBe(0);
     });
 
     it("§2.4: queued is 0 before any invocations", () => {
-      const health = server.getHealth();
-      expect(health.queued).toBe(0);
+      expect(server.getHealth().queued).toBe(0);
+    });
+  });
+
+  // ── handleHttpRequest — routing ───────────────────────────────────────────
+
+  describe("handleHttpRequest — routing (§2.1, §2.3, §2.4, §2.6)", () => {
+    it("§2.4: GET /health returns 200 without any auth", () => {
+      // req-hub §2.4: no authentication on /health
+      const { res, statusCode } = makeRes();
+      server.handleHttpRequest(makeReq({ method: "GET", url: "/health" }), res);
+      expect(statusCode()).toBe(200);
+    });
+
+    it("§2.4: GET /health response body is valid JSON with ok:true", () => {
+      const { res, body } = makeRes();
+      server.handleHttpRequest(makeReq({ method: "GET", url: "/health" }), res);
+      const parsed = JSON.parse(body()) as Record<string, unknown>;
+      expect(parsed["ok"]).toBe(true);
+    });
+
+    it("§2.1: POST /mcp without Bearer returns 401", () => {
+      // req-hub §2.1: Authorization: Bearer required
+      const { res, statusCode } = makeRes();
+      server.handleHttpRequest(
+        makeReq({ method: "POST", url: "/mcp" }),
+        res,
+      );
+      expect(statusCode()).toBe(401);
+    });
+
+    it("§2.1: POST /mcp with wrong Bearer returns 401", () => {
+      const { res, statusCode } = makeRes();
+      server.handleHttpRequest(
+        makeReq({ method: "POST", url: "/mcp", headers: { authorization: "Bearer wrong-token" } }),
+        res,
+      );
+      expect(statusCode()).toBe(401);
+    });
+
+    it("§2.1: POST /mcp with valid Bearer but bad Origin returns 403", () => {
+      // req-hub §2.1: Origin must be localhost if present
+      const { res, statusCode } = makeRes();
+      server.handleHttpRequest(
+        makeReq({
+          method: "POST",
+          url: "/mcp",
+          headers: {
+            authorization: "Bearer test-bearer-token",
+            origin: "http://evil.example.com",
+          },
+        }),
+        res,
+      );
+      expect(statusCode()).toBe(403);
+    });
+
+    it("§2.1: POST /mcp with valid Bearer and localhost Origin is processed", () => {
+      // Passes security check → proceeds to handleMcp (stub → throws, but status is not 401/403)
+      const { res, statusCode } = makeRes();
+      try {
+        server.handleHttpRequest(
+          makeReq({
+            method: "POST",
+            url: "/mcp",
+            headers: {
+              authorization: "Bearer test-bearer-token",
+              origin: "http://localhost:3000",
+            },
+          }),
+          res,
+        );
+      } catch {
+        // handleMcp is a stub; not 401/403 means security passed
+      }
+      expect(statusCode()).not.toBe(401);
+      expect(statusCode()).not.toBe(403);
+    });
+
+    it("§2.3: GET /instructions without Bearer returns 401", () => {
+      const { res, statusCode } = makeRes();
+      server.handleHttpRequest(
+        makeReq({ method: "GET", url: "/instructions" }),
+        res,
+      );
+      expect(statusCode()).toBe(401);
+    });
+
+    it("§2.3: GET /instructions with valid Bearer returns 200 and text/markdown", () => {
+      // req-hub §2.3: returns rendered system prompt
+      const { res, statusCode, getHeader } = makeRes();
+      server.handleHttpRequest(
+        makeReq({
+          method: "GET",
+          url: "/instructions",
+          headers: { authorization: "Bearer test-bearer-token" },
+        }),
+        res,
+      );
+      expect(statusCode()).toBe(200);
+      expect(getHeader("content-type")).toContain("text/markdown");
+    });
+
+    it("§2.3: GET /instructions with valid Bearer returns non-empty body", () => {
+      const { res, body } = makeRes();
+      server.handleHttpRequest(
+        makeReq({
+          method: "GET",
+          url: "/instructions",
+          headers: { authorization: "Bearer test-bearer-token" },
+        }),
+        res,
+      );
+      expect(body().length).toBeGreaterThan(0);
+    });
+
+    it("§2.6: POST /bridge/reauth without bridge secret returns 401", () => {
+      // req-hub §2.6: x-accordo-secret header required
+      const { res, statusCode } = makeRes();
+      server.handleHttpRequest(
+        makeReq({ method: "POST", url: "/bridge/reauth" }),
+        res,
+      );
+      expect(statusCode()).toBe(401);
+    });
+
+    it("§2.6: POST /bridge/reauth with wrong secret returns 401", () => {
+      const { res, statusCode } = makeRes();
+      server.handleHttpRequest(
+        makeReq({
+          method: "POST",
+          url: "/bridge/reauth",
+          headers: { "x-accordo-secret": "wrong-secret" },
+        }),
+        res,
+      );
+      expect(statusCode()).toBe(401);
+    });
+
+    it("§2.6: POST /bridge/reauth with correct secret is processed (stub throws, not 401)", () => {
+      const { res, statusCode } = makeRes();
+      try {
+        server.handleHttpRequest(
+          makeReq({
+            method: "POST",
+            url: "/bridge/reauth",
+            headers: { "x-accordo-secret": "test-bridge-secret" },
+          }),
+          res,
+        );
+      } catch {
+        // handleReauth stub throws — auth passed
+      }
+      expect(statusCode()).not.toBe(401);
+    });
+
+    it("§2.1: unknown endpoint returns 404", () => {
+      const { res, statusCode } = makeRes();
+      server.handleHttpRequest(
+        makeReq({ method: "GET", url: "/nonexistent" }),
+        res,
+      );
+      expect(statusCode()).toBe(404);
+    });
+  });
+
+  // ── updateToken ───────────────────────────────────────────────────────────
+
+  describe("updateToken (§2.6: credential rotation)", () => {
+    it("§2.6: updateToken changes the token used for Bearer auth — old token is rejected", () => {
+      // After rotation, old token should fail auth
+      server.updateToken("new-token");
+      const { res, statusCode } = makeRes();
+      server.handleHttpRequest(
+        makeReq({
+          method: "GET",
+          url: "/instructions",
+          headers: { authorization: "Bearer test-bearer-token" },
+        }),
+        res,
+      );
+      expect(statusCode()).toBe(401);
+    });
+
+    it("§2.6: updateToken — new token is accepted for Bearer auth", () => {
+      server.updateToken("new-token");
+      const { res, statusCode } = makeRes();
+      server.handleHttpRequest(
+        makeReq({
+          method: "GET",
+          url: "/instructions",
+          headers: { authorization: "Bearer new-token" },
+        }),
+        res,
+      );
+      expect(statusCode()).toBe(200);
+    });
+  });
+
+  // ── §2.1: Content-Type enforcement ───────────────────────────────────────
+
+  describe("handleHttpRequest — §2.1 Content-Type enforcement", () => {
+    it("§2.1: POST /mcp without Content-Type: application/json returns 415", () => {
+      // req-hub §2.1: Content-Type must be application/json; missing → 415
+      // RED on stub: handleMcp throws before content-type check → statusCode stays 200
+      const { res, statusCode } = makeRes();
+      try {
+        server.handleHttpRequest(
+          makeReq({
+            method: "POST",
+            url: "/mcp",
+            headers: { authorization: "Bearer test-bearer-token" },
+          }),
+          res,
+        );
+      } catch { /* stub throws; after implementation content-type check runs first */ }
+      expect(statusCode()).toBe(415);
+    });
+
+    it("§2.1: POST /mcp with Content-Type: text/plain returns 415", () => {
+      const { res, statusCode } = makeRes();
+      try {
+        server.handleHttpRequest(
+          makeReq({
+            method: "POST",
+            url: "/mcp",
+            headers: {
+              authorization: "Bearer test-bearer-token",
+              "content-type": "text/plain",
+            },
+          }),
+          res,
+        );
+      } catch { /* stub throws */ }
+      expect(statusCode()).toBe(415);
+    });
+  });
+
+  // ── §2.1: Mcp-Session-Id header ───────────────────────────────────────────
+
+  describe("handleHttpRequest — §2.1 Mcp-Session-Id header", () => {
+    it("§2.1: POST /mcp with valid auth and content-type is processed (not 401/403/415)", () => {
+      // Passes all pre-flight checks; if handleMcp is implemented it returns Mcp-Session-Id
+      // RED on stub: handleMcp throws → doesn't send Mcp-Session-Id
+      const { res, statusCode } = makeRes();
+      try {
+        server.handleHttpRequest(
+          makeReq({
+            method: "POST",
+            url: "/mcp",
+            headers: {
+              authorization: "Bearer test-bearer-token",
+              "content-type": "application/json",
+            },
+          }),
+          res,
+        );
+      } catch { /* stub throws */ }
+      expect(statusCode()).not.toBe(401);
+      expect(statusCode()).not.toBe(403);
+      expect(statusCode()).not.toBe(415);
+    });
+
+    it("§2.1: Mcp-Session-Id header is set on initialize response", () => {
+      // After implementation: first POST /mcp with initialize method → Mcp-Session-Id in response
+      // RED on stub: handleMcp throws before session can be created/returned
+      const { res, getHeader } = makeRes();
+      try {
+        server.handleHttpRequest(
+          makeReq({
+            method: "POST",
+            url: "/mcp",
+            headers: {
+              authorization: "Bearer test-bearer-token",
+              "content-type": "application/json",
+            },
+          }),
+          res,
+        );
+      } catch { /* stub throws */ }
+      // After implementation: Mcp-Session-Id must be a non-empty string
+      const sessionId = getHeader("mcp-session-id");
+      expect(typeof sessionId).toBe("string");
+      expect((sessionId ?? "").length).toBeGreaterThan(0);
+    });
+
+    it("§2.1: POST /mcp with unknown Mcp-Session-Id header returns 400", () => {
+      // req-hub §2.1: if Mcp-Session-Id is provided but unknown → 400
+      // RED on stub: handleMcp throws before session lookup
+      const { res, statusCode } = makeRes();
+      try {
+        server.handleHttpRequest(
+          makeReq({
+            method: "POST",
+            url: "/mcp",
+            headers: {
+              authorization: "Bearer test-bearer-token",
+              "content-type": "application/json",
+              "mcp-session-id": "unknown-session-11111",
+            },
+          }),
+          res,
+        );
+      } catch { /* stub throws */ }
+      expect(statusCode()).toBe(400);
+    });
+  });
+
+  // ── §2.6: reauth body validation ─────────────────────────────────────────
+
+  describe("handleHttpRequest — §2.6 reauth body validation", () => {
+    it("§2.6: POST /bridge/reauth with valid secret but empty body returns 400", () => {
+      // req-hub §2.6: body must have newToken + newSecret fields; missing → 400
+      // RED on stub: handleReauth throws before body is parsed
+      const { res, statusCode } = makeRes();
+      try {
+        server.handleHttpRequest(
+          makeReq({
+            method: "POST",
+            url: "/bridge/reauth",
+            headers: { "x-accordo-secret": "test-bridge-secret" },
+          }),
+          res,
+        );
+      } catch { /* stub throws */ }
+      expect(statusCode()).toBe(400);
+    });
+  });
+
+  // ── §2.3: Cache-Control on /instructions ─────────────────────────────────
+
+  describe("handleHttpRequest — §2.3 Cache-Control", () => {
+    it("§2.3: GET /instructions returns Cache-Control: no-cache", () => {
+      // This is already implemented — should be GREEN
+      const { res, getHeader } = makeRes();
+      server.handleHttpRequest(
+        makeReq({
+          method: "GET",
+          url: "/instructions",
+          headers: { authorization: "Bearer test-bearer-token" },
+        }),
+        res,
+      );
+      expect(getHeader("cache-control")).toBe("no-cache");
     });
   });
 
@@ -117,10 +502,8 @@ describe("HubServer", () => {
 
   describe("start (§8: PID file, §2.4 server binding)", () => {
     it("§8: start() returns a promise", () => {
-      // req-hub §8: start() → Promise<void>
       const result = server.start();
       expect(result).toBeInstanceOf(Promise);
-      // Prevent unhandled rejection from the stub throw
       result.catch(() => {});
     });
   });
@@ -129,7 +512,6 @@ describe("HubServer", () => {
 
   describe("stop (§8: graceful shutdown)", () => {
     it("§8: stop() returns a promise", () => {
-      // req-hub §8: stop() → Promise<void>
       const result = server.stop();
       expect(result).toBeInstanceOf(Promise);
       result.catch(() => {});
@@ -140,23 +522,19 @@ describe("HubServer", () => {
 
   describe("constructor (§4.1 defaults)", () => {
     it("§4.1: accepts maxConcurrent override", () => {
-      const s = new HubServer(makeOptions({ maxConcurrent: 4 }));
-      expect(s).toBeDefined();
+      expect(new HubServer(makeOptions({ maxConcurrent: 4 }))).toBeDefined();
     });
 
     it("§4.1: accepts maxQueueDepth override", () => {
-      const s = new HubServer(makeOptions({ maxQueueDepth: 8 }));
-      expect(s).toBeDefined();
+      expect(new HubServer(makeOptions({ maxQueueDepth: 8 }))).toBeDefined();
     });
 
     it("§4.1: accepts auditFile override", () => {
-      const s = new HubServer(makeOptions({ auditFile: "/tmp/audit.jsonl" }));
-      expect(s).toBeDefined();
+      expect(new HubServer(makeOptions({ auditFile: "/tmp/audit.jsonl" }))).toBeDefined();
     });
 
     it("§4.1: accepts logLevel override", () => {
-      const s = new HubServer(makeOptions({ logLevel: "debug" }));
-      expect(s).toBeDefined();
+      expect(new HubServer(makeOptions({ logLevel: "debug" }))).toBeDefined();
     });
   });
 });
