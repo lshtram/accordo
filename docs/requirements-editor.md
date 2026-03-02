@@ -795,6 +795,335 @@ interface SearchMatch {
 
 ---
 
+### 4.23 `accordo.layout.joinGroups`
+
+**Purpose:** Collapse all editor splits — merge all groups into one.
+
+| Property | Value |
+|---|---|
+| Danger level | safe |
+| Idempotent | yes |
+| Requires confirmation | no |
+| Timeout class | fast (5s) |
+
+**Input Schema:**
+
+```typescript
+{ type: "object", properties: {}, required: [] }
+```
+
+**Response:**
+
+```typescript
+{ groups: number }  // always 1 after join
+```
+
+**Implementation:**
+- `vscode.commands.executeCommand('workbench.action.joinAllGroups')`
+
+---
+
+### 4.24 `accordo.layout.evenGroups`
+
+**Purpose:** Equalise the width and height of all editor groups so each pane takes the same space.
+
+| Property | Value |
+|---|---|
+| Danger level | safe |
+| Idempotent | yes |
+| Requires confirmation | no |
+| Timeout class | fast (5s) |
+
+**Input Schema:**
+
+```typescript
+{ type: "object", properties: {}, required: [] }
+```
+
+**Response:**
+
+```typescript
+{ equalized: true }
+```
+
+**Implementation:**
+- `vscode.commands.executeCommand('workbench.action.evenEditorWidths')`
+
+---
+
+### 4.17 `accordo.editor.save`
+
+**Purpose:** Save a specific file, or the active editor if no path given.
+
+| Property | Value |
+|---|---|
+| Danger level | safe |
+| Idempotent | yes |
+| Requires confirmation | no |
+| Timeout class | fast (5s) |
+
+**Input Schema:**
+
+```typescript
+{
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      description: "File path to save. If omitted, saves the active editor."
+    }
+  },
+  required: []
+}
+```
+
+**Response:**
+
+```typescript
+{ saved: true, path: string }  // absolute path of the saved file
+```
+
+**Errors:**
+
+| Condition | Error message |
+|---|---|
+| No active editor and no path given | `"No active editor to save"` |
+| File not open | `"File is not open: <path>"` |
+
+**Implementation:**
+- If path given: find the matching `TextDocument` in `vscode.workspace.textDocuments`, call `document.save()`.
+- If no path: `vscode.commands.executeCommand('workbench.action.files.save')`, then read `activeTextEditor.document.uri.fsPath` for the response path.
+
+---
+
+### 4.18 `accordo.editor.saveAll`
+
+**Purpose:** Save all modified (unsaved) editors.
+
+| Property | Value |
+|---|---|
+| Danger level | safe |
+| Idempotent | yes |
+| Requires confirmation | no |
+| Timeout class | fast (5s) |
+
+**Input Schema:**
+
+```typescript
+{
+  type: "object",
+  properties: {},
+  required: []
+}
+```
+
+**Response:**
+
+```typescript
+{ saved: true, count: number }  // number of documents that were saved
+```
+
+**Implementation:**
+- Count dirty documents: `vscode.workspace.textDocuments.filter(d => d.isDirty)`.
+- `vscode.commands.executeCommand('workbench.action.files.saveAll')`.
+- Return the pre-save dirty count.
+
+---
+
+### 4.19 `accordo.editor.format`
+
+**Purpose:** Run the configured formatter on the active document (or a specific file's editor).
+
+| Property | Value |
+|---|---|
+| Danger level | safe |
+| Idempotent | yes |
+| Requires confirmation | no |
+| Timeout class | fast (5s) |
+
+**Input Schema:**
+
+```typescript
+{
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      description: "File path whose editor should be formatted. If omitted, formats the active editor."
+    }
+  },
+  required: []
+}
+```
+
+**Response:**
+
+```typescript
+{ formatted: true, path: string }
+```
+
+**Errors:**
+
+| Condition | Error message |
+|---|---|
+| No active editor and no path given | `"No active editor to format"` |
+| File not open in an editor | `"File is not open: <path>. Open it first."` |
+
+**Implementation:**
+- If path given: find matching `TextEditor` in `vscode.window.visibleTextEditors`.
+- Focus it, then `vscode.commands.executeCommand('editor.action.formatDocument')`.
+- Return absolute path from the editor's document URI.
+
+---
+
+### 4.20 `accordo.diagnostics.list`
+
+**Purpose:** Return current diagnostics (errors, warnings, hints) from the Language Server across all files or a specific file.
+
+| Property | Value |
+|---|---|
+| Danger level | safe |
+| Idempotent | yes |
+| Requires confirmation | no |
+| Timeout class | fast (5s) |
+
+**Input Schema:**
+
+```typescript
+{
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      description: "Limit diagnostics to this file. If omitted, returns diagnostics for all open files."
+    },
+    severity: {
+      type: "string",
+      enum: ["error", "warning", "information", "hint"],
+      description: "Filter by minimum severity. Default: all severities."
+    }
+  },
+  required: []
+}
+```
+
+**Response:**
+
+```typescript
+{
+  diagnostics: DiagnosticItem[]
+}
+
+interface DiagnosticItem {
+  path: string;       // absolute file path
+  line: number;       // 1-based
+  column: number;     // 1-based
+  severity: "error" | "warning" | "information" | "hint";
+  message: string;
+  source?: string;    // e.g. "ts", "eslint", "pylint"
+  code?: string;      // diagnostic code if present
+}
+```
+
+**Constraints:**
+- Maximum 500 diagnostics returned. Truncate with a final sentinel item: `{ path: "", line: 0, column: 0, severity: "hint", message: "... (truncated, total: <n>)" }`.
+- Severity enum mapping: `vscode.DiagnosticSeverity.Error → "error"`, `Warning → "warning"`, `Information → "information"`, `Hint → "hint"`.
+
+**Implementation:**
+- `vscode.languages.getDiagnostics()` → returns `[Uri, Diagnostic[]][]` for all files.
+- If `path` given: `vscode.languages.getDiagnostics(uri)` for just that file.
+- Map severity enum, offset line/column (VSCode is 0-based → return 1-based).
+- Filter by severity if given.
+
+---
+
+### 4.21 `accordo.terminal.list`
+
+**Purpose:** List all currently open terminal instances with their stable accordo IDs.
+
+| Property | Value |
+|---|---|
+| Danger level | safe |
+| Idempotent | yes |
+| Requires confirmation | no |
+| Timeout class | fast (5s) |
+
+**Input Schema:**
+
+```typescript
+{
+  type: "object",
+  properties: {},
+  required: []
+}
+```
+
+**Response:**
+
+```typescript
+{
+  terminals: TerminalInfo[]
+}
+
+interface TerminalInfo {
+  terminalId: string;   // stable accordo ID, or "(untracked)" for terminals not opened by accordo
+  name: string;         // VSCode display name
+  isActive: boolean;    // true if this is vscode.window.activeTerminal
+}
+```
+
+**Implementation:**
+- Iterate `vscode.window.terminals`.
+- For each, look up the stable ID from the reverse-lookup of `terminalMap` (see §5.3). If not found (terminal was opened by the user, not accordo), use `"(untracked)"`.
+- Mark `isActive` by comparing with `vscode.window.activeTerminal`.
+
+---
+
+### 4.22 `accordo.terminal.close`
+
+**Purpose:** Close a specific terminal by its stable accordo ID.
+
+| Property | Value |
+|---|---|
+| Danger level | moderate |
+| Idempotent | yes |
+| Requires confirmation | no |
+| Timeout class | fast (5s) |
+
+**Input Schema:**
+
+```typescript
+{
+  type: "object",
+  properties: {
+    terminalId: {
+      type: "string",
+      description: "Stable accordo terminal ID (from terminal.open or terminal.list)"
+    }
+  },
+  required: ["terminalId"]
+}
+```
+
+**Response:**
+
+```typescript
+{ closed: true, terminalId: string }
+```
+
+**Errors:**
+
+| Condition | Error message |
+|---|---|
+| terminalId not found | `"Terminal <id> not found"` |
+
+**Implementation:**
+- Look up terminal by `accordoTerminalId` in the terminal map (see §5.3).
+- `terminal.dispose()`.
+- Remove from `terminalMap`. (The `onDidCloseTerminal` event will also fire and clean up; either path is safe.)
+
+---
+
 ## 5. Shared Utilities
 
 ### 5.1 `resolvePath(input: string, context?: { workspaceFolders: string[] }): string`
@@ -853,6 +1182,14 @@ function getTerminal(id: string): vscode.Terminal | undefined {
   if (t) terminalMap.delete(id); // stale entry cleanup
   return undefined;
 }
+
+/** Reverse-lookup: given a vscode.Terminal, return its stable accordo ID (or undefined). */
+function getTerminalId(terminal: vscode.Terminal): string | undefined {
+  for (const [id, t] of terminalMap) {
+    if (t === terminal) return id;
+  }
+  return undefined;
+}
 ```
 
 **Lifecycle:** When a terminal is closed by the user (`vscode.window.onDidCloseTerminal`), its entry is removed from the map. The counter is never reset (IDs are unique for the lifetime of the extension host session).
@@ -881,7 +1218,10 @@ function getTerminal(id: string): vscode.Terminal | undefined {
 | Unit: wrapHandler | success, throw, non-serializable return |
 | Unit: each tool handler | Happy path with mock VSCode API |
 | Unit: input validation | Missing required fields, wrong types, out-of-range values |
-| Integration: tool registration | activate → registerTools called → Bridge receives 16 tools |
+| Integration: tool registration | activate → registerTools called → Bridge receives 24 tools |
 | Integration: tool invocation | Bridge sends invoke → handler runs → result returned |
 | Integration: getTree truncation | Workspace with >1000 files → truncated correctly |
+| Unit: diagnostics.list | Severity filter, path filter, 0-based→1-based offset, truncation at 500 |
+| Unit: terminal.list | Tracked IDs, untracked terminals, isActive flag |
+| Unit: terminal.close | Happy path, already-closed terminal (stale map entry) |
 | E2E: full round-trip | Agent calls tools/call → Hub → Bridge → Editor handler → result back to agent |

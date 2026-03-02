@@ -9,7 +9,7 @@
 
 ## Current Status
 
-> **As of 2026-03-02 — Week 3 in progress. Module 15 done. End-to-end stack verified. Starting module 16.**
+> **As of 2026-03-02 — Week 3 in progress. Module 15 done. End-to-end stack verified. Requirements expanded to 24 tools (was 16). Starting module 16.**
 
 | Week | Goal | Status |
 |------|------|--------|
@@ -21,7 +21,7 @@
 
 **Completed packages:** `@accordo/bridge-types`, `accordo-hub` (14 modules incl. `/state` endpoint), `accordo-bridge` (6 modules incl. `extension.ts`)  
 **Tests:** 445 total (Hub: 220, Bridge: 225). End-to-end stack verified: Bridge connects, state flows, `/instructions` and `/state` serve live IDE state.  
-**Next module (Week 3, #16):** Editor tools batch 1 — `open`, `close`, `scroll`, `reveal`, `focus`, `split` (requirements-editor.md §4.1–§4.8)  
+**Next module (Week 3, #16):** Editor view tools — `open`, `close`, `scroll`, `reveal`, `focus`, `split` (requirements-editor.md §4.1–§4.3, §4.6–§4.8)  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)
 
 ---
@@ -93,15 +93,17 @@ accordo-hub  accordo-bridge  (both depend on bridge-types)
 | — | `BridgeServer` WS handler (Hub) | requirements-hub.md §2.5, §3 | ✅ DONE — fully wired, e2e verified |
 | — | `extension.ts` entry point (Bridge) | requirements-bridge.md §1, §7 | ✅ DONE — all 5 modules wired |
 | — | Hub infra: token/PID file, `/state` endpoint | requirements-hub.md §4.2, §2.3 | ✅ DONE — deployed |
-| 16 | Editor tools: `open`, `close`, `scroll`, `reveal`, `focus`, `split` | requirements-editor.md §4.1–§4.8 | A→A2→B→B2→C→D→E→F |
-| 17 | Editor tools: `highlight`, `clearHighlights` | requirements-editor.md §4.4–§4.5 | A→A2→B→B2→C→D→E→F |
-| 18 | Terminal tools: `open`, `run`, `focus` + Terminal ID Map | requirements-editor.md §4.9–§4.11, §5.3 | A→A2→B→B2→C→D→E→F |
-| 19 | Workspace tools: `getTree`, `search` | requirements-editor.md §4.12–§4.13 | A→A2→B→B2→C→D→E→F |
-| 20 | Layout tools: `panel.toggle`, `zen`, `fullscreen` | requirements-editor.md §4.14–§4.16 | A→A2→B→B2→C→D→E→F |
+| 16 | Editor view tools: `open`, `close`, `scroll`, `reveal`, `focus`, `split` | requirements-editor.md §4.1–§4.3, §4.6–§4.8 | A→A2→B→B2→C→D→E→F |
+| 17 | Editor decoration + save: `highlight`, `clearHighlights`, `save`, `saveAll`, `format` | requirements-editor.md §4.4–§4.5, §4.17–§4.19 | A→A2→B→B2→C→D→E→F |
+| 18 | Terminal tools: `open`, `run`, `focus`, `list`, `close` + Terminal ID Map | requirements-editor.md §4.9–§4.11, §4.21–§4.22, §5.3 | A→A2→B→B2→C→D→E→F |
+| 19 | Workspace tools: `getTree`, `search`; Diagnostics: `list` | requirements-editor.md §4.12–§4.13, §4.20 | A→A2→B→B2→C→D→E→F |
+| 20 | Layout tools: `panel.toggle`, `zen`, `fullscreen`, `joinGroups`, `evenGroups` | requirements-editor.md §4.14–§4.16, §4.23–§4.24 | A→A2→B→B2→C→D→E→F |
 
 **Note:** Module 18 (`terminal.run`) MUST include a confirmation dialog stub (hardcoded `destructive` danger level) — full confirmation policy moves to Week 4 but the guard must exist from first availability.
 
-**Week 3 gate:** 16 tools registered, callable through MCP, returning correct results. State updates flow continuously. `/instructions` reflects real workspace state.
+**Note:** Tool set expanded from 16 to 24 tools (added: `editor.save`, `editor.saveAll`, `editor.format`, `diagnostics.list`, `terminal.list`, `terminal.close`, `layout.joinGroups`, `layout.evenGroups`) — all specified in requirements-editor.md §4.17–§4.24.
+
+**Week 3 gate:** 24 tools registered, callable through MCP, returning correct results. State updates flow continuously. `/instructions` reflects real workspace state.
 
 ---
 

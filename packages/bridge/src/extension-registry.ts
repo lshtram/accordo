@@ -7,35 +7,10 @@
  * Requirements: requirements-bridge.md §7 (REG-01 to REG-06)
  */
 
-import type { ToolRegistration, ToolInputSchema } from "@accordo/bridge-types";
+import type { ToolRegistration, ExtensionToolDefinition } from "@accordo/bridge-types";
+export type { ExtensionToolDefinition };
 
 // ── Types ────────────────────────────────────────────────────────────────────
-
-/**
- * Tool definition as provided by extensions calling BridgeAPI.registerTools().
- * Includes the handler function which is NEVER sent over the wire.
- *
- * Source: requirements-bridge.md §3.1
- */
-export interface ExtensionToolDefinition {
-  /** Fully qualified tool name. Convention: "accordo.<category>.<action>" */
-  name: string;
-  /** One-line description. Appears in system prompt. Max 120 chars. */
-  description: string;
-  /** JSON Schema describing the input. Must be type: "object". */
-  inputSchema: ToolInputSchema;
-  /** How dangerous is this tool? Drives confirmation policy. */
-  dangerLevel: "safe" | "moderate" | "destructive";
-  /** Whether to show confirmation dialog. Defaults by dangerLevel. */
-  requiresConfirmation?: boolean;
-  /** Whether this tool is safe to retry on timeout. Default: false */
-  idempotent?: boolean;
-  /**
-   * The actual handler function. Runs in the extension host.
-   * NEVER serialized. NEVER sent to Hub.
-   */
-  handler: (args: Record<string, unknown>) => Promise<unknown>;
-}
 
 /**
  * A disposable that unregisters tools when disposed.
