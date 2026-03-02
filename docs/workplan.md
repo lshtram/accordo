@@ -9,18 +9,18 @@
 
 ## Current Status
 
-> **As of 2026-03-02 — starting Week 2.**
+> **As of 2026-03-02 — starting Week 3.**
 
 | Week | Goal | Status |
 |------|------|--------|
 | Week 1 | Hub core modules + shared types | ✅ DONE — 156 tests passing, pushed to `main` |
-| Week 2 | MCP protocol + Bridge foundation | 🔄 IN PROGRESS — start here |
-| Week 3 | State system + Editor tools | ⬜ Not started |
+| Week 2 | MCP protocol + Bridge foundation | ✅ DONE — 353 tests passing, pushed to `main` |
+| Week 3 | State system + Editor tools | 🔄 IN PROGRESS — start here |
 | Week 4 | Agent integration + Confirmation flow | ⬜ Not started |
 | Week 5 | Stabilisation + Documentation | ⬜ Not started |
 
-**Completed packages:** `@accordo/bridge-types`, `accordo-hub` (8 modules)  
-**Next module (Week 2, #8):** `mcp-handler.ts` — wire MCP `initialize` + `tools/list` over authenticated HTTP (requirements-hub.md §2.1, §5.5)  
+**Completed packages:** `@accordo/bridge-types`, `accordo-hub` (13 modules), `accordo-bridge` (4 modules)  
+**Next module (Week 3, #15):** `state-publisher.ts` — publish IDE state snapshots and patches to Hub over WebSocket (requirements-bridge.md §6)  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)
 
 ---
@@ -348,34 +348,7 @@ accordo-hub  accordo-bridge  (both depend on bridge-types)
 
 > **Important:** Every task within each week follows the TDD cycle defined in §1. The "Output" column describes the Phase D deliverable (green tests + clean code). Phases A2, B2, D2, and E checkpoints apply to each logical module.
 >
-> Week 1 is complete. See the **DONE** section at the bottom of this file for the full Week 1 record.
-
-### Week 2 — MCP Protocol & Bridge Foundation
-
-**Goal:** Hub speaks MCP. Bridge connects and manages Hub lifecycle.
-
-> **Context for incoming agent:**
-> - `mcp-handler.ts` dispatcher exists from Week 1 but `tools/call` routing is a stub (2 `it.todo` tests await implementation).
-> - `server.ts` `start()` is a stub — Week 2 must wire the actual HTTP listener and WebSocket server.
-> - All 156 Week 1 tests must remain green as Week 2 builds on top.
-> - Security (Origin + Bearer) is defined in `security.ts` but NOT yet applied to HTTP endpoints — module #10 below enforces it.
-> - Start with module #8 (complete `tools/call` + HTTP wiring in `mcp-handler.ts`/`server.ts`) before the Bridge package.
-
-**TDD execution order:**
-
-| # | Module | Requirements Source | TDD Phases |
-|---|---|---|---|
-| 8 | `mcp-handler.ts` | requirements-hub.md §2.1, §5.5 | A→A2→B→B2→C→D→E→F |
-| 9 | MCP stdio mode | requirements-hub.md §2.2 | A→A2→B→B2→C→D→E→F |
-| 10 | Hub security integration (auth on endpoints) | requirements-hub.md §2.1 (Origin, Bearer on /mcp, /instructions) | A→A2→B→B2→C→D→E→F |
-| 11 | `hub-manager.ts` (Bridge) | requirements-bridge.md §4 | A→A2→B→B2→C→D→E→F |
-| 12 | `ws-client.ts` (Bridge) | requirements-bridge.md §5 | A→A2→B→B2→C→D→E→F |
-| 13 | `extension-registry.ts` (Bridge) | requirements-bridge.md §7 | A→A2→B→B2→C→D→E→F |
-| 14 | `command-router.ts` (Bridge) | requirements-bridge.md §5.2 | A→A2→B→B2→C→D→E→F |
-
-**Week 2 gate:** Bridge starts Hub with persisted secrets, connects WS, MCP initialize + tools/list works over authenticated HTTP and stdio. Security baseline (bearer token, Origin validation) is **active** — no unprotected endpoints exist when Week 3 destructive tools arrive.
-
----
+> Weeks 1 and 2 are complete. See the **DONE** section at the bottom of this file for the full records.
 
 ### Week 3 — State System & Editor Tools
 
@@ -486,6 +459,32 @@ accordo-hub  accordo-bridge  (both depend on bridge-types)
 - Queue-full check must precede connection check for unit testability → bridge-server.ts check order, verified in CONC-04 test
 
 **Review archived:** `docs/week1-review-report.md` — 8 findings raised, all resolved and verified.
+
+---
+
+### Week 2 — MCP Protocol & Bridge Foundation (completed 2026-03-02)
+
+**Goal:** Hub speaks MCP. Bridge connects and manages Hub lifecycle.
+
+**Actual result:** 353 tests passing across two packages (Hub: 220, Bridge: 133). Zero TypeScript errors in all source files. Clean `pnpm build`. Live HTTP + stdio smoke-tested via `curl` and automated integration tests. 8 module commits + 1 hub-cli commit pushed to `main`.
+
+| # | Module | Requirements Source | Tests | Status |
+|---|---|---|---|---|
+| 8 | `mcp-handler.ts` — tools/call dispatch | requirements-hub.md §2.1, §5.5, §6 | 29 | ✅ |
+| 9 | `stdio-transport.ts` — MCP over stdin/stdout | requirements-hub.md §2.2 | 18 | ✅ |
+| 10 | `server.ts` — HTTP routing, security, start/stop | requirements-hub.md §2.1, §2.3, §2.4, §2.6, §5.6 | 39 | ✅ |
+| — | `index.ts` — CLI main() HTTP + stdio entrypoint | requirements-hub.md §4.1, §4.2 | 22 + 13 smoke | ✅ |
+| 11 | `hub-manager.ts` (Bridge) — Hub process lifecycle | requirements-bridge.md §1 (LCM-01..12) | 36 | ✅ |
+| 12 | `ws-client.ts` (Bridge) — WebSocket client | requirements-bridge.md §2 (WS-01..10) | 50 | ✅ |
+| 13 | `extension-registry.ts` (Bridge) — tool registration | requirements-bridge.md §7 (REG-01..06) | 23 | ✅ |
+| 14 | `command-router.ts` (Bridge) — invoke/cancel routing | requirements-bridge.md §4 (CMD-01..08) | 24 | ✅ |
+
+**Week 2 gate verdict:** ✅ Pass. Hub HTTP server running on configurable port. MCP initialize, tools/list, tools/call, ping work over HTTP and stdio. Bearer auth + Origin validation active on all authenticated endpoints. Bridge WsClient connects with exponential backoff. ExtensionRegistry debounces tool sends. CommandRouter dispatches invoke/cancel to extension handlers.
+
+**Spec gaps discovered and resolved during implementation:**
+- Hub `/mcp` returned 404 for wrong HTTP method → added 405 with `Allow: POST` header; test added in smoke suite
+- `stdio-transport.ts` buffer needed to handle multi-chunk inputs → buffer accumulation implemented
+- `server.ts start()` test was minimal (Promise only) — real implementation wired HTTP + WS in one call; test still passes
 
 ---
 
