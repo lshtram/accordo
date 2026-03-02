@@ -142,12 +142,15 @@ export async function activate(
   // Send callbacks use late-bound wsClient via closure — safe because
   // StatePublisher only calls them after WsClient exists (start() is called
   // before WS connects but sends are gated on actual connection).
-  // vscode satisfies VscodeApi structurally — cast narrows to testable surface
   statePublisher = new StatePublisher(
     vscode as unknown as VscodeApi,
     {
-      sendSnapshot: (msg) => wsClient?.sendStateSnapshot(msg.state),
-      sendUpdate: (msg) => wsClient?.sendStateUpdate(msg.patch),
+      sendSnapshot: (msg) => {
+        wsClient?.sendStateSnapshot(msg.state);
+      },
+      sendUpdate: (msg) => {
+        wsClient?.sendStateUpdate(msg.patch);
+      },
     },
   );
   statePublisher.start();

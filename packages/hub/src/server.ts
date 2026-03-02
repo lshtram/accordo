@@ -161,6 +161,17 @@ export class HubServer {
       return;
     }
 
+    // /state — raw IDE state JSON (dev/debug, Bearer auth)
+    if (url === "/state" && req.method === "GET") {
+      if (!validateBearer(req, this.token)) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+      this.handleState(req, res);
+      return;
+    }
+
     // §2.6: /bridge/reauth — bridge secret auth
     if (url === "/bridge/reauth" && req.method === "POST") {
       if (!validateBridgeSecret(req, this.options.bridgeSecret)) {
@@ -261,6 +272,22 @@ export class HubServer {
           res.end();
         });
     });
+  }
+
+  /**
+   * GET /state — raw IDE state as JSON.
+   * Dev/debug endpoint. Bearer auth required.
+   */
+  private handleState(
+    _req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): void {
+    const state = this.stateCache.getState();
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
+    });
+    res.end(JSON.stringify(state, null, 2));
   }
 
   /**

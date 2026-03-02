@@ -242,36 +242,98 @@ Other available commands:
 
 ---
 
-## Step 9 — Verify State Updates Flow
+## Step 9 — Query Raw IDE State
+
+The Hub exposes a `/state` endpoint that returns the full IDE state as JSON. This is the raw data that feeds the `/instructions` prompt.
+
+```bash
+curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
+  http://localhost:3000/state | python3 -m json.tool
+```
+
+Example output:
+```json
+{
+    "activeFile": "/Users/Shared/dev/dream-news/docs/requirements/REQ-RSS-Collector.md",
+    "activeFileLine": 42,
+    "activeFileColumn": 1,
+    "openEditors": [
+        "/Users/Shared/dev/dream-news/docs/requirements/REQ-SmartDeduplication.md",
+        "/Users/Shared/dev/dream-news/docs/requirements/REQ-RSS-Collector.md"
+    ],
+    "visibleEditors": [
+        "/Users/Shared/dev/dream-news/docs/requirements/REQ-RSS-Collector.md"
+    ],
+    "workspaceFolders": [
+        "/Users/Shared/dev/dream-news"
+    ],
+    "activeTerminal": "zsh",
+    "workspaceName": "dream-news",
+    "remoteAuthority": null,
+    "modalities": {}
+}
+```
+
+**Query specific fields with `jq`** (install with `brew install jq` if needed):
+
+```bash
+# Which file is active?
+curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
+  http://localhost:3000/state | jq '.activeFile'
+
+# What line and column is the cursor on?
+curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
+  http://localhost:3000/state | jq '{line: .activeFileLine, col: .activeFileColumn}'
+
+# Which files are open as editor tabs?
+curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
+  http://localhost:3000/state | jq '.openEditors'
+
+# Which editors are visible (split panes)?
+curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
+  http://localhost:3000/state | jq '.visibleEditors'
+
+# Active terminal name
+curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
+  http://localhost:3000/state | jq '.activeTerminal'
+
+# Extension modality data (e.g. from registered extensions)
+curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
+  http://localhost:3000/state | jq '.modalities'
+```
+
+---
+
+## Step 10 — Verify State Updates Flow
 
 This confirms that editor events in the EDH are captured and streamed to the Hub in real time.
 
 1. **Switch files in the EDH window**: click on any `.ts` file in the explorer
 2. **Wait ~100ms** (the debounce)
-3. **Query `/instructions` again**:
+3. **Query `/state` again**:
    ```bash
    curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
-     http://localhost:3000/instructions | grep -A5 "Current IDE State"
+     http://localhost:3000/state | jq '{active: .activeFile, line: .activeFileLine}'
    ```
-4. The `Active file` should now show the file you just opened
+4. The `activeFile` should now show the file you just opened
 
 You can automate a live watch:
 ```bash
-watch -n1 "curl -s -H 'Authorization: Bearer $(cat ~/.accordo/token)' \
-  http://localhost:3000/instructions | grep 'Active file'"
+watch -n1 "curl -s -H 'Authorization: Bearer \$(cat ~/.accordo/token)' \
+  http://localhost:3000/state | python3 -m json.tool"
 ```
 (`watch` may not be installed on macOS — install with `brew install watch` or use the `while` loop version):
 ```bash
 while true; do
   curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
-    http://localhost:3000/instructions | grep "Active file"
+    http://localhost:3000/state | jq '{active: .activeFile, line: .activeFileLine}'
   sleep 1
 done
 ```
 
 ---
 
-## Step 10 — Stop the Test Session
+## Step 11 — Stop the Test Session
 
 1. **Close the EDH window** (click the red × on the title bar, or `Cmd+Q` with that window focused)
 2. The extension deactivates — it closes the WebSocket to the Hub but **does NOT kill the Hub process** (by design — the Hub stays alive so CLI agents can keep using it)
@@ -291,11 +353,12 @@ done
 | 3 | Start EDH (Run → Start Debugging) | Second VS Code window opens |
 | 4 | Output → Accordo Hub in EDH | `Connected to Hub ✓` |
 | 5 | `curl /health` | `"bridge": "connected"` |
-| 6 | `curl /instructions` | Shows real workspace, active file, open editors |
-| 7 | Switch file in EDH, re-curl `/instructions` | Active file changes |
-| 8 | Command Palette → `Accordo: Show Connection Status` | `Connected ✓` notification |
+| 6 | `curl /instructions` | Shows workspace, active file, open editors |
+| 7 | `curl /state \| jq .activeFile` | Shows the file focused in EDH |
+| 8 | Switch file in EDH, re-curl `/state` | `activeFile` and line change |
+| 9 | Command Palette → `Accordo: Show Connection Status` | `Connected ✓` notification |
 
-If all 8 checks pass, the real Bridge extension is working end-to-end.
+If all 9 checks pass, the real Bridge extension is working end-to-end.
 
 ---
 
@@ -316,7 +379,19 @@ curl -s http://localhost:3000/health | python3 -m json.tool
 curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
   http://localhost:3000/instructions
 
-# Just the IDE state section
+# Raw IDE state as JSON
+curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
+  http://localhost:3000/state | python3 -m json.tool
+
+# Active file + cursor position
+curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
+  http://localhost:3000/state | jq '{file: .activeFile, line: .activeFileLine, col: .activeFileColumn}'
+
+# Open editor tabs
+curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
+  http://localhost:3000/state | jq '.openEditors'
+
+# Just the IDE state section from /instructions
 curl -s -H "Authorization: Bearer $(cat ~/.accordo/token)" \
   http://localhost:3000/instructions \
   | awk '/## Current IDE State/,/## Registered Tools/'
