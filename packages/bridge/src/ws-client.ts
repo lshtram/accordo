@@ -16,6 +16,7 @@ import type {
   BridgeToHubMessage,
   InvokeMessage,
   CancelMessage,
+  GetStateMessage,
   ResultMessage,
   PingMessage,
 } from "@accordo/bridge-types";
@@ -58,6 +59,12 @@ export interface WsClientEvents {
   onInvoke: (message: InvokeMessage) => void;
   /** Fired when Hub sends a cancel message */
   onCancel: (message: CancelMessage) => void;
+  /**
+   * Fired when Hub sends a getState request.
+   * Caller must call StatePublisher.sendSnapshot() in response.
+   * §6.3: Hub pull → full stateSnapshot reply.
+   */
+  onGetState: (message: GetStateMessage) => void;
 }
 
 // ── WsClient ─────────────────────────────────────────────────────────────────
@@ -141,6 +148,10 @@ export class WsClient {
         this.events.onCancel(msg as CancelMessage);
         return;
       }
+      if (msg.type === "getState") {
+        this.events.onGetState(msg as GetStateMessage);
+        return;
+      }
     });
 
     ws.on("close", (code: number, reason: Buffer) => {
@@ -213,6 +224,8 @@ export class WsClient {
    * @param state - Complete IDE state
    */
   sendStateSnapshot(state: IDEState): void {
+    // Always refresh the reconnect cache so WS-07 replays the latest state.
+    this.lastState = state;
     this.ws?.send(
       JSON.stringify({
         type: "stateSnapshot",
@@ -229,6 +242,8 @@ export class WsClient {
    * @param tools - All registered tools (wire format, no handlers)
    */
   sendToolRegistry(tools: ToolRegistration[]): void {
+    // Always refresh the reconnect cache so WS-07 replays the latest tools.
+    this.lastTools = tools;
     this.ws?.send(JSON.stringify({ type: "toolRegistry", tools }));
   }
 

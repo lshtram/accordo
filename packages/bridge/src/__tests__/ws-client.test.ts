@@ -99,6 +99,7 @@ import {
   MAX_MESSAGE_SIZE,
 } from "../ws-client.js";
 import type { WsClientEvents } from "../ws-client.js";
+import type { GetStateMessage } from "@accordo/bridge-types";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -110,6 +111,8 @@ const IDLE_STATE: IDEState = {
   visibleEditors: [],
   workspaceFolders: [],
   activeTerminal: null,
+  workspaceName: null,
+  remoteAuthority: null,
   modalities: {},
 };
 
@@ -129,6 +132,7 @@ type TrackedEvents = WsClientEvents & {
   protocolMismatchArg: string | undefined;
   invokedArgs: unknown[];
   cancelledArgs: unknown[];
+  getStateArgs: unknown[];
 };
 
 function makeEvents(): TrackedEvents {
@@ -136,6 +140,7 @@ function makeEvents(): TrackedEvents {
   let protocolMismatchArg: string | undefined;
   const invokedArgs: unknown[] = [];
   const cancelledArgs: unknown[] = [];
+  const getStateArgs: unknown[] = [];
   return {
     onConnected: vi.fn(),
     onDisconnected: vi.fn(),
@@ -143,10 +148,12 @@ function makeEvents(): TrackedEvents {
     onProtocolMismatch: vi.fn((msg: string) => { protocolMismatchArg = msg; }),
     onInvoke: vi.fn((m: unknown) => { invokedArgs.push(m); }),
     onCancel: vi.fn((m: unknown) => { cancelledArgs.push(m); }),
+    onGetState: vi.fn((m: unknown) => { getStateArgs.push(m); }),
     get authFailureCount() { return authFailureCount; },
     get protocolMismatchArg() { return protocolMismatchArg; },
     get invokedArgs() { return invokedArgs; },
     get cancelledArgs() { return cancelledArgs; },
+    get getStateArgs() { return getStateArgs; },
   };
 }
 
@@ -474,6 +481,26 @@ describe("WsClient", () => {
       const types = ((mockWsState.instance?.parseSent() ?? []) as Array<Record<string, unknown>>).map((m) => m["type"]);
       expect(types).toContain("toolRegistry");
     });
+
+    it("WS-07: reconnect uses state from latest sendStateSnapshot, not initial connect state", async () => {
+      const { client } = makeClient();
+      const updatedState: IDEState = { ...IDLE_STATE, activeFile: "/updated-after-connect.ts" };
+      const p1 = client.connect(IDLE_STATE, SAMPLE_TOOLS);
+      p1.catch(() => {});
+      mockWsState.instance?.triggerOpen();
+      await Promise.resolve();
+      // State changes after initial connect — bridge should use this on reconnect
+      client.sendStateSnapshot(updatedState);
+      mockWsState.instance?.triggerClose(1000, "normal");
+      vi.advanceTimersByTime(1_500);
+      await Promise.resolve();
+      mockWsState.instance?.triggerOpen();
+      await Promise.resolve();
+      const sent = (mockWsState.instance?.parseSent() ?? []) as Array<Record<string, unknown>>;
+      const lastSnapshot = [...sent].reverse().find((m) => m["type"] === "stateSnapshot");
+      const sentState = lastSnapshot?.["state"] as Record<string, unknown> | undefined;
+      expect(sentState?.["activeFile"]).toBe("/updated-after-connect.ts");
+    });
   });
 
   // ── WS-08: message size guard ─────────────────────────────────────────────
@@ -642,6 +669,32 @@ describe("WsClient", () => {
       mockWsState.instance?.triggerMessage({ type: "cancel", id: "i-1" });
       await Promise.resolve();
       expect(events.onCancel).toHaveBeenCalledWith(expect.objectContaining({ type: "cancel", id: "i-1" }));
+    });
+
+    it("§6.3: getState message is forwarded to events.onGetState", async () => {
+      const { client, events } = makeClient();
+      const p = client.connect(IDLE_STATE, []);
+      p.catch(() => {});
+      mockWsState.instance?.triggerOpen();
+      await Promise.resolve();
+      const msg: GetStateMessage = { type: "getState", id: "gs-1" };
+      mockWsState.instance?.triggerMessage(msg);
+      await Promise.resolve();
+      expect(events.onGetState).toHaveBeenCalledWith(expect.objectContaining({ type: "getState", id: "gs-1" }));
+    });
+
+    it("§6.3: getState message does NOT trigger a pong or result", async () => {
+      const { client } = makeClient();
+      const p = client.connect(IDLE_STATE, []);
+      p.catch(() => {});
+      mockWsState.instance?.triggerOpen();
+      await Promise.resolve();
+      mockWsState.instance?.sent.splice(0);
+      mockWsState.instance?.triggerMessage({ type: "getState", id: "gs-2" });
+      await Promise.resolve();
+      const types = ((mockWsState.instance?.parseSent() ?? []) as Array<Record<string, unknown>>).map((m) => m["type"]);
+      expect(types).not.toContain("pong");
+      expect(types).not.toContain("result");
     });
   });
 
