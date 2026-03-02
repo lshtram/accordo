@@ -9,17 +9,18 @@
 
 ## Current Status
 
-> **As of 2026-03-02 — starting Week 3.**
+> **As of 2026-03-02 — Week 3 in progress. Module 15 done. End-to-end stack verified. Starting module 16.**
 
 | Week | Goal | Status |
 |------|------|--------|
 | Week 1 | Hub core modules + shared types | ✅ DONE — 156 tests passing, pushed to `main` |
 | Week 2 | MCP protocol + Bridge foundation | ✅ DONE — 353 tests passing, pushed to `main` |
-| Week 3 | State system + Editor tools | 🔄 IN PROGRESS — start here |
+| Week 3 | State system + Editor tools | 🔄 IN PROGRESS — 445 tests, module 15 ✅, infra ✅, start module 16 |
 | Week 4 | Agent integration + Confirmation flow | ⬜ Not started |
 | Week 5 | Stabilisation + Documentation | ⬜ Not started |
 
-**Completed packages:** `@accordo/bridge-types`, `accordo-hub` (13 modules), `accordo-bridge` (5 modules, incl. state-publisher)  
+**Completed packages:** `@accordo/bridge-types`, `accordo-hub` (14 modules incl. `/state` endpoint), `accordo-bridge` (6 modules incl. `extension.ts`)  
+**Tests:** 445 total (Hub: 220, Bridge: 225). End-to-end stack verified: Bridge connects, state flows, `/instructions` and `/state` serve live IDE state.  
 **Next module (Week 3, #16):** Editor tools batch 1 — `open`, `close`, `scroll`, `reveal`, `focus`, `split` (requirements-editor.md §4.1–§4.8)  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)
 
@@ -89,6 +90,9 @@ accordo-hub  accordo-bridge  (both depend on bridge-types)
 | # | Module | Requirements Source | TDD Phases |
 |---|---|---|---|
 | 15 | `state-publisher.ts` (Bridge) | requirements-bridge.md §6 | ✅ DONE — 89 tests |
+| — | `BridgeServer` WS handler (Hub) | requirements-hub.md §2.5, §3 | ✅ DONE — fully wired, e2e verified |
+| — | `extension.ts` entry point (Bridge) | requirements-bridge.md §1, §7 | ✅ DONE — all 5 modules wired |
+| — | Hub infra: token/PID file, `/state` endpoint | requirements-hub.md §4.2, §2.3 | ✅ DONE — deployed |
 | 16 | Editor tools: `open`, `close`, `scroll`, `reveal`, `focus`, `split` | requirements-editor.md §4.1–§4.8 | A→A2→B→B2→C→D→E→F |
 | 17 | Editor tools: `highlight`, `clearHighlights` | requirements-editor.md §4.4–§4.5 | A→A2→B→B2→C→D→E→F |
 | 18 | Terminal tools: `open`, `run`, `focus` + Terminal ID Map | requirements-editor.md §4.9–§4.11, §5.3 | A→A2→B→B2→C→D→E→F |
