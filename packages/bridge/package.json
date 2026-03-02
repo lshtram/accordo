@@ -1,16 +1,75 @@
 {
   "name": "accordo-bridge",
+  "displayName": "Accordo IDE Bridge",
+  "publisher": "accordo",
   "version": "0.1.0",
   "description": "Accordo IDE Bridge — VSCode extension connecting editor to Hub",
+  "categories": ["Other"],
+  "extensionKind": ["workspace"],
+  "activationEvents": ["onStartupFinished"],
+  "extensionDependencies": [],
   "type": "module",
   "main": "./dist/extension.js",
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
+    "package": "vsce package --no-dependencies",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'no lint configured yet'"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Accordo IDE",
+      "properties": {
+        "accordo.hub.port": {
+          "type": "number",
+          "default": 3000,
+          "description": "Port for the Accordo Hub HTTP server"
+        },
+        "accordo.hub.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start Hub process if not running"
+        },
+        "accordo.hub.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the Node.js executable used to spawn Hub. Empty = use the same node that runs the extension host.",
+          "scope": "machine"
+        },
+        "accordo.agent.configureOpencode": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-generate opencode.json MCP config"
+        },
+        "accordo.agent.configureCopilot": {
+          "type": "boolean",
+          "default": true,
+          "description": "Register Hub as native MCP server for Copilot"
+        },
+        "accordo.agent.configureClaude": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-generate .claude/mcp.json MCP config"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "accordo.hub.restart",
+        "title": "Accordo: Restart Hub"
+      },
+      {
+        "command": "accordo.hub.showLog",
+        "title": "Accordo: Show Hub Log"
+      },
+      {
+        "command": "accordo.bridge.showStatus",
+        "title": "Accordo: Show Connection Status"
+      }
+    ]
   },
   "dependencies": {
     "ws": "^8.18.0"

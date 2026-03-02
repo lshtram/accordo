@@ -1,0 +1,48 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // ── Extension Development Host ──────────────────────────────────────
+      // Pressing F5 with this config selected:
+      //   1. Builds the bridge (preLaunchTask)
+      //   2. Opens a new VS Code window (Extension Development Host) with
+      //      the accordo-bridge extension loaded
+      //   3. The EDH opens THIS repo as its workspace, so the extension
+      //      reports real IDE state from your actual files
+      //   4. The debugger attaches — you can set breakpoints in extension.ts
+      //      and all bridge/*.ts files
+      //
+      // Your current window is untouched. They are fully isolated.
+      //
+      // To test:
+      //   a) In the EDH window: Ctrl+Shift+P → "Accordo: Show Connection Status"
+      //   b) In any terminal: curl http://localhost:3000/instructions
+      "name": "Launch Bridge (Extension Development Host)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/bridge",
+        // Open this repo in the EDH so it has a real workspace to report
+        "${workspaceFolder}"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/packages/bridge/dist/**/*.js"
+      ],
+      "preLaunchTask": "build-bridge",
+      "sourceMaps": true
+    },
+    {
+      // ── Attach to running EDH ───────────────────────────────────────────
+      // Use this if you already have the EDH running and want to re-attach
+      // the debugger without restarting.
+      "name": "Attach to Bridge (running EDH)",
+      "type": "extensionHost",
+      "request": "attach",
+      "port": 5870,
+      "outFiles": [
+        "${workspaceFolder}/packages/bridge/dist/**/*.js"
+      ],
+      "sourceMaps": true
+    }
+  ]
+}

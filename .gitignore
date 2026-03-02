@@ -3,4 +3,6 @@ dist/
 *.tsbuildinfo
 .DS_Store
 coverage/
-.vscode/
+# .vscode/ — only ignore personal/local settings; launch.json and tasks.json
+# are shared project configs and are committed.
+.vscode/settings.json

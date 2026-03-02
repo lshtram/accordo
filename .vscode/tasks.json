@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      // Build accordo-bridge (TypeScript → dist/).
+      // Referenced as preLaunchTask in launch.json.
+      "label": "build-bridge",
+      "type": "shell",
+      "command": "pnpm --filter accordo-bridge build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "problemMatcher": "$tsc"
+    },
+    {
+      // Build everything (bridge-types → hub + bridge in parallel).
+      "label": "build-all",
+      "type": "shell",
+      "command": "pnpm build",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": "$tsc"
+    },
+    {
+      // Run hub for manual testing without the extension host.
+      "label": "start-hub-dev",
+      "type": "shell",
+      "command": "ACCORDO_TOKEN=demo-token ACCORDO_BRIDGE_SECRET=demo-secret node packages/hub/dist/index.js --port 3000",
+      "group": "none",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
