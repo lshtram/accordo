@@ -1,3 +1,9 @@
+> **STATUS: ARCHIVED — 2026-03-02**
+> All 8 findings resolved, verified in test suite (156 passing), and committed to `main`.
+> This document is retained for traceability only. See workplan.md § DONE — Week 1.
+
+---
+
 # Accordo IDE — Week 1 Code Review Report
 
 **Scope:** All Week 1 deliverables (Phases A→E): `@accordo/bridge-types`, Hub core modules  

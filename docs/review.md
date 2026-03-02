@@ -1,3 +1,9 @@
+> **STATUS: ARCHIVED — 2026-03-02**
+> All 17 findings resolved (15 from prior reviews, 2 from this pass) plus 5 secondary-reviewer items dispositioned.
+> This document is retained for traceability only. Architecture is implementation-ready.
+
+---
+
 # Accordo IDE — Consolidated Architecture Review
 
 **Date:** 2026-03-02  
