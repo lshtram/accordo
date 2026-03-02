@@ -19,8 +19,8 @@
 | Week 4 | Agent integration + Confirmation flow | ⬜ Not started |
 | Week 5 | Stabilisation + Documentation | ⬜ Not started |
 
-**Completed packages:** `@accordo/bridge-types`, `accordo-hub` (13 modules), `accordo-bridge` (4 modules)  
-**Next module (Week 3, #15):** `state-publisher.ts` — publish IDE state snapshots and patches to Hub over WebSocket (requirements-bridge.md §6)  
+**Completed packages:** `@accordo/bridge-types`, `accordo-hub` (13 modules), `accordo-bridge` (5 modules, incl. state-publisher)  
+**Next module (Week 3, #16):** Editor tools batch 1 — `open`, `close`, `scroll`, `reveal`, `focus`, `split` (requirements-editor.md §4.1–§4.8)  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)
 
 ---
@@ -88,7 +88,7 @@ accordo-hub  accordo-bridge  (both depend on bridge-types)
 
 | # | Module | Requirements Source | TDD Phases |
 |---|---|---|---|
-| 15 | `state-publisher.ts` (Bridge) | requirements-bridge.md §6 | A→A2→B→B2→C→D→E→F |
+| 15 | `state-publisher.ts` (Bridge) | requirements-bridge.md §6 | ✅ DONE — 89 tests |
 | 16 | Editor tools: `open`, `close`, `scroll`, `reveal`, `focus`, `split` | requirements-editor.md §4.1–§4.8 | A→A2→B→B2→C→D→E→F |
 | 17 | Editor tools: `highlight`, `clearHighlights` | requirements-editor.md §4.4–§4.5 | A→A2→B→B2→C→D→E→F |
 | 18 | Terminal tools: `open`, `run`, `focus` + Terminal ID Map | requirements-editor.md §4.9–§4.11, §5.3 | A→A2→B→B2→C→D→E→F |
