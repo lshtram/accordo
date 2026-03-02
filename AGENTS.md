@@ -1,0 +1,104 @@
+# AGENTS.md — Guide for AI Agents
+
+This file tells any AI agent how to operate in this repository.  
+Read this file first whenever you open this workspace.
+
+---
+
+## 1. What This Repo Is
+
+Accordo IDE is an MCP-based AI co-pilot layer on top of VSCode. It consists of:
+
+| Package | Role |
+|---|---|
+| `@accordo/bridge-types` | Shared TypeScript types (no runtime) |
+| `accordo-hub` | Standalone MCP server — agents connect here |
+| `accordo-bridge` | VSCode extension — connects editor to Hub |
+| `accordo-editor` | VSCode extension — 16 editor/terminal/workspace tools |
+
+**The always-authoritative starting point for any coding task is:**
+→ [`docs/workplan.md`](docs/workplan.md) — current status, active week, next module
+
+---
+
+## 2. Modes of Work
+
+### 2.1 TDD Mode — strictly required when user says "TDD"
+
+When the user says **"TDD"**, or the task is implementing a new module listed in the workplan, you MUST follow the full process in [`docs/dev-process.md`](docs/dev-process.md) without omitting any phase or checkpoint.
+
+**Key rules in TDD mode:**
+- Phases A → A2 → B → B2 → C → D → D2 → E → F — in order, no skipping
+- User checkpoints at A2, B2, and E are **blocking** — stop and wait for explicit approval
+- Never write implementation before the tests are approved by the user
+- Every requirement gets a test; tests reference requirement IDs
+- See `docs/dev-process.md` for the full cycle, batching rules, coverage audit, and commit format
+
+### 2.2 Quick Fix Mode
+
+For small bug fixes, typos, or isolated corrections that are clearly scoped:
+- Identify the failing test or issue precisely
+- Make the minimal change
+- Run the affected test file to verify
+- Commit with `fix(<module>): <description>`
+- No phase checkpoints required, but still: no `:any`, no `console.log`, types must compile
+
+### 2.3 Exploration / Investigation Mode
+
+For answering questions, reading code, explaining architecture, or assessing state:
+- Read and report — no changes unless explicitly asked
+- Point the user to the relevant requirements doc or workplan section
+
+### 2.4 Documentation Mode
+
+For updating docs, requirements, architecture, or the workplan:
+- Changes to requirements docs must be consistent with architecture.md
+- After any requirements change, note which modules may be affected
+- Commit with `docs(<scope>): <description>`
+
+### 2.5 Refactor Mode
+
+For restructuring existing code without changing behaviour:
+- Tests must remain green before and after
+- No new requirements addressed in the same commit
+- Commit with `refactor(<module>): <description>`
+
+---
+
+## 3. Always-On Rules (every mode)
+
+These apply regardless of which mode you are in:
+
+1. **No `:any` in source files.** TypeScript strict mode is enforced.
+2. **No `console.log` in source files.** `console.error` is allowed in error handlers.
+3. **No VSCode imports in Hub packages.** Hub is editor-agnostic.
+4. **Security middleware comes first** on every authenticated HTTP endpoint.
+5. **Handler functions are never serialized.** They stay in the Bridge, off the wire.
+6. **Run tests before committing.** `pnpm test` must be clean in the affected package.
+7. **Conventional commits.** `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
+8. **One module per commit** when in TDD mode. Batch only within the same phase.
+
+---
+
+## 4. Key Documents
+
+| Document | Purpose |
+|---|---|
+| [`docs/workplan.md`](docs/workplan.md) | Current status, active week, next module, DONE history |
+| [`docs/dev-process.md`](docs/dev-process.md) | Full TDD cycle — mandatory when user says "TDD" |
+| [`docs/architecture.md`](docs/architecture.md) | System design, component boundaries, protocols |
+| [`docs/coding-guidelines.md`](docs/coding-guidelines.md) | Code style, banned patterns, D2 review checklist |
+| [`docs/requirements-hub.md`](docs/requirements-hub.md) | Hub functional requirements |
+| [`docs/requirements-bridge.md`](docs/requirements-bridge.md) | Bridge functional requirements |
+| [`docs/requirements-editor.md`](docs/requirements-editor.md) | Editor tools requirements |
+
+---
+
+## 5. Picking Up Mid-Project
+
+1. Open [`docs/workplan.md`](docs/workplan.md) — read **Current Status** and **Weekly Plan §5**
+2. The active module and its requirements source are listed in the week's TDD execution table
+3. Check `git log --oneline -10` to see what was last committed
+4. Run `pnpm test` in the affected package to verify the baseline is green
+5. Identify which TDD phase the active module is in (look for stubs with `throw new Error("not implemented")`)
+6. If joining mid-module, do not skip backwards — resume from the current phase forward
