@@ -137,21 +137,21 @@ The cleanest path remains Step 3 (F5) with auto-spawn. Use Step 4 only for debug
 
 ## Step 5 — Find the Bearer Token
 
-The Hub uses a bearer token for all API calls. The extension generates a fresh token every time it spawns the Hub and writes it to `~/.accordo/token`.
+The Hub writes the bearer token to `~/.accordo/token` on startup (mode 0600).
+
+> **Important:** This only works if the Hub was started from the **compiled binary** after the fix in commit `f9848af`. If the file does not exist, the Hub binary is stale — rebuild and restart (see Step 1–3 again, then `Cmd+Shift+P → Accordo: Restart Hub` in the EDH).
 
 **Read it in a terminal:**
 ```bash
 cat ~/.accordo/token
 ```
 
-Example output:
+Example output (a long hex string):
 ```
-a1b2c3d4e5f6...  (a long hex string)
+a1b2c3d4-e5f6-...
 ```
 
-Save this value — you will use it as `YOUR_TOKEN` in the curl commands below.
-
-Or use it inline in every curl:
+Use it inline in every curl command:
 ```bash
 TOKEN=$(cat ~/.accordo/token)
 ```
