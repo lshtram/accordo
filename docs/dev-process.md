@@ -121,12 +121,30 @@ When working in TDD mode, every implementation module goes through these phases 
 ├─────────────────────────────────────────────────────────────────┤
 │  Phase E — User Approval                                        │
 │                                                                 │
-│  1. STOP. Show the user the final implementation.               │
-│  2. Show the green test run.                                    │
-│  3. Summarize what was built and how it maps to requirements.   │
-│  4. Wait for explicit user approval.                            │
+│  1. Write a manual testing guide for the completed module(s).   │
+│     Save it as: docs/testing-guide-<module-or-week>.md          │
+│     The guide MUST be specific enough that someone who has      │
+│     never seen the code can follow it with zero prior context.  │
+│     Required sections:                                          │
+│       a. Prerequisites (exact commands to build all packages)   │
+│       b. How to start / launch the component under test         │
+│          (no "press F5" without also giving the menu path and   │
+│          Command Palette alternative)                           │
+│       c. Step-by-step verification — one step per observable    │
+│          behaviour; each step states exactly what to run AND    │
+│          what to see                                            │
+│       d. Troubleshooting for the two or three most likely       │
+│          failure modes                                          │
+│       e. A summary checklist table at the end                   │
 │                                                                 │
-│  Deliverable: User approves the implementation.                 │
+│  2. STOP. Show the user the final implementation.               │
+│  3. Show the green test run.                                    │
+│  4. Show the testing guide (or link to it).                     │
+│  5. Summarize what was built and how it maps to requirements.   │
+│  6. Wait for explicit user approval before proceeding to F.     │
+│                                                                 │
+│  Deliverable: Testing guide written. User approves the          │
+│               implementation. No proceeding to F without both.  │
 ├─────────────────────────────────────────────────────────────────┤
 │  Phase F — Commit & Complete Cleanup                            │
 │                                                                 │
@@ -202,6 +220,7 @@ Phases may be **batched across related modules** within the same package to redu
 12. **Step-by-step spec means step-by-step tests.** Any spec that describes a multi-step conditional process MUST have one dedicated test per step. Do not combine steps in one assertion.
 13. **Scan all secondary behaviors.** Every module's test file MUST cover: all error paths, all callback/event registration methods, all shutdown/cleanup methods, all "no-op when disconnected" guarantees.
 14. **Phase F doc maintenance is mandatory.** After every week completes: (a) update workplan.md §Current Status, (b) move the week to the DONE section, (c) archive resolved review documents, (d) verify cross-document coherence, (e) commit and push.
+15. **Phase E requires a testing guide.** Before presenting Phase E to the user, write `docs/testing-guide-<module-or-week>.md` following the template in Phase E above. No user approval without a testing guide. The guide must be specific enough to run without any prior knowledge of the codebase.
 
 ---
 
@@ -295,7 +314,7 @@ Every module is considered done when it has completed the full TDD cycle (Phases
 5. **Implementation complete** — Code compiles with zero TypeScript errors (Phase C)
 6. **All tests pass** — No failures, no ESLint warnings/errors (Phase D)
 7. **Code review passed** — Full checklist in `docs/coding-guidelines.md §3` signed off; zero `any`, zero `console.log`, all architectural constraints met (Phase D2)
-8. **User approved implementation** — User acknowledged the final result (Phase E)
+8. **User approved implementation** — Testing guide written (`docs/testing-guide-*.md`), user acknowledged the final result (Phase E)
 9. **Committed** — Conventional commit, no dead code, test suite still green (Phase F)
 
 Additional per-task checks:
