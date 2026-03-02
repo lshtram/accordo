@@ -14,6 +14,11 @@
 import path from "node:path";
 import os from "node:os";
 import { DEFAULT_HUB_PORT } from "@accordo/bridge-types";
+import { HubServer } from "./server.js";
+import { McpHandler } from "./mcp-handler.js";
+import { ToolRegistry } from "./tool-registry.js";
+import { BridgeServer } from "./bridge-server.js";
+import { StdioTransport } from "./stdio-transport.js";
 
 export interface CliArgs {
   port: number;
@@ -113,5 +118,44 @@ export function resolveConfig(args: CliArgs): {
   };
 }
 
-// Main entry — only runs when executed directly (not imported in tests)
-// if (import.meta.url === `file://${process.argv[1]}`) { ... }
+/**
+ * Start the Hub. In stdio mode, run a StdioTransport. Otherwise start the
+ * HTTP server and wait until a SIGTERM/SIGINT asks for graceful shutdown.
+ *
+ * @param argv - CLI argument array (defaults to process.argv.slice(2))
+ */
+export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
+  const args = parseArgs(argv);
+  const config = resolveConfig(args);
+
+  if (args.stdio) {
+    const toolRegistry = new ToolRegistry();
+    const bridgeServer = new BridgeServer({
+      secret: config.bridgeSecret,
+      maxConcurrent: config.maxConcurrent,
+    });
+    const mcpHandler = new McpHandler({ toolRegistry, bridgeServer });
+    const transport = new StdioTransport({ handler: mcpHandler });
+    await transport.start();
+  } else {
+    const server = new HubServer(config);
+    await server.start();
+
+    // Keep alive until signal
+    await new Promise<void>((resolve) => {
+      const shutdown = () => {
+        server.stop().catch(() => {}).finally(resolve);
+      };
+      process.once("SIGTERM", shutdown);
+      process.once("SIGINT", shutdown);
+    });
+  }
+}
+
+// Run when executed directly; skip when imported by tests
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err: unknown) => {
+    console.error("[hub] Fatal:", err);
+    process.exit(1);
+  });
+}
