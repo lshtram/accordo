@@ -21,6 +21,8 @@ export function createEmptyState(): IDEState {
     visibleEditors: [],
     workspaceFolders: [],
     activeTerminal: null,
+    workspaceName: null,
+    remoteAuthority: null,
     modalities: {},
   };
 }

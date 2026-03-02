@@ -193,6 +193,8 @@ interface IDEState {
   visibleEditors: string[];          // relative paths
   workspaceFolders: string[];        // absolute paths
   activeTerminal: string | null;     // terminal name
+  workspaceName: string | null;      // vscode.workspace.name — display name
+  remoteAuthority: string | null;    // vscode.env.remoteName — null=local, else "ssh-remote","wsl","dev-container","codespaces","tunnel"
   modalities: {
     [extensionId: string]: Record<string, unknown>;
   };

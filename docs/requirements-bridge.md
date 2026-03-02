@@ -327,6 +327,13 @@ When Hub sends a `CancelMessage`:
 | `window.tabGroups.onDidChangeTabGroups` | `openEditors` | `window.tabGroups.all` (tab API) | 100ms |
 | `window.tabGroups.onDidChangeTabs` | `openEditors` | `window.tabGroups.all` (tab API) | 100ms |
 
+**Session-static fields** (captured once in `start()`, no events needed):
+
+| IDEState Field | Source | Notes |
+|---|---|---|
+| `workspaceName` | `vscode.workspace.name` | Display name of workspace or first root folder, `null` when no folder is open |
+| `remoteAuthority` | `vscode.env.remoteName` | `null` when running locally; e.g. `"ssh-remote"`, `"wsl"`, `"dev-container"`, `"codespaces"`, `"tunnel"` |
+
 **`openEditors` derivation:** `openEditors` is derived from `vscode.window.tabGroups.all` — the set of currently open editor tabs. It is **not** derived from `workspace.onDidOpenTextDocument` (which fires for background documents, language server buffers, and untitled files that are not visible tabs). On each relevant tab change, Bridge re-enumerates all tabs from the Tab Groups API and sends a full replacement patch for the `openEditors` field.
 
 ### 6.2 Path Normalization
@@ -338,9 +345,21 @@ All file paths in IDEState are **multi-root aware**:
 - Path inputs to tools accept: (a) absolute path, (b) path relative to a specific workspace folder if that folder's root is known. The `resolvePath` utility resolves (b) against the matching workspace folder, checking all roots. Ambiguous relative paths matching multiple roots are rejected with an error.
 - Forward slash separators always (even on Windows).
 
-### 6.3 State Diff
+### 6.3 State Update Strategy
 
-The state publisher MUST track last-sent state and only send patches containing changed fields. Do NOT send the full state on every event — only on connect/reconnect.
+The state publisher uses a **hybrid push-diff + keyframe** model:
+
+| Trigger | Message sent | Why |
+|---|---|---|
+| WS connect / reconnect | `stateSnapshot` (full) | Hub starts with accurate baseline |
+| VSCode event fires (debounced) | `stateUpdate` (changed fields only) | Keeps Hub reasonably current between keyframes |
+| Every `KEYFRAME_INTERVAL_MS` (600 s) | `stateSnapshot` (full) | Corrects any accumulated diff drift |
+| Hub sends `getState` request | `stateSnapshot` (full) | Agent gets guaranteed-fresh data on demand |
+| Extension calls `publishState()` | `stateUpdate` (modalities patch) | Explicit, infrequent, extension-driven |
+
+**Diff behaviour:** StatePublisher tracks `sentState` (the last state sent to Hub as a full snapshot). Between keyframes, only changed scalar fields and array fields (compared by JSON equality) are included in `stateUpdate` patches. If nothing has changed since the last send, no message is sent. After every `stateSnapshot`, `sentState` resets to the current state so subsequent diffs are computed against the fresh keyframe.
+
+**Debounce timing** (same as the event table in §6.1): editor/selection/terminal events debounce 50 ms; tab group events debounce 100 ms; workspace folder changes send immediately (no debounce).
 
 ### 6.4 Modality State
 

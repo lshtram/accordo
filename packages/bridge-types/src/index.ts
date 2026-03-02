@@ -35,6 +35,18 @@ export interface IDEState {
   workspaceFolders: string[];
   /** Display name of the active terminal, or null */
   activeTerminal: string | null;
+  /**
+   * Display name of the workspace or root folder.
+   * From vscode.workspace.name. Null when no folder is open.
+   */
+  workspaceName: string | null;
+  /**
+   * Remote authority identifier — describes the execution environment.
+   * From vscode.env.remoteName.
+   * null = local, or one of "ssh-remote", "wsl", "dev-container",
+   * "codespaces", "tunnel", etc.
+   */
+  remoteAuthority: string | null;
   /** Per-extension modality state. Key = extension ID (e.g. "accordo-editor") */
   modalities: Record<string, Record<string, unknown>>;
 }

@@ -130,6 +130,8 @@ describe("StateCache", () => {
         visibleEditors: ["/repo/main.ts"],
         workspaceFolders: ["/repo"],
         activeTerminal: "bash",
+        workspaceName: "my-repo",
+        remoteAuthority: null,
         modalities: { "accordo-editor": { ready: true } },
       };
       cache.setSnapshot(snapshot);

@@ -94,6 +94,12 @@ export function renderPrompt(
   // ── Dynamic state section ───────────────────────────────────────────────
   const stateLines: string[] = [];
 
+  if (state.workspaceName) {
+    stateLines.push(`**Workspace:** ${state.workspaceName}`);
+  }
+  if (state.remoteAuthority) {
+    stateLines.push(`**Remote:** ${state.remoteAuthority}`);
+  }
   if (state.activeFile) {
     stateLines.push(
       `**Active file:** ${state.activeFile} (line ${state.activeFileLine}, col ${state.activeFileColumn})`,
