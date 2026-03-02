@@ -13,6 +13,7 @@
 
 import path from "node:path";
 import os from "node:os";
+import fs from "node:fs";
 import { DEFAULT_HUB_PORT } from "@accordo/bridge-types";
 import { HubServer } from "./server.js";
 import { McpHandler } from "./mcp-handler.js";
@@ -141,10 +142,20 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     const server = new HubServer(config);
     await server.start();
 
+    // §4.2 + §8: Write token and PID to ~/.accordo/ (mode 0700 dir, 0600 files)
+    const accordoDir = path.join(os.homedir(), ".accordo");
+    fs.mkdirSync(accordoDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(accordoDir, "token"), config.token, { mode: 0o600 });
+    fs.writeFileSync(path.join(accordoDir, "hub.pid"), String(process.pid), { mode: 0o600 });
+
     // Keep alive until signal
     await new Promise<void>((resolve) => {
       const shutdown = () => {
-        server.stop().catch(() => {}).finally(resolve);
+        server.stop().catch(() => {}).finally(() => {
+          // Remove PID file on clean shutdown
+          try { fs.unlinkSync(path.join(os.homedir(), ".accordo", "hub.pid")); } catch { /* ignore */ }
+          resolve();
+        });
       };
       process.once("SIGTERM", shutdown);
       process.once("SIGINT", shutdown);
