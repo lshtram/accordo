@@ -9,7 +9,9 @@
     "test:watch": "pnpm -r run test:watch",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
-    "clean": "pnpm -r run clean"
+    "clean": "pnpm -r run clean",
+    "check": "pnpm build && pnpm test",
+    "setup:hooks": "git config core.hooksPath scripts/git-hooks"
   },
   "engines": {
     "node": ">=20",

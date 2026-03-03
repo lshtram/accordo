@@ -1,0 +1,23 @@
+#!/usr/bin/env sh
+# Pre-push hook — runs automatically before every `git push`.
+#
+# To activate (one-time, per clone):
+#   git config core.hooksPath scripts/git-hooks
+#
+# What it does:
+#   1. Builds all packages (type-check + compile)
+#   2. Runs the full test suite including the Strategy A e2e integration tests
+#
+# Exit non-zero → push is aborted.
+
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "⟳  pre-push: building..."
+pnpm build
+
+echo "⟳  pre-push: running tests..."
+pnpm test
+
+echo "✓  pre-push checks passed."
