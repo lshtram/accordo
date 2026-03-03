@@ -76,7 +76,7 @@ export function resolvePath(
  * @returns Wrapped async handler with identical signature
  */
 export function wrapHandler<T extends Record<string, unknown>>(
-  name: string,
+  _name: string,
   handler: (args: Record<string, unknown>) => Promise<T>,
 ): (args: Record<string, unknown>) => Promise<T | { error: string }> {
   return async (args) => {
@@ -86,13 +86,21 @@ export function wrapHandler<T extends Record<string, unknown>>(
       JSON.stringify(result);
       return result;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { error: message };
+      return { error: errorMessage(err) };
     }
   };
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Extract a human-readable message from a caught error value.
+ * Handles both `Error` instances and thrown primitives.
+ * @internal
+ */
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 /**
  * Normalise all path separators to forward slashes.
@@ -128,18 +136,4 @@ export function getWorkspaceRoots(): string[] {
   return (vscode.workspace.workspaceFolders ?? []).map((f) =>
     normaliseSlashes(f.uri.fsPath),
   );
-}
-
-/**
- * Test whether a value can be round-tripped through JSON without loss.
- * Returns true if JSON.stringify succeeds and produces no undefined values.
- * @internal
- */
-export function isJsonSerializable(value: unknown): boolean {
-  try {
-    JSON.stringify(value);
-    return true;
-  } catch {
-    return false;
-  }
 }

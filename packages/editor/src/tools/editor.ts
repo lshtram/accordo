@@ -10,7 +10,39 @@
 
 import * as vscode from "vscode";
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
-import { resolvePath, wrapHandler } from "../util.js";
+import { resolvePath, wrapHandler, errorMessage } from "../util.js";
+
+// ── Arg extraction helpers ────────────────────────────────────────────────────
+
+/** Extract a required string argument; throws if missing/wrong type. */
+function argString(args: Record<string, unknown>, key: string): string {
+  const v = args[key];
+  if (typeof v !== "string") throw new Error(`Argument '${key}' must be a string`);
+  return v;
+}
+
+/** Extract an optional string argument. */
+function argStringOpt(args: Record<string, unknown>, key: string): string | undefined {
+  const v = args[key];
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "string") throw new Error(`Argument '${key}' must be a string`);
+  return v;
+}
+
+/** Extract a required number argument; throws if missing/wrong type. */
+function argNumber(args: Record<string, unknown>, key: string): number {
+  const v = args[key];
+  if (typeof v !== "number") throw new Error(`Argument '${key}' must be a number`);
+  return v;
+}
+
+/** Extract an optional number argument with a default. */
+function argNumberOpt(args: Record<string, unknown>, key: string, defaultValue: number): number {
+  const v = args[key];
+  if (v === undefined || v === null) return defaultValue;
+  if (typeof v !== "number") throw new Error(`Argument '${key}' must be a number`);
+  return v;
+}
 
 // ── Decoration store (§4.4, §4.5) ────────────────────────────────────────────
 
@@ -49,7 +81,7 @@ const FOCUS_COMMANDS = [
   "workbench.action.focusSeventhEditorGroup",
   "workbench.action.focusEighthEditorGroup",
   "workbench.action.focusNinthEditorGroup",
-];
+] as const;
 
 // ── §4.1 accordo.editor.open ─────────────────────────────────────────────────
 
@@ -64,9 +96,9 @@ export async function openHandler(
   args: Record<string, unknown>,
 ): Promise<{ opened: true; path: string } | { error: string }> {
   try {
-    const p = args.path as string;
-    const line = (args.line as number | undefined) ?? 1;
-    const column = (args.column as number | undefined) ?? 1;
+    const p = argString(args, "path");
+    const line = argNumberOpt(args, "line", 1);
+    const column = argNumberOpt(args, "column", 1);
     const resolved = resolvePath(p);
     const uri = vscode.Uri.file(resolved);
     const position = new vscode.Position(line - 1, column - 1);
@@ -74,7 +106,7 @@ export async function openHandler(
     await vscode.window.showTextDocument(uri, { selection: range });
     return { opened: true, path: resolved };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: errorMessage(err) };
   }
 }
 
@@ -89,7 +121,7 @@ export async function closeHandler(
   args: Record<string, unknown>,
 ): Promise<{ closed: true } | { error: string }> {
   try {
-    const p = args.path as string | undefined;
+    const p = argStringOpt(args, "path");
     if (!p) {
       if (!vscode.window.activeTextEditor) {
         return { error: "No active editor to close" };
@@ -102,6 +134,7 @@ export async function closeHandler(
     let foundTab: vscode.Tab | undefined;
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
+        // tab.input is a discriminated union; TextEditorTabInput has .uri but the base TabInput type does not expose it
         const input = tab.input as { uri?: vscode.Uri };
         if (input?.uri?.fsPath === targetFsPath) {
           foundTab = tab;
@@ -116,7 +149,7 @@ export async function closeHandler(
     await vscode.window.tabGroups.close(foundTab, false);
     return { closed: true };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: errorMessage(err) };
   }
 }
 
@@ -132,8 +165,8 @@ export async function scrollHandler(
   args: Record<string, unknown>,
 ): Promise<{ line: number } | { error: string }> {
   try {
-    const direction = args.direction as string;
-    const by = (args.by as string | undefined) ?? "page";
+    const direction = argString(args, "direction");
+    const by = argStringOpt(args, "by") ?? "page";
     if (!vscode.window.activeTextEditor) {
       return { error: "No active editor" };
     }
@@ -141,7 +174,7 @@ export async function scrollHandler(
     const line = vscode.window.activeTextEditor.visibleRanges[0].start.line + 1;
     return { line };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: errorMessage(err) };
   }
 }
 
@@ -159,10 +192,10 @@ export async function highlightHandler(
   args: Record<string, unknown>,
 ): Promise<{ highlighted: true; decorationId: string } | { error: string }> {
   try {
-    const p = args.path as string;
-    const startLine = args.startLine as number;
-    const endLine = args.endLine as number;
-    const color = (args.color as string | undefined) ?? "rgba(255,255,0,0.3)";
+    const p = argString(args, "path");
+    const startLine = argNumber(args, "startLine");
+    const endLine = argNumber(args, "endLine");
+    const color = argStringOpt(args, "color") ?? "rgba(255,255,0,0.3)";
     const resolved = resolvePath(p);
     if (startLine > endLine) {
       return { error: "startLine must be <= endLine" };
@@ -188,7 +221,7 @@ export async function highlightHandler(
     decorationStore.set(decorationId, { type: decorType, editor });
     return { highlighted: true, decorationId };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: errorMessage(err) };
   }
 }
 
@@ -203,7 +236,7 @@ export async function clearHighlightsHandler(
   args: Record<string, unknown>,
 ): Promise<{ cleared: true; count: number } | { error: string }> {
   try {
-    const decorationId = args.decorationId as string | undefined;
+    const decorationId = argStringOpt(args, "decorationId");
     if (decorationId !== undefined) {
       const entry = decorationStore.get(decorationId);
       if (!entry) {
@@ -220,7 +253,7 @@ export async function clearHighlightsHandler(
     decorationStore.clear();
     return { cleared: true, count };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: errorMessage(err) };
   }
 }
 
@@ -235,7 +268,7 @@ export async function splitHandler(
   args: Record<string, unknown>,
 ): Promise<{ groups: number } | { error: string }> {
   try {
-    const direction = args.direction as string;
+    const direction = argString(args, "direction");
     const command =
       direction === "right"
         ? "workbench.action.splitEditorRight"
@@ -243,7 +276,7 @@ export async function splitHandler(
     await vscode.commands.executeCommand(command);
     return { groups: vscode.window.tabGroups.all.length };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: errorMessage(err) };
   }
 }
 
@@ -258,7 +291,7 @@ export async function focusGroupHandler(
   args: Record<string, unknown>,
 ): Promise<{ focused: true; group: number } | { error: string }> {
   try {
-    const group = args.group as number;
+    const group = argNumber(args, "group");
     const total = vscode.window.tabGroups.all.length;
     if (group < 1 || group > total) {
       return { error: `Editor group ${group} does not exist (max: ${total})` };
@@ -266,7 +299,7 @@ export async function focusGroupHandler(
     await vscode.commands.executeCommand(FOCUS_COMMANDS[group - 1]);
     return { focused: true, group };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: errorMessage(err) };
   }
 }
 
@@ -281,7 +314,7 @@ export async function revealHandler(
   args: Record<string, unknown>,
 ): Promise<{ revealed: true; path: string } | { error: string }> {
   try {
-    const p = args.path as string;
+    const p = argString(args, "path");
     const resolved = resolvePath(p);
     const uri = vscode.Uri.file(resolved);
     try {
@@ -292,7 +325,7 @@ export async function revealHandler(
     await vscode.commands.executeCommand("revealInExplorer", uri);
     return { revealed: true, path: resolved };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: errorMessage(err) };
   }
 }
 
@@ -307,7 +340,7 @@ export async function saveHandler(
   args: Record<string, unknown>,
 ): Promise<{ saved: true; path: string } | { error: string }> {
   try {
-    const p = args.path as string | undefined;
+    const p = argStringOpt(args, "path");
     if (!p) {
       if (!vscode.window.activeTextEditor) {
         return { error: "No active editor to save" };
@@ -326,7 +359,7 @@ export async function saveHandler(
     await doc.save();
     return { saved: true, path: resolved };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: errorMessage(err) };
   }
 }
 
@@ -343,7 +376,7 @@ export async function saveAllHandler(
     await vscode.commands.executeCommand("workbench.action.files.saveAll");
     return { saved: true, count };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: errorMessage(err) };
   }
 }
 
@@ -358,7 +391,7 @@ export async function formatHandler(
   args: Record<string, unknown>,
 ): Promise<{ formatted: true; path: string } | { error: string }> {
   try {
-    const p = args.path as string | undefined;
+    const p = argStringOpt(args, "path");
     if (!p) {
       if (!vscode.window.activeTextEditor) {
         return { error: "No active editor to format" };
@@ -379,7 +412,7 @@ export async function formatHandler(
     await vscode.commands.executeCommand("editor.action.formatDocument");
     return { formatted: true, path: resolved };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: errorMessage(err) };
   }
 }
 
@@ -402,7 +435,7 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args) => wrapHandler("accordo.editor.open", openHandler)(args),
+    handler: wrapHandler("accordo.editor.open", openHandler),
   },
   {
     name: "accordo.editor.close",
@@ -416,7 +449,7 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args) => wrapHandler("accordo.editor.close", closeHandler)(args),
+    handler: wrapHandler("accordo.editor.close", closeHandler),
   },
   {
     name: "accordo.editor.scroll",
@@ -431,7 +464,7 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: false,
-    handler: (args) => wrapHandler("accordo.editor.scroll", scrollHandler)(args),
+    handler: wrapHandler("accordo.editor.scroll", scrollHandler),
   },
   {
     name: "accordo.editor.split",
@@ -445,7 +478,7 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: false,
-    handler: (args) => wrapHandler("accordo.editor.split", splitHandler)(args),
+    handler: wrapHandler("accordo.editor.split", splitHandler),
   },
   {
     name: "accordo.editor.focus",
@@ -459,7 +492,7 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args) => wrapHandler("accordo.editor.focus", focusGroupHandler)(args),
+    handler: wrapHandler("accordo.editor.focus", focusGroupHandler),
   },
   {
     name: "accordo.editor.reveal",
@@ -473,7 +506,7 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args) => wrapHandler("accordo.editor.reveal", revealHandler)(args),
+    handler: wrapHandler("accordo.editor.reveal", revealHandler),
   },
   // ── Module 17 ──────────────────────────────────────────────────────────────
   {
@@ -491,7 +524,7 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args) => wrapHandler("accordo.editor.highlight", highlightHandler)(args),
+    handler: wrapHandler("accordo.editor.highlight", highlightHandler),
   },
   {
     name: "accordo.editor.clearHighlights",
@@ -505,7 +538,7 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args) => wrapHandler("accordo.editor.clearHighlights", clearHighlightsHandler)(args),
+    handler: wrapHandler("accordo.editor.clearHighlights", clearHighlightsHandler),
   },
   {
     name: "accordo.editor.save",
@@ -519,7 +552,7 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args) => wrapHandler("accordo.editor.save", saveHandler)(args),
+    handler: wrapHandler("accordo.editor.save", saveHandler),
   },
   {
     name: "accordo.editor.saveAll",
@@ -531,7 +564,7 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args) => wrapHandler("accordo.editor.saveAll", saveAllHandler)(args),
+    handler: wrapHandler("accordo.editor.saveAll", saveAllHandler),
   },
   {
     name: "accordo.editor.format",
@@ -545,6 +578,6 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args) => wrapHandler("accordo.editor.format", formatHandler)(args),
+    handler: wrapHandler("accordo.editor.format", formatHandler),
   },
 ];
