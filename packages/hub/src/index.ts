@@ -139,11 +139,15 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     const transport = new StdioTransport({ handler: mcpHandler });
     await transport.start();
   } else {
-    const server = new HubServer(config);
+    const accordoDir = path.join(os.homedir(), ".accordo");
+    const server = new HubServer({
+      ...config,
+      // M30-hub: path where updateToken() writes the rotated token on reauth
+      tokenFilePath: path.join(accordoDir, "token"),
+    });
     await server.start();
 
     // §4.2 + §8: Write token and PID to ~/.accordo/ (mode 0700 dir, 0600 files)
-    const accordoDir = path.join(os.homedir(), ".accordo");
     fs.mkdirSync(accordoDir, { recursive: true, mode: 0o700 });
     fs.writeFileSync(path.join(accordoDir, "token"), config.token, { mode: 0o600 });
     fs.writeFileSync(path.join(accordoDir, "hub.pid"), String(process.pid), { mode: 0o600 });

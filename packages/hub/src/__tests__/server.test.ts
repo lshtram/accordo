@@ -553,3 +553,104 @@ describe("HubServer", () => {
     });
   });
 });
+
+// ── M21: session error message contract (§6) ──────────────────────────────────
+
+describe("HubServer — §6 session error message (M21)", () => {
+  it("§6: POST /mcp with unknown mcp-session-id returns 'Invalid or expired session'", () => {
+    // RED: current impl returns { error: "Unknown session" }
+    const server = new HubServer(makeOptions());
+    const { res, body, statusCode } = makeRes();
+
+    server.handleHttpRequest(
+      makeReq({
+        method: "POST",
+        url: "/mcp",
+        headers: {
+          authorization: "Bearer test-bearer-token",
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          "mcp-session-id": "00000000-dead-beef-0000-000000000001",
+        },
+      }),
+      res,
+    );
+
+    // Session check is synchronous — no await needed
+    expect(statusCode()).toBe(400);
+    const parsed = JSON.parse(body()) as { error: string };
+    expect(parsed.error).toBe("Invalid or expired session");
+  });
+});
+
+// ── M30-hub: /bridge/reauth persists token to tokenFilePath (§2.6) ───────────
+
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterAll } from "vitest";
+
+const tmpTokenFile = path.join(os.tmpdir(), `accordo-test-token-${process.pid}.txt`);
+afterAll(() => { try { fs.unlinkSync(tmpTokenFile); } catch { /* ignore */ } });
+
+describe("HubServer — §2.6 handleReauth persists tokenFilePath (M30-hub)", () => {
+  it("§2.6: POST /bridge/reauth writes new token to tokenFilePath", async () => {
+    // RED: current handleReauth only updates in-memory token; doesn't write file
+    const server = new HubServer(
+      makeOptions({ tokenFilePath: tmpTokenFile }),
+    );
+
+    let resEndResolve: () => void;
+    const resEnded = new Promise<void>((r) => { resEndResolve = r; });
+
+    // Build a MockRes that resolves the promise when end() is called
+    let status = 200;
+    let responseBody = "";
+    const capturedHeaders: Record<string, string | string[]> = {};
+    const mockRes = {
+      writeHead(code: number, headers?: Record<string, string>) {
+        status = code;
+        if (headers) {
+          for (const [k, v] of Object.entries(headers)) {
+            capturedHeaders[k.toLowerCase()] = v;
+          }
+        }
+      },
+      end(body?: string) {
+        if (body) responseBody += body;
+        resEndResolve();
+      },
+      getHeader(name: string) {
+        return capturedHeaders[name.toLowerCase()] as string | undefined;
+      },
+      getHeaderNames: () => Object.keys(capturedHeaders),
+      setHeader: (_name: string, _value: string) => {},
+    } as unknown as import("node:http").ServerResponse;
+
+    const body = JSON.stringify({ newToken: "rotated-token-abc", newSecret: "rotated-secret-xyz" });
+
+    server.handleHttpRequest(
+      makeReq({
+        method: "POST",
+        url: "/bridge/reauth",
+        headers: {
+          "x-accordo-secret": "test-bridge-secret",
+          "content-type": "application/json",
+        },
+        body,
+      }),
+      mockRes,
+    );
+
+    await resEnded;
+    expect(status).toBe(200);
+
+    // File should now contain the new token
+    const written = fs.existsSync(tmpTokenFile)
+      ? fs.readFileSync(tmpTokenFile, "utf8").trim()
+      : null;
+    expect(written).toBe("rotated-token-abc");
+    // Suppress unused vars warning from captured locals
+    void responseBody;
+  });
+});
