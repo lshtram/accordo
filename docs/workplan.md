@@ -2,14 +2,14 @@
 
 **Project:** accordo-ide  
 **Phase:** 1 — Control Plane MVP (Hub + Bridge + Editor Tools)  
-**Date:** 2026-03-02  
+**Date:** 2026-03-03  
 **Status:** APPROVED — In Progress
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-03 — Week 4 complete. All 10 agent-integration modules (M21–M30) delivered and manually verified. 780 tests passing. Week 5 RED stubs in place for M31–M34. Starting Week 5.**
+> **As of 2026-03-03 — Week 5 M31–M34 complete. 797 tests passing. Remaining Week 5 work: docs, CI, README, v0.1.0 tag.**
 
 | Week | Goal | Status |
 |------|------|--------|
@@ -17,11 +17,11 @@
 | Week 2 | MCP protocol + Bridge foundation | ✅ DONE — 353 tests passing, pushed to `main` |
 | Week 3 | State system + Editor tools | ✅ DONE — 665 tests passing, pushed to `main` |
 | Week 4 | Agent integration + Confirmation flow | ✅ DONE — 780 tests passing, pushed to `main` |
-| Week 5 | Stabilisation + Documentation | 🔄 IN PROGRESS — M31/M32/M33/M34 RED stubs in place |
+| Week 5 | Stabilisation + Documentation | 🔄 IN PROGRESS — M31/M32/M33/M34 done (797 tests); docs, CI, README, v0.1.0 remaining |
 
-**Completed packages:** `@accordo/bridge-types`, `accordo-hub` (full MCP stack + audit log + concurrency, 312 passing), `accordo-bridge` (agent configs + credential rotation + PID lifecycle, 296 passing), `accordo-editor` (21 tools, 172 passing)  
-**Tests:** 780 total green (Hub: 312, Bridge: 296, Editor: 172). 17 intentionally-RED Week-5 stubs (M31/M32/M33/M34). Pre-push hook active.  
-**Next module (Week 5, #31):** State hold grace window — `BridgeServer` re-connect grace timer + `clearModalities` callback  
+**Completed packages:** `@accordo/bridge-types`, `accordo-hub` (full MCP stack + audit log + concurrency + stabilisation, 329 passing), `accordo-bridge` (agent configs + credential rotation + PID lifecycle, 296 passing), `accordo-editor` (21 tools, 172 passing)  
+**Tests:** 797 total green (Hub: 329, Bridge: 296, Editor: 172). All M31/M32/M33/M34 implemented and green. Pre-push hook active.  
+**Next (Week 5 remaining):** README files, CI setup, CHANGELOG, v0.1.0 tag  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)
 
 ---
@@ -138,14 +138,14 @@ accordo-hub  accordo-bridge  (both depend on bridge-types)
 
 | # | Module | Requirements Source | Status |
 |---|---|---|---|
-| 31 | State hold grace window (`graceWindowMs`, `onGraceExpired`, `handleReconnect`) | architecture.md §3.6, requirements-hub.md §9 | 🔴 RED — 6 tests in `bridge-server.test.ts` |
-| 32 | Idempotent retry on timeout (`idempotent` flag, single retry in McpHandler) | architecture.md §8.3 | 🔴 RED — 5 tests in `mcp-handler.test.ts` |
-| 33 | WS flood protection (`maxMessagesPerSecond`, rate gate in `onRawMessage`) | requirements-hub.md §9 | 🔴 RED — 4 tests in `bridge-server.test.ts` |
-| 34 | WS message size limit (`maxPayload` passed to WebSocketServer constructor) | requirements-hub.md §9 | 🔴 RED — 2 tests in `bridge-server-m34.test.ts` |
+| 31 | State hold grace window (`graceWindowMs`, `onGraceExpired`, `handleConnect`) | architecture.md §3.6, requirements-hub.md §9 | ✅ DONE — 6 tests in `bridge-server.test.ts` |
+| 32 | Idempotent retry on timeout (`idempotent` flag, single retry in McpHandler) | architecture.md §8.3 | ✅ DONE — 5 tests in `mcp-handler.test.ts` |
+| 33 | WS flood protection (`maxMessagesPerSecond`, rate gate in `handleMessage`) | requirements-hub.md §9 | ✅ DONE — 4 tests in `bridge-server.test.ts` |
+| 34 | WS message size limit (`maxPayload` passed to WebSocketServer constructor) | requirements-hub.md §9 | ✅ DONE — 2 tests in `bridge-server-m34.test.ts` |
 
 | Day | Task | Output |
 |---|---|---|
-| Mon | Implement M31–M34 (grace window, idempotent retry, flood protection, max payload) | 17 RED tests green |
+| Mon | ✅ Implement M31–M34 (grace window, idempotent retry, flood protection, max payload) | 17 RED tests → green (797 total) |
 | Mon | Remote development smoke test: SSH, devcontainer, Codespaces (at least SSH tested locally) | Remote works |
 | Tue | Performance validation: state update < 200ms, tool call overhead < 10ms, prompt render < 50ms | Performance targets met |
 | Wed | README for each package: installation, usage, configuration, troubleshooting | 4 README files |
@@ -296,6 +296,30 @@ accordo-hub  accordo-bridge  (both depend on bridge-types)
 - `agent-config.ts` fault isolation: each config write is independently try/caught so one failure never prevents the other
 - Week 5 scope clarified: grace-window timer and flood protection (M31/M33) are architectural additions to `bridge-server.ts`; idempotent retry (M32) is a new `McpHandler` flag; max payload (M34) is a `WebSocketServer` constructor option
 - 17 RED stubs committed in `bridge-server.test.ts` and `mcp-handler.test.ts` to preserve TDD discipline for Week 5
+
+---
+
+### Week 5 — Stabilisation: M31–M34 (completed 2026-03-03)
+
+**Goal:** Hub hardening — grace window, idempotent retry, flood protection, message size limit.
+
+**Actual result:** 797 tests passing (Hub: 329, Bridge: 296, Editor: 172). All 4 stabilisation modules implemented and committed. TypeScript clean. Remaining Week 5 tasks (docs, CI, README, v0.1.0) are non-blocking for current functionality.
+
+| # | Module | Requirements Source | Tests | Status |
+|---|---|---|---|---|
+| 31 | State hold grace window | architecture.md §3.6, requirements-hub.md §9 | 6 | ✅ |
+| 32 | Idempotent retry on timeout | architecture.md §8.3 | 5 | ✅ |
+| 33 | WS flood protection | requirements-hub.md §9 | 4 | ✅ |
+| 34 | WS message size limit | requirements-hub.md §9 | 2 | ✅ |
+
+**Week 5 M31–M34 gate verdict:** ✅ PASSED. 797 green tests. TypeScript clean. Commits `1cdde1e`, `f622ae4`, `9f1991c` pushed to `main`.
+
+**Design decisions:**
+- `handleConnect(ws)` added as private complement to `handleDisconnect()` — wired via `wss.on("connection")` in `start()`; cancels grace timer on reconnect
+- `graceWindowMs=0` fires `onGraceExpired` synchronously, not via `setTimeout(0)`, to be predictable in tests
+- M32 retry only triggers on timeout (`code -32000` or message contains "timed out") and only for `idempotent: true` tools; audit log records both original timeout and retry outcome
+- M33 uses a simple sliding 1-second window counter (no token bucket); resets on first message after window expires; never closes the WS on flood
+- M34 tests isolated in `bridge-server-m34.test.ts` to avoid ESM read-only error when replacing `ws.WebSocketServer` — `vi.mock("ws")` must be hoisted at module scope
 
 ---
 
