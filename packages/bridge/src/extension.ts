@@ -396,11 +396,29 @@ async function syncMcpSettings(
       ...(inspection?.globalValue ?? {}),
     };
 
+    const expectedUrl = `http://localhost:${port}/mcp`;
+    const expectedAuth = `Bearer ${token}`;
+    const existing = globalServers["accordo"];
+
+    // Skip the write if nothing changed — avoids VS Code treating the entry as
+    // a new server and resetting the user's enabled/disabled consent checkbox.
+    if (
+      existing &&
+      existing["type"] === "http" &&
+      existing["url"] === expectedUrl &&
+      (existing["headers"] as Record<string, string> | undefined)?.["Authorization"] === expectedAuth
+    ) {
+      outputChannel.appendLine(
+        "[accordo-bridge] mcp.servers.accordo unchanged — skipping write",
+      );
+      return;
+    }
+
     globalServers["accordo"] = {
       type: "http",
-      url: `http://localhost:${port}/mcp`,
+      url: expectedUrl,
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: expectedAuth,
       },
     };
 
