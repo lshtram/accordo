@@ -72,6 +72,9 @@ let registry: ExtensionRegistry | null = null;
 let router: CommandRouter | null = null;
 let hubManager: HubManager | null = null;
 let connectionStatusEmitter: vscode.EventEmitter<boolean> | null = null;
+let mcpChangeEmitter: vscode.EventEmitter<void> | null = null;
+let currentHubToken = "";
+let currentHubPort = 0;
 
 // ── activate ─────────────────────────────────────────────────────────────────
 
@@ -91,12 +94,40 @@ export async function activate(
   connectionStatusEmitter = new vscode.EventEmitter<boolean>();
   context.subscriptions.push(connectionStatusEmitter);
 
+  // MCP change emitter — fires when Hub port/token become available or rotate
+  // MCP-04: Re-register (update definition) when Hub restarts and token rotates
+  mcpChangeEmitter = new vscode.EventEmitter<void>();
+  context.subscriptions.push(mcpChangeEmitter);
+
   // ── Config ────────────────────────────────────────────────────────────────
 
   const cfg = vscode.workspace.getConfiguration("accordo");
   const port = cfg.get<number>("hub.port", 3000);
   const autoStart = cfg.get<boolean>("hub.autoStart", true);
   const executablePath = cfg.get<string>("hub.executablePath", "");
+
+  // Register native MCP server definition provider for Copilot (MCP-01, MCP-02, MCP-03)
+  // vscode.lm is available from VS Code 1.100; skip silently on older builds (MCP-03)
+  if (
+    cfg.get<boolean>("accordo.agent.configureCopilot", true) &&
+    vscode.lm?.registerMcpServerDefinitionProvider
+  ) {
+    const mcp = mcpChangeEmitter;
+    const disposable = vscode.lm.registerMcpServerDefinitionProvider("accordo", {
+      onDidChangeMcpServerDefinitions: mcp.event,
+      provideMcpServerDefinitions: (_ct) => {
+        if (!currentHubToken) return [];
+        return [
+          new vscode.McpHttpServerDefinition(
+            "Accordo",
+            vscode.Uri.parse(`http://localhost:${currentHubPort}/mcp`),
+            { Authorization: `Bearer ${currentHubToken}` },
+          ),
+        ];
+      },
+    });
+    context.subscriptions.push(disposable);
+  }
 
   // Hub entry point: sibling package in the monorepo during development.
   // When packaged as a vsix the hub dist should be bundled alongside.
@@ -175,6 +206,10 @@ export async function activate(
     {
       onHubReady: async (readyPort) => {
         const secret = hubManager?.getSecret() ?? "";
+        // Update current credentials for the MCP provider (MCP-02, MCP-04)
+        currentHubPort = readyPort;
+        currentHubToken = hubManager?.getToken() ?? "";
+        mcpChangeEmitter?.fire();
 
         wsClient = new WsClient(readyPort, secret, {
           onConnected: () => {
@@ -244,8 +279,11 @@ export async function activate(
           });
       },
 
-      onCredentialsRotated: async (_token, newSecret) => {
+      onCredentialsRotated: async (newToken, newSecret) => {
         outputChannel.appendLine("[accordo-bridge] Credentials rotated — reconnecting");
+        // MCP-04: update provider token so Copilot gets fresh credentials
+        currentHubToken = newToken;
+        mcpChangeEmitter?.fire();
         if (wsClient) {
           wsClient.updateSecret(newSecret);
           await wsClient.disconnect();
@@ -328,6 +366,10 @@ export async function activate(
  * LCM-11: Close WS but do NOT kill the Hub process.
  */
 export async function deactivate(): Promise<void> {
+  currentHubToken = "";
+  currentHubPort = 0;
+  mcpChangeEmitter = null; // already disposed via context.subscriptions
+
   statePublisher?.dispose();
   statePublisher = null;
 
