@@ -341,8 +341,34 @@ describe("McpHandler", () => {
       });
       const response = await h.handleRequest(req, s);
       expect(response?.error).toBeUndefined();
-      const result = response?.result as { content: unknown[] };
+      const result = response?.result as { content: unknown[]; isError?: boolean };
       expect(Array.isArray(result?.content)).toBe(true);
+      expect(result?.isError).toBeUndefined();
+    });
+
+    it("§6: tools/call — bridge returns success:false → MCP isError result (not JSON-RPC error)", async () => {
+      // Per MCP spec 2024-11-05: tool execution errors surface as result.isError:true
+      // so the LLM sees the error message and can adapt rather than treating it as
+      // a protocol failure.
+      const { handler: h, bridgeServer } = createHandler([SAMPLE_TOOL]);
+      const s = h.createSession();
+      vi.spyOn(bridgeServer, "isConnected").mockReturnValue(true);
+      vi.spyOn(bridgeServer, "invoke").mockResolvedValue({
+        type: "result",
+        id: "r1",
+        success: false,
+        error: "No active editor",
+      });
+      const req = makeRequest("tools/call", {
+        name: "accordo.editor.open",
+        arguments: { path: "/foo.ts" },
+      });
+      const response = await h.handleRequest(req, s);
+      // Must NOT be a JSON-RPC error field
+      expect(response?.error).toBeUndefined();
+      const result = response?.result as { content: Array<{ text: string }>; isError: boolean };
+      expect(result?.isError).toBe(true);
+      expect(result?.content[0]?.text).toContain("No active editor");
     });
 
     it("§6: tools/call — bridge invoke times out → error -32001", async () => {

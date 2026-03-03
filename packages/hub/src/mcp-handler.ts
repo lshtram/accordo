@@ -183,6 +183,24 @@ export class McpHandler {
     // Invoke via bridge server (handles connection + concurrency checks)
     try {
       const result = await this.bridgeServer.invoke(toolName, toolArgs, 30_000);
+      if (!result.success) {
+        // Tool handler returned an error — surface as MCP tool error so agents
+        // can read the message and adapt. isError:true signals the LLM that the
+        // tool itself failed (not a protocol error).
+        return {
+          jsonrpc: "2.0",
+          id,
+          result: {
+            content: [
+              {
+                type: "text",
+                text: result.error ?? "Tool execution failed",
+              },
+            ],
+            isError: true,
+          },
+        };
+      }
       return {
         jsonrpc: "2.0",
         id,
