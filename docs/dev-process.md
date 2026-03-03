@@ -12,26 +12,13 @@ When working in TDD mode, every implementation module goes through these phases 
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Phase A — Interfaces & Requirements                            │
+│  Phase A — Understand, Explain, and Design Stubs                │
 │                                                                 │
 │  1. Read the requirements for this module from the relevant     │
 │     requirements doc (e.g. requirements-hub.md §5.2 for        │
 │     state-cache).                                               │
-│  2. Write/verify the TypeScript interfaces in                   │
-│     @accordo/bridge-types or in the module's own types.         │
-│  3. Define all public method signatures with JSDoc.             │
-│  4. Verify every requirement has a corresponding interface      │
-│     element — if a requirement is vague, clarify it NOW by      │
-│     updating the requirements doc before proceeding.            │
-│  5. Export stub implementation (empty methods that throw        │
-│     "not implemented") so tests can import the module.          │
 │                                                                 │
-│  Deliverable: Compilable interfaces + stubs.                    │
-├─────────────────────────────────────────────────────────────────┤
-│  Phase A2 — Explain to Everyone                                 │
-│                                                                 │
-│  1. STOP. Do not proceed to tests yet.                          │
-│  2. Explain the module to TWO audiences:                        │
+│  2. Explain the module FIRST to TWO audiences:                  │
 │                                                                 │
 │     A. Product Manager / Non-Technical Stakeholder:             │
 │        - What problem does this module solve?                   │
@@ -40,15 +27,29 @@ When working in TDD mode, every implementation module goes through these phases 
 │        - How will we know when it works correctly?              │
 │                                                                 │
 │     B. Technical Reviewer:                                      │
-│        - What interfaces were defined?                          │
-│        - Key design decisions and why (class vs functions,      │
-│          ownership of types, error strategy)                    │
-│        - How do these connect to the rest of the system?        │
-│        - Any requirements gaps found and how they were resolved │
+│        - What are the key design decisions and why?             │
+│          (class vs functions, ownership of types, error         │
+│          strategy, integration points)                          │
+│        - How does this module connect to the rest of the        │
+│          system?                                                │
+│        - Are there any requirements gaps?                       │
 │                                                                 │
-│  3. Wait for user acknowledgement before continuing.            │
+│  3. STOP. Wait for user acknowledgement before continuing.      │
 │                                                                 │
-│  Deliverable: User (technical or not) understands and approves. │
+│  4. Write/verify the TypeScript interfaces in                   │
+│     @accordo/bridge-types or in the module's own types.         │
+│     Reference any clarifications from step 2.                   │
+│                                                                 │
+│  5. Define all public method signatures with JSDoc.             │
+│                                                                 │
+│  6. Verify every requirement has a corresponding interface      │
+│     element — if one is missing, update the requirements doc    │
+│     before proceeding.                                          │
+│                                                                 │
+│  7. Export stub implementation (empty methods that throw        │
+│     "not implemented") so tests can import the module.          │
+│                                                                 │
+│  Deliverable: User approval + Compilable interfaces + stubs.    │
 ├─────────────────────────────────────────────────────────────────┤
 │  Phase B — Write Failing Tests                                  │
 │                                                                 │
@@ -215,7 +216,7 @@ When working in TDD mode, every implementation module goes through these phases 
 Phases may be **batched across related modules** within the same package to reduce context-switching and user checkpoint overhead.
 
 **Allowed batches:**
-- **Phase A + A2** for all modules in a package — define all interfaces, then explain all of them in one checkpoint.
+- **Phase A** for all modules in a package — explain and define all interfaces, then wait for approval in one checkpoint.
 - **Phase B + B2** for all modules in a package — write all failing tests, then demonstrate all in one checkpoint.
 - **Phase D2** for all modules in a package — run the code review checklist across the full batch at once.
 - **Phase D3** for all modules in a package — write all testing guides in one batch.
@@ -230,11 +231,11 @@ Phases may be **batched across related modules** within the same package to redu
 
 ## 3. Rules for Agents (TDD Mode)
 
-1. **Never skip phases.** Every module goes through A → A2 → B → B2 → C → D → D2 → D3 → E → F.
+1. **Never skip phases.** Every module goes through A → B → B2 → C → D → D2 → D3 → E → F.
 2. **Never write implementation before tests.** Phase C cannot start until Phase B2 is complete.
 3. **Every requirement gets a test.** If requirements-hub.md says "reject if Origin present and not localhost", there must be a test named `"validates Origin: rejects non-localhost"`.
 4. **Tests reference requirement IDs.** Test descriptions include the requirement ID when one exists (e.g. `CONC-01`, `WS-05`, `CFG-06`).
-5. **User checkpoints are blocking.** Phases A2, B2, and E require user response before continuing. Do not proceed silently.
+5. **User checkpoints are blocking.** Phases A, B2, and E require user response before continuing. Do not proceed silently.
 6. **D2 code review is mandatory.** Use the full checklist in `docs/coding-guidelines.md §3`. No user approval without passing D2.
 7. **One module at a time.** Complete the full A→F cycle for one module before starting the next. Never have two modules half-implemented.
 8. **Fix requirements upstream.** If during testing you discover a requirement is ambiguous or incomplete, update the requirements doc first, then update the test.
@@ -331,8 +332,8 @@ feat(state-cache): implement state cache with patch merging
 
 Every module is considered done when it has completed the full TDD cycle (Phases A→F):
 
-1. **Interfaces defined** — TypeScript types with JSDoc, compilable stubs (Phase A)
-2. **User approved interfaces** — User acknowledged the design (Phase A2)
+1. **Interfaces defined and explained** — TypeScript types with JSDoc, compilable stubs, design explained to stakeholders (Phase A)
+2. **User approved interfaces** — User acknowledged the design and explanation (Phase A)
 3. **Failing tests written** — Every requirement has at least one test; all tests fail on stubs (Phase B)
 4. **User approved tests** — User acknowledged the test coverage (Phase B2)
 5. **Implementation complete** — Code compiles with zero TypeScript errors (Phase C)

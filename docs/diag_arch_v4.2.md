@@ -1,7 +1,7 @@
-# Accordo — Diagram Modality Architecture v4.1
+# Accordo — Diagram Modality Architecture v4.2
 
-**Status:** DRAFT — Supersedes v4.0
-**Date:** 2026-03-02
+**Status:** DRAFT — Supersedes v4.1
+**Date:** 2026-03-03
 **Scope:** Full diagram modality — creation, editing, rendering, and collaboration
 
 ---
@@ -254,12 +254,19 @@ This handles the common cases: labeled edges survive reorder, duplicate unlabele
       }
     }
   },
-  "unplaced": ["new_node_1", "new_node_2"]
+  "unplaced": ["new_node_1", "new_node_2"],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "draw-on",
+    "theme": "hand-drawn"
+  }
 }
 ```
 
 **Field notes:**
 
+- `aesthetics.roughness`: `0` = crisp/clean, `1` = hand-drawn (Rough.js, default). Stored once at diagram level; applied to every generated canvas element.
+- `aesthetics.animationMode`: `"draw-on"` (default) = elements appear progressively with draw-on animation; `"static"` = full scene loads at once. User-toggleable from the webview toolbar.
 - `style` is per-node visual override. Empty `{}` means "use diagram defaults."
 - `unplaced` lists nodes that need layout assignment on next canvas render. They are real nodes (in the Mermaid source) but their positions haven't been determined yet.
 - Edge keys use the `"{from_id}->{to_id}:{ordinal}"` format defined in §4.4.
@@ -633,6 +640,8 @@ The scope of this module:
 | Subgraph | `rectangle` (background) + `text` (label) | Semi-transparent fill, dashed stroke |
 
 **Phase A simplification:** For MVP, all exotic shapes (parallelogram, hexagon, cylinder) render as rounded rectangles with a shape indicator in the label (e.g., `⬡ text`). Full shape fidelity is Phase B.
+
+**Roughness defaults:** All generated elements receive `roughness: layout.aesthetics.roughness` (default `1`) and `fontFamily: "Excalifont"`. This gives the hand-drawn aesthetic without any additional configuration. When `roughness` is `0`, elements render with clean/crisp strokes (useful for formal exports or presentations). The roughness value is stored once in `aesthetics` and applied uniformly — the canvas generator reads it from `LayoutStore.aesthetics` and sets it on every `ExcalidrawElement` it produces.
 
 ### 9.3 Element construction
 
@@ -1137,7 +1146,7 @@ The diagram extension follows the exact same pattern as `accordo-editor`:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  [arch.mmd]          [◀ Apply] [Reconcile ▶]  [Export ▼]    │
+│  [arch.mmd]   [◀ Apply] [Reconcile ▶]  [✏ Draw-on ▼] [Export ▼] │
 ├─────────────────────────┬───────────────────────────────────┤
 │  flowchart TD           │                                   │
 │    auth["Auth Service"] │   [Excalidraw canvas]             │
@@ -1150,6 +1159,14 @@ The diagram extension follows the exact same pattern as `accordo-editor`:
 │  ✓ 2 nodes  0 unplaced  Full coverage  │  flowchart        │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**Draw-on dropdown** (`[✏ Draw-on ▼]`) exposes:
+- `✏ Draw-on (hand-drawn)` — roughness=1, animationMode=draw-on (default)
+- `✏ Draw-on (clean)` — roughness=0, animationMode=draw-on
+- `□ Static (hand-drawn)` — roughness=1, animationMode=static
+- `□ Static (clean)` — roughness=0, animationMode=static
+
+Selection writes to `layout.json aesthetics` and triggers a canvas re-render. The setting is per-diagram, not global.
 
 **Export dropdown** offers:
 - Export as SVG (canvas) — what you see
@@ -1328,10 +1345,15 @@ packages/diagram/
 - Reconciliation engine: topology and layout reconciliation (§7.1, §7.2)
 - Unplaced node placement with collision avoidance (§7.3)
 - Invalid Mermaid handling with last-valid-state hold (§7.4)
-- layout.json read/write/patch
+- layout.json read/write/patch (including `aesthetics` field)
 - Canvas generator: (Mermaid + layout.json) → Excalidraw elements, flowchart shapes (§9)
+- **Roughness and Excalifont defaults applied to all generated elements (§22)**
+- **Draw-on animation: progressive element loading at canvas render time (§22)**
+- **Draw-on / static toggle in webview toolbar (§14.1)**
 - Auto-layout for new diagrams and unplaced nodes (dagre)
 - MCP tools: `diagram.list`, `diagram.create`, `diagram.get`, `diagram.patch`, `diagram.render`
+- **`diagram.style_guide` MCP tool — returns diagram-type-specific aesthetic guidance (§23)**
+- **`diagram.create` injects standard classDef palette into generated Mermaid (§23)**
 - VSCode webview: dual-pane Mermaid + Excalidraw (spatial), single-pane + Kroki (sequential)
 - Canvas → layout.json sync (drag/drop, resize)
 - Kroki integration for semantic SVG export
@@ -1339,7 +1361,7 @@ packages/diagram/
 - Agent edit notification toasts in webview
 - Parser adapter test suite (comprehensive shape/edge/cluster coverage)
 
-**Support: flowchart only. Agent + human can both create and edit. Layout preserved across all edits. Both export modes available.**
+**Support: flowchart only. Agent + human can both create and edit. Layout preserved across all edits. Both export modes available. Hand-drawn aesthetic on by default.**
 
 ### Phase B — Full topology tools + all spatial types + undo
 
@@ -1372,7 +1394,22 @@ packages/diagram/
 
 ---
 
-## 19. What Changes from v4.0
+## 19. Changelog
+
+### What Changes from v4.1
+
+| v4.1 | v4.2 | Reason |
+|---|---|---|
+| No hand-drawn aesthetic specification | Roughness=1 + Excalifont applied as defaults to all canvas elements (§22) | Diagrams were visually bland; quality should be excellent on first agent pass |
+| No animation system | Draw-on animation via progressive element loading; user-toggleable roughness/animation (§22) | excalidraw-mcp proves animated draw-on is high-value UX; must be on by default |
+| No aesthetic cheat sheet for agent | `diagram.style_guide` tool + automatic classDef injection on `diagram.create` (§23) | Agent produces plain monochrome diagrams without explicit color/style guidance |
+| No per-diagram-type conventions | Diagram Type Style Guides: per-type color palettes, node role mappings, subgraph patterns (§24) | Each diagram type has distinct conventions the agent must follow; generic guidance is insufficient |
+| `aesthetics` absent from layout.json schema | `aesthetics: { roughness, animationMode, theme }` added to layout store (§5) | Settings must persist per-diagram, not be a global preference |
+| Animation was not scoped | Progressive element loading at render time; seed-jitter during streaming; viewport interpolation (§22) | Concrete implementation prevents misunderstanding of how the animation integrates |
+
+---
+
+### What Changes from v4.0
 
 | v4.0 | v4.1 | Reason |
 |---|---|---|
@@ -1416,3 +1453,452 @@ The agent is not a backend that produces topology for the human to arrange. The 
 The two-file model (`.mmd` + `.layout.json`) is the lightest structure that correctly solves the layout-preservation problem. It can be built, tested, and shipped. It can grow — the UGM layer from v3.1 becomes the right architecture when multi-format support is genuinely needed, and the two-file model transitions cleanly into it: the Mermaid file becomes one of several DIR inputs, the layout.json key scheme migrates from Mermaid IDs to UGM UUIDs, and a map.json is introduced to serve the actual multi-format mapping purpose it was designed for.
 
 But that is not the first product. The first product is: **open a diagram, both the agent and the human can make it better, neither breaks what the other did.**
+
+---
+
+## 22. Animation and Rendering Mode
+
+### 22.1 Overview
+
+The excalidraw-mcp project demonstrated that animated draw-on rendering is high-value UX: diagrams that appear to be drawn in real time are more engaging and communicative than static loads. Accordo adopts this pattern with an important difference — because it uses the full Excalidraw React component (not SVG-only), the implementation path differs from excalidraw-mcp's CSS-stroke-dashoffset approach.
+
+All animation is **on by default**. The user can switch to static mode via the toolbar dropdown (§14.1).
+
+### 22.2 Roughness
+
+Excalidraw exposes a `roughness` property on every element (backed by Rough.js):
+- `roughness: 0` — crisp, clean strokes (architectural/formal look)
+- `roughness: 1` — hand-drawn style (default, Rough.js jitter)
+
+The canvas generator (`canvas-generator.ts`) reads `layout.aesthetics.roughness` and applies it to every generated `ExcalidrawElement`. When roughness changes (via the toolbar dropdown), the full scene is regenerated. This is cheap — roughness is just a field change; no layout or topology work is needed.
+
+All text elements use `fontFamily: "Excalifont"` (Excalidraw's hand-drawn font) regardless of roughness setting. This gives a consistent hand-made character even in clean mode.
+
+### 22.3 Seed Jitter (Streaming Animation)
+
+Rough.js renders differently for the same element depending on `seed`. The canvas generator exploits this:
+
+**During streaming** (agent is in the middle of a `diagram.patch` or `diagram.create` response):
+- Each incremental render of new elements applies a random seed: `seed: Math.floor(Math.random() * 1e9)`
+- This causes the strokes to "redraw" slightly differently on each frame — the hand-drawn animation effect
+- `morphdom`-style DOM diffing preserves existing elements (no re-animation of already-rendered nodes)
+
+**On final render** (tool call completes):
+- Stable seeds are computed deterministically from the node ID: `seed: stableHash(nodeId)`
+- Stored in `layout.json nodes[id].seed` so the diagram looks identical on every subsequent load
+- This eliminates the "flickering" final re-render that naive random seeds would produce
+
+```typescript
+// canvas-generator.ts
+function makeNodeElement(
+  node: ParsedNode,
+  nodeLayout: NodeLayout,
+  excalId: string,
+  isFinal: boolean,
+  aesthetics: AestheticsConfig
+): ExcalidrawElement {
+  return {
+    id: excalId,
+    type: mapShape(node.shape),
+    roughness: aesthetics.roughness ?? 1,
+    fontFamily: FONT_FAMILY.Excalifont,
+    seed: isFinal
+      ? (nodeLayout.seed ?? stableHash(node.id))
+      : Math.floor(Math.random() * 1e9),
+    // ...
+  };
+}
+```
+
+Stable seeds are written back to `layout.json` after final render so subsequent canvas generations (e.g., after the webview is closed and reopened) use the same seeds and the diagram looks the same.
+
+### 22.4 Progressive Element Loading (Draw-On Animation)
+
+When `animationMode === "draw-on"`, the extension host emits the Excalidraw scene to the webview in batches rather than all at once:
+
+```
+1. Emit cluster backgrounds (all at once — they're behind everything)
+2. For each node (in dagre layout order, top-to-bottom or left-to-right):
+   a. Emit the node shape element
+   b. 30ms delay
+   c. Emit the node label element
+3. After all nodes: emit all edges in one batch
+   (Edges arriving after their endpoints is natural — you draw a box then connect it)
+4. Total animation time ≈ node_count × 30ms, capped at 2000ms for large diagrams
+```
+
+The webview uses Excalidraw's `updateScene()` with `CaptureUpdateAction.NEVER` to add elements without creating undo entries. Each batch addition triggers Excalidraw's built-in element-appear transition.
+
+When `animationMode === "static"`, the full scene is sent in a single `host:load-scene` message. The webview renders it all at once.
+
+**Agent-initiated changes** (e.g., `diagram.patch` arriving while the diagram is open): the extension host sends a `host:load-scene` message with `animationMode` from `layout.json`. New elements appear with the draw-on animation; existing elements that didn't change are not re-animated (the webview tracks which element IDs were already present via the mermaidId→excalidrawId map).
+
+### 22.5 Viewport Interpolation
+
+When the canvas first loads or when new nodes are added that change the diagram's bounds, the webview smoothly interpolates the viewport to fit content:
+
+```typescript
+// webview.ts
+function animateToFitContent(api: ExcalidrawImperativeAPI, elements: ExcalidrawElement[]) {
+  api.scrollToContent(elements, {
+    fitToViewport: true,
+    viewportZoomFactor: 0.9,
+    animate: true,
+    duration: 400,
+  });
+}
+```
+
+This replaces the `cameraUpdate` pseudo-element approach of excalidraw-mcp. Because Accordo uses the full Excalidraw React component (not SVG-only rendering), the native `scrollToContent` with `animate: true` handles viewport animation correctly. The agent does not need to specify camera positions or aspect ratios — dagre layout + `scrollToContent` handle viewport framing automatically.
+
+### 22.6 Animation pipeline summary
+
+```
+diagram.create / diagram.patch
+  → reconciler runs
+  → canvas-generator produces ExcalidrawElement[] with roughness + seeds
+  → Extension host checks layout.aesthetics.animationMode
+      "draw-on" → sends elements in batches via sequential host:load-scene messages
+      "static"  → sends all elements in single host:load-scene message
+  → Webview animates viewport to fit content via scrollToContent
+  → On final render: stable seeds written to layout.json nodes[id].seed
+```
+
+---
+
+## 23. Aesthetic Specification System
+
+### 23.1 The problem
+
+Without guidance, agents produce monochrome diagrams with no color differentiation, undersized nodes (text gets clipped), and no semantic visual hierarchy. This is the same problem excalidraw-mcp solves with its `RECALL_CHEAT_SHEET`.
+
+In Accordo, the aesthetic specification is delivered through two channels:
+1. **The `diagram.style_guide` MCP tool** — the agent calls this before creating or significantly editing a diagram (mirrors excalidraw-mcp's `read_me`)
+2. **Automatic classDef injection** — `diagram.create` writes a standard palette into the Mermaid source so the diagram has visual defaults even if the agent never calls `style_guide`
+
+**Key difference from excalidraw-mcp:** excalidraw-mcp's cheat sheet must teach absolute coordinate positioning because the agent specifies pixel positions. Accordo's guide does not cover coordinates at all — dagre handles placement. Instead the guide teaches *semantic role assignment* (which classDef to use, what subgraph pattern to apply) and *Mermaid conventions* (which node shape to use for each semantic role). This is a narrower, more actionable specification.
+
+### 23.2 The `diagram.style_guide` tool
+
+```typescript
+// Tool 15 — new in v4.2
+accordo.diagram.style_guide
+
+input: {
+  diagram_type: DiagramType;  // "flowchart" | "classDiagram" | etc.
+}
+
+output: {
+  palette: Array<{
+    role: string;            // "service" | "database" | etc.
+    classdef: string;        // ready-to-paste Mermaid classDef line
+    backgroundColor: string;
+    strokeColor: string;
+    use_for: string;         // human-readable description
+  }>;
+  node_sizing: {
+    default_w: number;
+    default_h: number;
+    min_spacing: number;     // min gap between nodes in dagre
+  };
+  diagram_conventions: string;  // type-specific layout guide (§24)
+  mermaid_template: string;     // minimal starter Mermaid with classDefs included
+}
+```
+
+The `diagram_conventions` field is the per-type guide from §24. The agent receives the full relevant guide in one call.
+
+**Tool placement in tool table (§10):**
+
+| Tool | Danger | Idempotent | Timeout |
+|---|---|---|---|
+| `accordo.diagram.style_guide` | safe | yes | fast |
+
+### 23.3 Universal color palette
+
+The same palette applies across all diagram types. Role names are the link between the universal palette and the per-type conventions in §24.
+
+| Role | backgroundColor | strokeColor | strokeDash | Use for |
+|---|---|---|---|---|
+| `service` | `#a5d8ff` | `#4a9eed` | no | APIs, microservices, functions, apps |
+| `database` | `#c3fae8` | `#22c55e` | no | DBs, stores, caches, files |
+| `client` | `#b2f2bb` | `#22c55e` | no | Users, browsers, mobile clients |
+| `queue` | `#fff3bf` | `#f59e0b` | no | Queues, event buses, pub/sub |
+| `external` | `#ffd8a8` | `#f59e0b` | yes | Third-party APIs, external systems |
+| `critical` | `#ffc9c9` | `#ef4444` | no | Error paths, alerts, critical components |
+| `decision` | `#d0bfff` | `#8b5cf6` | no | Decisions, branching logic |
+| `infra` | `#e5e5e5` | `#888888` | no | Infrastructure, load balancers, CDN |
+| `zone` | `#dbe4ff` | `#4a9eed` | yes | Subgraph/cluster — frontend/general layer |
+| `data-zone` | `#d3f9d8` | `#22c55e` | yes | Subgraph/cluster — data layer |
+| `logic-zone` | `#e5dbff` | `#8b5cf6` | yes | Subgraph/cluster — logic/processing layer |
+
+### 23.4 Automatic classDef injection
+
+When `diagram.create` writes the `.mmd` file, the handler checks whether the source already contains `classDef` statements. If not, it appends the standard block:
+
+```mermaid
+%% --- Accordo standard palette ---
+classDef service    fill:#a5d8ff,stroke:#4a9eed,stroke-width:2px
+classDef database   fill:#c3fae8,stroke:#22c55e,stroke-width:2px
+classDef client     fill:#b2f2bb,stroke:#22c55e,stroke-width:2px
+classDef queue      fill:#fff3bf,stroke:#f59e0b,stroke-width:2px
+classDef external   fill:#ffd8a8,stroke:#f59e0b,stroke-width:2px,stroke-dasharray:5
+classDef critical   fill:#ffc9c9,stroke:#ef4444,stroke-width:2px
+classDef decision   fill:#d0bfff,stroke:#8b5cf6,stroke-width:2px
+classDef infra      fill:#e5e5e5,stroke:#888,stroke-width:1px
+```
+
+The injected block is marked with the `%% --- Accordo standard palette ---` comment so it can be identified and replaced (not duplicated) on subsequent `diagram.patch` calls. If the agent provides its own `classDef` block, the automatic block is omitted.
+
+**Consequence:** Every diagram created through Accordo has a visual palette available from the first render. Nodes that use `:::service` in the Mermaid source immediately render in the correct color without any additional configuration.
+
+### 23.5 Node sizing defaults
+
+The canvas generator uses these defaults when dimensions are not set in layout.json:
+
+```typescript
+const SIZING_DEFAULTS: Record<DiagramType, NodeSizing> = {
+  flowchart:    { w: 160, h: 60,  hSpacing: 200, vSpacing: 120 },
+  classDiagram: { w: 200, h: 100, hSpacing: 240, vSpacing: 140 },
+  stateDiagram: { w: 160, h: 60,  hSpacing: 180, vSpacing: 100 },
+  erDiagram:    { w: 180, h: 80,  hSpacing: 220, vSpacing: 120 },
+  mindmap:      { w: 140, h: 50,  hSpacing: 160, vSpacing: 80  },
+};
+```
+
+These are passed to dagre as `nodesep` and `ranksep` values, ensuring nodes never overlap and have comfortable visual breathing room by default.
+
+---
+
+## 24. Diagram Type Style Guides
+
+This section defines the per-type conventions that the `diagram.style_guide` tool returns in its `diagram_conventions` field. These are the "teaching" instructions that tell the agent how to structure each diagram type.
+
+**Important distinction from excalidraw-mcp:** excalidraw-mcp's cheat sheet teaches absolute pixel positioning because the agent must specify coordinates. Accordo's guides focus entirely on *semantic structure* — which Mermaid constructs to use, what classDef roles to assign, and what subgraph patterns convey meaning. Dagre handles coordinates automatically. This makes the guides shorter and more reliably actionable.
+
+---
+
+### 24.1 Flowchart
+
+**Direction convention:**
+- `LR` (left-right): request/response flows, pipeline stages, service chains (caller left, called right) — **default for system architecture**
+- `TD` (top-down): hierarchies, decision trees, data processing chains (input top, output bottom)
+
+**Node shape → semantic role mapping:**
+
+| Mermaid syntax | Shape | Semantic role | classDef |
+|---|---|---|---|
+| `id[label]` | Rectangle | Generic service or process | `service`, `external`, `infra` |
+| `id(label)` | Rounded rect | User-facing step or UI component | `client` |
+| `id{label}` | Diamond | Decision point | `decision` |
+| `id((label))` | Circle | Start / end / event trigger | (none — Mermaid default) |
+| `id[(label)]` | Cylinder | Persistent storage | `database` |
+| `id>label]` | Asymmetric | Message queue or event | `queue` |
+
+**Subgraph patterns:**
+
+*Layer pattern* (for LR architecture diagrams — one subgraph per layer):
+```mermaid
+subgraph frontend["Frontend Layer"]
+    browser:::client
+    cdn:::infra
+end
+subgraph backend["Backend Layer"]
+    api:::service
+    auth:::service
+end
+subgraph data["Data Layer"]
+    db:::database
+    cache:::database
+end
+```
+Apply `zone`, `data-zone`, or `logic-zone` styles to cluster backgrounds via `diagram.set_cluster_style`.
+
+*Stage pattern* (for TD pipeline diagrams — one subgraph per pipeline stage).
+
+*Bounded context pattern* (one subgraph per domain for DDD-style diagrams).
+
+**Minimum viable skeleton:**
+```mermaid
+flowchart LR
+    client["Browser"]:::client
+    api["API Gateway"]:::service
+    auth["Auth Service"]:::service
+    db[(User DB)]:::database
+
+    client -->|HTTPS| api
+    api -->|validate| auth
+    api -->|query| db
+
+    subgraph backend["Backend"]
+        api
+        auth
+        db
+    end
+```
+(Standard palette classDefs are injected automatically by `diagram.create`.)
+
+---
+
+### 24.2 Class Diagram
+
+**Namespace convention:** One `namespace` per logical module, package, or domain boundary.
+
+**Class role → classDef mapping:**
+
+| Class type | Mermaid annotation | classDef |
+|---|---|---|
+| Concrete class | (none) | `service` (or domain-specific) |
+| Interface | `<<interface>>` | `external` (dashed stroke signals contract) |
+| Abstract class | `<<abstract>>` | `decision` (purple — distinct from concrete) |
+| Value object | `<<value>>` | `queue` (amber — small, immutable) |
+| Repository | `<<repository>>` | `database` |
+| Utility/helper | `<<utility>>` | `infra` (gray) |
+
+**Relationship colors** (applied via `diagram.set_edge_routing` style field):
+
+| Relationship | Edge style |
+|---|---|
+| Inheritance `<\|--` | Blue stroke `#4a9eed` |
+| Composition `*--` | Green stroke `#22c55e` |
+| Aggregation `o--` | Amber stroke `#f59e0b` |
+| Dependency `..>` | Gray dashed `#888888` |
+| Realization `<\|..` | Purple dashed `#8b5cf6` |
+
+**Show only:** PKs, FKs, discriminators, type fields. Omit purely descriptive attributes — class diagrams communicate structure, not data dictionaries.
+
+**Minimum viable skeleton:**
+```mermaid
+classDiagram
+    namespace domain {
+        class Order {
+            +id: UUID
+            +status: OrderStatus
+            +place() void
+        }
+        class OrderItem {
+            +productId: UUID
+            +quantity: int
+        }
+    }
+    namespace infrastructure {
+        class OrderRepository {
+            <<repository>>
+            +findById(id) Order
+        }
+    }
+    Order "1" *-- "many" OrderItem : contains
+    OrderRepository ..> Order : persists
+```
+
+---
+
+### 24.3 State Diagram
+
+**Direction:** Always TD (Mermaid's only supported direction for `stateDiagram-v2`).
+
+**State role → layout.json style mapping** (applied per-node, not via classDef — `stateDiagram-v2` doesn't support classDef):
+
+| State type | backgroundColor | strokeColor |
+|---|---|---|
+| Normal / processing | `#a5d8ff` | `#4a9eed` |
+| Success / completed | `#b2f2bb` | `#22c55e` |
+| Error / failed | `#ffc9c9` | `#ef4444` |
+| Warning / degraded | `#fff3bf` | `#f59e0b` |
+| Idle / waiting | `#e5e5e5` | `#888888` |
+
+Apply these via `diagram.set_node_style` after creation. The `diagram.style_guide` response includes a ready-to-use call sequence for the standard states.
+
+**Built-in pseudo-states:** Use `[*]` for initial and terminal — do not create explicit nodes for these.
+
+**Transition labels:** Keep to 1–4 words. Long conditions belong in a `note` block.
+
+**Minimum viable skeleton:**
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> processing : submit
+    processing --> done : success
+    processing --> failed : error
+    done --> [*]
+    failed --> idle : retry
+    failed --> [*] : abandon
+```
+
+---
+
+### 24.4 ER Diagram
+
+**What to include:** Entities and relationships. Maximum 3–6 attributes per entity (PK, FK, key enumerations only). ER diagrams that list all columns are unreadable — they are not schema documentation tools.
+
+**Entity role → layout.json style mapping** (erDiagram has no classDef):
+
+| Entity type | backgroundColor | strokeColor |
+|---|---|---|
+| Core domain entity | `#a5d8ff` | `#4a9eed` |
+| Lookup / reference | `#e5e5e5` | `#888888` |
+| Junction / associative | `#fff3bf` | `#f59e0b` |
+| Event / audit | `#ffd8a8` | `#f59e0b` |
+
+Apply via `diagram.set_node_style` after creation.
+
+**Cardinality notation:**
+- `||--||` one-to-one
+- `||--o{` one-to-zero-or-many
+- `||--|{` one-to-one-or-many
+- `o{--o{` zero-or-many to zero-or-many
+
+**Large schemas (10+ entities):** Use `diagram.move_node` after auto-layout to cluster related entities visually. There are no subgraphs in erDiagram; proximity is the only grouping mechanism.
+
+**Minimum viable skeleton:**
+```mermaid
+erDiagram
+    CUSTOMER ||--o{ ORDER : places
+    ORDER    ||--|{ LINE_ITEM : contains
+    PRODUCT  ||--o{ LINE_ITEM : "appears in"
+
+    CUSTOMER { uuid id PK; string email }
+    ORDER    { uuid id PK; uuid customerId FK; string status }
+    LINE_ITEM{ uuid orderId FK; uuid productId FK; int qty }
+    PRODUCT  { uuid id PK; string sku }
+```
+
+---
+
+### 24.5 Mindmap
+
+**Structure:** Root = central concept. Level 1 = major themes. Level 2+ = details and sub-components. Maximum 7 direct children per node (Miller's Law — add an intermediate grouping node if exceeded).
+
+**Depth-based color radiance** (applied algorithmically by the canvas generator — no agent action needed):
+
+| Depth | backgroundColor | strokeColor |
+|---|---|---|
+| Root (0) | `#1e3a5f` | `#4a9eed` |
+| Level 1 | `#a5d8ff` | `#4a9eed` |
+| Level 2 | `#dbe4ff` | `#4a9eed` |
+| Level 3+ | `#f0f4ff` | `#cccccc` |
+
+The canvas generator computes depth from the path-based node ID (count of `.` separators in `root.A.B.C`) and applies the corresponding style. The agent does not assign classDef or call `set_node_style` for mindmaps — depth styling is automatic.
+
+**Shape convention:** Root always uses `((label))` (circle). Level 1 may use `[label]` (rectangle) for emphasis. Deeper nodes use plain indented text.
+
+**Minimum viable skeleton:**
+```mermaid
+mindmap
+    root((System Design))
+        Frontend
+            Web App
+            Mobile App
+        Backend
+            API Gateway
+            Auth Service
+        Data
+            Primary DB
+            Cache
+```
+
+---
+
+### 24.6 Sequential diagrams (reference)
+
+Sequential diagrams (sequence, gantt, git graph, timeline, quadrant) go through Kroki only (§8.2). There is no canvas, no Excalidraw rendering, and no aesthetic system. The Mermaid source IS the complete artifact. The `diagram.style_guide` tool returns an empty response for sequential types with the note: "Sequential diagrams are rendered via Kroki; no aesthetic configuration is available."

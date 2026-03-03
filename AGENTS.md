@@ -28,8 +28,8 @@ Accordo IDE is an MCP-based AI co-pilot layer on top of VSCode. It consists of:
 When the user says **"TDD"**, or the task is implementing a new module listed in the workplan, you MUST follow the full process in [`docs/dev-process.md`](docs/dev-process.md) without omitting any phase or checkpoint.
 
 **Key rules in TDD mode:**
-- Phases A → A2 → B → B2 → C → D → D2 → E → F — in order, no skipping
-- User checkpoints at A2, B2, and E are **blocking** — stop and wait for explicit approval
+- Phases A → B → B2 → C → D → D2 → D3 → E → F — in order, no skipping
+- User checkpoints at A, B2, and E are **blocking** — stop and wait for explicit approval
 - Never write implementation before the tests are approved by the user
 - Every requirement gets a test; tests reference requirement IDs
 - See `docs/dev-process.md` for the full cycle, batching rules, coverage audit, and commit format
@@ -77,6 +77,12 @@ These apply regardless of which mode you are in:
 6. **Run tests before committing.** `pnpm test` must be clean in the affected package.
 7. **Conventional commits.** `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 8. **One module per commit** when in TDD mode. Batch only within the same phase.
+9. **Scan [`docs/patterns.md`](docs/patterns.md) before any non-trivial task.** Read only
+   the YAML front matter (the `patterns:` block at the top) to see what is documented —
+   load the full file only if a relevant pattern ID applies. When you hit new friction —
+   a tool behaving unexpectedly, a workaround you had to invent, a process step that is
+   fragile — add an entry to `patterns.md` immediately (YAML summary line + full section).
+   Entries are periodically reviewed with the user and either resolved or archived.
 
 ---
 
@@ -91,6 +97,7 @@ These apply regardless of which mode you are in:
 | [`docs/requirements-hub.md`](docs/requirements-hub.md) | Hub functional requirements |
 | [`docs/requirements-bridge.md`](docs/requirements-bridge.md) | Bridge functional requirements |
 | [`docs/requirements-editor.md`](docs/requirements-editor.md) | Editor tools requirements |
+| [`docs/patterns.md`](docs/patterns.md) | Agent working patterns, known friction, and workarounds |
 
 ---
 

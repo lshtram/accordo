@@ -6,7 +6,12 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.npmjs.com)",
       "WebFetch(domain:deepwiki.com)",
-      "Bash(gh api:*)"
+      "Bash(gh api:*)",
+      "WebFetch(domain:code.visualstudio.com)",
+      "WebFetch(domain:vshaxe.github.io)",
+      "WebFetch(domain:vscode-api.js.org)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:leonardomontini.dev)"
     ]
   }
 }

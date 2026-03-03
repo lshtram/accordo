@@ -391,10 +391,12 @@ If the extension disposes (unregisters), remove its key from modalities and send
 
 | ID | Requirement |
 |---|---|
-| MCP-01 | If `accordo.agent.configureCopilot` is true, register via `vscode.lm.registerMcpServerDefinitionProvider`. |
-| MCP-02 | Provide a `McpHttpServerDefinition` pointing to `http://localhost:{port}/mcp` with `Authorization: Bearer <token>` header. This connects Copilot to the **already-running** Bridge-managed Hub, not a new process. |
-| MCP-03 | If the `lm` API is not available (older VSCode), skip silently. |
-| MCP-04 | Re-register (or update definition) when Hub is restarted and token rotates. |
+| MCP-01 | If `accordo.agent.configureCopilot` is true, register Accordo Hub as an MCP server for Copilot. |
+| MCP-02 | Write `mcp.servers.accordo` to VSCode **Global** (user-level) settings using `vscode.workspace.getConfiguration("mcp").update(...)`. Entry: `{ type: "http", url: "http://localhost:{port}/mcp", headers: { Authorization: "Bearer <token>" } }`. Using the Global settings scope (not workspace scope) ensures the server definition survives workspace switches, multi-root folder changes, and window reloads without re-activation. Skip the write if the existing entry already matches (token and URL unchanged) — avoids resetting Copilot's consent checkbox. |
+| MCP-03 | If `getConfiguration("mcp")` is unavailable or the update call fails, skip silently and log to the OutputChannel. |
+| MCP-04 | Re-write the `mcp.servers.accordo` entry when Hub is restarted and the token rotates, so Copilot always has the correct credentials. |
+
+> **Design note (deliberate deviation from original spec):** The original spec specified `vscode.lm.registerMcpServerDefinitionProvider` / `McpHttpServerDefinition`. During implementation, the settings-based approach (`mcp.servers` in Global scope) proved more reliable: it persists across workspace switches, requires no `lm` API availability check, and produces no flickering in Copilot's server list on reconnect. The `lm` provider API was not available in the target VSCode version. This note records the intentional change so reviewers do not treat the implementation as non-compliant.
 
 ### 8.2 Agent Config Files
 
