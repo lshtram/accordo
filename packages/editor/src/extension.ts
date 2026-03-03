@@ -2,7 +2,7 @@
  * accordo-editor — VSCode Extension Entry Point
  *
  * Activates by acquiring the BridgeAPI from accordo-bridge and registering
- * all 22 editor/terminal/workspace/layout tools.
+ * all 21 editor/terminal/layout tools.
  *
  * If accordo-bridge is not installed, the extension is silently inert.
  *
@@ -12,8 +12,7 @@
 import * as vscode from "vscode";
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import { editorTools } from "./tools/editor.js";
-import { terminalTools } from "./tools/terminal.js";
-import { workspaceTools } from "./tools/workspace.js";
+import { terminalTools, registerTerminalLifecycle } from "./tools/terminal.js";
 import { layoutTools } from "./tools/layout.js";
 
 // ── BridgeAPI (minimal interface — full type lives in accordo-bridge) ─────────
@@ -26,12 +25,11 @@ interface BridgeAPI {
   ): vscode.Disposable;
 }
 
-// ── All 22 tools ──────────────────────────────────────────────────────────────
+// ── All 21 tools ──────────────────────────────────────────────────────────────
 
 const allTools: ExtensionToolDefinition[] = [
   ...editorTools,
   ...terminalTools,
-  ...workspaceTools,
   ...layoutTools,
 ];
 
@@ -43,6 +41,9 @@ const allTools: ExtensionToolDefinition[] = [
  * REQ §3: If Bridge is absent, return silently — do not throw.
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  // Register terminal lifecycle listener regardless of Bridge presence (§5.3)
+  registerTerminalLifecycle(context);
+
   const bridge = vscode.extensions.getExtension<BridgeAPI>(
     "accordo.accordo-bridge",
   )?.exports;
