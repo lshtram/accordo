@@ -4,31 +4,34 @@
     {
       // ── Extension Development Host ──────────────────────────────────────
       // Pressing F5 with this config selected:
-      //   1. Builds the bridge (preLaunchTask)
+      //   1. Builds bridge + editor (preLaunchTask: build-all)
       //   2. Opens a new VS Code window (Extension Development Host) with
-      //      the accordo-bridge extension loaded
+      //      BOTH accordo-bridge AND accordo-editor extensions loaded
       //   3. The EDH opens THIS repo as its workspace, so the extension
       //      reports real IDE state from your actual files
-      //   4. The debugger attaches — you can set breakpoints in extension.ts
-      //      and all bridge/*.ts files
+      //   4. The debugger attaches — you can set breakpoints in both packages
       //
       // Your current window is untouched. They are fully isolated.
       //
       // To test:
       //   a) In the EDH window: Ctrl+Shift+P → "Accordo: Show Connection Status"
-      //   b) In any terminal: curl http://localhost:3000/instructions
-      "name": "Launch Bridge (Extension Development Host)",
+      //   b) In any terminal: curl http://localhost:3000/health   ← expect toolCount > 0
+      //   c) In Copilot chat: the Accordo MCP server appears automatically
+      "name": "Launch Bridge + Editor (Extension Development Host)",
       "type": "extensionHost",
       "request": "launch",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}/packages/bridge",
+        // accordo-editor depends on accordo-bridge; load both so tools register
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/editor",
         // Open this repo in the EDH so it has a real workspace to report
         "${workspaceFolder}"
       ],
       "outFiles": [
-        "${workspaceFolder}/packages/bridge/dist/**/*.js"
+        "${workspaceFolder}/packages/bridge/dist/**/*.js",
+        "${workspaceFolder}/packages/editor/dist/**/*.js"
       ],
-      "preLaunchTask": "build-bridge",
+      "preLaunchTask": "build-all",
       "sourceMaps": true
     },
     {
