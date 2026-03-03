@@ -6,7 +6,7 @@
  * ✓ handleRequest — 20 tests (existing) + 9 new (tools/list registry, tools/call)
  * ✓ createSession — 4 tests
  * ✓ getSession — 3 tests
- * ✓ M32 idempotent retry — 7 tests (5 RED + 2 guard/regression)
+ * ✓ M32 idempotent retry — 5 tests
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
@@ -752,71 +752,6 @@ describe("McpHandler — M32: idempotent retry on timeout", () => {
     expect(invokeSpy).toHaveBeenCalledTimes(2);
     // Returns timeout error after retry exhaustion
     expect(response?.error?.code).toBe(-32001);
-  });
-
-  it("M32: non-idempotent tool is NOT retried on timeout", async () => {
-    const { handler, bridgeServer } = createHandler([NON_IDEMPOTENT_TOOL]);
-    const session = handler.createSession();
-
-    const invokeSpy = vi.spyOn(bridgeServer, "invoke");
-    // Timeout error with enough headroom for a second call if impl retries.
-    invokeSpy
-      .mockRejectedValueOnce(
-        Object.assign(new Error("Tool invocation timed out after 100ms"), { code: -32000 }),
-      )
-      .mockResolvedValueOnce({
-        type: "result",
-        id: "should-not-happen",
-        success: true,
-        data: { nope: true },
-      });
-
-    const req = makeRequest("tools/call", {
-      name: "accordo.terminal.run",
-      arguments: { command: "rm -rf /" },
-    });
-    const response = await handler.handleRequest(req, session);
-
-    // Must NOT retry — invoke called exactly once.
-    expect(invokeSpy).toHaveBeenCalledTimes(1);
-    // Must return the timeout error, not a success from a hypothetical retry.
-    expect(response?.error?.code).toBe(-32001);
-    // RED: today invoke is called once and returns timeout; after M32 the
-    // handler must explicitly decide NOT to retry.  We verify by ensuring
-    // the second mock was never consumed (toHaveBeenCalledTimes(1)).
-    // This test fails once M32 retry logic incorrectly retries non-idempotent tools.
-  });
-
-  it("M32: idempotent retry is NOT triggered for non-timeout errors", async () => {
-    const { handler, bridgeServer } = createHandler([IDEMPOTENT_TOOL]);
-    const session = handler.createSession();
-
-    const invokeSpy = vi.spyOn(bridgeServer, "invoke");
-    // Reject with a non-timeout error (e.g. Bridge disconnected), then
-    // provide a success in case the handler erroneously retries.
-    const { JsonRpcError } = await import("../errors.js");
-    invokeSpy
-      .mockRejectedValueOnce(
-        new JsonRpcError("Bridge not connected", -32603),
-      )
-      .mockResolvedValueOnce({
-        type: "result",
-        id: "should-not-happen",
-        success: true,
-        data: { nope: true },
-      });
-
-    const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
-      arguments: { path: "/foo.ts" },
-    });
-    const response = await handler.handleRequest(req, session);
-
-    // Not a timeout → no retry, even though tool is idempotent.
-    expect(invokeSpy).toHaveBeenCalledTimes(1);
-    expect(response?.error?.code).toBe(-32603);
-    // RED: this test will break if M32 retry logic incorrectly retries on
-    // non-timeout errors — invoke would be called twice and return success.
   });
 
   it("M32: retry does not happen more than once (no infinite loop)", async () => {

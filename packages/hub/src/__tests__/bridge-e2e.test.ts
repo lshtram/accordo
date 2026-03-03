@@ -14,10 +14,15 @@
  *   [x] §E2E-3  Tool-call success, tool error, bridge error, timeout
  *   [x] §E2E-4  Bridge disconnect / reconnect during in-flight call
  *   [x] §E2E-5  Concurrency and ordering guarantees
+ *   [x] §E2E-6  Week-4 modules: session error text, version close, audit log,
+ *               health fields, token file persistence
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import WebSocket from "ws";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { HubServer } from "../server.js";
 import type { ToolRegistration } from "@accordo/bridge-types";
 import { ACCORDO_PROTOCOL_VERSION } from "@accordo/bridge-types";
@@ -506,7 +511,7 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
     expect(content[0].text).toBe("permission denied");
   });
 
-  it("§E2E-3.6: tool call timeout returns -32000 (JsonRpcError forwarded from bridge)", { timeout: TOOL_TIMEOUT_MS + 1000 }, async () => {
+  it("§E2E-3.6: tool call timeout returns -32001 after idempotent retry (M32)", { timeout: 2 * TOOL_TIMEOUT_MS + 1000 }, async () => {
     await bridge.connect(baseUrl);
     bridge.registerTools([makeToolReg("accordo.test.slow")]);
     // autoResponder is NOT set — bridge receives the invoke but never replies
@@ -516,9 +521,9 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
     await session.initialize();
     const res = await session.call("tools/call", { name: "accordo.test.slow", arguments: {} });
     const error = (res.body?.["error"] ?? {}) as Record<string, unknown>;
-    // BridgeServer.invoke() throws JsonRpcError(-32000) on timeout; McpHandler
-    // forwards err.code directly since err instanceof JsonRpcError.
-    expect(error["code"]).toBe(-32000);
+    // accordo.test.slow is idempotent:true so M32 retries once on timeout.
+    // Both attempts time out → McpHandler returns the standardised -32001.
+    expect(error["code"]).toBe(-32001);
   });
 
   it("§E2E-3.7: tool arguments are forwarded to the Bridge invoke frame", async () => {
@@ -735,5 +740,239 @@ describe("§E2E-5 Concurrency + ordering", () => {
     const res = await fetch(`${baseUrl}/health`);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body["inflight"]).toBe(0);
+  });
+});
+
+// ── §E2E-6 Week-4 modules ─────────────────────────────────────────────────────
+
+describe("§E2E-6 Week-4 modules", () => {
+  // ── M21: session error message text ─────────────────────────────────────
+
+  it("§E2E-6.1 (M21): stale session ID returns 'Invalid or expired session'", async () => {
+    const session = new McpSession(baseUrl, TOKEN);
+    await session.initialize();
+    // Replace the valid session ID with a fabricated stale one
+    session.sessionId = "stale-session-id-does-not-exist";
+    const res = await session.call("tools/list", {});
+    expect(res.status).toBe(400);
+    const body = res.body as Record<string, unknown>;
+    // Server returns { error: "Invalid or expired session" } — flat string, not RPC nested object
+    const errMsg = body["error"] as string;
+    expect(errMsg).toContain("Invalid or expired session");
+  });
+
+  // ── M22: protocol version close code ────────────────────────────────────
+
+  it("§E2E-6.2 (M22): stateSnapshot with wrong version closes WS with 4002 + version strings", async () => {
+    const wsUrl = baseUrl.replace("http://", "ws://") + "/bridge";
+    const closeInfo = await new Promise<{ code: number; reason: string }>((resolve, reject) => {
+      const ws = new WebSocket(wsUrl, { headers: { "x-accordo-secret": SECRET } });
+      ws.on("open", () => {
+        ws.send(
+          JSON.stringify({
+            type: "stateSnapshot",
+            protocolVersion: "1999-01-01",
+            state: {},
+          }),
+        );
+      });
+      ws.on("close", (code, reason) => resolve({ code, reason: reason.toString() }));
+      ws.on("error", reject);
+      setTimeout(() => reject(new Error("WS close event timed out")), 2000);
+    });
+    expect(closeInfo.code).toBe(4002);
+    expect(closeInfo.reason).toContain(ACCORDO_PROTOCOL_VERSION);
+    expect(closeInfo.reason).toContain("1999-01-01");
+  });
+
+  // ── M24: audit log written after tool call ───────────────────────────────
+
+  it("§E2E-6.3 (M24): audit log entry written after a successful tool call", async () => {
+    const auditFile = path.join(os.tmpdir(), `accordo-audit-${Date.now()}.jsonl`);
+    const auditServer = new HubServer({
+      port: 0,
+      host: "127.0.0.1",
+      token: TOKEN,
+      bridgeSecret: SECRET,
+      toolCallTimeout: TOOL_TIMEOUT_MS,
+      auditFile,
+    });
+    await auditServer.start();
+    const addr = auditServer.getAddress()!;
+    const auditUrl = `http://${addr.host}:${addr.port}`;
+    const auditBridge = new StubBridge();
+    await auditBridge.connect(auditUrl);
+    auditBridge.registerTools([makeToolReg("accordo.test.audit")]);
+    auditBridge.setAutoResponder(() => ({ success: true, data: { ok: true } }));
+    await flush();
+
+    try {
+      const session = new McpSession(auditUrl, TOKEN);
+      await session.initialize();
+      await session.call("tools/call", { name: "accordo.test.audit", arguments: { x: 1 } });
+      await flush();
+
+      const lines = fs.readFileSync(auditFile, "utf8").trim().split("\n");
+      expect(lines.length).toBeGreaterThanOrEqual(1);
+      const entry = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;
+      expect(entry["tool"]).toBe("accordo.test.audit");
+      expect(entry["result"]).toBe("success");
+      expect(typeof entry["argsHash"]).toBe("string");
+      expect((entry["argsHash"] as string).length).toBe(64); // SHA-256 hex
+      expect(entry["sessionId"]).toBeTruthy();
+      expect(typeof entry["durationMs"]).toBe("number");
+    } finally {
+      auditBridge.disconnect();
+      await auditServer.stop();
+      fs.rmSync(auditFile, { force: true });
+    }
+  });
+
+  it("§E2E-6.4 (M24): audit log entry records 'error' result when tool returns error", async () => {
+    const auditFile = path.join(os.tmpdir(), `accordo-audit-err-${Date.now()}.jsonl`);
+    const auditServer = new HubServer({
+      port: 0,
+      host: "127.0.0.1",
+      token: TOKEN,
+      bridgeSecret: SECRET,
+      toolCallTimeout: TOOL_TIMEOUT_MS,
+      auditFile,
+    });
+    await auditServer.start();
+    const addr = auditServer.getAddress()!;
+    const auditUrl = `http://${addr.host}:${addr.port}`;
+    const auditBridge = new StubBridge();
+    await auditBridge.connect(auditUrl);
+    auditBridge.registerTools([makeToolReg("accordo.test.audit.fail")]);
+    auditBridge.setAutoResponder(() => ({ success: false, error: "simulated tool error" }));
+    await flush();
+
+    try {
+      const session = new McpSession(auditUrl, TOKEN);
+      await session.initialize();
+      await session.call("tools/call", { name: "accordo.test.audit.fail", arguments: {} });
+      await flush();
+
+      const lines = fs.readFileSync(auditFile, "utf8").trim().split("\n");
+      const entry = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;
+      expect(entry["result"]).toBe("error");
+      expect(entry["errorMessage"]).toContain("simulated tool error");
+    } finally {
+      auditBridge.disconnect();
+      await auditServer.stop();
+      fs.rmSync(auditFile, { force: true });
+    }
+  });
+
+  // ── M25: health response includes queued field ───────────────────────────
+
+  it("§E2E-6.5 (M25): /health response includes 'queued' field", async () => {
+    await bridge.connect(baseUrl);
+    bridge.registerTools([makeToolReg("accordo.test.health")]);
+    await flush();
+
+    const res = await fetch(`${baseUrl}/health`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(body, "queued")).toBe(true);
+    expect(body["queued"]).toBe(0);
+  });
+
+  it("§E2E-6.7 (M25-b): 'queued' counter rises above 0 when inflight limit is saturated", async () => {
+    // Use a dedicated server with maxConcurrent=1 so the second request queues immediately.
+    const busyServer = new HubServer({
+      port: 0,
+      host: "127.0.0.1",
+      token: TOKEN,
+      bridgeSecret: SECRET,
+      maxConcurrent: 1,
+      maxQueueDepth: 8,
+      toolCallTimeout: 2000,
+    });
+    await busyServer.start();
+    const addr = busyServer.getAddress()!;
+    const busyUrl = `http://${addr.host}:${addr.port}`;
+    const busyBridge = new StubBridge();
+    await busyBridge.connect(busyUrl);
+    busyBridge.registerTools([makeToolReg("accordo.test.queue")]);
+    // Do NOT set autoResponder — hold the first request in-flight
+    await flush();
+
+    try {
+      const session = new McpSession(busyUrl, TOKEN);
+      await session.initialize();
+
+      // First call occupies the single in-flight slot
+      const p1 = session.call("tools/call", { name: "accordo.test.queue", arguments: {} });
+      await flush(30);
+
+      // Second call must queue (no slot available)
+      const p2 = session.call("tools/call", { name: "accordo.test.queue", arguments: {} });
+      await flush(30);
+
+      // Health should now show queued: 1, inflight: 1
+      const healthRes = await fetch(`${busyUrl}/health`);
+      const health = (await healthRes.json()) as Record<string, unknown>;
+      expect(health["inflight"]).toBe(1);
+      expect(health["queued"]).toBe(1);
+
+      // Respond to both invocations so promises resolve and server can shut down
+      const invokes = await busyBridge.waitForInvokes(1, 500);
+      busyBridge.respondToId(invokes[0]!.id, { success: true, data: {} });
+      await flush(50);
+      const invokes2 = await busyBridge.waitForInvokes(2, 500);
+      busyBridge.respondToId(invokes2[1]!.id, { success: true, data: {} });
+      await Promise.allSettled([p1, p2]);
+
+      // After both complete, counters must return to zero
+      const finalRes = await fetch(`${busyUrl}/health`);
+      const final = (await finalRes.json()) as Record<string, unknown>;
+      expect(final["inflight"]).toBe(0);
+      expect(final["queued"]).toBe(0);
+    } finally {
+      busyBridge.disconnect();
+      await busyServer.stop();
+    }
+  });
+
+  // ── M30-hub: token file written after /bridge/reauth ────────────────────
+
+  it("§E2E-6.6 (M30-hub): /bridge/reauth writes new token to tokenFilePath", async () => {
+    const tokenFile = path.join(os.tmpdir(), `accordo-token-${Date.now()}`);
+    const reauthServer = new HubServer({
+      port: 0,
+      host: "127.0.0.1",
+      token: TOKEN,
+      bridgeSecret: SECRET,
+      toolCallTimeout: TOOL_TIMEOUT_MS,
+      tokenFilePath: tokenFile,
+    });
+    await reauthServer.start();
+    const addr = reauthServer.getAddress()!;
+    const reauthUrl = `http://${addr.host}:${addr.port}`;
+    const reauthBridge = new StubBridge();
+    await reauthBridge.connect(reauthUrl);
+    await flush();
+
+    const newToken = "rotated-token-xyz";
+    const newSecret = "rotated-secret-xyz";
+    try {
+      const res = await fetch(`${reauthUrl}/bridge/reauth`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-accordo-secret": SECRET,
+        },
+        body: JSON.stringify({ newToken, newSecret }),
+      });
+      expect(res.status).toBe(200);
+
+      const written = fs.readFileSync(tokenFile, "utf8");
+      expect(written).toBe(newToken);
+    } finally {
+      reauthBridge.disconnect();
+      await reauthServer.stop();
+      fs.rmSync(tokenFile, { force: true });
+    }
   });
 });

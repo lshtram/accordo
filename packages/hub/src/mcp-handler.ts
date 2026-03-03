@@ -276,6 +276,55 @@ export class McpHandler {
         },
       };
     } catch (err: unknown) {
+      // M32: idempotent timeout retry — attempt once for tools marked idempotent: true.
+      const isInvokeTimeout = (e: unknown): boolean => {
+        if (e instanceof JsonRpcError) {
+          return e.code === -32000 || e.message.toLowerCase().includes("timed out");
+        }
+        if (e instanceof Error) {
+          return (
+            e.message.toLowerCase().includes("timed out") ||
+            e.message.toLowerCase().includes("timeout")
+          );
+        }
+        return false;
+      };
+
+      if (isInvokeTimeout(err) && tool.idempotent === true) {
+        const firstMsg = err instanceof Error ? err.message : String(err);
+        audit("timeout", firstMsg);
+        try {
+          const retryResult = await this.bridgeServer.invoke(toolName, toolArgs, this.toolCallTimeout);
+          if (!retryResult.success) {
+            audit("error", retryResult.error ?? "Tool execution failed");
+            return {
+              jsonrpc: "2.0",
+              id,
+              result: {
+                content: [{ type: "text", text: retryResult.error ?? "Tool execution failed" }],
+                isError: true,
+              },
+            };
+          }
+          audit("success");
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [{ type: "text", text: JSON.stringify(retryResult.data ?? {}) }],
+            },
+          };
+        } catch (retryErr: unknown) {
+          const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          audit(isInvokeTimeout(retryErr) ? "timeout" : "error", retryMsg);
+          return {
+            jsonrpc: "2.0",
+            id,
+            error: { code: -32001, message: "Tool invocation timed out" },
+          };
+        }
+      }
+
       if (err instanceof JsonRpcError) {
         const isTimeout = err.code === -32001 || err.message.toLowerCase().includes("timed out");
         audit(isTimeout ? "timeout" : "error", err.message);

@@ -31,6 +31,14 @@ export interface BridgeServerOptions {
   maxConcurrent?: number;
   /** Maximum queue depth. Default: 64 */
   maxQueueDepth?: number;
+  /** Maximum WebSocket payload size (bytes). Default: 1_048_576 (1 MB). M34 */
+  maxPayload?: number;
+  /** Maximum inbound messages per second from Bridge. Default: 100. M33 */
+  maxMessagesPerSecond?: number;
+  /** Grace window (ms) after Bridge disconnect before state is cleared. Default: 15_000. M31 */
+  graceWindowMs?: number;
+  /** Called when the grace window expires without reconnect. M31 */
+  onGraceExpired?: () => void;
 }
 
 /** In-flight invoke awaiting a ResultMessage from Bridge */
@@ -38,6 +46,18 @@ interface PendingInvoke {
   resolve: (r: ResultMessage) => void;
   reject: (e: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * An invocation queued because the in-flight limit was reached.
+ * CONC-03: Queued until an in-flight slot becomes available.
+ */
+interface QueuedInvoke {
+  tool: string;
+  args: Record<string, unknown>;
+  timeout: number;
+  resolve: (r: ResultMessage) => void;
+  reject: (e: Error) => void;
 }
 
 /** In-flight requestState awaiting a StateSnapshotMessage from Bridge */
@@ -64,6 +84,8 @@ export class BridgeServer {
   private maxQueueDepth: number;
   private inflight = 0;
   private queued = 0;
+  /** CONC-03: FIFO queue for invocations waiting for an in-flight slot */
+  private invokeQueue: QueuedInvoke[] = [];
   private connected = false;
   private ws: WsSocket | null = null;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
@@ -71,11 +93,25 @@ export class BridgeServer {
   private pendingStateRequest: PendingStateRequest | null = null;
   private registryUpdateCb: ((tools: ToolRegistration[]) => void) | null = null;
   private stateUpdateCb: ((patch: Partial<IDEState>) => void) | null = null;
+  // M34: max WS payload size
+  private maxPayload: number = 1_048_576;
+  // M33: inbound rate limiting
+  private maxMessagesPerSecond: number = 100;
+  private messageCount = 0;
+  private messageWindowStart = 0;
+  // M31: grace window
+  private graceWindowMs: number = 15_000;
+  private onGraceExpired: (() => void) | undefined;
+  private graceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: BridgeServerOptions) {
     this.secret = options.secret;
     this.maxConcurrent = options.maxConcurrent ?? DEFAULT_MAX_CONCURRENT_INVOCATIONS;
     this.maxQueueDepth = options.maxQueueDepth ?? DEFAULT_MAX_QUEUE_DEPTH;
+    this.maxPayload = options.maxPayload ?? 1_048_576;
+    this.maxMessagesPerSecond = options.maxMessagesPerSecond ?? 100;
+    this.graceWindowMs = options.graceWindowMs ?? 15_000;
+    this.onGraceExpired = options.onGraceExpired;
   }
 
   /**
@@ -84,7 +120,7 @@ export class BridgeServer {
    * Requirements: requirements-hub.md §2.5
    */
   start(server: http.Server): void {
-    const wss = new WebSocketServer({ noServer: true });
+    const wss = new WebSocketServer({ noServer: true, maxPayload: this.maxPayload });
 
     server.on("upgrade", (req, socket, head) => {
       // Only handle /bridge path
@@ -111,27 +147,7 @@ export class BridgeServer {
     });
 
     wss.on("connection", (ws: WsSocket) => {
-      this.ws = ws;
-      this.connected = true;
-
-      // §9.2: Heartbeat — send ping every 30 s
-      this.pingInterval = setInterval(() => {
-        if (ws.readyState === ws.OPEN) {
-          this.send({ type: "ping", ts: Date.now() });
-        }
-      }, PING_INTERVAL_MS);
-
-      ws.on("message", (data) => {
-        this.handleMessage(data.toString());
-      });
-
-      ws.on("close", () => {
-        this.handleDisconnect();
-      });
-
-      ws.on("error", () => {
-        this.handleDisconnect();
-      });
+      this.handleConnect(ws);
     });
   }
 
@@ -147,10 +163,21 @@ export class BridgeServer {
     // Queue-full check runs BEFORE connection check so it is testable without a
     // live Bridge connection (degenerate configs: maxConcurrent=0, maxQueueDepth=0).
     if (this.inflight >= this.maxConcurrent && this.queued >= this.maxQueueDepth) {
-      throw new JsonRpcError("Queue full", -32004);
+      throw new JsonRpcError("Server busy — invocation queue full", -32004);
     }
     if (!this.connected || !this.ws) {
+      if (this.graceTimer !== null) {
+        throw new JsonRpcError("Bridge reconnecting", -32603);
+      }
       throw new JsonRpcError("Bridge not connected", -32603);
+    }
+
+    // CONC-03: queue when at concurrency limit (but queue not full)
+    if (this.inflight >= this.maxConcurrent) {
+      this.queued++;
+      return new Promise<ResultMessage>((resolve, reject) => {
+        this.invokeQueue.push({ tool, args, timeout, resolve, reject });
+      });
     }
 
     const id = randomUUID();
@@ -162,6 +189,7 @@ export class BridgeServer {
         this.pendingInvokes.delete(id);
         this.inflight--;
         this.send({ type: "cancel", id });
+        this.dequeueAndDispatch();
         reject(new JsonRpcError(`Tool invocation timed out after ${timeout}ms`, -32000));
       }, timeout);
 
@@ -236,6 +264,33 @@ export class BridgeServer {
     };
   }
 
+  /**
+   * CONC-05: Dequeue the next waiting invocation and dispatch it.
+   * Called after each in-flight slot becomes free (result/timeout/cancel).
+   * No-op when queue is empty.
+   */
+  private dequeueAndDispatch(): void {
+    if (this.invokeQueue.length === 0) return;
+    const next = this.invokeQueue.shift()!;
+    this.queued--;
+
+    const id = randomUUID();
+    const { tool, args, timeout, resolve, reject } = next;
+
+    this.inflight++;
+
+    const timer = setTimeout(() => {
+      this.pendingInvokes.delete(id);
+      this.inflight--;
+      this.send({ type: "cancel", id });
+      this.dequeueAndDispatch();
+      reject(new JsonRpcError(`Tool invocation timed out after ${timeout}ms`, -32000));
+    }, timeout);
+
+    this.pendingInvokes.set(id, { resolve, reject, timer });
+    this.send({ type: "invoke", id, tool, args, timeout });
+  }
+
   updateSecret(newSecret: string): void {
     this.secret = newSecret;
   }
@@ -248,6 +303,10 @@ export class BridgeServer {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
     }
+    if (this.graceTimer !== null) {
+      clearTimeout(this.graceTimer);
+      this.graceTimer = null;
+    }
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -258,6 +317,41 @@ export class BridgeServer {
 
   // ─── Private helpers ────────────────────────────────────────────────────────
 
+  /**
+   * M31: Wire up a new WebSocket connection.
+   * Handles both initial connect and reconnect-within-grace-window
+   * (cancels the grace timer in the latter case).
+   */
+  private handleConnect(ws: WsSocket): void {
+    // Cancel any running grace timer — Bridge reconnected within the window.
+    if (this.graceTimer !== null) {
+      clearTimeout(this.graceTimer);
+      this.graceTimer = null;
+    }
+
+    this.ws = ws;
+    this.connected = true;
+
+    // §9.2: Heartbeat — send ping every 30 s
+    this.pingInterval = setInterval(() => {
+      if (ws.readyState === ws.OPEN) {
+        this.send({ type: "ping", ts: Date.now() });
+      }
+    }, PING_INTERVAL_MS);
+
+    ws.on("message", (data) => {
+      this.handleMessage(data.toString());
+    });
+
+    ws.on("close", () => {
+      this.handleDisconnect();
+    });
+
+    ws.on("error", () => {
+      this.handleDisconnect();
+    });
+  }
+
   private send(msg: Record<string, unknown>): void {
     if (this.ws && this.ws.readyState === this.ws.OPEN) {
       this.ws.send(JSON.stringify(msg));
@@ -265,6 +359,17 @@ export class BridgeServer {
   }
 
   private handleMessage(raw: string): void {
+    // M33: inbound rate limiting — drop messages that exceed maxMessagesPerSecond.
+    const now = Date.now();
+    if (now - this.messageWindowStart >= 1000) {
+      this.messageWindowStart = now;
+      this.messageCount = 0;
+    }
+    this.messageCount++;
+    if (this.messageCount > this.maxMessagesPerSecond) {
+      return; // drop — do not close the connection
+    }
+
     let msg: BridgeMessage;
     try {
       msg = JSON.parse(raw) as BridgeMessage;
@@ -276,7 +381,10 @@ export class BridgeServer {
       case "stateSnapshot": {
         // §3.2: Validate protocol version — close 4002 if mismatch
         if (!this.validateProtocolVersion(msg.protocolVersion)) {
-          this.ws?.close(4002, "Protocol version mismatch");
+          this.ws?.close(
+            4002,
+            `Protocol version mismatch: expected ${ACCORDO_PROTOCOL_VERSION}, got ${msg.protocolVersion}`,
+          );
           return;
         }
         // Update state cache (full replacement via callback)
@@ -306,14 +414,27 @@ export class BridgeServer {
           clearTimeout(pending.timer);
           this.pendingInvokes.delete(msg.id);
           this.inflight--;
+          this.dequeueAndDispatch();
           pending.resolve(msg as ResultMessage);
         }
         break;
       }
 
       case "cancelled": {
-        // Bridge acknowledged a cancel — the invoke promise is already settled via timeout
-        // or result, so this is informational only.
+        // Bridge confirmed cancel.
+        // late:false → Bridge successfully cancelled before producing a result;
+        //              free the slot and reject the caller now.
+        // late:true  → Result frame is already in-flight; the slot will be freed
+        //              when that "result" frame arrives. Treat as informational.
+        if (msg.late) break;
+        const pending = this.pendingInvokes.get(msg.id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          this.pendingInvokes.delete(msg.id);
+          this.inflight--;
+          this.dequeueAndDispatch();
+          pending.reject(new JsonRpcError("Invocation cancelled", -32000));
+        }
         break;
       }
 
@@ -332,6 +453,16 @@ export class BridgeServer {
     this.ws = null;
     this.connected = false;
     this.rejectAllPending(new JsonRpcError("Bridge disconnected", -32603));
+    // M31: start grace window — hold state until reconnect or expiry.
+    if (this.graceWindowMs === 0) {
+      // Zero-ms grace: fire synchronously — no deferred timer.
+      this.onGraceExpired?.();
+    } else {
+      this.graceTimer = setTimeout(() => {
+        this.graceTimer = null;
+        this.onGraceExpired?.();
+      }, this.graceWindowMs);
+    }
   }
 
   private rejectAllPending(err: Error): void {
@@ -341,6 +472,14 @@ export class BridgeServer {
     }
     this.pendingInvokes.clear();
     this.inflight = 0;
+
+    // Drain the FIFO queue — these were never dispatched, so reject them now
+    // to avoid hung promises on the callers' side.
+    for (const queued of this.invokeQueue) {
+      queued.reject(err);
+    }
+    this.invokeQueue = [];
+    this.queued = 0;
 
     if (this.pendingStateRequest) {
       const pending = this.pendingStateRequest;

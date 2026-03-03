@@ -9,6 +9,7 @@
  */
 
 import http from "node:http";
+import * as fs from "node:fs";
 import { ACCORDO_PROTOCOL_VERSION } from "@accordo/bridge-types";
 import type { HealthResponse, ReauthRequest } from "@accordo/bridge-types";
 import { BridgeServer } from "./bridge-server.js";
@@ -36,6 +37,12 @@ export interface HubServerOptions {
   toolCallTimeout?: number;
   /** Audit log file path */
   auditFile?: string;
+  /**
+   * Absolute path where Hub writes the bearer token for out-of-band agents.
+   * Default: ~/.accordo/token. Override in tests to avoid touching the filesystem.
+   * requirements-hub.md §2.6, §4.2
+   */
+  tokenFilePath?: string;
   /** Log level */
   logLevel?: "debug" | "info" | "warn" | "error";
 }
@@ -55,6 +62,7 @@ export class HubServer {
       secret: options.bridgeSecret,
       maxConcurrent: options.maxConcurrent,
       maxQueueDepth: options.maxQueueDepth,
+      onGraceExpired: () => { this.stateCache.clearModalities(); },
     });
     this.toolRegistry = new ToolRegistry();
     this.stateCache = new StateCache();
@@ -62,6 +70,7 @@ export class HubServer {
       toolRegistry: this.toolRegistry,
       bridgeServer: this.bridgeServer,
       toolCallTimeout: options.toolCallTimeout,
+      auditFile: options.auditFile,
     });
 
     // Wire Bridge callbacks to state cache and tool registry
@@ -231,7 +240,7 @@ export class HubServer {
       existingSession = this.mcpHandler.getSession(incomingSessionId);
       if (!existingSession) {
         res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Unknown session" }));
+        res.end(JSON.stringify({ error: "Invalid or expired session" }));
         return;
       }
     }
@@ -405,11 +414,15 @@ export class HubServer {
   }
 
   /**
-   * Update the bearer token in memory.
+   * Update the bearer token in memory and persist to tokenFilePath when configured.
    * Called during credential rotation (/bridge/reauth).
+   * requirements-hub.md §2.6, §4.2 (M30-hub)
    */
   updateToken(newToken: string): void {
     this.token = newToken;
+    if (this.options.tokenFilePath) {
+      fs.writeFileSync(this.options.tokenFilePath, newToken, "utf8");
+    }
   }
 }
 

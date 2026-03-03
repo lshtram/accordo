@@ -636,7 +636,7 @@ describe("BridgeServer — M31: state hold grace window", () => {
     // Simulate reconnect: the new-connection handler inside start() delegates
     // to handleConnect() — the complement of the existing handleDisconnect().
     // RED: handleConnect does not exist today.
-    const mockWs2 = { OPEN: 1, readyState: 1, send: vi.fn(), close: vi.fn() };
+    const mockWs2 = { OPEN: 1, readyState: 1, on: vi.fn(), send: vi.fn(), close: vi.fn() };
     (server as unknown as {
       handleConnect(ws: unknown): void;
     }).handleConnect(mockWs2);
