@@ -6,6 +6,7 @@
  * ✓ handleRequest — 20 tests (existing) + 9 new (tools/list registry, tools/call)
  * ✓ createSession — 4 tests
  * ✓ getSession — 3 tests
+ * ✓ M32 idempotent retry — 7 tests (5 RED + 2 guard/regression)
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
@@ -15,6 +16,15 @@ import { McpHandler } from "../mcp-handler.js";
 import type { JsonRpcRequest, Session } from "../mcp-handler.js";
 import { ToolRegistry } from "../tool-registry.js";
 import { BridgeServer } from "../bridge-server.js";
+import * as auditLog from "../audit-log.js";
+
+// Mock audit-log so tests stay hermetic (no filesystem I/O)
+vi.mock("../audit-log.js", () => ({
+  writeAuditEntry: vi.fn(),
+  hashArgs: vi.fn().mockReturnValue("mock-hash-64chars-----------------------------------"),
+  rotateIfNeeded: vi.fn(),
+  AUDIT_ROTATION_SIZE_BYTES: 10 * 1024 * 1024,
+}));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -53,6 +63,30 @@ function createHandler(tools: ToolRegistration[] = []): {
   });
   return {
     handler: new McpHandler({ toolRegistry, bridgeServer }),
+    toolRegistry,
+    bridgeServer,
+  };
+}
+
+function createHandlerWithAudit(tools: ToolRegistration[] = []): {
+  handler: McpHandler;
+  toolRegistry: ToolRegistry;
+  bridgeServer: BridgeServer;
+} {
+  const toolRegistry = new ToolRegistry();
+  if (tools.length) toolRegistry.register(tools);
+  const bridgeServer = new BridgeServer({
+    secret: "test-secret",
+    maxConcurrent: 16,
+    maxQueueDepth: 64,
+  });
+  return {
+    handler: new McpHandler({
+      toolRegistry,
+      bridgeServer,
+      auditFile: "/tmp/test-audit.jsonl",
+      toolCallTimeout: 100,
+    }),
     toolRegistry,
     bridgeServer,
   };
@@ -416,6 +450,459 @@ describe("McpHandler", () => {
       expect(response?.error).toBeDefined();
       expect(response?.error?.code).toBe(-32600);
     });
+  });
+});
+
+// ── §7: Audit log integration (M24) ──────────────────────────────────────────
+//
+// Tests require auditFile to be set on McpHandler and verify that
+// writeAuditEntry is called with the correct outcome for each tools/call path.
+// All are RED: handleToolsCall does not yet call writeAuditEntry.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("McpHandler — §7 audit log integration (M24)", () => {
+  let auditHandler: McpHandler;
+  let auditBridgeServer: BridgeServer;
+  let auditSession: Session;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Re-apply return value: vi.restoreAllMocks() in the outer describe's afterEach
+    // resets vi.fn() implementations, so we restore it here for each §7 test.
+    vi.mocked(auditLog.hashArgs).mockReturnValue("mock-hash-64chars-----------------------------------");
+    const { handler, bridgeServer } = createHandlerWithAudit([SAMPLE_TOOL]);
+    auditHandler = handler;
+    auditBridgeServer = bridgeServer;
+    auditSession = auditHandler.createSession();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("§7: successful tools/call writes audit entry with result='success'", async () => {
+    vi.spyOn(auditBridgeServer, "invoke").mockResolvedValue({
+      type: "result",
+      id: "mock-id",
+      success: true,
+      data: { opened: true },
+    });
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/foo.ts" },
+    });
+    await auditHandler.handleRequest(req, auditSession);
+
+    // RED: writeAuditEntry is never called in the stub
+    expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
+      "/tmp/test-audit.jsonl",
+      expect.objectContaining({ result: "success", tool: "accordo.editor.open" }),
+    );
+  });
+
+  it("§7: tools/call where Bridge returns success:false writes result='error'", async () => {
+    vi.spyOn(auditBridgeServer, "invoke").mockResolvedValue({
+      type: "result",
+      id: "mock-id",
+      success: false,
+      error: "Tool execution failed",
+    });
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/foo.ts" },
+    });
+    await auditHandler.handleRequest(req, auditSession);
+
+    // RED: writeAuditEntry not called
+    expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
+      "/tmp/test-audit.jsonl",
+      expect.objectContaining({
+        result: "error",
+        tool: "accordo.editor.open",
+        errorMessage: expect.any(String),
+      }),
+    );
+  });
+
+  it("§7: tools/call timeout writes result='timeout'", async () => {
+    vi.spyOn(auditBridgeServer, "invoke").mockRejectedValue(
+      Object.assign(new Error("Tool invocation timed out after 100ms"), { code: -32001 }),
+    );
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/foo.ts" },
+    });
+    await auditHandler.handleRequest(req, auditSession);
+
+    // RED: writeAuditEntry not called
+    expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
+      "/tmp/test-audit.jsonl",
+      expect.objectContaining({ result: "timeout", tool: "accordo.editor.open" }),
+    );
+  });
+
+  it("§7: tools/call not-connected error writes result='error'", async () => {
+    // Bridge not connected → JsonRpcError with code -32603
+    const { JsonRpcError } = await import("../errors.js");
+    vi.spyOn(auditBridgeServer, "invoke").mockRejectedValue(
+      new JsonRpcError("Bridge not connected", -32603),
+    );
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/foo.ts" },
+    });
+    await auditHandler.handleRequest(req, auditSession);
+
+    // RED: writeAuditEntry not called
+    expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
+      "/tmp/test-audit.jsonl",
+      expect.objectContaining({ result: "error", tool: "accordo.editor.open" }),
+    );
+  });
+
+  it("§7: audit entry includes argsHash from hashArgs", async () => {
+    vi.spyOn(auditBridgeServer, "invoke").mockResolvedValue({
+      type: "result",
+      id: "mock-id",
+      success: true,
+      data: {},
+    });
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/file.ts" },
+    });
+    await auditHandler.handleRequest(req, auditSession);
+
+    // RED: neither hashArgs nor writeAuditEntry are called
+    expect(auditLog.hashArgs).toHaveBeenCalledWith({ path: "/file.ts" });
+    expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
+      "/tmp/test-audit.jsonl",
+      expect.objectContaining({ argsHash: "mock-hash-64chars-----------------------------------" }),
+    );
+  });
+
+  it("§7: audit entry includes sessionId from the MCP session", async () => {
+    vi.spyOn(auditBridgeServer, "invoke").mockResolvedValue({
+      type: "result",
+      id: "mock-id",
+      success: true,
+      data: {},
+    });
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/file.ts" },
+    });
+    await auditHandler.handleRequest(req, auditSession);
+
+    // RED
+    expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
+      "/tmp/test-audit.jsonl",
+      expect.objectContaining({ sessionId: auditSession.id }),
+    );
+  });
+
+  it("§7: when auditFile is not set, writeAuditEntry is NOT called", async () => {
+    const { handler, bridgeServer } = createHandler([SAMPLE_TOOL]);
+    vi.spyOn(bridgeServer, "invoke").mockResolvedValue({
+      type: "result", id: "mock-id", success: true, data: {},
+    });
+
+    const sess = handler.createSession();
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/file.ts" },
+    });
+    await handler.handleRequest(req, sess);
+
+    expect(auditLog.writeAuditEntry).not.toHaveBeenCalled();
+  });
+
+  it("§7 M24: tools/call where data contains {error} writes result='error' and isError:true", async () => {
+    // Editor tools catch VS Code errors and return { error: "..." } rather than
+    // throwing.  The Bridge sends success:true but data:{ error: "..." }.
+    // McpHandler must classify these as errors in the audit log and set
+    // isError:true in the MCP response so agents know the tool failed.
+    vi.spyOn(auditBridgeServer, "invoke").mockResolvedValue({
+      type: "result",
+      id: "mock-id",
+      success: true,
+      data: { error: "No such file: /nonexistent.ts" },
+    });
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/nonexistent.ts" },
+    });
+    const response = await auditHandler.handleRequest(req, auditSession);
+
+    // Audit must record this as an error with the error message
+    expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
+      "/tmp/test-audit.jsonl",
+      expect.objectContaining({
+        result: "error",
+        tool: "accordo.editor.open",
+        errorMessage: "No such file: /nonexistent.ts",
+      }),
+    );
+
+    // MCP response must carry isError:true so the LLM can adapt
+    const result = (response as { result: { isError?: boolean; content: Array<{ text: string }> } }).result;
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toBe("No such file: /nonexistent.ts");
+  });
+});
+
+// ── M32: Idempotent tool retry on timeout ─────────────────────────────────────
+//
+// architecture.md §8.3: Tools marked `idempotent: true` are retried ONCE by
+// McpHandler when the Bridge invoke times out. McpHandler already has access to
+// toolRegistry to check the idempotent flag. BridgeServer has no registry
+// dependency, so retry MUST happen at the McpHandler layer.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const IDEMPOTENT_TOOL: ToolRegistration = {
+  name: "accordo.editor.open",
+  description: "Open a file",
+  inputSchema: {
+    type: "object",
+    properties: { path: { type: "string", description: "File path" } },
+    required: ["path"],
+  },
+  dangerLevel: "safe",
+  requiresConfirmation: false,
+  idempotent: true,
+};
+
+const NON_IDEMPOTENT_TOOL: ToolRegistration = {
+  name: "accordo.terminal.run",
+  description: "Run a command",
+  inputSchema: {
+    type: "object",
+    properties: { command: { type: "string", description: "Command" } },
+    required: ["command"],
+  },
+  dangerLevel: "destructive",
+  requiresConfirmation: true,
+  idempotent: false,
+};
+
+describe("McpHandler — M32: idempotent retry on timeout", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("M32: idempotent tool is retried once after timeout — retry succeeds", async () => {
+    const { handler, bridgeServer } = createHandler([IDEMPOTENT_TOOL]);
+    const session = handler.createSession();
+
+    const invokeSpy = vi.spyOn(bridgeServer, "invoke");
+    // First call: timeout. Second call: success.
+    invokeSpy
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Tool invocation timed out after 100ms"), { code: -32000 }),
+      )
+      .mockResolvedValueOnce({
+        type: "result",
+        id: "retry-1",
+        success: true,
+        data: { opened: true },
+      });
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/foo.ts" },
+    });
+    const response = await handler.handleRequest(req, session);
+
+    // RED: current code does NOT retry — it returns the timeout error immediately
+    expect(invokeSpy).toHaveBeenCalledTimes(2);
+    expect(response?.error).toBeUndefined();
+    const result = response?.result as { content: Array<{ text: string }>; isError?: boolean };
+    expect(result?.isError).toBeUndefined();
+    expect(result?.content[0]?.text).toContain("opened");
+  });
+
+  it("M32: idempotent tool is retried once — retry also times out → returns timeout error", async () => {
+    const { handler, bridgeServer } = createHandler([IDEMPOTENT_TOOL]);
+    const session = handler.createSession();
+
+    const invokeSpy = vi.spyOn(bridgeServer, "invoke");
+    // Both calls timeout
+    invokeSpy
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Tool invocation timed out after 100ms"), { code: -32000 }),
+      )
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Tool invocation timed out after 100ms"), { code: -32000 }),
+      );
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/foo.ts" },
+    });
+    const response = await handler.handleRequest(req, session);
+
+    // RED: invoke only called once today
+    expect(invokeSpy).toHaveBeenCalledTimes(2);
+    // Returns timeout error after retry exhaustion
+    expect(response?.error?.code).toBe(-32001);
+  });
+
+  it("M32: non-idempotent tool is NOT retried on timeout", async () => {
+    const { handler, bridgeServer } = createHandler([NON_IDEMPOTENT_TOOL]);
+    const session = handler.createSession();
+
+    const invokeSpy = vi.spyOn(bridgeServer, "invoke");
+    // Timeout error with enough headroom for a second call if impl retries.
+    invokeSpy
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Tool invocation timed out after 100ms"), { code: -32000 }),
+      )
+      .mockResolvedValueOnce({
+        type: "result",
+        id: "should-not-happen",
+        success: true,
+        data: { nope: true },
+      });
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.terminal.run",
+      arguments: { command: "rm -rf /" },
+    });
+    const response = await handler.handleRequest(req, session);
+
+    // Must NOT retry — invoke called exactly once.
+    expect(invokeSpy).toHaveBeenCalledTimes(1);
+    // Must return the timeout error, not a success from a hypothetical retry.
+    expect(response?.error?.code).toBe(-32001);
+    // RED: today invoke is called once and returns timeout; after M32 the
+    // handler must explicitly decide NOT to retry.  We verify by ensuring
+    // the second mock was never consumed (toHaveBeenCalledTimes(1)).
+    // This test fails once M32 retry logic incorrectly retries non-idempotent tools.
+  });
+
+  it("M32: idempotent retry is NOT triggered for non-timeout errors", async () => {
+    const { handler, bridgeServer } = createHandler([IDEMPOTENT_TOOL]);
+    const session = handler.createSession();
+
+    const invokeSpy = vi.spyOn(bridgeServer, "invoke");
+    // Reject with a non-timeout error (e.g. Bridge disconnected), then
+    // provide a success in case the handler erroneously retries.
+    const { JsonRpcError } = await import("../errors.js");
+    invokeSpy
+      .mockRejectedValueOnce(
+        new JsonRpcError("Bridge not connected", -32603),
+      )
+      .mockResolvedValueOnce({
+        type: "result",
+        id: "should-not-happen",
+        success: true,
+        data: { nope: true },
+      });
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/foo.ts" },
+    });
+    const response = await handler.handleRequest(req, session);
+
+    // Not a timeout → no retry, even though tool is idempotent.
+    expect(invokeSpy).toHaveBeenCalledTimes(1);
+    expect(response?.error?.code).toBe(-32603);
+    // RED: this test will break if M32 retry logic incorrectly retries on
+    // non-timeout errors — invoke would be called twice and return success.
+  });
+
+  it("M32: retry does not happen more than once (no infinite loop)", async () => {
+    const { handler, bridgeServer } = createHandler([IDEMPOTENT_TOOL]);
+    const session = handler.createSession();
+
+    const invokeSpy = vi.spyOn(bridgeServer, "invoke");
+    // Always timeout
+    invokeSpy.mockRejectedValue(
+      Object.assign(new Error("Tool invocation timed out after 100ms"), { code: -32000 }),
+    );
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/foo.ts" },
+    });
+    await handler.handleRequest(req, session);
+
+    // RED: called once today; after M32 should be exactly 2 (1 + 1 retry)
+    expect(invokeSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("M32: audit log records both the original timeout and the retry result", async () => {
+    vi.clearAllMocks();
+    vi.mocked(auditLog.hashArgs).mockReturnValue("mock-hash-64chars-----------------------------------");
+
+    const { handler, bridgeServer } = createHandlerWithAudit([IDEMPOTENT_TOOL]);
+    const session = handler.createSession();
+
+    const invokeSpy = vi.spyOn(bridgeServer, "invoke");
+    // First: timeout. Second: success.
+    invokeSpy
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Tool invocation timed out after 100ms"), { code: -32000 }),
+      )
+      .mockResolvedValueOnce({
+        type: "result",
+        id: "retry-1",
+        success: true,
+        data: { opened: true },
+      });
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/foo.ts" },
+    });
+    await handler.handleRequest(req, session);
+
+    // RED: only one writeAuditEntry call today (the timeout); after M32
+    // there should be two: one for the timeout and one for the retry success.
+    expect(auditLog.writeAuditEntry).toHaveBeenCalledTimes(2);
+    expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
+      "/tmp/test-audit.jsonl",
+      expect.objectContaining({ result: "timeout" }),
+    );
+    expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
+      "/tmp/test-audit.jsonl",
+      expect.objectContaining({ result: "success" }),
+    );
+  });
+
+  it("M32: retry succeeds → McpHandler returns the retry result (not an error)", async () => {
+    const { handler, bridgeServer } = createHandler([IDEMPOTENT_TOOL]);
+    const session = handler.createSession();
+
+    vi.spyOn(bridgeServer, "invoke")
+      .mockRejectedValueOnce(
+        Object.assign(new Error("timed out"), { code: -32000 }),
+      )
+      .mockResolvedValueOnce({
+        type: "result",
+        id: "r2",
+        success: true,
+        data: { path: "/foo.ts" },
+      });
+
+    const req = makeRequest("tools/call", {
+      name: "accordo.editor.open",
+      arguments: { path: "/foo.ts" },
+    });
+    const response = await handler.handleRequest(req, session);
+
+    // RED: handler returns timeout error today, not the retry result
+    expect(response?.error).toBeUndefined();
+    const result = response?.result as { content: Array<{ text: string }> };
+    expect(result?.content[0]?.text).toContain("/foo.ts");
   });
 });
 

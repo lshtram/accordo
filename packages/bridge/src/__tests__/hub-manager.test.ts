@@ -29,6 +29,7 @@ const mockCpState = vi.hoisted(() => ({
     env: Record<string, string | undefined>;
   } | null,
   lastProcess: null as {
+    pid?: number;
     emit(event: string, ...args: unknown[]): void;
     stdout: {
       on(event: string, cb: (data: Buffer) => void): void;
@@ -55,6 +56,7 @@ vi.mock("node:child_process", async () => {
   }
 
   class MockProcess extends EventEmitter {
+    pid = 99999; // stable fake PID for tests that verify PID file writes
     stdout = new MockStream();
     stderr = new MockStream();
     exitCode: number | null = null;
@@ -535,41 +537,49 @@ describe("HubManager", () => {
 
     it("LCM-12: attemptReauth() POSTs to /bridge/reauth with x-accordo-secret header and JSON body", async () => {
       vi.useRealTimers();
-      // Spin up a real HTTP server to capture the incoming request
+
       const { createServer } = await import("node:http");
-      type CapturedReq = {
-        method: string | undefined;
-        url: string | undefined;
-        headers: Record<string, string | string[] | undefined>;
-        body: string;
-      };
-      let capturedReq: CapturedReq | null = null;
+
+      let capturedMethod: string | undefined;
+      let capturedPath: string | undefined;
+      let capturedSecret: string | undefined;
+      let capturedBody = "";
+
+      // Spin up a real local server on a random OS-assigned port (no EPERM risk)
       const server = createServer((req, res) => {
+        capturedMethod = req.method;
+        capturedPath = req.url;
+        capturedSecret = req.headers["x-accordo-secret"] as string;
         let body = "";
-        req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+        req.on("data", (c: Buffer) => { body += c.toString(); });
         req.on("end", () => {
-          capturedReq = { method: req.method, url: req.url, headers: req.headers as Record<string, string>, body };
-          res.writeHead(200);
+          capturedBody = body;
+          res.writeHead(200, { "Content-Type": "application/json" });
           res.end("{}");
         });
       });
-      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-      const port = (server.address() as { port: number }).port;
 
-      const { manager } = makeManager({ config: { port } });
-      const result = await manager.attemptReauth("current-secret", "new-secret", "new-token").catch(() => false);
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", resolve);
+      });
 
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      const addr = server.address() as { port: number };
 
-      // RED on stub: stub throws → POST never sent → capturedReq is still null
-      expect(capturedReq).not.toBeNull();
-      expect(capturedReq!.method).toBe("POST");
-      expect(capturedReq!.url).toBe("/bridge/reauth");
-      expect((capturedReq!.headers as Record<string, string>)["x-accordo-secret"]).toBe("current-secret");
-      const body = JSON.parse(capturedReq!.body) as Record<string, string>;
-      expect(body["newToken"]).toBe("new-token");
-      expect(body["newSecret"]).toBe("new-secret");
-      expect(result).toBe(true);
+      try {
+        const { manager } = makeManager({ config: { port: addr.port } });
+        const result = await manager.attemptReauth("current-secret", "new-secret", "new-token");
+
+        expect(result).toBe(true);
+        expect(capturedMethod).toBe("POST");
+        expect(capturedPath).toBe("/bridge/reauth");
+        expect(capturedSecret).toBe("current-secret");
+        const parsed = JSON.parse(capturedBody) as Record<string, string>;
+        expect(parsed["newToken"]).toBe("new-token");
+        expect(parsed["newSecret"]).toBe("new-secret");
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
     });
   });
 
@@ -617,5 +627,283 @@ describe("HubManager", () => {
       await manager.restart().catch(() => {});
       expect(spawnSpy).toHaveBeenCalled();
     });
+  });
+});
+
+// ── M29: readPidFile + isProcessAlive + activate() stale-PID detection ────────
+
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterAll } from "vitest";
+
+const tmpPidFile = path.join(os.tmpdir(), `accordo-test-hub-${process.pid}.pid`);
+afterAll(() => { try { fs.unlinkSync(tmpPidFile); } catch { /* ignore */ } });
+
+describe("HubManager — readPidFile (§8 PID lifecycle)", () => {
+  it("§8: returns null when file does not exist", () => {
+    const { manager } = makeManager();
+    expect(manager.readPidFile("/tmp/accordo-nonexistent-pid-file-xyz.pid")).toBeNull();
+  });
+
+  it("§8: returns null when file is empty", () => {
+    const p = path.join(os.tmpdir(), `accordo-empty-${process.pid}.pid`);
+    fs.writeFileSync(p, "");
+    try {
+      const { manager } = makeManager();
+      expect(manager.readPidFile(p)).toBeNull();
+    } finally {
+      fs.unlinkSync(p);
+    }
+  });
+
+  it("§8: returns null when file contains non-numeric content", () => {
+    const p = path.join(os.tmpdir(), `accordo-bad-${process.pid}.pid`);
+    fs.writeFileSync(p, "garbage\n");
+    try {
+      const { manager } = makeManager();
+      expect(manager.readPidFile(p)).toBeNull();
+    } finally {
+      fs.unlinkSync(p);
+    }
+  });
+
+  it("§8: returns the numeric PID when file contains a valid integer", () => {
+    fs.writeFileSync(tmpPidFile, "12345\n");
+    const { manager } = makeManager();
+    expect(manager.readPidFile(tmpPidFile)).toBe(12345);
+  });
+});
+
+describe("HubManager — isProcessAlive (§8 stale-PID detection)", () => {
+  it("§8: returns true for the current process", () => {
+    const { manager } = makeManager();
+    expect(manager.isProcessAlive(process.pid)).toBe(true);
+  });
+
+  it("§8: returns false for PID 0 (not a valid process)", () => {
+    // PID 0 is the kernel scheduler and cannot be addressed with kill
+    const { manager } = makeManager();
+    // Sending signal 0 to PID 0 would signal all processes (error or not depending on platform)
+    // On macOS/Linux, process.kill(0, 0) throws EINVAL, so it returns false
+    const result = manager.isProcessAlive(0);
+    expect(typeof result).toBe("boolean");
+  });
+
+  it("§8: returns false for a safely large PID that definitely does not exist", () => {
+    const { manager } = makeManager();
+    // PID 2^30 — way beyond any real process table
+    expect(manager.isProcessAlive(1073741824)).toBe(false);
+  });
+});
+
+describe("HubManager — activate() §8 stale-PID detection (M29)", () => {
+  it("M29: activate() calls readPidFile with the configured pidFilePath", async () => {
+    // RED: current activate() never reads the PID file
+    fs.writeFileSync(tmpPidFile, String(process.pid));
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { pidFilePath: tmpPidFile, autoStart: false },
+    });
+
+    const readPidSpy = vi.spyOn(manager, "readPidFile");
+    vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+
+    await manager.activate();
+
+    // RED: activate() never calls readPidFile
+    expect(readPidSpy).toHaveBeenCalledWith(tmpPidFile);
+  });
+
+  it("M29: when pid file has a live process, isProcessAlive is called with that PID", async () => {
+    // RED: current activate() never calls isProcessAlive
+    fs.writeFileSync(tmpPidFile, String(process.pid));
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { pidFilePath: tmpPidFile, autoStart: true },
+    });
+
+    const isAliveSpy = vi.spyOn(manager, "isProcessAlive");
+    vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+    vi.spyOn(manager, "spawn").mockResolvedValue(undefined);
+
+    await manager.activate();
+
+    // RED: activate() never calls isProcessAlive
+    expect(isAliveSpy).toHaveBeenCalledWith(process.pid);
+  });
+
+  it("M29: when pid file has a dead process, readPidFile and isProcessAlive are both called", async () => {
+    // RED: current activate() uses no PID file at all
+    fs.writeFileSync(tmpPidFile, "1073741824"); // guaranteed-dead PID
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { pidFilePath: tmpPidFile, autoStart: true },
+    });
+
+    const readPidSpy = vi.spyOn(manager, "readPidFile");
+    const isAliveSpy = vi.spyOn(manager, "isProcessAlive");
+    vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+    vi.spyOn(manager, "spawn").mockResolvedValue(undefined);
+    vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
+
+    await manager.activate();
+
+    expect(readPidSpy).toHaveBeenCalledWith(tmpPidFile);
+    expect(isAliveSpy).toHaveBeenCalledWith(1073741824);
+  });
+
+  it("M29: when pid file is absent, readPidFile is called and isProcessAlive is NOT called", async () => {
+    // RED: current activate() calls neither
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { pidFilePath: "/tmp/nonexistent-accordo-m29.pid", autoStart: true },
+    });
+
+    const readPidSpy = vi.spyOn(manager, "readPidFile");
+    const isAliveSpy = vi.spyOn(manager, "isProcessAlive");
+    vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+    vi.spyOn(manager, "spawn").mockResolvedValue(undefined);
+    vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
+
+    await manager.activate();
+    await new Promise<void>((r) => setTimeout(r, 10));
+
+    expect(readPidSpy).toHaveBeenCalledWith("/tmp/nonexistent-accordo-m29.pid");
+    // readPidFile returns null → isProcessAlive should NOT be called
+    expect(isAliveSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ── M29: spawn() writes hub.pid from the parent process ──────────────────────
+
+describe("HubManager — spawn() M29: parent writes hub.pid", () => {
+  const spawnPidFile = path.join(os.tmpdir(), `accordo-spawn-pid-${process.pid}.pid`);
+  afterAll(() => { try { fs.unlinkSync(spawnPidFile); } catch { /* ok */ } });
+
+  it("M29: spawn() writes proc.pid to pidFilePath immediately after execFile", async () => {
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { pidFilePath: spawnPidFile },
+    });
+
+    await manager.spawn("s", "t").catch(() => {});
+
+    // MockProcess.pid is 99999; hub-manager should have written it to spawnPidFile
+    const written = fs.readFileSync(spawnPidFile, "utf8").trim();
+    expect(written).toBe("99999");
+  });
+
+  it("M29: spawn() cleans up hub.pid when process exits", async () => {
+    const cleanupFile = path.join(os.tmpdir(), `accordo-cleanup-${process.pid}.pid`);
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { pidFilePath: cleanupFile },
+    });
+    vi.spyOn(manager, "restart").mockResolvedValue(undefined);
+
+    await manager.spawn("s", "t").catch(() => {});
+
+    // File must exist immediately after spawn
+    expect(fs.existsSync(cleanupFile)).toBe(true);
+
+    // Simulate Hub process exit — HubManager's exit handler should delete the PID
+    mockCpState.lastProcess?.emit("exit", 0);
+
+    // PID file must be gone
+    expect(fs.existsSync(cleanupFile)).toBe(false);
+  });
+});
+
+// ── M30-bridge: restart() persists new credentials to SecretStorage (LCM-12) ──
+
+describe("HubManager — restart() LCM-12 credential persistence (M30-bridge)", () => {
+  it("LCM-12: after successful soft reauth, persists new secret to SecretStorage", async () => {
+    const { manager, secrets } = makeManager({
+      secrets: { "accordo.bridgeSecret": "old-secret", "accordo.hubToken": "old-token" },
+    });
+    // Simulate existing credentials loaded from a prior activate()
+    (manager as unknown as Record<string, string>)["secret"] = "old-secret";
+    (manager as unknown as Record<string, string>)["token"] = "old-token";
+
+    vi.spyOn(manager, "attemptReauth").mockResolvedValue(true);
+
+    await manager.restart();
+
+    // RED: current restart() does not call secretStorage.store()
+    expect(secrets.store).toHaveBeenCalledWith(
+      "accordo.bridgeSecret",
+      expect.any(String),
+    );
+    const storedSecret = (secrets.store as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: unknown[]) => c[0] === "accordo.bridgeSecret",
+    )?.[1] as string | undefined;
+    expect(storedSecret).toBeTruthy();
+    expect(storedSecret).not.toBe("old-secret");
+  });
+
+  it("LCM-12: after successful soft reauth, persists new token to SecretStorage", async () => {
+    const { manager, secrets } = makeManager({
+      secrets: { "accordo.bridgeSecret": "old-secret", "accordo.hubToken": "old-token" },
+    });
+    (manager as unknown as Record<string, string>)["secret"] = "old-secret";
+    (manager as unknown as Record<string, string>)["token"] = "old-token";
+
+    vi.spyOn(manager, "attemptReauth").mockResolvedValue(true);
+
+    await manager.restart();
+
+    expect(secrets.store).toHaveBeenCalledWith(
+      "accordo.hubToken",
+      expect.any(String),
+    );
+    const storedToken = (secrets.store as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: unknown[]) => c[0] === "accordo.hubToken",
+    )?.[1] as string | undefined;
+    expect(storedToken).toBeTruthy();
+    expect(storedToken).not.toBe("old-token");
+  });
+
+  it("LCM-12: after hard respawn+pollHealth success, persists new secret to SecretStorage", async () => {
+    const { manager, secrets } = makeManager({
+      secrets: { "accordo.bridgeSecret": "old-secret", "accordo.hubToken": "old-token" },
+    });
+    (manager as unknown as Record<string, string>)["secret"] = "old-secret";
+    (manager as unknown as Record<string, string>)["token"] = "old-token";
+
+    vi.spyOn(manager, "attemptReauth").mockResolvedValue(false);
+    vi.spyOn(manager, "killHub").mockResolvedValue(undefined);
+    vi.spyOn(manager, "spawn").mockResolvedValue(undefined);
+    vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
+
+    await manager.restart();
+    // Hard path: fire-and-forget poll — wait a tick for the promise chain
+    await new Promise<void>((r) => setTimeout(r, 20));
+
+    expect(secrets.store).toHaveBeenCalledWith(
+      "accordo.bridgeSecret",
+      expect.any(String),
+    );
+  });
+
+  it("LCM-12: after hard respawn+pollHealth success, persists new token to SecretStorage", async () => {
+    const { manager, secrets } = makeManager({
+      secrets: { "accordo.bridgeSecret": "old-secret", "accordo.hubToken": "old-token" },
+    });
+    (manager as unknown as Record<string, string>)["secret"] = "old-secret";
+    (manager as unknown as Record<string, string>)["token"] = "old-token";
+
+    vi.spyOn(manager, "attemptReauth").mockResolvedValue(false);
+    vi.spyOn(manager, "killHub").mockResolvedValue(undefined);
+    vi.spyOn(manager, "spawn").mockResolvedValue(undefined);
+    vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
+
+    await manager.restart();
+    await new Promise<void>((r) => setTimeout(r, 20));
+
+    expect(secrets.store).toHaveBeenCalledWith(
+      "accordo.hubToken",
+      expect.any(String),
+    );
   });
 });

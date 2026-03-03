@@ -14,6 +14,7 @@
 
 import * as vscode from "vscode";
 import * as path from "node:path";
+import * as os from "node:os";
 import { HubManager } from "./hub-manager.js";
 import type { HubManagerConfig } from "./hub-manager.js";
 import { WsClient } from "./ws-client.js";
@@ -23,6 +24,7 @@ import { CommandRouter } from "./command-router.js";
 import { StatePublisher } from "./state-publisher.js";
 import type { VscodeApi } from "./state-publisher.js";
 import type { IDEState } from "@accordo/bridge-types";
+import { writeAgentConfigs } from "./agent-config.js";
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -100,6 +102,8 @@ export async function activate(
   const autoStart = cfg.get<boolean>("hub.autoStart", true);
   const executablePath = cfg.get<string>("hub.executablePath", "");
   const wantCopilot = cfg.get<boolean>("agent.configureCopilot", true);
+  const wantOpencode = cfg.get<boolean>("agent.configureOpencode", true);
+  const wantClaude = cfg.get<boolean>("agent.configureClaude", true);
 
   // Hub entry point: sibling package in the monorepo during development.
   // When packaged as a vsix the hub dist should be bundled alongside.
@@ -116,6 +120,8 @@ export async function activate(
     autoStart,
     executablePath,
     hubEntryPoint,
+    // M29: default PID file location mirrors what Hub writes at startup
+    pidFilePath: path.join(os.homedir(), ".accordo", "hub.pid"),
   };
 
   // ── Registry (tool registrations from consumer extensions) ───────────────
@@ -182,10 +188,25 @@ export async function activate(
         currentHubToken = hubManager?.getToken() ?? "";
 
         // MCP-01 / MCP-02: Write Accordo to user-level mcp.servers setting.
-        // This is the native, settings-based mechanism Copilot reads on every
-        // window load — survives workspace switches, folder changes, reloads.
         if (wantCopilot) {
           await syncMcpSettings(outputChannel, currentHubPort, currentHubToken);
+        }
+
+        // CFG-01 / CFG-02: Write agent config files (opencode.json, .claude/mcp.json)
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (workspaceRoot && (wantOpencode || wantClaude)) {
+          writeAgentConfigs({
+            workspaceRoot,
+            port: currentHubPort,
+            token: currentHubToken,
+            configureOpencode: wantOpencode,
+            configureClaude: wantClaude,
+            outputChannel,
+          });
+        } else if (!workspaceRoot) {
+          outputChannel.appendLine(
+            "[accordo-bridge] writeAgentConfigs skipped: no workspace folder open",
+          );
         }
 
         wsClient = new WsClient(readyPort, secret, {
@@ -262,6 +283,22 @@ export async function activate(
         currentHubToken = newToken;
         if (wantCopilot) {
           await syncMcpSettings(outputChannel, currentHubPort, newToken);
+        }
+        // CFG-07: rewrite agent config files with new token
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (workspaceRoot && (wantOpencode || wantClaude)) {
+          writeAgentConfigs({
+            workspaceRoot,
+            port: currentHubPort,
+            token: newToken,
+            configureOpencode: wantOpencode,
+            configureClaude: wantClaude,
+            outputChannel,
+          });
+        } else if (!workspaceRoot) {
+          outputChannel.appendLine(
+            "[accordo-bridge] writeAgentConfigs skipped on rotation: no workspace folder open",
+          );
         }
         if (wsClient) {
           wsClient.updateSecret(newSecret);

@@ -14,6 +14,9 @@
 import type { ChildProcess } from "node:child_process";
 import { execFile } from "node:child_process";
 import http from "node:http";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 // ── Abstractions for testability (no direct vscode import) ──────────────────
 
@@ -48,6 +51,12 @@ export interface HubManagerConfig {
   executablePath: string;
   /** Filesystem path to the Hub entry point JS file */
   hubEntryPoint: string;
+  /**
+   * Absolute path to the Hub PID file for stale-PID detection on activation.
+   * Default: ~/.accordo/hub.pid. Override in tests to avoid touching the filesystem.
+   * requirements-hub.md §8
+   */
+  pidFilePath?: string;
 }
 
 /**
@@ -122,6 +131,25 @@ export class HubManager {
     this.secret = secret;
     this.token = token;
 
+    // M29: stale-PID detection — skip health check if PID file says Hub is dead
+    if (this.config.pidFilePath) {
+      const pid = this.readPidFile(this.config.pidFilePath);
+      if (pid !== null && !this.isProcessAlive(pid)) {
+        // Hub process is definitely gone — skip health check, spawn directly
+        if (this.config.autoStart) {
+          this.spawn(this.secret, this.token)
+            .then(() => this.pollHealth())
+            .then((ready) => {
+              if (ready) this.events.onHubReady(this.port, this.token!);
+            })
+            .catch((err: unknown) => {
+              this.events.onHubError(err instanceof Error ? err : new Error(String(err)));
+            });
+        }
+        return;
+      }
+    }
+
     const healthy = await this.checkHealth();
     if (healthy) {
       // Hub already running (e.g. persisted from a previous VS Code session).
@@ -165,6 +193,9 @@ export class HubManager {
     if (reauthOk) {
       this.secret = newSecret;
       this.token = newToken;
+      // M30-bridge: persist rotated credentials so they survive VS Code restarts
+      await this.secretStorage.store("accordo.bridgeSecret", newSecret);
+      await this.secretStorage.store("accordo.hubToken", newToken);
       this.events.onCredentialsRotated(newToken, newSecret);
       return;
     }
@@ -177,6 +208,9 @@ export class HubManager {
         if (ready) {
           this.secret = newSecret;
           this.token = newToken;
+          // M30-bridge: persist after hard restart too
+          void this.secretStorage.store("accordo.bridgeSecret", newSecret);
+          void this.secretStorage.store("accordo.hubToken", newToken);
           this.events.onCredentialsRotated(newToken, newSecret);
         }
       })
@@ -232,6 +266,16 @@ export class HubManager {
     );
     this.hubProcess = proc;
 
+    // M29: write PID from the parent as soon as the child is forked — this
+    // ensures hub.pid is present before pollHealth() completes even if the
+    // Hub process hasn't flushed its own write yet.
+    if (this.config.pidFilePath && proc.pid !== undefined) {
+      try {
+        fs.mkdirSync(path.dirname(this.config.pidFilePath), { recursive: true });
+        fs.writeFileSync(this.config.pidFilePath, String(proc.pid), { mode: 0o600 });
+      } catch { /* ignore — hub writes its own PID; this is best-effort */ }
+    }
+
     proc.stdout?.on("data", (data: Buffer) => {
       this.outputChannel.appendLine(data.toString());
     });
@@ -240,6 +284,11 @@ export class HubManager {
     });
 
     proc.on("exit", (code: number | null) => {
+      // M29: clean up PID file when the Hub process exits so stale-PID
+      // detection works correctly on the next activation.
+      if (this.config.pidFilePath) {
+        try { fs.unlinkSync(this.config.pidFilePath); } catch { /* already gone */ }
+      }
       if (!this.killRequested) {
         this.hubProcess = null;
         if (!this.restartAttempted) {
@@ -368,5 +417,38 @@ export class HubManager {
    */
   isHubRunning(): boolean {
     return this.hubProcess !== null && this.hubProcess.exitCode === null;
+  }
+
+  /**
+   * LCM-08 / requirements-hub.md §8: Read the PID from the Hub PID file.
+   * Returns null if the file does not exist or contains an invalid integer.
+   *
+   * @param pidFilePath - Absolute path to the hub.pid file
+   * @returns Process ID number, or null if absent/unreadable
+   */
+  readPidFile(pidFilePath: string): number | null {
+    try {
+      const contents = fs.readFileSync(pidFilePath, "utf8").trim();
+      const pid = parseInt(contents, 10);
+      return Number.isFinite(pid) && pid > 0 ? pid : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * requirements-hub.md §8 stale-PID detection: send signal 0 to check if
+   * a process with the given PID is alive.
+   *
+   * @param pid - Process ID to check
+   * @returns true if the process exists, false if it does not (ESRCH)
+   */
+  isProcessAlive(pid: number): boolean {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
