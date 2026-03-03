@@ -123,19 +123,37 @@ When working in TDD mode, every implementation module goes through these phases 
 │                                                                 │
 │  1. Write a manual testing guide for the completed module(s).   │
 │     Save it as: docs/testing-guide-<module-or-week>.md          │
-│     The guide MUST be specific enough that someone who has      │
-│     never seen the code can follow it with zero prior context.  │
-│     Required sections:                                          │
-│       a. Prerequisites (exact commands to build all packages)   │
-│       b. How to start / launch the component under test         │
-│          (no "press F5" without also giving the menu path and   │
-│          Command Palette alternative)                           │
-│       c. Step-by-step verification — one step per observable    │
-│          behaviour; each step states exactly what to run AND    │
-│          what to see                                            │
-│       d. Troubleshooting for the two or three most likely       │
-│          failure modes                                          │
-│       e. A summary checklist table at the end                   │
+│                                                                 │
+│     The guide MUST be written as if explaining to someone who   │
+│     has never seen the code. Follow this exact format:          │
+│                                                                 │
+│     a. Title and one-sentence purpose                           │
+│     b. "Part 1 — Get everything running" as numbered steps:     │
+│        Step 1: exact command to build                           │
+│        Step 2: exact action to start VS Code debug session      │
+│        Step 3: exact curl to confirm health + what to see       │
+│        Step 4: exact command to read token into $TOKEN          │
+│        Step 5: exact curl to initialize MCP session             │
+│                showing exact output format to look for          │
+│                and exact command to save SESSION=<uuid>         │
+│        Step 6: exact curl to send initialized notification      │
+│     c. "Part 2 — Test each tool" — one sub-section per tool:   │
+│        - Heading: "Tool N of M — `<tool.name>`"                 │
+│        - One line describing what the tool does                 │
+│        - "Setup:" describing any VS Code state needed           │
+│        - Numbered tests: "Test Na — description"                │
+│          Each test has:                                         │
+│          · "Run:" followed by the COMPLETE curl command         │
+│            (no placeholders except file paths)                  │
+│          · "What you should see in VS Code:" (if visual)        │
+│          · "What you should see in the response:" with the      │
+│            exact JSON string                                    │
+│     d. "Part 3 — Final check" with build, test, and Problems    │
+│        panel steps                                              │
+│                                                                 │
+│     NO abstract JSON snippets without curl commands.            │
+│     NO "..." or "<N>" notation in expected responses.            │
+│     NO assumed context — every step is self-contained.          │
 │                                                                 │
 │  2. STOP. Show the user the final implementation.               │
 │  3. Show the green test run.                                    │
