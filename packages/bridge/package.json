@@ -69,12 +69,6 @@
         "command": "accordo.bridge.showStatus",
         "title": "Accordo: Show Connection Status"
       }
-    ],
-    "mcpServerDefinitionProviders": [
-      {
-        "id": "accordo",
-        "label": "Accordo Hub"
-      }
     ]
   },
   "dependencies": {

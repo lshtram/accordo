@@ -72,8 +72,6 @@ let registry: ExtensionRegistry | null = null;
 let router: CommandRouter | null = null;
 let hubManager: HubManager | null = null;
 let connectionStatusEmitter: vscode.EventEmitter<boolean> | null = null;
-let mcpChangeEmitter: vscode.EventEmitter<void> | null = null;
-let mcpProviderRegistered = false;
 let currentHubToken = "";
 let currentHubPort = 0;
 
@@ -95,31 +93,13 @@ export async function activate(
   connectionStatusEmitter = new vscode.EventEmitter<boolean>();
   context.subscriptions.push(connectionStatusEmitter);
 
-  // MCP change emitter — fires when Hub port/token become available or rotate
-  // MCP-04: Re-register (update definition) when Hub restarts and token rotates
-  mcpChangeEmitter = new vscode.EventEmitter<void>();
-  context.subscriptions.push(mcpChangeEmitter);
-
   // ── Config ────────────────────────────────────────────────────────────────
 
   const cfg = vscode.workspace.getConfiguration("accordo");
   const port = cfg.get<number>("hub.port", 3000);
   const autoStart = cfg.get<boolean>("hub.autoStart", true);
   const executablePath = cfg.get<string>("hub.executablePath", "");
-
-  // MCP-01, MCP-02, MCP-03: Native Copilot MCP server definition provider.
-  // Registration is deferred to onHubReady so the token is guaranteed set
-  // on the very first provideMcpServerDefinitions query (no empty-list race).
   const wantCopilot = cfg.get<boolean>("agent.configureCopilot", true);
-  const hasLmApi = typeof vscode.lm?.registerMcpServerDefinitionProvider === "function";
-  outputChannel.appendLine(
-    `[accordo-bridge] MCP api check: configureCopilot=${wantCopilot}, vscode.lm=${!!vscode.lm}, registerMcpServerDefinitionProvider=${hasLmApi}`,
-  );
-  if (!wantCopilot || !hasLmApi) {
-    outputChannel.appendLine(
-      "[accordo-bridge] MCP provider WILL NOT be registered — check VS Code version and accordo.agent.configureCopilot setting",
-    );
-  }
 
   // Hub entry point: sibling package in the monorepo during development.
   // When packaged as a vsix the hub dist should be bundled alongside.
@@ -198,38 +178,14 @@ export async function activate(
     {
       onHubReady: async (readyPort) => {
         const secret = hubManager?.getSecret() ?? "";
-        // Update current credentials for the MCP provider (MCP-02, MCP-04)
         currentHubPort = readyPort;
         currentHubToken = hubManager?.getToken() ?? "";
 
-        // MCP-01: Register provider on first ready — token is already set so
-        // provideMcpServerDefinitions never returns [] on the initial query.
-        if (wantCopilot && hasLmApi) {
-          if (!mcpProviderRegistered) {
-            mcpProviderRegistered = true;
-            const mcp = mcpChangeEmitter;
-            const disposable = vscode.lm.registerMcpServerDefinitionProvider!("accordo", {
-              onDidChangeMcpServerDefinitions: mcp!.event,
-              provideMcpServerDefinitions: (_ct) => {
-                outputChannel.appendLine(
-                  `[accordo-bridge] provideMcpServerDefinitions called — token=${currentHubToken ? "present" : "missing"}, port=${currentHubPort}`,
-                );
-                if (!currentHubToken) return [];
-                return [
-                  new vscode.McpHttpServerDefinition(
-                    "Accordo",
-                    vscode.Uri.parse(`http://localhost:${currentHubPort}/mcp`),
-                    { Authorization: `Bearer ${currentHubToken}` },
-                  ),
-                ];
-              },
-            });
-            context.subscriptions.push(disposable);
-            outputChannel.appendLine("[accordo-bridge] MCP provider registered ✓");
-          } else {
-            // MCP-04: Hub restarted / token rotated — signal Copilot to re-fetch
-            mcpChangeEmitter?.fire();
-          }
+        // MCP-01 / MCP-02: Write Accordo to user-level mcp.servers setting.
+        // This is the native, settings-based mechanism Copilot reads on every
+        // window load — survives workspace switches, folder changes, reloads.
+        if (wantCopilot) {
+          await syncMcpSettings(outputChannel, currentHubPort, currentHubToken);
         }
 
         wsClient = new WsClient(readyPort, secret, {
@@ -302,9 +258,11 @@ export async function activate(
 
       onCredentialsRotated: async (newToken, newSecret) => {
         outputChannel.appendLine("[accordo-bridge] Credentials rotated — reconnecting");
-        // MCP-04: update provider token so Copilot gets fresh credentials
+        // MCP-04: update settings so Copilot picks up the new token
         currentHubToken = newToken;
-        mcpChangeEmitter?.fire();
+        if (wantCopilot) {
+          await syncMcpSettings(outputChannel, currentHubPort, newToken);
+        }
         if (wsClient) {
           wsClient.updateSecret(newSecret);
           await wsClient.disconnect();
@@ -387,10 +345,10 @@ export async function activate(
  * LCM-11: Close WS but do NOT kill the Hub process.
  */
 export async function deactivate(): Promise<void> {
+  // NOTE: do NOT remove mcp.servers.accordo — Hub stays running (LCM-11)
+  // and the setting must remain so Copilot can reach it from any workspace.
   currentHubToken = "";
   currentHubPort = 0;
-  mcpProviderRegistered = false;
-  mcpChangeEmitter = null; // already disposed via context.subscriptions
 
   statePublisher?.dispose();
   statePublisher = null;
@@ -409,4 +367,50 @@ export async function deactivate(): Promise<void> {
 
   connectionStatusEmitter?.dispose();
   connectionStatusEmitter = null;
+}
+
+// ── MCP settings sync ────────────────────────────────────────────────────────
+
+/**
+ * Write or update `mcp.servers.accordo` in the user-level settings (Global).
+ *
+ * This is the native mechanism Copilot reads for MCP servers — it is read from
+ * settings on every window/workspace load, so it survives folder switches,
+ * window reloads, and multi-root workspace changes with zero activation-timing
+ * dependencies.
+ *
+ * Uses `inspect()` to read only the Global-scoped value so workspace-level
+ * server entries are never accidentally promoted to user scope.
+ *
+ * MCP-01, MCP-02, MCP-04
+ */
+async function syncMcpSettings(
+  outputChannel: { appendLine(v: string): void },
+  port: number,
+  token: string,
+): Promise<void> {
+  try {
+    const mcpCfg = vscode.workspace.getConfiguration("mcp");
+    const inspection = mcpCfg.inspect<Record<string, Record<string, unknown>>>("servers");
+    const globalServers: Record<string, Record<string, unknown>> = {
+      ...(inspection?.globalValue ?? {}),
+    };
+
+    globalServers["accordo"] = {
+      type: "http",
+      url: `http://localhost:${port}/mcp`,
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    };
+
+    await mcpCfg.update("servers", globalServers, vscode.ConfigurationTarget.Global);
+    outputChannel.appendLine(
+      `[accordo-bridge] mcp.servers.accordo written to user settings (port=${port}) ✓`,
+    );
+  } catch (err: unknown) {
+    outputChannel.appendLine(
+      `[accordo-bridge] Failed to write mcp.servers: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
