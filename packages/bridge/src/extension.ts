@@ -73,6 +73,7 @@ let router: CommandRouter | null = null;
 let hubManager: HubManager | null = null;
 let connectionStatusEmitter: vscode.EventEmitter<boolean> | null = null;
 let mcpChangeEmitter: vscode.EventEmitter<void> | null = null;
+let mcpProviderRegistered = false;
 let currentHubToken = "";
 let currentHubPort = 0;
 
@@ -106,27 +107,18 @@ export async function activate(
   const autoStart = cfg.get<boolean>("hub.autoStart", true);
   const executablePath = cfg.get<string>("hub.executablePath", "");
 
-  // Register native MCP server definition provider for Copilot (MCP-01, MCP-02, MCP-03)
-  // vscode.lm is available from VS Code 1.100; skip silently on older builds (MCP-03)
-  if (
-    cfg.get<boolean>("accordo.agent.configureCopilot", true) &&
-    vscode.lm?.registerMcpServerDefinitionProvider
-  ) {
-    const mcp = mcpChangeEmitter;
-    const disposable = vscode.lm.registerMcpServerDefinitionProvider("accordo", {
-      onDidChangeMcpServerDefinitions: mcp.event,
-      provideMcpServerDefinitions: (_ct) => {
-        if (!currentHubToken) return [];
-        return [
-          new vscode.McpHttpServerDefinition(
-            "Accordo",
-            vscode.Uri.parse(`http://localhost:${currentHubPort}/mcp`),
-            { Authorization: `Bearer ${currentHubToken}` },
-          ),
-        ];
-      },
-    });
-    context.subscriptions.push(disposable);
+  // MCP-01, MCP-02, MCP-03: Native Copilot MCP server definition provider.
+  // Registration is deferred to onHubReady so the token is guaranteed set
+  // on the very first provideMcpServerDefinitions query (no empty-list race).
+  const wantCopilot = cfg.get<boolean>("agent.configureCopilot", true);
+  const hasLmApi = typeof vscode.lm?.registerMcpServerDefinitionProvider === "function";
+  outputChannel.appendLine(
+    `[accordo-bridge] MCP api check: configureCopilot=${wantCopilot}, vscode.lm=${!!vscode.lm}, registerMcpServerDefinitionProvider=${hasLmApi}`,
+  );
+  if (!wantCopilot || !hasLmApi) {
+    outputChannel.appendLine(
+      "[accordo-bridge] MCP provider WILL NOT be registered — check VS Code version and accordo.agent.configureCopilot setting",
+    );
   }
 
   // Hub entry point: sibling package in the monorepo during development.
@@ -209,7 +201,36 @@ export async function activate(
         // Update current credentials for the MCP provider (MCP-02, MCP-04)
         currentHubPort = readyPort;
         currentHubToken = hubManager?.getToken() ?? "";
-        mcpChangeEmitter?.fire();
+
+        // MCP-01: Register provider on first ready — token is already set so
+        // provideMcpServerDefinitions never returns [] on the initial query.
+        if (wantCopilot && hasLmApi) {
+          if (!mcpProviderRegistered) {
+            mcpProviderRegistered = true;
+            const mcp = mcpChangeEmitter;
+            const disposable = vscode.lm.registerMcpServerDefinitionProvider!("accordo", {
+              onDidChangeMcpServerDefinitions: mcp!.event,
+              provideMcpServerDefinitions: (_ct) => {
+                outputChannel.appendLine(
+                  `[accordo-bridge] provideMcpServerDefinitions called — token=${currentHubToken ? "present" : "missing"}, port=${currentHubPort}`,
+                );
+                if (!currentHubToken) return [];
+                return [
+                  new vscode.McpHttpServerDefinition(
+                    "Accordo",
+                    vscode.Uri.parse(`http://localhost:${currentHubPort}/mcp`),
+                    { Authorization: `Bearer ${currentHubToken}` },
+                  ),
+                ];
+              },
+            });
+            context.subscriptions.push(disposable);
+            outputChannel.appendLine("[accordo-bridge] MCP provider registered ✓");
+          } else {
+            // MCP-04: Hub restarted / token rotated — signal Copilot to re-fetch
+            mcpChangeEmitter?.fire();
+          }
+        }
 
         wsClient = new WsClient(readyPort, secret, {
           onConnected: () => {
@@ -368,6 +389,7 @@ export async function activate(
 export async function deactivate(): Promise<void> {
   currentHubToken = "";
   currentHubPort = 0;
+  mcpProviderRegistered = false;
   mcpChangeEmitter = null; // already disposed via context.subscriptions
 
   statePublisher?.dispose();
