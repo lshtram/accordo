@@ -245,6 +245,65 @@ describe("HubManager", () => {
       await manager.activate().catch(() => {});
       expect(secrets.get).toHaveBeenCalledWith("accordo.hubToken");
     });
+
+    it("LCM-01: activate() generates a non-empty secret when absent from SecretStorage", async () => {
+      const { manager } = makeManager({ secrets: {} });
+      vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      await manager.activate().catch(() => {});
+      expect(manager.getSecret()).toBeTruthy();
+    });
+
+    it("LCM-01: activate() generates a non-empty token when absent from SecretStorage", async () => {
+      const { manager } = makeManager({ secrets: {} });
+      vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      await manager.activate().catch(() => {});
+      expect(manager.getToken()).toBeTruthy();
+    });
+
+    it("LCM-01: activate() stores the generated secret to SecretStorage", async () => {
+      const { manager, secrets } = makeManager({ secrets: {} });
+      vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      await manager.activate().catch(() => {});
+      expect(secrets.store).toHaveBeenCalledWith("accordo.bridgeSecret", expect.any(String));
+    });
+
+    it("LCM-01: activate() stores the generated token to SecretStorage", async () => {
+      const { manager, secrets } = makeManager({ secrets: {} });
+      vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      await manager.activate().catch(() => {});
+      expect(secrets.store).toHaveBeenCalledWith("accordo.hubToken", expect.any(String));
+    });
+
+    it("LCM-01: activate() does not regenerate credentials when already stored", async () => {
+      const { manager, secrets } = makeManager({
+        secrets: { "accordo.bridgeSecret": "existing-secret", "accordo.hubToken": "existing-token" },
+      });
+      vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      await manager.activate().catch(() => {});
+      expect(secrets.store).not.toHaveBeenCalled();
+      expect(manager.getSecret()).toBe("existing-secret");
+      expect(manager.getToken()).toBe("existing-token");
+    });
+  });
+
+  // ── LCM-03: fires onHubReady when hub already running ────────────────────
+
+  describe("activate — LCM-03: fires onHubReady when hub is healthy", () => {
+    it("LCM-03: fires onHubReady when hub is already running (creds pre-stored)", async () => {
+      const { manager, events } = makeManager({
+        secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      });
+      vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+      await manager.activate();
+      expect(events.onHubReady).toHaveBeenCalledWith(3000, "t");
+    });
+
+    it("LCM-03: fires onHubReady when hub is healthy even with no pre-stored creds", async () => {
+      const { manager, events } = makeManager({ secrets: {} });
+      vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+      await manager.activate();
+      expect(events.onHubReady).toHaveBeenCalledWith(3000, manager.getToken());
+    });
   });
 
   // ── LCM-02: health check on activation ───────────────────────────────────

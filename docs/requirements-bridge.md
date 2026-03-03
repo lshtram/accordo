@@ -216,9 +216,9 @@ The Bridge constructs `ToolRegistration` from `ExtensionToolDefinition` by:
 
 | ID | Requirement |
 |---|---|
-| LCM-01 | On activation, read `ACCORDO_BRIDGE_SECRET` from `context.secrets.get('accordo.bridgeSecret')` and `ACCORDO_TOKEN` from `context.secrets.get('accordo.hubToken')`. Do NOT generate fresh values on every activation. |
+| LCM-01 | On activation, read `ACCORDO_BRIDGE_SECRET` from `context.secrets.get('accordo.bridgeSecret')` and `ACCORDO_TOKEN` from `context.secrets.get('accordo.hubToken')`. If either value is absent (first launch), generate a UUID for it and persist it immediately via `context.secrets.store()`. Bridge owns the credentials — Hub accepts whatever it receives at spawn time. |
 | LCM-02 | Check Hub liveness via `GET http://localhost:{port}/health` with 2s timeout. |
-| LCM-03 | If Hub is running and stored secret is valid (WS connect succeeds), reuse the existing Hub. |
+| LCM-03 | If Hub is healthy, fire `onHubReady` unconditionally with the stored credentials (Bridge always has credentials after LCM-01). If the secret turns out to be wrong, WS close code 4001 triggers LCM-04 recovery. |
 | LCM-04 | If WS upgrade is rejected with close code 4001 (Hub is running but has an unknown secret — it was externally restarted): Bridge does **not** know the Hub's current secret and cannot use `/bridge/reauth`. Generate new secret + token, persist to `context.secrets`, kill the existing Hub process, then spawn a new Hub. This is the only recovery path when Hub and Bridge secrets are out of sync. |
 | LCM-05 | Spawn uses `child_process.execFile` (NOT `exec` or `spawn` with shell:true). Node executable: `accordo.hub.executablePath` setting (machine-scoped) or `process.execPath` as fallback. Arguments: `[hubEntryPoint, '--port', port]`. No shell string parsing. |
 | LCM-06 | Spawn environment: `{ ACCORDO_BRIDGE_SECRET: secret, ACCORDO_TOKEN: token, ACCORDO_HUB_PORT: port }`. |
@@ -240,9 +240,8 @@ activate()
   │   │ yes                │ no
   │   │                    ├── autoStart? ──► no → show warning, return
   │   │                    │ yes
-  │   │                    ├── generate new secret + token
-  │   │                    ├── persist to context.secrets
   │   │                    ├── execFile(nodePath, [hubEntry, '--port', port], {env})
+  │   │                    │   (uses creds already ensured by LCM-01)
   │   │                    ├── poll /health (500ms × 20 = 10s max)
   │   │                    │   └── timeout → show error, return
   │   │

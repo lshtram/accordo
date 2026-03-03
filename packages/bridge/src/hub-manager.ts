@@ -97,21 +97,36 @@ export class HubManager {
 
   /**
    * LCM-01 + LCM-02 + LCM-03: Activate the Hub manager.
-   * Reads stored credentials, checks for existing Hub, spawns if needed.
+   * Reads stored credentials, generating and persisting them if absent (first
+   * launch). Bridge owns the credentials — Hub accepts whatever it receives
+   * at spawn time via env vars. Checks for an existing Hub and connects to it
+   * if healthy, otherwise spawns a new one.
    *
    * @returns Promise that resolves when Hub is ready or activation fails
    */
   async activate(): Promise<void> {
-    const secret = await this.secretStorage.get("accordo.bridgeSecret");
-    const token = await this.secretStorage.get("accordo.hubToken");
-    this.secret = secret ?? null;
-    this.token = token ?? null;
+    let secret = await this.secretStorage.get("accordo.bridgeSecret");
+    let token = await this.secretStorage.get("accordo.hubToken");
+
+    // First launch: generate fresh UUID credentials and persist them so that
+    // every restart reconnects to the same Hub without credential churn.
+    if (!secret) {
+      secret = crypto.randomUUID();
+      await this.secretStorage.store("accordo.bridgeSecret", secret);
+    }
+    if (!token) {
+      token = crypto.randomUUID();
+      await this.secretStorage.store("accordo.hubToken", token);
+    }
+
+    this.secret = secret;
+    this.token = token;
 
     const healthy = await this.checkHealth();
     if (healthy) {
-      if (this.token) {
-        this.events.onHubReady(this.port, this.token);
-      }
+      // Hub already running (e.g. persisted from a previous VS Code session).
+      // Connect with stored credentials; WS auth failure will trigger rotation.
+      this.events.onHubReady(this.port, this.token);
       return;
     }
 
@@ -119,12 +134,12 @@ export class HubManager {
       return;
     }
 
-    // Fire-and-forget: spawn hub then poll until ready
-    this.spawn(this.secret ?? "", this.token ?? "")
+    // Fire-and-forget: spawn Hub then poll until ready
+    this.spawn(this.secret, this.token)
       .then(() => this.pollHealth())
       .then((ready) => {
-        if (ready && this.token) {
-          this.events.onHubReady(this.port, this.token);
+        if (ready) {
+          this.events.onHubReady(this.port, this.token!);
         }
       })
       .catch((err: unknown) => {
