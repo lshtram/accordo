@@ -1,7 +1,7 @@
 # Accordo IDE — Phase 1 Architecture
 
-**Status:** APPROVED — incorporates all review corrections  
-**Date:** 2026-03-02  
+**Status:** APPROVED — incorporates all review corrections and M31–M34 stabilisation  
+**Date:** 2026-03-03  
 **Scope:** Phase 1 Control Plane MVP (Hub + Bridge + Editor Tools)  
 **Supersedes:** VSCODE-OPENSPACE-ARCHITECTURE.md §§1–5, 11, 13 (for Phase 1 scope)
 
@@ -679,7 +679,7 @@ Hub sets the `timeout` field on every `invoke` message. Bridge enforces it local
 
 ### 8.3 Idempotency
 
-Tools marked `idempotent: true` (e.g., `editor.open`, `editor.focus`) can be safely retried by the Hub if the first invocation timed out but the Bridge may have received it. Hub retries once after timeout for idempotent tools.
+Tools marked `idempotent: true` (e.g., `editor.open`, `editor.focus`) can be safely retried by the Hub if the first invocation timed out but the Bridge may have received it. Hub retries once after timeout for idempotent tools. The audit log records both the original timeout and the retry outcome.
 
 ### 8.4 Concurrent Invocations
 
@@ -698,6 +698,30 @@ Multiple agents may connect to the same Hub simultaneously (swarm scenario) and 
 - If the queue is full (64 waiting), Hub returns MCP error `-32004` (`"Server busy — invocation queue full"`) immediately.
 - Bridge processes invocations concurrently (each handler is `async`); Bridge imposes no serialisation.
 - The 16-slot limit exists to protect the VSCode extension host from saturation, not to limit per-session parallelism. A single highly-parallel agent and a swarm of single-threaded agents are treated identically.
+
+### 8.5 WebSocket Flood Protection
+
+The Hub enforces a per-connection message rate limit on the Bridge WebSocket. Implementation uses a sliding 1-second window counter:
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `maxMessagesPerSecond` | 100 | Configurable via `BridgeServerOptions` |
+
+**Behaviour:**
+- Each incoming message increments a counter for the current 1-second window.
+- If the counter exceeds `maxMessagesPerSecond`, the message is silently dropped (not processed).
+- The window resets on the first message received after the previous window expires.
+- The WebSocket connection is **never closed** due to rate limiting — messages are simply discarded.
+
+### 8.6 WebSocket Message Size Limit
+
+The Hub sets `maxPayload` on the `WebSocketServer` constructor to reject oversized messages at the protocol level:
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `maxPayload` | 1 MB (1048576 bytes) | Configurable via `BridgeServerOptions` |
+
+Messages exceeding this limit cause `ws` to close the connection with a protocol error. The Bridge should keep state patches well under this limit via debouncing and incremental updates.
 
 ---
 

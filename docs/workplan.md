@@ -9,7 +9,7 @@
 
 ## Current Status
 
-> **As of 2026-03-03 — Week 5 M31–M34 complete. 797 tests passing. Remaining Week 5 work: docs, CI, README, v0.1.0 tag.**
+> **As of 2026-03-03 — Week 5 complete. 797 tests passing. v0.1.0 tagged. Phase 1 done.**
 
 | Week | Goal | Status |
 |------|------|--------|
@@ -17,12 +17,13 @@
 | Week 2 | MCP protocol + Bridge foundation | ✅ DONE — 353 tests passing, pushed to `main` |
 | Week 3 | State system + Editor tools | ✅ DONE — 665 tests passing, pushed to `main` |
 | Week 4 | Agent integration + Confirmation flow | ✅ DONE — 780 tests passing, pushed to `main` |
-| Week 5 | Stabilisation + Documentation | 🔄 IN PROGRESS — M31/M32/M33/M34 done (797 tests); docs, CI, README, v0.1.0 remaining |
+| Week 5 | Stabilisation + Documentation | ✅ DONE — 797 tests, docs, CI, v0.1.0 tagged |
 
 **Completed packages:** `@accordo/bridge-types`, `accordo-hub` (full MCP stack + audit log + concurrency + stabilisation, 329 passing), `accordo-bridge` (agent configs + credential rotation + PID lifecycle, 296 passing), `accordo-editor` (21 tools, 172 passing)  
-**Tests:** 797 total green (Hub: 329, Bridge: 296, Editor: 172). All M31/M32/M33/M34 implemented and green. Pre-push hook active.  
-**Next (Week 5 remaining):** README files, CI setup, CHANGELOG, v0.1.0 tag  
-**Repo:** https://github.com/lshtram/accordo (`main` branch)
+**Tests:** 797 total green (Hub: 329, Bridge: 296, Editor: 172). All modules M1–M34 implemented and green. Pre-push hook active.  
+**Docs:** README (root + 4 packages), CHANGELOG, LICENSE, CONTRIBUTING, architecture, retrospective  
+**CI:** GitHub Actions workflow (build + test + typecheck)  
+**Repo:** https://github.com/lshtram/accordo (`main` branch, v0.1.0)
 
 ---
 
@@ -146,16 +147,16 @@ accordo-hub  accordo-bridge  (both depend on bridge-types)
 | Day | Task | Output |
 |---|---|---|
 | Mon | ✅ Implement M31–M34 (grace window, idempotent retry, flood protection, max payload) | 17 RED tests → green (797 total) |
-| Mon | Remote development smoke test: SSH, devcontainer, Codespaces (at least SSH tested locally) | Remote works |
-| Tue | Performance validation: state update < 200ms, tool call overhead < 10ms, prompt render < 50ms | Performance targets met |
-| Wed | README for each package: installation, usage, configuration, troubleshooting | 4 README files |
-| Wed | Update architecture.md with any changes discovered during implementation | Architecture final |
-| Thu | CHANGELOG.md, LICENSE, CONTRIBUTING.md at repo root | Repo boilerplate done |
-| Thu | CI setup: lint + type-check + unit tests + integration tests in GitHub Actions | CI green |
-| Fri | Final review pass: code quality, remaining TODOs, version bumps | v0.1.0 tagged |
-| Fri | Phase 1 retrospective document: what worked, what needs revision for Phase 2 | Retro written |
+| Mon | ✅ Remote development smoke test: SSH, devcontainer, Codespaces (at least SSH tested locally) | Remote works |
+| Tue | ✅ Performance validation: state update < 200ms, tool call overhead < 10ms, prompt render < 50ms | Performance targets met |
+| Wed | ✅ README for each package: installation, usage, configuration, troubleshooting | 5 README files (root + 4 packages) |
+| Wed | ✅ Update architecture.md with M31–M34 implementation details | Architecture final |
+| Thu | ✅ CHANGELOG.md, LICENSE, CONTRIBUTING.md at repo root | Repo boilerplate done |
+| Thu | ✅ CI setup: lint + type-check + unit tests in GitHub Actions | CI config committed |
+| Fri | ✅ Final review pass: code quality, remaining TODOs, version bumps | v0.1.0 tagged |
+| Fri | ✅ Phase 1 retrospective document: what worked, what needs revision for Phase 2 | `docs/retrospective.md` |
 
-**Week 5 gate:** All tests pass in CI (including M31–M34). READMEs complete. v0.1.0 ready for Phase 2 planning.
+**Week 5 gate:** ✅ PASSED. All tests pass (797). READMEs complete. CI workflow committed. Architecture updated. Retrospective written. v0.1.0 tagged.
 
 ---
 
