@@ -9,19 +9,19 @@
 
 ## Current Status
 
-> **As of 2026-03-02 — Week 3 in progress. Module 15 done. End-to-end stack verified. Requirements expanded to 24 tools (was 16). Starting module 16.**
+> **As of 2026-03-02 — Week 3 complete. 21 editor tools delivered (workspace tools removed after live test — redundant with bash). 665 tests passing. Strategy A e2e suite added (28 tests). Starting Week 4.**
 
 | Week | Goal | Status |
 |------|------|--------|
 | Week 1 | Hub core modules + shared types | ✅ DONE — 156 tests passing, pushed to `main` |
 | Week 2 | MCP protocol + Bridge foundation | ✅ DONE — 353 tests passing, pushed to `main` |
-| Week 3 | State system + Editor tools | 🔄 IN PROGRESS — 445 tests, module 15 ✅, infra ✅, start module 16 |
-| Week 4 | Agent integration + Confirmation flow | ⬜ Not started |
+| Week 3 | State system + Editor tools | ✅ DONE — 665 tests passing, pushed to `main` |
+| Week 4 | Agent integration + Confirmation flow | 🔄 IN PROGRESS — start Module 21 |
 | Week 5 | Stabilisation + Documentation | ⬜ Not started |
 
-**Completed packages:** `@accordo/bridge-types`, `accordo-hub` (14 modules incl. `/state` endpoint), `accordo-bridge` (6 modules incl. `extension.ts`)  
-**Tests:** 445 total (Hub: 220, Bridge: 225). End-to-end stack verified: Bridge connects, state flows, `/instructions` and `/state` serve live IDE state.  
-**Next module (Week 3, #16):** Editor view tools — `open`, `close`, `scroll`, `reveal`, `focus`, `split` (requirements-editor.md §4.1–§4.3, §4.6–§4.8)  
+**Completed packages:** `@accordo/bridge-types`, `accordo-hub` (full MCP stack + Strategy A e2e, 261 tests), `accordo-bridge` (6 modules, 232 tests), `accordo-editor` (21 tools: 11 editor + 5 terminal + 5 layout, 172 tests)  
+**Tests:** 665 total (Hub: 261, Bridge: 232, Editor: 172). All green. Pre-push hook active.  
+**Next module (Week 4, #21):** MCP session management (requirements-hub.md §2.1 session, §5.5)  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)
 
 ---
@@ -93,17 +93,17 @@ accordo-hub  accordo-bridge  (both depend on bridge-types)
 | — | `BridgeServer` WS handler (Hub) | requirements-hub.md §2.5, §3 | ✅ DONE — fully wired, e2e verified |
 | — | `extension.ts` entry point (Bridge) | requirements-bridge.md §1, §7 | ✅ DONE — all 5 modules wired |
 | — | Hub infra: token/PID file, `/state` endpoint | requirements-hub.md §4.2, §2.3 | ✅ DONE — deployed |
-| 16 | Editor view tools: `open`, `close`, `scroll`, `reveal`, `focus`, `split` | requirements-editor.md §4.1–§4.3, §4.6–§4.8 | A→A2→B→B2→C→D→E→F |
-| 17 | Editor decoration + save: `highlight`, `clearHighlights`, `save`, `saveAll`, `format` | requirements-editor.md §4.4–§4.5, §4.17–§4.19 | A→A2→B→B2→C→D→E→F |
-| 18 | Terminal tools: `open`, `run`, `focus`, `list`, `close` + Terminal ID Map | requirements-editor.md §4.9–§4.11, §4.21–§4.22, §5.3 | A→A2→B→B2→C→D→E→F |
-| 19 | Workspace tools: `getTree`, `search`; Diagnostics: `list` | requirements-editor.md §4.12–§4.13, §4.20 | A→A2→B→B2→C→D→E→F |
-| 20 | Layout tools: `panel.toggle`, `zen`, `fullscreen`, `joinGroups`, `evenGroups` | requirements-editor.md §4.14–§4.16, §4.23–§4.24 | A→A2→B→B2→C→D→E→F |
+| 16 | Editor view tools: `open`, `close`, `scroll`, `reveal`, `focus`, `split` | requirements-editor.md §4.1–§4.3, §4.6–§4.8 | ✅ DONE |
+| 17 | Editor decoration + save: `highlight`, `clearHighlights`, `save`, `saveAll`, `format` | requirements-editor.md §4.4–§4.5, §4.17–§4.19 | ✅ DONE |
+| 18 | Terminal tools: `open`, `run`, `focus`, `list`, `close` + Terminal ID Map | requirements-editor.md §4.9–§4.11, §4.21–§4.22, §5.3 | ✅ DONE |
+| 19 | ~~Workspace tools: `getTree`, `search`; Diagnostics: `list`~~ | ~~requirements-editor.md §4.12–§4.13, §4.20~~ | ❌ REMOVED — redundant with agent bash tools |
+| 20 | Layout tools: `panel.toggle`, `zen`, `fullscreen`, `joinGroups`, `evenGroups` | requirements-editor.md §4.14–§4.16, §4.23–§4.24 | ✅ DONE |
 
-**Note:** Module 18 (`terminal.run`) MUST include a confirmation dialog stub (hardcoded `destructive` danger level) — full confirmation policy moves to Week 4 but the guard must exist from first availability.
+**Note:** Module 18 (`terminal.run`) confirmation dialog guard was prototyped then removed — `showWarningMessage` blocked the async handler waiting for human click. Full confirmation policy moves to Week 4 (Module 23).
 
-**Note:** Tool set expanded from 16 to 24 tools (added: `editor.save`, `editor.saveAll`, `editor.format`, `diagnostics.list`, `terminal.list`, `terminal.close`, `layout.joinGroups`, `layout.evenGroups`) — all specified in requirements-editor.md §4.17–§4.24.
+**Note:** Tool set expanded from 16 to 21 tools. Module 19 workspace tools (`getTree`, `search`, `diagnostics.list`) were removed after live MCP testing — those operations are redundant with agent bash tools. Final set: 11 `editor.*` + 5 `terminal.*` + 5 `layout/panel.*`.
 
-**Week 3 gate:** 24 tools registered, callable through MCP, returning correct results. State updates flow continuously. `/instructions` reflects real workspace state.
+**Week 3 gate:** ✅ PASSED — 21 tools registered and callable through MCP. 665 tests green (editor: 172, bridge: 232, hub: 261). Strategy A e2e suite (28 tests) added. Pre-push hook active.
 
 ---
 
@@ -224,6 +224,37 @@ accordo-hub  accordo-bridge  (both depend on bridge-types)
 
 ---
 
+### Week 3 — State System & Editor Tools (completed 2026-03-02)
+
+**Goal:** Real IDE state flows. Editor tools are implemented and callable.
+
+**Actual result:** 665 tests passing across three packages (Hub: 261, Bridge: 232, Editor: 172). 21 tools registered and callable through MCP. Module 19 workspace tools removed after live MCP testing (redundant with agent bash tools). `terminal.run` blocking dialog removed (was preventing async response). Strategy A e2e test suite added (28 tests, `bridge-e2e.test.ts`). Pre-push git hook wired.
+
+| # | Module | Requirements Source | Tests | Status |
+|---|---|---|---|---|
+| 15 | `state-publisher.ts` (Bridge) | requirements-bridge.md §6 | 89 | ✅ |
+| — | `BridgeServer` WS handler (Hub) | requirements-hub.md §2.5, §3 | via hub suite | ✅ |
+| — | `extension.ts` entry point (Bridge) | requirements-bridge.md §1, §7 | via bridge suite | ✅ |
+| 16 | Editor view tools: `open`, `close`, `scroll`, `reveal`, `focus`, `split` | requirements-editor.md §4.1–§4.3, §4.6–§4.8 | part of 172 | ✅ |
+| 17 | Editor decoration + save: `highlight`, `clearHighlights`, `save`, `saveAll`, `format` | requirements-editor.md §4.4–§4.5, §4.17–§4.19 | part of 172 | ✅ |
+| 18 | Terminal tools: `open`, `run`, `focus`, `list`, `close` | requirements-editor.md §4.9–§4.11, §4.21–§4.22, §5.3 | part of 172 | ✅ |
+| 19 | ~~Workspace tools: `getTree`, `search`; Diagnostics: `list`~~ | removed | 0 | ❌ removed |
+| 20 | Layout tools: `panel.toggle`, `zen`, `fullscreen`, `joinGroups`, `evenGroups` | requirements-editor.md §4.14–§4.16, §4.23–§4.24 | part of 172 | ✅ |
+| — | Strategy A e2e suite (`bridge-e2e.test.ts`) | architecture.md | 28 | ✅ |
+
+**Week 3 gate verdict:** ✅ Pass. 21 tools registered, callable, returning correct results. 665 tests green. Pre-push hook active. All stale review docs archived to `docs/archive/`.
+
+**Key decisions and fixes during implementation:**
+- `terminal.run` blocking confirmation dialog removed — `showWarningMessage` blocked the async MCP response handler until human clicked OK; full confirmation flow design deferred to Week 4 Module 23
+- `terminal.close` extended with name-based fallback — untracked terminals (no ID in map) can now be closed by name
+- Module 19 workspace tools removed after live MCP session — `getTree`, `search`, `diagnostics.list` are all reachable by agents via bash; adding them as MCP tools adds noise with no benefit
+- `toolCallTimeout` made injectable in `McpHandlerDeps` and `HubServerOptions` — enables sub-second timeouts in unit tests; prevents 30 s waits
+- Strategy A e2e model adopted: `StubBridge` (real `ws` client) + `McpSession` (real `fetch` wrapper) — tests full HTTP+WS+JSON-RPC stack without VS Code
+
+**Review archived:** `docs/archive/review.md`, `docs/archive/testing-guide-bridge.md`, `docs/archive/testing-guide-editor.md`, `docs/archive/diag_arch_v3.1.md`, `docs/archive/diag_arch_v4.0.md` — all superseded by current state.
+
+---
+
 ## 7. Phase 2 Readiness Criteria
 
 Phase 2 (Slidev presentation modality) can begin only when:
@@ -295,7 +326,6 @@ accordo-ide/
 │       │   ├── tools/
 │       │   │   ├── editor.ts
 │       │   │   ├── terminal.ts
-│       │   │   ├── workspace.ts
 │       │   │   └── layout.ts
 │       │   └── util.ts
 │       ├── package.json

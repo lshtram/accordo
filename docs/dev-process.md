@@ -114,12 +114,12 @@ When working in TDD mode, every implementation module goes through these phases 
 │       - Security middleware is first on every endpoint          │
 │  6. If ANY check fails → fix the code and return to Phase D     │
 │     (run tests again after the fix).                            │
-│  7. Only when ALL checks pass → proceed to Phase E.             │
+│  7. Only when ALL checks pass → proceed to Phase D3.            │
 │                                                                 │
 │  Deliverable: Code review checklist fully signed off.           │
 │               Green tests + clean lint + zero type errors.      │
 ├─────────────────────────────────────────────────────────────────┤
-│  Phase E — User Approval                                        │
+│  Phase D3 — Write Testing Guide                                 │
 │                                                                 │
 │  1. Write a manual testing guide for the completed module(s).   │
 │     Save it as: docs/testing-guide-<module-or-week>.md          │
@@ -148,21 +148,26 @@ When working in TDD mode, every implementation module goes through these phases 
 │          · "What you should see in VS Code:" (if visual)        │
 │          · "What you should see in the response:" with the      │
 │            exact JSON string                                    │
-│     d. "Part 3 — Final check" with build, test, and Problems    │
+│     d. "Part 3 — Final check" with build, test, and Problems   │
 │        panel steps                                              │
 │                                                                 │
 │     NO abstract JSON snippets without curl commands.            │
-│     NO "..." or "<N>" notation in expected responses.            │
+│     NO "..." or "<N>" notation in expected responses.           │
 │     NO assumed context — every step is self-contained.          │
 │                                                                 │
-│  2. STOP. Show the user the final implementation.               │
-│  3. Show the green test run.                                    │
-│  4. Show the testing guide (or link to it).                     │
-│  5. Summarize what was built and how it maps to requirements.   │
-│  6. Wait for explicit user approval before proceeding to F.     │
+│  Deliverable: Testing guide committed to docs/. Ready to        │
+│               present to user for approval in Phase E.          │
+├─────────────────────────────────────────────────────────────────┤
+│  Phase E — User Approval                                        │
 │                                                                 │
-│  Deliverable: Testing guide written. User approves the          │
-│               implementation. No proceeding to F without both.  │
+│  1. STOP. Show the user the final implementation.               │
+│  2. Show the green test run.                                    │
+│  3. Show the testing guide from D3 (or link to it).             │
+│  4. Summarize what was built and how it maps to requirements.   │
+│  5. Wait for explicit user approval before proceeding to F.     │
+│                                                                 │
+│  Deliverable: User approves the implementation and the testing  │
+│               guide. No proceeding to F without approval.       │
 ├─────────────────────────────────────────────────────────────────┤
 │  Phase F — Commit & Complete Cleanup                            │
 │                                                                 │
@@ -213,7 +218,8 @@ Phases may be **batched across related modules** within the same package to redu
 - **Phase A + A2** for all modules in a package — define all interfaces, then explain all of them in one checkpoint.
 - **Phase B + B2** for all modules in a package — write all failing tests, then demonstrate all in one checkpoint.
 - **Phase D2** for all modules in a package — run the code review checklist across the full batch at once.
-- **Phase E** for all modules in a package — show all green implementations in one approval round.
+- **Phase D3** for all modules in a package — write all testing guides in one batch.
+- **Phase E** for all modules in a package — present all results in one approval round.
 - **Phase F** may produce one commit per module or one commit per batch, at the implementer's discretion.
 
 **Not allowed:**
@@ -224,7 +230,7 @@ Phases may be **batched across related modules** within the same package to redu
 
 ## 3. Rules for Agents (TDD Mode)
 
-1. **Never skip phases.** Every module goes through A → A2 → B → B2 → C → D → D2 → E → F.
+1. **Never skip phases.** Every module goes through A → A2 → B → B2 → C → D → D2 → D3 → E → F.
 2. **Never write implementation before tests.** Phase C cannot start until Phase B2 is complete.
 3. **Every requirement gets a test.** If requirements-hub.md says "reject if Origin present and not localhost", there must be a test named `"validates Origin: rejects non-localhost"`.
 4. **Tests reference requirement IDs.** Test descriptions include the requirement ID when one exists (e.g. `CONC-01`, `WS-05`, `CFG-06`).
@@ -238,7 +244,7 @@ Phases may be **batched across related modules** within the same package to redu
 12. **Step-by-step spec means step-by-step tests.** Any spec that describes a multi-step conditional process MUST have one dedicated test per step. Do not combine steps in one assertion.
 13. **Scan all secondary behaviors.** Every module's test file MUST cover: all error paths, all callback/event registration methods, all shutdown/cleanup methods, all "no-op when disconnected" guarantees.
 14. **Phase F doc maintenance is mandatory.** After every week completes: (a) update workplan.md §Current Status, (b) move the week to the DONE section, (c) archive resolved review documents, (d) verify cross-document coherence, (e) commit and push.
-15. **Phase E requires a testing guide.** Before presenting Phase E to the user, write `docs/testing-guide-<module-or-week>.md` following the template in Phase E above. No user approval without a testing guide. The guide must be specific enough to run without any prior knowledge of the codebase.
+15. **Phase D3 requires a testing guide.** Before presenting Phase E to the user, write `docs/testing-guide-<module-or-week>.md` following the template in Phase D3 above. No user approval (Phase E) without a testing guide committed in D3. The guide must be specific enough to run without any prior knowledge of the codebase.
 
 ---
 
@@ -332,8 +338,9 @@ Every module is considered done when it has completed the full TDD cycle (Phases
 5. **Implementation complete** — Code compiles with zero TypeScript errors (Phase C)
 6. **All tests pass** — No failures, no ESLint warnings/errors (Phase D)
 7. **Code review passed** — Full checklist in `docs/coding-guidelines.md §3` signed off; zero `any`, zero `console.log`, all architectural constraints met (Phase D2)
-8. **User approved implementation** — Testing guide written (`docs/testing-guide-*.md`), user acknowledged the final result (Phase E)
-9. **Committed** — Conventional commit, no dead code, test suite still green (Phase F)
+8. **Testing guide written** — Manual testing doc committed to `docs/testing-guide-*.md` (Phase D3)
+9. **User approved implementation** — User acknowledged the implementation and testing guide (Phase E)
+10. **Committed** — Conventional commit, no dead code, test suite still green (Phase F)
 
 Additional per-task checks:
 - If interface change: `@accordo/bridge-types` updated first
