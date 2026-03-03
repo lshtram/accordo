@@ -32,6 +32,8 @@ export interface HubServerOptions {
   maxConcurrent?: number;
   /** Max queue depth. Default: 64 */
   maxQueueDepth?: number;
+  /** Tool-call invocation timeout in ms. Default: 30 000. */
+  toolCallTimeout?: number;
   /** Audit log file path */
   auditFile?: string;
   /** Log level */
@@ -59,6 +61,7 @@ export class HubServer {
     this.mcpHandler = new McpHandler({
       toolRegistry: this.toolRegistry,
       bridgeServer: this.bridgeServer,
+      toolCallTimeout: options.toolCallTimeout,
     });
 
     // Wire Bridge callbacks to state cache and tool registry

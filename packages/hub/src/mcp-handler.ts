@@ -46,16 +46,23 @@ export interface McpHandlerDeps {
   toolRegistry: ToolRegistry;
   /** Bridge server for routing tools/call invocations */
   bridgeServer: BridgeServer;
+  /**
+   * Timeout in ms for a single tool-call invocation.
+   * Default: 30 000. Override in tests to avoid 30-second waits.
+   */
+  toolCallTimeout?: number;
 }
 
 export class McpHandler {
   private sessions = new Map<string, Session>();
   private toolRegistry: ToolRegistry;
   private bridgeServer: BridgeServer;
+  private toolCallTimeout: number;
 
   constructor(deps: McpHandlerDeps) {
     this.toolRegistry = deps.toolRegistry;
     this.bridgeServer = deps.bridgeServer;
+    this.toolCallTimeout = deps.toolCallTimeout ?? 30_000;
   }
 
   /**
@@ -182,7 +189,7 @@ export class McpHandler {
 
     // Invoke via bridge server (handles connection + concurrency checks)
     try {
-      const result = await this.bridgeServer.invoke(toolName, toolArgs, 30_000);
+      const result = await this.bridgeServer.invoke(toolName, toolArgs, this.toolCallTimeout);
       if (!result.success) {
         // Tool handler returned an error — surface as MCP tool error so agents
         // can read the message and adapt. isError:true signals the LLM that the
