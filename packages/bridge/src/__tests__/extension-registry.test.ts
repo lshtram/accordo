@@ -140,6 +140,21 @@ describe("ExtensionRegistry", () => {
       const tools = registry.getAllTools();
       expect(JSON.stringify(tools)).not.toContain("handler");
     });
+
+    it("REG-04: group field is included in getAllTools() wire format", () => {
+      // arch §3.7: group is forwarded to Hub for progressive disclosure
+      const tool = makeTool("extA:grouped", { group: "editor" } as Partial<ExtensionToolDefinition>);
+      registry.registerTools("extA", [tool]);
+      const wire = registry.getAllTools();
+      expect(wire).toHaveLength(1);
+      expect(wire[0]).toHaveProperty("group", "editor");
+    });
+
+    it("REG-04: group field is omitted from wire format when not set", () => {
+      registry.registerTools("extA", [makeTool("extA:ungrouped")]);
+      const wire = registry.getAllTools();
+      expect(wire[0]).not.toHaveProperty("group");
+    });
   });
 
   // ── getTool ───────────────────────────────────────────────────────────────

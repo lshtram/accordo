@@ -24,12 +24,15 @@
         "--extensionDevelopmentPath=${workspaceFolder}/packages/bridge",
         // accordo-editor depends on accordo-bridge; load both so tools register
         "--extensionDevelopmentPath=${workspaceFolder}/packages/editor",
+        // accordo-comments registers 6 MCP comment tools via bridge
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/comments",
         // Open this repo in the EDH so it has a real workspace to report
         "${workspaceFolder}"
       ],
       "outFiles": [
         "${workspaceFolder}/packages/bridge/dist/**/*.js",
-        "${workspaceFolder}/packages/editor/dist/**/*.js"
+        "${workspaceFolder}/packages/editor/dist/**/*.js",
+        "${workspaceFolder}/packages/comments/dist/**/*.js"
       ],
       "preLaunchTask": "build-all",
       "sourceMaps": true

@@ -423,6 +423,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   // ── Module 16 ──────────────────────────────────────────────────────────────
   {
     name: "accordo.editor.open",
+    group: "editor",
     description: "Open a file in the editor, optionally scrolling to a line/column.",
     inputSchema: {
       type: "object",
@@ -439,6 +440,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.editor.close",
+    group: "editor",
     description: "Close a specific editor tab, or the active editor if no path given.",
     inputSchema: {
       type: "object",
@@ -453,6 +455,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.editor.scroll",
+    group: "editor",
     description: "Scroll the active editor viewport up or down by line or page.",
     inputSchema: {
       type: "object",
@@ -468,6 +471,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.editor.split",
+    group: "editor",
     description: "Split the editor pane right or down.",
     inputSchema: {
       type: "object",
@@ -482,6 +486,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.editor.focus",
+    group: "editor",
     description: "Focus a specific editor group by 1-based group number.",
     inputSchema: {
       type: "object",
@@ -496,6 +501,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.editor.reveal",
+    group: "editor",
     description: "Reveal a file in the Explorer sidebar without opening it.",
     inputSchema: {
       type: "object",
@@ -511,6 +517,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   // ── Module 17 ──────────────────────────────────────────────────────────────
   {
     name: "accordo.editor.highlight",
+    group: "editor",
     description: "Apply a colored background highlight to a range of lines.",
     inputSchema: {
       type: "object",
@@ -528,6 +535,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.editor.clearHighlights",
+    group: "editor",
     description: "Remove highlight decorations created by accordo.editor.highlight.",
     inputSchema: {
       type: "object",
@@ -542,6 +550,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.editor.save",
+    group: "editor",
     description: "Save a specific file, or the active editor if no path given.",
     inputSchema: {
       type: "object",
@@ -556,6 +565,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.editor.saveAll",
+    group: "editor",
     description: "Save all modified (unsaved) editors.",
     inputSchema: {
       type: "object",
@@ -568,6 +578,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.editor.format",
+    group: "editor",
     description: "Format the active document or a specific file using the configured formatter.",
     inputSchema: {
       type: "object",
@@ -579,5 +590,18 @@ export const editorTools: ExtensionToolDefinition[] = [
     dangerLevel: "safe",
     idempotent: true,
     handler: wrapHandler("accordo.editor.format", formatHandler),
+  },
+  {
+    name: "accordo.editor.discover",
+    description: "Returns full schemas for all 11 editor tools: open, close, scroll, split, focus, reveal, highlight, clearHighlights, save, saveAll, format.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+    dangerLevel: "safe",
+    idempotent: true,
+    handler: async () => ({
+      group: "editor",
+      tools: editorTools
+        .filter(t => t.group === "editor")
+        .map(({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation }) => ({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation })),
+    }),
   },
 ];

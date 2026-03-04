@@ -102,6 +102,7 @@ export class ExtensionRegistry {
         dangerLevel: rest.dangerLevel,
         requiresConfirmation: rest.requiresConfirmation ?? false,
         idempotent: rest.idempotent ?? false,
+        ...(rest.group !== undefined && { group: rest.group }),
       };
       this.tools.set(tool.name, wireReg);
       this.handlers.set(tool.name, handler);

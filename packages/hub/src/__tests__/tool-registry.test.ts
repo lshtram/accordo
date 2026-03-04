@@ -148,6 +148,30 @@ describe("ToolRegistry", () => {
       const listNames = registry.list().map((t) => t.name);
       expect(mcpNames).toEqual(listNames);
     });
+
+    it("§5.1: toMcpTools strips group field from output", () => {
+      // req-hub §5.1 + arch §3.7: group is an internal field, must not leak to MCP
+      const grouped = makeTool("accordo.editor.open", { group: "editor" });
+      registry.register([grouped]);
+      const mcpTools = registry.toMcpTools();
+      expect(mcpTools).toHaveLength(1);
+      expect(mcpTools[0]).not.toHaveProperty("group");
+      expect(mcpTools[0]).toHaveProperty("name", "accordo.editor.open");
+    });
+
+    it("§5.1: toMcpTools includes grouped tools (MCP tools/list is unfiltered)", () => {
+      // All tools must appear in tools/list regardless of group — filtering is prompt-engine's job
+      const tools = [
+        makeTool("accordo.editor.discover"),
+        makeTool("accordo.editor.open", { group: "editor" }),
+        makeTool("accordo.editor.close", { group: "editor" }),
+      ];
+      registry.register(tools);
+      const mcpNames = registry.toMcpTools().map(t => t.name);
+      expect(mcpNames).toContain("accordo.editor.discover");
+      expect(mcpNames).toContain("accordo.editor.open");
+      expect(mcpNames).toContain("accordo.editor.close");
+    });
   });
 
   // ── size ──────────────────────────────────────────────────────────────────

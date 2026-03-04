@@ -45,6 +45,7 @@ export class ToolRegistry {
   /**
    * Convert the registry to MCP tools/list response format.
    * Only includes name, description, and inputSchema.
+   * Internal fields (dangerLevel, group, etc.) are stripped.
    */
   toMcpTools(): McpTool[] {
     return this.list().map(({ name, description, inputSchema }) => ({

@@ -222,6 +222,7 @@ export async function terminalCloseHandler(
 export const terminalTools: ExtensionToolDefinition[] = [
   {
     name: "accordo.terminal.open",
+    group: "terminal",
     description: "Create and show a new terminal instance. Returns a stable accordo terminal ID.",
     inputSchema: {
       type: "object",
@@ -237,6 +238,7 @@ export const terminalTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.terminal.run",
+    group: "terminal",
     description: "Execute a shell command in a terminal. Requires confirmation — this is destructive.",
     inputSchema: {
       type: "object",
@@ -252,6 +254,7 @@ export const terminalTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.terminal.focus",
+    group: "terminal",
     description: "Focus the terminal panel (make it visible and active).",
     inputSchema: {
       type: "object",
@@ -264,6 +267,7 @@ export const terminalTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.terminal.list",
+    group: "terminal",
     description: "List all currently open terminal instances with their stable accordo IDs.",
     inputSchema: {
       type: "object",
@@ -276,6 +280,7 @@ export const terminalTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.terminal.close",
+    group: "terminal",
     description: "Close a specific terminal by its stable accordo ID. Untracked terminals (not opened via accordo) can be closed by name.",
     inputSchema: {
       type: "object",
@@ -288,5 +293,18 @@ export const terminalTools: ExtensionToolDefinition[] = [
     dangerLevel: "moderate",
     idempotent: true,
     handler: wrapHandler("accordo.terminal.close", terminalCloseHandler),
+  },
+  {
+    name: "accordo.terminal.discover",
+    description: "Returns full schemas for all 5 terminal tools: open, run, focus, list, close.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+    dangerLevel: "safe",
+    idempotent: true,
+    handler: async () => ({
+      group: "terminal",
+      tools: terminalTools
+        .filter(t => t.group === "terminal")
+        .map(({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation }) => ({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation })),
+    }),
   },
 ];

@@ -35,6 +35,9 @@ tools to navigate, edit, and run code within their VSCode workspace.
 - When you open a file, briefly state which file and why.
 - When you run a terminal command, explain what it does before running it.
 - After completing a multi-step task, give a short summary of what was done.
+- **For all editor, file navigation, terminal, and UI operations — always use the
+  registered accordo tools.** Do not read files with built-in capabilities when
+  an accordo tool can do it. This keeps the developer informed of every action.
 
 ## Capabilities
 
@@ -42,6 +45,12 @@ You can observe the live IDE state below (active file, cursor position, open
 editors, workspace folders, active terminal, and any registered extension
 modalities). You can invoke the registered tools to take actions in the IDE.
 The complete tool list appears at the end of this prompt.
+
+**Terminology note:** "Accordo review threads" are VS Code Comments-panel gutter
+thread widgets (the annotation sidebar). They are entirely separate from inline
+code comments (// or /* */). When the developer asks to "add a comment" in the
+context of reviewing or annotating, use accordo.comment.create. When they ask to
+add or remove source-code comments inside a file, edit the file directly.
 
 ## Constraints
 
@@ -139,28 +148,36 @@ export function renderPrompt(
       : `## Current IDE State\n\nNo active session.`;
 
   // ── Tool section ─────────────────────────────────────────────────────────
-  // Always: first 10 tools get name + description, tools 11+ get name only
+  // Grouped tools are hidden — the agent discovers them via the .discover tool.
+  // Always: first 10 visible tools get name + description, beyond 10 name only.
+  // GUARDRAIL: if ALL registered tools are grouped (no discover stubs visible),
+  // fall back to showing every tool so the agent isn't completely blind.
+  const visibleTools = tools.filter(t => !t.group);
+  const effectiveTools = visibleTools.length === 0 && tools.length > 0 ? tools : visibleTools;
+  const guardrailNote = visibleTools.length === 0 && tools.length > 0
+    ? "\n> ⚠ All tools are grouped but no .discover stubs were registered. Showing all tools as fallback.\n"
+    : "";
   const toolLines: string[] = [];
-  if (tools.length > 0) {
-    for (let i = 0; i < tools.length; i++) {
+  if (effectiveTools.length > 0) {
+    for (let i = 0; i < effectiveTools.length; i++) {
       if (i < 10) {
-        toolLines.push(`- **${tools[i].name}**: ${tools[i].description}`);
+        toolLines.push(`- **${effectiveTools[i].name}**: ${effectiveTools[i].description}`);
       } else {
-        toolLines.push(`- ${tools[i].name}`);
+        toolLines.push(`- ${effectiveTools[i].name}`);
       }
     }
   }
   let toolSection =
     toolLines.length > 0
-      ? `## Registered Tools\n\n${toolLines.join("\n")}`
+      ? `## Registered Tools\n${guardrailNote}\n${toolLines.join("\n")}`
       : `## Registered Tools\n\nNo tools registered.`;
 
   // Post-render budget guard: if the dynamic section (state + tools) still exceeds
-  // the effective token budget, fall back to name-only format for ALL tools.
+  // the effective token budget, fall back to name-only format for ALL visible tools.
   // This protects against extensions violating the 120-char description cap.
   const dynamicEstimate = estimateTokens(stateSection + "\n\n" + toolSection);
-  if (dynamicEstimate > PROMPT_EFFECTIVE_TOKEN_BUDGET && tools.length > 0) {
-    const nameOnlyLines = tools.map((t) => `- ${t.name}`);
+  if (dynamicEstimate > PROMPT_EFFECTIVE_TOKEN_BUDGET && effectiveTools.length > 0) {
+    const nameOnlyLines = effectiveTools.map((t) => `- ${t.name}`);
     toolSection = `## Registered Tools\n\n${nameOnlyLines.join("\n")}`;
   }
 

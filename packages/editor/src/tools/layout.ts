@@ -101,6 +101,7 @@ export async function layoutEvenGroupsHandler(
 export const layoutTools: ExtensionToolDefinition[] = [
   {
     name: "accordo.panel.toggle",
+    group: "layout",
     description:
       "Toggle visibility of a VSCode sidebar panel (explorer, search, git, debug, extensions).",
     inputSchema: {
@@ -120,6 +121,7 @@ export const layoutTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.layout.zen",
+    group: "layout",
     description: "Toggle Zen Mode (distraction-free fullscreen editing).",
     inputSchema: {
       type: "object",
@@ -132,6 +134,7 @@ export const layoutTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.layout.fullscreen",
+    group: "layout",
     description: "Toggle fullscreen mode.",
     inputSchema: {
       type: "object",
@@ -144,6 +147,7 @@ export const layoutTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.layout.joinGroups",
+    group: "layout",
     description: "Collapse all editor splits — merge all groups into one.",
     inputSchema: {
       type: "object",
@@ -156,6 +160,7 @@ export const layoutTools: ExtensionToolDefinition[] = [
   },
   {
     name: "accordo.layout.evenGroups",
+    group: "layout",
     description: "Equalise the width and height of all editor groups.",
     inputSchema: {
       type: "object",
@@ -165,5 +170,18 @@ export const layoutTools: ExtensionToolDefinition[] = [
     dangerLevel: "safe",
     idempotent: true,
     handler: wrapHandler("accordo.layout.evenGroups", layoutEvenGroupsHandler),
+  },
+  {
+    name: "accordo.layout.discover",
+    description: "Returns full schemas for all 5 layout tools: panel toggle, zen, fullscreen, joinGroups, evenGroups.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+    dangerLevel: "safe",
+    idempotent: true,
+    handler: async () => ({
+      group: "layout",
+      tools: layoutTools
+        .filter(t => t.group === "layout")
+        .map(({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation }) => ({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation })),
+    }),
   },
 ];

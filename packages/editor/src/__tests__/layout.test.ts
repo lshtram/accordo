@@ -162,17 +162,18 @@ describe("layoutEvenGroupsHandler — §4.24", () => {
 describe("layoutTools registration — Module 20", () => {
   const byName = (name: string) => layoutTools.find((t) => t.name === name)!;
 
-  it("M20-REG-01: exports exactly 5 tool definitions", () => {
-    expect(layoutTools).toHaveLength(5);
+  it("M20-REG-01: exports exactly 6 tool definitions", () => {
+    expect(layoutTools).toHaveLength(6);
   });
 
-  it("M20-REG-02: all 5 tool names are present", () => {
+  it("M20-REG-02: all tool names are present", () => {
     const names = layoutTools.map((t) => t.name);
     expect(names).toContain("accordo.panel.toggle");
     expect(names).toContain("accordo.layout.zen");
     expect(names).toContain("accordo.layout.fullscreen");
     expect(names).toContain("accordo.layout.joinGroups");
     expect(names).toContain("accordo.layout.evenGroups");
+    expect(names).toContain("accordo.layout.discover");
   });
 
   it("M20-REG-03: all tools are safe", () => {
@@ -211,5 +212,41 @@ describe("layoutTools registration — Module 20", () => {
     for (const tool of layoutTools) {
       expect(typeof tool.handler).toBe("function");
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Progressive disclosure — discover tool handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("accordo.layout.discover handler", () => {
+  const discoverTool = layoutTools.find(t => t.name === "accordo.layout.discover")!;
+
+  it("discover tool has no group (visible in prompt)", () => {
+    expect(discoverTool).toBeDefined();
+    expect(discoverTool).not.toHaveProperty("group");
+  });
+
+  it("handler returns { group, tools } with all 5 layout tools", async () => {
+    const result = await discoverTool.handler({}) as { group: string; tools: unknown[] };
+    expect(result.group).toBe("layout");
+    expect(result.tools).toHaveLength(5);
+  });
+
+  it("returned tools contain name, description, inputSchema, dangerLevel, idempotent", async () => {
+    const result = await discoverTool.handler({}) as { tools: Record<string, unknown>[] };
+    for (const t of result.tools) {
+      expect(t).toHaveProperty("name");
+      expect(t).toHaveProperty("description");
+      expect(t).toHaveProperty("inputSchema");
+      expect(t).toHaveProperty("dangerLevel");
+      expect(t).toHaveProperty("idempotent");
+    }
+  });
+
+  it("discover tool itself is not in the returned tools list", async () => {
+    const result = await discoverTool.handler({}) as { tools: { name: string }[] };
+    const names = result.tools.map(t => t.name);
+    expect(names).not.toContain("accordo.layout.discover");
   });
 });

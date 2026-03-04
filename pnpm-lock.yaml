@@ -35,6 +35,24 @@ importers:
 
   packages/bridge-types: {}
 
+  packages/comments:
+    devDependencies:
+      '@accordo/bridge-types':
+        specifier: workspace:*
+        version: link:../bridge-types
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.35
+      '@types/vscode':
+        specifier: ^1.100.0
+        version: 1.109.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@20.19.35)
+
   packages/editor:
     devDependencies:
       '@accordo/bridge-types':
