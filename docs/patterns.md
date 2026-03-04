@@ -8,6 +8,7 @@ patterns:
   P-06: "testing guide goes stale — candidate for gen script in D3 phase"
   P-07: "pre-push hooks may not be installed — candidate for prepare script auto-install"
   P-08: "semantic_search must not be parallelized — use search_subagent for multi-term search"
+  P-09: "Ollama model name is nomic-embed-text (not nomic-embed-text-v1.5) — v1.5 is the default tag"
 ---
 
 # patterns.md — Agent Working Patterns and Known Friction
@@ -152,6 +153,19 @@ produces degraded or duplicate results.
 **Rule:** Use `search_subagent` for any complex multi-term codebase exploration.
 Use a single `semantic_search` call only for simple, targeted lookups. Never batch two
 `semantic_search` calls in the same parallel block.
+
+---
+
+### P-09 — Ollama model name is `nomic-embed-text`, not `nomic-embed-text-v1.5`
+
+**Symptom:** `ollama pull nomic-embed-text-v1.5` returns `Error: pull model manifest: file does not exist`.
+
+**Root cause:** The Ollama registry uses `nomic-embed-text` as the model name; v1.5 is the
+default `latest` tag, not a separate name. The architecture doc references "nomic-embed-text-v1.5"
+as the model version conceptually, but the actual CLI/API name is `nomic-embed-text`.
+
+**Rule:** Always use `nomic-embed-text` in API calls, `.env`, and code. Document the version
+as "v1.5 (nomic-embed-text latest)" in comments/docs when clarity is needed.
 
 ---
 
