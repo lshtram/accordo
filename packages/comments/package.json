@@ -1,0 +1,100 @@
+{
+  "name": "accordo-comments",
+  "displayName": "Accordo IDE Comments",
+  "publisher": "accordo",
+  "version": "0.1.0",
+  "description": "Accordo IDE Comments — spatial commenting on code, diagrams, images, and all Accordo surfaces",
+  "categories": ["Other"],
+  "extensionKind": ["workspace"],
+  "activationEvents": ["onStartupFinished"],
+  "extensionDependencies": ["accordo.accordo-bridge"],
+  "contributes": {
+    "commands": [
+      { "command": "accordo.comments.new", "title": "Accordo: New Comment" },
+      { "command": "accordo.comments.resolveThread", "title": "Resolve", "icon": "$(pass)" },
+      { "command": "accordo.comments.deleteThread", "title": "Delete Thread", "icon": "$(trash)" },
+      { "command": "accordo.comments.deleteComment", "title": "Delete Comment", "icon": "$(trash)" },
+      { "command": "accordo.comments.reopenThread", "title": "Reopen", "icon": "$(debug-restart)" },
+      { "command": "accordo.comments.resolveFromComment", "title": "Resolve Thread", "icon": "$(pass)" },
+      { "command": "accordo.comments.reopenFromComment", "title": "Reopen Thread", "icon": "$(debug-restart)" }
+    ],
+    "menus": {
+      "comments/commentThread/title": [
+        {
+          "command": "accordo.comments.resolveThread",
+          "group": "navigation",
+          "when": "commentController == accordo-comments && commentThread == open"
+        },
+        {
+          "command": "accordo.comments.reopenThread",
+          "group": "navigation",
+          "when": "commentController == accordo-comments && commentThread == resolved"
+        },
+        {
+          "command": "accordo.comments.deleteThread",
+          "group": "navigation",
+          "when": "commentController == accordo-comments"
+        }
+      ],
+      "comments/comment/title": [
+        {
+          "command": "accordo.comments.deleteComment",
+          "group": "group@2",
+          "when": "commentController == accordo-comments"
+        }
+      ],
+      "comments/comment/context": [
+        {
+          "command": "accordo.comments.resolveFromComment",
+          "group": "1_actions@1",
+          "when": "commentController == accordo-comments && commentThread == open"
+        },
+        {
+          "command": "accordo.comments.reopenFromComment",
+          "group": "1_actions@1",
+          "when": "commentController == accordo-comments && commentThread == resolved"
+        },
+        {
+          "command": "accordo.comments.deleteComment",
+          "group": "1_actions@2",
+          "when": "commentController == accordo-comments"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "accordo.comments.new",
+          "group": "inline",
+          "when": "commentController == accordo-comments && commentThreadIsEmpty"
+        },
+        {
+          "command": "accordo.comments.new",
+          "group": "inline",
+          "when": "commentController == accordo-comments && !commentThreadIsEmpty"
+        }
+      ]
+    }
+  },
+  "type": "module",
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "package": "vsce package --no-dependencies",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'no lint configured yet'"
+  },
+  "devDependencies": {
+    "@accordo/bridge-types": "workspace:*",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.100.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20",
+    "vscode": "^1.100.0"
+  },
+  "license": "MIT"
+}
