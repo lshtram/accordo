@@ -1,8 +1,12 @@
-# Accordo IDE — Development Process
+# Development Process
 
-**Scope:** How we build every module in this project.  
+**Scope:** How we build every module in any project that adopts this process.  
 **Authority:** This document is normative. When the user or task says "TDD", every step here is mandatory with no exceptions and no shortcuts.  
-**Reference:** workplan.md § Weekly Plan (for current tasks), AGENTS.md (for mode selection rules)
+**Reference:** Each project's `AGENTS.md` (for mode selection rules) and its own `docs/coding-guidelines.md` (for language-specific tooling).
+
+> **Language note:** Examples in this document use TypeScript/Node.js tooling (`pnpm`, `vitest`, TypeScript interfaces).
+> For Python projects, apply the same phases with the equivalent tools: `pytest` = Vitest, `mypy --strict` = `tsc --noEmit`, `ruff` = ESLint, Pydantic models = TypeScript interfaces.
+> Each project's `AGENTS.md §2.1` documents its specific tooling equivalents.
 
 ---
 

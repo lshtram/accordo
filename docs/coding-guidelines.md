@@ -1,5 +1,8 @@
 # Accordo IDE — Coding Style & Code Review Guidelines
 
+> **Scope:** This file is Accordo-specific (TypeScript / Node.js / Vitest). It is not shared with other projects.
+> For process rules (TDD phases, commit format) shared across projects, see `docs/dev-process.md`.
+
 **Applies to:** All packages in the Accordo IDE monorepo  
 **Technologies:** TypeScript 5.x, Node.js ≥ 20, Vitest 3.x, `ws`, `node:http`  
 **Sources:**

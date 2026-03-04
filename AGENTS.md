@@ -41,7 +41,7 @@ For small bug fixes, typos, or isolated corrections that are clearly scoped:
 - Make the minimal change
 - Run the affected test file to verify
 - Commit with `fix(<module>): <description>`
-- No phase checkpoints required, but still: no `:any`, no `console.log`, types must compile
+- No phase checkpoints required, but still: banned patterns must be clean (see `docs/coding-guidelines.md §3`)
 
 ### 2.3 Exploration / Investigation Mode
 
@@ -87,15 +87,11 @@ course more than once.
 
 These apply regardless of which mode you are in:
 
-1. **No `:any` in source files.** TypeScript strict mode is enforced.
-2. **No `console.log` in source files.** `console.error` is allowed in error handlers.
-3. **No VSCode imports in Hub packages.** Hub is editor-agnostic.
-4. **Security middleware comes first** on every authenticated HTTP endpoint.
-5. **Handler functions are never serialized.** They stay in the Bridge, off the wire.
-6. **Run tests before committing.** `pnpm test` must be clean in the affected package.
-7. **Conventional commits.** `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
-8. **One module per commit** when in TDD mode. Batch only within the same phase.
-9. **Scan [`docs/patterns.md`](docs/patterns.md) before any non-trivial task.** Read only
+1. **Follow `docs/coding-guidelines.md`.** Language style, banned patterns, type safety rules, and the D2 review checklist all live there. The rules are TypeScript/Node.js-specific and take precedence over any generic advice.
+2. **Run tests before committing.** `pnpm test` must be clean in the affected package.
+3. **Conventional commits.** `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
+4. **One module per commit** when in TDD mode. Batch only within the same phase.
+5. **Scan [`docs/patterns.md`](docs/patterns.md) before any non-trivial task.** Read only
    the YAML front matter (the `patterns:` block at the top) to see what is documented —
    load the full file only if a relevant pattern ID applies. When you hit new friction —
    a tool behaving unexpectedly, a workaround you had to invent, a process step that is
@@ -104,7 +100,17 @@ These apply regardless of which mode you are in:
 
 ---
 
-## 4. Key Documents
+## 4. Architecture Constraints (Accordo-specific)
+
+These are project-level decisions that override or extend `coding-guidelines.md §3.5`:
+
+1. **No VSCode imports in Hub packages.** Hub is editor-agnostic — importing `vscode` in `accordo-hub` is a hard failure.
+2. **Security middleware comes first** on every authenticated HTTP endpoint. No request reaches a handler without passing the auth layer.
+3. **Handler functions are never serialized.** They stay in the Bridge, off the wire. Only `ToolRegistration` (data) crosses the package boundary — never `ExtensionToolDefinition` (function).
+
+---
+
+## 5. Key Documents
 
 | Document | Purpose |
 |---|---|
@@ -120,7 +126,7 @@ These apply regardless of which mode you are in:
 
 ---
 
-## 5. Picking Up Mid-Project
+## 6. Picking Up Mid-Project
 
 1. Open [`docs/workplan.md`](docs/workplan.md) — read **Current Status** and **Weekly Plan §5**
 2. The active module and its requirements source are listed in the week's TDD execution table
