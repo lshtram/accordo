@@ -150,7 +150,7 @@ describe("§10.2 Restore persisted threads", () => {
     expect(vsThreads[0].uri.fsPath).toContain("auth.ts");
   });
 
-  it("restoreThreads skips surface-anchored threads", () => {
+  it("restoreThreads creates file-level widget for surface-anchored threads", () => {
     const store = makeMockStore();
     native.init(store, mockContext);
 
@@ -167,7 +167,8 @@ describe("§10.2 Restore persisted threads", () => {
     native.restoreThreads([surfaceThread]);
 
     const controller = native.getController() as unknown as MockCommentController;
-    expect(controller.getThreads()).toHaveLength(0);
+    // Surface threads now appear in the Comments panel as file-level widgets
+    expect(controller.getThreads()).toHaveLength(1);
   });
 
   it("restoreThreads creates file-level thread (no range) for file-anchored threads", () => {

@@ -10,7 +10,8 @@
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
     "clean": "pnpm -r run clean",
-    "check": "pnpm build && pnpm test",
+    "test:smoke": "pnpm --filter accordo-md-viewer test:smoke",
+    "check": "pnpm build && pnpm test && pnpm test:smoke",
     "setup:hooks": "git config core.hooksPath scripts/git-hooks"
   },
   "engines": {

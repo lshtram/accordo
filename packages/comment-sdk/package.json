@@ -1,0 +1,30 @@
+{
+  "name": "@accordo/comment-sdk",
+  "version": "0.1.0",
+  "description": "Accordo Comment SDK — spatial comment pins for any webview surface",
+  "type": "module",
+  "main": "./dist/sdk.js",
+  "types": "./dist/sdk.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/sdk.d.ts",
+      "import": "./dist/sdk.js"
+    },
+    "./css": "./src/sdk.css"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "jsdom": "^26.0.0",
+    "@vitest/coverage-v8": "^3.0.0"
+  },
+  "files": ["dist", "src/sdk.css"],
+  "license": "MIT"
+}

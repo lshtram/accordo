@@ -48,7 +48,9 @@ function createMockBridge(): BridgeAPI {
 function setupBridgeExtension(bridge: BridgeAPI | undefined): void {
   // Set up the mock so extensions.getExtension returns the bridge
   (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue(
-    bridge ? { exports: bridge } : undefined,
+    bridge
+      ? { exports: bridge, isActive: true, activate: vi.fn().mockResolvedValue(undefined) }
+      : undefined,
   );
 }
 
@@ -79,13 +81,22 @@ describe("§10.2 Bridge acquisition", () => {
     await expect(activate(ctx)).resolves.not.toThrow();
   });
 
-  it("does not register tools when bridge is absent", async () => {
+  it("still creates comment controller when bridge is absent (store works independently)", async () => {
     setupBridgeExtension(undefined);
     const ctx = createMockExtensionContext();
     await activate(ctx);
 
-    // No comment controller should be created
-    expect(vscodeComments.createCommentController).not.toHaveBeenCalled();
+    // Controller IS created — store and NativeComments don't depend on bridge
+    expect(vscodeComments.createCommentController).toHaveBeenCalled();
+  });
+
+  it("does not register tools when bridge is absent", async () => {
+    const bridge = createMockBridge();
+    setupBridgeExtension(undefined);
+    const ctx = createMockExtensionContext();
+    await activate(ctx);
+
+    expect(bridge.registerTools).not.toHaveBeenCalled();
   });
 
   it("does not publish state when bridge is absent", async () => {

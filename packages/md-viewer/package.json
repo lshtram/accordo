@@ -1,0 +1,108 @@
+{
+  "name": "accordo-md-viewer",
+  "displayName": "Accordo Markdown Viewer",
+  "publisher": "accordo",
+  "version": "0.1.0",
+  "description": "Accordo Markdown Preview — rich commentable markdown viewer with Comment SDK",
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "accordo.markdownPreview",
+        "displayName": "Accordo Markdown Preview",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "accordo.preview.open",
+        "title": "Accordo: Open Markdown Preview"
+      },
+      {
+        "command": "accordo.preview.toggle",
+        "title": "Accordo: Toggle Preview/Source"
+      },
+      {
+        "command": "accordo.preview.openSideBySide",
+        "title": "Accordo: Open Preview Side by Side"
+      }
+    ],
+    "configuration": {
+      "title": "Accordo Markdown Viewer",
+      "properties": {
+        "accordo.preview.defaultSurface": {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "text"
+          ],
+          "default": "viewer",
+          "description": "Default editor to use when opening .md files"
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "accordo.preview.toggle",
+        "key": "shift+cmd+v",
+        "when": "editorLangId == markdown"
+      }
+    ]
+  },
+  "type": "module",
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "tsc -b && node scripts/copy-webview-assets.mjs",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "package": "vsce package --no-dependencies",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:smoke": "node scripts/smoke-test.mjs",
+    "check": "pnpm build && pnpm test && pnpm test:smoke",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'no lint configured yet'"
+  },
+  "devDependencies": {
+    "@accordo/bridge-types": "workspace:*",
+    "@accordo/comment-sdk": "workspace:*",
+    "@hackmd/markdown-it-task-lists": "^2.1.4",
+    "@shikijs/markdown-it": "^4.0.1",
+    "@traptitech/markdown-it-katex": "^3.6.0",
+    "@types/katex": "^0.16.8",
+    "@types/markdown-it": "^14.1.0",
+    "@types/markdown-it-container": "^2.0.10",
+    "@types/markdown-it-emoji": "^3.0.1",
+    "@types/markdown-it-footnote": "^3.0.4",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.100.0",
+    "katex": "^0.16.33",
+    "markdown-it": "^14.1.0",
+    "markdown-it-anchor": "^9.2.0",
+    "markdown-it-container": "^4.0.0",
+    "markdown-it-emoji": "^3.0.0",
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-front-matter": "^0.2.4",
+    "mermaid": "^11.12.3",
+    "shiki": "^3.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20",
+    "vscode": "^1.100.0"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,327 @@
+/**
+ * @accordo/comment-sdk — pin and popover styles
+ *
+ * Uses VS Code theme CSS variables throughout for seamless editor integration.
+ * No hard-coded colors — all colors reference VS Code's color tokens.
+ *
+ * Pin states:
+ *   .pin--open      blue  — open thread, no new activity
+ *   .pin--updated   amber — open thread with unread activity
+ *   .pin--resolved  green — resolved thread
+ */
+
+/* ── Host body must be position:relative so the layer covers it ──────────── */
+
+body {
+  position: relative;
+  min-height: 100vh;
+}
+
+/* ── Layer container ──────────────────────────────────────────────────────── */
+
+.accordo-sdk-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* layer passes clicks through; pins re-enable */
+  z-index: 100;
+}
+
+/* ── Pin base ─────────────────────────────────────────────────────────────── */
+
+.accordo-pin {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  cursor: pointer;
+  pointer-events: all;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--vscode-font-family, system-ui);
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transform: translate(-50%, -50%);
+  border: 2px solid transparent;
+  user-select: none;
+}
+
+.accordo-pin:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+/* ── Pin state variants ───────────────────────────────────────────────────── */
+
+.accordo-pin--open {
+  background: var(--vscode-notificationsInfoIcon-foreground, #3794ff);
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.accordo-pin--updated {
+  background: var(--vscode-notificationsWarningIcon-foreground, #cca700);
+  border-color: #b8940d;
+  animation: accordo-pulse 2s ease-in-out infinite;
+}
+
+.accordo-pin--resolved {
+  background: var(--vscode-testing-iconPassed, #4caf50);
+  border-color: #388e3c;
+  opacity: 0.7;
+}
+
+/* Pulse animation for "updated" (new unread activity) */
+@keyframes accordo-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(204, 167, 0, 0.5); }
+  50%  { box-shadow: 0 0 0 5px rgba(204, 167, 0, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(204, 167, 0, 0); }
+}
+
+/* ── Badge (reply count) ──────────────────────────────────────────────────── */
+
+.accordo-pin__badge {
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ── New-comment input zone (Alt+click) ───────────────────────────────────── */
+
+.accordo-inline-input {
+  position: absolute;
+  z-index: 200;
+  background: var(--vscode-input-background, #1e1e1e);
+  border: 1px solid var(--vscode-focusBorder, #007fd4);
+  border-radius: 6px;
+  padding: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  width: 300px;
+  pointer-events: all;
+}
+
+.accordo-inline-input textarea {
+  width: 100%;
+  min-height: 68px;
+  resize: vertical;
+  background: var(--vscode-input-background, #1e1e1e);
+  color: var(--vscode-input-foreground, #cccccc);
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: var(--vscode-font-family, system-ui);
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.accordo-inline-input textarea:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.accordo-inline-input__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  justify-content: flex-end;
+}
+
+/* ── Intent selector ──────────────────────────────────────────────────────── */
+
+.accordo-intent-select {
+  flex: 1;
+  background: var(--vscode-dropdown-background, #3c3c3c);
+  color: var(--vscode-dropdown-foreground, #cccccc);
+  border: 1px solid var(--vscode-dropdown-border, #3c3c3c);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: var(--vscode-font-family, system-ui);
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+
+.accordo-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: var(--vscode-font-family, system-ui);
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: opacity 0.1s ease;
+}
+
+.accordo-btn:hover { opacity: 0.85; }
+.accordo-btn:active { opacity: 0.7; }
+
+.accordo-btn--primary {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: var(--vscode-button-background, #0e639c);
+}
+
+.accordo-btn--secondary {
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #cccccc);
+  border-color: var(--vscode-button-secondaryBackground, #3a3d41);
+}
+
+.accordo-btn--danger {
+  background: transparent;
+  color: var(--vscode-notificationsErrorIcon-foreground, #f14c4c);
+  border-color: currentColor;
+}
+
+/* ── Popover ──────────────────────────────────────────────────────────────── */
+
+.accordo-popover {
+  position: absolute;
+  z-index: 200;
+  background: var(--vscode-editorHoverWidget-background, #252526);
+  border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+  border-radius: 8px;
+  padding: 0;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  width: 320px;
+  max-height: 480px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  pointer-events: all;
+}
+
+.accordo-popover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  font-family: var(--vscode-font-family, system-ui);
+}
+
+.accordo-popover__close {
+  background: none;
+  border: none;
+  color: var(--vscode-icon-foreground, #c5c5c5);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.accordo-popover__close:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+/* ── Thread list inside popover ───────────────────────────────────────────── */
+
+.accordo-thread-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px 0;
+  max-height: 300px;
+}
+
+.accordo-comment-item {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+}
+
+.accordo-comment-item:last-child { border-bottom: none; }
+
+.accordo-comment__author-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.accordo-comment__avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.accordo-comment__avatar--user  { background: var(--vscode-notificationsInfoIcon-foreground, #3794ff); }
+.accordo-comment__avatar--agent { background: #9b59b6; }
+
+.accordo-comment__author {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-foreground, #cccccc);
+  font-family: var(--vscode-font-family, system-ui);
+}
+
+.accordo-comment__time {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  font-family: var(--vscode-font-family, system-ui);
+  margin-left: auto;
+}
+
+.accordo-comment__body {
+  font-size: 13px;
+  color: var(--vscode-foreground, #cccccc);
+  font-family: var(--vscode-font-family, system-ui);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Popover reply form ───────────────────────────────────────────────────── */
+
+.accordo-popover__reply {
+  padding: 8px 12px;
+  border-top: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.accordo-popover__reply textarea {
+  width: 100%;
+  min-height: 52px;
+  resize: none;
+  background: var(--vscode-input-background, #1e1e1e);
+  color: var(--vscode-input-foreground, #cccccc);
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-family: var(--vscode-font-family, system-ui);
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.accordo-popover__reply textarea:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.accordo-popover__actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* ── Resolved banner ─────────────────────────────────────────────────────── */
+
+.accordo-resolved-banner {
+  padding: 6px 12px;
+  background: rgba(76, 175, 80, 0.12);
+  border-top: 1px solid rgba(76, 175, 80, 0.25);
+  font-size: 12px;
+  color: var(--vscode-testing-iconPassed, #4caf50);
+  font-family: var(--vscode-font-family, system-ui);
+}

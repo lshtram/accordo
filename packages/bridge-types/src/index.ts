@@ -453,7 +453,8 @@ export type SurfaceCoordinates =
   | DiagramNodeCoordinates
   | PdfPageCoordinates
   | SlideCoordinates
-  | HeadingCoordinates;
+  | HeadingCoordinates
+  | BlockCoordinates;
 
 export interface NormalizedCoordinates {
   type: "normalized";
@@ -491,6 +492,19 @@ export interface HeadingCoordinates {
   type: "heading";
   headingText: string;
   headingLevel: number;
+}
+
+/**
+ * Block-level coordinate for rendered document surfaces (markdown-preview, etc.).
+ * BlockId format: "heading:{level}:{slug}" | "p:{index}" | "li:{listIdx}:{itemIdx}" | "pre:{index}"
+ *
+ * Source: comments-architecture.md §8.4 (M41b variant)
+ */
+export interface BlockCoordinates {
+  type: "block";
+  /** Stable content-addressable ID for the block element — see BlockIdPlugin */
+  blockId: string;
+  blockType: "heading" | "paragraph" | "list-item" | "code-block";
 }
 
 /**

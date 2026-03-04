@@ -26,13 +26,16 @@
         "--extensionDevelopmentPath=${workspaceFolder}/packages/editor",
         // accordo-comments registers 6 MCP comment tools via bridge
         "--extensionDevelopmentPath=${workspaceFolder}/packages/comments",
+        // accordo-md-viewer: commentable markdown preview with comment SDK
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/md-viewer",
         // Open this repo in the EDH so it has a real workspace to report
         "${workspaceFolder}"
       ],
       "outFiles": [
         "${workspaceFolder}/packages/bridge/dist/**/*.js",
         "${workspaceFolder}/packages/editor/dist/**/*.js",
-        "${workspaceFolder}/packages/comments/dist/**/*.js"
+        "${workspaceFolder}/packages/comments/dist/**/*.js",
+        "${workspaceFolder}/packages/md-viewer/dist/**/*.js"
       ],
       "preLaunchTask": "build-all",
       "sourceMaps": true

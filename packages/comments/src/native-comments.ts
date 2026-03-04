@@ -80,7 +80,6 @@ export class NativeComments {
    */
   restoreThreads(threads: CommentThread[]): void {
     for (const thread of threads) {
-      if (thread.anchor.kind === "surface") continue;
       this._createWidget(thread);
     }
   }
@@ -89,7 +88,6 @@ export class NativeComments {
    * Create a VSCode CommentThread widget for a new thread.
    */
   addThread(thread: CommentThread): void {
-    if (thread.anchor.kind === "surface") return;
     this._createWidget(thread);
   }
 

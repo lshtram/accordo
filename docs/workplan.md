@@ -2,14 +2,14 @@
 
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
-**Date:** 2026-03-03  
-**Status:** ACTIVE — Phase 2 starting
+**Date:** 2026-03-04  
+**Status:** ACTIVE — Phase 2 Week 7 in progress
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-04 — Week 6 complete. M35–M40 done. accordo-comments extension delivered. 996 tests. Phase 2 continues with Week 7 (Comment SDK + prompt engine).**
+> **As of 2026-03-04 — Week 7 Phase C+D complete for M41a (`@accordo/comment-sdk`) and M41b (`accordo-md-viewer`). All 7 sub-modules implemented: BlockIdPlugin, MarkdownRenderer, ImageResolver, WebviewTemplate, PreviewBridge, CommentablePreview (CustomTextEditorProvider + extension entrypoint). 1146 tests green (Hub: 335, Bridge: 298, Editor: 186, Comments: 177, SDK: 37, md-viewer: 113). TypeScript clean. M42/M43 (Hub prompt engine + state response updates) not yet started.**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -19,7 +19,7 @@
 | Phase 4 | Voice modality (`accordo-voice` bridge registration) | ⏳ Pending Phase 3 |
 | Phase 5 | Diagrams modality (`accordo-tldraw`) | ⏳ Pending Phase 4 |
 
-**Baseline:** 996 tests green (Hub: 335, Bridge: 298, Editor: 186, Comments: 177). v0.1.0 on `main`.  
+**Baseline:** 1146 tests green (Hub: 335, Bridge: 298, Editor: 186, Comments: 177, SDK: 37, md-viewer: 113). v0.1.0 on `main`.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -56,13 +56,14 @@ The agent can create, reply to, and resolve comments as first-class MCP tools. C
 | D2 | `@accordo/comment-sdk` | npm | Shared JS library for webview surfaces (pins, click-to-comment, postMessage bridge) |
 | D3 | `AccordoCommentThread` state in Hub | Hub update | Hub includes open comment threads in system prompt and `/state` response |
 | D4 | Comment MCP tools | via D1 | `comment.list`, `comment.get`, `comment.create`, `comment.reply`, `comment.resolve`, `comment.delete` |
+| D5 | `accordo-md-viewer` | vsix | VSCode extension: rich commentable markdown preview using `@accordo/comment-sdk` |
 
 ---
 
 ## 4. Package Dependency Graph (Phase 2)
 
 ```
-@accordo/bridge-types  (Phase 1 — add CommentThread types)
+@accordo/bridge-types  (Phase 1 — add CommentThread + BlockCoordinates types)
         ▲
         │
    ┌────┴─────┐
@@ -70,9 +71,11 @@ The agent can create, reply to, and resolve comments as first-class MCP tools. C
 accordo-hub  accordo-bridge  (Phase 1 — no changes)
                     ▲
                     │
-              accordo-comments  (Phase 2 — new)
+              accordo-comments  (Phase 2 — new, D1+D4)
+                    │          \
+              @accordo/comment-sdk  (Phase 2 — new, D2, used by webview modalities)
                     │
-              @accordo/comment-sdk  (Phase 2 — new, used by future webview modalities)
+              accordo-md-viewer  (Phase 2 — new, D5, uses comment-sdk + comments internal commands)
 ```
 
 ---
@@ -116,17 +119,24 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ---
 
-### Week 7 — Comment SDK + Prompt Engine Update
+### Week 7 — Comment SDK + Markdown Viewer + Prompt Engine Update
 
-**Goal:** Comment SDK published. Hub prompt engine surfaces comment threads. Phase 2 complete.
+**Goal:** `@accordo/comment-sdk` implemented, `accordo-md-viewer` delivering a commentable markdown preview, Hub prompt surfaces comment threads. Phase 2 complete.
 
 | # | Module | Requirements Source | TDD Phases |
 |---|---|---|---|
-| 41 | `@accordo/comment-sdk` — pin rendering, click-to-comment, postMessage bridge | comments-architecture.md §2.2, §8 | not started |
-| 42 | Hub prompt engine update — include open comment threads in system prompt | comments-architecture.md §7, requirements-hub.md §5.3 | not started |
-| 43 | Hub `/state` response — include `commentThreads: CommentThread[]` | comments-architecture.md §7 | not started |
+| 41a | `@accordo/comment-sdk` — `AccordoCommentSDK` class, pin rendering, click-to-comment, postMessage bridge | requirements-comments-sdk.md | ✅ Phase C+D done (37 tests) |
+| 41b-BID | `accordo-md-viewer`: `block-id-plugin.ts` — blockIdPlugin + BlockIdResolver | requirements-md-viewer.md §5 M41b-BID | ✅ Phase C+D done (20 tests) |
+| 41b-RND | `accordo-md-viewer`: `renderer.ts` — MarkdownRenderer with shiki + KaTeX | requirements-md-viewer.md §5 M41b-RND | ✅ Phase C+D done (18 tests) |
+| 41b-IMG | `accordo-md-viewer`: `image-resolver.ts` — ImageResolver | requirements-md-viewer.md §5 M41b-IMG | ✅ Phase C+D done (9 tests) |
+| 41b-TPL | `accordo-md-viewer`: `webview-template.ts` — buildWebviewHtml | requirements-md-viewer.md §5 M41b-TPL | ✅ Phase C+D done (18 tests) |
+| 41b-PBR | `accordo-md-viewer`: `preview-bridge.ts` — PreviewBridge + toSdkThread | requirements-md-viewer.md §5 M41b-PBR | ✅ Phase C+D done (21 tests) |
+| 41b-CPE | `accordo-md-viewer`: `commentable-preview.ts` — CustomTextEditorProvider | requirements-md-viewer.md §5 M41b-CPE | ✅ Phase C+D done (17 tests) |
+| 41b-EXT | `accordo-md-viewer`: `extension.ts` — activate, register provider + commands | requirements-md-viewer.md §5 M41b-EXT | ✅ Phase C done (10 tests) |
+| 42 | Hub prompt engine update — include open comment threads in system prompt | requirements-hub.md §5.3 | not started |
+| 43 | Hub `/state` response — include `commentThreads: CommentThread[]` | requirements-hub.md | not started |
 
-**Week 7 gate:** Comment SDK published. Hub prompt includes open comment count and thread summaries. Phase 2 exit criteria met.
+**Week 7 gate:** Comment SDK implemented. `accordo-md-viewer` renders `.md` files with interactive comment pins. Hub prompt includes open comment count and thread summaries. Phase 2 exit criteria met.
 
 ---
 

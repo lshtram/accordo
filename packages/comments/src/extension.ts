@@ -14,11 +14,25 @@
  */
 
 import * as vscode from "vscode";
-import type { ExtensionToolDefinition, CommentAnchor, CommentIntent } from "@accordo/bridge-types";
+import type { ExtensionToolDefinition, CommentAnchor, CommentAnchorSurface, BlockCoordinates, CommentIntent } from "@accordo/bridge-types";
 import { CommentStore } from "./comment-store.js";
 import { NativeComments } from "./native-comments.js";
 import { createCommentTools } from "./comment-tools.js";
 import { startStateContribution } from "./state-contribution.js";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Derive a BlockCoordinates.blockType from the block-id string produced by
+ * the BlockIdPlugin in accordo-md-viewer.
+ * Format: "heading:{level}:{slug}" | "p:{index}" | "li:{listIdx}:{itemIdx}" | "pre:{index}"
+ */
+function inferBlockType(blockId: string): BlockCoordinates["blockType"] {
+  if (blockId.startsWith("heading:")) return "heading";
+  if (blockId.startsWith("li:")) return "list-item";
+  if (blockId.startsWith("pre:")) return "code-block";
+  return "paragraph";
+}
 
 // ── BridgeAPI (minimal interface — full type lives in accordo-bridge) ─────────
 
@@ -37,19 +51,12 @@ export interface BridgeAPI {
  * Called by VS Code when the extension activates (onStartupFinished).
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  // Acquire BridgeAPI — if absent, remain inert
-  const bridgeExt = vscode.extensions.getExtension("accordo.accordo-bridge");
-  if (!bridgeExt) {
-    return;
-  }
-  const bridge = bridgeExt.exports as BridgeAPI;
-
-  // ── Store ──────────────────────────────────────────────────────────────────
+  // ── Store (always created — does not depend on Bridge) ─────────────────────
   const store = new CommentStore();
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
   await store.load(workspaceRoot);
 
-  // ── NativeComments (controller + widgets) ─────────────────────────────────
+  // ── NativeComments (always created — gutter, panel, inline threads) ────────
   const nc = new NativeComments();
   nc.init(store, context);
   nc.restoreThreads(store.getAllThreads());
@@ -124,17 +131,48 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
-  // ── Tools ─────────────────────────────────────────────────────────────────
-  const tools = createCommentTools(store, nc);
-  const toolsDisposable = bridge.registerTools("accordo-comments", tools);
-  context.subscriptions.push(toolsDisposable);
-
-  // ── State contribution ────────────────────────────────────────────────────
-  const stateContrib = startStateContribution(bridge, store);
-  context.subscriptions.push(stateContrib);
-
-  // ── Internal commands (inter-extension API) ───────────────────────────────
+  // ── Internal commands (inter-extension API — no Bridge dependency) ─────────
   context.subscriptions.push(
+    // Adapter returned to accordo-md-viewer via getStore so it can persist preview
+    // comments and subscribe to store changes without importing VSCode or the
+    // full CommentStore class directly.
+    vscode.commands.registerCommand(
+      "accordo.comments.internal.getStore",
+      () => {
+        return {
+          async createThread(args: { uri: string; blockId: string; body: string; intent?: string }) {
+            const coords: BlockCoordinates = { type: "block", blockId: args.blockId, blockType: inferBlockType(args.blockId) };
+            const anchor: CommentAnchorSurface = { kind: "surface", uri: args.uri, surfaceType: "markdown-preview", coordinates: coords };
+            const result = await store.createThread({ uri: args.uri, anchor: anchor as CommentAnchor, body: args.body, intent: args.intent as CommentIntent | undefined, author: { kind: "user", name: "You" } });
+            const thread = store.getThread(result.threadId)!;
+            nc.addThread(thread);
+            return thread;
+          },
+          async reply(args: { threadId: string; body: string }) {
+            await store.reply({ threadId: args.threadId, body: args.body, author: { kind: "user", name: "You" } });
+            const updated = store.getThread(args.threadId);
+            if (updated) nc.updateThread(updated);
+          },
+          async resolve(args: { threadId: string; resolutionNote?: string }) {
+            await store.resolve({ threadId: args.threadId, resolutionNote: args.resolutionNote ?? "", author: { kind: "user", name: "You" } });
+            const updated = store.getThread(args.threadId);
+            if (updated) nc.updateThread(updated);
+          },
+          async delete(args: { threadId: string; commentId?: string }) {
+            await store.delete({ threadId: args.threadId, commentId: args.commentId });
+            const updated = store.getThread(args.threadId);
+            if (updated) nc.updateThread(updated);
+            else nc.removeThread(args.threadId);
+          },
+          getThreadsForUri(uri: string) {
+            return store.getThreadsForUri(uri);
+          },
+          onChanged(listener: () => void) {
+            return store.onChanged(listener);
+          },
+        };
+      },
+    ),
     vscode.commands.registerCommand(
       "accordo.comments.internal.getThreadsForUri",
       (uri: string) => {
@@ -144,8 +182,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand(
       "accordo.comments.internal.createSurfaceComment",
       async (params: Record<string, unknown>) => {
-        // Called by modality extensions (diagrams, slides) when a comment is
-        // created from a webview. Persists directly via the store.
         return store.createThread({
           uri: params["uri"] as string,
           anchor: params["anchor"] as CommentAnchor,
@@ -167,6 +203,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       },
     ),
   );
+
+  // ── Bridge-dependent features (tools + state) — optional ───────────────────
+  const bridgeExt = vscode.extensions.getExtension("accordo.accordo-bridge");
+  if (!bridgeExt) {
+    console.warn("[accordo-comments] accordo-bridge not installed — MCP tools and state disabled");
+    return;
+  }
+  if (!bridgeExt.isActive) {
+    try { await bridgeExt.activate(); } catch { /* bridge failed — skip tools */ }
+  }
+  const bridge = bridgeExt.exports as BridgeAPI | undefined;
+  if (!bridge || typeof bridge.registerTools !== "function") {
+    console.warn("[accordo-comments] Bridge exports unavailable — MCP tools and state disabled");
+    return;
+  }
+
+  // ── Tools ─────────────────────────────────────────────────────────────────
+  const tools = createCommentTools(store, nc);
+  const toolsDisposable = bridge.registerTools("accordo-comments", tools);
+  context.subscriptions.push(toolsDisposable);
+
+  // ── State contribution ────────────────────────────────────────────────────
+  const stateContrib = startStateContribution(bridge, store);
+  context.subscriptions.push(stateContrib);
 }
 
 // ── deactivate ────────────────────────────────────────────────────────────────
