@@ -9,17 +9,17 @@
 
 ## Current Status
 
-> **As of 2026-03-03 — Phase 1 complete (v0.1.0). Phase 2 starting with Comments modality.**
+> **As of 2026-03-04 — Week 6 complete. M35–M40 done. accordo-comments extension delivered. 996 tests. Phase 2 continues with Week 7 (Comment SDK + prompt engine).**
 
 | Phase | Goal | Status |
 |------|------|--------|
 | Phase 1 | Control Plane MVP (Hub + Bridge + Editor) | ✅ DONE — 797 tests, v0.1.0 |
-| Phase 2 | Comments modality (`accordo-comments`) | 🔄 IN PROGRESS |
+| Phase 2 | Comments modality (`accordo-comments`) | 🔄 IN PROGRESS — Week 6 done, Week 7 next |
 | Phase 3 | Presentations modality (`accordo-slidev`) | ⏳ Pending Phase 2 |
 | Phase 4 | Voice modality (`accordo-voice` bridge registration) | ⏳ Pending Phase 3 |
 | Phase 5 | Diagrams modality (`accordo-tldraw`) | ⏳ Pending Phase 4 |
 
-**Baseline:** 797 tests green (Hub: 329, Bridge: 296, Editor: 172). v0.1.0 on `main`.  
+**Baseline:** 996 tests green (Hub: 335, Bridge: 298, Editor: 186, Comments: 177). v0.1.0 on `main`.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -55,7 +55,7 @@ The agent can create, reply to, and resolve comments as first-class MCP tools. C
 | D1 | `accordo-comments` | vsix | VSCode extension: native Comments API + comment persistence + MCP tools |
 | D2 | `@accordo/comment-sdk` | npm | Shared JS library for webview surfaces (pins, click-to-comment, postMessage bridge) |
 | D3 | `AccordoCommentThread` state in Hub | Hub update | Hub includes open comment threads in system prompt and `/state` response |
-| D4 | Comment MCP tools | via D1 | `comment.create`, `comment.reply`, `comment.resolve`, `comment.list`, `comment.delete` |
+| D4 | Comment MCP tools | via D1 | `comment.list`, `comment.get`, `comment.create`, `comment.reply`, `comment.resolve`, `comment.delete` |
 
 ---
 
@@ -84,7 +84,7 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 **Key design points:**
 - **Two-surface strategy:** Code → VSCode native Comments API. Visual surfaces → Comment SDK.
 - **Persistence:** `.accordo/comments.json` in workspace root. Extension owns the file. Hub reads it on demand.
-- **MCP tools:** 5 tools (`comment.create`, `comment.reply`, `comment.resolve`, `comment.list`, `comment.delete`).
+- **MCP tools:** 6 tools (`comment.list`, `comment.get`, `comment.create`, `comment.reply`, `comment.resolve`, `comment.delete`).
 - **System prompt:** Hub's prompt engine includes count of open threads + anchor summary.
 - **State machine:** `open` → `resolved` → `open` (user only). Agent can create/reply/resolve/delete.
 
@@ -94,19 +94,25 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 > Every task follows the TDD cycle in [`docs/dev-process.md`](dev-process.md).
 
-### Week 6 — Comments Core (accordo-comments extension)
+### Week 6 — Comments Core (accordo-comments extension) ✅ DONE
 
 **Goal:** Comment threads on code files work end-to-end: human creates via gutter, agent creates/replies/resolves via MCP tools, state persists.
 
 | # | Module | Requirements Source | TDD Phases |
 |---|---|---|---|
-| 35 | `comment-store.ts` — CRUD on `.accordo/comments.json`, thread grouping | comments-architecture.md §3, §5 | not started |
-| 36 | `native-comments.ts` — VSCode Comments API adapter (gutter icons, inline threads, panel) | comments-architecture.md §2.1, §6 | not started |
-| 37 | `comment-tools.ts` — 5 MCP tools + registration via BridgeAPI | comments-architecture.md §7 | not started |
-| 38 | `state-contribution.ts` — publishes comment summary to Hub via `bridge.publishState` | comments-architecture.md §8 | not started |
-| 39 | `extension.ts` — activate, wires all modules, registers tools | comments-architecture.md §1 | not started |
+| 35 | `@accordo/bridge-types` — add `CommentThread`, `CommentAnchor`, `AccordoComment` and all comment types | comments-architecture.md §3 | ✅ done |
+| 36 | `comment-store.ts` — CRUD + persistence to `.accordo/comments.json`, thread grouping, filtering | comments-architecture.md §3, §5 | ✅ done |
+| 37 | `native-comments.ts` — VSCode Comments API adapter (gutter icons, inline threads, panel, staleness) | comments-architecture.md §2.1, §9 | ✅ done |
+| 38 | `comment-tools.ts` — 6 MCP tools (`list`, `get`, `create`, `reply`, `resolve`, `delete`) + registration via BridgeAPI | comments-architecture.md §6 | ✅ done |
+| 39 | `state-contribution.ts` — publishes comment summary to Hub via `bridge.publishState` | comments-architecture.md §7 | ✅ done |
+| 40 | `extension.ts` — activate, wires all modules, registers tools, internal commands API | comments-architecture.md §10 | ✅ done |
 
-**Week 6 gate:** Agent can create/reply/resolve comments on code files. Human gutter workflow works. Open threads appear in system prompt. Comments survive VSCode reload.
+**Extras delivered in Week 6:**
+- URI normalization in `comment-tools.ts` — accepts `file:///abs`, `/abs`, or repo-relative paths (no agent friction)
+- Smart list filters — `updatedSince` (ISO 8601), `lastAuthor` (`user`|`agent`), sort by `lastActivity` desc
+- Comments panel right-click context menu — resolve / reopen / delete from panel sidebar (not just inline widget)
+
+**Week 6 gate:** ✅ Agent can create/reply/resolve comments on code files. Human gutter workflow works. Open threads appear in system prompt. Comments survive VSCode reload.
 
 ---
 
@@ -116,12 +122,11 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 | # | Module | Requirements Source | TDD Phases |
 |---|---|---|---|
-| 40 | `@accordo/comment-sdk` — pin rendering, click-to-comment, postMessage bridge | comments-architecture.md §2.2, §9 | not started |
-| 41 | Hub prompt engine update — include open comment threads in system prompt | comments-architecture.md §8, requirements-hub.md §5.3 | not started |
-| 42 | Hub `/state` response — include `commentThreads: CommentThread[]` | comments-architecture.md §8 | not started |
-| 43 | `@accordo/bridge-types` — add `CommentThread`, `CommentAnchor`, `AccordoComment` types | comments-architecture.md §3 | not started |
+| 41 | `@accordo/comment-sdk` — pin rendering, click-to-comment, postMessage bridge | comments-architecture.md §2.2, §8 | not started |
+| 42 | Hub prompt engine update — include open comment threads in system prompt | comments-architecture.md §7, requirements-hub.md §5.3 | not started |
+| 43 | Hub `/state` response — include `commentThreads: CommentThread[]` | comments-architecture.md §7 | not started |
 
-**Week 7 gate:** Comment SDK published. Hub prompt includes open comment count and thread summaries. Bridge-types exports all comment types. Phase 2 exit criteria met.
+**Week 7 gate:** Comment SDK published. Hub prompt includes open comment count and thread summaries. Phase 2 exit criteria met.
 
 ---
 
@@ -188,3 +193,8 @@ Carried forward — non-blocking:
 Full record in [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md).
 
 **Summary:** 34 modules, 797 tests (Hub: 329, Bridge: 296, Editor: 172), 21 MCP tools, v0.1.0 tagged and pushed.
+
+### Phase 2 Week 6 — accordo-comments core (completed 2026-03-04)
+
+M35–M40 delivered. 177 new tests. Total: 996 (Hub: 335, Bridge: 298, Editor: 186, Comments: 177).
+Extras: URI normalization, `updatedSince`/`lastAuthor` smart filters, Comments panel context menus.

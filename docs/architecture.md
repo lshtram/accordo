@@ -154,8 +154,11 @@ interface ToolRegistration {
   dangerLevel: 'safe' | 'moderate' | 'destructive';
   requiresConfirmation: boolean;
   idempotent: boolean;             // safe to retry on timeout
+  group?: string;                  // optional grouping key for progressive disclosure
 }
 ```
+
+**Progressive tool disclosure:** Each tool may carry a `group` key (e.g. `"editor"`, `"terminal"`, `"comments"`). Grouped tools are still registered in the Hub’s tool registry and are callable via MCP `tools/call`, but they are **hidden from the system prompt** (`GET /instructions`). Instead, a single `accordo.<group>.discover` stub tool is visible per group. When the agent calls the discover tool it receives the full name + description + inputSchema for every tool in that group, enabling it to make subsequent calls. This keeps the system prompt compact while giving the agent on-demand access to the full tool surface.
 
 When a tool call arrives via MCP:
 1. Hub looks up tool by name in registry

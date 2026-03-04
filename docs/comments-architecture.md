@@ -305,6 +305,20 @@ When the extension activates:
 
 These limits prevent the comment store from becoming a performance problem. For a code review workflow, 500 threads is far more than any session needs.
 
+### 5.5 Store encapsulation and future partitioning
+
+**Encapsulation rule:** Neither the agent nor the human ever interacts with `.accordo/comments.json` directly. All access goes through the `CommentStore` API (for extension code) or MCP tools (for agents). The JSON file is an implementation detail.
+
+This is a deliberate design constraint. The current single-file store is sufficient for Phase 2, but large projects with many participants will need partitioned storage — per-file, per-folder, or per-modality stores, possibly backed by SQLite or a remote service. By ensuring all access is mediated through the `CommentStore` interface, any future storage backend can be swapped without changing tools, UI, or agent behavior.
+
+**Design for future partitioning (not implemented now):**
+- The `CommentStore` constructor could accept a `StorageBackend` interface
+- `StorageBackend` implementations: `JsonFileBackend` (current), `PartitionedBackend` (per-file JSON), `SqliteBackend`
+- The store's query methods (`getThreadsForUri`, `listThreads`) already filter by URI — they work identically regardless of backend
+- Scale limits (500 threads / workspace) would become per-partition limits in a partitioned backend
+
+For now, the single JSON file is the only backend, but the `CommentStore` class is the sole owner of persistence logic.
+
 ---
 
 ## 6. MCP Tool Specifications
@@ -326,10 +340,12 @@ The comments extension registers these tools via `BridgeAPI.registerTools('accor
 
 ```typescript
 input: {
-  uri?: string;              // filter by file URI
+  uri?: string;              // filter by file URI (exact match)
   status?: "open" | "resolved";
   intent?: CommentIntent;
-  limit?: number;            // default: 50
+  anchorKind?: "text" | "surface" | "file";  // filter by anchor type
+  limit?: number;            // default: 50, max: 200
+  offset?: number;           // default: 0 — for pagination
 }
 
 output: {
@@ -345,11 +361,17 @@ output: {
       intent?: CommentIntent;
     };
   }>;
-  total: number;
+  total: number;             // total matching (before limit/offset)
+  hasMore: boolean;          // true if total > offset + limit
 }
 ```
 
-**For the system prompt:** The agent doesn't need to call `comment.list` to know comments exist. The modality state (§7) includes a summary of open comments. The agent calls `comment.list` when it wants the full list.
+**Context-aware filtering:** The agent should prefer targeted queries over full-list scans. Typical patterns:
+- `{ uri: "file:///project/src/auth.ts" }` — comments for the file the agent is about to edit
+- `{ status: "open", intent: "fix" }` — actionable work items
+- `{ anchorKind: "text", status: "open", limit: 10 }` — recent code comments only
+
+**For the system prompt:** The agent doesn't need to call `comment.list` to know comments exist. The modality state (§7) includes a summary of open comments. The agent calls `comment.list` when it wants the full list or needs to drill into a specific file.
 
 ### `accordo.comment.get`
 
@@ -440,6 +462,17 @@ output: {
   deleted: true;
 }
 ```
+
+### 6.1 Rate limiting (normative)
+
+The `comment.create` tool handler enforces a sliding-window rate limit:
+- **Maximum 10 creates per minute** per agent session
+- Exceeding the limit returns an error: `"Rate limit exceeded: max 10 comment creates per minute"`
+- The window is per-agent (tracked by `agentId` from the invocation context)
+- Reply, resolve, and delete are not rate-limited (they operate on existing threads)
+- The rate limiter resets on extension deactivation
+
+This prevents an agent from flooding the workspace with comments. The 500-thread hard cap (§5.4) is a separate, independent guard.
 
 ---
 
@@ -792,7 +825,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const bridge = vscode.extensions.getExtension<BridgeAPI>(
     'accordo.accordo-bridge'
   )?.exports;
-  if (!bridge) return;
+  if (!bridge) return; // Extension is inert — no tools, no state publishing, no commands.
 
   // Initialize comment store (persistence)
   const store = new CommentStore(context);

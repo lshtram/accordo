@@ -63,6 +63,24 @@ For restructuring existing code without changing behaviour:
 - No new requirements addressed in the same commit
 - Commit with `refactor(<module>): <description>`
 
+### 2.6 Compound Mode — Session Retrospective
+
+Triggered when the user says **"compound"** or **"retrospective"** at the end of a session.
+Follow the instructions in [`.copilot/compound.md`](.copilot/compound.md) exactly.
+
+**Purpose:** Extract learnings from the completed session and write them to permanent files
+so future sessions start smarter. This is the mechanism by which agent directives, tool
+patterns, and architectural knowledge accumulate over time.
+
+**Key design principle:** The compound command does NOT rely on conversation memory.
+It uses `git log`, `git diff`, and `pnpm test` output as primary evidence — these survive
+context compaction. Conversation context is supplementary only and treated as unreliable
+for anything earlier than the last ~30 turns.
+
+**When to suggest it (proactively):** After completing a TDD module (Phase F committed),
+after a non-trivial debugging session, or after any session where the agent had to correct
+course more than once.
+
 ---
 
 ## 3. Always-On Rules (every mode)
@@ -98,6 +116,7 @@ These apply regardless of which mode you are in:
 | [`docs/requirements-bridge.md`](docs/requirements-bridge.md) | Bridge functional requirements |
 | [`docs/requirements-editor.md`](docs/requirements-editor.md) | Editor tools requirements |
 | [`docs/patterns.md`](docs/patterns.md) | Agent working patterns, known friction, and workarounds |
+| [`.copilot/compound.md`](.copilot/compound.md) | Compound mode — instructions for session retrospective |
 
 ---
 

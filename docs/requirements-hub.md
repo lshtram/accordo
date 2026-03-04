@@ -65,13 +65,15 @@ When launched with `--stdio`:
 ```
 [Fixed prefix: ~300 tokens — identity, behaviour guidelines]
 [Dynamic state: activeFile, openEditors, workspace, terminals, modalities]
-[Tool summary: name + one-line description per tool]
+[Tool summary: visible tools only (grouped tools hidden, one .discover stub per group)]
 ```
+
+**Progressive tool disclosure:** Tools with a `group` field are excluded from the tool summary. For each group, a single `accordo.<group>.discover` tool is visible. The agent calls it to learn the full schemas of the group’s tools on demand. This keeps the prompt compact as modalities grow.
 
 **Token budget:** Dynamic section MUST NOT exceed 1,500 tokens. If exceeded:
 1. Omit null/empty fields from state
 2. Omit modality state for modalities where `isOpen !== true`
-3. Truncate tool list to name-only (no descriptions) beyond top 10
+3. Truncate visible tool list to name-only (no descriptions) beyond top 10
 
 ### 2.4 Health Check — `GET /health`
 
@@ -259,7 +261,7 @@ interface ToolRegistration {
 | `register` | `(tools: ToolRegistration[]) → void` | Replace entire registry with provided list |
 | `get` | `(name: string) → ToolRegistration \| undefined` | Lookup by tool name |
 | `list` | `() → ToolRegistration[]` | All registered tools |
-| `toMcpTools` | `() → McpTool[]` | Convert to MCP `tools/list` response format |
+| `toMcpTools` | `() → McpTool[]` | Convert to MCP `tools/list` response format. Strips internal fields (`group`, `dangerLevel`, etc.); returns only `name`, `description`, `inputSchema`. |
 
 ### 5.2 State Cache (`state-cache.ts`)
 
@@ -274,7 +276,7 @@ interface ToolRegistration {
 
 | Method | Signature | Description |
 |---|---|---|
-| `render` | `(state: IDEState, tools: ToolRegistration[]) → string` | Render system prompt markdown |
+| `render` | `(state: IDEState, tools: ToolRegistration[]) → string` | Render system prompt markdown. Only **visible** tools (those without a `group` field) are included in the tool summary section. Grouped tools are excluded — agents discover them via per-group `.discover` stub tools. |
 | `estimateTokens` | `(text: string) → number` | Approximate token count (`chars / 4`). Apply a **10% safety margin**: treat the effective budget as 1,350 tokens (not 1,500) to account for tokenizer variance on code-heavy content. |
 
 ### 5.4 Bridge Server (`bridge-server.ts`)
