@@ -78,6 +78,11 @@ export interface SdkCallbacks {
   onResolve(threadId: string, resolutionNote: string): void;
 
   /**
+   * Called when the user reopens a resolved thread.
+   */
+  onReopen(threadId: string): void;
+
+  /**
    * Called when the user deletes a thread or individual comment.
    * @param threadId   The thread to delete
    * @param commentId  If provided, deletes only that comment; else the entire thread
@@ -112,6 +117,7 @@ export type WebviewMessage =
   | { type: "comment:create"; blockId: string; body: string; intent?: string }
   | { type: "comment:reply"; threadId: string; body: string }
   | { type: "comment:resolve"; threadId: string; resolutionNote: string }
+  | { type: "comment:reopen"; threadId: string }
   | { type: "comment:delete"; threadId: string; commentId?: string };
 
 /** Extension host → webview messages. */

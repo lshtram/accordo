@@ -28,6 +28,7 @@ const SAMPLE_OPTS: TemplateOptions = {
   sdkJsUri: "vscode-resource:/ext/dist/sdk.js",
   sdkCssUri: "vscode-resource:/ext/dist/sdk.css",
   themeKind: 2,
+  cspSource: "vscode-webview://abc123",
 };
 
 // Helper to escape regex special chars in URI strings

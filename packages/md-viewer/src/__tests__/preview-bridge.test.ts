@@ -21,20 +21,21 @@ import type { CommentThread } from "@accordo/bridge-types";
 // ── Mocks ──────────────────────────────────────────────────────────────
 
 function makeStoreMock() {
-  const listeners: Array<() => void> = [];
+  const listeners: Array<(uri: string) => void> = [];
   return {
     createThread: vi.fn().mockResolvedValue({ id: "t1", comments: [] }),
     reply: vi.fn().mockResolvedValue(undefined),
     resolve: vi.fn().mockResolvedValue(undefined),
+    reopen: vi.fn().mockResolvedValue(undefined),
     delete: vi.fn().mockResolvedValue(undefined),
     getThreadsForUri: vi.fn().mockReturnValue([]),
     getWorkspaceRoot: vi.fn().mockReturnValue("/project"),
-    onChanged: vi.fn((listener: () => void) => {
+    onChanged: vi.fn((listener: (uri: string) => void) => {
       listeners.push(listener);
       return { dispose: vi.fn() };
     }),
-    // Test helper: fire a change event (no URI — store fires globally)
-    _fire: () => listeners.forEach(l => l()),
+    // Test helper: fire a change event for a given URI (defaults to DOC_URI)
+    _fire: (uri = DOC_URI) => listeners.forEach(l => l(uri)),
   };
 }
 
@@ -145,25 +146,24 @@ describe("PreviewBridge", () => {
 
   // ── M41b-PBR-07: onChanged push ─────────────────────────────────────────
 
-  it("M41b-PBR-07: store onChanged event triggers a comments:load push", async () => {
+  it("M41b-PBR-07: store onChanged for the same URI triggers a comments:load push", async () => {
+    (store.getThreadsForUri as Mock).mockReturnValue([]);
     new PreviewBridge(store as never, webview as never, DOC_URI);
-    store._fire();
+    (webview.postMessage as Mock).mockClear();
+    store._fire(DOC_URI); // change for this URI — should push
     await Promise.resolve();
     expect(webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "comments:load" })
     );
   });
 
-  it("M41b-PBR-07: any store onChanged (incl. other files) pushes threads for this URI", async () => {
+  it("M41b-PBR-07: store onChanged for a different URI does NOT push", async () => {
     (store.getThreadsForUri as Mock).mockReturnValue([]);
     new PreviewBridge(store as never, webview as never, DOC_URI);
     (webview.postMessage as Mock).mockClear();
-    store._fire(); // simulates a change on any file
+    store._fire("file:///other/file.md"); // change for a different URI
     await Promise.resolve();
-    // Bridge always pushes — correctness preserved via getThreadsForUri scoping
-    expect(webview.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "comments:load" })
-    );
+    expect(webview.postMessage).not.toHaveBeenCalled();
   });
 
   // ── M41b-PBR-08: dispose ───────────────────────────────────────────────

@@ -38,6 +38,7 @@ function makeCallbacks(): SdkCallbacks {
     onCreate: vi.fn(),
     onReply: vi.fn(),
     onResolve: vi.fn(),
+    onReopen: vi.fn(),
     onDelete: vi.fn(),
   };
 }

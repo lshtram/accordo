@@ -121,8 +121,8 @@ export interface DocumentChangeInfo {
   }>;
 }
 
-/** Callback type for change listener. */
-export type ChangeListener = () => void;
+/** Callback type for change listener — receives the URI of the affected file. */
+export type ChangeListener = (uri: string) => void;
 
 // ── CommentStore class ───────────────────────────────────────────────────────
 
@@ -187,8 +187,8 @@ export class CommentStore {
     await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), encoded);
   }
 
-  private _emit(): void {
-    for (const l of this._listeners) l();
+  private _emit(uri: string): void {
+    for (const l of this._listeners) l(uri);
   }
 
   // ── Read methods ───────────────────────────────────────────────────────────
@@ -304,7 +304,7 @@ export class CommentStore {
 
     this._threads.set(threadId, thread);
     await this._persist();
-    this._emit();
+    this._emit(params.uri);
 
     return { threadId, commentId };
   }
@@ -337,7 +337,7 @@ export class CommentStore {
     thread.lastActivity = now;
 
     await this._persist();
-    this._emit();
+    this._emit(thread.anchor.uri);
 
     return { commentId };
   }
@@ -370,7 +370,7 @@ export class CommentStore {
     thread.lastActivity = now;
 
     await this._persist();
-    this._emit();
+    this._emit(thread.anchor.uri);
   }
 
   /**
@@ -387,7 +387,7 @@ export class CommentStore {
     thread.lastActivity = new Date().toISOString();
 
     await this._persist();
-    this._emit();
+    this._emit(thread.anchor.uri);
   }
 
   /**
@@ -399,6 +399,8 @@ export class CommentStore {
   async delete(params: DeleteParams): Promise<void> {
     const thread = this._threads.get(params.threadId);
     if (!thread) throw new Error(`Thread not found: ${params.threadId}`);
+
+    const affectedUri = thread.anchor.uri;
 
     if (params.commentId === undefined) {
       this._threads.delete(params.threadId);
@@ -414,7 +416,7 @@ export class CommentStore {
     }
 
     await this._persist();
-    this._emit();
+    this._emit(affectedUri);
   }
 
   // ── Staleness ──────────────────────────────────────────────────────────────
@@ -454,7 +456,7 @@ export class CommentStore {
     // Persist shifted anchors so they survive reload (architecture §9.1 step 4)
     void this._persist();
     // Notify listeners so state contribution re-publishes with updated line numbers
-    this._emit();
+    this._emit(change.uri);
   }
 
   /** Check whether a thread has been marked visually stale. */

@@ -158,6 +158,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             const updated = store.getThread(args.threadId);
             if (updated) nc.updateThread(updated);
           },
+          async reopen(args: { threadId: string }) {
+            await store.reopen(args.threadId, { kind: "user", name: "You" });
+            const updated = store.getThread(args.threadId);
+            if (updated) nc.updateThread(updated);
+          },
           async delete(args: { threadId: string; commentId?: string }) {
             await store.delete({ threadId: args.threadId, commentId: args.commentId });
             const updated = store.getThread(args.threadId);
@@ -167,7 +172,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           getThreadsForUri(uri: string) {
             return store.getThreadsForUri(uri);
           },
-          onChanged(listener: () => void) {
+          onChanged(listener: (uri: string) => void) {
             return store.onChanged(listener);
           },
         };

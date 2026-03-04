@@ -235,7 +235,7 @@ export class AccordoCommentSDK {
 
     // Badge showing comment count
     const badge = document.createElement("span");
-    badge.className = "accordo-pin-badge";
+    badge.className = "accordo-pin__badge";
     badge.textContent = String(thread.comments.length);
     el.appendChild(badge);
 
@@ -369,6 +369,16 @@ export class AccordoCommentSDK {
       actions.className = "accordo-popover__actions";
       (actions as HTMLElement).style.padding = "8px 12px";
 
+      const reopenBtn = document.createElement("button");
+      reopenBtn.className = "accordo-btn accordo-btn--secondary";
+      reopenBtn.textContent = "Reopen";
+      reopenBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        callbacks.onReopen(threadId);
+        this._closePopover();
+      });
+      actions.appendChild(reopenBtn);
+
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "accordo-btn accordo-btn--danger";
       deleteBtn.textContent = "Delete";
@@ -439,7 +449,6 @@ export class AccordoCommentSDK {
     submitBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       const body = textarea.value;
-      console.log("[accordo-sdk] submit — blockId:", JSON.stringify(blockId), "body:", JSON.stringify(body));
       if (body) {
         this._opts?.callbacks.onCreate(blockId || "file", body, undefined);
       }

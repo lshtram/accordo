@@ -129,6 +129,7 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
         nonce,
         body: html,
         themeKind,
+        cspSource: webviewPanel.webview.cspSource,
         katexCssUri: asUri("katex.min.css"),
         mermaidJsUri: asUri("mermaid.min.js"),
         sdkJsUri: asUri("sdk.browser.js"),

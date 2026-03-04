@@ -77,6 +77,7 @@ function makeMockStore() {
     createThread: vi.fn().mockResolvedValue({}),
     reply: vi.fn().mockResolvedValue(undefined),
     resolve: vi.fn().mockResolvedValue(undefined),
+    reopen: vi.fn().mockResolvedValue(undefined),
     delete: vi.fn().mockResolvedValue(undefined),
   };
 }

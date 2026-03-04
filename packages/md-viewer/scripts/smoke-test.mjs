@@ -126,6 +126,7 @@ console.log("\n── WebviewTemplate ──");
     sdkJsUri: "vscode-resource:/ext/sdk.js",
     sdkCssUri: "vscode-resource:/ext/sdk.css",
     themeKind: 2,
+    cspSource: "vscode-webview://abc123",
   };
   const html = buildWebviewHtml(opts);
   check("starts with DOCTYPE", html.trimStart().toLowerCase().startsWith("<!doctype html>"));
@@ -157,6 +158,7 @@ console.log("\n── PreviewBridge ──");
     createThread: async (args) => { createThreadArgs = args; return {}; },
     reply: async () => {},
     resolve: async () => {},
+    reopen: async () => {},
     delete: async () => {},
   };
   const webview = {

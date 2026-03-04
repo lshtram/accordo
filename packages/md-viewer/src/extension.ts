@@ -28,6 +28,7 @@ const noopStore: CommentStoreLike = {
   createThread: async () => { return {} as never; },
   reply: async () => {},
   resolve: async () => {},
+  reopen: async () => {},
   delete: async () => {},
   getThreadsForUri: () => [],
   onChanged: () => ({ dispose: () => {} }),
@@ -57,7 +58,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     try {
       // Ensure the comments extension has actually activated before calling its command
       if (!commentsExt.isActive) {
-        console.log("[accordo-md-viewer] waiting for accordo-comments to activate…");
         await commentsExt.activate();
       }
       const acquired = (await vscode.commands.executeCommand(
@@ -65,19 +65,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       )) as CommentStoreLike | undefined;
       if (acquired && typeof acquired.createThread === "function") {
         store = acquired;
-        console.log("[accordo-md-viewer] ✓ acquired real CommentStore adapter");
-      } else {
-        console.warn("[accordo-md-viewer] getStore returned", typeof acquired, "— using no-op store");
+
       }
     } catch (err) {
-      console.warn("[accordo-md-viewer] Could not retrieve CommentStore — using no-op store", err);
+      // Could not retrieve CommentStore — using no-op store
     }
   }
 
   const preview = new CommentablePreview(context, store);
 
-  // Diagnostic: confirm the extension activated (remove after manual testing)
-  vscode.window.showInformationMessage("[accordo-md-viewer] activated ✓");
 
   // M41b-EXT-01: register custom editor provider (M41b-EXT-04: push to subscriptions)
   context.subscriptions.push(
@@ -95,9 +91,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
 
     vscode.commands.registerCommand("accordo.preview.toggle", async () => {
-      const uri = vscode.window.activeTextEditor?.document.uri;
-      if (!uri) return;
-      await vscode.commands.executeCommand("vscode.openWith", uri, PREVIEW_VIEW_TYPE);
+      // If there is an active .md text editor — switch to preview
+      const textEditor = vscode.window.activeTextEditor;
+      if (textEditor?.document.uri.fsPath.endsWith(".md")) {
+        await vscode.commands.executeCommand("vscode.openWith", textEditor.document.uri, PREVIEW_VIEW_TYPE);
+        return;
+      }
+      // Otherwise assume we are in the preview — open the file in the default text editor
+      const tabInput = vscode.window.tabGroups?.activeTabGroup?.activeTab?.input as
+        | { uri?: import("vscode").Uri }
+        | undefined;
+      const fileUri = tabInput?.uri;
+      if (fileUri?.fsPath.endsWith(".md")) {
+        await vscode.window.showTextDocument(fileUri);
+      }
     }),
 
     vscode.commands.registerCommand("accordo.preview.openSideBySide", async () => {

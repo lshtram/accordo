@@ -45,6 +45,11 @@ export interface TemplateOptions {
    */
   themeKind: 1 | 2 | 3 | 4;
   /**
+   * VS Code webview CSP source string (e.g. `vscode-webview://...`).
+   * Pass `webviewPanel.webview.cspSource` at call site.
+   */
+  cspSource: string;
+  /**
    * Additional <script src="..."> URIs injected before </body>.
    * Used to extend with WaveDrom, Viz.js, Vega, Plotly, MathJax, etc.
    * The nonce is applied automatically to each tag.
@@ -72,6 +77,7 @@ export function buildWebviewHtml(opts: TemplateOptions): string {
     sdkJsUri,
     sdkCssUri,
     themeKind,
+    cspSource,
     additionalScripts = [],
     additionalStylesheets = [],
   } = opts;
@@ -91,7 +97,7 @@ export function buildWebviewHtml(opts: TemplateOptions): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' vscode-resource:; style-src vscode-resource: 'unsafe-inline'; img-src vscode-resource: https: data:; font-src vscode-resource: data:; connect-src vscode-resource:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' ${cspSource}; style-src ${cspSource} 'unsafe-inline'; img-src ${cspSource} https: data:; font-src ${cspSource} data:; connect-src ${cspSource};">
   <link rel="stylesheet" href="${katexCssUri}">
   <link rel="stylesheet" href="${sdkCssUri}">
 ${extraLinks}
@@ -103,7 +109,6 @@ ${body}
 ${extraScripts}
   <script nonce="${nonce}">
     (function () {
-      console.log('[accordo-preview] init script running, AccordoCommentSDK=', typeof AccordoCommentSDK);
       const sdk = new AccordoCommentSDK();
       const vscode = acquireVsCodeApi();
 
@@ -120,7 +125,6 @@ ${extraScripts}
         coordinateToScreen,
         callbacks: {
           onCreate(blockId, body, intent) {
-            console.log('[accordo-preview] onCreate fired — blockId:', JSON.stringify(blockId), 'body:', JSON.stringify(body));
             vscode.postMessage({ type: 'comment:create', blockId, body, intent });
           },
           onReply(threadId, body) {
@@ -129,17 +133,18 @@ ${extraScripts}
           onResolve(threadId, resolutionNote) {
             vscode.postMessage({ type: 'comment:resolve', threadId, resolutionNote });
           },
+          onReopen(threadId) {
+            vscode.postMessage({ type: 'comment:reopen', threadId });
+          },
           onDelete(threadId, commentId) {
             vscode.postMessage({ type: 'comment:delete', threadId, commentId });
           },
         },
       });
-      console.log('[accordo-preview] sdk.init() OK — alt+click to add a comment');
       } catch(e) { console.error('[accordo-preview] sdk.init() FAILED', e); }
 
       window.addEventListener('message', (event) => {
         const msg = event.data;
-        console.log('[accordo-preview] message received:', msg.type, msg);
         if (msg.type === 'comments:load') {
           sdk.loadThreads(msg.threads);
         } else if (msg.type === 'comments:add') {

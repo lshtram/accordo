@@ -31,10 +31,11 @@ export interface CommentStoreLike {
   createThread(args: { uri: string; blockId: string; body: string; intent?: string }): Promise<CommentThread>;
   reply(args: { threadId: string; body: string }): Promise<void>;
   resolve(args: { threadId: string; resolutionNote?: string }): Promise<void>;
+  reopen(args: { threadId: string }): Promise<void>;
   delete(args: { threadId: string; commentId?: string }): Promise<void>;
   getThreadsForUri(uri: string): CommentThread[];
-  /** Listener fires after any mutation. No URI argument — each bridge scopes via getThreadsForUri. */
-  onChanged(listener: () => void): { dispose(): void };
+  /** Listener fires after a mutation for the specified URI. */
+  onChanged(listener: (uri: string) => void): { dispose(): void };
 }
 import type { SdkThread, WebviewMessage, HostMessage } from "@accordo/comment-sdk";
 
@@ -102,12 +103,10 @@ export class PreviewBridge {
 
   /** M41b-PBR-01 — subscribe to store changes during construction */
   private _init(): void {
-    this._storeDisposable = this._store.onChanged(() => {
-      console.log("[PreviewBridge] store.onChanged fired — pushing threads for", this._uri);
-      this._pushLoad();
+    this._storeDisposable = this._store.onChanged((changedUri: string) => {
+      if (changedUri === this._uri) this._pushLoad();
     });
     this._msgDisposable = this._webview.onDidReceiveMessage((msg) => {
-      console.log("[PreviewBridge] webview message received:", (msg as { type?: string }).type);
       void this.handleMessage(msg);
     });
   }
@@ -115,10 +114,7 @@ export class PreviewBridge {
   /** Push the current threads for this URI to the webview. */
   private _pushLoad(): void {
     const rawThreads = this._store.getThreadsForUri(this._uri);
-    const threads = rawThreads.map((t) =>
-      toSdkThread(t, this._loadedAt)
-    );
-    console.log(`[PreviewBridge] _pushLoad — ${rawThreads.length} raw threads → ${threads.length} sdk threads for ${this._uri}`);
+    const threads = rawThreads.map((t) => toSdkThread(t, this._loadedAt));
     this._webview.postMessage({ type: "comments:load", threads });
   }
 
@@ -139,14 +135,12 @@ export class PreviewBridge {
   async handleMessage(msg: WebviewMessage): Promise<void> {
     try {
       if (msg.type === "comment:create") {
-        console.log("[PreviewBridge] creating thread — uri:", this._uri, "blockId:", msg.blockId, "body:", msg.body?.slice(0, 50));
-        const result = await this._store.createThread({
+        await this._store.createThread({
           uri: this._uri,
           blockId: msg.blockId,
           body: msg.body,
           intent: msg.intent,
         });
-        console.log("[PreviewBridge] createThread returned:", result?.id ?? result);
       } else if (msg.type === "comment:reply") {
         await this._store.reply({ threadId: msg.threadId, body: msg.body });
       } else if (msg.type === "comment:resolve") {
@@ -154,6 +148,8 @@ export class PreviewBridge {
           threadId: msg.threadId,
           resolutionNote: msg.resolutionNote,
         });
+      } else if (msg.type === "comment:reopen") {
+        await this._store.reopen({ threadId: msg.threadId });
       } else if (msg.type === "comment:delete") {
         await this._store.delete({ threadId: msg.threadId, commentId: msg.commentId });
       }

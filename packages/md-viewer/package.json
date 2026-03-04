@@ -13,6 +13,10 @@
   "activationEvents": [
     "onStartupFinished"
   ],
+  "extensionDependencies": [
+    "accordo.accordo-bridge",
+    "accordo.accordo-comments"
+  ],
   "contributes": {
     "customEditors": [
       {
@@ -23,7 +27,7 @@
             "filenamePattern": "*.md"
           }
         ],
-        "priority": "default"
+        "priority": "option"
       }
     ],
     "commands": [
