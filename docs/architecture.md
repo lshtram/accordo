@@ -796,3 +796,37 @@ The following are explicitly deferred:
 - **Remote topology UX:** When Bridge detects it is running on a remote host (SSH/devcontainer/Codespaces), emit a VSCode notification surfacing the port-forward command and bearer token needed for local agents. Consider `vscode.env.asExternalUri()` auto-forwarding for the Hub port.
 - **Checkpoint/rollback:** Lightweight git-stash-based workspace snapshots triggered before `destructive` tool executions. Gives users a recovery path if an agent's terminal commands cause damage. Reference: Cline's checkpoint model.
 - **Exact token counting:** Replace `chars / 4` heuristic in `prompt-engine.ts` with `tiktoken` (or equivalent) for accurate token budgeting.
+
+## 12. Component: @accordo/comment-sdk (Phase 2)
+
+> **Agent note [2026-03-05]:** Established during Week 7 / UX polish session. The SDK is the shared display layer for all commenting surfaces.
+
+### 12.1 Role
+
+A framework-free, browser-bundled JS library (`sdk.browser.js` + `sdk.css`) that any Accordo webview can embed to get pins, popovers, and comment interactions. It has **no VS Code dependency** — it communicates with the host extension exclusively via `postMessage`.
+
+### 12.2 Surface-agnostic contract
+
+Any webview that wants commenting support:
+
+1. Loads `sdk.browser.js` + `sdk.css` (copied into the extension's WebviewPanel via `localResourceRoots`)
+2. Calls `sdk.init({ container, callbacks: { onReply, onResolve, onReopen, onDelete, onNew } })`
+3. Assigns `data-block-id` attributes to content nodes
+4. Handles inbound `postMessage` types: `comments:load`, `comments:add`, `comments:update`, `comments:remove`, `comments:focus`
+
+Improvements to the SDK (richer popover, threaded reply view, reactions, markdown rendering) automatically propagate to **all surfaces that embed it**: markdown preview (`accordo-md-viewer`), future HTML viewer, image viewer, diagram viewer, presentation extensions.
+
+### 12.3 Data flow
+
+```
+CommentStore (accordo-comments)
+    └── PreviewBridge (per-panel)
+           └── postMessage → webview
+                   └── CommentSDK (sdk.browser.js)
+                           └── pin + popover DOM
+                                   └── callback → postMessage → extension command → CommentStore
+```
+
+### 12.4 Built-in Comments panel limitation
+
+The VS Code **built-in Comments panel** (bottom-bar `workbench.panel.comments`) does **not** support custom context menu contributions or click-to-navigate overrides. See `docs/patterns.md` P-12 for full analysis. A custom **Accordo Comments TreeView** sidebar panel is tracked in `docs/workplan.md` deferred backlog #7 and will replace the built-in panel as the primary navigation surface.
