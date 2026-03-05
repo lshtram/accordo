@@ -3,19 +3,19 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-04  
-**Status:** ACTIVE — Session 8A complete (M40-EXT-11 ✅), Session 8B next (accordo-slidev full package)
+**Status:** ACTIVE — Session 8B complete (M44 `accordo-slidev` ✅), Session 9 next
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-05 — Session 8A complete. M40-EXT-11 (`getSurfaceAdapter`) implemented, tested (11 new tests), reviewed, and committed. 1232 tests green (Hub: 344, Bridge: 298, Editor: 186, Comments: 197, SDK: 45, md-viewer: 126 + smoke: 53 [not in pnpm test]). TypeScript clean. Session 8B next: full `accordo-slidev` package (M44-EXT through M44-STATE, 6 modules).**
+> **As of 2026-03-05 — Session 8B complete. `accordo-slidev` full package implemented (M44-NAR/STATE/CBR/RT/PVD/TL/EXT): 137 new tests, 990 in pnpm test output (Hub 344, Editor 186, Comments 197, md-viewer 126, slidev 137). Total estimate: ~1369 (adds bridge 298 + comment-sdk 45). TypeScript clean. D2 fixes applied. Ready for Session 9.**
 
 | Phase | Goal | Status |
 |------|------|--------|
 | Phase 1 | Control Plane MVP (Hub + Bridge + Editor) | ✅ DONE — 797 tests, v0.1.0 |
 | Phase 2 | Comments modality (`accordo-comments`) | ✅ DONE — Week 6+7 complete, 1221 tests |
-| Phase 3 | Presentations modality (`accordo-slidev`) | 🔄 ACTIVE — 8A complete, Session 8B next |
+| Phase 3 | Presentations modality (`accordo-slidev`) | ✅ DONE — Session 8B complete, 137 tests |
 | Phase 4 | Voice modality (`accordo-voice` bridge registration) | ⏳ Pending Phase 3 |
 | Phase 5 | Diagrams modality (`accordo-tldraw`) | ⏳ Pending Phase 4 |
 
@@ -171,14 +171,14 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 | # | Module | Requirements Source | TDD Phases |
 |---|---|---|---|
-| M44-EXT | `extension.ts` — activate, dependency checks, tool registration | requirements-slidev.md §4 M44-EXT | Pending |
-| M44-PVD | `presentation-provider.ts` — WebviewPanel + Slidev process spawn/kill (port 7788–7888) | requirements-slidev.md §4 M44-PVD | Pending |
-| M44-RT | `runtime-adapter.ts` + `slidev-adapter.ts` — GET /json polling for getCurrent, navigation | requirements-slidev.md §4 M44-RT | Pending |
-| M44-CBR | `presentation-comments-bridge.ts` — blockId `"slide:{idx}:{x}:{y}"` ↔ SlideCoordinates | requirements-slidev.md §4 M44-CBR | Pending |
-| M44-NAR | `narration.ts` — plain-text narration from slide markdown + speaker notes | requirements-slidev.md §4 M44-NAR | Pending |
-| M44-STATE | `presentation-state.ts` — modality state publisher | requirements-slidev.md §4 M44-STATE | Pending |
+| M44-EXT | `extension.ts` — activate, dependency checks, tool registration | requirements-slidev.md §4 M44-EXT | ✅ done (16 tests) |
+| M44-PVD | `presentation-provider.ts` — WebviewPanel + Slidev process spawn/kill (port 7788–7888) | requirements-slidev.md §4 M44-PVD | ✅ done (18 tests) |
+| M44-RT | `runtime-adapter.ts` + `slidev-adapter.ts` — GET /json polling for getCurrent, navigation | requirements-slidev.md §4 M44-RT | ✅ done (27 tests) |
+| M44-CBR | `presentation-comments-bridge.ts` — blockId `"slide:{idx}:{x}:{y}"` ↔ SlideCoordinates | requirements-slidev.md §4 M44-CBR | ✅ done (22 tests) |
+| M44-NAR | `narration.ts` — plain-text narration from slide markdown + speaker notes | requirements-slidev.md §4 M44-NAR | ✅ done (16 tests) |
+| M44-STATE | `presentation-state.ts` — modality state publisher | requirements-slidev.md §4 M44-STATE | ✅ done (11 tests) |
 
-**Session 8B gate:** Agent can `open` → `listSlides` → `goto` → `getCurrent` → `generateNarration` → `close`. Comment pins work on slides. All tests green.
+**Session 8B gate:** ✅ All 137 tests green. Modules M44-NAR/STATE/CBR/RT/PVD/TL/EXT complete. D2 fixes applied. Committed `8d2c3f9`.
 
 ---
 
