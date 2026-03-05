@@ -202,6 +202,19 @@ describe("McpHandler", () => {
       expect(result).toHaveProperty("capabilities");
     });
 
+    it("§2.1: initialize capabilities declares tools.listChanged:true for SSE notifications", async () => {
+      const req = makeRequest("initialize", {
+        protocolVersion: ACCORDO_PROTOCOL_VERSION,
+        capabilities: {},
+        clientInfo: { name: "test-agent", version: "1.0" },
+      });
+      const response = await handler.handleRequest(req, session);
+      const result = response?.result as Record<string, unknown>;
+      const caps = result["capabilities"] as Record<string, unknown>;
+      const tools = caps["tools"] as Record<string, unknown>;
+      expect(tools["listChanged"]).toBe(true);
+    });
+
     it("§5.5: handleRequest updates session lastActivity timestamp", async () => {
       const before = Date.now();
       const req = makeRequest("initialize", {

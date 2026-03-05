@@ -55,6 +55,12 @@ export class HubServer {
   private mcpHandler: McpHandler;
   private startedAt: number | null = null;
   private token: string;
+  /**
+   * Active SSE connections from MCP clients (VS Code) listening for server
+   * notifications (e.g. notifications/tools/list_changed).
+   * Key: stable UUID per connection.
+   */
+  private sseConnections = new Map<string, http.ServerResponse>();
 
   constructor(private options: HubServerOptions) {
     this.token = options.token;
@@ -79,6 +85,14 @@ export class HubServer {
     });
     this.bridgeServer.onRegistryUpdate((tools) => {
       this.toolRegistry.register(tools);
+      // Notify all listening SSE clients that the tool list changed so they
+      // re-fetch tools/list and see the complete set of registered tools.
+      // MCP spec: notifications/tools/list_changed
+      this.pushSseNotification({
+        jsonrpc: "2.0" as const,
+        method: "notifications/tools/list_changed",
+        params: {},
+      });
     });
   }
 
@@ -155,9 +169,22 @@ export class HubServer {
       return;
     }
 
+    // §2.1: /mcp GET — SSE notification stream for MCP clients
+    // VS Code opens this to receive server-initiated notifications
+    // (e.g. notifications/tools/list_changed after bridge reconnects).
+    if (url === "/mcp" && req.method === "GET") {
+      if (!validateBearer(req, this.token)) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+      this.handleMcpSse(req, res);
+      return;
+    }
+
     // §2.1: /mcp — wrong HTTP method
     if (url === "/mcp") {
-      res.writeHead(405, { "Content-Type": "application/json", "Allow": "POST" });
+      res.writeHead(405, { "Content-Type": "application/json", "Allow": "POST, GET" });
       res.end(JSON.stringify({ error: "Method not allowed" }));
       return;
     }
@@ -284,6 +311,59 @@ export class HubServer {
           res.end();
         });
     });
+  }
+
+  /**
+   * GET /mcp — SSE notification stream for MCP clients.
+   *
+   * VS Code opens this endpoint (with Accept: text/event-stream) after
+   * initializing a session to receive server-initiated notifications such as
+   * notifications/tools/list_changed. Keeping this stream open allows VS Code
+   * to immediately re-fetch tools/list when the bridge reconnects and
+   * registers new tools — preventing stale tool lists in agent sessions.
+   *
+   * Format: each notification is a Server-Sent Events `data:` line followed
+   * by a blank line, per https://html.spec.whatwg.org/multipage/server-sent-events.html
+   */
+  private handleMcpSse(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): void {
+    const connId = Math.random().toString(36).slice(2);
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "Access-Control-Allow-Origin": "*",
+    });
+
+    // SSE endpoint confirmation ping
+    res.write(": accordo-hub SSE connected\n\n");
+
+    this.sseConnections.set(connId, res);
+
+    // Remove when client disconnects
+    req.on("close", () => {
+      this.sseConnections.delete(connId);
+    });
+  }
+
+  /**
+   * Push a JSON-RPC notification to all active SSE connections.
+   * Used to send notifications/tools/list_changed when tool registry updates.
+   */
+  private pushSseNotification(notification: { jsonrpc: "2.0"; method: string; params: unknown }): void {
+    if (this.sseConnections.size === 0) return;
+    const data = `data: ${JSON.stringify(notification)}\n\n`;
+    for (const [id, res] of this.sseConnections) {
+      try {
+        res.write(data);
+      } catch {
+        // Connection closed — clean up
+        this.sseConnections.delete(id);
+      }
+    }
   }
 
   /**

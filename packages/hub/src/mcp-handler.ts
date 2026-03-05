@@ -112,7 +112,11 @@ export class McpHandler {
           result: {
             protocolVersion: ACCORDO_PROTOCOL_VERSION,
             serverInfo: { name: "accordo-hub", version: "0.1.0" },
-            capabilities: { tools: {} },
+            // listChanged: true tells the MCP client to re-fetch tools/list
+            // when it receives notifications/tools/list_changed via SSE.
+            // This ensures VS Code always has the complete tool set even when
+            // the bridge registers tools after the initial connection.
+            capabilities: { tools: { listChanged: true } },
           },
         };
       }

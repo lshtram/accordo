@@ -152,11 +152,23 @@ describe("Hub HTTP smoke", () => {
 
   // ── wrong method ───────────────────────────────────────────────────────────
 
-  it("§2.1: GET /mcp (wrong method) returns 405", async () => {
+  it("§2.1: GET /mcp without auth returns 401", async () => {
+    const res = await fetch(`${baseUrl}/mcp`);
+    expect(res.status).toBe(401);
+    // consume body to avoid connection leaks
+    await res.text();
+  });
+
+  it("§2.1: GET /mcp with auth opens SSE stream (text/event-stream)", async () => {
+    const ac = new AbortController();
     const res = await fetch(`${baseUrl}/mcp`, {
       headers: { "Authorization": `Bearer ${TOKEN}` },
+      signal: ac.signal,
     });
-    expect(res.status).toBe(405);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    // abort immediately — we just need to verify headers
+    ac.abort();
   });
 });
 

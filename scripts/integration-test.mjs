@@ -299,6 +299,103 @@ try {
   fail(`Could not read mcp.json at ${mcpJsonPath}: ${e.message}`);
 }
 
+// ── Step 7: SSE endpoint and tools/list_changed notification ─────────────────
+
+console.log("\nStep 7: SSE endpoint + notifications/tools/list_changed");
+
+// 7a: Check initialize capabilities declare listChanged:true
+const initResp = await httpJson("/mcp", {
+  method: "POST",
+  token: HUB_TOKEN,
+  body: {
+    jsonrpc: "2.0", id: "cap-check",
+    method: "initialize",
+    params: { protocolVersion: "1", capabilities: {}, clientInfo: { name: "test", version: "1" } },
+  },
+});
+const toolsCap = initResp?.result?.capabilities?.tools;
+if (toolsCap?.listChanged === true) {
+  pass("initialize capabilities.tools.listChanged = true");
+} else {
+  fail(`initialize capabilities.tools.listChanged = ${JSON.stringify(toolsCap)} (expected {listChanged:true})`);
+}
+
+// 7b: Open SSE stream and capture a notification
+let sseNotification = null;
+const sseNotificationReceived = new Promise((resolve) => {
+  (async () => {
+    const url = `http://localhost:${PORT}/mcp`;
+    const nodeHttp = await import("node:http");
+    const sseReq = nodeHttp.default.request(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${HUB_TOKEN}`,
+        Accept: "text/event-stream",
+      },
+    }, (sseRes) => {
+      if (sseRes.statusCode !== 200) {
+        fail(`GET /mcp SSE returned ${sseRes.statusCode} (expected 200)`);
+        resolve(null);
+        return;
+      }
+      const ct = sseRes.headers["content-type"] ?? "";
+      if (ct.includes("text/event-stream")) {
+        pass(`GET /mcp returns 200 with content-type: ${ct.split(";")[0]}`);
+      } else {
+        fail(`GET /mcp content-type = ${ct} (expected text/event-stream)`);
+      }
+
+      sseRes.on("data", (chunk) => {
+        const text = chunk.toString();
+        const lines = text.split("\n").filter(l => l.startsWith("data: "));
+        for (const line of lines) {
+          try {
+            const msg = JSON.parse(line.slice(6));
+            if (msg.method === "notifications/tools/list_changed") {
+              sseNotification = msg;
+              sseReq.destroy();
+              resolve(msg);
+            }
+          } catch {}
+        }
+      });
+    });
+    sseReq.on("error", (e) => {
+      if (!e.message.includes("socket hang up") && !e.message.includes("ECONNRESET")) {
+        fail("SSE connection error: " + e.message);
+      }
+      resolve(null);
+    });
+    sseReq.end();
+  })();
+});
+
+// Give SSE connection a moment to establish, then trigger a registry update
+await new Promise(r => setTimeout(r, 300));
+
+// Re-send toolRegistry to trigger notifications/tools/list_changed
+ws.send(JSON.stringify({
+  type: "toolRegistry",
+  tools: FAKE_TOOLS.map(t => ({
+    name: t.name,
+    description: t.description + " (updated)",
+    inputSchema: { type: "object", properties: {} },
+    ...(t.group ? { group: t.group } : {}),
+  })),
+}));
+
+// Wait up to 2s for the notification
+const notif = await Promise.race([
+  sseNotificationReceived,
+  new Promise(r => setTimeout(() => r(null), 2000)),
+]);
+
+if (notif?.method === "notifications/tools/list_changed") {
+  pass("Received notifications/tools/list_changed over SSE after registry update");
+} else {
+  fail("Did NOT receive notifications/tools/list_changed over SSE within 2s");
+}
+
 // ── Done ──────────────────────────────────────────────────────────────────────
 
 ws.close();
