@@ -208,18 +208,63 @@ function buildWebviewHtml(serverUrl: string, commentsEnabled: boolean): string {
   const commentsSdkScript = commentsEnabled
     ? `<script>/* accordo comments SDK placeholder */</script>`
     : "";
+  // The webview loads before Slidev has finished starting.
+  // Show a loading screen and JS-poll the Slidev URL until it responds.
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'none'; frame-src http://localhost:* https:; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:;" />
   <style>
-    html, body, iframe { margin: 0; padding: 0; width: 100%; height: 100%; border: none; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100vh; overflow: hidden; }
+    #loading {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100vh; background: #1e1e2e; color: #cdd6f4; font-family: sans-serif; gap: 14px;
+    }
+    #loading h2 { font-size: 17px; font-weight: 400; }
+    #loading p  { font-size: 12px; opacity: 0.55; }
+    #frame { display: none; width: 100%; height: 100%; border: none;
+             position: fixed; top: 0; left: 0; }
   </style>
 </head>
 <body>
-  <iframe src="${serverUrl}" allow="cross-origin-isolated"></iframe>
+  <div id="loading">
+    <h2>Starting Slidev&#8230;</h2>
+    <p>Waiting for presentation server</p>
+  </div>
+  <iframe id="frame" src="about:blank"></iframe>
   ${commentsSdkScript}
+  <script>
+    (function () {
+      var url = ${JSON.stringify(serverUrl)};
+      var frame = document.getElementById('frame');
+      var loading = document.getElementById('loading');
+      var attempts = 0;
+      var maxAttempts = 30; // 30 seconds max
+
+      function tryLoad() {
+        if (attempts++ >= maxAttempts) {
+          loading.querySelector('p').textContent = 'Timed out waiting for Slidev. Is @slidev/cli installed?';
+          return;
+        }
+        fetch(url, { mode: 'no-cors' })
+          .then(function () {
+            loading.style.display = 'none';
+            frame.src = url;
+            frame.style.display = 'block';
+          })
+          .catch(function () {
+            setTimeout(tryLoad, 1000);
+          });
+      }
+
+      // Give Slidev a head-start before first poll (it needs ~2-4s to boot)
+      setTimeout(tryLoad, 2500);
+    })();
+  </script>
 </body>
 </html>`;
 }

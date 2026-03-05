@@ -176,37 +176,24 @@ export function renderPrompt(
       : `## Current IDE State\n\nNo active session.`;
 
   // ── Tool section ─────────────────────────────────────────────────────────
-  // Grouped tools are hidden — the agent discovers them via the .discover tool.
-  // Always: first 10 visible tools get name + description, beyond 10 name only.
-  // GUARDRAIL: if ALL registered tools are grouped (no discover stubs visible),
-  // fall back to showing every tool so the agent isn't completely blind.
-  const visibleTools = tools.filter(t => !t.group);
-  const effectiveTools = visibleTools.length === 0 && tools.length > 0 ? tools : visibleTools;
-  const guardrailNote = visibleTools.length === 0 && tools.length > 0
-    ? "\n> ⚠ All tools are grouped but no .discover stubs were registered. Showing all tools as fallback.\n"
-    : "";
-  const toolLines: string[] = [];
-  if (effectiveTools.length > 0) {
-    for (let i = 0; i < effectiveTools.length; i++) {
-      if (i < 10) {
-        toolLines.push(`- **${effectiveTools[i].name}**: ${effectiveTools[i].description}`);
-      } else {
-        toolLines.push(`- ${effectiveTools[i].name}`);
-      }
-    }
-  }
+  // Show every registered tool — all are directly callable via MCP.
+  // No progressive disclosure: grouped and ungrouped tools all appear here.
+  // The .discover tools remain available for fetching full JSON schemas on demand.
+  //
+  // Budget guard: if state + tools exceeds the effective token budget, fall
+  // back to name-only format for all tools. With 40 spec-compliant tools
+  // (≤120-char descriptions) the budget is not normally exceeded.
   let toolSection =
-    toolLines.length > 0
-      ? `## Registered Tools\n${guardrailNote}\n${toolLines.join("\n")}`
+    tools.length > 0
+      ? `## Registered Tools\n\n${tools.map((t) => `- **${t.name}**: ${t.description}`).join("\n")}`
       : `## Registered Tools\n\nNo tools registered.`;
 
   // Post-render budget guard: if the dynamic section (state + tools) still exceeds
-  // the effective token budget, fall back to name-only format for ALL visible tools.
+  // the effective token budget, fall back to name-only format for all tools.
   // This protects against extensions violating the 120-char description cap.
   const dynamicEstimate = estimateTokens(stateSection + "\n\n" + toolSection);
-  if (dynamicEstimate > PROMPT_EFFECTIVE_TOKEN_BUDGET && effectiveTools.length > 0) {
-    const nameOnlyLines = effectiveTools.map((t) => `- ${t.name}`);
-    toolSection = `## Registered Tools\n\n${nameOnlyLines.join("\n")}`;
+  if (dynamicEstimate > PROMPT_EFFECTIVE_TOKEN_BUDGET && tools.length > 0) {
+    toolSection = `## Registered Tools\n\n${tools.map((t) => `- ${t.name}`).join("\n")}`;
   }
 
   return `${fixed}\n\n${stateSection}\n\n${toolSection}`;

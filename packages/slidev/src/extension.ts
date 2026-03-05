@@ -96,8 +96,47 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // M44-EXT-02: Tool deps wiring
   const toolDeps: PresentationToolDeps = {
     discoverDeckFiles: async () => {
-      const files = await vscode.workspace.findFiles("**/*.md", "**/node_modules/**");
-      return files.map((f) => f.fsPath);
+      // Find .md files, excluding obvious non-deck directories
+      const files = await vscode.workspace.findFiles(
+        "**/*.md",
+        "**/{node_modules,.git,dist,build,vendor,tmp,.vscode}/**",
+      );
+
+      // Filter to actual Slidev decks: check first 600 bytes for Slidev markers.
+      // A Slidev deck either:
+      //   (a) has YAML frontmatter (starts with "---") containing a Slidev key, OR
+      //   (b) has a path that matches known deck naming conventions.
+      const deckFiles: string[] = [];
+      const slidevFrontmatterKeys = ["theme:", "layout:", "transition:", "drawings:", "background:", "routerMode:", "slidev"];
+
+      for (const file of files) {
+        // Fast path: naming convention
+        const fp = file.fsPath;
+        if (
+          fp.endsWith(".deck.md") ||
+          /[/\\](slides|decks|deck|presentations?)([/\\]|$)/.test(fp)
+        ) {
+          deckFiles.push(fp);
+          continue;
+        }
+
+        // Content check: read first 600 bytes and look for Slidev YAML frontmatter
+        try {
+          const bytes = await vscode.workspace.fs.readFile(file);
+          const head = Buffer.from(bytes.slice(0, 600)).toString("utf-8");
+          if (head.startsWith("---\n") || head.startsWith("---\r\n")) {
+            const fmEnd = head.indexOf("\n---", 4);
+            const frontmatter = fmEnd > 0 ? head.slice(0, fmEnd) : head;
+            if (slidevFrontmatterKeys.some((k) => frontmatter.includes(k))) {
+              deckFiles.push(fp);
+            }
+          }
+        } catch {
+          // Skip unreadable files
+        }
+      }
+
+      return deckFiles;
     },
 
     openSession: async (deckUri: string) => {

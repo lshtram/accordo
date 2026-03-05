@@ -99,7 +99,7 @@ export function createPresentationTools(
     // ── M44-TL-01: discover ──────────────────────────────────────────────────
     {
       name: "accordo.presentation.discover",
-      description: "Discover available Slidev deck files (.md) in the workspace.",
+      description: "List Slidev presentation deck files in the workspace. Only returns actual Slidev decks (files with Slidev YAML frontmatter or deck naming conventions), not regular markdown documents. Use accordo.presentation.open to start a session.",
       dangerLevel: "safe",
       // No group: prompt-visible
       inputSchema: { type: "object", properties: {}, required: [] },

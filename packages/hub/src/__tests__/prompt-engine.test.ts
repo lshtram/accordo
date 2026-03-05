@@ -118,17 +118,14 @@ describe("renderPrompt", () => {
     }
   });
 
-  it("§2.3: renderPrompt step 3 — tool names only beyond top 10 (budget step 3)", () => {
-    // req-hub §2.3: "Truncate tool list to name-only beyond top 10"
+  it("§2.3: all tools get full descriptions when within budget", () => {
+    // All tools get name + description — no cutoff at 10.
     const tools = Array.from({ length: 15 }, (_, i) =>
       makeTool(`accordo.tool.${i}`, `Unique description number ${i}`)
     );
     const result = renderPrompt(createEmptyState(), tools);
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 15; i++) {
       expect(result).toContain(`Unique description number ${i}`);
-    }
-    for (let i = 10; i < 15; i++) {
-      expect(result).not.toContain(`Unique description number ${i}`);
       expect(result).toContain(`accordo.tool.${i}`);
     }
   });
@@ -208,9 +205,9 @@ describe("renderPrompt", () => {
     expect(sharedPrefix).toBeGreaterThan(100);
   });
 
-  // ── Progressive tool disclosure ─────────────────────────────────────────
+  // ── All tools are always visible (no progressive disclosure) ─────────────
 
-  it("§2.3: grouped tools are excluded from the prompt", () => {
+  it("§2.3: grouped tools are included in the prompt alongside ungrouped tools", () => {
     const tools = [
       makeTool("accordo.editor.open"),
       { ...makeTool("accordo.editor.scroll"), group: "editor" },
@@ -218,11 +215,11 @@ describe("renderPrompt", () => {
     ];
     const result = renderPrompt(createEmptyState(), tools);
     expect(result).toContain("accordo.editor.open");
-    expect(result).not.toContain("accordo.editor.scroll");
-    expect(result).not.toContain("accordo.editor.close");
+    expect(result).toContain("accordo.editor.scroll");
+    expect(result).toContain("accordo.editor.close");
   });
 
-  it("§2.3: discover tools (no group) appear while grouped tools are hidden", () => {
+  it("§2.3: discover tools and all grouped tools appear together", () => {
     const tools = [
       makeTool("accordo.editor.discover"),
       { ...makeTool("accordo.editor.open"), group: "editor" },
@@ -233,14 +230,14 @@ describe("renderPrompt", () => {
     const result = renderPrompt(createEmptyState(), tools);
     expect(result).toContain("accordo.editor.discover");
     expect(result).toContain("accordo.terminal.discover");
-    expect(result).not.toContain("accordo.editor.open");
-    expect(result).not.toContain("accordo.editor.close");
-    expect(result).not.toContain("accordo.terminal.run");
+    expect(result).toContain("accordo.editor.open");
+    expect(result).toContain("accordo.editor.close");
+    expect(result).toContain("accordo.terminal.run");
   });
 
-  it("§2.3: budget guard uses visible tool count, not total", () => {
-    // 4 discover tools (visible) + 20 grouped tools = 24 total.
-    // Budget guard should only see 4 visible tools — well within top-10.
+  it("§2.3: budget guard applies to all tools when over budget", () => {
+    // 4 discover tools + 20 grouped tools = 24 total — all should appear.
+    // Budget guard kicks in only when descriptions push past the effective budget.
     const tools: ToolRegistration[] = [
       makeTool("accordo.editor.discover", "Discover editor tools"),
       makeTool("accordo.terminal.discover", "Discover terminal tools"),
@@ -248,28 +245,25 @@ describe("renderPrompt", () => {
       makeTool("accordo.comments.discover", "Discover comment tools"),
     ];
     for (let i = 0; i < 20; i++) {
-      tools.push({ ...makeTool(`accordo.hidden.${i}`, `Hidden tool ${i}`), group: "hidden" });
+      tools.push({ ...makeTool(`accordo.grouped.${i}`, `Grouped tool ${i}`), group: "grouped" });
     }
     const result = renderPrompt(createEmptyState(), tools);
-    // All 4 discover tools should have descriptions (they're within top 10)
+    // All tools (discover + grouped) should appear
     expect(result).toContain("Discover editor tools");
     expect(result).toContain("Discover terminal tools");
-    // None of the hidden tools should appear
-    expect(result).not.toContain("accordo.hidden.");
+    expect(result).toContain("accordo.grouped.0");
+    expect(result).toContain("accordo.grouped.19");
   });
 
-  it("§2.3: all grouped tools are hidden — guardrail exposes all tools when no discover stub", () => {
-    // P2: when ALL tools are grouped and there is no discover stub,
-    // the prompt must NOT show "No tools registered" — it falls back to showing all tools.
+  it("§2.3: all tools shown even when all are grouped (no discover stubs)", () => {
+    // No guardrail needed — all tools always show.
     const tools = [
       { ...makeTool("accordo.editor.open"), group: "editor" },
       { ...makeTool("accordo.editor.close"), group: "editor" },
     ];
     const result = renderPrompt(createEmptyState(), tools);
-    // Guardrail: tools are shown (agent is not blind) with a warning note
     expect(result).toContain("accordo.editor.open");
     expect(result).toContain("accordo.editor.close");
-    expect(result).toContain("⚠");
     expect(result).not.toContain("No tools registered");
   });
 });
