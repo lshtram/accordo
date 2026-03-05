@@ -12,6 +12,8 @@ patterns:
   P-10: "mypy cache writes to project root — always pass --cache-dir /tmp/... when .mypy_cache is owned by another user"
   P-11: "git commit -m with embedded newlines hangs zsh — use single-line -m; put detail in commit body file if needed"
   P-12: "VS Code built-in Comments panel has no extensible context menu — view/item/context does not work; need custom TreeView panel"
+  P-13: "Restarting Extension Host does NOT restart the Hub process — must kill Hub PID first, then restart Extension Host"
+  P-14: "Hub dist is per-file, not a bundle — grep dist/prompt-engine.js etc., never dist/index.js"
 ---
 
 # patterns.md — Agent Working Patterns and Known Friction
@@ -251,6 +253,38 @@ own "Reply" (rendered when `widget.canReply` is truthy).
 - Resolve / reopen / delete actions on every item
 
 **Status:** Deferred — tracked as future feature (see workplan.md).
+
+---
+
+### P-13 — Restarting Extension Host does not restart the Hub process
+
+**Symptom:** After rebuilding `accordo-hub`, doing "Restart Extension Host" in VS Code has no effect on the running prompt — the old code is still served.
+
+**Root cause:** The Bridge (`hub-manager.ts`) checks port 3000 on startup. If a healthy Hub is already listening, it reconnects to it without spawning a new process. The Hub is a long-lived child process that survives Extension Host restarts.
+
+**Correct procedure to pick up a new Hub build:**
+1. Find the Hub PID: `ps aux | grep hub/dist | grep -v grep`
+2. Kill it: `kill <PID>`
+3. Restart Extension Host (`Cmd+Shift+P` → Restart Extension Host)
+
+The Bridge will then find no healthy Hub on port 3000 and spawn a fresh one from `dist/index.js`.
+
+**Note:** After killing the Hub, the Bridge's single auto-restart attempt (`restartAttempted` flag, LCM-10) is consumed. Step 3 is therefore required to get a clean spawn.
+
+---
+
+### P-14 — Hub dist is per-file, not a bundle — don't grep `dist/index.js`
+
+**Symptom:** `grep "someSymbol" packages/hub/dist/index.js` returns no matches even though the symbol exists in source.
+
+**Root cause:** `tsc -b` compiles each source file to its own `.js` file in `dist/`. There is no bundled `index.js` that contains all code — `dist/index.js` is only the entry-point shim that imports other modules.
+
+**Workaround:** grep the specific compiled file:
+- `dist/prompt-engine.js` for `renderPrompt` / system prompt logic
+- `dist/server.js` for HTTP handler changes
+- `dist/bridge-server.js` for WebSocket logic
+
+Or search all dist files: `grep -r "symbol" packages/hub/dist/ --include="*.js" -l`
 
 ---
 
