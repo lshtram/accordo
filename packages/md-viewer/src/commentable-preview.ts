@@ -156,6 +156,7 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
         mermaidJsUri: asUri("mermaid.min.js"),
         sdkJsUri: asUri("sdk.browser.js"),
         sdkCssUri: asUri("sdk.css"),
+        markdownCssUri: asUri("markdown-body.css"),
       });
     };
 

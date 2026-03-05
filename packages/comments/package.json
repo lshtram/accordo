@@ -25,12 +25,12 @@
         {
           "command": "accordo.comments.resolveThread",
           "group": "navigation",
-          "when": "commentController == accordo-comments && commentThread == open"
+          "when": "commentController == accordo-comments && commentThread == 'open'"
         },
         {
           "command": "accordo.comments.reopenThread",
           "group": "navigation",
-          "when": "commentController == accordo-comments && commentThread == resolved"
+          "when": "commentController == accordo-comments && commentThread == 'resolved'"
         },
         {
           "command": "accordo.comments.deleteThread",
@@ -41,6 +41,28 @@
           "command": "accordo.comments.focusInPreview",
           "group": "navigation",
           "when": "commentController == accordo-comments"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "accordo.comments.resolveThread",
+          "group": "1_actions@1",
+          "when": "view == workbench.panel.comments && viewItem == open"
+        },
+        {
+          "command": "accordo.comments.reopenThread",
+          "group": "1_actions@1",
+          "when": "view == workbench.panel.comments && viewItem == resolved"
+        },
+        {
+          "command": "accordo.comments.deleteThread",
+          "group": "1_actions@2",
+          "when": "view == workbench.panel.comments"
+        },
+        {
+          "command": "accordo.comments.focusInPreview",
+          "group": "2_preview@1",
+          "when": "view == workbench.panel.comments"
         }
       ],
       "comments/comment/title": [
@@ -54,12 +76,12 @@
         {
           "command": "accordo.comments.resolveFromComment",
           "group": "1_actions@1",
-          "when": "commentController == accordo-comments && commentThread == open"
+          "when": "commentController == accordo-comments && commentThread == 'open'"
         },
         {
           "command": "accordo.comments.reopenFromComment",
           "group": "1_actions@1",
-          "when": "commentController == accordo-comments && commentThread == resolved"
+          "when": "commentController == accordo-comments && commentThread == 'resolved'"
         },
         {
           "command": "accordo.comments.deleteComment",

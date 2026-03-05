@@ -117,11 +117,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Finds the live webview panel for the given URI and sends a comments:focus message.
     vscode.commands.registerCommand(
       "accordo.preview.internal.focusThread",
-      (uri: string, threadId: string) => {
+      (uri: string, threadId: string, blockId?: string) => {
         const panel = CommentablePreview.livePanels.get(uri);
         if (panel) {
           panel.reveal(undefined, false);
-          void panel.webview.postMessage({ type: "comments:focus", threadId });
+          void panel.webview.postMessage({ type: "comments:focus", threadId, blockId });
         }
       },
     ),

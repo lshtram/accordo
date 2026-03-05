@@ -125,6 +125,21 @@ describe("buildWebviewHtml", () => {
     const html = buildWebviewHtml(SAMPLE_OPTS);
     expect(html).toContain("AccordoCommentSDK");
   });
+  it("M41b-TPL-03: optional markdownCssUri is injected as a link tag when provided", () => {
+    const mdUri = "vscode-resource:/ext/dist/markdown-body.css";
+    const html = buildWebviewHtml({ ...SAMPLE_OPTS, markdownCssUri: mdUri });
+    expect(html).toContain(mdUri);
+  });
+
+  it("M41b-TPL-03: markdownCssUri is omitted from output when not provided", () => {
+    const html = buildWebviewHtml(SAMPLE_OPTS);
+    expect(html).not.toContain("markdown-body.css");
+  });
+
+  it("M41b-TPL-06: body content is wrapped in a .markdown-body div", () => {
+    const html = buildWebviewHtml(SAMPLE_OPTS);
+    expect(html).toContain('<div class="markdown-body">');
+  });
 });
 
 // ── themeKindToClass tests ────────────────────────────────────────────────────

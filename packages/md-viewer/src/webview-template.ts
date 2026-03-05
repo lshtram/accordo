@@ -39,6 +39,8 @@ export interface TemplateOptions {
   sdkJsUri: string;
   /** URI string for the compiled comment-sdk.css webview resource */
   sdkCssUri: string;
+  /** URI string for the markdown-body.css webview resource (typography). Optional — omit in minimal tests. */
+  markdownCssUri?: string;
   /**
    * VS Code theme kind (1=light, 2=dark, 3=hc-dark, 4=hc-light).
    * Used to set a class on <body> for theme-specific CSS overrides.
@@ -76,6 +78,7 @@ export function buildWebviewHtml(opts: TemplateOptions): string {
     mermaidJsUri,
     sdkJsUri,
     sdkCssUri,
+    markdownCssUri,
     themeKind,
     cspSource,
     additionalScripts = [],
@@ -83,6 +86,10 @@ export function buildWebviewHtml(opts: TemplateOptions): string {
   } = opts;
 
   const bodyClass = themeKindToClass(themeKind);
+
+  const markdownCssLink = markdownCssUri
+    ? `  <link rel="stylesheet" href="${markdownCssUri}">`
+    : "";
 
   const extraLinks = additionalStylesheets
     .map((href) => `    <link rel="stylesheet" href="${href}">`)
@@ -100,10 +107,13 @@ export function buildWebviewHtml(opts: TemplateOptions): string {
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' ${cspSource}; style-src ${cspSource} 'unsafe-inline'; img-src ${cspSource} https: data:; font-src ${cspSource} data:; connect-src ${cspSource};">
   <link rel="stylesheet" href="${katexCssUri}">
   <link rel="stylesheet" href="${sdkCssUri}">
+${markdownCssLink}
 ${extraLinks}
 </head>
 <body class="${bodyClass}">
+<div class="markdown-body">
 ${body}
+</div>
   <script nonce="${nonce}" src="${mermaidJsUri}"></script>
   <script nonce="${nonce}" src="${sdkJsUri}"></script>
 ${extraScripts}
@@ -116,7 +126,9 @@ ${extraScripts}
         const el = document.querySelector('[data-block-id="' + blockId + '"]');
         if (!el) return null;
         const rect = el.getBoundingClientRect();
-        return { x: rect.right, y: rect.top };
+        // Place pin at the left gutter — aligned with the 3px gutter marker border,
+        // vertically centred on the first text line (~11px from top of element).
+        return { x: rect.left - 4, y: rect.top + 11 };
       }
 
       try {
@@ -154,6 +166,10 @@ ${extraScripts}
         } else if (msg.type === 'comments:remove') {
           sdk.removeThread(msg.threadId);
         } else if (msg.type === 'comments:focus') {
+          if (msg.blockId) {
+            const el = document.querySelector('[data-block-id="' + msg.blockId + '"]');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
           sdk.openPopover(msg.threadId);
         }
       });

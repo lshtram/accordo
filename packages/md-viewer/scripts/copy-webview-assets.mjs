@@ -56,4 +56,11 @@ copyFileSync(
 );
 console.log("  ✓ mermaid.min.js");
 
+// ── 6. Markdown body CSS ─────────────────────────────────────────────────────
+copyFileSync(
+  join(pkgDir, "src/markdown-body.css"),
+  join(dist, "markdown-body.css"),
+);
+console.log("  ✓ markdown-body.css");
+
 console.log("copy-webview-assets: done.");

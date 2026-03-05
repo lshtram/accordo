@@ -93,26 +93,26 @@ body {
 .accordo-inline-input {
   position: absolute;
   z-index: 200;
-  background: var(--vscode-input-background, #1e1e1e);
-  border: 1px solid var(--vscode-focusBorder, #007fd4);
-  border-radius: 6px;
+  background: var(--vscode-editorHoverWidget-background, #252526);
+  border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+  border-radius: 8px;
   padding: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
   width: 300px;
   pointer-events: all;
 }
 
 .accordo-inline-input textarea {
   width: 100%;
-  min-height: 68px;
+  min-height: 52px;
   resize: vertical;
   background: var(--vscode-input-background, #1e1e1e);
   color: var(--vscode-input-foreground, #cccccc);
   border: 1px solid var(--vscode-input-border, #3c3c3c);
   border-radius: 4px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   font-family: var(--vscode-font-family, system-ui);
-  font-size: 13px;
+  font-size: 12px;
   outline: none;
   box-sizing: border-box;
 }

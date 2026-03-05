@@ -9,7 +9,7 @@
 
 import * as vscode from "vscode";
 import type { CommentStore } from "./comment-store.js";
-import type { CommentThread, CommentAnchor, CommentAnchorText, AccordoComment } from "@accordo/bridge-types";
+import type { CommentThread, CommentAnchor, CommentAnchorText, CommentAnchorSurface, AccordoComment } from "@accordo/bridge-types";
 
 // ── Intent label map ──────────────────────────────────────────────────────────
 
@@ -258,6 +258,36 @@ export class NativeComments {
           const thread = store.getThread(threadId);
           if (!thread) return;
           const uri = thread.anchor.uri;
+
+          // For text-anchored threads: navigate the text editor to the anchor line
+          if (thread.anchor.kind === "text") {
+            const anchor = thread.anchor as CommentAnchorText;
+            const lineRange = new vscode.Range(
+              anchor.range.startLine, 0,
+              anchor.range.startLine, 0,
+            );
+            try {
+              const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(uri));
+              const editor = await vscode.window.showTextDocument(doc, {
+                selection: lineRange,
+                preserveFocus: false,
+              });
+              editor.revealRange(lineRange, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+            } catch {
+              // Fall through to preview open if text editor fails
+            }
+            return;
+          }
+
+          // Extract blockId for surface anchors (markdown preview block comments)
+          let blockId: string | undefined;
+          if (thread.anchor.kind === "surface") {
+            const surf = thread.anchor as CommentAnchorSurface;
+            if (surf.coordinates.type === "block") {
+              blockId = surf.coordinates.blockId;
+            }
+          }
+
           // Open the file with the Accordo preview custom editor
           try {
             await vscode.commands.executeCommand(
@@ -269,11 +299,12 @@ export class NativeComments {
             // File may already be open — proceed to focus anyway
           }
           // Allow the panel to initialize before sending the focus message
-          await new Promise<void>((r) => setTimeout(r, 250));
+          await new Promise<void>((r) => setTimeout(r, 300));
           await vscode.commands.executeCommand(
             "accordo.preview.internal.focusThread",
             uri,
             threadId,
+            blockId,
           );
         },
       ),
