@@ -284,3 +284,37 @@ describe("§7 startStateContribution", () => {
     expect(bridge.publishState).toHaveBeenCalledTimes(1);
   });
 });
+
+// ── §7 M43: threads field in published state ─────────────────────────────────
+
+describe("§7 M43: buildCommentSummary includes full threads array", () => {
+  it("M43-SC-01: published state includes threads field covering all threads (open + resolved)", () => {
+    // req-hub §2.7-M43: full thread list published alongside summary for /state endpoint
+    const threads = [
+      makeThread("t1", { status: "open" }),
+      makeThread("t2", { status: "resolved" }),
+    ];
+    const store = makeMockStore(threads);
+    const summary = buildCommentSummary(store);
+    expect(Array.isArray(summary.threads)).toBe(true);
+    expect(summary.threads).toHaveLength(2);
+  });
+
+  it("M43-SC-02: threads is empty array when store has no threads", () => {
+    // req-hub §2.7-M43: empty store publishes threads: []
+    const store = makeMockStore([]);
+    const summary = buildCommentSummary(store);
+    expect(summary.threads).toEqual([]);
+  });
+
+  it("M43-SC-03: threads entries are full CommentThread objects (id and status preserved)", () => {
+    // req-hub §2.7-M43: threads are not truncated — full CommentThread shape
+    const thread = makeThread("full-t1", { status: "open" });
+    const store = makeMockStore([thread]);
+    const summary = buildCommentSummary(store);
+    const t = summary.threads?.[0];
+    expect(t?.id).toBe("full-t1");
+    expect(t?.status).toBe("open");
+    expect(Array.isArray(t?.comments)).toBe(true);
+  });
+});

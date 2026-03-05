@@ -295,11 +295,24 @@ export class HubServer {
     res: http.ServerResponse,
   ): void {
     const state = this.stateCache.getState();
+
+    // M43: hoist full thread list to top-level commentThreads when published
+    // by accordo-comments (avoids summary truncation for debug consumers).
+    const commentModality = state.modalities["accordo-comments"];
+    const commentThreads = Array.isArray(commentModality?.["threads"])
+      ? (commentModality["threads"] as unknown[])
+      : undefined;
+
+    const response: Record<string, unknown> = { ...state };
+    if (commentThreads !== undefined) {
+      response["commentThreads"] = commentThreads;
+    }
+
     res.writeHead(200, {
       "Content-Type": "application/json",
       "Cache-Control": "no-cache",
     });
-    res.end(JSON.stringify(state, null, 2));
+    res.end(JSON.stringify(response, null, 2));
   }
 
   /**

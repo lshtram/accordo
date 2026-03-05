@@ -11,11 +11,15 @@
  * ✓ constructor — 4 tests
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { PassThrough } from "node:stream";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type http from "node:http";
 import { HubServer } from "../server.js";
 import type { HubServerOptions } from "../server.js";
+import { StateCache } from "../state-cache.js";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -585,10 +589,6 @@ describe("HubServer — §6 session error message (M21)", () => {
 
 // ── M30-hub: /bridge/reauth persists token to tokenFilePath (§2.6) ───────────
 
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { afterAll } from "vitest";
 
 const tmpTokenFile = path.join(os.tmpdir(), `accordo-test-token-${process.pid}.txt`);
 afterAll(() => { try { fs.unlinkSync(tmpTokenFile); } catch { /* ignore */ } });
@@ -652,5 +652,81 @@ describe("HubServer — §2.6 handleReauth persists tokenFilePath (M30-hub)", ()
     expect(written).toBe("rotated-token-abc");
     // Suppress unused vars warning from captured locals
     void responseBody;
+  });
+});
+
+// ── M43: /state commentThreads enrichment ────────────────────────────────────
+
+describe("HubServer — §2.7-M43: /state commentThreads enrichment", () => {
+  it("§2.7-M43: GET /state hoists threads to top-level commentThreads when present in accordo-comments modality", () => {
+    // req-hub §2.7-M43: commentThreads field added when modality has threads array
+    const server43 = new HubServer(makeOptions());
+    const cache = (server43 as unknown as { stateCache: StateCache }).stateCache;
+    cache.applyPatch({
+      modalities: {
+        "accordo-comments": {
+          isOpen: true,
+          openThreadCount: 1,
+          resolvedThreadCount: 0,
+          summary: [],
+          threads: [
+            {
+              id: "t1",
+              status: "open",
+              anchor: { kind: "text", uri: "src/foo.ts", range: { startLine: 1, startChar: 0, endLine: 1, endChar: 0 }, docVersion: 1 },
+              comments: [],
+              createdAt: "2026-01-01T00:00:00Z",
+              lastActivity: "2026-01-01T00:00:00Z",
+            },
+          ],
+        },
+      },
+    });
+    const { res, body, statusCode } = makeRes();
+    server43.handleHttpRequest(
+      makeReq({ method: "GET", url: "/state", headers: { authorization: "Bearer test-bearer-token" } }),
+      res,
+    );
+    expect(statusCode()).toBe(200);
+    const parsed = JSON.parse(body()) as Record<string, unknown>;
+    expect(Array.isArray(parsed["commentThreads"])).toBe(true);
+    expect((parsed["commentThreads"] as unknown[]).length).toBe(1);
+  });
+
+  it("§2.7-M43: GET /state omits commentThreads when accordo-comments modality absent", () => {
+    // req-hub §2.7-M43: no commentThreads field when modality not present
+    const server43 = new HubServer(makeOptions());
+    const { res, body, statusCode } = makeRes();
+    server43.handleHttpRequest(
+      makeReq({ method: "GET", url: "/state", headers: { authorization: "Bearer test-bearer-token" } }),
+      res,
+    );
+    expect(statusCode()).toBe(200);
+    const parsed = JSON.parse(body()) as Record<string, unknown>;
+    expect(parsed["commentThreads"]).toBeUndefined();
+  });
+
+  it("§2.7-M43: GET /state omits commentThreads when accordo-comments modality has no threads field", () => {
+    // req-hub §2.7-M43: no threads field in modality → no hoisting
+    const server43 = new HubServer(makeOptions());
+    const cache = (server43 as unknown as { stateCache: StateCache }).stateCache;
+    cache.applyPatch({
+      modalities: {
+        "accordo-comments": {
+          isOpen: true,
+          openThreadCount: 0,
+          resolvedThreadCount: 0,
+          summary: [],
+        },
+      },
+    });
+    const { res, body, statusCode } = makeRes();
+    server43.handleHttpRequest(
+      makeReq({ method: "GET", url: "/state", headers: { authorization: "Bearer test-bearer-token" } }),
+      res,
+    );
+    expect(statusCode()).toBe(200);
+    const parsed = JSON.parse(body()) as Record<string, unknown>;
+    expect(parsed["commentThreads"]).toBeUndefined();
   });
 });

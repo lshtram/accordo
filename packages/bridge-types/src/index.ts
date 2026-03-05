@@ -625,6 +625,12 @@ export interface CommentStateSummary {
   summary: CommentThreadSummary[];
   /** Pipe-separated list of available MCP tool names for agent guidance */
   tools?: string;
+  /**
+   * Full list of all threads (open + resolved), un-truncated.
+   * Published by state-contribution for the /state debug endpoint (M43).
+   * Not used by the prompt engine — prompt uses `summary` (capped/truncated).
+   */
+  threads?: CommentThread[];
 }
 
 /** Single entry in the modality state summary. */
