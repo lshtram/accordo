@@ -115,14 +115,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Internal command — called by accordo-comments focusInPreview handler.
     // Finds the live webview panel for the given URI and sends a comments:focus message.
+    // Returns true if a panel was found and focused, false otherwise.
     vscode.commands.registerCommand(
       "accordo.preview.internal.focusThread",
-      (uri: string, threadId: string, blockId?: string) => {
+      (uri: string, threadId: string, blockId?: string): boolean => {
         const panel = CommentablePreview.livePanels.get(uri);
         if (panel) {
           panel.reveal(undefined, false);
           void panel.webview.postMessage({ type: "comments:focus", threadId, blockId });
+          return true;
         }
+        return false;
       },
     ),
   );

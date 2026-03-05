@@ -259,7 +259,29 @@ export class NativeComments {
           if (!thread) return;
           const uri = thread.anchor.uri;
 
-          // For text-anchored threads: navigate the text editor to the anchor line
+          // Extract blockId for surface anchors (markdown preview block comments)
+          let blockId: string | undefined;
+          if (thread.anchor.kind === "surface") {
+            const surf = thread.anchor as CommentAnchorSurface;
+            if (surf.coordinates.type === "block") {
+              blockId = surf.coordinates.blockId;
+            }
+          }
+
+          // Try the live webview panel first (works for ALL anchor types).
+          // If a preview panel is already open the internal command returns true
+          // and posts comments:focus — the webview will scroll to blockId or to
+          // the pin element and open the popover.
+          const focused: boolean = await vscode.commands.executeCommand(
+            "accordo.preview.internal.focusThread",
+            uri,
+            threadId,
+            blockId,
+          );
+          if (focused) return;
+
+          // No live preview panel — for text-anchored threads fall back to the
+          // text editor so the user still lands on the right line.
           if (thread.anchor.kind === "text") {
             const anchor = thread.anchor as CommentAnchorText;
             const lineRange = new vscode.Range(
@@ -274,21 +296,12 @@ export class NativeComments {
               });
               editor.revealRange(lineRange, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
             } catch {
-              // Fall through to preview open if text editor fails
+              // Fall through to preview open below
             }
             return;
           }
 
-          // Extract blockId for surface anchors (markdown preview block comments)
-          let blockId: string | undefined;
-          if (thread.anchor.kind === "surface") {
-            const surf = thread.anchor as CommentAnchorSurface;
-            if (surf.coordinates.type === "block") {
-              blockId = surf.coordinates.blockId;
-            }
-          }
-
-          // Open the file with the Accordo preview custom editor
+          // Surface/file anchor with no live panel — open the preview and focus
           try {
             await vscode.commands.executeCommand(
               "vscode.openWith",

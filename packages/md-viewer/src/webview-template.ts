@@ -167,8 +167,12 @@ ${extraScripts}
           sdk.removeThread(msg.threadId);
         } else if (msg.type === 'comments:focus') {
           if (msg.blockId) {
-            const el = document.querySelector('[data-block-id="' + msg.blockId + '"]');
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            var focusEl = document.querySelector('[data-block-id="' + msg.blockId + '"]');
+            if (focusEl) focusEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          } else {
+            // No explicit blockId — scroll to the pin element (text-anchored threads)
+            var pinEl = document.querySelector('.accordo-pin[data-thread-id="' + msg.threadId + '"]');
+            if (pinEl) pinEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
           sdk.openPopover(msg.threadId);
         }
