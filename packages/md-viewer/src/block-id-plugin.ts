@@ -99,14 +99,14 @@ export function blockIdPlugin(md: MarkdownIt): void {
     const blockId: string | undefined = token.meta?.blockId;
     let html: string;
     if (prevFenceRule) {
-      html = prevFenceRule(tokens, idx, options, env, self);
+      html = prevFenceRule(tokens, idx, options, env, self) ?? "";
     } else {
       // Default fence rendering if no prior rule
       const code = md.utils.escapeHtml(token.content);
       const lang = token.info ? ` class="language-${md.utils.escapeHtml(token.info.trim())}"` : "";
       html = `<pre><code${lang}>${code}</code></pre>\n`;
     }
-    if (blockId) {
+    if (blockId && html) {
       html = html.replace(/^<pre/, `<pre data-block-id="${blockId}"`);
     }
     return html;
