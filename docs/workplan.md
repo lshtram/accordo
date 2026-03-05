@@ -9,7 +9,7 @@
 
 ## Current Status
 
-> **As of 2026-03-05 — Week 7 M41a/M41b complete and polished. All 7 sub-modules implemented and reviewed (4 review rounds). 1208 tests green (Hub: 335, Bridge: 298, Editor: 186, Comments: 183, SDK: 45, md-viewer: 123 + smoke: 53). TypeScript clean. UX polish round delivered: stale comment auto-prune + cleanStale command; panel click → webview focus (comments:focus message + openPopover); gutter markers + anchor highlight in webview; CSS form consistency; file-anchor range fix (VS Code panel navigation). M42/M43 (Hub prompt engine + state response updates) not yet started.**
+> **As of 2026-03-05 — Week 7 COMPLETE. All 9 sub-modules implemented and reviewed (M41a, M41b×7, M42, M43). 1221 tests green (Hub: 344, Bridge: 298, Editor: 186, Comments: 186, SDK: 45, md-viewer: 126 + smoke: 53 [not in pnpm test]). TypeScript clean. Phase 2 exit criteria met: agent sees open comment threads in system prompt, /state exposes full thread data, md-viewer renders commentable markdown. Phase 2 retrospective and Phase 3 planning are next.**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -19,7 +19,7 @@
 | Phase 4 | Voice modality (`accordo-voice` bridge registration) | ⏳ Pending Phase 3 |
 | Phase 5 | Diagrams modality (`accordo-tldraw`) | ⏳ Pending Phase 4 |
 
-**Baseline:** 1208 tests green (Hub: 335, Bridge: 298, Editor: 186, Comments: 183, SDK: 45, md-viewer: 123). v0.1.0 on `main`.  
+**Baseline:** 1221 tests green (Hub: 344, Bridge: 298, Editor: 186, Comments: 186, SDK: 45, md-viewer: 126). v0.1.0 on `main`.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -133,10 +133,10 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 | 41b-PBR | `accordo-md-viewer`: `preview-bridge.ts` — PreviewBridge + toSdkThread | requirements-md-viewer.md §5 M41b-PBR | ✅ Phase C+D done (21 tests) |
 | 41b-CPE | `accordo-md-viewer`: `commentable-preview.ts` — CustomTextEditorProvider | requirements-md-viewer.md §5 M41b-CPE | ✅ Phase C+D done (17 tests) |
 | 41b-EXT | `accordo-md-viewer`: `extension.ts` — activate, register provider + commands | requirements-md-viewer.md §5 M41b-EXT | ✅ Phase C done (10 tests) |
-| 42 | Hub prompt engine update — include open comment threads in system prompt | requirements-hub.md §5.3 | not started |
-| 43 | Hub `/state` response — include `commentThreads: CommentThread[]` | requirements-hub.md | not started |
+| 42 | Hub prompt engine update — include open comment threads in system prompt | requirements-hub.md §2.3 (M42) | ✅ done (6 tests) |
+| 43 | Hub `/state` response — include `commentThreads: CommentThread[]` | requirements-hub.md §2.7 (M43) | ✅ done (6 tests) |
 
-**Week 7 gate:** Comment SDK implemented. `accordo-md-viewer` renders `.md` files with interactive comment pins. Hub prompt includes open comment count and thread summaries. Phase 2 exit criteria met.
+**Week 7 gate:** ✅ Comment SDK implemented. `accordo-md-viewer` renders `.md` files with interactive comment pins. Hub prompt includes open comment count and thread summaries. Hub `/state` exposes full thread data. Phase 2 exit criteria met.
 
 ---
 
