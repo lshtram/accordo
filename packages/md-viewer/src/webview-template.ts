@@ -174,7 +174,9 @@ ${extraScripts}
         }
       });
 
-      mermaid.initialize({ startOnLoad: true });
+      var isDark = document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast');
+      mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default' });
+      mermaid.run().catch(function(e) { console.warn('[accordo-preview] mermaid.run() error', e); });
     })();
   </script>
 </body>

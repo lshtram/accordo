@@ -103,12 +103,15 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
     const docFsPath = document.uri.fsPath;
     const docUri = document.uri.toString();
 
-    // M41b-CPE-08: restrict webview to extension + workspace resource roots
+    // M41b-CPE-08: restrict webview to extension + workspace + document-folder resource roots
+    // Include the document's parent folder so previews work for files outside the workspace
+    const docFolderUri = vscode.Uri.file(docFsPath.substring(0, docFsPath.lastIndexOf("/")));
     webviewPanel.webview.options = {
       enableScripts: true,
       localResourceRoots: [
         this.context.extensionUri,
         ...(vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? []),
+        docFolderUri,
       ],
     };
 
@@ -161,7 +164,14 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
     };
 
     // M41b-CPE-05: initial render + optional comment bridge
-    await render();
+    try {
+      await render();
+    } catch (err) {
+      // Show a user-friendly error in the webview instead of crashing
+      const errMsg = err instanceof Error ? err.message : String(err);
+      webviewPanel.webview.html = `<!DOCTYPE html><html><body style="padding:20px;font-family:sans-serif;color:#cc0000;"><h2>Accordo Preview Error</h2><pre>${errMsg}</pre></body></html>`;
+      return;
+    }
 
     // Resolver adapter that always delegates to the latest render result
     const resolverAdapter: ResolverLike = {

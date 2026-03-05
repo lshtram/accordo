@@ -99,6 +99,7 @@
     "markdown-it-emoji": "^3.0.0",
     "markdown-it-footnote": "^4.0.0",
     "markdown-it-front-matter": "^0.2.4",
+    "markdown-it-toc-done-right": "^4.2.0",
     "mermaid": "^11.12.3",
     "shiki": "^3.0.0",
     "typescript": "^5.7.0",
@@ -108,8 +109,5 @@
     "node": ">=20",
     "vscode": "^1.100.0"
   },
-  "license": "MIT",
-  "dependencies": {
-    "markdown-it-toc-done-right": "^4.2.0"
-  }
+  "license": "MIT"
 }
