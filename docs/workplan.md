@@ -3,23 +3,23 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-04  
-**Status:** ACTIVE — Phase 3 Week 8 planning complete, Phase 3 Session 8A next
+**Status:** ACTIVE — Session 8A complete (M40-EXT-11 ✅), Session 8B next (accordo-slidev full package)
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-05 — Phase 2 COMPLETE. Phase 3 architecture and Phase A planning done. Session 8A is next (accordo-comments `getSurfaceAdapter` generalization, M40-EXT-11). 1221 tests green (Hub: 344, Bridge: 298, Editor: 186, Comments: 186, SDK: 45, md-viewer: 126 + smoke: 53 [not in pnpm test]). TypeScript clean. Architecture: `presentation-architecture.md` v1.1. Requirements: `requirements-slidev.md` + `requirements-comments.md` (M40-EXT-11). Session split: 8A adds `getSurfaceAdapter` to accordo-comments; 8B builds full `accordo-slidev` package.**
+> **As of 2026-03-05 — Session 8A complete. M40-EXT-11 (`getSurfaceAdapter`) implemented, tested (11 new tests), reviewed, and committed. 1232 tests green (Hub: 344, Bridge: 298, Editor: 186, Comments: 197, SDK: 45, md-viewer: 126 + smoke: 53 [not in pnpm test]). TypeScript clean. Session 8B next: full `accordo-slidev` package (M44-EXT through M44-STATE, 6 modules).**
 
 | Phase | Goal | Status |
 |------|------|--------|
 | Phase 1 | Control Plane MVP (Hub + Bridge + Editor) | ✅ DONE — 797 tests, v0.1.0 |
 | Phase 2 | Comments modality (`accordo-comments`) | ✅ DONE — Week 6+7 complete, 1221 tests |
-| Phase 3 | Presentations modality (`accordo-slidev`) | 🔄 ACTIVE — architecture done, Session 8A next |
+| Phase 3 | Presentations modality (`accordo-slidev`) | 🔄 ACTIVE — 8A complete, Session 8B next |
 | Phase 4 | Voice modality (`accordo-voice` bridge registration) | ⏳ Pending Phase 3 |
 | Phase 5 | Diagrams modality (`accordo-tldraw`) | ⏳ Pending Phase 4 |
 
-**Baseline:** 1221 tests green (Hub: 344, Bridge: 298, Editor: 186, Comments: 186, SDK: 45, md-viewer: 126). v0.1.0 on `main`.  
+**Baseline:** 1232 tests green (Hub: 344, Bridge: 298, Editor: 186, Comments: 197, SDK: 45, md-viewer: 126). v0.1.0 on `main`.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -161,9 +161,9 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 | # | Module | Requirements Source | TDD Phases |
 |---|---|---|---|
-| 40-EXT-11 | `extension.ts` — add `getSurfaceAdapter` command + `SurfaceCommentAdapter` interface | requirements-comments.md §5.2 (M40-EXT-11) | Pending |
+| 40-EXT-11 | `extension.ts` — add `getSurfaceAdapter` command + `SurfaceCommentAdapter` interface | requirements-comments.md §5.2 (M40-EXT-11) | ✅ done (11 tests) |
 
-**Session 8A gate:** `accordo.comments.internal.getSurfaceAdapter` command registered and tested. `accordo-comments` tests remain green.
+**Session 8A gate:** ✅ `accordo.comments.internal.getSurfaceAdapter` command registered and tested. `accordo-comments` tests remain green (197 total).
 
 #### Week 8B — Slidev Package (full `accordo-slidev`)
 
