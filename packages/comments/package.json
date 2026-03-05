@@ -17,7 +17,6 @@
       { "command": "accordo.comments.reopenThread", "title": "Reopen", "icon": "$(debug-restart)" },
       { "command": "accordo.comments.resolveFromComment", "title": "Resolve Thread", "icon": "$(pass)" },
       { "command": "accordo.comments.reopenFromComment", "title": "Reopen Thread", "icon": "$(debug-restart)" },
-      { "command": "accordo.comments.replyFromPanel", "title": "Reply", "icon": "$(comment)" },
       { "command": "accordo.comments.cleanStale", "title": "Accordo: Clean Stale Comments", "icon": "$(clear-all)" },
       { "command": "accordo.comments.focusInPreview", "title": "Open in Markdown Preview", "icon": "$(open-preview)" }
     ],
@@ -44,68 +43,7 @@
           "when": "commentController == accordo-comments"
         }
       ],
-      "view/item/context": [
-        {
-          "command": "accordo.comments.resolveThread",
-          "group": "1_actions@1",
-          "when": "view == workbench.panel.comments && viewItem == open"
-        },
-        {
-          "command": "accordo.comments.reopenThread",
-          "group": "1_actions@1",
-          "when": "view == workbench.panel.comments && viewItem == resolved"
-        },
-        {
-          "command": "accordo.comments.resolveFromComment",
-          "group": "1_actions@1",
-          "when": "view == workbench.panel.comments && viewItem == comment-open"
-        },
-        {
-          "command": "accordo.comments.reopenFromComment",
-          "group": "1_actions@1",
-          "when": "view == workbench.panel.comments && viewItem == comment-resolved"
-        },
-        {
-          "command": "accordo.comments.replyFromPanel",
-          "group": "1_actions@2",
-          "when": "view == workbench.panel.comments && viewItem == open"
-        },
-        {
-          "command": "accordo.comments.replyFromPanel",
-          "group": "1_actions@2",
-          "when": "view == workbench.panel.comments && viewItem == comment-open"
-        },
-        {
-          "command": "accordo.comments.deleteThread",
-          "group": "1_actions@3",
-          "when": "view == workbench.panel.comments && viewItem == open"
-        },
-        {
-          "command": "accordo.comments.deleteThread",
-          "group": "1_actions@3",
-          "when": "view == workbench.panel.comments && viewItem == resolved"
-        },
-        {
-          "command": "accordo.comments.deleteComment",
-          "group": "1_actions@3",
-          "when": "view == workbench.panel.comments && viewItem == comment-open"
-        },
-        {
-          "command": "accordo.comments.deleteComment",
-          "group": "1_actions@3",
-          "when": "view == workbench.panel.comments && viewItem == comment-resolved"
-        },
-        {
-          "command": "accordo.comments.focusInPreview",
-          "group": "2_preview@1",
-          "when": "view == workbench.panel.comments"
-        },
-        {
-          "command": "accordo.comments.focusInPreview",
-          "group": "inline",
-          "when": "view == workbench.panel.comments"
-        }
-      ],
+      "view/item/context": [],
       "comments/comment/title": [
         {
           "command": "accordo.comments.deleteComment",

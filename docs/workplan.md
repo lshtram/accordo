@@ -194,6 +194,7 @@ Carried forward — non-blocking:
 4. **Remote topology UX** — Port-forward notification for SSH/devcontainer/Codespaces.
 5. **Checkpoint/rollback** — Git-stash snapshots before destructive tool executions.
 6. **Comments store durability hardening** — Evaluate atomic persistence strategy for `.accordo/comments.json` (temp-file + rename / crash-safe write path). Deferred by product decision during Week 7 comments+SDK alignment.
+7. **Custom Accordo Comments TreeView panel** — The built-in VS Code Comments panel (`workbench.panel.comments`) does not support `view/item/context` menu contributions or custom click navigation. A custom `vscode.TreeView` sidebar panel is needed to provide: right-click resolve/reopen/reply/delete, click-to-navigate into webview preview (scroll + popover), inline reply editing. See `docs/patterns.md` P-12 for full analysis.
 
 ---
 

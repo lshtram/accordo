@@ -9,6 +9,9 @@ patterns:
   P-07: "pre-push hooks may not be installed — candidate for prepare script auto-install"
   P-08: "semantic_search must not be parallelized — use search_subagent for multi-term search"
   P-09: "Ollama model name is nomic-embed-text (not nomic-embed-text-v1.5) — v1.5 is the default tag"
+  P-10: "mypy cache writes to project root — always pass --cache-dir /tmp/... when .mypy_cache is owned by another user"
+  P-11: "git commit -m with embedded newlines hangs zsh — use single-line -m; put detail in commit body file if needed"
+  P-12: "VS Code built-in Comments panel has no extensible context menu — view/item/context does not work; need custom TreeView panel"
 ---
 
 # patterns.md — Agent Working Patterns and Known Friction
@@ -166,6 +169,88 @@ as the model version conceptually, but the actual CLI/API name is `nomic-embed-t
 
 **Rule:** Always use `nomic-embed-text` in API calls, `.env`, and code. Document the version
 as "v1.5 (nomic-embed-text latest)" in comments/docs when clarity is needed.
+
+---
+
+### P-10 — mypy cache writes to project root fail in shared filesystem
+
+**Symptom:** `mypy` exits with `PermissionError: [Errno 13] Permission denied: '.mypy_cache/missing_stubs'`
+even though the source files are readable.
+
+**Root cause:** The agent runs as a different OS user than the one who initially ran mypy
+(or created the `.mypy_cache/` dir). The directory is owned by the project owner, not `agentuser`.
+
+**Workaround:** Always pass `--cache-dir /tmp/mypy_cache_construct` when calling mypy:
+```bash
+.venv/bin/mypy --cache-dir /tmp/mypy_cache_construct src/
+```
+Adding `cache_dir = "/tmp/mypy_cache_construct"` to `[tool.mypy]` in `pyproject.toml` does *not*
+help because mypy writes `missing_stubs` to the *project root* cache dir before reading config.
+The CLI flag is the reliable fix.
+
+**Root cause to investigate:** Add a `make mypy` / `make lint` target in a `Makefile` or
+`pyproject.toml` `[tool.taskfile]` that pre-sets the flag, so it doesn't have to be remembered.
+
+---
+
+### P-11 — `git commit -m` with embedded newlines hangs zsh
+
+**Symptom:** Running `git commit -m "line1\n\nline2"` or a multi-line heredoc inside
+`run_in_terminal` leaves the shell in `dquote>` / `cmdand dquote>` mode, waiting for a
+closing quote that never comes. The terminal appears to complete (exit 0) but the
+multi-line body is silently dropped or the shell hangs.
+
+**Workaround A (preferred):** Use a single concise `-m` line with no embedding:
+```bash
+git commit -m "fix(module): short summary of changes"
+```
+Put detail in the commit body only when writing to a temp file with `create_file`
+then passing with `-F`:
+```
+create_file → scripts/commit_msg.txt  (write body text)
+run_in_terminal → git commit -F scripts/commit_msg.txt && rm scripts/commit_msg.txt
+```
+
+**Workaround B:** Write message via `printf` to a temp path **inside the home dir**, not `/tmp/`:
+```bash
+printf '%s' 'title\n\nbody' > ~/commit_msg.txt && git commit -F ~/commit_msg.txt
+```
+(Note: `/tmp/` writes from `agentuser` may also hit permission issues on macOS.)
+
+---
+
+### P-12 — VS Code built-in Comments panel has no extensible context menu
+
+**Date:** 2026-03-05  
+**Trigger:** Attempted to add Resolve / Reply / Delete to the right-click menu of the
+built-in Comments panel (bottom bar → COMMENTS tab).
+
+**Root cause:** The built-in Comments panel is a special VS Code view. It does **not**
+honour `view/item/context` menu contributions — that contribution point only works for
+extension-contributed `TreeView` instances. The only right-click action shown is VS Code's
+own "Reply" (rendered when `widget.canReply` is truthy).
+
+**What DOES NOT work from the built-in panel:**
+- Custom context menu items (resolve, delete, reopen, reply, focus-in-preview)
+- Overriding click-to-navigate (opens text editor via `editor.revealRange`, which doesn't
+  work inside webview custom editors — no scroll, no popover)
+- The built-in "Reply" action opens the inline editor widget in the text editor; it cannot
+  target our webview popover
+
+**What DOES work (alternative surfaces):**
+- **Inline gutter widget** (text editor): `comments/commentThread/title` buttons for
+  resolve, reopen, delete, focusInPreview; `comments/commentThread/context` input box for
+  reply. These all work correctly.
+- **Webview preview popover** (Comment SDK pins): full reply, resolve, reopen, delete via
+  popover actions.
+
+**Resolution:** Build a **custom Accordo Comments TreeView** sidebar panel (`vscode.window.createTreeView`) that we fully control. This will allow:
+- Custom context menu via `view/item/context` (properly scoped to our view ID)
+- Custom click handler that fires `focusInPreview` → webview scroll + popover
+- Inline-edit reply in the tree
+- Resolve / reopen / delete actions on every item
+
+**Status:** Deferred — tracked as future feature (see workplan.md).
 
 ---
 

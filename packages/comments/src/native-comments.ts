@@ -250,6 +250,9 @@ export class NativeComments {
         },
       ),
       // ── Reply from Comments panel (uses input box) ─────────────────────────
+      // NOTE: This command exists but is NOT reachable from the built-in
+      // Comments panel (view/item/context doesn’t work there). It is kept
+      // for palette invocation and possible future custom TreeView panel.
       vscode.commands.registerCommand(
         "accordo.comments.replyFromPanel",
         async (arg: unknown) => {
@@ -357,11 +360,11 @@ export class NativeComments {
 
   /**
    * Build a VSCode Comment from an AccordoComment.
-   * @param threadStatus  "open" | "resolved" — encoded into contextValue so
-   *                      `view/item/context` `when` clauses can distinguish
-   *                      between comments in open vs resolved threads.
+   * @param _threadStatus  Currently unused — reserved for a future custom
+   *                       Comments TreeView panel where contextValue would
+   *                       drive per-item menus.
    */
-  private _buildVsComment(c: AccordoComment, threadStatus: string): vscode.Comment {
+  private _buildVsComment(c: AccordoComment, _threadStatus: string): vscode.Comment {
     const isAgent = c.author.kind === "agent";
     return {
       // Markdown body — code blocks, bold, links render in the panel
@@ -377,9 +380,10 @@ export class NativeComments {
       label: c.intent ? (INTENT_LABEL[c.intent] ?? c.intent) : undefined,
       // Timestamp shows "3 minutes ago" hover tooltip in the panel
       timestamp: new Date(c.createdAt),
-      // contextValue enables per-comment menu items in the Comments panel.
-      // Encode thread status so view/item/context can show Resolve vs Reopen.
-      contextValue: threadStatus === "resolved" ? "comment-resolved" : "comment-open",
+      // contextValue — simple label. The built-in Comments panel does NOT
+      // support view/item/context menu contributions, so status-encoding
+      // here would be dead code.
+      contextValue: "comment",
       // Embedded so VS Code round-trips them back to the deleteComment command handler.
       // vscode.Comment is a plain interface — extra properties survive the round-trip.
       threadId: c.threadId,
