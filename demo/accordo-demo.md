@@ -1,6 +1,7 @@
 ---
 title: Accordo IDE — Demo
 theme: default
+colorSchema: dark
 ---
 
 # Accordo IDE
