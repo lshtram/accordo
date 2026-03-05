@@ -273,3 +273,127 @@ describe("renderPrompt", () => {
     expect(result).not.toContain("No tools registered");
   });
 });
+
+// ── M42: Open Comment Threads section ───────────────────────────────────────
+
+describe("M42: Open Comment Threads section in system prompt", () => {
+  function makeCommentModality(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      isOpen: true,
+      openThreadCount: 0,
+      resolvedThreadCount: 0,
+      summary: [],
+      ...overrides,
+    };
+  }
+
+  it("§2.3-M42: no 'Open Comment Threads' section when openThreadCount is 0", () => {
+    // req-hub §2.3-M42: Section omitted when openThreadCount === 0
+    const state = makeState({
+      modalities: { "accordo-comments": makeCommentModality({ openThreadCount: 0 }) },
+    });
+    const result = renderPrompt(state, []);
+    expect(result).not.toContain("Open Comment Threads");
+  });
+
+  it("§2.3-M42: '## Open Comment Threads (N)' section rendered when openThreadCount > 0", () => {
+    // req-hub §2.3-M42: Dedicated section appears when threads are present
+    const state = makeState({
+      modalities: {
+        "accordo-comments": makeCommentModality({
+          openThreadCount: 2,
+          summary: [
+            { threadId: "t1", uri: "src/auth.ts", line: 42, preview: "Fix the null check", intent: "fix" },
+            { threadId: "t2", uri: "src/app.ts", preview: "Refactor this loop", intent: "refactor" },
+          ],
+        }),
+      },
+    });
+    const result = renderPrompt(state, []);
+    expect(result).toContain("## Open Comment Threads (2)");
+  });
+
+  it("§2.3-M42: thread entry includes threadId, uri, line and intent for text-anchored thread", () => {
+    // req-hub §2.3-M42: Exact entry format: - [threadId] uri:line — "preview" (intent)
+    // These exact tokens are NOT present in the current JSON modality dump,
+    // so this test is genuinely RED until M42 is implemented.
+    const state = makeState({
+      modalities: {
+        "accordo-comments": makeCommentModality({
+          openThreadCount: 1,
+          summary: [
+            { threadId: "t1", uri: "src/auth.ts", line: 42, preview: "Fix the null check", intent: "fix" },
+          ],
+        }),
+      },
+    });
+    const result = renderPrompt(state, []);
+    // Bracketed thread ID (not "threadId":"t1" JSON form)
+    expect(result).toContain("[t1]");
+    // colon-joined uri:line (not separate JSON fields)
+    expect(result).toContain("src/auth.ts:42");
+    // em-dash separator
+    expect(result).toContain("— \"Fix the null check\"");
+    // parenthetical intent
+    expect(result).toContain("(fix)");
+  });
+
+  it("§2.3-M42: intent omitted from entry when not present on summary entry", () => {
+    // req-hub §2.3-M42: Entry must be '[t1] uri:line — "preview"' with no trailing '(...)'
+    // The current JSON dump doesn't use this format, so finding '[t1]' proves implementation.
+    const state = makeState({
+      modalities: {
+        "accordo-comments": makeCommentModality({
+          openThreadCount: 1,
+          summary: [
+            { threadId: "t1", uri: "src/foo.ts", line: 10, preview: "Needs review" },
+          ],
+        }),
+      },
+    });
+    const result = renderPrompt(state, []);
+    const t1Line = result.split("\n").find((l) => l.includes("[t1]"));
+    expect(t1Line).toBeDefined();
+    // Should include the preview
+    expect(t1Line).toContain("— \"Needs review\"");
+    // Must NOT end with a parenthetical group
+    expect(t1Line).not.toMatch(/\([a-z]+\)\s*$/);
+  });
+
+  it("§2.3-M42: line number omitted for surface-anchored thread (no line field)", () => {
+    // req-hub §2.3-M42: ':line' appended only when line field present in summary entry
+    const state = makeState({
+      modalities: {
+        "accordo-comments": makeCommentModality({
+          openThreadCount: 1,
+          summary: [
+            { threadId: "t1", uri: "doc.md", surfaceType: "markdown", preview: "Pin on surface", intent: "review" },
+          ],
+        }),
+      },
+    });
+    const result = renderPrompt(state, []);
+    const t1Line = result.split("\n").find((l) => l.includes("[t1]"));
+    expect(t1Line).toBeDefined();
+    // URI should appear without a colon-number suffix
+    expect(t1Line).toContain("doc.md");
+    expect(t1Line).not.toMatch(/doc\.md:\d/);
+    // No undefined literals
+    expect(t1Line).not.toContain("undefined");
+  });
+
+  it("§2.3-M42: accordo-comments NOT in generic Extension state block when threads section rendered", () => {
+    // req-hub §2.3-M42: accordo-comments excluded from JSON modality dump when using dedicated section
+    const state = makeState({
+      modalities: {
+        "accordo-comments": makeCommentModality({
+          openThreadCount: 1,
+          summary: [{ threadId: "t1", uri: "src/foo.ts", line: 1, preview: "test" }],
+        }),
+      },
+    });
+    const result = renderPrompt(state, []);
+    expect(result).not.toContain('"openThreadCount"');
+    expect(result).not.toContain('"summary"');
+  });
+});

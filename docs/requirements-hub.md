@@ -75,6 +75,21 @@ When launched with `--stdio`:
 2. Omit modality state for modalities where `isOpen !== true`
 3. Truncate visible tool list to name-only (no descriptions) beyond top 10
 
+**Comment Threads section (M42):** When `state.modalities["accordo-comments"]` is present and its `openThreadCount` is greater than zero, `renderPrompt` emits a dedicated section **instead of** JSON-stringifying that modality in the generic "Extension state" block:
+
+```
+## Open Comment Threads (N)
+
+- [threadId] uri:line — "preview" (intent)
+```
+
+- N = `openThreadCount`.
+- Entries come from the `summary` array (capped at `COMMENT_MAX_SUMMARY_THREADS` = 10 by `state-contribution`).
+- Line number (`:line`) is included only for text-anchored threads (when `line` field is present).
+- Intent (`(intent)`) is included only when present on the summary entry.
+- When `openThreadCount === 0` the section is omitted entirely.
+- The `accordo-comments` key is **excluded** from the generic "Extension state" block whenever this dedicated section is rendered.
+
 ### 2.4 Health Check — `GET /health`
 
 | Aspect | Requirement |
@@ -103,6 +118,18 @@ When launched with `--stdio`:
 | Response | `200 OK` with empty body on success. |
 | Behaviour | Hub atomically updates `ACCORDO_BRIDGE_SECRET` and `ACCORDO_TOKEN` in memory and rewrites `~/.accordo/token`. The WebSocket server immediately begins accepting the new secret. Active CLI agent MCP sessions are **not disrupted**. |
 | Use case | Bridge calls this before reconnecting with a new secret, avoiding a Hub kill-and-respawn that would disrupt in-flight CLI agent sessions. |
+
+### 2.7 IDE State Debug Endpoint — `GET /state`
+
+| Aspect | Requirement |
+|---|---|
+| Method | `GET` |
+| Authentication | `Authorization: Bearer <ACCORDO_TOKEN>` required. 401 if missing/invalid. |
+| Response Content-Type | `application/json` |
+| Cache | `Cache-Control: no-cache` |
+| Response body | Current `IDEState` snapshot as pretty-printed JSON. |
+
+**Comment Threads enrichment (M43):** When `state.modalities["accordo-comments"]` contains a `threads` field (array of `CommentThread`), the response body includes an additional top-level `commentThreads` key equal to that array. This exposes un-truncated thread data for tooling without changing the `IDEState` wire schema. When the modality is absent or has no `threads` array, `commentThreads` is omitted from the response.
 
 ---
 

@@ -131,9 +131,37 @@ export function renderPrompt(
     stateLines.push(`**Active terminal:** ${state.activeTerminal}`);
   }
 
-  // Only include modalities where isOpen === true
+  // ── Comment threads dedicated section (M42) ────────────────────────────
+  // When accordo-comments publishes open threads, render a first-class section
+  // instead of the generic JSON modality dump for that key.
+  const commentModality = state.modalities["accordo-comments"];
+  const openThreadCount = typeof commentModality?.["openThreadCount"] === "number"
+    ? (commentModality["openThreadCount"] as number)
+    : 0;
+  const commentSummary = Array.isArray(commentModality?.["summary"])
+    ? (commentModality["summary"] as Array<Record<string, unknown>>)
+    : [];
+
+  if (openThreadCount > 0) {
+    const entries = commentSummary.map((entry) => {
+      const id = entry["threadId"] as string;
+      const uri = entry["uri"] as string;
+      const line = entry["line"] as number | undefined;
+      const preview = entry["preview"] as string;
+      const intent = entry["intent"] as string | undefined;
+      const anchor = line !== undefined ? `${uri}:${line}` : uri;
+      const intentSuffix = intent !== undefined ? ` (${intent})` : "";
+      return `- [${id}] ${anchor} — "${preview}"${intentSuffix}`;
+    });
+    stateLines.push(
+      `## Open Comment Threads (${openThreadCount})\n\n${entries.join("\n")}`,
+    );
+  }
+
+  // Only include modalities where isOpen === true, excluding accordo-comments
+  // (it is handled by the dedicated section above).
   const openModalities = Object.entries(state.modalities).filter(
-    ([, v]) => v["isOpen"] === true,
+    ([k, v]) => v["isOpen"] === true && k !== "accordo-comments",
   );
   if (openModalities.length > 0) {
     const modalLines = openModalities.map(
