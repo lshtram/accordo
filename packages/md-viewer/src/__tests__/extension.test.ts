@@ -17,6 +17,7 @@ import {
   commands,
   window,
   extensions,
+  workspace,
   createMockExtensionContext,
 } from "./mocks/vscode.js";
 
@@ -72,13 +73,13 @@ describe("activate", () => {
     mockResolveEditor.mockReset();
   });
 
-  it("M41b-EXT-05: still registers preview when accordo-comments is not installed (no-op store)", async () => {
+  it("M41b-EXT-05: registers preview with null store when accordo-comments is not installed (inert mode)", async () => {
     setupCommentsExtAbsent();
     const ctx = createMockExtensionContext();
 
     await activate(ctx as never);
 
-    // Editor + 3 commands still registered via no-op store
+    // Editor + 3 commands still registered (preview works, comments are inert)
     expect(window.registerCustomEditorProvider).toHaveBeenCalledWith(
       "accordo.markdownPreview",
       expect.anything(),
@@ -91,7 +92,7 @@ describe("activate", () => {
     expect(commands.executeCommand).not.toHaveBeenCalledWith("accordo.comments.internal.getStore");
   });
 
-  it("M41b-EXT-05: still registers preview when getStore returns falsy (no-op store)", async () => {
+  it("M41b-EXT-05: registers preview with null store when getStore returns falsy (inert mode)", async () => {
     (extensions.getExtension as ReturnType<typeof vi.fn>).mockImplementation((id: string) => {
       if (id === "accordo.accordo-bridge") return { id, isActive: true, activate: vi.fn().mockResolvedValue(undefined) };
       if (id === "accordo.accordo-comments") return { id, isActive: true, activate: vi.fn().mockResolvedValue(undefined) };
@@ -130,6 +131,24 @@ describe("activate", () => {
       "accordo.markdownPreview",
       expect.any(Object),
       expect.objectContaining({ webviewOptions: expect.any(Object) }),
+    );
+  });
+
+  it("reads accordo.preview.defaultSurface and passes supportsMultipleEditorsPerDocument=false when 'text'", async () => {
+    setupCommentsExtPresent();
+    const ctx = createMockExtensionContext();
+    // Mock getConfiguration to return "text" for defaultSurface
+    (workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn().mockReturnValue("text"),
+    });
+
+    await activate(ctx as never);
+
+    expect(workspace.getConfiguration).toHaveBeenCalledWith("accordo.preview");
+    expect(window.registerCustomEditorProvider).toHaveBeenCalledWith(
+      "accordo.markdownPreview",
+      expect.anything(),
+      expect.objectContaining({ supportsMultipleEditorsPerDocument: false }),
     );
   });
 

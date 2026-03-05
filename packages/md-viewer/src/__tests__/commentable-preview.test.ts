@@ -196,6 +196,18 @@ describe("CommentablePreview", () => {
     expect(mockLoadThreads).toHaveBeenCalledOnce();
   });
 
+  it("M41b-CPE-05: inert mode — no bridge when store is null, preview still renders", async () => {
+    const panel = makeMockWebviewPanel();
+    const cp = new CommentablePreview(makeMockContext() as never, null);
+    await cp.resolveCustomTextEditor(makeMockDocument() as never, panel as never);
+
+    // Preview still renders
+    expect(mockRender).toHaveBeenCalled();
+    expect(panel.webview.html).toBe("<html>mock</html>");
+    // Bridge NOT created — no loadThreadsForUri
+    expect(mockLoadThreads).not.toHaveBeenCalled();
+  });
+
   it("M41b-CPE-06: re-renders when the document changes", async () => {
     const panel = makeMockWebviewPanel();
     const doc = makeMockDocument("/project/README.md");

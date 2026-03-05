@@ -12,7 +12,7 @@
 
 Accordo Markdown Viewer is a standalone VS Code extension that renders `.md` files as a rich, interactive HTML preview with integrated comment pins powered by `@accordo/comment-sdk`. It implements VS Code's `CustomTextEditorProvider` API to render markdown files inside a `WebviewPanel`, injecting rendered HTML with block-level anchors (`data-block-id` attributes) so the SDK can place comment pins at precise document locations.
 
-The package depends on `accordo-comments` (for thread storage) and `@accordo/comment-sdk` (for the webview-side pin UI), but has no dependency on `accordo-bridge` directly — tool registration is not its responsibility.
+The package depends on `accordo-comments` (for thread storage) and `@accordo/comment-sdk` (for the webview-side pin UI). It does not register tools itself.
 
 ---
 
@@ -90,20 +90,20 @@ Mermaid diagrams are rendered **client-side** in the webview via the mermaid.js 
 Every block-level HTML element in the rendered output receives a `data-block-id` attribute. This enables the Comment SDK to map `SdkThread.blockId` values back to DOM elements for pin placement.
 
 ```html
-<h2 data-block-id="introduction">Introduction</h2>
-<p data-block-id="p-1a2b3c">First paragraph text…</p>
-<li data-block-id="li-4d5e6f">List item</li>
-<pre data-block-id="pre-7g8h9i"><code>…</code></pre>
+<h2 data-block-id="heading:2:introduction">Introduction</h2>
+<p data-block-id="p:0">First paragraph text…</p>
+<li data-block-id="li:0:0">List item</li>
+<pre data-block-id="pre:0"><code>…</code></pre>
 ```
 
 | Block element | ID strategy |
 |---|---|
-| `h1`–`h6` | Content-based slug (e.g., `my-section-title`) + `:2`, `:3` suffix for duplicates |
-| `p` | `p-` prefix + first 6 chars of a hash of position |
-| `li` | `li-` prefix + first 6 chars of a hash of position |
-| `pre` | `pre-` prefix + first 6 chars of a hash of position |
+| `h1`–`h6` | `heading:{level}:{slug}` with `:2`, `:3` suffix for duplicates |
+| `p` | `p:{index}` |
+| `li` | `li:{listIdx}:{itemIdx}` |
+| `pre` | `pre:{index}` |
 
-Block IDs are stable across line shifts within heading text; non-heading IDs are position-based and may change if the document structure changes significantly.
+Heading IDs are content-based and stable for unchanged heading text. Non-heading IDs are deterministic index-based within the current render and may shift if document structure changes.
 
 ---
 
@@ -134,8 +134,8 @@ export function slugify(text: string): string;
 
 export class BlockIdResolver {
   buildMappingFromTokens(tokens: Token[]): void;
-  blockIdToLine(blockId: string): number | undefined;
-  lineToBlockId(line: number): string | undefined;
+  blockIdToLine(blockId: string): number | null;
+  lineToBlockId(line: number): string | null;
 }
 ```
 
@@ -253,7 +253,7 @@ export class ImageResolver {
 | M41b-TPL-02 | CSP `<meta>` includes `nonce-{nonce}` for all inline scripts |
 | M41b-TPL-03 | KaTeX CSS injected via `<link>` with correct URI from `opts.katexCssUri` |
 | M41b-TPL-04 | Mermaid JS injected via `<script nonce="…" src="…">` using `opts.mermaidJsUri` |
-| M41b-TPL-05 | SDK JS injected via `<script nonce="…" type="module" src="…">` using `opts.sdkJsUri` |
+| M41b-TPL-05 | SDK JS injected via `<script nonce="…" src="…">` using `opts.sdkJsUri` |
 | M41b-TPL-06 | SDK CSS injected via `<link>` using `opts.sdkCssUri` |
 | M41b-TPL-07 | `<body>` receives the VS Code theme class from `themeKindToClass(opts.themeKind)` |
 | M41b-TPL-08 | `themeKindToClass(kind)` maps: 1→`vscode-light`, 2→`vscode-dark`, 3→`vscode-high-contrast`, 4→`vscode-high-contrast-light`; unknown → `vscode-dark` |
@@ -269,6 +269,7 @@ export interface TemplateOptions {
   sdkJsUri: string;
   sdkCssUri: string;
   themeKind: 1 | 2 | 3 | 4;
+  cspSource: string;
   /** Additional <script src="..."> tags injected before </body>. Nonce is applied automatically. */
   additionalScripts?: string[];
   /** Additional <link rel="stylesheet"> tags injected in <head>. */
@@ -291,29 +292,30 @@ export function themeKindToClass(kind: 1 | 2 | 3 | 4): string;
 |---|---|
 | M41b-PBR-01 | Constructor subscribes to `store.onChanged` for the current URI |
 | M41b-PBR-02 | `loadThreadsForUri()` sends `comments:load` to the webview with threads for `uri` |
-| M41b-PBR-03 | `comment:create` message → calls `store.createThread(uri, blockId, body)` and pushes `comments:add` |
-| M41b-PBR-04 | `comment:reply` message → calls `store.reply(threadId, body)` and pushes `comments:update` |
-| M41b-PBR-05 | `comment:resolve` message → calls `store.resolve(threadId)` and pushes `comments:update` |
-| M41b-PBR-06 | `comment:delete` message → calls `store.delete(threadId, commentId?)` and pushes `comments:remove` |
+| M41b-PBR-03 | `comment:create` message → resolves `blockId -> line` (if available) and calls `store.createThread({ uri, blockId, body, intent?, line? })` |
+| M41b-PBR-04 | `comment:reply` message → calls `store.reply({ threadId, body })` |
+| M41b-PBR-05 | `comment:resolve` message → calls `store.resolve({ threadId, resolutionNote })` |
+| M41b-PBR-06 | `comment:delete` message → calls `store.delete({ threadId, commentId? })` |
 | M41b-PBR-07 | Store `onChanged` fires → pushes updated `comments:load` for current URI |
 | M41b-PBR-08 | `dispose()` calls `dispose()` on both the store subscription and the webview message listener |
-| M41b-PBR-09 | Unknown message type → silently ignored (no throw; error logged to `console.error`) |
-| M41b-PBR-10 | `toSdkThread(thread, loadedAt)` — exported helper that converts a `CommentThread` to `SdkThread` including `hasUnread` logic |
+| M41b-PBR-09 | Unknown message type → silently ignored (no throw) |
+| M41b-PBR-10 | `toSdkThread(thread, loadedAt, resolver?)` — exported helper that converts a `CommentThread` to `SdkThread` including line/block mapping for text anchors |
 
 **`toSdkThread` hasUnread logic:**
 
-- `hasUnread = thread.updatedAt > loadedAt` (ISO 8601 string comparison)
-- `thread.updatedAt === loadedAt` → `hasUnread: false`
-- `thread.updatedAt < loadedAt` → `hasUnread: false`
+- `hasUnread = thread.lastActivity > loadedAt` (ISO 8601 string comparison)
+- `thread.lastActivity === loadedAt` → `hasUnread: false`
+- `thread.lastActivity < loadedAt` → `hasUnread: false`
 
 **Exports:**
 
 ```typescript
 export interface CommentStoreLike {
-  createThread(uri: string, blockId: string, body: string): Promise<CommentThread>;
-  reply(threadId: string, body: string): Promise<void>;
-  resolve(threadId: string): Promise<void>;
-  delete(threadId: string, commentId?: string): Promise<void>;
+  createThread(args: { uri: string; blockId: string; body: string; intent?: string; line?: number }): Promise<CommentThread>;
+  reply(args: { threadId: string; body: string }): Promise<void>;
+  resolve(args: { threadId: string; resolutionNote?: string }): Promise<void>;
+  reopen(args: { threadId: string }): Promise<void>;
+  delete(args: { threadId: string; commentId?: string }): Promise<void>;
   getThreadsForUri(uri: string): CommentThread[];
   onChanged(listener: (uri: string) => void): { dispose(): void };
 }
@@ -323,9 +325,14 @@ export interface WebviewLike {
   onDidReceiveMessage: (listener: (msg: WebviewMessage) => void) => { dispose(): void };
 }
 
-export function toSdkThread(thread: CommentThread, loadedAt: string): SdkThread;
+export interface ResolverLike {
+  blockIdToLine(blockId: string): number | null;
+  lineToBlockId(line: number): string | null;
+}
+
+export function toSdkThread(thread: CommentThread, loadedAt: string, resolver?: ResolverLike): SdkThread;
 export class PreviewBridge {
-  constructor(store: CommentStoreLike, webview: WebviewLike, uri: string);
+  constructor(store: CommentStoreLike, webview: WebviewLike, uri: string, resolver?: ResolverLike);
   loadThreadsForUri(): void;
   handleMessage(msg: WebviewMessage): Promise<void>;
   dispose(): void;
@@ -346,7 +353,7 @@ export class PreviewBridge {
 | M41b-CPE-02 | `generateNonce()` returns a 32-character alphanumeric random string |
 | M41b-CPE-03 | `mapThemeKind(kind)` maps `vscode.ColorThemeKind` enum to `1 \| 2 \| 3 \| 4`; unknown → `2` (dark) |
 | M41b-CPE-04 | `CommentablePreview` class implements `vscode.CustomTextEditorProvider` |
-| M41b-CPE-05 | `resolveCustomTextEditor()` creates a `WebviewPanel`, renders HTML, creates `PreviewBridge` |
+| M41b-CPE-05 | `resolveCustomTextEditor()` creates webview HTML and creates `PreviewBridge` when a comments store is available |
 | M41b-CPE-06 | Webview HTML rebuilt on `vscode.workspace.onDidChangeTextDocument` for the current file |
 | M41b-CPE-07 | Webview is disposed when the panel is closed; all subscriptions cleaned up |
 | M41b-CPE-08 | Webview options: `enableScripts: true`, `localResourceRoots` restricted to extension + workspace |
@@ -364,14 +371,14 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider { …
 
 ### M41b-EXT — extension.ts (entry point)
 
-**File:** `src/extension.ts` *(not yet implemented — Phase C target)*
+**File:** `src/extension.ts`
 
 **Purpose:** Register `CommentablePreview` as a `CustomTextEditorProvider` and register the three preview commands.
 
 | Requirement ID | Requirement |
 |---|---|
 | M41b-EXT-01 | Calls `vscode.window.registerCustomEditorProvider(PREVIEW_VIEW_TYPE, new CommentablePreview(...))` |
-| M41b-EXT-02 | Retrieves `CommentStore` via `accordo.comments.internal.getThreadsForUri` or reconstructs one from disk |
+| M41b-EXT-02 | Retrieves a store adapter via `accordo.comments.internal.getStore` |
 | M41b-EXT-03 | Registers `accordo.preview.open`, `accordo.preview.toggle`, `accordo.preview.openSideBySide` commands |
 | M41b-EXT-04 | All disposables pushed to `context.subscriptions` |
 | M41b-EXT-05 | If `accordo-comments` is unavailable, extension logs a warning and is inert |
@@ -382,7 +389,7 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider { …
 
 | Setting | Type | Default | Description |
 |---|---|---|---|
-| `accordo.preview.defaultSurface` | `"viewer" \| "text"` | `"viewer"` | Which editor opens `.md` files by default. `"viewer"` uses the Accordo preview; `"text"` uses the built-in text editor. |
+| `accordo.preview.defaultSurface` | `"viewer" \| "text"` | `"viewer"` | Activation-time behavior toggle used during custom-editor registration. |
 
 ---
 

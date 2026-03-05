@@ -905,3 +905,56 @@ describe("onChanged listener", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 });
+
+// ── pruneStaleThreads ─────────────────────────────────────────────────────────
+
+describe("pruneStaleThreads", () => {
+  beforeEach(async () => {
+    await store.load("/project");
+  });
+
+  it("returns empty array when store has no threads", async () => {
+    const removed = await store.pruneStaleThreads(async () => true);
+    expect(removed).toEqual([]);
+  });
+
+  it("returns empty array when all file URIs exist", async () => {
+    await store.createThread(makeCreateParams());
+    const removed = await store.pruneStaleThreads(async () => true);
+    expect(removed).toEqual([]);
+    expect(store.getAllThreads()).toHaveLength(1);
+  });
+
+  it("removes threads whose file URI does not exist and returns their IDs", async () => {
+    const r1 = await store.createThread(makeCreateParams({ uri: "file:///gone.ts", anchor: textAnchor("file:///gone.ts", 0) }));
+    const r2 = await store.createThread(makeCreateParams({ uri: "file:///alive.ts", anchor: textAnchor("file:///alive.ts", 0) }));
+
+    const existing = new Set(["file:///alive.ts"]);
+    const removed = await store.pruneStaleThreads(async (uri) => existing.has(uri));
+
+    expect(removed).toEqual([r1.threadId]);
+    expect(store.getAllThreads()).toHaveLength(1);
+    expect(store.getThread(r1.threadId)).toBeUndefined();
+    expect(store.getThread(r2.threadId)).toBeDefined();
+  });
+
+  it("fires onChanged for each pruned URI", async () => {
+    await store.createThread(makeCreateParams({ uri: "file:///gone.ts", anchor: textAnchor("file:///gone.ts", 0) }));
+    const listener = vi.fn();
+    store.onChanged(listener);
+
+    await store.pruneStaleThreads(async () => false);
+
+    expect(listener).toHaveBeenCalledWith("file:///gone.ts");
+  });
+
+  it("removes all threads for a stale URI in one call", async () => {
+    await store.createThread(makeCreateParams({ uri: "file:///gone.ts", anchor: textAnchor("file:///gone.ts", 0) }));
+    await store.createThread(makeCreateParams({ uri: "file:///gone.ts", anchor: textAnchor("file:///gone.ts", 1), body: "second" }));
+
+    const removed = await store.pruneStaleThreads(async () => false);
+
+    expect(removed).toHaveLength(2);
+    expect(store.getAllThreads()).toHaveLength(0);
+  });
+});

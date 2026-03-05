@@ -227,6 +227,56 @@ export class NativeComments {
           if (updated) this.updateThread(updated);
         },
       ),
+      // ── Clean stale threads (files no longer exist on disk) ───────────────
+      vscode.commands.registerCommand(
+        "accordo.comments.cleanStale",
+        async () => {
+          const removed = await store.pruneStaleThreads(async (uri) => {
+            try {
+              await vscode.workspace.fs.stat(vscode.Uri.parse(uri));
+              return true;
+            } catch {
+              return false;
+            }
+          });
+          for (const id of removed) {
+            this.removeThread(id);
+          }
+          void vscode.window.showInformationMessage(
+            removed.length === 0
+              ? "No stale comment threads found."
+              : `Removed ${removed.length} stale comment thread${removed.length === 1 ? "" : "s"}.`,
+          );
+        },
+      ),
+      // ── Focus a comment thread in the Accordo Markdown Preview ─────────────
+      vscode.commands.registerCommand(
+        "accordo.comments.focusInPreview",
+        async (vsThread: vscode.CommentThread) => {
+          const threadId = this._getThreadIdForWidget(vsThread);
+          if (!threadId) return;
+          const thread = store.getThread(threadId);
+          if (!thread) return;
+          const uri = thread.anchor.uri;
+          // Open the file with the Accordo preview custom editor
+          try {
+            await vscode.commands.executeCommand(
+              "vscode.openWith",
+              vscode.Uri.parse(uri),
+              "accordo.markdownPreview",
+            );
+          } catch {
+            // File may already be open — proceed to focus anyway
+          }
+          // Allow the panel to initialize before sending the focus message
+          await new Promise<void>((r) => setTimeout(r, 250));
+          await vscode.commands.executeCommand(
+            "accordo.preview.internal.focusThread",
+            uri,
+            threadId,
+          );
+        },
+      ),
     );
   }
 
@@ -279,8 +329,9 @@ export class NativeComments {
       const { startLine, startChar, endLine, endChar } = (thread.anchor as CommentAnchorText).range;
       range = new vscode.Range(startLine, startChar, endLine, endChar);
     } else {
-      // file-level anchor — no range
-      range = undefined as unknown as vscode.Range;
+      // file-level or surface anchor — use start-of-file range so VS Code
+      // can navigate to the document from the Comments panel.
+      range = new vscode.Range(0, 0, 0, 0);
     }
 
     const vsComments = thread.comments.map(c => this._buildVsComment(c));

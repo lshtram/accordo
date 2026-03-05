@@ -16,6 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { PreviewBridge, toSdkThread } from "../preview-bridge.js";
+import type { ResolverLike } from "../preview-bridge.js";
 import type { CommentThread } from "@accordo/bridge-types";
 
 // ── Mocks ──────────────────────────────────────────────────────────────
@@ -108,6 +109,32 @@ describe("PreviewBridge", () => {
     await Promise.resolve();
     expect(store.createThread).toHaveBeenCalledWith(
       expect.objectContaining({ body: "Looks good" })
+    );
+  });
+
+  it("M41b-PBR-03: comment:create passes resolved line number when resolver is present", async () => {
+    const resolver: ResolverLike = {
+      blockIdToLine: (id: string) => (id === "p:0" ? 7 : null),
+      lineToBlockId: () => null,
+    };
+    new PreviewBridge(store as never, webview as never, DOC_URI, resolver);
+    webview._send({ type: "comment:create", blockId: "p:0", body: "Line mapped" });
+    await Promise.resolve();
+    expect(store.createThread).toHaveBeenCalledWith(
+      expect.objectContaining({ blockId: "p:0", body: "Line mapped", line: 7 })
+    );
+  });
+
+  it("M41b-PBR-03: comment:create passes line=undefined when resolver returns null", async () => {
+    const resolver: ResolverLike = {
+      blockIdToLine: () => null,
+      lineToBlockId: () => null,
+    };
+    new PreviewBridge(store as never, webview as never, DOC_URI, resolver);
+    webview._send({ type: "comment:create", blockId: "unknown:99", body: "No line" });
+    await Promise.resolve();
+    expect(store.createThread).toHaveBeenCalledWith(
+      expect.objectContaining({ blockId: "unknown:99", line: undefined })
     );
   });
 
@@ -270,6 +297,65 @@ describe("toSdkThread", () => {
       LOADED_AT
     );
     expect(result.comments).toHaveLength(1);
+  });
+
+  // ── Resolver-based blockId resolution for text anchors ──────────────────
+
+  it("resolves blockId from text anchor startLine via resolver.lineToBlockId", () => {
+    const textThread = {
+      id: "t2",
+      anchor: {
+        kind: "text",
+        uri: DOC_URI,
+        range: { startLine: 5, startChar: 0, endLine: 5, endChar: 0 },
+        docVersion: 0,
+      },
+      comments: [],
+      status: "open",
+      createdAt: "2026-03-01T10:00:00Z",
+      lastActivity: "2026-03-01T10:00:00Z",
+    } as unknown as CommentThread;
+
+    const resolver: ResolverLike = {
+      blockIdToLine: () => null,
+      lineToBlockId: (line: number) => (line === 5 ? "heading:2:getting-started" : null),
+    };
+
+    const result = toSdkThread(textThread, LOADED_AT, resolver);
+    expect(result.blockId).toBe("heading:2:getting-started");
+  });
+
+  it("text anchor without resolver yields empty blockId", () => {
+    const textThread = {
+      id: "t3",
+      anchor: {
+        kind: "text",
+        uri: DOC_URI,
+        range: { startLine: 5, startChar: 0, endLine: 5, endChar: 0 },
+        docVersion: 0,
+      },
+      comments: [],
+      status: "open",
+      createdAt: "2026-03-01T10:00:00Z",
+      lastActivity: "2026-03-01T10:00:00Z",
+    } as unknown as CommentThread;
+
+    const result = toSdkThread(textThread, LOADED_AT);
+    expect(result.blockId).toBe("");
+  });
+
+  it("file anchor yields empty blockId", () => {
+    const fileThread = {
+      id: "t4",
+      anchor: { kind: "file", uri: DOC_URI },
+      comments: [],
+      status: "open",
+      createdAt: "2026-03-01T10:00:00Z",
+      lastActivity: "2026-03-01T10:00:00Z",
+    } as unknown as CommentThread;
+
+    const result = toSdkThread(fileThread, LOADED_AT);
+    expect(result.blockId).toBe("");
   });
 });
 

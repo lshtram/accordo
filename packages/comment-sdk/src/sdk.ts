@@ -69,6 +69,7 @@ export class AccordoCommentSDK {
   private _layer: HTMLElement | undefined;
   private _pins = new Map<string, PinEntry>();
   private _activePopover: HTMLElement | undefined;
+  private _activeBlockEl: HTMLElement | undefined;
   private _clickHandler: ((e: MouseEvent) => void) | undefined;
   private _outsideClickHandler: ((e: MouseEvent) => void) | undefined;
 
@@ -95,7 +96,9 @@ export class AccordoCommentSDK {
       if (!e.altKey) return;
       e.preventDefault();
       const target = (e.target as Element).closest("[data-block-id]");
-      const blockId = target?.getAttribute("data-block-id") ?? "";
+      if (!target) return; // No block element at click point — ignore
+      const blockId = target.getAttribute("data-block-id") ?? "";
+      if (!blockId) return;
       this._showInlineInput(e, blockId);
     };
     opts.container.addEventListener("click", this._clickHandler);
@@ -145,6 +148,10 @@ export class AccordoCommentSDK {
    */
   loadThreads(threads: SdkThread[]): void {
     if (!this._opts || !this._layer) return;
+    // Remove existing gutter markers from block elements
+    this._opts.container.querySelectorAll(".accordo-block--has-comments").forEach((el) => {
+      el.classList.remove("accordo-block--has-comments");
+    });
     // Clear existing pins
     for (const entry of this._pins.values()) {
       entry.element.remove();
@@ -157,6 +164,9 @@ export class AccordoCommentSDK {
       const el = this._createPinElement(thread, pos);
       this._layer.appendChild(el);
       this._pins.set(thread.id, { thread, element: el });
+      // Add gutter marker to the anchor block element
+      const blockEl = this._opts.container.querySelector(`[data-block-id="${thread.blockId}"]`);
+      if (blockEl) blockEl.classList.add("accordo-block--has-comments");
     }
   }
 
@@ -192,6 +202,14 @@ export class AccordoCommentSDK {
     if (badge) {
       badge.textContent = String(entry.thread.comments.length);
     }
+  }
+
+  /**
+   * Open the popover for a specific thread programmatically.
+   * Called by the host when the user navigates to a comment from the VS Code panel.
+   */
+  openPopover(threadId: string): void {
+    this._openPopover(threadId);
   }
 
   /**
@@ -406,6 +424,15 @@ export class AccordoCommentSDK {
     this._opts.container.appendChild(popover);
     this._activePopover = popover;
 
+    // Highlight the anchor block element
+    const anchorEl = this._opts.container.querySelector(
+      `[data-block-id="${entry.thread.blockId}"]`,
+    );
+    if (anchorEl) {
+      anchorEl.classList.add("accordo-block--active-comment");
+      this._activeBlockEl = anchorEl as HTMLElement;
+    }
+
     // Clamp into viewport after DOM insertion (so dimensions are available)
     const POPOVER_W = 320;
     const popoverH = popover.offsetHeight || 240;
@@ -425,6 +452,10 @@ export class AccordoCommentSDK {
       this._activePopover.remove();
       this._activePopover = undefined;
     }
+    if (this._activeBlockEl) {
+      this._activeBlockEl.classList.remove("accordo-block--active-comment");
+      this._activeBlockEl = undefined;
+    }
   }
 
   /** Show the inline comment input form at the click location. */
@@ -441,36 +472,41 @@ export class AccordoCommentSDK {
     form.style.top = `${e.clientY + window.scrollY + 8}px`;
 
     const textarea = document.createElement("textarea");
+    textarea.placeholder = "Add comment… (Cmd+Enter to submit)";
     form.appendChild(textarea);
 
     const submitBtn = document.createElement("button");
-    submitBtn.className = "accordo-btn--primary";
-    submitBtn.textContent = "Submit";
+    submitBtn.className = "accordo-btn accordo-btn--primary";
+    submitBtn.textContent = "Add Comment";
     submitBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      const body = textarea.value;
+      const body = textarea.value.trim();
       if (body) {
-        this._opts?.callbacks.onCreate(blockId || "file", body, undefined);
+        this._opts?.callbacks.onCreate(blockId, body, undefined);
       }
       form.remove();
     });
-    form.appendChild(submitBtn);
 
-    textarea.addEventListener("keydown", (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-        e.preventDefault();
+    textarea.addEventListener("keydown", (ev) => {
+      if ((ev.metaKey || ev.ctrlKey) && ev.key === "Enter") {
+        ev.preventDefault();
         submitBtn.click();
       }
     });
 
     const cancelBtn = document.createElement("button");
-    cancelBtn.className = "accordo-btn--secondary";
+    cancelBtn.className = "accordo-btn accordo-btn--secondary";
     cancelBtn.textContent = "Cancel";
     cancelBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       form.remove();
     });
-    form.appendChild(cancelBtn);
+
+    const actions = document.createElement("div");
+    actions.className = "accordo-inline-input__actions";
+    actions.appendChild(cancelBtn);
+    actions.appendChild(submitBtn);
+    form.appendChild(actions);
 
     this._opts.container.appendChild(form);
   }

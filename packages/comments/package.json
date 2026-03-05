@@ -16,7 +16,9 @@
       { "command": "accordo.comments.deleteComment", "title": "Delete Comment", "icon": "$(trash)" },
       { "command": "accordo.comments.reopenThread", "title": "Reopen", "icon": "$(debug-restart)" },
       { "command": "accordo.comments.resolveFromComment", "title": "Resolve Thread", "icon": "$(pass)" },
-      { "command": "accordo.comments.reopenFromComment", "title": "Reopen Thread", "icon": "$(debug-restart)" }
+      { "command": "accordo.comments.reopenFromComment", "title": "Reopen Thread", "icon": "$(debug-restart)" },
+      { "command": "accordo.comments.cleanStale", "title": "Accordo: Clean Stale Comments", "icon": "$(clear-all)" },
+      { "command": "accordo.comments.focusInPreview", "title": "Open in Markdown Preview", "icon": "$(open-preview)" }
     ],
     "menus": {
       "comments/commentThread/title": [
@@ -32,6 +34,11 @@
         },
         {
           "command": "accordo.comments.deleteThread",
+          "group": "navigation",
+          "when": "commentController == accordo-comments"
+        },
+        {
+          "command": "accordo.comments.focusInPreview",
           "group": "navigation",
           "when": "commentController == accordo-comments"
         }

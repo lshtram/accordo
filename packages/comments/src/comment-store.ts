@@ -490,6 +490,50 @@ export class CommentStore {
     return { open, resolved };
   }
 
+  /**
+   * Remove threads whose file URIs no longer resolve to an existing resource.
+   * Persists the trimmed store and emits onChanged for each affected URI.
+   * Returns the IDs of removed threads.
+   *
+   * @param exists  Async predicate — resolve `true` if the URI is accessible.
+   */
+  async pruneStaleThreads(
+    exists: (uri: string) => Promise<boolean>,
+  ): Promise<string[]> {
+    // Collect distinct URIs across all threads
+    const uriSet = new Set<string>();
+    for (const thread of this._threads.values()) {
+      uriSet.add(thread.anchor.uri);
+    }
+
+    // Identify URIs that no longer exist
+    const staleUris = new Set<string>();
+    for (const uri of uriSet) {
+      const alive = await exists(uri);
+      if (!alive) staleUris.add(uri);
+    }
+
+    if (staleUris.size === 0) return [];
+
+    // Remove stale threads from in-memory store
+    const removed: string[] = [];
+    for (const [id, thread] of this._threads) {
+      if (staleUris.has(thread.anchor.uri)) {
+        removed.push(id);
+        this._threads.delete(id);
+      }
+    }
+
+    if (removed.length > 0) {
+      await this._persist();
+      for (const uri of staleUris) {
+        this._emit(uri);
+      }
+    }
+
+    return removed;
+  }
+
   /** Serialize current state. Used by persistence layer. */
   toStoreFile(): CommentStoreFile {
     return {

@@ -14,7 +14,7 @@
  */
 
 import * as vscode from "vscode";
-import type { ExtensionToolDefinition, CommentAnchor, CommentAnchorSurface, BlockCoordinates, CommentIntent } from "@accordo/bridge-types";
+import type { ExtensionToolDefinition, CommentAnchor, CommentAnchorSurface, CommentAnchorText, BlockCoordinates, CommentIntent } from "@accordo/bridge-types";
 import { CommentStore } from "./comment-store.js";
 import { NativeComments } from "./native-comments.js";
 import { createCommentTools } from "./comment-tools.js";
@@ -55,6 +55,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const store = new CommentStore();
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
   await store.load(workspaceRoot);
+
+  // ── Auto-prune threads whose files no longer exist on disk ─────────────────
+  {
+    const pruned = await store.pruneStaleThreads(async (uri) => {
+      try { await vscode.workspace.fs.stat(vscode.Uri.parse(uri)); return true; }
+      catch { return false; }
+    });
+    if (pruned.length > 0) {
+      console.info(`[accordo-comments] Pruned ${pruned.length} stale thread(s) on activation`);
+    }
+  }
 
   // ── NativeComments (always created — gutter, panel, inline threads) ────────
   const nc = new NativeComments();
@@ -140,10 +151,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       "accordo.comments.internal.getStore",
       () => {
         return {
-          async createThread(args: { uri: string; blockId: string; body: string; intent?: string }) {
-            const coords: BlockCoordinates = { type: "block", blockId: args.blockId, blockType: inferBlockType(args.blockId) };
-            const anchor: CommentAnchorSurface = { kind: "surface", uri: args.uri, surfaceType: "markdown-preview", coordinates: coords };
-            const result = await store.createThread({ uri: args.uri, anchor: anchor as CommentAnchor, body: args.body, intent: args.intent as CommentIntent | undefined, author: { kind: "user", name: "You" } });
+          async createThread(args: { uri: string; blockId: string; body: string; intent?: string; line?: number }) {
+            // When a source line is known (blockId→line resolved by md-viewer),
+            // create a TEXT anchor so the comment appears in both text editor and
+            // webview.  Fall back to surface anchor only when no line is available.
+            let anchor: CommentAnchor;
+            if (args.line !== undefined && args.line >= 0) {
+              // Unified text anchor — NativeComments will place the gutter widget
+              // at the correct line; the webview SDK will resolve line→blockId via
+              // PreviewBridge's resolver to position the pin.
+              const textAnchor: CommentAnchorText = {
+                kind: "text",
+                uri: args.uri,
+                range: {
+                  startLine: args.line,
+                  startChar: 0,
+                  endLine: args.line,
+                  endChar: 0,
+                },
+                docVersion: 0,
+              };
+              anchor = textAnchor;
+            } else {
+              // No line mapping — surface anchor (legacy / fallback)
+              const coords: BlockCoordinates = { type: "block", blockId: args.blockId, blockType: inferBlockType(args.blockId) };
+              anchor = { kind: "surface", uri: args.uri, surfaceType: "markdown-preview", coordinates: coords } as CommentAnchorSurface;
+            }
+            const result = await store.createThread({ uri: args.uri, anchor, body: args.body, intent: args.intent as CommentIntent | undefined, author: { kind: "user", name: "You" } });
             const thread = store.getThread(result.threadId)!;
             nc.addThread(thread);
             return thread;

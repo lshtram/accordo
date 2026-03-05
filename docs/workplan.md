@@ -9,7 +9,7 @@
 
 ## Current Status
 
-> **As of 2026-03-04 — Week 7 Phase C+D complete for M41a (`@accordo/comment-sdk`) and M41b (`accordo-md-viewer`). All 7 sub-modules implemented: BlockIdPlugin, MarkdownRenderer, ImageResolver, WebviewTemplate, PreviewBridge, CommentablePreview (CustomTextEditorProvider + extension entrypoint). 1146 tests green (Hub: 335, Bridge: 298, Editor: 186, Comments: 177, SDK: 37, md-viewer: 113). TypeScript clean. M42/M43 (Hub prompt engine + state response updates) not yet started.**
+> **As of 2026-03-05 — Week 7 M41a/M41b complete and polished. All 7 sub-modules implemented and reviewed (4 review rounds). 1208 tests green (Hub: 335, Bridge: 298, Editor: 186, Comments: 183, SDK: 45, md-viewer: 123 + smoke: 53). TypeScript clean. UX polish round delivered: stale comment auto-prune + cleanStale command; panel click → webview focus (comments:focus message + openPopover); gutter markers + anchor highlight in webview; CSS form consistency; file-anchor range fix (VS Code panel navigation). M42/M43 (Hub prompt engine + state response updates) not yet started.**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -19,7 +19,7 @@
 | Phase 4 | Voice modality (`accordo-voice` bridge registration) | ⏳ Pending Phase 3 |
 | Phase 5 | Diagrams modality (`accordo-tldraw`) | ⏳ Pending Phase 4 |
 
-**Baseline:** 1146 tests green (Hub: 335, Bridge: 298, Editor: 186, Comments: 177, SDK: 37, md-viewer: 113). v0.1.0 on `main`.  
+**Baseline:** 1208 tests green (Hub: 335, Bridge: 298, Editor: 186, Comments: 183, SDK: 45, md-viewer: 123). v0.1.0 on `main`.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -193,6 +193,7 @@ Carried forward — non-blocking:
 3. **Exact token counting** — `prompt-engine.ts` uses `chars / 4`; `tiktoken` integration deferred.
 4. **Remote topology UX** — Port-forward notification for SSH/devcontainer/Codespaces.
 5. **Checkpoint/rollback** — Git-stash snapshots before destructive tool executions.
+6. **Comments store durability hardening** — Evaluate atomic persistence strategy for `.accordo/comments.json` (temp-file + rename / crash-safe write path). Deferred by product decision during Week 7 comments+SDK alignment.
 
 ---
 

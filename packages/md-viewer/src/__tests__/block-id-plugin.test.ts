@@ -140,8 +140,29 @@ describe("BlockIdResolver", () => {
     expect(blockId).toBe("heading:1:introduction");
   });
 
-  it("M41b-BID-05: lineToBlockId returns null for a line with no block", () => {
+  it("M41b-BID-05: lineToBlockId returns closest (preceding) blockId for a line inside a block", () => {
+    // heading at line 0, paragraph at line 2 — line 1 (blank) should map to heading
     const tokens = md.parse("# Introduction\n\nParagraph\n", {});
+    resolver.buildMappingFromTokens(tokens);
+    expect(resolver.lineToBlockId(1)).toBe("heading:1:introduction");
+  });
+
+  it("M41b-BID-05: lineToBlockId returns null for a line before the first block", () => {
+    // front-matter at line 0, heading at line 3
+    const tokens = md.parse("\n\n\n# Late start\n", {});
+    resolver.buildMappingFromTokens(tokens);
+    // Line 0 is before any mapped block
+    expect(resolver.lineToBlockId(0)).toBeNull();
+  });
+
+  it("M41b-BID-05: lineToBlockId returns null for an empty document", () => {
+    const tokens = md.parse("", {});
+    resolver.buildMappingFromTokens(tokens);
+    expect(resolver.lineToBlockId(0)).toBeNull();
+  });
+
+  it("M41b-BID-05: lineToBlockId returns null for line 999 in an empty mapping", () => {
+    const tokens = md.parse("", {});
     resolver.buildMappingFromTokens(tokens);
     expect(resolver.lineToBlockId(999)).toBeNull();
   });

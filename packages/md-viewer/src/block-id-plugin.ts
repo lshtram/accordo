@@ -128,6 +128,8 @@ export type BlockIdMap = Map<string, number>;
 export class BlockIdResolver {
   private _idToLine: BlockIdMap = new Map();
   private _lineToId: Map<number, string> = new Map();
+  /** Sorted array of mapped line numbers — built lazily for closest-line lookup. */
+  private _sortedLines: number[] = [];
 
   /**
    * M41b-BID-03
@@ -138,6 +140,7 @@ export class BlockIdResolver {
   buildMappingFromTokens(tokens: unknown[]): void {
     this._idToLine.clear();
     this._lineToId.clear();
+    this._sortedLines = [];
 
     const typedTokens = tokens as Token[];
     let parIdx = 0;
@@ -205,6 +208,9 @@ export class BlockIdResolver {
         }
       }
     }
+
+    // Build sorted line array for closest-line lookup (M41b-BID-05)
+    this._sortedLines = Array.from(this._lineToId.keys()).sort((a, b) => a - b);
   }
 
   /**
@@ -218,11 +224,35 @@ export class BlockIdResolver {
 
   /**
    * M41b-BID-05
-   * Returns the blockId for the block that starts at or contains the given
-   * 0-based source line. Returns null if no block starts at that line.
+   * Returns the blockId for the nearest block at or before the given 0-based
+   * source line.  This ensures that a text comment placed on any line inside
+   * a multi-line block still maps to the correct webview pin.
+   * Returns null only when: (a) the mapping is empty, or (b) the given line
+   * is before the first mapped block.
    */
   lineToBlockId(line: number): string | null {
-    return this._lineToId.get(line) ?? null;
+    // Fast path: exact hit
+    const exact = this._lineToId.get(line);
+    if (exact !== undefined) return exact;
+
+    // Binary search for the largest mapped line ≤ `line`
+    const lines = this._sortedLines;
+    if (lines.length === 0) return null;
+
+    let lo = 0;
+    let hi = lines.length - 1;
+    let best = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1;
+      if (lines[mid] <= line) {
+        best = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    if (best < 0) return null;
+    return this._lineToId.get(lines[best]) ?? null;
   }
 
   /** Returns the full blockId→line map for inspection/testing. */
@@ -234,6 +264,7 @@ export class BlockIdResolver {
   clear(): void {
     this._idToLine.clear();
     this._lineToId.clear();
+    this._sortedLines = [];
   }
 }
 

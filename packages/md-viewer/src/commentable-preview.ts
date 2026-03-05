@@ -32,9 +32,10 @@
  */
 
 import * as vscode from "vscode";
-import type { CommentStoreLike } from "./preview-bridge.js";
+import type { CommentStoreLike, ResolverLike } from "./preview-bridge.js";
 import { PreviewBridge } from "./preview-bridge.js";
 import { MarkdownRenderer } from "./renderer.js";
+import type { BlockIdResolver } from "./block-id-plugin.js";
 import { buildWebviewHtml } from "./webview-template.js";
 
 // ── CommentablePreviewEditor ──────────────────────────────────────────────────
@@ -83,9 +84,16 @@ export function mapThemeKind(kind: number): 1 | 2 | 3 | 4 {
 export class CommentablePreview implements vscode.CustomTextEditorProvider {
   private renderer: MarkdownRenderer | null = null;
 
+  /**
+   * Registry of live webview panels, keyed by document URI string.
+   * Used by the accordo.preview.internal.focusThread command to send
+   * comments:focus messages to the correct webview.
+   */
+  static readonly livePanels = new Map<string, vscode.WebviewPanel>();
+
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly store: CommentStoreLike,
+    private readonly store: CommentStoreLike | null,
   ) {}
 
   async resolveCustomTextEditor(
@@ -110,8 +118,17 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
     }
     const renderer = this.renderer;
 
+    // Block-id resolver — updated on every render so the bridge always
+    // uses the latest blockId ↔ source-line mapping.
+    let latestResolver: BlockIdResolver | null = null;
+
+    // Render sequence counter — prevents stale async renders from
+    // overwriting a newer result (M41b-CPE-06 race fix).
+    let renderSeq = 0;
+
     // Helper: (re)render markdown → set webview.html
     const render = async (): Promise<void> => {
+      const mySeq = ++renderSeq;
       const markdown = document.getText();
       const themeKind = mapThemeKind(vscode.window.activeColorTheme.kind);
       const nonce = generateNonce();
@@ -120,10 +137,15 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
           .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "dist", rel))
           .toString();
 
-      const { html } = await renderer.render(markdown, {
+      const { html, resolver } = await renderer.render(markdown, {
         docFsPath,
         webview: webviewPanel.webview,
       });
+
+      // If a newer render started while we were async, discard this result
+      if (mySeq !== renderSeq) return;
+
+      latestResolver = resolver;
 
       webviewPanel.webview.html = buildWebviewHtml({
         nonce,
@@ -137,22 +159,44 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
       });
     };
 
-    // M41b-CPE-05: initial render + bridge
+    // M41b-CPE-05: initial render + optional comment bridge
     await render();
-    const bridge = new PreviewBridge(this.store, webviewPanel.webview, docUri);
-    bridge.loadThreadsForUri();
+
+    // Resolver adapter that always delegates to the latest render result
+    const resolverAdapter: ResolverLike = {
+      blockIdToLine: (id) => latestResolver?.blockIdToLine(id) ?? null,
+      lineToBlockId: (line) => latestResolver?.lineToBlockId(line) ?? null,
+    };
+
+    // Create bridge only when a real CommentStore is available (not inert)
+    let bridge: PreviewBridge | undefined;
+    if (this.store) {
+      bridge = new PreviewBridge(this.store, webviewPanel.webview, docUri, resolverAdapter);
+      bridge.loadThreadsForUri();
+    }
 
     // M41b-CPE-06: re-render on text change for this document
+    // The render() guard (renderSeq check) discards stale HTML, but we also
+    // need to guard the post-render thread reload so an older render's .then()
+    // doesn't push threads using a stale resolver.
     const docChangeSub = vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.toString() === docUri) {
-        void render().then(() => bridge.loadThreadsForUri());
+        const seqAtStart = renderSeq;
+        void render().then(() => {
+          // Only reload threads if this render was not superseded
+          if (seqAtStart + 1 === renderSeq) bridge?.loadThreadsForUri();
+        });
       }
     });
 
     // M41b-CPE-07: dispose all subscriptions when panel closes
     webviewPanel.onDidDispose(() => {
+      CommentablePreview.livePanels.delete(docUri);
       docChangeSub.dispose();
-      bridge.dispose();
+      bridge?.dispose();
     });
+
+    // Register this panel so focusThread can find it by URI
+    CommentablePreview.livePanels.set(docUri, webviewPanel);
   }
 }

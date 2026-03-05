@@ -171,7 +171,7 @@ describe("§10.2 Restore persisted threads", () => {
     expect(controller.getThreads()).toHaveLength(1);
   });
 
-  it("restoreThreads creates file-level thread (no range) for file-anchored threads", () => {
+  it("restoreThreads creates file-level thread (navigates to start of file) for file-anchored threads", () => {
     const store = makeMockStore();
     native.init(store, mockContext);
 
@@ -185,8 +185,10 @@ describe("§10.2 Restore persisted threads", () => {
     const controller = native.getController() as unknown as MockCommentController;
     const vsThreads = controller.getThreads();
     expect(vsThreads).toHaveLength(1);
-    // File-level threads have undefined range
-    expect(vsThreads[0].range).toBeUndefined();
+    // File-level threads get a (0,0,0,0) range so VS Code can navigate to the file
+    expect(vsThreads[0].range).toBeDefined();
+    expect(vsThreads[0].range.start.line).toBe(0);
+    expect(vsThreads[0].range.end.line).toBe(0);
   });
 
   it("restoreThreads shows all comments in thread with correct authors", () => {

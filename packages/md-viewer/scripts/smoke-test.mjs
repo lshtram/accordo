@@ -77,7 +77,8 @@ for (const [name, md, fn] of rendererCases) {
   check("resolver.blockIdToLine heading:1:introduction = 0", resolver.blockIdToLine("heading:1:introduction") === 0);
   check("resolver.blockIdToLine p:0 = 2", resolver.blockIdToLine("p:0") === 2);
   check("resolver.lineToBlockId(0) = heading:1:introduction", resolver.lineToBlockId(0) === "heading:1:introduction");
-  check("resolver.lineToBlockId(999) = null", resolver.lineToBlockId(999) === null);
+  check("resolver.lineToBlockId(1) closest = heading", resolver.lineToBlockId(1) === "heading:1:introduction");
+  check("resolver.lineToBlockId(999) closest = p:0", resolver.lineToBlockId(999) === "p:0");
 }
 
 // ── BlockIdPlugin standalone ──────────────────────────────────────────────────

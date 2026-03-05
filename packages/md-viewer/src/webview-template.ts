@@ -153,6 +153,8 @@ ${extraScripts}
           sdk.updateThread(msg.threadId, msg.update);
         } else if (msg.type === 'comments:remove') {
           sdk.removeThread(msg.threadId);
+        } else if (msg.type === 'comments:focus') {
+          sdk.openPopover(msg.threadId);
         }
       });
 

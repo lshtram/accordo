@@ -299,12 +299,24 @@ describe("AccordoCommentSDK", () => {
       container.appendChild(block);
       sdk.init(makeInitOpts(container, callbacks, { x: 100, y: 200 }));
 
-      container.dispatchEvent(new MouseEvent("click", { bubbles: true, altKey: true }));
+      block.dispatchEvent(new MouseEvent("click", { bubbles: true, altKey: true }));
       const cancelBtn = container.querySelector<HTMLButtonElement>(".accordo-inline-input .accordo-btn--secondary")!;
       cancelBtn.click();
 
       expect(callbacks.onCreate).not.toHaveBeenCalled();
       expect(container.querySelector(".accordo-inline-input")).toBeNull();
+    });
+
+    it("Alt+click outside any [data-block-id] element does NOT open the input form", () => {
+      // Container has no child with data-block-id
+      sdk.init(makeInitOpts(container, callbacks, { x: 100, y: 200 }));
+
+      const event = new MouseEvent("click", { bubbles: true, altKey: true });
+      container.dispatchEvent(event);
+
+      const input = container.querySelector(".accordo-inline-input");
+      expect(input).toBeNull();
+      expect(callbacks.onCreate).not.toHaveBeenCalled();
     });
   });
 
@@ -482,6 +494,98 @@ describe("AccordoCommentSDK", () => {
     it("resolved always wins over hasUnread", () => {
       sdk.init(makeInitOpts(container, callbacks));
       expect(sdk.resolvePinState(makeThread({ status: "resolved", hasUnread: true }))).toBe("resolved");
+    });
+  });
+
+  // ── openPopover (programmatic focus from Comments panel) ──────────────────
+
+  describe("openPopover()", () => {
+    it("opens popover for a known threadId", () => {
+      sdk.init(makeInitOpts(container, callbacks));
+      sdk.loadThreads([makeThread()]);
+      expect(container.querySelector(".accordo-popover")).toBeNull();
+
+      sdk.openPopover("thread-1");
+
+      expect(container.querySelector(".accordo-popover")).not.toBeNull();
+    });
+
+    it("does nothing for an unknown threadId", () => {
+      sdk.init(makeInitOpts(container, callbacks));
+      sdk.loadThreads([makeThread()]);
+
+      sdk.openPopover("does-not-exist");
+
+      expect(container.querySelector(".accordo-popover")).toBeNull();
+    });
+
+    it("only one popover open at a time", () => {
+      sdk.init(makeInitOpts(container, callbacks));
+      const thread2 = makeThread({ id: "thread-2", blockId: "p:0" });
+      sdk.loadThreads([makeThread(), thread2]);
+
+      sdk.openPopover("thread-1");
+      sdk.openPopover("thread-2");
+
+      expect(container.querySelectorAll(".accordo-popover")).toHaveLength(1);
+    });
+  });
+
+  // ── Gutter markers & anchor highlight ─────────────────────────────────────
+
+  describe("gutter markers and anchor highlight", () => {
+    it("loadThreads adds .accordo-block--has-comments to anchored block elements", () => {
+      const block = document.createElement("p");
+      block.setAttribute("data-block-id", "heading:1:introduction");
+      container.appendChild(block);
+
+      sdk.init(makeInitOpts(container, callbacks));
+      sdk.loadThreads([makeThread()]);
+
+      expect(block.classList.contains("accordo-block--has-comments")).toBe(true);
+    });
+
+    it("loadThreads clears old gutter markers before re-applying", () => {
+      const block = document.createElement("p");
+      block.setAttribute("data-block-id", "heading:1:introduction");
+      container.appendChild(block);
+
+      sdk.init(makeInitOpts(container, callbacks));
+      sdk.loadThreads([makeThread()]);
+      expect(block.classList.contains("accordo-block--has-comments")).toBe(true);
+
+      // Reload with no threads — marker removed
+      sdk.loadThreads([]);
+      expect(block.classList.contains("accordo-block--has-comments")).toBe(false);
+    });
+
+    it("clicking a pin adds .accordo-block--active-comment to the anchor element", () => {
+      const block = document.createElement("p");
+      block.setAttribute("data-block-id", "heading:1:introduction");
+      container.appendChild(block);
+
+      sdk.init(makeInitOpts(container, callbacks));
+      sdk.loadThreads([makeThread()]);
+
+      container.querySelector<HTMLElement>(".accordo-pin")!.click();
+
+      expect(block.classList.contains("accordo-block--active-comment")).toBe(true);
+    });
+
+    it("closing the popover removes .accordo-block--active-comment", () => {
+      const block = document.createElement("p");
+      block.setAttribute("data-block-id", "heading:1:introduction");
+      container.appendChild(block);
+
+      sdk.init(makeInitOpts(container, callbacks));
+      sdk.loadThreads([makeThread()]);
+      container.querySelector<HTMLElement>(".accordo-pin")!.click();
+      expect(block.classList.contains("accordo-block--active-comment")).toBe(true);
+
+      // Click outside to close popover
+      document.body.click();
+
+      expect(block.classList.contains("accordo-block--active-comment")).toBe(false);
     });
   });
 });

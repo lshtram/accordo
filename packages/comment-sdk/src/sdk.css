@@ -325,3 +325,24 @@ body {
   color: var(--vscode-testing-iconPassed, #4caf50);
   font-family: var(--vscode-font-family, system-ui);
 }
+
+/* ── Gutter markers — left border on blocks that have comment threads ─────── */
+
+.accordo-block--has-comments {
+  border-left: 3px solid var(--vscode-notificationsInfoIcon-foreground, #3794ff);
+  padding-left: 6px;
+  margin-left: -9px; /* keep visual position unchanged */
+  transition: border-color 0.15s ease;
+}
+
+/* ── Active anchor highlight — background tint when popover is open ─────────── */
+
+.accordo-block--active-comment {
+  background: var(
+    --vscode-editor-selectionHighlightBackground,
+    rgba(173, 214, 255, 0.12)
+  );
+  border-radius: 3px;
+  outline: 1px solid var(--vscode-notificationsInfoIcon-foreground, #3794ff);
+  outline-offset: 1px;
+}

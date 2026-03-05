@@ -125,4 +125,6 @@ export type HostMessage =
   | { type: "comments:load"; threads: SdkThread[] }
   | { type: "comments:add"; thread: SdkThread }
   | { type: "comments:update"; threadId: string; update: Partial<SdkThread> }
-  | { type: "comments:remove"; threadId: string };
+  | { type: "comments:remove"; threadId: string }
+  /** Ask the webview to open the popover for a specific thread (from panel click). */
+  | { type: "comments:focus"; threadId: string };

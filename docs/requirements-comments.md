@@ -52,45 +52,38 @@ Accordo Comments is the spatial commenting engine for the Accordo IDE. It provid
 interface CommentThread {
   /** UUID — stable across edits */
   id: string;
-  /** Absolute file URI (file:///...) */
-  uri: string;
-  /** Position anchor — line-based for code, block-id for surfaces */
-  anchor: LineAnchor | BlockAnchor;
+  /** Position anchor — text range, surface coordinate, or whole-file */
+  anchor: CommentAnchor;
   /** Status of the thread */
   status: "open" | "resolved";
   /** Ordered list of comments */
-  comments: Comment[];
+  comments: AccordoComment[];
   /** ISO 8601 — when the thread was created */
   createdAt: string;
-  /** ISO 8601 — last modification timestamp */
-  updatedAt: string;
+  /** ISO 8601 — last activity timestamp */
+  lastActivity: string;
 }
 
-interface Comment {
+interface AccordoComment {
   id: string;
+  threadId: string;
   body: string;
-  author: string;
+  author: { kind: "user" | "agent"; name: string; agentId?: string };
   createdAt: string;
-}
-
-interface LineAnchor {
-  kind: "line";
-  line: number;     // 0-based
-  character: number; // 0-based column
-}
-
-interface BlockAnchor {
-  kind: "block";
-  blockId: string;  // data-block-id attribute value
+  anchor: CommentAnchor;
+  intent?: "fix" | "explain" | "refactor" | "review" | "design" | "question";
+  status: "open" | "resolved";
+  resolutionNote?: string;
+  context?: CommentContext;
 }
 ```
 
 ### 3.2 Storage
 
 - Threads are persisted as a JSON file at `{workspaceRoot}/.accordo/comments.json`.
-- Format: `{ "version": 1, "threads": CommentThread[] }`.
+- Format: `{ "version": "1.0", "threads": CommentThread[] }`.
 - File is created on first write; never throws if missing (treats as empty).
-- All writes are atomic (write to temp file, then rename).
+- Writes are done through `vscode.workspace.fs.writeFile` on each mutation.
 
 ---
 
@@ -102,9 +95,9 @@ interface BlockAnchor {
 
 | Requirement ID | Requirement |
 |---|---|
-| M35-BT-01 | `CommentThread`, `Comment`, `LineAnchor`, `BlockAnchor` interfaces exported from `@accordo/bridge-types` |
-| M35-BT-02 | `SurfaceCoordinates` union exported: `LineCoordinates \| BlockCoordinates \| ImageCoordinates \| DiagramCoordinates \| SlideCoordinates` |
-| M35-BT-03 | `BlockCoordinates` — `{ kind: "block"; blockId: string }` |
+| M35-BT-01 | `CommentAnchor` union (`text` \| `surface` \| `file`) and full comment/thread types exported from `@accordo/bridge-types` |
+| M35-BT-02 | `SurfaceCoordinates` union includes `BlockCoordinates` for markdown-preview anchors |
+| M35-BT-03 | `BlockCoordinates` — `{ type: "block"; blockId: string; blockType: ... }` |
 | M35-BT-04 | All types re-exported from `index.ts`; no runtime code in bridge-types |
 
 ---
@@ -119,14 +112,14 @@ interface BlockAnchor {
 |---|---|
 | M36-CS-01 | `createThread(uri, anchor, body, author?)` creates a new thread with one comment; persists; fires `onChanged(uri)` |
 | M36-CS-02 | `reply(threadId, body, author?)` appends a comment; persists; fires `onChanged(uri)` |
-| M36-CS-03 | `resolve(threadId)` sets `status: "resolved"` + updates `updatedAt`; persists; fires `onChanged(uri)` |
+| M36-CS-03 | `resolve(threadId)` sets `status: "resolved"` + updates `lastActivity`; persists; fires `onChanged(uri)` |
 | M36-CS-04 | `delete(threadId, commentId?)` — if `commentId` omitted, deletes thread; otherwise deletes single comment; persists; fires `onChanged(uri)` |
 | M36-CS-05 | `getThreadsForUri(uri)` returns all threads (open + resolved) for the given URI |
 | M36-CS-06 | `getAllThreads()` returns all threads across all URIs |
-| M36-CS-07 | `getOpenThreadCount()` returns count of threads with `status: "open"` |
+| M36-CS-07 | `getCounts()` returns `{ open, resolved }` counts |
 | M36-CS-08 | `onChanged` — event emitter called with the affected URI string whenever state changes |
-| M36-CS-09 | Loads from disk on construction; no-ops if file is missing/corrupt |
-| M36-CS-10 | All mutating methods are async with sequential serialized writes (no concurrent write races) |
+| M36-CS-09 | `load(workspaceRoot)` loads from disk; missing/corrupt file results in empty in-memory state |
+| M36-CS-10 | All mutating methods are async and persist after each mutation |
 | M36-CS-11 | `getWorkspaceRoot()` returns the workspace root path |
 
 ---
@@ -140,14 +133,14 @@ interface BlockAnchor {
 | Requirement ID | Requirement |
 |---|---|
 | M37-NC-01 | Creates a `vscode.CommentController` with id `"accordo-comments"` on activation |
-| M37-NC-02 | `refresh(uri)` — clears existing comment threads for URI and re-creates them from store |
-| M37-NC-03 | Each `CommentThread` → one `vscode.CommentThread` at the correct line range |
-| M37-NC-04 | Each `Comment` in the thread → a `vscode.Comment` with body, author, and timestamp label |
-| M37-NC-05 | Thread status `"resolved"` → `vscode.CommentThread.state = Closed` |
-| M37-NC-06 | Thread status `"open"` → `vscode.CommentThread.state = Open` |
-| M37-NC-07 | `dispose()` disposes the `CommentController` and all active comment threads |
-| M37-NC-08 | Subscribes to `CommentStore.onChanged`; calls `refresh(uri)` on each change |
-| M37-NC-09 | `BlockAnchor` threads are skipped (no native controller line gutter placement) |
+| M37-NC-02 | `restoreThreads(threads)` recreates widgets from persisted store threads on activation |
+| M37-NC-03 | Each `CommentThread` → one `vscode.CommentThread`; text anchors map to exact VS Code ranges |
+| M37-NC-04 | Each store comment is projected into a `vscode.Comment` with markdown body, author, label and timestamp |
+| M37-NC-05 | Thread status `"resolved"` → `vscode.CommentThread.state = Resolved`, collapsed and read-only |
+| M37-NC-06 | Thread status `"open"` → `vscode.CommentThread.state = Unresolved`, reply enabled |
+| M37-NC-07 | `removeThread(threadId)` disposes the widget and removes it from internal mapping |
+| M37-NC-08 | Provides command handlers (`resolve/reopen/delete`) that mutate `CommentStore` then update widgets |
+| M37-NC-09 | Non-text anchors are created without a concrete text range; text anchors render at their exact range |
 
 ---
 
@@ -159,72 +152,84 @@ interface BlockAnchor {
 
 | Requirement ID | Requirement |
 |---|---|
-| M38-CT-01 | Tool `accordo.comments.listForUri` — lists all threads for a file URI |
-| M38-CT-02 | Tool `accordo.comments.create` — creates a thread with body, URI, and anchor |
-| M38-CT-03 | Tool `accordo.comments.reply` — appends a reply to a thread |
-| M38-CT-04 | Tool `accordo.comments.resolve` — resolves a thread |
-| M38-CT-05 | Tool `accordo.comments.delete` — deletes a thread or a single comment |
-| M38-CT-06 | Tool `accordo.comments.listAll` — returns all threads across the workspace |
+| M38-CT-01 | Tool `accordo.comment.list` — list thread summaries with filters/pagination |
+| M38-CT-02 | Tool `accordo.comment.get` — get one thread by `threadId` |
+| M38-CT-03 | Tool `accordo.comment.create` — create a thread with text/file anchor |
+| M38-CT-04 | Tool `accordo.comment.reply` — append a reply to a thread |
+| M38-CT-05 | Tool `accordo.comment.resolve` — resolve a thread with `resolutionNote` |
+| M38-CT-06 | Tool `accordo.comment.delete` — delete a thread or single comment |
 | M38-CT-07 | All tools return structured JSON matching the CommentThread data model |
 | M38-CT-08 | Tools are registered via `bridge.registerTools('accordo-comments', tools)` |
-| M38-CT-09 | Tool input schemas include `uri: string`, `threadId: string`, `body: string` as appropriate |
+| M38-CT-09 | `accordo.comments.discover` exposes schemas/metadata for the comments tool group |
 
-#### Tool Schema: `accordo.comments.listForUri`
-
-```typescript
-// Input
-{ uri: string }
-// Output
-{ threads: CommentThread[] }
-```
-
-#### Tool Schema: `accordo.comments.create`
+#### Tool Schema: `accordo.comment.list`
 
 ```typescript
 // Input
 {
-  uri: string;
-  body: string;
-  anchor: LineAnchor | BlockAnchor;
-  author?: string;
+  uri?: string;
+  status?: "open" | "resolved";
+  intent?: "fix" | "explain" | "refactor" | "review" | "design" | "question";
+  anchorKind?: "text" | "surface" | "file";
+  updatedSince?: string;
+  lastAuthor?: "user" | "agent";
+  limit?: number;
+  offset?: number;
+}
+// Output
+{ threads: ThreadSummary[]; total: number; hasMore: boolean }
+```
+
+#### Tool Schema: `accordo.comment.get`
+
+```typescript
+// Input
+{
+  threadId: string;
 }
 // Output
 { thread: CommentThread }
 ```
 
-#### Tool Schema: `accordo.comments.reply`
+#### Tool Schema: `accordo.comment.create`
 
 ```typescript
 // Input
-{ threadId: string; body: string; author?: string }
+{
+  uri: string;
+  anchor: { kind: "text"; startLine: number; endLine?: number } | { kind: "file" };
+  body: string;
+  intent?: "fix" | "explain" | "refactor" | "review" | "design" | "question";
+}
 // Output
-{ thread: CommentThread }
+{ created: true; threadId: string; commentId: string }
 ```
 
-#### Tool Schema: `accordo.comments.resolve`
+#### Tool Schema: `accordo.comment.reply`
 
 ```typescript
 // Input
-{ threadId: string }
+{ threadId: string; body: string }
 // Output
-{ thread: CommentThread }
+{ replied: true; commentId: string }
 ```
 
-#### Tool Schema: `accordo.comments.delete`
+#### Tool Schema: `accordo.comment.resolve`
+
+```typescript
+// Input
+{ threadId: string; resolutionNote: string }
+// Output
+{ resolved: true; threadId: string }
+```
+
+#### Tool Schema: `accordo.comment.delete`
 
 ```typescript
 // Input
 { threadId: string; commentId?: string }
 // Output
-{ ok: true }
-```
-
-#### Tool Schema: `accordo.comments.listAll`
-
-```typescript
-// Input (none)
-// Output
-{ threads: CommentThread[]; totalOpen: number }
+{ deleted: true }
 ```
 
 ---
@@ -237,12 +242,12 @@ interface BlockAnchor {
 
 | Requirement ID | Requirement |
 |---|---|
-| M39-SC-01 | Calls `bridge.contributeState('comments', stateSnapshot)` whenever store changes |
-| M39-SC-02 | State snapshot includes: `{ openThreadCount, recentThreads: CommentThread[] }` |
-| M39-SC-03 | `recentThreads` includes up to 10 most-recently-updated open threads |
-| M39-SC-04 | Subscribes to `CommentStore.onChanged`; updates Bridge state on every change |
+| M39-SC-01 | Calls `bridge.publishState('accordo-comments', stateSnapshot)` whenever store changes |
+| M39-SC-02 | State snapshot includes `{ isOpen, openThreadCount, resolvedThreadCount, summary[] }` |
+| M39-SC-03 | `summary` includes up to 10 most-recently-active open threads |
+| M39-SC-04 | Subscribes to `CommentStore.onChanged`; publishes on every change |
 | M39-SC-05 | Pushes initial state on activation (before first change event) |
-| M39-SC-06 | Contributes a state key of `"comments"` |
+| M39-SC-06 | Publishes under extension id `"accordo-comments"` |
 
 ---
 
@@ -255,14 +260,14 @@ interface BlockAnchor {
 | Requirement ID | Requirement |
 |---|---|
 | M40-EXT-01 | Resolves `BridgeAPI` from `accordo.accordo-bridge` extension exports |
-| M40-EXT-02 | If Bridge unavailable, extension is inert — no error thrown |
+| M40-EXT-02 | If Bridge unavailable, extension still provides native comments; MCP tools/state publishing are disabled |
 | M40-EXT-03 | Creates `CommentStore` with workspace root |
 | M40-EXT-04 | Creates `NativeComments` and wires it to `CommentStore` |
 | M40-EXT-05 | Creates `CommentTools` and registers them with Bridge |
 | M40-EXT-06 | Creates `StateContribution` and wires it to `CommentStore` + Bridge |
 | M40-EXT-07 | Registers all VS Code command handlers (`accordo.comments.*`) |
 | M40-EXT-08 | All disposables pushed to `context.subscriptions` |
-| M40-EXT-09 | Exposes internal commands for inter-extension calls from `accordo-md-viewer`: `accordo.comments.internal.getThreadsForUri`, `accordo.comments.internal.createSurfaceComment`, `accordo.comments.internal.resolveThread` |
+| M40-EXT-09 | Exposes internal commands for inter-extension calls from `accordo-md-viewer`, including `accordo.comments.internal.getStore` |
 | M40-EXT-10 | `deactivate()` exported (empty implementation) |
 
 ---
@@ -273,9 +278,10 @@ interface BlockAnchor {
 
 | Command | Arguments | Returns |
 |---|---|---|
+| `accordo.comments.internal.getStore` | none | store adapter `{ createThread, reply, resolve, reopen, delete, getThreadsForUri, onChanged }` |
 | `accordo.comments.internal.getThreadsForUri` | `uri: string` | `CommentThread[]` |
-| `accordo.comments.internal.createSurfaceComment` | `{ uri, blockId, body, author? }` | `CommentThread` |
-| `accordo.comments.internal.resolveThread` | `threadId: string` | `CommentThread` |
+| `accordo.comments.internal.createSurfaceComment` | `{ uri, anchor, body, intent? }` | `CreateCommentResult` |
+| `accordo.comments.internal.resolveThread` | `threadId: string` | `void` |
 
 These are `vscode.commands.executeCommand` invocations — not MCP tools.
 

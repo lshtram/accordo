@@ -6,7 +6,7 @@
  * - Preview commands (open, toggle, openSideBySide)
  *
  * If accordo-comments is not installed the extension logs a warning and is
- * inert — no editor or commands are registered.
+ * inert — the preview still renders markdown but comment features are disabled.
  *
  * Source: requirements-md-viewer.md M41b-EXT
  *
@@ -15,24 +15,12 @@
  *   M41b-EXT-02  retrieve CommentStore via accordo.comments.internal.getStore
  *   M41b-EXT-03  register accordo.preview.open / toggle / openSideBySide commands
  *   M41b-EXT-04  all disposables pushed to context.subscriptions
- *   M41b-EXT-05  if accordo-comments unavailable, log warning and remain inert
+ *   M41b-EXT-05  if accordo-comments unavailable, preview is inert (no comment bridge)
  */
 
 import * as vscode from "vscode";
 import type { CommentStoreLike } from "./preview-bridge.js";
 import { CommentablePreview, PREVIEW_VIEW_TYPE } from "./commentable-preview.js";
-
-// ── No-op store (used when accordo-comments is absent) ────────────────────────
-
-const noopStore: CommentStoreLike = {
-  createThread: async () => { return {} as never; },
-  reply: async () => {},
-  resolve: async () => {},
-  reopen: async () => {},
-  delete: async () => {},
-  getThreadsForUri: () => [],
-  onChanged: () => ({ dispose: () => {} }),
-};
 
 // ── activate ──────────────────────────────────────────────────────────────────
 
@@ -46,14 +34,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     try { await bridgeExt.activate(); } catch { /* bridge may legitimately fail in EDH */ }
   }
 
-  // M41b-EXT-05: guard — log warning if accordo-comments is absent, but still register preview
+  // M41b-EXT-05: guard — log warning if accordo-comments is absent
   const commentsExt = vscode.extensions.getExtension("accordo.accordo-comments");
   if (!commentsExt) {
     console.warn("[accordo-md-viewer] accordo-comments is not installed — comment features disabled");
   }
 
-  // M41b-EXT-02: retrieve CommentStore via internal command; fall back to no-op
-  let store: CommentStoreLike = noopStore;
+  // M41b-EXT-02: retrieve CommentStore via internal command; null when absent
+  let store: CommentStoreLike | null = null;
   if (commentsExt) {
     try {
       // Ensure the comments extension has actually activated before calling its command
@@ -65,20 +53,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       )) as CommentStoreLike | undefined;
       if (acquired && typeof acquired.createThread === "function") {
         store = acquired;
-
       }
     } catch (err) {
-      // Could not retrieve CommentStore — using no-op store
+      // Could not retrieve CommentStore — comment features disabled
     }
   }
 
+  // Read defaultSurface configuration setting — controls whether .md files open
+  // in the Accordo preview by default ("viewer") or in VS Code's text editor ("text").
+  const defaultSurface = vscode.workspace
+    .getConfiguration("accordo.preview")
+    .get<string>("defaultSurface", "viewer");
+
   const preview = new CommentablePreview(context, store);
 
-
   // M41b-EXT-01: register custom editor provider (M41b-EXT-04: push to subscriptions)
+  // When defaultSurface is "text", register with supportsMultipleEditorsPerDocument
+  // so VS Code does not auto-open .md files in the preview.
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(PREVIEW_VIEW_TYPE, preview, {
       webviewOptions: { retainContextWhenHidden: true },
+      supportsMultipleEditorsPerDocument: defaultSurface !== "text",
     }),
   );
 
@@ -117,6 +112,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.ViewColumn.Beside,
       );
     }),
+
+    // Internal command — called by accordo-comments focusInPreview handler.
+    // Finds the live webview panel for the given URI and sends a comments:focus message.
+    vscode.commands.registerCommand(
+      "accordo.preview.internal.focusThread",
+      (uri: string, threadId: string) => {
+        const panel = CommentablePreview.livePanels.get(uri);
+        if (panel) {
+          panel.reveal(undefined, false);
+          void panel.webview.postMessage({ type: "comments:focus", threadId });
+        }
+      },
+    ),
   );
 }
 

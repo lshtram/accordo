@@ -22,13 +22,24 @@
  *   M41b-PBR-09  Unknown message type → no throw (error logged)
  */
 
-import type { CommentThread } from "@accordo/bridge-types";
+import type { CommentThread, CommentAnchorText } from "@accordo/bridge-types";
 import type { BlockCoordinates } from "@accordo/bridge-types";
+
+// ── ResolverLike — bidirectional blockId ↔ source line mapping ────────────────
+
+/**
+ * Minimal resolver interface for translating between block IDs and source lines.
+ * Provided by the MarkdownRenderer's BlockIdResolver, updated on every render.
+ */
+export interface ResolverLike {
+  blockIdToLine(blockId: string): number | null;
+  lineToBlockId(line: number): string | null;
+}
 
 // ── CommentStoreLike — minimal interface needed from accordo-comments ─────────
 
 export interface CommentStoreLike {
-  createThread(args: { uri: string; blockId: string; body: string; intent?: string }): Promise<CommentThread>;
+  createThread(args: { uri: string; blockId: string; body: string; intent?: string; line?: number }): Promise<CommentThread>;
   reply(args: { threadId: string; body: string }): Promise<void>;
   resolve(args: { threadId: string; resolutionNote?: string }): Promise<void>;
   reopen(args: { threadId: string }): Promise<void>;
@@ -58,14 +69,23 @@ export interface OnDidReceiveMessageEvent {
  * Convert a CommentStore thread into the slim SdkThread model the SDK expects.
  * @param thread       Full CommentThread from the store
  * @param loadedAt     ISO 8601 timestamp when the preview was opened (for hasUnread)
+ * @param resolver     Optional blockId ↔ line resolver for unified text anchors
  */
-export function toSdkThread(thread: CommentThread, loadedAt: string): SdkThread {
+export function toSdkThread(thread: CommentThread, loadedAt: string, resolver?: ResolverLike): SdkThread {
   const anchor = thread.anchor;
-  // Extract blockId from surface-type block-coordinate anchor
-  const blockId =
-    anchor.kind === "surface"
-      ? ((anchor.coordinates as BlockCoordinates).blockId ?? "")
-      : "";
+  // Derive blockId from whichever anchor type the thread uses:
+  //   surface anchor → blockId is in coordinates
+  //   text anchor    → use resolver to map startLine → blockId
+  //   file anchor    → empty string (no pin placement)
+  let blockId: string;
+  if (anchor.kind === "surface") {
+    blockId = (anchor.coordinates as BlockCoordinates).blockId ?? "";
+  } else if (anchor.kind === "text" && resolver) {
+    const line = (anchor as CommentAnchorText).range.startLine;
+    blockId = resolver.lineToBlockId(line) ?? "";
+  } else {
+    blockId = "";
+  }
 
   return {
     id: thread.id,
@@ -90,13 +110,15 @@ export class PreviewBridge {
   private readonly _webview: WebviewLike;
   private readonly _uri: string;
   private readonly _loadedAt: string;
+  private readonly _resolver: ResolverLike | undefined;
   private _storeDisposable: { dispose(): void } | undefined;
   private _msgDisposable: { dispose(): void } | undefined;
 
-  constructor(store: CommentStoreLike, webview: WebviewLike, uri: string) {
+  constructor(store: CommentStoreLike, webview: WebviewLike, uri: string, resolver?: ResolverLike) {
     this._store = store;
     this._webview = webview;
     this._uri = uri;
+    this._resolver = resolver;
     this._loadedAt = new Date().toISOString();
     this._init();
   }
@@ -114,7 +136,7 @@ export class PreviewBridge {
   /** Push the current threads for this URI to the webview. */
   private _pushLoad(): void {
     const rawThreads = this._store.getThreadsForUri(this._uri);
-    const threads = rawThreads.map((t) => toSdkThread(t, this._loadedAt));
+    const threads = rawThreads.map((t) => toSdkThread(t, this._loadedAt, this._resolver));
     this._webview.postMessage({ type: "comments:load", threads });
   }
 
@@ -135,11 +157,13 @@ export class PreviewBridge {
   async handleMessage(msg: WebviewMessage): Promise<void> {
     try {
       if (msg.type === "comment:create") {
+        const line = this._resolver?.blockIdToLine(msg.blockId) ?? undefined;
         await this._store.createThread({
           uri: this._uri,
           blockId: msg.blockId,
           body: msg.body,
           intent: msg.intent,
+          line: line ?? undefined,
         });
       } else if (msg.type === "comment:reply") {
         await this._store.reply({ threadId: msg.threadId, body: msg.body });
