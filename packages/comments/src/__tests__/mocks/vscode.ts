@@ -269,6 +269,7 @@ export const window = {
     return mockState.tabGroups;
   },
   showTextDocument: vi.fn().mockResolvedValue(undefined),
+  showInputBox: vi.fn().mockResolvedValue(undefined),
   showInformationMessage: vi.fn().mockResolvedValue(undefined),
   showWarningMessage: vi.fn().mockResolvedValue(undefined),
   showErrorMessage: vi.fn().mockResolvedValue(undefined),

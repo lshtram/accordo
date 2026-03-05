@@ -97,7 +97,7 @@ export class NativeComments {
   updateThread(thread: CommentThread): void {
     const widget = this._widgets.get(thread.id);
     if (!widget) return;
-    widget.comments = thread.comments.map(c => this._buildVsComment(c));
+    widget.comments = thread.comments.map(c => this._buildVsComment(c, thread.status));
     widget.contextValue = thread.status;
     const intent = thread.comments[0]?.intent;
     if (thread.status === "resolved") {
@@ -249,11 +249,32 @@ export class NativeComments {
           );
         },
       ),
+      // ── Reply from Comments panel (uses input box) ─────────────────────────
+      vscode.commands.registerCommand(
+        "accordo.comments.replyFromPanel",
+        async (arg: unknown) => {
+          const threadId = this._resolveThreadId(arg);
+          if (!threadId) return;
+          const thread = store.getThread(threadId);
+          if (!thread || thread.status === "resolved") return;
+          const text = await vscode.window.showInputBox({
+            prompt: "Reply to comment thread",
+            placeHolder: "Write your reply…",
+          });
+          if (!text?.trim()) return;
+          await store.reply({
+            threadId,
+            body: text,
+            author: { kind: "user", name: "User" },
+          });
+          this.updateThread(store.getThread(threadId)!);
+        },
+      ),
       // ── Focus a comment thread in the Accordo Markdown Preview ─────────────
       vscode.commands.registerCommand(
         "accordo.comments.focusInPreview",
-        async (vsThread: vscode.CommentThread) => {
-          const threadId = this._getThreadIdForWidget(vsThread);
+        async (arg: unknown) => {
+          const threadId = this._resolveThreadId(arg);
           if (!threadId) return;
           const thread = store.getThread(threadId);
           if (!thread) return;
@@ -335,10 +356,12 @@ export class NativeComments {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   /**
-   * Build a VSCode Comment object from an AccordoComment, using all
-   * available Comment API features for rich display.
+   * Build a VSCode Comment from an AccordoComment.
+   * @param threadStatus  "open" | "resolved" — encoded into contextValue so
+   *                      `view/item/context` `when` clauses can distinguish
+   *                      between comments in open vs resolved threads.
    */
-  private _buildVsComment(c: AccordoComment): vscode.Comment {
+  private _buildVsComment(c: AccordoComment, threadStatus: string): vscode.Comment {
     const isAgent = c.author.kind === "agent";
     return {
       // Markdown body — code blocks, bold, links render in the panel
@@ -354,8 +377,9 @@ export class NativeComments {
       label: c.intent ? (INTENT_LABEL[c.intent] ?? c.intent) : undefined,
       // Timestamp shows "3 minutes ago" hover tooltip in the panel
       timestamp: new Date(c.createdAt),
-      // contextValue enables the per-comment delete icon in comments/comment/title menu
-      contextValue: "comment",
+      // contextValue enables per-comment menu items in the Comments panel.
+      // Encode thread status so view/item/context can show Resolve vs Reopen.
+      contextValue: threadStatus === "resolved" ? "comment-resolved" : "comment-open",
       // Embedded so VS Code round-trips them back to the deleteComment command handler.
       // vscode.Comment is a plain interface — extra properties survive the round-trip.
       threadId: c.threadId,
@@ -378,7 +402,7 @@ export class NativeComments {
       range = new vscode.Range(0, 0, 0, 0);
     }
 
-    const vsComments = thread.comments.map(c => this._buildVsComment(c));
+    const vsComments = thread.comments.map(c => this._buildVsComment(c, thread.status));
     const intent = thread.comments[0]?.intent;
 
     const widget = this._controller.createCommentThread(uri, range, vsComments);
@@ -407,5 +431,21 @@ export class NativeComments {
 
   private _getThreadIdForWidget(widget: vscode.CommentThread): string | undefined {
     return this.getThreadIdForWidget(widget);
+  }
+
+  /**
+   * Extract store threadId from a command argument that may be either a
+   * `vscode.CommentThread` (from thread-level tree items) or a
+   * `vscode.Comment` (from comment-level tree items in the Comments panel).
+   */
+  private _resolveThreadId(arg: unknown): string | undefined {
+    if (!arg || typeof arg !== "object") return undefined;
+    // Case 1: it's a CommentThread in our widget map
+    const fromWidget = this._getThreadIdForWidget(arg as vscode.CommentThread);
+    if (fromWidget) return fromWidget;
+    // Case 2: it's a Comment with embedded threadId
+    const embedded = (arg as Record<string, unknown>).threadId;
+    if (typeof embedded === "string") return embedded;
+    return undefined;
   }
 }
