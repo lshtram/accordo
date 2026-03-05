@@ -92,14 +92,13 @@ export async function activate(
   const outputChannel = vscode.window.createOutputChannel("Accordo Hub");
   context.subscriptions.push(outputChannel);
 
-  // Derive the user-level settings.json path from the extension storage URI.
+  // Derive the user-level mcp.json path from the extension storage URI.
   // context.globalStorageUri.fsPath = .../Code/User/globalStorage/<ext-id>
-  // Two dirname calls → .../Code/User → append settings.json
-  // This is the only reliable cross-platform way to get the VS Code user
-  // settings path from inside an extension, since VS Code silently blocks
-  // writes to the mcp.* namespace via the configuration API (security policy).
+  // Two dirname calls → .../Code/User → append mcp.json
+  // VS Code 1.99+ expects MCP server config in the dedicated mcp.json file,
+  // not in settings.json (which now shows a deprecation warning for mcp.*).
   const vscodeUserDir = path.dirname(path.dirname(context.globalStorageUri.fsPath));
-  const vscodeSettingsPath = path.join(vscodeUserDir, "settings.json");
+  const mcpConfigPath = path.join(vscodeUserDir, "mcp.json");
 
   // Connection-status event emitter
   connectionStatusEmitter = new vscode.EventEmitter<boolean>();
@@ -197,9 +196,9 @@ export async function activate(
         currentHubPort = readyPort;
         currentHubToken = hubManager?.getToken() ?? "";
 
-        // MCP-01 / MCP-02: Write Accordo to user-level mcp.servers setting.
+        // MCP-01 / MCP-02: Write Accordo to user-level mcp.json.
         if (wantCopilot) {
-          await syncMcpSettings(outputChannel, vscodeSettingsPath, currentHubPort, currentHubToken);
+          await syncMcpSettings(outputChannel, mcpConfigPath, currentHubPort, currentHubToken);
         }
 
         // CFG-01 / CFG-02: Write agent config files (opencode.json, .claude/mcp.json)
@@ -292,7 +291,7 @@ export async function activate(
         // MCP-04: update settings so Copilot picks up the new token
         currentHubToken = newToken;
         if (wantCopilot) {
-          await syncMcpSettings(outputChannel, vscodeSettingsPath, currentHubPort, newToken);
+          await syncMcpSettings(outputChannel, mcpConfigPath, currentHubPort, newToken);
         }
         // CFG-07: rewrite agent config files with new token
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -419,44 +418,35 @@ export async function deactivate(): Promise<void> {
 // ── MCP settings sync ────────────────────────────────────────────────────────
 
 /**
- * Write or update `mcp.servers.accordo` in the user-level settings (Global).
+ * Write or update the `accordo` server entry in the user-level mcp.json file.
  *
- * This is the native mechanism Copilot reads for MCP servers — it is read from
- * settings on every window/workspace load, so it survives folder switches,
- * window reloads, and multi-root workspace changes with zero activation-timing
- * dependencies.
- *
- * Uses `inspect()` to read only the Global-scoped value so workspace-level
- * server entries are never accidentally promoted to user scope.
+ * VS Code 1.99+ expects MCP server configuration in a dedicated mcp.json file
+ * (not in settings.json — that now shows a deprecation warning).
+ * The top-level format is { "servers": { ... } }.
  *
  * MCP-01, MCP-02, MCP-04
  */
 async function syncMcpSettings(
   outputChannel: { appendLine(v: string): void },
-  settingsPath: string,
+  mcpConfigPath: string,
   port: number,
   token: string,
 ): Promise<void> {
-  // VS Code silently blocks extension writes to the mcp.* namespace via the
-  // configuration API (security policy to prevent malicious MCP injection).
-  // We write directly to the user settings.json file instead.
-  // MCP-01, MCP-02, MCP-04
   try {
     const expectedUrl = `http://localhost:${port}/mcp`;
     const expectedAuth = `Bearer ${token}`;
 
-    // Read existing settings, defaulting to empty object if file missing.
-    let settings: Record<string, unknown> = {};
+    // Read existing mcp.json, defaulting to empty config if file missing.
+    let config: Record<string, unknown> = {};
     try {
-      const raw = await fs.promises.readFile(settingsPath, "utf8");
-      settings = JSON.parse(raw) as Record<string, unknown>;
+      const raw = await fs.promises.readFile(mcpConfigPath, "utf8");
+      config = JSON.parse(raw) as Record<string, unknown>;
     } catch {
-      // File may not exist yet on a fresh VS Code install — that's fine.
+      // File may not exist yet — that's fine, we'll create it.
     }
 
-    // Safely read current mcp block.
-    const mcp = (settings["mcp"] ?? {}) as Record<string, unknown>;
-    const servers = (mcp["servers"] ?? {}) as Record<string, unknown>;
+    // mcp.json top-level format: { servers: { <name>: { type, url, headers } } }
+    const servers = (config["servers"] ?? {}) as Record<string, unknown>;
     const existing = servers["accordo"] as Record<string, unknown> | undefined;
 
     // Skip the write if nothing changed — avoids VS Code treating the entry as
@@ -468,30 +458,27 @@ async function syncMcpSettings(
       (existing["headers"] as Record<string, string> | undefined)?.["Authorization"] === expectedAuth
     ) {
       outputChannel.appendLine(
-        "[accordo-bridge] mcp.servers.accordo unchanged — skipping write",
+        "[accordo-bridge] mcp.json accordo entry unchanged — skipping write",
       );
       return;
     }
 
-    settings["mcp"] = {
-      ...mcp,
-      servers: {
-        ...servers,
-        accordo: {
-          type: "http",
-          url: expectedUrl,
-          headers: { Authorization: expectedAuth },
-        },
+    config["servers"] = {
+      ...servers,
+      accordo: {
+        type: "http",
+        url: expectedUrl,
+        headers: { Authorization: expectedAuth },
       },
     };
 
-    await fs.promises.writeFile(settingsPath, JSON.stringify(settings, null, 2), "utf8");
+    await fs.promises.writeFile(mcpConfigPath, JSON.stringify(config, null, 2), "utf8");
     outputChannel.appendLine(
-      `[accordo-bridge] mcp.servers.accordo written to ${settingsPath} (port=${port}) ✓`,
+      `[accordo-bridge] mcp.json accordo entry written to ${mcpConfigPath} (port=${port}) ✓`,
     );
   } catch (err: unknown) {
     outputChannel.appendLine(
-      `[accordo-bridge] Failed to write mcp.servers to ${settingsPath}: ${
+      `[accordo-bridge] Failed to write mcp.json: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
