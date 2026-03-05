@@ -61,7 +61,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.getConfiguration("accordo.presentation").get<number>("port") ?? null;
 
   const spawner: ProcessSpawner = (cmd, args, opts) => {
-    const proc = cpSpawn(cmd, args, { cwd: opts.cwd, env: opts.env ?? process.env, stdio: ["ignore", "pipe", "pipe"] });
+    // stdin must be 'pipe' (not 'ignore') — Slidev v52+ detects closed stdin
+    // and exits immediately instead of running as a dev server.
+    const proc = cpSpawn(cmd, args, { cwd: opts.cwd, env: opts.env ?? process.env, stdio: ["pipe", "pipe", "pipe"] });
     return {
       kill: () => proc.kill(),
       get exited() { return proc.exitCode !== null; },
