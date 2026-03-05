@@ -180,6 +180,16 @@ describe("PresentationCommentsBridge.handleWebviewMessage", () => {
     expect(adapter.delete).toHaveBeenCalledWith({ threadId: "t1" });
   });
 
+  it("M44-CBR-01: comment:reopen forwards to adapter.reopen", async () => {
+    const adapter = makeAdapter();
+    const bridge = new PresentationCommentsBridge(adapter, makeSender());
+    await bridge.handleWebviewMessage(
+      { type: "comment:reopen", threadId: "t1" },
+      DECK_URI,
+    );
+    expect(adapter.reopen).toHaveBeenCalledWith({ threadId: "t1" });
+  });
+
   it("M44-CBR-04: null adapter — handleWebviewMessage is a no-op (does not throw)", async () => {
     const bridge = new PresentationCommentsBridge(null, makeSender());
     await expect(

@@ -207,6 +207,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (!session.adapter) return { error: "No presentation session is open." };
         await session.adapter.goto(index);
         stateContrib.update({ currentSlide: index });
+        provider.getPanel()?.webview.postMessage({ type: "slide-index", index });
         return {};
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
@@ -219,6 +220,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await session.adapter.next();
         const current = await session.adapter.getCurrent();
         stateContrib.update({ currentSlide: current.index });
+        provider.getPanel()?.webview.postMessage({ type: "slide-index", index: current.index });
         return {};
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
@@ -231,6 +233,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await session.adapter.prev();
         const current = await session.adapter.getCurrent();
         stateContrib.update({ currentSlide: current.index });
+        provider.getPanel()?.webview.postMessage({ type: "slide-index", index: current.index });
         return {};
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
@@ -250,6 +253,43 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const tools = createPresentationTools(toolDeps);
   const toolsDisposable = bridge.registerTools("accordo-slidev", tools);
   context.subscriptions.push(toolsDisposable);
+
+  // ── VS Code command registrations (explorer context menu, command palette) ──
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "accordo.presentation.open",
+      async (uri?: vscode.Uri) => {
+        // Accept a URI from the explorer context menu or prompt the user
+        let deckPath: string | undefined;
+        if (uri) {
+          deckPath = uri.fsPath;
+        } else {
+          const files = await toolDeps.discoverDeckFiles();
+          if (files.length === 0) {
+            vscode.window.showWarningMessage("No Slidev deck files found in the workspace.");
+            return;
+          }
+          const picked = await vscode.window.showQuickPick(
+            files.map((f) => ({ label: f.split("/").pop() ?? f, description: f, fsPath: f })),
+            { placeHolder: "Select a deck file to open" },
+          );
+          if (!picked) return;
+          deckPath = picked.fsPath;
+        }
+        const result = await toolDeps.openSession(deckPath);
+        if (result.error) {
+          vscode.window.showErrorMessage(`Failed to open deck: ${result.error}`);
+        }
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("accordo.presentation.close", () => {
+      toolDeps.closeSession();
+    }),
+  );
 
   // M44-EXT-05: Publish initial state
   stateContrib.update({});

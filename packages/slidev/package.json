@@ -22,6 +22,23 @@
         "title": "Accordo: Close Presentation"
       }
     ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "accordo.presentation.open",
+          "when": "resourceExtname == .md",
+          "group": "navigation@100"
+        }
+      ]
+    },
+    "languages": [
+      {
+        "id": "slidev-deck",
+        "extensions": [".deck.md"],
+        "aliases": ["Slidev Deck"],
+        "configuration": ""
+      }
+    ],
     "configuration": {
       "title": "Accordo Presentations",
       "properties": {

@@ -255,14 +255,452 @@ export class PresentationProvider {
   }
 }
 
+// ── Comment overlay CSS ──────────────────────────────────────────────────────
+// Adapted from @accordo/comment-sdk styles for the cross-origin iframe overlay.
+// Slidev content lives in an iframe so the SDK can't attach to DOM elements.
+// Instead we render a transparent overlay on top with a toggle button.
+
+const COMMENT_OVERLAY_CSS = `
+/* Toggle button — always visible in top-right corner */
+#comment-toggle {
+  position: fixed; top: 12px; right: 12px; z-index: 1001;
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.25); background: rgba(55,148,255,0.75);
+  color: #fff; font-size: 16px; cursor: pointer; pointer-events: all;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35); transition: background 0.2s, transform 0.15s;
+  opacity: 0.6;
+}
+#comment-toggle:hover { transform: scale(1.1); opacity: 1; }
+#comment-toggle.active {
+  background: rgba(204,167,0,0.9); border-color: rgba(255,255,255,0.5); opacity: 1;
+}
+/* Mode indicator bar at top */
+#comment-mode-bar {
+  position: fixed; top: 0; left: 0; right: 0; height: 3px;
+  background: #cca700; z-index: 1002; display: none;
+}
+#comment-mode-bar.active { display: block; }
+#comment-mode-hint {
+  position: fixed; top: 8px; left: 50%; transform: translateX(-50%);
+  z-index: 1003; background: rgba(40,40,55,0.92); color: #cdd6f4;
+  font-family: system-ui; font-size: 12px; padding: 4px 12px;
+  border-radius: 6px; pointer-events: none; display: none;
+}
+#comment-mode-hint.active { display: block; }
+
+/* Overlay — sits on top of iframe, transparent by default */
+#comment-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 1000; pointer-events: none;
+}
+#comment-overlay.active { pointer-events: all; cursor: crosshair; }
+
+/* ── Pin styles ──────────────────────────────────────────────────────────── */
+.accordo-pin {
+  position: absolute; width: 22px; height: 22px; border-radius: 50%;
+  cursor: pointer; pointer-events: all;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; font-family: system-ui; color: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transform: translate(-50%, -50%);
+  border: 2px solid transparent; user-select: none;
+}
+.accordo-pin:hover { transform: translate(-50%, -50%) scale(1.15); box-shadow: 0 2px 8px rgba(0,0,0,0.45); }
+.accordo-pin--open { background: #3794ff; border-color: #007fd4; }
+.accordo-pin--updated { background: #cca700; border-color: #b8940d; }
+.accordo-pin--resolved { background: #4caf50; border-color: #388e3c; opacity: 0.7; }
+.accordo-pin__badge { font-size: 9px; font-weight: 700; line-height: 1; }
+
+/* ── Inline input (new comment form) ─────────────────────────────────────── */
+.accordo-inline-input {
+  position: fixed; z-index: 1200; background: #252526;
+  border: 1px solid #454545; border-radius: 8px; padding: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.45); width: 300px; pointer-events: all;
+}
+.accordo-inline-input textarea {
+  width: 100%; min-height: 52px; resize: vertical;
+  background: #1e1e1e; color: #ccc; border: 1px solid #3c3c3c;
+  border-radius: 4px; padding: 5px 8px; font-family: system-ui;
+  font-size: 12px; outline: none; box-sizing: border-box;
+}
+.accordo-inline-input textarea:focus { border-color: #007fd4; }
+.accordo-inline-input__actions { display: flex; gap: 6px; margin-top: 6px; justify-content: flex-end; }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.accordo-btn {
+  padding: 4px 10px; border-radius: 4px; font-size: 12px;
+  font-family: system-ui; font-weight: 500; cursor: pointer;
+  border: 1px solid transparent;
+}
+.accordo-btn:hover { opacity: 0.85; }
+.accordo-btn--primary { background: #0e639c; color: #fff; border-color: #0e639c; }
+.accordo-btn--secondary { background: #3a3d41; color: #ccc; border-color: #3a3d41; }
+.accordo-btn--danger { background: transparent; color: #f14c4c; border-color: currentColor; }
+
+/* ── Popover ─────────────────────────────────────────────────────────────── */
+.accordo-popover {
+  position: fixed; z-index: 1200; background: #252526;
+  border: 1px solid #454545; border-radius: 8px; padding: 0;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.45); width: 320px;
+  max-height: 480px; overflow: hidden;
+  display: flex; flex-direction: column; pointer-events: all;
+}
+.accordo-popover__header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; border-bottom: 1px solid #454545;
+  font-size: 11px; color: #9d9d9d; font-family: system-ui;
+}
+.accordo-popover__close {
+  background: none; border: none; color: #c5c5c5; cursor: pointer;
+  font-size: 16px; line-height: 1; padding: 2px 4px; border-radius: 3px;
+}
+.accordo-popover__close:hover { background: rgba(90,93,94,0.31); }
+.accordo-thread-list { overflow-y: auto; flex: 1; padding: 8px 0; max-height: 300px; }
+.accordo-comment-item { padding: 6px 12px; border-bottom: 1px solid #454545; }
+.accordo-comment-item:last-child { border-bottom: none; }
+.accordo-comment__author-line { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.accordo-comment__avatar {
+  width: 18px; height: 18px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: #fff;
+}
+.accordo-comment__avatar--user { background: #3794ff; }
+.accordo-comment__avatar--agent { background: #9b59b6; }
+.accordo-comment__author { font-size: 12px; font-weight: 600; color: #ccc; font-family: system-ui; }
+.accordo-comment__body {
+  font-size: 13px; color: #ccc; font-family: system-ui;
+  line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+}
+.accordo-popover__reply {
+  padding: 8px 12px; border-top: 1px solid #454545;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.accordo-popover__reply textarea {
+  width: 100%; min-height: 52px; resize: none;
+  background: #1e1e1e; color: #ccc; border: 1px solid #3c3c3c;
+  border-radius: 4px; padding: 5px 8px; font-family: system-ui;
+  font-size: 12px; outline: none; box-sizing: border-box;
+}
+.accordo-popover__reply textarea:focus { border-color: #007fd4; }
+.accordo-popover__actions { display: flex; gap: 6px; justify-content: flex-end; }
+.accordo-resolved-banner {
+  padding: 6px 12px; background: rgba(76,175,80,0.12);
+  border-top: 1px solid rgba(76,175,80,0.25);
+  font-size: 12px; color: #4caf50; font-family: system-ui;
+}
+`;
+
+// ── Comment overlay JS ───────────────────────────────────────────────────────
+// Vanilla JS IIFE — runs inside the VS Code webview alongside the Slidev iframe.
+// Since the iframe is cross-origin (http://localhost), we can't inject scripts
+// into it. Instead the overlay captures clicks when "comment mode" is toggled on.
+
+const COMMENT_OVERLAY_JS = `
+(function() {
+  var overlay = document.getElementById('comment-overlay');
+  var toggle = document.getElementById('comment-toggle');
+  var modeBar = document.getElementById('comment-mode-bar');
+  var modeHint = document.getElementById('comment-mode-hint');
+  if (!overlay || !toggle) return;
+
+  var vscode = acquireVsCodeApi();
+  var threads = [];
+  var currentSlide = 0;
+  var commentMode = false;
+  var activePopover = null;
+
+  /* ── Comment mode toggle ────────────────────────────────────────────── */
+
+  function setCommentMode(on) {
+    commentMode = on;
+    overlay.classList.toggle('active', on);
+    toggle.classList.toggle('active', on);
+    if (modeBar) modeBar.classList.toggle('active', on);
+    if (modeHint) modeHint.classList.toggle('active', on);
+    toggle.textContent = on ? '\\u2715' : '\\uD83D\\uDCAC';
+    toggle.title = on ? 'Exit comment mode (Esc)' : 'Enter comment mode';
+    if (!on) {
+      var existing = document.querySelector('.accordo-inline-input');
+      if (existing) existing.remove();
+    }
+  }
+
+  toggle.addEventListener('click', function(e) {
+    e.stopPropagation();
+    setCommentMode(!commentMode);
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && commentMode) setCommentMode(false);
+  });
+
+  /* ── Click on overlay → create comment ──────────────────────────────── */
+
+  overlay.addEventListener('click', function(e) {
+    if (!commentMode) return;
+    if (e.target !== overlay) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var rect = overlay.getBoundingClientRect();
+    var x = (e.clientX - rect.left) / rect.width;
+    var y = (e.clientY - rect.top) / rect.height;
+    showInlineInput(x, y, e.clientX, e.clientY);
+  });
+
+  /* ── Outside click → close popover ──────────────────────────────────── */
+
+  document.addEventListener('click', function(e) {
+    if (activePopover && !activePopover.contains(e.target) &&
+        !(e.target && e.target.closest && e.target.closest('.accordo-pin'))) {
+      closePopover();
+    }
+  });
+
+  /* ── Inline input form ──────────────────────────────────────────────── */
+
+  function showInlineInput(normX, normY, screenX, screenY) {
+    var existing = document.querySelector('.accordo-inline-input');
+    if (existing) existing.remove();
+    closePopover();
+
+    var form = document.createElement('div');
+    form.className = 'accordo-inline-input';
+
+    var textarea = document.createElement('textarea');
+    textarea.placeholder = 'Add comment\\u2026 (Cmd+Enter to submit)';
+    form.appendChild(textarea);
+
+    var actions = document.createElement('div');
+    actions.className = 'accordo-inline-input__actions';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className = 'accordo-btn accordo-btn--secondary';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', function(ev) { ev.stopPropagation(); form.remove(); });
+    actions.appendChild(cancelBtn);
+
+    var submitBtn = document.createElement('button');
+    submitBtn.className = 'accordo-btn accordo-btn--primary';
+    submitBtn.textContent = 'Add Comment';
+    submitBtn.addEventListener('click', function(ev) {
+      ev.stopPropagation();
+      var body = textarea.value.trim();
+      if (body) {
+        var blockId = 'slide:' + currentSlide + ':' + normX.toFixed(4) + ':' + normY.toFixed(4);
+        vscode.postMessage({ type: 'comment:create', blockId: blockId, body: body });
+      }
+      form.remove();
+      setCommentMode(false);
+    });
+    actions.appendChild(submitBtn);
+
+    textarea.addEventListener('keydown', function(ev) {
+      if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter') { ev.preventDefault(); submitBtn.click(); }
+      if (ev.key === 'Escape') { form.remove(); }
+    });
+
+    form.appendChild(actions);
+    document.body.appendChild(form);
+    textarea.focus();
+
+    /* Clamp to viewport */
+    var vpW = window.innerWidth, vpH = window.innerHeight;
+    var left = screenX, top = screenY + 8;
+    if (left + 300 > vpW - 8) left = Math.max(8, vpW - 308);
+    if (top + 130 > vpH - 8) top = Math.max(8, screenY - 138);
+    form.style.left = left + 'px';
+    form.style.top = top + 'px';
+  }
+
+  /* ── Message handling ───────────────────────────────────────────────── */
+
+  window.addEventListener('message', function(event) {
+    var msg = event.data;
+    if (!msg) return;
+    if (msg.type === 'comments:load') { threads = msg.threads || []; renderPins(); }
+    else if (msg.type === 'comments:add') { threads.push(msg.thread); renderPins(); }
+    else if (msg.type === 'comments:update') {
+      for (var i = 0; i < threads.length; i++) {
+        if (threads[i].id === msg.threadId) { Object.assign(threads[i], msg.update); break; }
+      }
+      renderPins();
+    }
+    else if (msg.type === 'comments:remove') {
+      threads = threads.filter(function(t) { return t.id !== msg.threadId; });
+      renderPins();
+    }
+    else if (msg.type === 'slide-index') { currentSlide = msg.index; renderPins(); }
+  });
+
+  /* ── Extract slide coordinates from CommentThread anchor ────────────── */
+
+  function getCoords(thread) {
+    if (thread.anchor && thread.anchor.kind === 'surface' && thread.anchor.coordinates) {
+      var c = thread.anchor.coordinates;
+      if (c.type === 'slide') return { slideIndex: c.slideIndex, x: c.x, y: c.y };
+    }
+    return null;
+  }
+
+  /* ── Render pins ────────────────────────────────────────────────────── */
+
+  function renderPins() {
+    overlay.querySelectorAll('.accordo-pin').forEach(function(p) { p.remove(); });
+    threads.forEach(function(thread) {
+      var coords = getCoords(thread);
+      if (!coords) return;
+      if (coords.slideIndex !== currentSlide) return;
+
+      var pin = document.createElement('div');
+      pin.className = 'accordo-pin';
+      pin.classList.add(thread.status === 'resolved' ? 'accordo-pin--resolved' : 'accordo-pin--open');
+      pin.style.left = (coords.x * 100) + '%';
+      pin.style.top = (coords.y * 100) + '%';
+      pin.dataset.threadId = thread.id;
+
+      var badge = document.createElement('span');
+      badge.className = 'accordo-pin__badge';
+      badge.textContent = String(thread.comments ? thread.comments.length : 0);
+      pin.appendChild(badge);
+
+      pin.addEventListener('click', function(e) { e.stopPropagation(); openPopover(thread, pin); });
+      overlay.appendChild(pin);
+    });
+  }
+
+  /* ── Popover ────────────────────────────────────────────────────────── */
+
+  function openPopover(thread, pinEl) {
+    closePopover();
+
+    var popover = document.createElement('div');
+    popover.className = 'accordo-popover';
+    popover.setAttribute('data-thread-id', thread.id);
+
+    /* Header */
+    var header = document.createElement('div');
+    header.className = 'accordo-popover__header';
+    var statusLabel = document.createElement('span');
+    statusLabel.textContent = thread.status === 'resolved' ? '\\u2713 Resolved' : 'Comment';
+    header.appendChild(statusLabel);
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'accordo-popover__close';
+    closeBtn.textContent = '\\u00d7';
+    closeBtn.addEventListener('click', function(e) { e.stopPropagation(); closePopover(); });
+    header.appendChild(closeBtn);
+    popover.appendChild(header);
+
+    /* Comments list */
+    var list = document.createElement('div');
+    list.className = 'accordo-thread-list';
+    (thread.comments || []).forEach(function(c) {
+      var item = document.createElement('div');
+      item.className = 'accordo-comment-item';
+      var al = document.createElement('div');
+      al.className = 'accordo-comment__author-line';
+      var av = document.createElement('div');
+      var isAgent = c.author && c.author.kind === 'agent';
+      av.className = 'accordo-comment__avatar ' + (isAgent ? 'accordo-comment__avatar--agent' : 'accordo-comment__avatar--user');
+      av.textContent = c.author ? c.author.name.charAt(0).toUpperCase() : '?';
+      al.appendChild(av);
+      var an = document.createElement('span');
+      an.className = 'accordo-comment__author';
+      an.textContent = c.author ? c.author.name : 'Unknown';
+      al.appendChild(an);
+      item.appendChild(al);
+      var bd = document.createElement('p');
+      bd.className = 'accordo-comment__body';
+      bd.textContent = c.body;
+      item.appendChild(bd);
+      list.appendChild(item);
+    });
+    popover.appendChild(list);
+
+    /* Reply / actions */
+    if (thread.status === 'open') {
+      var replyDiv = document.createElement('div');
+      replyDiv.className = 'accordo-popover__reply';
+      var rta = document.createElement('textarea');
+      rta.placeholder = 'Reply\\u2026 (Cmd+Enter)';
+      replyDiv.appendChild(rta);
+      var acts = document.createElement('div');
+      acts.className = 'accordo-popover__actions';
+
+      var rslv = document.createElement('button');
+      rslv.className = 'accordo-btn accordo-btn--secondary'; rslv.textContent = 'Resolve';
+      rslv.addEventListener('click', function(e) { e.stopPropagation(); vscode.postMessage({type:'comment:resolve',threadId:thread.id}); closePopover(); });
+      acts.appendChild(rslv);
+      var del1 = document.createElement('button');
+      del1.className = 'accordo-btn accordo-btn--danger'; del1.textContent = 'Delete';
+      del1.addEventListener('click', function(e) { e.stopPropagation(); vscode.postMessage({type:'comment:delete',threadId:thread.id}); closePopover(); });
+      acts.appendChild(del1);
+      var rply = document.createElement('button');
+      rply.className = 'accordo-btn accordo-btn--primary'; rply.textContent = 'Reply';
+      rply.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var body = rta.value.trim();
+        if (body) { vscode.postMessage({type:'comment:reply',threadId:thread.id,body:body}); closePopover(); }
+      });
+      acts.appendChild(rply);
+      rta.addEventListener('keydown', function(e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); rply.click(); }
+      });
+      replyDiv.appendChild(acts);
+      popover.appendChild(replyDiv);
+    } else {
+      var banner = document.createElement('div');
+      banner.className = 'accordo-resolved-banner';
+      banner.textContent = 'This thread is resolved';
+      popover.appendChild(banner);
+      var ra = document.createElement('div');
+      ra.className = 'accordo-popover__actions'; ra.style.padding = '8px 12px';
+      var del2 = document.createElement('button');
+      del2.className = 'accordo-btn accordo-btn--danger'; del2.textContent = 'Delete';
+      del2.addEventListener('click', function(e) { e.stopPropagation(); vscode.postMessage({type:'comment:delete',threadId:thread.id}); closePopover(); });
+      ra.appendChild(del2);
+      popover.appendChild(ra);
+    }
+
+    popover.addEventListener('click', function(e) { e.stopPropagation(); });
+
+    /* Position near pin */
+    var pinRect = pinEl.getBoundingClientRect();
+    document.body.appendChild(popover);
+    activePopover = popover;
+
+    var vpW = window.innerWidth, vpH = window.innerHeight;
+    var pw = 320, ph = popover.offsetHeight || 240;
+    var left = pinRect.right + 8, top = pinRect.top;
+    if (left + pw > vpW - 8) left = Math.max(8, pinRect.left - pw - 8);
+    if (top + ph > vpH - 8) top = Math.max(8, vpH - ph - 8);
+    popover.style.left = left + 'px';
+    popover.style.top = top + 'px';
+  }
+
+  function closePopover() {
+    if (activePopover) { activePopover.remove(); activePopover = null; }
+  }
+})();
+`;
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 function buildWebviewHtml(commentsEnabled: boolean): string {
-  const commentsSdkScript = commentsEnabled
-    ? `<script>/* accordo comments SDK placeholder */</script>`
+  const commentsCss = commentsEnabled ? COMMENT_OVERLAY_CSS : "";
+  const commentsHtml = commentsEnabled
+    ? `<div id="comment-overlay"></div>
+  <div id="comment-mode-bar"></div>
+  <div id="comment-mode-hint">Comment mode — click to add, Esc to exit</div>
+  <button id="comment-toggle" title="Enter comment mode">&#x1F4AC;</button>`
     : "";
+  const commentsScript = commentsEnabled
+    ? `<script>${COMMENT_OVERLAY_JS}</script>`
+    : "";
+
   // The webview loads before Slidev has finished starting.
-  // Show a loading screen and JS-poll the Slidev URL until it responds.
+  // Show a loading screen then reveal the iframe when Slidev is ready.
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -281,6 +719,7 @@ function buildWebviewHtml(commentsEnabled: boolean): string {
     #loading p  { font-size: 12px; opacity: 0.55; }
     #frame { display: none; width: 100%; height: 100%; border: none;
              position: fixed; top: 0; left: 0; }
+    ${commentsCss}
   </style>
 </head>
 <body>
@@ -289,7 +728,7 @@ function buildWebviewHtml(commentsEnabled: boolean): string {
     <p>Waiting for presentation server</p>
   </div>
   <iframe id="frame" src="about:blank"></iframe>
-  ${commentsSdkScript}
+  ${commentsHtml}
   <script>
     var frame = document.getElementById('frame');
     var loading = document.getElementById('loading');
@@ -309,6 +748,7 @@ function buildWebviewHtml(commentsEnabled: boolean): string {
       }
     });
   </script>
+  ${commentsScript}
 </body>
 </html>`;
 }

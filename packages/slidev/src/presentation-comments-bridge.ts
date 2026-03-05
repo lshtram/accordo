@@ -104,6 +104,9 @@ export class PresentationCommentsBridge {
       case "comment:resolve":
         await this.adapter.resolve({ threadId: msg["threadId"] as string });
         break;
+      case "comment:reopen":
+        await this.adapter.reopen({ threadId: msg["threadId"] as string });
+        break;
       case "comment:delete":
         await this.adapter.delete({ threadId: msg["threadId"] as string });
         break;
