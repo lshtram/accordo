@@ -32,7 +32,8 @@ export class PresentationStateContribution {
    * Applies a partial update to the current state and publishes the result.
    */
   update(partial: Partial<PresentationSessionState>): void {
-    throw new Error("not implemented");
+    this.state = { ...this.state, ...partial };
+    this.publish();
   }
 
   /**
@@ -40,14 +41,15 @@ export class PresentationStateContribution {
    * Resets state to the closed/default shape and publishes.
    */
   reset(): void {
-    throw new Error("not implemented");
+    this.state = { ...INITIAL_SESSION_STATE };
+    this.publish();
   }
 
   /**
    * Returns a snapshot of the current state (not a reference).
    */
   getState(): PresentationSessionState {
-    throw new Error("not implemented");
+    return { ...this.state };
   }
 
   /**
@@ -56,6 +58,8 @@ export class PresentationStateContribution {
    * Called internally by update() and reset().
    */
   private publish(): void {
-    throw new Error("not implemented");
+    // Spread into a new plain record to satisfy the Record<string, unknown> signature
+    const payload: Record<string, unknown> = { ...this.state };
+    this.bridge.publishState(EXTENSION_ID, payload);
   }
 }

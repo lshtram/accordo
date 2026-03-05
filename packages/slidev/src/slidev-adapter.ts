@@ -61,7 +61,15 @@ export class SlidevAdapter implements PresentationRuntimeAdapter {
 
   /** M44-TL-04 */
   async listSlides(): Promise<SlideSummary[]> {
-    throw new Error("not implemented");
+    return this.deck.slides.map((slide) => {
+      const headingMatch = /^#{1,6}\s+(.+)/m.exec(slide.content);
+      const title = headingMatch ? headingMatch[1].trim() : `Slide ${slide.index + 1}`;
+      const summary: SlideSummary = { index: slide.index, title };
+      if (slide.notes) {
+        summary.notesPreview = slide.notes.slice(0, 80);
+      }
+      return summary;
+    });
   }
 
   /**
@@ -69,7 +77,19 @@ export class SlidevAdapter implements PresentationRuntimeAdapter {
    * Polls GET http://localhost:{port}/json — the authoritative source.
    */
   async getCurrent(): Promise<{ index: number; title: string }> {
-    throw new Error("not implemented");
+    try {
+      const res = await fetch(`http://localhost:${this.port}/json`);
+      if (res.ok) {
+        const json = (await res.json()) as { cursor: number; total: number };
+        this.currentIndex = json.cursor;
+      }
+    } catch {
+      // Fallback to internal cursor on network error
+    }
+    const slide = this.deck.slides[this.currentIndex];
+    const headingMatch = slide ? /^#{1,6}\s+(.+)/m.exec(slide.content) : null;
+    const title = headingMatch ? headingMatch[1].trim() : `Slide ${this.currentIndex + 1}`;
+    return { index: this.currentIndex, title };
   }
 
   /**
@@ -77,22 +97,41 @@ export class SlidevAdapter implements PresentationRuntimeAdapter {
    * Throws RangeError if index is out of bounds.
    */
   async goto(index: number): Promise<void> {
-    throw new Error("not implemented");
+    if (index < 0 || index >= this.deck.slides.length) {
+      throw new RangeError(
+        `Slide index ${index} out of bounds (0–${this.deck.slides.length - 1})`,
+      );
+    }
+    const prev = this.currentIndex;
+    this.currentIndex = index;
+    if (prev !== index) {
+      this.emitSlideChanged(index);
+    }
   }
 
   /** M44-TL-07 */
   async next(): Promise<void> {
-    throw new Error("not implemented");
+    if (this.currentIndex < this.deck.slides.length - 1) {
+      await this.goto(this.currentIndex + 1);
+    }
   }
 
   /** M44-TL-08 */
   async prev(): Promise<void> {
-    throw new Error("not implemented");
+    if (this.currentIndex > 0) {
+      await this.goto(this.currentIndex - 1);
+    }
   }
 
   /** M44-RT-04 */
   onSlideChanged(listener: (index: number) => void): { dispose(): void } {
-    throw new Error("not implemented");
+    this.slideChangeListeners.push(listener);
+    return {
+      dispose: () => {
+        const idx = this.slideChangeListeners.indexOf(listener);
+        if (idx !== -1) this.slideChangeListeners.splice(idx, 1);
+      },
+    };
   }
 
   /**
@@ -102,11 +141,24 @@ export class SlidevAdapter implements PresentationRuntimeAdapter {
    *   - Contain at least one `---` separator (more than one slide, or a front-matter block)
    */
   validateDeck(deckFsPath: string, deckContent: string): DeckValidationResult {
-    throw new Error("not implemented");
+    if (!deckContent || !deckContent.trim()) {
+      return { valid: false, error: `Deck file is empty: ${deckFsPath}` };
+    }
+    return { valid: true };
   }
 
   /** Stop polling, remove all listeners. */
   dispose(): void {
-    throw new Error("not implemented");
+    if (this.pollTimer !== null) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+    this.slideChangeListeners.splice(0, this.slideChangeListeners.length);
+  }
+
+  private emitSlideChanged(index: number): void {
+    for (const listener of [...this.slideChangeListeners]) {
+      listener(index);
+    }
   }
 }

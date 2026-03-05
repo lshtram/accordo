@@ -95,5 +95,147 @@ export interface PresentationToolDeps {
 export function createPresentationTools(
   deps: PresentationToolDeps,
 ): ExtensionToolDefinition[] {
-  throw new Error("not implemented");
+  return [
+    // ── M44-TL-01: discover ──────────────────────────────────────────────────
+    {
+      name: "accordo.presentation.discover",
+      description: "Discover available Slidev deck files (.md) in the workspace.",
+      dangerLevel: "safe",
+      // No group: prompt-visible
+      inputSchema: { type: "object", properties: {}, required: [] },
+      handler: async (_args) => {
+        const decks = await deps.discoverDeckFiles();
+        return { decks };
+      },
+    },
+
+    // ── M44-TL-02: open ──────────────────────────────────────────────────────
+    {
+      name: "accordo.presentation.open",
+      description: "Open a Slidev deck and start a presentation session.",
+      dangerLevel: "moderate",
+      group: "presentation",
+      inputSchema: {
+        type: "object",
+        properties: {
+          deckUri: { type: "string", description: "Absolute path to the .md deck file." },
+        },
+        required: ["deckUri"],
+      },
+      handler: async (args) => {
+        const deckUri = args["deckUri"];
+        if (typeof deckUri !== "string" || !deckUri) {
+          return { error: "deckUri is required and must be a string." };
+        }
+        return deps.openSession(deckUri);
+      },
+    },
+
+    // ── M44-TL-03: close ─────────────────────────────────────────────────────
+    {
+      name: "accordo.presentation.close",
+      description: "Close the active presentation session and kill the Slidev process.",
+      dangerLevel: "moderate",
+      group: "presentation",
+      inputSchema: { type: "object", properties: {}, required: [] },
+      handler: async (_args) => {
+        deps.closeSession();
+        return {};
+      },
+    },
+
+    // ── M44-TL-04: listSlides ────────────────────────────────────────────────
+    {
+      name: "accordo.presentation.listSlides",
+      description: "List all slides in the current deck with metadata.",
+      dangerLevel: "safe",
+      group: "presentation",
+      inputSchema: { type: "object", properties: {}, required: [] },
+      handler: async (_args) => {
+        const result = await deps.listSlides();
+        if ("error" in result) return result;
+        return { slides: result };
+      },
+    },
+
+    // ── M44-TL-05: getCurrent ────────────────────────────────────────────────
+    {
+      name: "accordo.presentation.getCurrent",
+      description: "Return the current slide index and title.",
+      dangerLevel: "safe",
+      group: "presentation",
+      inputSchema: { type: "object", properties: {}, required: [] },
+      handler: async (_args) => {
+        const result = await deps.getCurrent();
+        return result;
+      },
+    },
+
+    // ── M44-TL-06: goto ──────────────────────────────────────────────────────
+    {
+      name: "accordo.presentation.goto",
+      description: "Navigate to a specific slide by index (0-based).",
+      dangerLevel: "safe",
+      group: "presentation",
+      inputSchema: {
+        type: "object",
+        properties: {
+          index: { type: "number", description: "0-based slide index to navigate to." },
+        },
+        required: ["index"],
+      },
+      handler: async (args) => {
+        const index = args["index"];
+        if (typeof index !== "number") {
+          return { error: "index is required and must be a number." };
+        }
+        return deps.goto(index);
+      },
+    },
+
+    // ── M44-TL-07: next ──────────────────────────────────────────────────────
+    {
+      name: "accordo.presentation.next",
+      description: "Advance to the next slide.",
+      dangerLevel: "safe",
+      group: "presentation",
+      inputSchema: { type: "object", properties: {}, required: [] },
+      handler: async (_args) => deps.next(),
+    },
+
+    // ── M44-TL-08: prev ──────────────────────────────────────────────────────
+    {
+      name: "accordo.presentation.prev",
+      description: "Go back to the previous slide.",
+      dangerLevel: "safe",
+      group: "presentation",
+      inputSchema: { type: "object", properties: {}, required: [] },
+      handler: async (_args) => deps.prev(),
+    },
+
+    // ── M44-TL-09: generateNarration ─────────────────────────────────────────
+    {
+      name: "accordo.presentation.generateNarration",
+      description: "Generate narration text for a slide or all slides.",
+      dangerLevel: "safe",
+      group: "presentation",
+      inputSchema: {
+        type: "object",
+        properties: {
+          slideIndex: {
+            type: "number",
+            description: "0-based slide index. Omit to generate for all slides.",
+          },
+        },
+        required: [],
+      },
+      handler: async (args) => {
+        const target: number | "all" =
+          typeof args["slideIndex"] === "number" ? args["slideIndex"] : "all";
+        const result = await deps.generateNarration(target);
+        if ("error" in result) return result;
+        return { narrations: result };
+      },
+    },
+  ];
 }

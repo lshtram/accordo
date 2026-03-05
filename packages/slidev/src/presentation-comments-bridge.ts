@@ -26,7 +26,7 @@ import type { SurfaceAdapterLike } from "./types.js";
  * Example: "slide:3:0.5000:0.3000"
  */
 export function encodeBlockId(coords: SlideCoordinates): string {
-  throw new Error("not implemented");
+  return `slide:${coords.slideIndex}:${coords.x.toFixed(4)}:${coords.y.toFixed(4)}`;
 }
 
 /**
@@ -35,7 +35,13 @@ export function encodeBlockId(coords: SlideCoordinates): string {
  * Returns null if the string does not match the slide blockId format.
  */
 export function parseBlockId(blockId: string): SlideCoordinates | null {
-  throw new Error("not implemented");
+  const match = /^slide:(\d+):([\d.]+):([\d.]+)$/.exec(blockId);
+  if (!match) return null;
+  const slideIndex = parseInt(match[1], 10);
+  const x = parseFloat(match[2]);
+  const y = parseFloat(match[3]);
+  if (isNaN(slideIndex) || isNaN(x) || isNaN(y)) return null;
+  return { type: "slide", slideIndex, x, y };
 }
 
 // ── Webview message sender interface ─────────────────────────────────────────
@@ -56,7 +62,7 @@ export interface WebviewSender {
  * Lifecycle: one instance per open presentation session, disposed on close.
  */
 export class PresentationCommentsBridge {
-  private readonly adapterUnsubscribe: { dispose(): void } | null = null;
+  private adapterUnsubscribe: { dispose(): void } | null = null;
 
   /**
    * @param adapter   Surface adapter from getSurfaceAdapter (null = comments disabled)
@@ -76,7 +82,35 @@ export class PresentationCommentsBridge {
    * @param deckUri  URI of the open deck (used as thread URI).
    */
   async handleWebviewMessage(message: unknown, deckUri: string): Promise<void> {
-    throw new Error("not implemented");
+    if (!this.adapter) return;
+    // Narrow unknown → object before accessing fields
+    if (typeof message !== "object" || message === null) return;
+    const msg = message as Record<string, unknown>;
+    switch (msg["type"]) {
+      case "comment:create": {
+        const anchor = this.buildAnchor(msg["blockId"] as string, deckUri);
+        if (!anchor) return;
+        await this.adapter.createThread({
+          uri: deckUri,
+          anchor,
+          body: msg["body"] as string,
+          intent: msg["intent"] as string | undefined,
+        });
+        break;
+      }
+      case "comment:reply":
+        await this.adapter.reply({ threadId: msg["threadId"] as string, body: msg["body"] as string });
+        break;
+      case "comment:resolve":
+        await this.adapter.resolve({ threadId: msg["threadId"] as string });
+        break;
+      case "comment:delete":
+        await this.adapter.delete({ threadId: msg["threadId"] as string });
+        break;
+      default:
+        // Unknown message type — ignore
+        break;
+    }
   }
 
   /**
@@ -86,7 +120,14 @@ export class PresentationCommentsBridge {
    * No-ops when adapter is null (M44-CBR-04).
    */
   loadThreadsForUri(deckUri: string): void {
-    throw new Error("not implemented");
+    if (!this.adapter) return;
+    const send = () => {
+      // adapter is readonly; the null-check above guarantees it is non-null here
+      const threads = this.adapter!.getThreadsForUri(deckUri);
+      void this.sender.postMessage({ type: "comments:load", threads });
+    };
+    send();
+    this.adapterUnsubscribe = this.adapter.onChanged((_uri: string) => send());
   }
 
   /**
@@ -95,11 +136,19 @@ export class PresentationCommentsBridge {
    * Returns null if blockId is not a valid slide blockId.
    */
   buildAnchor(blockId: string, deckUri: string): CommentAnchorSurface | null {
-    throw new Error("not implemented");
+    const coords = parseBlockId(blockId);
+    if (!coords) return null;
+    return {
+      kind: "surface",
+      uri: deckUri,
+      surfaceType: "slide",
+      coordinates: coords,
+    };
   }
 
   /** Tear down store subscription. */
   dispose(): void {
-    throw new Error("not implemented");
+    this.adapterUnsubscribe?.dispose();
+    this.adapterUnsubscribe = null;
   }
 }

@@ -38,7 +38,18 @@ export const PORT_RANGE_END = 7888;
  * Throws if no port is available in the range.
  */
 export async function findFreePort(start: number, end: number): Promise<number> {
-  throw new Error("not implemented");
+  if (end < start) throw new Error(`Invalid port range: ${start}–${end}`);
+  const { createServer } = await import("node:net");
+  for (let port = start; port <= end; port++) {
+    const available = await new Promise<boolean>((resolve) => {
+      const srv = createServer();
+      srv.once("error", () => resolve(false));
+      srv.once("listening", () => { srv.close(); resolve(true); });
+      srv.listen(port, "127.0.0.1");
+    });
+    if (available) return port;
+  }
+  throw new Error(`No free port found in range ${start}–${end}`);
 }
 
 // ── PresentationProvider ──────────────────────────────────────────────────────
@@ -78,7 +89,64 @@ export class PresentationProvider {
     adapter: PresentationRuntimeAdapter,
     commentsBridge: PresentationCommentsBridge | null,
   ): Promise<void> {
-    throw new Error("not implemented");
+    // M44-PVD-07: same deck → reveal existing panel
+    if (this.panel && this.currentDeckUri === deckUri) {
+      this.panel.reveal?.();
+      return;
+    }
+
+    // M44-EXT-07: different deck open → close previous session first
+    if (this.panel) {
+      this.close();
+    }
+
+    // M44-PVD-08: port selection
+    const port = this.options.portOverride ?? await findFreePort(PORT_RANGE_START, PORT_RANGE_END);
+    this.currentPort = port;
+
+    // M44-PVD-02: spawn Slidev dev server
+    const handle = this.options.spawner(
+      "npx",
+      ["slidev", deckUri, "--port", String(port), "--remote", "false"],
+      { cwd: undefined },
+    );
+    this.process = handle;
+
+    // M44-PVD-01: create WebviewPanel
+    const title = deckUri.split("/").pop() ?? "Presentation";
+    const panel = vscode.window.createWebviewPanel(
+      "accordo.presentation",
+      title,
+      vscode.ViewColumn.Beside,
+      { enableScripts: true, retainContextWhenHidden: true },
+    );
+    this.panel = panel;
+    this.currentDeckUri = deckUri;
+
+    // M44-PVD-03: build HTML with iframe
+    const serverUri = await vscode.env.asExternalUri(
+      vscode.Uri.parse(`http://localhost:${port}`),
+    );
+    panel.webview.html = buildWebviewHtml(String(serverUri), commentsBridge !== null);
+
+    // Panel close → clean up session
+    panel.onDidDispose(() => {
+      if (this.panel === panel) {
+        this.panel = null;
+        this._cleanupProcess();
+        this.currentDeckUri = null;
+        this.currentPort = null;
+        this.onDisposeCallback?.();
+      }
+    });
+
+    // M44-PVD-04: wire comments bridge messages
+    if (commentsBridge) {
+      commentsBridge.loadThreadsForUri(deckUri);
+      panel.webview.onDidReceiveMessage((msg: unknown) => {
+        void commentsBridge.handleWebviewMessage(msg, deckUri);
+      });
+    }
   }
 
   /**
@@ -86,7 +154,23 @@ export class PresentationProvider {
    * Kills the Slidev process and disposes the WebviewPanel.
    */
   close(): void {
-    throw new Error("not implemented");
+    const panel = this.panel;
+    this.panel = null;
+    this.currentDeckUri = null;
+    this.currentPort = null;
+
+    this._cleanupProcess();
+
+    panel?.dispose();
+
+    this.onDisposeCallback?.();
+  }
+
+  private _cleanupProcess(): void {
+    if (this.process && !this.process.exited) {
+      this.process.kill();
+    }
+    this.process = null;
   }
 
   /** Returns the active WebviewPanel, or null if no session is open. */
@@ -116,4 +200,26 @@ export class PresentationProvider {
   dispose(): void {
     this.close();
   }
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+function buildWebviewHtml(serverUrl: string, commentsEnabled: boolean): string {
+  const commentsSdkScript = commentsEnabled
+    ? `<script>/* accordo comments SDK placeholder */</script>`
+    : "";
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    html, body, iframe { margin: 0; padding: 0; width: 100%; height: 100%; border: none; }
+  </style>
+</head>
+<body>
+  <iframe src="${serverUrl}" allow="cross-origin-isolated"></iframe>
+  ${commentsSdkScript}
+</body>
+</html>`;
 }
