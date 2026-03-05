@@ -108,5 +108,8 @@
     "node": ">=20",
     "vscode": "^1.100.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "markdown-it-toc-done-right": "^4.2.0"
+  }
 }

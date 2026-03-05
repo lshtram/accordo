@@ -55,6 +55,52 @@
   text-decoration: none;
 }
 
+/* ── Table of Contents ────────────────────────────────────────────────────── */
+
+.markdown-body .table-of-contents {
+  background: var(--vscode-editorWidget-background, rgba(30, 30, 30, 0.6));
+  border: 1px solid var(--vscode-editorWidget-border, rgba(127, 127, 127, 0.25));
+  border-radius: 6px;
+  padding: 16px 20px 16px 12px;
+  margin: 0 0 24px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.markdown-body .table-of-contents::before {
+  content: "Table of Contents";
+  display: block;
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground, #999);
+  margin-bottom: 8px;
+}
+
+.markdown-body .table-of-contents ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.markdown-body .table-of-contents > ul {
+  padding-left: 0;
+}
+
+.markdown-body .table-of-contents li {
+  margin: 2px 0;
+}
+
+.markdown-body .table-of-contents a {
+  color: var(--vscode-textLink-foreground, #3794ff);
+  text-decoration: none;
+}
+
+.markdown-body .table-of-contents a:hover {
+  text-decoration: underline;
+}
+
 /* ── Headings ────────────────────────────────────────────────────────────── */
 
 .markdown-body h1,

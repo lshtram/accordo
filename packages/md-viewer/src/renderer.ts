@@ -144,6 +144,7 @@ export class MarkdownRenderer {
       { default: markdownItFootnote },
       { default: markdownItFrontMatter },
       { default: taskLists },
+      { default: markdownItToc },
     ] = await Promise.all([
       import("markdown-it"),
       import("shiki"),
@@ -155,6 +156,7 @@ export class MarkdownRenderer {
       import("markdown-it-footnote"),
       import("markdown-it-front-matter"),
       import("@hackmd/markdown-it-task-lists"),
+      import("markdown-it-toc-done-right"),
     ]);
 
     const highlighter = await createHighlighter({
@@ -202,6 +204,13 @@ export class MarkdownRenderer {
     md.use(markdownItAnchor, {
       slugify,
       tabIndex: false,
+    });
+
+    // ── Table of Contents ([TOC], [[toc]], ${toc}) ────────────────────────
+    md.use(markdownItToc, {
+      slugify,
+      containerClass: "table-of-contents",
+      listType: "ul",
     });
 
     // ── Admonitions ───────────────────────────────────────────────────────
