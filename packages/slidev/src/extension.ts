@@ -73,14 +73,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(provider);
 
   // M44-EXT-04: Try to get surface adapter from accordo-comments
+  // Wrapped in try/catch: executeCommand rejects if the command isn't
+  // registered yet (race on first activation) — slidev must stay inert
+  // rather than crash, per M44-EXT-06.
   let surfaceAdapter: SurfaceAdapterLike | null = null;
   const commentsExt = vscode.extensions.getExtension("accordo.accordo-comments");
   if (commentsExt) {
-    surfaceAdapter =
-      (await vscode.commands.executeCommand<SurfaceAdapterLike>(
-        "accordo.comments.internal.getSurfaceAdapter",
-        "slide",
-      )) ?? null;
+    try {
+      surfaceAdapter =
+        (await vscode.commands.executeCommand<SurfaceAdapterLike>(
+          "accordo.comments.internal.getSurfaceAdapter",
+          "slide",
+        )) ?? null;
+    } catch {
+      // comments unavailable or not yet ready — presentation works without it
+    }
   }
 
   // Session-local mutable state (reset on close)
