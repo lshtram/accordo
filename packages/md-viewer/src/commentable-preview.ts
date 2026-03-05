@@ -143,6 +143,7 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
       const { html, resolver } = await renderer.render(markdown, {
         docFsPath,
         webview: webviewPanel.webview,
+        uriFromFsPath: (p: string) => vscode.Uri.file(p),
       });
 
       // If a newer render started while we were async, discard this result

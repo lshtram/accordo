@@ -12,7 +12,7 @@
  *   M41b-IMG-05  Non-existent path → return original (no throw)
  */
 
-import type { WebviewLike } from "./renderer.js";
+import type { WebviewLike, UriLike } from "./renderer.js";
 import * as path from "path";
 import { existsSync as fsExistsSync } from "fs";
 
@@ -29,6 +29,11 @@ export interface ImageResolverOptions {
   docFsPath: string;
   /** Webview whose asWebviewUri we call for local files — optional (tests may omit) */
   webview?: WebviewLike;
+  /**
+   * Factory to create a proper URI from a file system path.
+   * In VS Code: pass `vscode.Uri.file`. Falls back to a plain object.
+   */
+  uriFromFsPath?: (fsPath: string) => UriLike;
   /** Injectable fs — defaults to real `fs` in production */
   fs?: FsLike;
 }
@@ -38,11 +43,14 @@ export interface ImageResolverOptions {
 export class ImageResolver {
   private readonly _docFsPath: string;
   private readonly _webview: WebviewLike | undefined;
+  private readonly _uriFromFsPath: (fsPath: string) => UriLike;
   private readonly _fs: FsLike;
 
   constructor(opts: ImageResolverOptions) {
     this._docFsPath = opts.docFsPath;
     this._webview = opts.webview;
+    // Default URI factory — creates a plain object. In VS Code, pass vscode.Uri.file.
+    this._uriFromFsPath = opts.uriFromFsPath ?? ((p: string) => ({ fsPath: p, toString: () => p }));
     // Default to real fs; tests inject a fake
     this._fs = opts.fs ?? { existsSync: fsExistsSync };
   }
@@ -80,7 +88,7 @@ export class ImageResolver {
       return rawSrc;
     }
 
-    const uri = this._webview.asWebviewUri({ fsPath, toString: () => fsPath });
+    const uri = this._webview.asWebviewUri(this._uriFromFsPath(fsPath));
     return uri.toString();
   }
 }

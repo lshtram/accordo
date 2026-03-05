@@ -87,6 +87,12 @@ export interface RenderOptions {
    * Add WaveDrom, Viz.js, Vega, Plotly, Kroki processors here.
    */
   fenceRenderers?: Map<string, FenceRenderer>;
+
+  /**
+   * Factory to create a proper URI from a file path.
+   * In VS Code: pass `vscode.Uri.file`. In tests: omit (images won't resolve).
+   */
+  uriFromFsPath?: (fsPath: string) => UriLike;
 }
 
 /** Minimal webview interface used by the renderer (avoids hard VSCode dependency in tests). */
@@ -246,19 +252,28 @@ export class MarkdownRenderer {
       env: unknown,
       self: Renderer
     ) => {
-      const token = tokens[idx];
-      const rawSrc = token.attrGet("src") ?? "";
-      const renderOpts = (env as { _renderOpts?: RenderOptions })?._renderOpts;
-      if (renderOpts && rawSrc && renderOpts.webview) {
-        const resolver = new ImageResolver({
-          docFsPath: renderOpts.docFsPath,
-          webview: renderOpts.webview,
-          // In renderer context, optimistically attempt resolution (files exist in workspace)
-          fs: { existsSync: () => true },
-        });
-        token.attrSet("src", resolver.resolve(rawSrc));
+      try {
+        const token = tokens[idx];
+        const rawSrc = token.attrGet("src") ?? "";
+        const renderOpts = (env as { _renderOpts?: RenderOptions })?._renderOpts;
+        if (renderOpts && rawSrc && renderOpts.webview) {
+          const resolver = new ImageResolver({
+            docFsPath: renderOpts.docFsPath,
+            webview: renderOpts.webview,
+            uriFromFsPath: renderOpts.uriFromFsPath,
+            // In renderer context, optimistically attempt resolution (files exist in workspace)
+            fs: { existsSync: () => true },
+          });
+          token.attrSet("src", resolver.resolve(rawSrc));
+        }
+        return self.renderToken(tokens, idx, options);
+      } catch {
+        // Graceful fallback — show broken image rather than crash the entire preview
+        const token = tokens[idx];
+        const src = token.attrGet("src") ?? "";
+        const alt = token.attrGet("alt") ?? token.children?.map((t) => t.content).join("") ?? "";
+        return `<img src="${md.utils.escapeHtml(src)}" alt="${md.utils.escapeHtml(alt)}">`;
       }
-      return self.renderToken(tokens, idx, options);
     };
 
     this._md = md;
