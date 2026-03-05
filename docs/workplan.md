@@ -3,19 +3,19 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-04  
-**Status:** ACTIVE — Phase 2 Week 7 in progress
+**Status:** ACTIVE — Phase 3 Week 8 planning complete, Phase 3 Session 8A next
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-05 — Week 7 COMPLETE. All 9 sub-modules implemented and reviewed (M41a, M41b×7, M42, M43). 1221 tests green (Hub: 344, Bridge: 298, Editor: 186, Comments: 186, SDK: 45, md-viewer: 126 + smoke: 53 [not in pnpm test]). TypeScript clean. Phase 2 exit criteria met: agent sees open comment threads in system prompt, /state exposes full thread data, md-viewer renders commentable markdown. Phase 2 retrospective and Phase 3 planning are next.**
+> **As of 2026-03-05 — Phase 2 COMPLETE. Phase 3 architecture and Phase A planning done. Session 8A is next (accordo-comments `getSurfaceAdapter` generalization, M40-EXT-11). 1221 tests green (Hub: 344, Bridge: 298, Editor: 186, Comments: 186, SDK: 45, md-viewer: 126 + smoke: 53 [not in pnpm test]). TypeScript clean. Architecture: `presentation-architecture.md` v1.1. Requirements: `requirements-slidev.md` + `requirements-comments.md` (M40-EXT-11). Session split: 8A adds `getSurfaceAdapter` to accordo-comments; 8B builds full `accordo-slidev` package.**
 
 | Phase | Goal | Status |
 |------|------|--------|
 | Phase 1 | Control Plane MVP (Hub + Bridge + Editor) | ✅ DONE — 797 tests, v0.1.0 |
-| Phase 2 | Comments modality (`accordo-comments`) | 🔄 IN PROGRESS — Week 6 done, Week 7 next |
-| Phase 3 | Presentations modality (`accordo-slidev`) | ⏳ Pending Phase 2 |
+| Phase 2 | Comments modality (`accordo-comments`) | ✅ DONE — Week 6+7 complete, 1221 tests |
+| Phase 3 | Presentations modality (`accordo-slidev`) | 🔄 ACTIVE — architecture done, Session 8A next |
 | Phase 4 | Voice modality (`accordo-voice` bridge registration) | ⏳ Pending Phase 3 |
 | Phase 5 | Diagrams modality (`accordo-tldraw`) | ⏳ Pending Phase 4 |
 
@@ -144,11 +144,41 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ### Phase 3 — Presentations (`accordo-slidev`)
 
-**Goal:** Agent can control a Slidev presentation running in a VSCode webview. Tools: `slide.goto`, `slide.next`, `slide.prev`, `slide.list`. Comment SDK integrated for per-slide annotations.
+**Goal:** Agent can open, navigate, and comment on a Slidev presentation running in a VS Code webview. Per-slide narration text generation included. Voice playback deferred to Phase 4.
 
-**No architecture doc yet.** Architecture phase A task will produce it.
+**Architecture:** [`docs/presentation-architecture.md`](presentation-architecture.md) v1.1  
+**Requirements:** [`docs/requirements-slidev.md`](requirements-slidev.md) + [`docs/requirements-comments.md`](requirements-comments.md) (M40-EXT-11)
 
-**New packages:** `accordo-slidev` (VSCode extension + Slidev webview integration)
+**Tools delivered:** `accordo.presentation.discover`, `accordo.presentation.open`, `accordo.presentation.close`, `accordo.presentation.listSlides`, `accordo.presentation.getCurrent`, `accordo.presentation.goto`, `accordo.presentation.next`, `accordo.presentation.prev`, `accordo.presentation.generateNarration`
+
+**New packages:** `packages/slidev` (`accordo-slidev` VSCode extension)
+
+**Implementation is split into two sessions**:
+
+#### Week 8A — Comments Generalization (accordo-comments update)
+
+**Goal:** Add `accordo.comments.internal.getSurfaceAdapter` to `accordo-comments` so any surface modality can attach comments without knowing the markdown anchor shape. This is required before Session 8B.
+
+| # | Module | Requirements Source | TDD Phases |
+|---|---|---|---|
+| 40-EXT-11 | `extension.ts` — add `getSurfaceAdapter` command + `SurfaceCommentAdapter` interface | requirements-comments.md §5.2 (M40-EXT-11) | Pending |
+
+**Session 8A gate:** `accordo.comments.internal.getSurfaceAdapter` command registered and tested. `accordo-comments` tests remain green.
+
+#### Week 8B — Slidev Package (full `accordo-slidev`)
+
+**Goal:** Deliver the full `accordo-slidev` extension: embedded Slidev dev server, WebviewPanel, MCP tools, comments bridge, narration generator, state publisher.
+
+| # | Module | Requirements Source | TDD Phases |
+|---|---|---|---|
+| M44-EXT | `extension.ts` — activate, dependency checks, tool registration | requirements-slidev.md §4 M44-EXT | Pending |
+| M44-PVD | `presentation-provider.ts` — WebviewPanel + Slidev process spawn/kill (port 7788–7888) | requirements-slidev.md §4 M44-PVD | Pending |
+| M44-RT | `runtime-adapter.ts` + `slidev-adapter.ts` — GET /json polling for getCurrent, navigation | requirements-slidev.md §4 M44-RT | Pending |
+| M44-CBR | `presentation-comments-bridge.ts` — blockId `"slide:{idx}:{x}:{y}"` ↔ SlideCoordinates | requirements-slidev.md §4 M44-CBR | Pending |
+| M44-NAR | `narration.ts` — plain-text narration from slide markdown + speaker notes | requirements-slidev.md §4 M44-NAR | Pending |
+| M44-STATE | `presentation-state.ts` — modality state publisher | requirements-slidev.md §4 M44-STATE | Pending |
+
+**Session 8B gate:** Agent can `open` → `listSlides` → `goto` → `getCurrent` → `generateNarration` → `close`. Comment pins work on slides. All tests green.
 
 ---
 

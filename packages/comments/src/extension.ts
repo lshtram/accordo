@@ -14,7 +14,7 @@
  */
 
 import * as vscode from "vscode";
-import type { ExtensionToolDefinition, CommentAnchor, CommentAnchorSurface, CommentAnchorText, BlockCoordinates, CommentIntent } from "@accordo/bridge-types";
+import type { ExtensionToolDefinition, CommentAnchor, CommentAnchorSurface, CommentAnchorText, BlockCoordinates, CommentIntent, CommentThread } from "@accordo/bridge-types";
 import { CommentStore } from "./comment-store.js";
 import { NativeComments } from "./native-comments.js";
 import { createCommentTools } from "./comment-tools.js";
@@ -43,6 +43,33 @@ export interface BridgeAPI {
     tools: ExtensionToolDefinition[],
   ): { dispose(): void };
   publishState(extensionId: string, state: Record<string, unknown>): void;
+}
+
+// ── SurfaceCommentAdapter ────────────────────────────────────────────────────
+
+/**
+ * Generalised surface adapter for any Accordo surface modality (slides,
+ * diagrams, browser, etc.).
+ *
+ * Unlike `getStore` (which constructs anchors internally from a `blockId`),
+ * this adapter accepts the full `CommentAnchor` from the caller. Each modality
+ * knows its own anchor shape and passes it through verbatim.
+ *
+ * Source: requirements-comments.md §5.2 (M40-EXT-11)
+ */
+export interface SurfaceCommentAdapter {
+  createThread(args: {
+    uri: string;
+    anchor: CommentAnchor;
+    body: string;
+    intent?: string;
+  }): Promise<CommentThread>;
+  reply(args: { threadId: string; body: string }): Promise<void>;
+  resolve(args: { threadId: string; resolutionNote?: string }): Promise<void>;
+  reopen(args: { threadId: string }): Promise<void>;
+  delete(args: { threadId: string; commentId?: string }): Promise<void>;
+  getThreadsForUri(uri: string): CommentThread[];
+  onChanged(listener: (uri: string) => void): { dispose(): void };
 }
 
 // ── activate ──────────────────────────────────────────────────────────────────
@@ -239,6 +266,67 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           author: { kind: "user", name: "System" },
         });
         nc.updateThread(store.getThread(threadId)!);
+      },
+    ),
+    // Generalised surface adapter — M40-EXT-11
+    // Returns a SurfaceCommentAdapter that accepts a full CommentAnchor from
+    // the caller, enabling slides, diagrams, and other visual surfaces to
+    // persist comment threads without depending on markdown-specific anchor
+    // construction logic from getStore.
+    vscode.commands.registerCommand(
+      "accordo.comments.internal.getSurfaceAdapter",
+      (): SurfaceCommentAdapter => {
+        return {
+          async createThread(args) {
+            const result = await store.createThread({
+              uri: args.uri,
+              anchor: args.anchor,
+              body: args.body,
+              intent: args.intent as CommentIntent | undefined,
+              author: { kind: "user", name: "System" },
+            });
+            // ! is safe: createThread always persists before returning, so the
+            // thread is guaranteed present in the store at this point.
+            const thread = store.getThread(result.threadId)!;
+            nc.addThread(thread);
+            return thread;
+          },
+          async reply(args) {
+            await store.reply({
+              threadId: args.threadId,
+              body: args.body,
+              author: { kind: "user", name: "System" },
+            });
+            const updated = store.getThread(args.threadId);
+            if (updated) nc.updateThread(updated);
+          },
+          async resolve(args) {
+            await store.resolve({
+              threadId: args.threadId,
+              resolutionNote: args.resolutionNote ?? "",
+              author: { kind: "user", name: "System" },
+            });
+            const updated = store.getThread(args.threadId);
+            if (updated) nc.updateThread(updated);
+          },
+          async reopen(args) {
+            await store.reopen(args.threadId, { kind: "user", name: "System" });
+            const updated = store.getThread(args.threadId);
+            if (updated) nc.updateThread(updated);
+          },
+          async delete(args) {
+            await store.delete({ threadId: args.threadId, commentId: args.commentId });
+            const updated = store.getThread(args.threadId);
+            if (updated) nc.updateThread(updated);
+            else nc.removeThread(args.threadId);
+          },
+          getThreadsForUri(uri) {
+            return store.getThreadsForUri(uri);
+          },
+          onChanged(listener) {
+            return store.onChanged(listener);
+          },
+        };
       },
     ),
   );
