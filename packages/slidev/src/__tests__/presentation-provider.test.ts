@@ -30,6 +30,7 @@ function makeHandle(overrides?: Partial<ChildProcessHandle>): ChildProcessHandle
     kill: vi.fn(),
     exited: false,
     onExit: vi.fn(),
+    onStderr: vi.fn(),
     ...overrides,
   };
 }

@@ -132,12 +132,31 @@ export class PresentationProvider {
     const serverUrl = String(serverUri);
     panel.webview.html = buildWebviewHtml(commentsBridge !== null);
 
+    // Collect stderr for diagnostics (theme not installed, etc.).
+    let stderrOutput = "";
+    handle.onStderr?.((chunk) => { stderrOutput += chunk; });
+
+    // Detect premature process exit (e.g. missing theme, bad config).
+    let processExited = false;
+    handle.onExit((code) => {
+      processExited = true;
+      if (code !== null && code !== 0 && this.panel === panel) {
+        clearInterval(pollTimer);
+        const hint = stderrOutput.trim().split("\n").pop() || `Slidev exited with code ${code}`;
+        panel.webview.postMessage({ type: "slidev-error", message: hint });
+      }
+    });
+
     // Poll Slidev readiness from the Node.js side (no CSP restrictions).
     // When the port responds, postMessage to the webview to reveal the iframe.
     let attempts = 0;
     const MAX_ATTEMPTS = 60;
     const pollTimer = setInterval(() => {
       attempts++;
+      if (processExited) {
+        clearInterval(pollTimer);
+        return;
+      }
       if (attempts > MAX_ATTEMPTS || !this.panel) {
         clearInterval(pollTimer);
         if (this.panel === panel) {
@@ -284,6 +303,9 @@ function buildWebviewHtml(commentsEnabled: boolean): string {
       } else if (msg && msg.type === 'slidev-timeout') {
         loading.querySelector('p').textContent =
           'Timed out waiting for Slidev. Is @slidev/cli installed?';
+      } else if (msg && msg.type === 'slidev-error') {
+        loading.querySelector('h2').textContent = 'Slidev failed to start';
+        loading.querySelector('p').textContent = msg.message || 'Unknown error';
       }
     });
   </script>

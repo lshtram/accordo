@@ -101,6 +101,8 @@ export interface ChildProcessHandle {
   readonly exited: boolean;
   /** Fires when process exits (code, signal). */
   onExit(listener: (code: number | null) => void): void;
+  /** Optional: receive stderr chunks for diagnostics. */
+  onStderr?(listener: (data: string) => void): void;
 }
 
 export type ProcessSpawner = (

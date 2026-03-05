@@ -61,11 +61,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.getConfiguration("accordo.presentation").get<number>("port") ?? null;
 
   const spawner: ProcessSpawner = (cmd, args, opts) => {
-    const proc = cpSpawn(cmd, args, { cwd: opts.cwd, env: opts.env ?? process.env });
+    const proc = cpSpawn(cmd, args, { cwd: opts.cwd, env: opts.env ?? process.env, stdio: ["ignore", "pipe", "pipe"] });
     return {
       kill: () => proc.kill(),
       get exited() { return proc.exitCode !== null; },
       onExit: (listener) => { proc.once("exit", (code) => listener(code)); },
+      onStderr: (listener) => {
+        proc.stderr?.on("data", (chunk: Buffer) => listener(chunk.toString()));
+      },
     };
   };
 
