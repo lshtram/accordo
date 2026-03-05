@@ -163,6 +163,10 @@ export class MarkdownRenderer {
         "typescript", "javascript", "tsx", "jsx",
         "bash", "sh", "json", "jsonc", "css", "html",
         "python", "rust", "go", "yaml", "markdown",
+        "diff", "sql", "xml", "toml", "dockerfile",
+        "graphql", "c", "cpp", "java", "ruby",
+        "php", "swift", "kotlin", "scala", "r",
+        "ini", "plaintext",
       ],
     });
 
@@ -218,6 +222,8 @@ export class MarkdownRenderer {
     // ── Shiki syntax highlighting ─────────────────────────────────────────
     md.use(fromHighlighter(highlighter, {
       theme: "github-dark",
+      // Gracefully fall back to plain text for unknown/unlisted languages
+      fallbackLanguage: "plaintext",
     }));
 
     // ── BlockId plugin (wraps shiki's fence renderer) ──────────────────────
