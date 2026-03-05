@@ -6,3 +6,7 @@ coverage/
 # .vscode/ — only ignore personal/local settings; launch.json and tasks.json
 # are shared project configs and are committed.
 .vscode/settings.json
+
+# Accordo agent config files (contain bearer tokens — auto-written by Bridge)
+opencode.json
+.claude/mcp.json
