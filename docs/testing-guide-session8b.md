@@ -122,90 +122,231 @@ Pure functions, no VS Code dependency.
 
 ## 4. Manual E2E Test Checklist
 
-> ⚠️ Requires a workspace with a Slidev `.md` deck file.
-> You can create a minimal deck at `slides.md`:
-> ```markdown
-> # Slide One
-> Hello world
-> ---
-> # Slide Two
-> Second slide
-> <!-- notes -->
-> Speak this text to the audience.
-> ```
+### Demo deck
+
+A ready-to-use 6-slide deck lives at:
+
+```
+/Users/Shared/dev/accordo/demo/accordo-demo.md
+```
+
+It covers: intro, architecture, comments, presentation modality, narration, roadmap.
+Every slide has speaker notes so narration generation is testable on all slides.
 
 ### Prerequisites
-1. Build all packages: `pnpm build`
-2. Open the Accordo workspace containing the `accordo-slidev` extension
-3. Ensure Accordo Hub is running: `ACCORDO_TOKEN=demo-token ACCORDO_BRIDGE_SECRET=demo-secret node packages/hub/dist/index.js --port 3000`
-4. Launch the Extension Development Host (F5 in `accordo-slidev` package)
 
-### 4.1 Discover decks
+1. Build: `pnpm build` in the workspace root
+2. Start Hub:
+   ```bash
+   ACCORDO_TOKEN=demo-token ACCORDO_BRIDGE_SECRET=demo-secret \
+     node packages/hub/dist/index.js --port 3000
+   ```
+3. Install Slidev globally if not present: `npm install -g @slidev/cli`
+4. Launch the Extension Development Host: open `packages/slidev/` in VS Code → F5
+5. Connect your MCP client (Claude, Copilot, etc.) to `http://localhost:3000` with token `demo-token`
 
+---
+
+### Agent prompts to run (copy-paste these in order)
+
+Each prompt is what you type to the agent. The expected tool call and response follow.
+
+---
+
+#### Step 1 — Discover available decks
+
+**Prompt:**
+> What presentation decks are available in this workspace?
+
+**What the agent should do:** call `accordo.presentation.discover`  
+**Expected response:** A list of `.md` files, including `demo/accordo-demo.md`
+
+---
+
+#### Step 2 — Open the demo deck
+
+**Prompt:**
+> Open the Accordo demo deck at `/Users/Shared/dev/accordo/demo/accordo-demo.md`
+
+**What the agent should do:** call `accordo.presentation.open` with that path  
+**Expected response:** Confirmation that the deck is now open  
+**Side-effect to check:** A WebviewPanel titled "accordo-demo.md" appears in VS Code; a Slidev server starts (you'll see terminal output on port 7788+)
+
+---
+
+#### Step 3 — List the slides
+
+**Prompt:**
+> List all the slides in the current deck
+
+**What the agent should do:** call `accordo.presentation.listSlides`  
+**Expected response:** 6 slides with titles:
+1. Accordo IDE
+2. Architecture
+3. Comment System
+4. Presentation Modality
+5. Narration Example
+6. What's Next
+
+---
+
+#### Step 4 — Check which slide is current
+
+**Prompt:**
+> Which slide am I on right now?
+
+**What the agent should do:** call `accordo.presentation.getCurrent`  
+**Expected response:** `{ index: 0, title: "Accordo IDE" }`
+
+---
+
+#### Step 5 — Advance one slide
+
+**Prompt:**
+> Go to the next slide
+
+**What the agent should do:** call `accordo.presentation.next`  
+**Side-effect to check:** The Slidev WebviewPanel updates to show slide 2 (Architecture)
+
+---
+
+#### Step 6 — Jump to a specific slide
+
+**Prompt:**
+> Jump to slide 4 (the one about the presentation modality)
+
+**What the agent should do:** call `accordo.presentation.goto` with `{ index: 3 }` (0-based)  
+**Expected response:** Confirmation  
+**Side-effect to check:** WebviewPanel shows "Presentation Modality"
+
+---
+
+#### Step 7 — Go back one slide
+
+**Prompt:**
+> Go back one slide
+
+**What the agent should do:** call `accordo.presentation.prev`  
+**Expected response:** Now on slide index 2 (Comment System)
+
+---
+
+#### Step 8 — Generate narration for current slide
+
+**Prompt:**
+> Generate the narration text for the current slide
+
+**What the agent should do:** call `accordo.presentation.getCurrent` to find index, then `accordo.presentation.generateNarration` with that index  
+**Expected response:** Plain text narration from the speaker notes (no `**`, `#`, `-` etc.)
+
+Example for slide 2 (Comment System, index 2):
+> "The comment system is the primary channel for human-agent communication. Rather than chat, the human places a comment directly on the artifact they care about. The agent sees open threads in every prompt."
+
+---
+
+#### Step 9 — Generate narration for all slides
+
+**Prompt:**
+> Generate narration for all slides
+
+**What the agent should do:** call `accordo.presentation.generateNarration` with no slideIndex (or `"all"`)  
+**Expected response:** An array of 6 `{ slideIndex, narrationText }` objects, all plain text
+
+---
+
+#### Step 10 — Test boundary: jump out of range
+
+**Prompt:**
+> Jump to slide 99
+
+**What the agent should do:** call `accordo.presentation.goto` with `{ index: 99 }`  
+**Expected response:** A structured error like `{ error: "Slide index 99 out of bounds (0–5)" }` — **not** an uncaught exception
+
+---
+
+#### Step 11 — Test re-opening the same deck (no restart)
+
+**Prompt:**
+> Open the demo deck again
+
+**What the agent should do:** call `accordo.presentation.open` with the same path  
+**Expected behaviour:** The existing WebviewPanel is revealed (focused), no new Slidev process is spawned. The agent should confirm the deck is already open.
+
+---
+
+#### Step 12 — Check state in the system prompt
+
+**Prompt:**
+> What is the current presentation state?
+
+**What the agent should do:** read from its context / call `accordo.presentation.getCurrent`  
+**Expected:** The agent reports `isOpen: true`, correct `deckUri`, `currentSlide`, and `totalSlides: 6`
+
+---
+
+#### Step 13 — Close the session
+
+**Prompt:**
+> Close the presentation
+
+**What the agent should do:** call `accordo.presentation.close`  
+**Expected response:** Confirmation  
+**Side-effect to check:** WebviewPanel closes in VS Code; Slidev process is killed
+
+---
+
+#### Step 14 — Verify state reset after close
+
+**Prompt:**
+> Is there a presentation open?
+
+**What the agent should do:** call `accordo.presentation.getCurrent` or `accordo.presentation.listSlides`  
+**Expected response:** A structured error `{ error: "No presentation session is open." }` — not a crash
+
+---
+
+#### Step 15 — Test error on missing file
+
+**Prompt:**
+> Open a presentation at `/tmp/does-not-exist.md`
+
+**What the agent should do:** call `accordo.presentation.open` with that non-existent path  
+**Expected response:** A structured error `{ error: "ENOENT: no such file or directory..." }` — not a crash
+
+---
+
+### What to look for in Hub state
+
+After Step 2 (open), connect to Hub and verify the system prompt / `/state` endpoint includes:
+
+```json
+{
+  "modalities": {
+    "accordo-slidev": {
+      "isOpen": true,
+      "deckUri": "/Users/Shared/dev/accordo/demo/accordo-demo.md",
+      "currentSlide": 0,
+      "totalSlides": 6,
+      "narrationAvailable": true
+    }
+  }
+}
 ```
-Tool: accordo.presentation.discover
-Args: {}
-Expected: { decks: ["slides.md", ...] }
-```
 
-### 4.2 Open a deck
+After Step 13 (close):
 
-```
-Tool: accordo.presentation.open
-Args: { "deckUri": "/absolute/path/to/slides.md" }
-Expected: {}  (empty success)
-Side-effect: WebviewPanel appears, Slidev dev server spawned on port 7788+
-```
-
-### 4.3 List slides
-
-```
-Tool: accordo.presentation.listSlides
-Args: {}
-Expected: { slides: [{ index: 0, title: "Slide One" }, { index: 1, title: "Slide Two", notesPreview: "Speak this..." }] }
-```
-
-### 4.4 Get current slide
-
-```
-Tool: accordo.presentation.getCurrent
-Args: {}
-Expected: { index: 0, title: "Slide One" }
-```
-
-### 4.5 Navigate slides
-
-```
-Tool: accordo.presentation.next   → current moves to index 1
-Tool: accordo.presentation.goto   Args: { index: 0 }  → back to index 0
-Tool: accordo.presentation.prev   → no-op (already at index 0)
-Tool: accordo.presentation.goto   Args: { index: 9999 }  → { error: "Slide index 9999 out of bounds..." }
-```
-
-### 4.6 Narration
-
-```
-Tool: accordo.presentation.generateNarration
-Args: {}  (all slides)
-Expected: { narrations: [{ slideIndex: 0, narrationText: "Slide One Hello world" }, { slideIndex: 1, narrationText: "Speak this text to the audience." }] }
-
-Args: { slideIndex: 1 }
-Expected: { narrations: [{ slideIndex: 1, narrationText: "Speak this text to the audience." }] }
-```
-
-### 4.7 State published to Hub
-
-Connect an MCP client and observe `modalities["accordo-slidev"]`:
-- On open: `{ isOpen: true, deckUri: "...", currentSlide: 0, totalSlides: 2, narrationAvailable: true }`
-- After goto(1): `currentSlide: 1`
-- On close: `{ isOpen: false, deckUri: null, currentSlide: 0, totalSlides: 0, narrationAvailable: false }`
-
-### 4.8 Close session
-
-```
-Tool: accordo.presentation.close
-Args: {}
-Expected: {}  — WebviewPanel disposed, Slidev process killed
+```json
+{
+  "modalities": {
+    "accordo-slidev": {
+      "isOpen": false,
+      "deckUri": null,
+      "currentSlide": 0,
+      "totalSlides": 0,
+      "narrationAvailable": false
+    }
+  }
+}
 ```
 
 ### 4.9 Error cases
