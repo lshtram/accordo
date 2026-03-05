@@ -28,6 +28,8 @@
         "--extensionDevelopmentPath=${workspaceFolder}/packages/comments",
         // accordo-md-viewer: commentable markdown preview with comment SDK
         "--extensionDevelopmentPath=${workspaceFolder}/packages/md-viewer",
+        // accordo-slidev: Slidev presentation modality + 9 MCP tools
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/slidev",
         // Open this repo in the EDH so it has a real workspace to report
         "${workspaceFolder}"
       ],
@@ -35,7 +37,8 @@
         "${workspaceFolder}/packages/bridge/dist/**/*.js",
         "${workspaceFolder}/packages/editor/dist/**/*.js",
         "${workspaceFolder}/packages/comments/dist/**/*.js",
-        "${workspaceFolder}/packages/md-viewer/dist/**/*.js"
+        "${workspaceFolder}/packages/md-viewer/dist/**/*.js",
+        "${workspaceFolder}/packages/slidev/dist/**/*.js"
       ],
       "preLaunchTask": "build-all",
       "sourceMaps": true
