@@ -105,10 +105,12 @@ export class PresentationProvider {
     this.currentPort = port;
 
     // M44-PVD-02: spawn Slidev dev server
+    // cwd = directory containing the deck so Slidev resolves relative assets
+    const deckDir = deckUri.replace(/\/[^\/]+$/, "") || undefined;
     const handle = this.options.spawner(
       "npx",
       ["slidev", deckUri, "--port", String(port), "--remote", "false"],
-      { cwd: undefined },
+      { cwd: deckDir },
     );
     this.process = handle;
 
@@ -127,7 +129,39 @@ export class PresentationProvider {
     const serverUri = await vscode.env.asExternalUri(
       vscode.Uri.parse(`http://localhost:${port}`),
     );
-    panel.webview.html = buildWebviewHtml(String(serverUri), commentsBridge !== null);
+    const serverUrl = String(serverUri);
+    panel.webview.html = buildWebviewHtml(commentsBridge !== null);
+
+    // Poll Slidev readiness from the Node.js side (no CSP restrictions).
+    // When the port responds, postMessage to the webview to reveal the iframe.
+    let attempts = 0;
+    const MAX_ATTEMPTS = 60;
+    const pollTimer = setInterval(() => {
+      attempts++;
+      if (attempts > MAX_ATTEMPTS || !this.panel) {
+        clearInterval(pollTimer);
+        if (this.panel === panel) {
+          panel.webview.postMessage({ type: "slidev-timeout" });
+        }
+        return;
+      }
+      import("node:net").then(({ createConnection }) => {
+        const sock = createConnection(port, "127.0.0.1");
+        sock.setTimeout(800);
+        sock.on("connect", () => {
+          sock.destroy();
+          clearInterval(pollTimer);
+          if (this.panel === panel) {
+            panel.webview.postMessage({ type: "slidev-ready", url: serverUrl });
+          }
+        });
+        sock.on("error", () => sock.destroy());
+        sock.on("timeout", () => sock.destroy());
+      }).catch(() => { /* ignore import errors */ });
+    }, 1000);
+
+    // Clean up poll timer when panel is disposed
+    panel.onDidDispose(() => { clearInterval(pollTimer); });
 
     // Panel close → clean up session
     panel.onDidDispose(() => {
@@ -204,7 +238,7 @@ export class PresentationProvider {
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-function buildWebviewHtml(serverUrl: string, commentsEnabled: boolean): string {
+function buildWebviewHtml(commentsEnabled: boolean): string {
   const commentsSdkScript = commentsEnabled
     ? `<script>/* accordo comments SDK placeholder */</script>`
     : "";
@@ -216,7 +250,7 @@ function buildWebviewHtml(serverUrl: string, commentsEnabled: boolean): string {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; frame-src http://localhost:* https:; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:;" />
+    content="default-src 'none'; frame-src http://localhost:* https:; connect-src http://localhost:* https:; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:;" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100vh; overflow: hidden; }
@@ -238,32 +272,20 @@ function buildWebviewHtml(serverUrl: string, commentsEnabled: boolean): string {
   <iframe id="frame" src="about:blank"></iframe>
   ${commentsSdkScript}
   <script>
-    (function () {
-      var url = ${JSON.stringify(serverUrl)};
-      var frame = document.getElementById('frame');
-      var loading = document.getElementById('loading');
-      var attempts = 0;
-      var maxAttempts = 30; // 30 seconds max
-
-      function tryLoad() {
-        if (attempts++ >= maxAttempts) {
-          loading.querySelector('p').textContent = 'Timed out waiting for Slidev. Is @slidev/cli installed?';
-          return;
-        }
-        fetch(url, { mode: 'no-cors' })
-          .then(function () {
-            loading.style.display = 'none';
-            frame.src = url;
-            frame.style.display = 'block';
-          })
-          .catch(function () {
-            setTimeout(tryLoad, 1000);
-          });
+    var frame = document.getElementById('frame');
+    var loading = document.getElementById('loading');
+    // Readiness is signalled by the extension host via postMessage (no CSP issues).
+    window.addEventListener('message', function(event) {
+      var msg = event.data;
+      if (msg && msg.type === 'slidev-ready') {
+        loading.style.display = 'none';
+        frame.src = msg.url;
+        frame.style.display = 'block';
+      } else if (msg && msg.type === 'slidev-timeout') {
+        loading.querySelector('p').textContent =
+          'Timed out waiting for Slidev. Is @slidev/cli installed?';
       }
-
-      // Give Slidev a head-start before first poll (it needs ~2-4s to boot)
-      setTimeout(tryLoad, 2500);
-    })();
+    });
   </script>
 </body>
 </html>`;
