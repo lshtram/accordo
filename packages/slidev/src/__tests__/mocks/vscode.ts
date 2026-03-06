@@ -92,6 +92,12 @@ export const mockPanel = new MockWebviewPanel("accordo.presentation", "Presentat
 
 export const window = {
   createWebviewPanel: vi.fn().mockReturnValue(mockPanel),
+  createOutputChannel: vi.fn().mockReturnValue({
+    append: vi.fn(),
+    appendLine: vi.fn(),
+    show: vi.fn(),
+    dispose: vi.fn(),
+  }),
   showErrorMessage: vi.fn(),
   showInformationMessage: vi.fn(),
   showQuickPick: vi.fn().mockResolvedValue(undefined),

@@ -18,7 +18,9 @@
  */
 
 import * as vscode from "vscode";
-import { dirname } from "node:path";
+import { dirname, resolve as resolvePath } from "node:path";
+import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import type {
   ProcessSpawner,
   ChildProcessHandle,
@@ -30,6 +32,69 @@ import type { PresentationCommentsBridge } from "./presentation-comments-bridge.
 /** Default port scan range (M44-PVD-08). */
 export const PORT_RANGE_START = 7788;
 export const PORT_RANGE_END = 7888;
+
+// ── Official Slidev theme short-name → npm package name ──────────────────────
+const OFFICIAL_THEMES: Record<string, string> = {
+  default: "@slidev/theme-default",
+  seriph: "@slidev/theme-seriph",
+  "apple-basic": "@slidev/theme-apple-basic",
+  shibainu: "@slidev/theme-shibainu",
+  bricks: "@slidev/theme-bricks",
+};
+
+/**
+ * Read the deck file, extract the `theme:` value from the YAML front-matter,
+ * resolve it to an npm package name, and install it in `deckDir` if it is not
+ * already present — all before Slidev is spawned.
+ *
+ * Slidev's own resolver calls `process.exit(1)` when stdin is not a TTY and
+ * the theme is missing. Pre-installing avoids that completely.
+ *
+ * Silently no-ops if:
+ *  - the deck can't be read
+ *  - theme is "none", "default" already installed, a local path, or unknown
+ *  - the package is already installed under deckDir/node_modules
+ */
+export async function ensureThemeInstalled(deckUri: string, deckDir: string): Promise<void> {
+  let raw: string;
+  try {
+    raw = await readFile(deckUri, "utf-8");
+  } catch {
+    return; // can't read deck — let Slidev handle the error
+  }
+
+  // Extract theme from YAML front-matter (first ---...--- block)
+  const fmMatch = raw.match(/^---[\r\n]+([\s\S]*?)[\r\n]+---/);
+  if (!fmMatch) return;
+  const themeMatch = fmMatch[1].match(/^theme\s*:\s*(.+)$/m);
+  if (!themeMatch) return;
+
+  const themeRaw = themeMatch[1].trim().replace(/['"`]/g, "");
+  if (!themeRaw || themeRaw === "none" || themeRaw === "default") return;
+  // local path reference — not an npm package
+  if (themeRaw.startsWith(".") || themeRaw.startsWith("/")) return;
+
+  // Resolve short-name or fully-qualified package name
+  let pkgName = OFFICIAL_THEMES[themeRaw]
+    ?? (themeRaw.startsWith("@") ? themeRaw : `slidev-theme-${themeRaw}`);
+
+  // Check if already installed (node_modules in deck dir or workspace root)
+  // Scoped packages like @slidev/theme-seriph live at node_modules/@slidev/theme-seriph
+  // which path.resolve handles correctly with the / separator.
+  const localModules = resolvePath(deckDir, "node_modules", ...pkgName.split("/"));
+  if (existsSync(localModules)) return;
+
+  // Install via npm into the deck's directory
+  const { spawn } = await import("node:child_process");
+  await new Promise<void>((resolveP) => {
+    const proc = spawn("npm", ["install", pkgName], {
+      cwd: deckDir,
+      stdio: "ignore",
+    });
+    proc.on("exit", () => resolveP()); // resolve regardless of exit code
+    proc.on("error", () => resolveP()); // no npm — let Slidev handle it
+  });
+}
 
 // ── Port utilities ────────────────────────────────────────────────────────────
 
@@ -70,10 +135,15 @@ export class PresentationProvider {
   private panel: vscode.WebviewPanel | null = null;
   private process: ChildProcessHandle | null = null;
   private currentDeckUri: string | null = null;
+  /** URI of a deck whose open() is in progress but not yet complete. */
+  private pendingDeckUri: string | null = null;
   private currentPort: number | null = null;
   private onDisposeCallback: (() => void) | null = null;
+  private readonly outputChannel: vscode.OutputChannel;
 
-  constructor(private readonly options: PresentationProviderOptions) {}
+  constructor(private readonly options: PresentationProviderOptions) {
+    this.outputChannel = vscode.window.createOutputChannel("Accordo — Slidev");
+  }
 
   /**
    * M44-PVD-01 / M44-PVD-02 / M44-PVD-03
@@ -96,18 +166,38 @@ export class PresentationProvider {
       return;
     }
 
+    // Reject if the same deck is already being opened (re-entrance guard).
+    // This prevents the CustomTextEditorProvider from re-triggering for the
+    // previous deck while we are in the middle of closing it.
+    if (this.pendingDeckUri === deckUri) {
+      this.panel?.reveal?.();
+      return;
+    }
+
     // M44-EXT-07: different deck open → close previous session first
     if (this.panel) {
       this.close();
     }
 
-    // M44-PVD-08: port selection
-    const port = this.options.portOverride ?? await findFreePort(PORT_RANGE_START, PORT_RANGE_END);
+    this.pendingDeckUri = deckUri;
+    try {
+      // M44-PVD-08: port selection
+      const port = this.options.portOverride ?? await findFreePort(PORT_RANGE_START, PORT_RANGE_END);
     this.currentPort = port;
 
     // M44-PVD-02: spawn Slidev dev server
     // cwd = directory containing the deck so Slidev resolves relative assets
     const deckDir = dirname(deckUri) || undefined;
+
+    // Pre-install missing theme before Slidev starts.
+    // Slidev calls process.exit(1) when stdin is not a TTY and the theme
+    // package (e.g. @slidev/theme-seriph) isn't installed — it cannot prompt.
+    // ensureThemeInstalled() reads the deck front-matter and runs
+    // `npm install <pkg>` in the deck directory if the package is absent.
+    if (deckDir) {
+      await ensureThemeInstalled(deckUri, deckDir);
+    }
+
     const handle = this.options.spawner(
       "npx",
       ["slidev", deckUri, "--port", String(port), "--remote", "false"],
@@ -125,6 +215,7 @@ export class PresentationProvider {
     );
     this.panel = panel;
     this.currentDeckUri = deckUri;
+    this.pendingDeckUri = null; // open complete
 
     // M44-PVD-03: build HTML with iframe
     const serverUri = await vscode.env.asExternalUri(
@@ -133,9 +224,14 @@ export class PresentationProvider {
     const serverUrl = String(serverUri);
     panel.webview.html = buildWebviewHtml(commentsBridge !== null);
 
-    // Collect stderr for diagnostics (theme not installed, etc.).
+    // Collect stderr and forward to output channel for diagnostics.
     let stderrOutput = "";
-    handle.onStderr?.((chunk) => { stderrOutput += chunk; });
+    handle.onStderr?.((chunk) => {
+      stderrOutput += chunk;
+      // Strip ANSI colour codes for the output channel
+      const plain = chunk.replace(/\x1B\[[0-9;]*m/g, "");
+      this.outputChannel.append(plain);
+    });
 
     // Detect premature process exit (e.g. missing theme, bad config).
     let processExited = false;
@@ -143,7 +239,15 @@ export class PresentationProvider {
       processExited = true;
       if (code !== null && code !== 0 && this.panel === panel) {
         clearInterval(pollTimer);
-        const hint = stderrOutput.trim().split("\n").pop() || `Slidev exited with code ${code}`;
+        // Strip ANSI codes, then find the first meaningful error line
+        // (not a stack-trace frame starting with "at ").
+        const plainStderr = stderrOutput.replace(/\x1B\[[0-9;]*m/g, "");
+        const lines = plainStderr.trim().split("\n").map(l => l.trim()).filter(Boolean);
+        const hint =
+          lines.find(l => !l.startsWith("at ") && !l.startsWith(">") && l.length > 0)
+          || `Slidev exited with code ${code}`;
+        this.outputChannel.appendLine(`\n[Accordo] Slidev exited with code ${code}. Showing in webview: ${hint}`);
+        this.outputChannel.show(false); // reveal without stealing focus
         panel.webview.postMessage({ type: "slidev-error", message: hint });
       }
     });
@@ -201,6 +305,12 @@ export class PresentationProvider {
         void commentsBridge.handleWebviewMessage(msg, deckUri);
       });
     }
+    } catch (err) {
+      // If open() throws after pendingDeckUri was set, clear it so
+      // subsequent attempts are not silently swallowed.
+      this.pendingDeckUri = null;
+      throw err;
+    }
   }
 
   /**
@@ -211,6 +321,7 @@ export class PresentationProvider {
     const panel = this.panel;
     this.panel = null;
     this.currentDeckUri = null;
+    this.pendingDeckUri = null;
     this.currentPort = null;
 
     this._cleanupProcess();
@@ -237,6 +348,11 @@ export class PresentationProvider {
     return this.currentDeckUri;
   }
 
+  /** Returns the URI of a deck that is currently being opened (async in-flight), or null. */
+  getPendingDeckUri(): string | null {
+    return this.pendingDeckUri;
+  }
+
   /** Returns the port the Slidev server is running on, or null. */
   getCurrentPort(): number | null {
     return this.currentPort;
@@ -253,6 +369,7 @@ export class PresentationProvider {
   /** Alias for close() — implements VS Code disposable pattern. */
   dispose(): void {
     this.close();
+    this.outputChannel.dispose();
   }
 }
 
@@ -720,7 +837,7 @@ function buildWebviewHtml(commentsEnabled: boolean): string {
     #loading h2 { font-size: 17px; font-weight: 400; }
     #loading p  { font-size: 12px; opacity: 0.55; }
     #frame { display: none; width: 100%; height: 100%; border: none;
-             position: fixed; top: 0; left: 0; }
+             position: fixed; top: 0; left: 0; transition: opacity 0.15s ease; }
     /* Webview-level navigation bar (all z-indices above Slidev iframe) */
     #wv-nav { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
       z-index: 950; display: none; align-items: center; gap: 10px;
@@ -742,9 +859,9 @@ function buildWebviewHtml(commentsEnabled: boolean): string {
   </div>
   <iframe id="frame" src="about:blank"></iframe>
   <div id="wv-nav">
-    <button id="wv-prev" title="Previous slide (←)">&#9664;</button>
+    <button id="wv-prev" title="Prev slide">&#9664;</button>
     <span id="wv-page">1</span>
-    <button id="wv-next" title="Next slide (→)">&#9654;</button>
+    <button id="wv-next" title="Next slide">&#9654;</button>
   </div>
   ${commentsHtml}
   <script>
@@ -753,39 +870,21 @@ function buildWebviewHtml(commentsEnabled: boolean): string {
     var wvNav = document.getElementById('wv-nav');
     var wvPage = document.getElementById('wv-page');
     var slidevBase = null;
-    // acquireVsCodeApi must be called exactly once — share via window._vscodeApi
-    // so COMMENT_OVERLAY_JS (added below) can reuse it.
-    var vscode = (window._vscodeApi = acquireVsCodeApi());
 
-    document.getElementById('wv-prev').addEventListener('click', function() {
-      vscode.postMessage({ type: 'nav:prev' });
-    });
-    document.getElementById('wv-next').addEventListener('click', function() {
-      vscode.postMessage({ type: 'nav:next' });
-    });
-
-    // Arrow-key shortcuts active when the webview frame (not the Slidev iframe) has focus.
-    document.addEventListener('keydown', function(e) {
-      var t = e.target;
-      if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) return;
-      if (t && t.closest && t.closest('.accordo-inline-input,.accordo-popover')) return;
-      if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); vscode.postMessage({ type: 'nav:next' }); }
-      else if (e.key === 'ArrowLeft' || e.key === 'PageUp')  { e.preventDefault(); vscode.postMessage({ type: 'nav:prev' }); }
-    });
-
-    // Messages from the extension host (no CSP restrictions).
+    // Register the readiness listener FIRST so it always fires regardless of what
+    // happens below (acquireVsCodeApi, button wiring, etc.).
     window.addEventListener('message', function(event) {
       var msg = event.data;
       if (!msg) return;
       if (msg.type === 'slidev-ready') {
-        slidevBase = msg.url.replace(/\/+$/, '');
+        slidevBase = (msg.url || '').replace(/[/]+$/, '');
         loading.style.display = 'none';
         frame.src = msg.url;
         frame.style.display = 'block';
         if (wvNav) wvNav.style.display = 'flex';
       } else if (msg.type === 'slide-index') {
-        // Navigate the Slidev iframe to the correct 1-based page path.
-        if (slidevBase !== null) {
+        if (msg.navigate && slidevBase !== null) {
+          frame.style.opacity = '0';
           frame.src = slidevBase + (msg.index === 0 ? '/' : '/' + (msg.index + 1));
         }
         if (wvPage) wvPage.textContent = String(msg.index + 1);
@@ -796,6 +895,37 @@ function buildWebviewHtml(commentsEnabled: boolean): string {
         loading.querySelector('p').textContent = msg.message || 'Unknown error';
       }
     });
+
+    // Set up nav buttons and keyboard shortcuts — wrapped in try/catch so any
+    // failure here does NOT prevent the message listener above from working.
+    try {
+      // acquireVsCodeApi must be called exactly once — share via window._vscodeApi
+      // so COMMENT_OVERLAY_JS (appended below) can reuse it without calling it again.
+      var vscode = (window._vscodeApi = acquireVsCodeApi());
+
+      var prevBtn = document.getElementById('wv-prev');
+      var nextBtn = document.getElementById('wv-next');
+      if (prevBtn) prevBtn.addEventListener('click', function() { vscode.postMessage({ type: 'nav:prev' }); });
+      if (nextBtn) nextBtn.addEventListener('click', function() { vscode.postMessage({ type: 'nav:next' }); });
+
+      // Fade in after each iframe load (agent navigation crossfade).
+      // Also give the iframe focus so Slidev's native controls (Space, arrows) work.
+      frame.addEventListener('load', function() {
+        frame.style.opacity = '1';
+        try { frame.focus(); } catch(e) {}
+      });
+
+      document.addEventListener('keydown', function(e) {
+        var t = e.target;
+        if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) return;
+        if (t && t.closest && t.closest('.accordo-inline-input,.accordo-popover')) return;
+        if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); vscode.postMessage({ type: 'nav:next' }); }
+        else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); vscode.postMessage({ type: 'nav:prev' }); }
+      });
+    } catch (setupErr) {
+      // Non-fatal: nav buttons will be unresponsive but the presentation still loads.
+      console.warn('[accordo-slidev] nav setup error:', setupErr);
+    }
   </script>
   ${commentsScript}
 </body>
