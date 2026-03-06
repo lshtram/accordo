@@ -1,0 +1,33 @@
+/**
+ * Accordo Presentation — Custom Styles
+ *
+ * Fixes Slidev navigation controls visibility in embedded webview.
+ * The default theme renders near-invisible light gray icons in the
+ * navigation bar. These overrides ensure good contrast regardless
+ * of color scheme.
+ */
+
+/* ── Navigation bar container ─────────────────────────────────────────────── */
+.slidev-nav {
+  --slidev-controls-foreground: #e0e0e0 !important;
+  background: rgba(30, 30, 46, 0.85) !important;
+  border-radius: 8px !important;
+}
+
+/* Navigation icons and buttons */
+.slidev-nav button,
+.slidev-nav .slidev-icon {
+  color: #cdd6f4 !important;
+  opacity: 1 !important;
+}
+
+.slidev-nav button:hover,
+.slidev-nav .slidev-icon:hover {
+  color: #ffffff !important;
+}
+
+/* Slide counter text */
+.slidev-nav .slidev-nav-total,
+.slidev-nav .slidev-nav-current {
+  color: #cdd6f4 !important;
+}
