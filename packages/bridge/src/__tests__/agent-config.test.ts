@@ -17,6 +17,7 @@ import {
   writeClaudeConfig,
   writeAgentConfigs,
   writeVscodeSettings,
+  removeWorkspaceThreshold,
   ACCORDO_SCHEMA_VERSION,
 } from "../agent-config.js";
 import type { AgentConfigParams } from "../agent-config.js";
@@ -519,27 +520,60 @@ describe("writeVscodeSettings — CFG-11", () => {
     const content = JSON.parse(fs.readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
     expect(content["github.copilot.chat.virtualTools.threshold"]).toBe(300);
   });
+});
 
-  it("CFG-11: writeAgentConfigs calls writeVscodeSettings by default", () => {
-    const paramsDir = fs.mkdtempSync(path.join(os.tmpdir(), "accordo-cfg11-default-"));
-    try {
-      writeAgentConfigs(makeParams(paramsDir, { configureOpencode: false, configureClaude: false }));
-      const settingsPath = path.join(paramsDir, ".vscode", "settings.json");
-      expect(fs.existsSync(settingsPath)).toBe(true);
-    } finally {
-      fs.rmSync(paramsDir, { recursive: true, force: true });
-    }
+// ---------------------------------------------------------------------------
+// removeWorkspaceThreshold — CFG-11 cleanup
+// ---------------------------------------------------------------------------
+
+describe("removeWorkspaceThreshold — CFG-11 cleanup", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "accordo-rm-threshold-"));
   });
 
-  it("CFG-11: writeAgentConfigs skips writeVscodeSettings when configureVscodeSettings is false", () => {
-    const paramsDir = fs.mkdtempSync(path.join(os.tmpdir(), "accordo-cfg11-skip-"));
-    try {
-      writeAgentConfigs(makeParams(paramsDir, { configureOpencode: false, configureClaude: false, configureVscodeSettings: false }));
-      const settingsPath = path.join(paramsDir, ".vscode", "settings.json");
-      expect(fs.existsSync(settingsPath)).toBe(false);
-    } finally {
-      fs.rmSync(paramsDir, { recursive: true, force: true });
-    }
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("CFG-11: removes threshold key from existing .vscode/settings.json", () => {
+    const vscodeDir = path.join(tmpDir, ".vscode");
+    fs.mkdirSync(vscodeDir);
+    fs.writeFileSync(
+      path.join(vscodeDir, "settings.json"),
+      JSON.stringify({ "github.copilot.chat.virtualTools.threshold": 300, "editor.fontSize": 14 }),
+    );
+    removeWorkspaceThreshold(tmpDir);
+    const content = JSON.parse(fs.readFileSync(path.join(vscodeDir, "settings.json"), "utf8")) as Record<string, unknown>;
+    expect(content).not.toHaveProperty("github.copilot.chat.virtualTools.threshold");
+    expect(content["editor.fontSize"]).toBe(14);
+  });
+
+  it("CFG-11: deletes settings.json if threshold was the only key", () => {
+    const vscodeDir = path.join(tmpDir, ".vscode");
+    fs.mkdirSync(vscodeDir);
+    const settingsPath = path.join(vscodeDir, "settings.json");
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({ "github.copilot.chat.virtualTools.threshold": 300 }),
+    );
+    removeWorkspaceThreshold(tmpDir);
+    expect(fs.existsSync(settingsPath)).toBe(false);
+  });
+
+  it("CFG-11: is a no-op when .vscode/settings.json is absent", () => {
+    expect(() => removeWorkspaceThreshold(tmpDir)).not.toThrow();
+  });
+
+  it("CFG-11: is a no-op when threshold key is not present", () => {
+    const vscodeDir = path.join(tmpDir, ".vscode");
+    fs.mkdirSync(vscodeDir);
+    const settingsPath = path.join(vscodeDir, "settings.json");
+    fs.writeFileSync(settingsPath, JSON.stringify({ "editor.fontSize": 14 }));
+    removeWorkspaceThreshold(tmpDir);
+    const content = JSON.parse(fs.readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
+    expect(content["editor.fontSize"]).toBe(14);
   });
 });
 

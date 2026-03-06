@@ -25,7 +25,7 @@ import { CommandRouter } from "./command-router.js";
 import { StatePublisher } from "./state-publisher.js";
 import type { VscodeApi } from "./state-publisher.js";
 import type { IDEState } from "@accordo/bridge-types";
-import { writeAgentConfigs } from "./agent-config.js";
+import { writeAgentConfigs, removeWorkspaceThreshold } from "./agent-config.js";
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -118,20 +118,25 @@ export async function activate(
   // the Copilot extension exposes all MCP tools directly instead of
   // collapsing them into activate_* virtual groups.
   //
-  // The setting must live in **user-level** config (ConfigurationTarget.Global)
-  // because VS Code reads it before workspace settings take effect for the
-  // tool-loading path. Writing it to .vscode/settings.json as a file does
-  // not work — VS Code ignores the workspace override for this key.
+  // IMPORTANT: Must use ConfigurationTarget.Global (user-level settings).
+  // VS Code reads virtualTools.threshold during extension-host bootstrap,
+  // before workspace settings are evaluated, so a .vscode/settings.json
+  // entry has no effect on tool loading.
   //
-  // We only write once (threshold < 300) and then prompt for a reload so
-  // the new value is picked up for the current window.
+  // We inspect the *global* value explicitly (not the merged effective value)
+  // so a stale workspace-level entry from an earlier approach does not fool
+  // us into skipping the global write.
   {
     const THRESHOLD_KEY = "github.copilot.chat";
     const THRESHOLD_SECTION = "virtualTools.threshold";
     const THRESHOLD_VALUE = 300;
     const copilotCfg = vscode.workspace.getConfiguration(THRESHOLD_KEY);
-    const current = copilotCfg.get<number>(THRESHOLD_SECTION, 128);
-    if (current < THRESHOLD_VALUE) {
+    // inspect() returns { globalValue, workspaceValue, defaultValue, ... }
+    // Use globalValue, not get(), which merges workspace override.
+    const inspected = copilotCfg.inspect<number>(THRESHOLD_SECTION);
+    const globalValue = inspected?.globalValue ?? 0;
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (globalValue < THRESHOLD_VALUE) {
       try {
         await copilotCfg.update(
           THRESHOLD_SECTION,
@@ -139,8 +144,18 @@ export async function activate(
           vscode.ConfigurationTarget.Global,
         );
         outputChannel.appendLine(
-          `[accordo-bridge] Set ${THRESHOLD_KEY}.${THRESHOLD_SECTION}=${THRESHOLD_VALUE} (user-level) ✓`,
+          `[accordo-bridge] Set ${THRESHOLD_KEY}.${THRESHOLD_SECTION}=${THRESHOLD_VALUE} (global) ✓`,
         );
+        // Belt-and-suspenders: also remove the stale workspace-level flat key
+        // from .vscode/settings.json that a previous approach wrote directly.
+        // Do this via both VS Code API (for nested-key format) and direct file
+        // edit (for flat-key format like "github.copilot.chat.virtualTools.threshold").
+        try {
+          await copilotCfg.update(THRESHOLD_SECTION, undefined, vscode.ConfigurationTarget.Workspace);
+        } catch { /* workspace update may fail if no folder open */ }
+        if (workspaceRoot) {
+          removeWorkspaceThreshold(workspaceRoot, outputChannel);
+        }
         void vscode.window.showInformationMessage(
           "Accordo raised the virtual-tools threshold so all MCP tools are visible. Reload the window to apply.",
           "Reload Window",
@@ -153,6 +168,13 @@ export async function activate(
         outputChannel.appendLine(
           `[accordo-bridge] Failed to set ${THRESHOLD_KEY}.${THRESHOLD_SECTION}: ${String(err)}`,
         );
+      }
+    } else {
+      // Global is already set adequately. Still clean up any stale workspace entry.
+      if (workspaceRoot) {
+        try {
+          removeWorkspaceThreshold(workspaceRoot, outputChannel);
+        } catch { /* best-effort */ }
       }
     }
   }
