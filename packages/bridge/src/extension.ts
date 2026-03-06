@@ -25,7 +25,7 @@ import { CommandRouter } from "./command-router.js";
 import { StatePublisher } from "./state-publisher.js";
 import type { VscodeApi } from "./state-publisher.js";
 import type { IDEState } from "@accordo/bridge-types";
-import { writeAgentConfigs } from "./agent-config.js";
+import { writeAgentConfigs, writeVscodeSettings } from "./agent-config.js";
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -113,6 +113,31 @@ export async function activate(
   const wantCopilot = cfg.get<boolean>("agent.configureCopilot", true);
   const wantOpencode = cfg.get<boolean>("agent.configureOpencode", true);
   const wantClaude = cfg.get<boolean>("agent.configureClaude", true);
+
+  // CFG-11: Write virtualTools.threshold at activation time so it is in place
+  // before VS Code loads the MCP tool list. We do this unconditionally (does
+  // not require the Hub to be running). If the setting is written for the
+  // first time we prompt for a window reload so it takes effect immediately.
+  const workspaceRootEarly = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (workspaceRootEarly) {
+    try {
+      const wrote = writeVscodeSettings(workspaceRootEarly, outputChannel);
+      if (wrote) {
+        void vscode.window.showInformationMessage(
+          "Accordo updated .vscode/settings.json to show all MCP tools directly. Reload the window to apply.",
+          "Reload Window",
+        ).then((choice) => {
+          if (choice === "Reload Window") {
+            void vscode.commands.executeCommand("workbench.action.reloadWindow");
+          }
+        });
+      }
+    } catch (err) {
+      outputChannel.appendLine(
+        `[accordo-bridge] writeVscodeSettings (early) failed: ${String(err)}`,
+      );
+    }
+  }
 
   // Hub entry point: sibling package in the monorepo during development.
   // When packaged as a vsix the hub dist should be bundled alongside.

@@ -241,11 +241,12 @@ export function writeClaudeConfig(params: AgentConfigParams): void {
  *
  * @param workspaceRoot - Absolute path to the workspace root
  * @param outputChannel - For warnings
+ * @returns true if the file was written (new/changed), false if skipped
  */
 export function writeVscodeSettings(
   workspaceRoot: string,
   outputChannel?: AgentConfigOutputChannel,
-): void {
+): boolean {
   const THRESHOLD_KEY = "github.copilot.chat.virtualTools.threshold";
   const THRESHOLD_VALUE = 300;
 
@@ -273,7 +274,7 @@ export function writeVscodeSettings(
   // Skip if already set to an adequate value
   const existing = settings[THRESHOLD_KEY];
   if (typeof existing === "number" && existing >= THRESHOLD_VALUE) {
-    return;
+    return false;
   }
 
   settings[THRESHOLD_KEY] = THRESHOLD_VALUE;
@@ -285,6 +286,7 @@ export function writeVscodeSettings(
   outputChannel?.appendLine(
     `[accordo-bridge] .vscode/settings.json: set ${THRESHOLD_KEY}=${THRESHOLD_VALUE} ✓`,
   );
+  return true;
 }
 
 /**

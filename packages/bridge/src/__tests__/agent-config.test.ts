@@ -460,7 +460,8 @@ describe("writeVscodeSettings — CFG-11", () => {
   });
 
   it("CFG-11: creates .vscode/settings.json with threshold 300 when file absent", () => {
-    writeVscodeSettings(tmpDir);
+    const wrote = writeVscodeSettings(tmpDir);
+    expect(wrote).toBe(true);
     const settingsPath = path.join(tmpDir, ".vscode", "settings.json");
     expect(fs.existsSync(settingsPath)).toBe(true);
     const content = JSON.parse(fs.readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
@@ -474,7 +475,8 @@ describe("writeVscodeSettings — CFG-11", () => {
       path.join(vscodeDir, "settings.json"),
       JSON.stringify({ "editor.fontSize": 14, "other.setting": true }),
     );
-    writeVscodeSettings(tmpDir);
+    const wrote = writeVscodeSettings(tmpDir);
+    expect(wrote).toBe(true);
     const content = JSON.parse(
       fs.readFileSync(path.join(vscodeDir, "settings.json"), "utf8"),
     ) as Record<string, unknown>;
@@ -491,16 +493,18 @@ describe("writeVscodeSettings — CFG-11", () => {
       settingsPath,
       JSON.stringify({ "github.copilot.chat.virtualTools.threshold": 400 }),
     );
-    const mtimeBefore = fs.statSync(settingsPath).mtimeMs;
-    writeVscodeSettings(tmpDir);
-    const mtimeAfter = fs.statSync(settingsPath).mtimeMs;
-    expect(mtimeAfter).toBe(mtimeBefore);
+    const wrote = writeVscodeSettings(tmpDir);
+    expect(wrote).toBe(false);
+    // Content unchanged
+    const content = JSON.parse(fs.readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
+    expect(content["github.copilot.chat.virtualTools.threshold"]).toBe(400);
   });
 
   it("CFG-11: creates .vscode/ directory if absent", () => {
     const vscodeDir = path.join(tmpDir, ".vscode");
     expect(fs.existsSync(vscodeDir)).toBe(false);
-    writeVscodeSettings(tmpDir);
+    const wrote = writeVscodeSettings(tmpDir);
+    expect(wrote).toBe(true);
     expect(fs.existsSync(vscodeDir)).toBe(true);
   });
 
@@ -509,7 +513,8 @@ describe("writeVscodeSettings — CFG-11", () => {
     fs.mkdirSync(vscodeDir);
     const settingsPath = path.join(vscodeDir, "settings.json");
     fs.writeFileSync(settingsPath, "{ this is not valid json");
-    writeVscodeSettings(tmpDir);
+    const wrote = writeVscodeSettings(tmpDir);
+    expect(wrote).toBe(true);
     expect(fs.existsSync(settingsPath + ".bak")).toBe(true);
     const content = JSON.parse(fs.readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
     expect(content["github.copilot.chat.virtualTools.threshold"]).toBe(300);
