@@ -14,6 +14,9 @@ patterns:
   P-12: "VS Code built-in Comments panel has no extensible context menu — view/item/context does not work; need custom TreeView panel"
   P-13: "Restarting Extension Host does NOT restart the Hub process — must kill Hub PID first, then restart Extension Host"
   P-14: "Hub dist is per-file, not a bundle — grep dist/prompt-engine.js etc., never dist/index.js"
+  P-15: "Integration tests with fixed content strings fail on second run — dedup prevents new insert; fix with sync cleanup fixture before each test"
+  P-16: "Async cleanup fixtures in pytest-asyncio cause asyncpg pool-loop mismatch — use sync psycopg2 for pre-test DB cleanup instead of async SQLAlchemy"
+  P-17: "Neon.tech asyncpg DSN → psycopg2 DSN: replace +asyncpg driver AND ssl=require → sslmode=require"
 ---
 
 # patterns.md — Agent Working Patterns and Known Friction
@@ -285,6 +288,80 @@ The Bridge will then find no healthy Hub on port 3000 and spawn a fresh one from
 - `dist/bridge-server.js` for WebSocket logic
 
 Or search all dist files: `grep -r "symbol" packages/hub/dist/ --include="*.js" -l`
+
+---
+
+## Archive (resolved patterns)
+
+*Entries moved here once the root cause has been addressed in tooling or process.*
+
+---
+
+### P-15 — Integration tests with fixed content strings fail on the second run
+
+**Symptom:** An integration test that calls `IngestionService.ingest()` with a literal
+content string (e.g. `"Retry test"`) passes on the first run but fails on all subsequent
+runs because `after_count` stays at 0 — no new outbox row is created.
+
+**Root cause:** The ingestion pipeline deduplicates by `(workspace_id, source_type, content_hash)`.
+A previous run already committed the same content, so `ingest()` returns the existing row
+without inserting — meaning the DB trigger never fires and no outbox row appears.
+
+**Fix:** Add a synchronous cleanup fixture (see P-16) that deletes test-workspace rows before
+each integration test, ensuring a clean slate every run.
+
+**Location:** `tests/test_outbox.py` — `_clean_workspace` fixture + `@pytest.mark.usefixtures`.
+
+---
+
+### P-16 — Async cleanup fixtures cause asyncpg "Future attached to a different loop" errors
+
+**Symptom:** When an `async def` fixture using `async_engine.begin()` is added as
+`autouse=True`, previously-passing integration tests start failing with:
+`RuntimeError: Task ... got Future ... attached to a different loop`
+
+**Root cause:** With `asyncio_default_fixture_loop_scope = "session"` in `pyproject.toml`,
+async fixtures run in the session-scoped event loop. The connections they establish get
+pooled, tainted with the session loop's identity. When the test runs (in a function loop)
+and tries to re-use a pooled connection, asyncpg detects the loop mismatch and raises.
+
+**Fix:** Use a **synchronous** psycopg2 fixture for cleanup — it runs entirely outside the
+event loop and leaves no asyncpg connections that can conflict (see P-17 for URL conversion).
+
+```python
+@pytest.fixture()
+def _clean_workspace() -> Generator[None, None, None]:
+    from tests.conftest import TEST_DATABASE_URL
+    sync_dsn = (TEST_DATABASE_URL
+        .replace("postgresql+asyncpg://", "postgresql://")
+        .replace("ssl=require", "sslmode=require"))
+    conn = psycopg2.connect(sync_dsn)
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM event_outbox")
+        cur.execute("DELETE FROM engrams WHERE workspace_id = %s", (str(_WS_ID),))
+    conn.close()
+    yield
+```
+
+Decorate each integration test **class** (not function) with `@pytest.mark.usefixtures("_clean_workspace")`.
+
+---
+
+### P-17 — Neon.tech asyncpg DSN must be converted twice for psycopg2
+
+**Symptom:** `psycopg2.connect(dsn)` raises `ProgrammingError: invalid URI query parameter: "ssl"`
+when the DSN was derived from a Neon.tech asyncpg URL.
+
+**Root cause:** The asyncpg URL uses `?ssl=require` but psycopg2 only understands `sslmode=`.
+Additionally, the driver prefix `postgresql+asyncpg://` must be stripped to `postgresql://`.
+
+**Fix:**
+```python
+sync_dsn = (TEST_DATABASE_URL
+    .replace("postgresql+asyncpg://", "postgresql://")
+    .replace("ssl=require", "sslmode=require"))
+```
 
 ---
 
