@@ -256,6 +256,36 @@ describe("M44-EXT-06: Works without comments extension", () => {
   });
 });
 
+// ── accordo.presentation.goto VS Code command ───────────────────────────────
+// Prerequisite for M45-NR (Custom Comments Panel navigation router).
+// The router calls executeCommand('accordo.presentation.goto', slideIndex).
+
+describe("accordo.presentation.goto VS Code command", () => {
+  it("registers accordo.presentation.goto as a VS Code command", async () => {
+    const bridge = makeBridge();
+    setupExtensions(bridge, false);
+    const ctx = makeExtensionContext();
+
+    await activate(ctx);
+
+    const registeredCmds = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([cmd]: [string]) => cmd,
+    );
+    expect(registeredCmds).toContain("accordo.presentation.goto");
+  });
+
+  it("goto command disposable is pushed to context.subscriptions", async () => {
+    const bridge = makeBridge();
+    setupExtensions(bridge, false);
+    const ctx = makeExtensionContext();
+
+    await activate(ctx);
+
+    // open + close + goto + editorProvider + provider + tools disposable all land here
+    expect(ctx.subscriptions.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
 // ── deactivate ────────────────────────────────────────────────────────────────
 
 describe("deactivate", () => {

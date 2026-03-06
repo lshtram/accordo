@@ -3,21 +3,23 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-04  
-**Status:** ACTIVE — Session 8B complete (M44 `accordo-slidev` ✅), Session 9 next
+**Status:** ACTIVE — Session 8B complete (M44 `accordo-slidev` ✅), Session 9 next (M45 Custom Comments Panel)
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-05 — Session 8B complete. `accordo-slidev` full package implemented (M44-NAR/STATE/CBR/RT/PVD/TL/EXT): 137 new tests, 990 in pnpm test output (Hub 344, Editor 186, Comments 197, md-viewer 126, slidev 137). Total estimate: ~1369 (adds bridge 298 + comment-sdk 45). TypeScript clean. D2 fixes applied. Ready for Session 9.**
+> **As of 2026-03-06 — Session 8B complete. `accordo-slidev` full package implemented (M44-NAR/STATE/CBR/RT/PVD/TL/EXT): 137 new tests, 990 in pnpm test output (Hub 344, Editor 186, Comments 197, md-viewer 126, slidev 137). Total estimate: ~1369 (adds bridge 298 + comment-sdk 45). TypeScript clean. D2 fixes applied. Session 9 next: Custom Comments Panel (M45) — architecture + requirements written, prerequisite SDK bug fix queued.**
 
 | Phase | Goal | Status |
 |------|------|--------|
 | Phase 1 | Control Plane MVP (Hub + Bridge + Editor) | ✅ DONE — 797 tests, v0.1.0 |
 | Phase 2 | Comments modality (`accordo-comments`) | ✅ DONE — Week 6+7 complete, 1221 tests |
 | Phase 3 | Presentations modality (`accordo-slidev`) | ✅ DONE — Session 8B complete, 137 tests |
-| Phase 4 | Voice modality (`accordo-voice` bridge registration) | ⏳ Pending Phase 3 |
+| **Session 9** | **Custom Comments Panel (M45 — `accordo-comments` update)** | 🔜 **NEXT** — architecture + requirements ready |
+| Phase 4 | Voice modality (`accordo-voice` bridge registration) | ⏳ Pending Session 9 |
 | Phase 5 | Diagrams modality (`accordo-tldraw`) | ⏳ Pending Phase 4 |
+| Phase 6 | Browser agentation (`accordo-browser` + Chrome extension) | 📋 PLANNED — architecture + requirements written |
 
 **Baseline:** 1232 tests green (Hub: 344, Bridge: 298, Editor: 186, Comments: 197, SDK: 45, md-viewer: 126). v0.1.0 on `main`.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
@@ -182,6 +184,28 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ---
 
+### Session 9 — Custom Comments Panel (`accordo-comments` update)
+
+**Goal:** Replace the built-in VS Code Comments panel with a fully controlled `vscode.TreeView` sidebar. Cross-surface anchor-aware navigation (text / markdown-preview / slide), full thread actions via context menu (resolve, reopen, reply, delete), and filter state persisted across reloads. Removes the P-12 hard blockers and delivers the canonical navigation router relied on by all future surface phases.
+
+**Architecture:** [`docs/comments-panel-architecture.md`](comments-panel-architecture.md)  
+**Requirements:** [`docs/requirements-comments-panel.md`](requirements-comments-panel.md)
+
+**Prerequisite fix (before TDD start):**
+- `fix(comment-sdk): badge selector mismatch in updateThread` — change `.accordo-pin-badge` → `.accordo-pin__badge` in `packages/comment-sdk/src/sdk.ts`
+
+| # | Module | Requirements Source | TDD Phases |
+|---|---|---|---|
+| M45-TP | `panel/comments-tree-provider.ts` — `CommentsTreeProvider` + `CommentTreeItem` + anchor label derivation | requirements-comments-panel.md §3 M45-TP | A → F |
+| M45-NR | `panel/navigation-router.ts` — anchor-type-aware navigation dispatch, `NavigationEnv` abstraction | requirements-comments-panel.md §3 M45-NR | A → F |
+| M45-CMD | `panel/panel-commands.ts` — resolve/reopen/reply/delete/navigate commands + store sync | requirements-comments-panel.md §3 M45-CMD | A → F |
+| M45-FLT | `panel/panel-filters.ts` — filter state, quick picks, `workspaceState` persistence | requirements-comments-panel.md §3 M45-FLT | A → F |
+| M45-EXT | `extension.ts` additions — wire panel into activate, manifest contributions | requirements-comments-panel.md §3 M45-EXT | A → F |
+
+**Session 9 gate:** Panel sidebar shows all threads grouped by Open/Resolved. Click on any item navigates to the correct surface (text → text editor, slide → Slidev panel, preview → md-viewer popover). Context menu resolve/reopen/reply/delete works. Filters persist across reload. All existing 197 `accordo-comments` tests stay green. Total new tests: ~66.
+
+---
+
 ### Phase 4 — Voice (`accordo-voice` bridge registration)
 
 **Goal:** The voice extension (already implemented) is registered with the Bridge + Hub. Agents can see voice state in the system prompt.
@@ -199,6 +223,69 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 **No architecture doc yet.** Architecture phase A task will produce it.
 
 **New packages:** `accordo-tldraw` (VSCode extension + tldraw webview)
+
+---
+
+### Phase 6 — Browser Agentation (`accordo-browser` + Chrome Extension)
+
+**Goal:** Human and agent co-browse the web with spatial comment threads anchored to DOM elements on any web page. A Chrome Manifest V3 extension embeds the existing `@accordo/comment-sdk` in the browser. A VSCode extension relays comments to the `CommentStore` via the generalized surface adapter. Browser automation is provided off-the-shelf by `@playwright/mcp` (no Accordo code).
+
+**Architecture:** [`docs/browser-architecture.md`](browser-architecture.md) v1.0
+**Requirements:** [`docs/requirements-browser.md`](requirements-browser.md)
+
+**Key design decisions:**
+- Browser automation via `@playwright/mcp` (off-the-shelf, zero Accordo code)
+- Chrome extension communicates via local WebSocket relay in the VSCode extension (Hub unchanged, Bridge unchanged)
+- DOM elements anchored via CSS selector paths + text fingerprint (new `CssSelectorCoordinates` type)
+- `@accordo/comment-sdk` reused directly in Chrome content script (callback-driven, framework-free)
+- No changes to Hub, Bridge, Comments, or Comment SDK packages
+
+**New packages:**
+- `packages/browser/` (`accordo-browser` — VSCode extension: relay server, comments bridge, state contribution)
+- `packages/browser-extension/` (Chrome Manifest V3 extension: DOM auto-tagger, Comment SDK overlay, service worker)
+
+**Implementation split across 3 sessions:**
+
+#### Session 10A — Types + VSCode Extension Core
+
+**Goal:** `CssSelectorCoordinates` type in bridge-types. `BrowserRelay` WebSocket server and `BrowserCommentsBridge` in the VSCode extension. End-to-end comment flow from mock Chrome messages → relay → CommentStore.
+
+| # | Module | Requirements Source | TDD Phases |
+|---|---|---|---|
+| M50-BT | `@accordo/bridge-types` — add `CssSelectorCoordinates`, `BrowserRelayMessage`, `BrowserTabInfo` | requirements-browser.md §3 | A → F |
+| M51-REL | `browser-relay.ts` — local WebSocket server, auth, multi-client routing | requirements-browser.md §4 M51 | A → F |
+| M52-CBR | `browser-comments-bridge.ts` — message routing ↔ surface adapter, blockId codec | requirements-browser.md §4 M52 | A → F |
+| M54-SEL | `selector-utils.ts` — blockId encode/decode, pure functions | requirements-browser.md §4 M54 | A → F |
+
+**Session 10A gate:** BrowserRelay accepts WebSocket connections with auth. BrowserCommentsBridge routes comment messages to CommentStore. Integration test: mock client → relay → adapter → thread created with `surfaceType: "browser"` and `CssSelectorCoordinates`.
+
+#### Session 10B — VSCode Extension Completion + Chrome Extension Core
+
+**Goal:** State contribution, extension entry point. Chrome extension DOM auto-tagger, selector generator, fingerprint. Content script bootstraps Comment SDK.
+
+| # | Module | Requirements Source | TDD Phases |
+|---|---|---|---|
+| M53-STATE | `browser-state.ts` — publishes connected tabs + comment counts to Hub | requirements-browser.md §4 M53 | A → F |
+| M55-EXT | `extension.ts` — activation, wiring, token generation, commands | requirements-browser.md §4 M55 | A → F |
+| M56-TAG | `dom-tagger.ts` — DOM element tagging with `data-block-id` | requirements-browser.md §5 M56 | A → F |
+| M57-CSS | `selector-generator.ts` — minimal unique CSS selector paths | requirements-browser.md §5 M57 | A → F |
+| M58-FP | `text-fingerprint.ts` — FNV-1a hash of element text | requirements-browser.md §5 M58 | A → F |
+
+**Session 10B gate:** VSCode extension activates, generates token, starts relay. DOM auto-tagger correctly assigns blockIds in jsdom. Selector generator produces unique selectors. Fingerprint is deterministic.
+
+#### Session 10C — Chrome Extension Completion + Automation Docs
+
+**Goal:** Service worker, content script SDK integration, popup UI, theme CSS. Playwright setup documentation.
+
+| # | Module | Requirements Source | TDD Phases |
+|---|---|---|---|
+| M59-SW | `service-worker.ts` — WebSocket client, message routing, reconnection | requirements-browser.md §5 M59 | A → F |
+| M60-CS | `content-script.ts` — SDK initialization, callback wiring, scroll/resize | requirements-browser.md §5 M60 | A → F |
+| M61-POP | `popup.html` + `popup.ts` — configuration UI, connection status | requirements-browser.md §5 M61 | A → F |
+| M62-THM | `browser-theme.css` — VS Code CSS variable mappings for browser | requirements-browser.md §5 M62 | A → F |
+| M63-AUTO | Browser automation setup docs + optional helper command | requirements-browser.md §6 M63 | A → F |
+
+**Session 10C gate:** Chrome extension side-loads in Chrome. Content script injects overlay and Comment SDK. Service worker connects to relay. Comments created in Chrome appear in VS Code. Playwright MCP setup documented.
 
 ---
 
@@ -224,7 +311,7 @@ Carried forward — non-blocking:
 4. **Remote topology UX** — Port-forward notification for SSH/devcontainer/Codespaces.
 5. **Checkpoint/rollback** — Git-stash snapshots before destructive tool executions.
 6. **Comments store durability hardening** — Evaluate atomic persistence strategy for `.accordo/comments.json` (temp-file + rename / crash-safe write path). Deferred by product decision during Week 7 comments+SDK alignment.
-7. **Custom Accordo Comments TreeView panel** — The built-in VS Code Comments panel (`workbench.panel.comments`) does not support `view/item/context` menu contributions or custom click navigation. A custom `vscode.TreeView` sidebar panel is needed to provide: right-click resolve/reopen/reply/delete, click-to-navigate into webview preview (scroll + popover), inline reply editing. See `docs/patterns.md` P-12 for full analysis.
+7. ~~**Custom Accordo Comments TreeView panel**~~ — **Scheduled for Session 9.** Architecture in `docs/comments-panel-architecture.md`, requirements in `docs/requirements-comments-panel.md`. Modules M45-TP/NR/CMD/FLT/EXT.
 
 ---
 

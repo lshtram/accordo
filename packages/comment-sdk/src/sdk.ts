@@ -198,7 +198,7 @@ export class AccordoCommentSDK {
     const state = this.resolvePinState(entry.thread);
     el.classList.add(`accordo-pin--${state}`);
     // Update badge
-    const badge = el.querySelector(".accordo-pin-badge");
+    const badge = el.querySelector(".accordo-pin__badge");
     if (badge) {
       badge.textContent = String(entry.thread.comments.length);
     }

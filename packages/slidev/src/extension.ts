@@ -230,7 +230,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (!session.adapter) return { error: "No presentation session is open." };
         await session.adapter.goto(index);
         stateContrib.update({ currentSlide: index });
-        provider.getPanel()?.webview.postMessage({ type: "slide-index", index });
+        provider.getPanel()?.webview.postMessage({ type: "slide-index", index, navigate: true });
         return {};
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
@@ -243,7 +243,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await session.adapter.next();
         const current = await session.adapter.getCurrent();
         stateContrib.update({ currentSlide: current.index });
-        provider.getPanel()?.webview.postMessage({ type: "slide-index", index: current.index });
+        provider.getPanel()?.webview.postMessage({ type: "slide-index", index: current.index, navigate: true });
         return {};
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
@@ -256,7 +256,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await session.adapter.prev();
         const current = await session.adapter.getCurrent();
         stateContrib.update({ currentSlide: current.index });
-        provider.getPanel()?.webview.postMessage({ type: "slide-index", index: current.index });
+        provider.getPanel()?.webview.postMessage({ type: "slide-index", index: current.index, navigate: true });
         return {};
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
@@ -314,6 +314,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
+  // Prerequisite for M45-NR: expose goto as a VS Code command so the custom
+  // Comments Panel navigation router can jump to a slide via executeCommand.
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "accordo.presentation.goto",
+      async (index?: unknown) => {
+        if (typeof index !== "number") {
+          vscode.window.showInformationMessage(
+            "accordo.presentation.goto: a numeric slide index is required.",
+          );
+          return;
+        }
+        const result = await toolDeps.goto(index);
+        if (result.error) {
+          vscode.window.showErrorMessage(`Failed to navigate to slide: ${result.error}`);
+        }
+      },
+    ),
+  );
+
   // M44-EXT-08: CustomTextEditorProvider for .deck.md files.
   // When a .deck.md file is activated in the explorer or editor, VS Code hands
   // it to this provider. We immediately start a presentation session AND show a
@@ -324,10 +344,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       document: vscode.TextDocument,
       webviewPanel: vscode.WebviewPanel,
     ): void | Thenable<void> {
+      const requestedUri = document.uri.fsPath;
+
+      // Guard against the race where closing deck A's Slidev panel causes VS Code
+      // to re-fire resolveCustomTextEditor for deck A while deck B is opening.
+      // If this URI is already the active deck or currently being opened, just
+      // reveal the existing presentation and discard this transient webview.
+      if (
+        provider.getCurrentDeckUri() === requestedUri ||
+        provider.getPendingDeckUri() === requestedUri
+      ) {
+        provider.getPanel()?.reveal?.();
+        webviewPanel.dispose();
+        return;
+      }
+
       // Show a brief loading screen while the session initialises
       webviewPanel.webview.html = `<!DOCTYPE html><html><body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#ccc;background:#1e1e1e"><p>Opening presentation…</p></body></html>`;
       // Open the real session (PresentationProvider creates its own panel beside)
-      void toolDeps.openSession(document.uri.fsPath).then((result) => {
+      void toolDeps.openSession(requestedUri).then((result) => {
         if (result.error) {
           webviewPanel.webview.html = `<!DOCTYPE html><html><body style="padding:20px;font-family:sans-serif;color:#f44;background:#1e1e1e"><p>Failed to open deck: ${result.error}</p></body></html>`;
         } else {

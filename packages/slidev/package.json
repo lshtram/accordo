@@ -20,6 +20,10 @@
       {
         "command": "accordo.presentation.close",
         "title": "Accordo: Close Presentation"
+      },
+      {
+        "command": "accordo.presentation.goto",
+        "title": "Accordo: Go to Slide"
       }
     ],
     "menus": {
