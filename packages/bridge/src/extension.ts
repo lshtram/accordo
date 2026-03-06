@@ -25,7 +25,7 @@ import { CommandRouter } from "./command-router.js";
 import { StatePublisher } from "./state-publisher.js";
 import type { VscodeApi } from "./state-publisher.js";
 import type { IDEState } from "@accordo/bridge-types";
-import { writeAgentConfigs, writeVscodeSettings } from "./agent-config.js";
+import { writeAgentConfigs } from "./agent-config.js";
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -114,28 +114,46 @@ export async function activate(
   const wantOpencode = cfg.get<boolean>("agent.configureOpencode", true);
   const wantClaude = cfg.get<boolean>("agent.configureClaude", true);
 
-  // CFG-11: Write virtualTools.threshold at activation time so it is in place
-  // before VS Code loads the MCP tool list. We do this unconditionally (does
-  // not require the Hub to be running). If the setting is written for the
-  // first time we prompt for a window reload so it takes effect immediately.
-  const workspaceRootEarly = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (workspaceRootEarly) {
-    try {
-      const wrote = writeVscodeSettings(workspaceRootEarly, outputChannel);
-      if (wrote) {
+  // CFG-11: Raise virtualTools.threshold via the VS Code settings API so
+  // the Copilot extension exposes all MCP tools directly instead of
+  // collapsing them into activate_* virtual groups.
+  //
+  // The setting must live in **user-level** config (ConfigurationTarget.Global)
+  // because VS Code reads it before workspace settings take effect for the
+  // tool-loading path. Writing it to .vscode/settings.json as a file does
+  // not work — VS Code ignores the workspace override for this key.
+  //
+  // We only write once (threshold < 300) and then prompt for a reload so
+  // the new value is picked up for the current window.
+  {
+    const THRESHOLD_KEY = "github.copilot.chat";
+    const THRESHOLD_SECTION = "virtualTools.threshold";
+    const THRESHOLD_VALUE = 300;
+    const copilotCfg = vscode.workspace.getConfiguration(THRESHOLD_KEY);
+    const current = copilotCfg.get<number>(THRESHOLD_SECTION, 128);
+    if (current < THRESHOLD_VALUE) {
+      try {
+        await copilotCfg.update(
+          THRESHOLD_SECTION,
+          THRESHOLD_VALUE,
+          vscode.ConfigurationTarget.Global,
+        );
+        outputChannel.appendLine(
+          `[accordo-bridge] Set ${THRESHOLD_KEY}.${THRESHOLD_SECTION}=${THRESHOLD_VALUE} (user-level) ✓`,
+        );
         void vscode.window.showInformationMessage(
-          "Accordo updated .vscode/settings.json to show all MCP tools directly. Reload the window to apply.",
+          "Accordo raised the virtual-tools threshold so all MCP tools are visible. Reload the window to apply.",
           "Reload Window",
         ).then((choice) => {
           if (choice === "Reload Window") {
             void vscode.commands.executeCommand("workbench.action.reloadWindow");
           }
         });
+      } catch (err) {
+        outputChannel.appendLine(
+          `[accordo-bridge] Failed to set ${THRESHOLD_KEY}.${THRESHOLD_SECTION}: ${String(err)}`,
+        );
       }
-    } catch (err) {
-      outputChannel.appendLine(
-        `[accordo-bridge] writeVscodeSettings (early) failed: ${String(err)}`,
-      );
     }
   }
 
