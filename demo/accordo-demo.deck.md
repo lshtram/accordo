@@ -5,31 +5,36 @@ colorSchema: dark
 ---
 
 <style>
-/* Force navigation controls to be visible regardless of color scheme.
-   The Slidev default theme uses UnoCSS dark: variants on bg-main.
-   When the webview iframe doesn't correctly signal prefers-color-scheme,
-   or the colorSchema frontmatter isn't applied, the controls bar is
-   white-on-white. Override directly. */
-html:not(.dark) nav {
-  background: rgba(40, 40, 55, 0.92) !important;
-  border-color: rgba(60, 60, 80, 0.5) !important;
-}
-html:not(.dark) nav button,
-html:not(.dark) nav .iconify,
-html:not(.dark) nav [class*="i-carbon"] {
-  color: #d0d0e0 !important;
+/* Force navigation controls to always be visible in both light and dark modes.
+   Slidev default theme uses UnoCSS `opacity-0 hover:opacity-100` on nav wrapper,
+   and the nav element is .slidev-nav (not a semantic <nav>). */
+
+/* Always-visible nav controls */
+.slidev-nav,
+.nav-controls,
+[class*="slidev-nav"],
+.bottom-3.fixed {
   opacity: 1 !important;
 }
-html:not(.dark) nav button:hover,
-html:not(.dark) nav .iconify:hover {
-  color: #ffffff !important;
+
+/* Ensure nav icon buttons are always visible */
+.slidev-icon-btn,
+button.slidev-icon-btn,
+.nav-controls button {
+  opacity: 1 !important;
+  color: #ccc !important;
 }
-html:not(.dark) nav span {
-  color: #d0d0e0 !important;
+.slidev-icon-btn:hover { color: #fff !important; }
+
+/* Light mode: nav bar background contrast */
+html:not(.dark) .slidev-nav,
+html:not(.dark) .nav-controls {
+  background: rgba(40, 40, 55, 0.92) !important;
 }
-/* Dark mode already looks fine — just ensure text contrast */
-.dark nav {
-  background: rgba(18, 18, 18, 0.92) !important;
+/* Dark mode */
+.dark .slidev-nav,
+.dark .nav-controls {
+  background: rgba(18, 18, 18, 0.85) !important;
 }
 </style>
 

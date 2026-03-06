@@ -394,6 +394,11 @@ export class NativeComments {
   private _createWidget(thread: CommentThread): void {
     if (!this._controller) return;
 
+    // Surface-anchored (slide) comments are displayed in the presentation webview
+    // overlay, not the VS Code Comments panel. Creating a native widget here would
+    // point to the deck .md file and open it in markdown preview when clicked.
+    if (thread.anchor.kind === "surface") return;
+
     const uri = vscode.Uri.parse(thread.anchor.uri);
     let range: vscode.Range;
 

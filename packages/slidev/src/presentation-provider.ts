@@ -406,7 +406,8 @@ const COMMENT_OVERLAY_JS = `
   var modeHint = document.getElementById('comment-mode-hint');
   if (!overlay || !toggle) return;
 
-  var vscode = acquireVsCodeApi();
+  // acquireVsCodeApi was already called in the main script above; reuse the result.
+  var vscode = window._vscodeApi || (window._vscodeApi = acquireVsCodeApi());
   var threads = [];
   var currentSlide = 0;
   var commentMode = false;
@@ -720,6 +721,17 @@ function buildWebviewHtml(commentsEnabled: boolean): string {
     #loading p  { font-size: 12px; opacity: 0.55; }
     #frame { display: none; width: 100%; height: 100%; border: none;
              position: fixed; top: 0; left: 0; }
+    /* Webview-level navigation bar (all z-indices above Slidev iframe) */
+    #wv-nav { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      z-index: 950; display: none; align-items: center; gap: 10px;
+      background: rgba(0,0,0,0.6); border-radius: 20px; padding: 6px 16px;
+      pointer-events: all; user-select: none; }
+    #wv-nav button { background: none; border: none; color: rgba(255,255,255,0.7);
+      font-size: 18px; cursor: pointer; padding: 2px 6px; line-height: 1;
+      border-radius: 4px; transition: color 0.15s, background 0.15s; }
+    #wv-nav button:hover { color: #fff; background: rgba(255,255,255,0.12); }
+    #wv-page { color: rgba(255,255,255,0.7); font-family: system-ui;
+      font-size: 12px; min-width: 22px; text-align: center; }
     ${commentsCss}
   </style>
 </head>
@@ -729,21 +741,57 @@ function buildWebviewHtml(commentsEnabled: boolean): string {
     <p>Waiting for presentation server</p>
   </div>
   <iframe id="frame" src="about:blank"></iframe>
+  <div id="wv-nav">
+    <button id="wv-prev" title="Previous slide (←)">&#9664;</button>
+    <span id="wv-page">1</span>
+    <button id="wv-next" title="Next slide (→)">&#9654;</button>
+  </div>
   ${commentsHtml}
   <script>
     var frame = document.getElementById('frame');
     var loading = document.getElementById('loading');
-    // Readiness is signalled by the extension host via postMessage (no CSP issues).
+    var wvNav = document.getElementById('wv-nav');
+    var wvPage = document.getElementById('wv-page');
+    var slidevBase = null;
+    // acquireVsCodeApi must be called exactly once — share via window._vscodeApi
+    // so COMMENT_OVERLAY_JS (added below) can reuse it.
+    var vscode = (window._vscodeApi = acquireVsCodeApi());
+
+    document.getElementById('wv-prev').addEventListener('click', function() {
+      vscode.postMessage({ type: 'nav:prev' });
+    });
+    document.getElementById('wv-next').addEventListener('click', function() {
+      vscode.postMessage({ type: 'nav:next' });
+    });
+
+    // Arrow-key shortcuts active when the webview frame (not the Slidev iframe) has focus.
+    document.addEventListener('keydown', function(e) {
+      var t = e.target;
+      if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) return;
+      if (t && t.closest && t.closest('.accordo-inline-input,.accordo-popover')) return;
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); vscode.postMessage({ type: 'nav:next' }); }
+      else if (e.key === 'ArrowLeft' || e.key === 'PageUp')  { e.preventDefault(); vscode.postMessage({ type: 'nav:prev' }); }
+    });
+
+    // Messages from the extension host (no CSP restrictions).
     window.addEventListener('message', function(event) {
       var msg = event.data;
-      if (msg && msg.type === 'slidev-ready') {
+      if (!msg) return;
+      if (msg.type === 'slidev-ready') {
+        slidevBase = msg.url.replace(/\/+$/, '');
         loading.style.display = 'none';
         frame.src = msg.url;
         frame.style.display = 'block';
-      } else if (msg && msg.type === 'slidev-timeout') {
-        loading.querySelector('p').textContent =
-          'Timed out waiting for Slidev. Is @slidev/cli installed?';
-      } else if (msg && msg.type === 'slidev-error') {
+        if (wvNav) wvNav.style.display = 'flex';
+      } else if (msg.type === 'slide-index') {
+        // Navigate the Slidev iframe to the correct 1-based page path.
+        if (slidevBase !== null) {
+          frame.src = slidevBase + (msg.index === 0 ? '/' : '/' + (msg.index + 1));
+        }
+        if (wvPage) wvPage.textContent = String(msg.index + 1);
+      } else if (msg.type === 'slidev-timeout') {
+        loading.querySelector('p').textContent = 'Timed out waiting for Slidev. Is @slidev/cli installed?';
+      } else if (msg.type === 'slidev-error') {
         loading.querySelector('h2').textContent = 'Slidev failed to start';
         loading.querySelector('p').textContent = msg.message || 'Unknown error';
       }

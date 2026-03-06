@@ -190,6 +190,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           provider.getPanel()?.webview.postMessage({ type: "slide-index", index });
         });
 
+        // Wire webview prev/next nav buttons → toolDeps (extension host controls the
+        // current slide so onSlideChanged fires and slide-index is sent back to webview).
+        provider.getPanel()?.webview.onDidReceiveMessage((msg: unknown) => {
+          if (msg && typeof msg === "object") {
+            const m = msg as Record<string, unknown>;
+            if (m.type === "nav:next") void toolDeps.next();
+            else if (m.type === "nav:prev") void toolDeps.prev();
+          }
+        });
+
         return {};
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
