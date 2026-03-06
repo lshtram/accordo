@@ -194,7 +194,7 @@ describe("§10.2 Tool registration", () => {
     await activate(ctx);
 
     const tools = (bridge.registerTools as ReturnType<typeof vi.fn>).mock.calls[0][1];
-    expect(tools).toHaveLength(7);
+    expect(tools).toHaveLength(6);
   });
 
   it("pushes tool disposable into context.subscriptions", async () => {

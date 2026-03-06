@@ -115,7 +115,7 @@ describe("M44-EXT-02: Tool registration", () => {
     expect(bridge.registerTools).toHaveBeenCalled();
   });
 
-  it("registers exactly 9 presentation tools", async () => {
+  it("registers exactly 8 presentation tools", async () => {
     const bridge = makeBridge();
     setupExtensions(bridge, false);
     const ctx = makeExtensionContext();
@@ -123,7 +123,7 @@ describe("M44-EXT-02: Tool registration", () => {
     await activate(ctx);
 
     const [, tools] = (bridge.registerTools as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(tools).toHaveLength(9);
+    expect(tools).toHaveLength(8);
   });
 
   it("registers tools under namespace 'accordo-slidev'", async () => {

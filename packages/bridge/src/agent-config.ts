@@ -49,6 +49,18 @@ export interface AgentConfigParams {
   configureOpencode: boolean;
   /** Whether to write .claude/mcp.json (CFG-02) */
   configureClaude: boolean;
+  /**
+   * Whether to write github.copilot.chat.virtualTools.threshold to
+   * .vscode/settings.json (CFG-11). Default: true.
+   *
+   * VS Code's virtualTools mechanism collapses MCP tools into activation
+   * groups when the total count across all extensions exceeds the threshold
+   * (default 128). With a typical VS Code installation (GitHub, Python,
+   * Pylance + built-ins) the 41 Accordo tools are hidden behind
+   * activate_* functions and the agent never sees them directly. Setting
+   * the threshold to 300 prevents this.
+   */
+  configureVscodeSettings?: boolean;
   /** Output channel for warnings (CFG-08) */
   outputChannel: AgentConfigOutputChannel;
 }
@@ -218,6 +230,64 @@ export function writeClaudeConfig(params: AgentConfigParams): void {
 }
 
 /**
+ * Write or update .vscode/settings.json to set the VS Code virtualTools
+ * threshold high enough that Accordo tools are not hidden behind activation
+ * functions. CFG-11
+ *
+ * - Creates .vscode/ if absent.
+ * - Merges with existing settings — does not overwrite unrelated keys.
+ * - Skips the write if the threshold is already set to ≥ 300.
+ * - Corrupt JSON is backed up as .bak before overwrite.
+ *
+ * @param workspaceRoot - Absolute path to the workspace root
+ * @param outputChannel - For warnings
+ */
+export function writeVscodeSettings(
+  workspaceRoot: string,
+  outputChannel?: AgentConfigOutputChannel,
+): void {
+  const THRESHOLD_KEY = "github.copilot.chat.virtualTools.threshold";
+  const THRESHOLD_VALUE = 300;
+
+  const vscodeDir = path.join(workspaceRoot, ".vscode");
+  const settingsPath = path.join(vscodeDir, "settings.json");
+
+  // Read existing settings
+  let settings: Record<string, unknown> = {};
+  try {
+    const raw = fs.readFileSync(settingsPath, "utf8");
+    try {
+      settings = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      // Corrupt JSON — back up and overwrite
+      fs.writeFileSync(settingsPath + ".bak", raw, "utf8");
+      outputChannel?.appendLine(
+        "[accordo-bridge] .vscode/settings.json was corrupt — backed up as settings.json.bak",
+      );
+      settings = {};
+    }
+  } catch {
+    // File absent — will create it
+  }
+
+  // Skip if already set to an adequate value
+  const existing = settings[THRESHOLD_KEY];
+  if (typeof existing === "number" && existing >= THRESHOLD_VALUE) {
+    return;
+  }
+
+  settings[THRESHOLD_KEY] = THRESHOLD_VALUE;
+
+  fs.mkdirSync(vscodeDir, { recursive: true });
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 4) + "\n", {
+    encoding: "utf8",
+  });
+  outputChannel?.appendLine(
+    `[accordo-bridge] .vscode/settings.json: set ${THRESHOLD_KEY}=${THRESHOLD_VALUE} ✓`,
+  );
+}
+
+/**
  * Write all enabled agent config files (opencode + Claude) for the given params.
  * Called from HubManager's onCredentialsRotated and onHubReady callbacks.
  *
@@ -241,5 +311,15 @@ export function writeAgentConfigs(params: AgentConfigParams): void {
     params.outputChannel.appendLine(
       `[accordo-bridge] Failed to write .claude/mcp.json: ${err instanceof Error ? err.message : String(err)}`,
     );
+  }
+  // CFG-11: raise virtualTools threshold so VS Code does not hide Accordo tools
+  if (params.configureVscodeSettings !== false) {
+    try {
+      writeVscodeSettings(params.workspaceRoot, params.outputChannel);
+    } catch (err: unknown) {
+      params.outputChannel.appendLine(
+        `[accordo-bridge] Failed to write .vscode/settings.json: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

@@ -58,8 +58,8 @@ beforeEach(() => {
 // ── §6 Tool array shape ─────────────────────────────────────────────────────
 
 describe("§6 Tool array shape", () => {
-  it("returns exactly 7 tools", () => {
-    expect(tools).toHaveLength(7);
+  it("returns exactly 6 tools", () => {
+    expect(tools).toHaveLength(6);
   });
 
   it("includes all expected tool names", () => {
@@ -70,7 +70,6 @@ describe("§6 Tool array shape", () => {
     expect(names).toContain("accordo.comment.reply");
     expect(names).toContain("accordo.comment.resolve");
     expect(names).toContain("accordo.comment.delete");
-    expect(names).toContain("accordo.comments.discover");
   });
 
   it("all tools have descriptions ≤ 120 chars", () => {
@@ -388,56 +387,6 @@ describe("§6.1 Rate Limiting — CreateRateLimiter", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Progressive disclosure — discover tool handler
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("accordo.comments.discover handler", () => {
-  it("discover tool has no group (visible in prompt)", () => {
-    const discoverTool = tools.find(t => t.name === "accordo.comments.discover")!;
-    expect(discoverTool).toBeDefined();
-    expect(discoverTool).not.toHaveProperty("group");
-  });
-
-  it("handler returns { group, tools } with all 6 comment tools", async () => {
-    const discoverTool = tools.find(t => t.name === "accordo.comments.discover")!;
-    const result = await discoverTool.handler({}) as { group: string; tools: unknown[] };
-    expect(result.group).toBe("comments");
-    expect(result.tools).toHaveLength(6);
-  });
-
-  it("returned tools contain name, description, inputSchema, dangerLevel, idempotent", async () => {
-    const discoverTool = tools.find(t => t.name === "accordo.comments.discover")!;
-    const result = await discoverTool.handler({}) as { tools: Record<string, unknown>[] };
-    for (const t of result.tools) {
-      expect(t).toHaveProperty("name");
-      expect(t).toHaveProperty("description");
-      expect(t).toHaveProperty("inputSchema");
-      expect(t).toHaveProperty("dangerLevel");
-      expect(t).toHaveProperty("idempotent");
-    }
-  });
-
-  it("discover tool itself is not in the returned tools list", async () => {
-    const discoverTool = tools.find(t => t.name === "accordo.comments.discover")!;
-    const result = await discoverTool.handler({}) as { tools: { name: string }[] };
-    const names = result.tools.map(t => t.name);
-    expect(names).not.toContain("accordo.comments.discover");
-  });
-
-  it("returned tools include all 6 comment tools by name", async () => {
-    const discoverTool = tools.find(t => t.name === "accordo.comments.discover")!;
-    const result = await discoverTool.handler({}) as { tools: { name: string }[] };
-    const names = result.tools.map(t => t.name);
-    expect(names).toContain("accordo.comment.list");
-    expect(names).toContain("accordo.comment.get");
-    expect(names).toContain("accordo.comment.create");
-    expect(names).toContain("accordo.comment.reply");
-    expect(names).toContain("accordo.comment.resolve");
-    expect(names).toContain("accordo.comment.delete");
   });
 });
 

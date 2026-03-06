@@ -800,8 +800,8 @@ describe("formatHandler rejection — §4.19", () => {
 describe("editorTools registration", () => {
   const toolNames = editorTools.map((t) => t.name);
 
-  it("REG-01: exports exactly 12 tool definitions for modules 16+17 plus discover", () => {
-    expect(editorTools).toHaveLength(12);
+  it("REG-01: exports exactly 11 tool definitions for modules 16+17", () => {
+    expect(editorTools).toHaveLength(11);
   });
 
   it("REG-02: all module 16 tools are present", () => {
@@ -819,10 +819,6 @@ describe("editorTools registration", () => {
     expect(toolNames).toContain("accordo.editor.save");
     expect(toolNames).toContain("accordo.editor.saveAll");
     expect(toolNames).toContain("accordo.editor.format");
-  });
-
-  it("REG-03b: discover tool is present", () => {
-    expect(toolNames).toContain("accordo.editor.discover");
   });
 
   it("REG-04: all tool inputSchemas have type: 'object'", () => {
@@ -925,54 +921,4 @@ describe("editorTools registration", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Progressive disclosure — discover tool handler
-// ─────────────────────────────────────────────────────────────────────────────
 
-describe("accordo.editor.discover handler", () => {
-  const discoverTool = editorTools.find(t => t.name === "accordo.editor.discover")!;
-
-  it("REG-03b: discover tool has no group (visible in prompt)", () => {
-    expect(discoverTool).toBeDefined();
-    expect(discoverTool).not.toHaveProperty("group");
-  });
-
-  it("REG-03b: handler returns { group, tools } with all 11 editor tools", async () => {
-    const result = await discoverTool.handler({}) as { group: string; tools: unknown[] };
-    expect(result.group).toBe("editor");
-    expect(result.tools).toHaveLength(11);
-  });
-
-  it("REG-03b: returned tools contain name, description, inputSchema, dangerLevel, idempotent", async () => {
-    const result = await discoverTool.handler({}) as { tools: Record<string, unknown>[] };
-    for (const t of result.tools) {
-      expect(t).toHaveProperty("name");
-      expect(t).toHaveProperty("description");
-      expect(t).toHaveProperty("inputSchema");
-      expect(t).toHaveProperty("dangerLevel");
-      expect(t).toHaveProperty("idempotent");
-    }
-  });
-
-  it("REG-03b: discover tool itself is not in the returned tools list", async () => {
-    const result = await discoverTool.handler({}) as { tools: { name: string }[] };
-    const names = result.tools.map(t => t.name);
-    expect(names).not.toContain("accordo.editor.discover");
-  });
-
-  it("REG-03b: all 11 grouped editor tools are in the returned list", async () => {
-    const result = await discoverTool.handler({}) as { tools: { name: string }[] };
-    const names = result.tools.map(t => t.name);
-    expect(names).toContain("accordo.editor.open");
-    expect(names).toContain("accordo.editor.close");
-    expect(names).toContain("accordo.editor.scroll");
-    expect(names).toContain("accordo.editor.split");
-    expect(names).toContain("accordo.editor.focus");
-    expect(names).toContain("accordo.editor.reveal");
-    expect(names).toContain("accordo.editor.highlight");
-    expect(names).toContain("accordo.editor.clearHighlights");
-    expect(names).toContain("accordo.editor.save");
-    expect(names).toContain("accordo.editor.saveAll");
-    expect(names).toContain("accordo.editor.format");
-  });
-});

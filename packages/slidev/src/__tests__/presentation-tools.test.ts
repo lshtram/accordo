@@ -50,15 +50,14 @@ function getToolByName(tools: ReturnType<typeof createPresentationTools>, name: 
 // ── Tool count and names ──────────────────────────────────────────────────────
 
 describe("createPresentationTools — tool count and names", () => {
-  it("M44-TL-01 through M44-TL-09: returns exactly 9 tools", () => {
+  it("M44-TL-02 through M44-TL-09: returns exactly 8 tools", () => {
     const tools = createPresentationTools(makeDeps());
-    expect(tools).toHaveLength(9);
+    expect(tools).toHaveLength(8);
   });
 
-  it("M44-TL-01 through M44-TL-09: all expected tool names present", () => {
+  it("M44-TL-02 through M44-TL-09: all expected tool names present", () => {
     const tools = createPresentationTools(makeDeps());
     const names = tools.map((t) => t.name);
-    expect(names).toContain("accordo.presentation.discover");
     expect(names).toContain("accordo.presentation.open");
     expect(names).toContain("accordo.presentation.close");
     expect(names).toContain("accordo.presentation.listSlides");
@@ -73,18 +72,6 @@ describe("createPresentationTools — tool count and names", () => {
 // ── Grouping and danger levels ────────────────────────────────────────────────
 
 describe("createPresentationTools — grouping and danger levels", () => {
-  it("M44-TL-01: discover has no group (prompt-visible)", () => {
-    const tools = createPresentationTools(makeDeps());
-    const discover = getToolByName(tools, "accordo.presentation.discover");
-    expect(discover.group).toBeUndefined();
-  });
-
-  it("M44-TL-01: discover danger level is 'safe'", () => {
-    const tools = createPresentationTools(makeDeps());
-    const discover = getToolByName(tools, "accordo.presentation.discover");
-    expect(discover.dangerLevel).toBe("safe");
-  });
-
   it("M44-TL-02: open is in group 'presentation'", () => {
     const tools = createPresentationTools(makeDeps());
     const open = getToolByName(tools, "accordo.presentation.open");
@@ -118,18 +105,6 @@ describe("createPresentationTools — grouping and danger levels", () => {
       expect(tool.group).toBe("presentation");
       expect(tool.dangerLevel).toBe("safe");
     }
-  });
-});
-
-// ── Handler: discover ─────────────────────────────────────────────────────────
-
-describe("accordo.presentation.discover handler", () => {
-  it("M44-TL-01: calls discoverDeckFiles and returns result", async () => {
-    const deps = makeDeps();
-    const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo.presentation.discover").handler({});
-    expect(deps.discoverDeckFiles).toHaveBeenCalled();
-    expect(result).toEqual(expect.objectContaining({ decks: expect.any(Array) }));
   });
 });
 

@@ -294,17 +294,4 @@ export const terminalTools: ExtensionToolDefinition[] = [
     idempotent: true,
     handler: wrapHandler("accordo.terminal.close", terminalCloseHandler),
   },
-  {
-    name: "accordo.terminal.discover",
-    description: "Returns full schemas for all 5 terminal tools: open, run, focus, list, close.",
-    inputSchema: { type: "object", properties: {}, required: [] },
-    dangerLevel: "safe",
-    idempotent: true,
-    handler: async () => ({
-      group: "terminal",
-      tools: terminalTools
-        .filter(t => t.group === "terminal")
-        .map(({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation }) => ({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation })),
-    }),
-  },
 ];

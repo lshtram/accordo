@@ -96,19 +96,6 @@ export function createPresentationTools(
   deps: PresentationToolDeps,
 ): ExtensionToolDefinition[] {
   return [
-    // ── M44-TL-01: discover ──────────────────────────────────────────────────
-    {
-      name: "accordo.presentation.discover",
-      description: "List Slidev presentation deck files in the workspace. Only returns actual Slidev decks (files with Slidev YAML frontmatter or deck naming conventions), not regular markdown documents. Use accordo.presentation.open to start a session.",
-      dangerLevel: "safe",
-      // No group: prompt-visible
-      inputSchema: { type: "object", properties: {}, required: [] },
-      handler: async (_args) => {
-        const decks = await deps.discoverDeckFiles();
-        return { decks };
-      },
-    },
-
     // ── M44-TL-02: open ──────────────────────────────────────────────────────
     {
       name: "accordo.presentation.open",

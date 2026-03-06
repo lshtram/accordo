@@ -177,8 +177,6 @@ export function renderPrompt(
 
   // ── Tool section ─────────────────────────────────────────────────────────
   // Show every registered tool — all are directly callable via MCP.
-  // No progressive disclosure: grouped and ungrouped tools all appear here.
-  // The .discover tools remain available for fetching full JSON schemas on demand.
   //
   // Budget guard: if state + tools exceeds the effective token budget, fall
   // back to name-only format for all tools. With 40 spec-compliant tools

@@ -278,20 +278,6 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
     },
   ];
 
-  tools.push({
-    name: "accordo.comments.discover",
-    description: "Get schemas for 6 review-thread tools (VS Code gutter panel, NOT code comments): list/get/create/reply/resolve/delete.",
-    inputSchema: { type: "object", properties: {}, required: [] },
-    dangerLevel: "safe",
-    idempotent: true,
-    handler: async () => ({
-      group: "comments",
-      tools: tools
-        .filter(t => t.group === "comments")
-        .map(({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation }) => ({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation })),
-    }),
-  });
-
   return tools;
 }
 

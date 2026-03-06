@@ -171,17 +171,4 @@ export const layoutTools: ExtensionToolDefinition[] = [
     idempotent: true,
     handler: wrapHandler("accordo.layout.evenGroups", layoutEvenGroupsHandler),
   },
-  {
-    name: "accordo.layout.discover",
-    description: "Returns full schemas for all 5 layout tools: panel toggle, zen, fullscreen, joinGroups, evenGroups.",
-    inputSchema: { type: "object", properties: {}, required: [] },
-    dangerLevel: "safe",
-    idempotent: true,
-    handler: async () => ({
-      group: "layout",
-      tools: layoutTools
-        .filter(t => t.group === "layout")
-        .map(({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation }) => ({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation })),
-    }),
-  },
 ];

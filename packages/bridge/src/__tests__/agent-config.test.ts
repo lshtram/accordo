@@ -16,6 +16,7 @@ import {
   writeOpencodeConfig,
   writeClaudeConfig,
   writeAgentConfigs,
+  writeVscodeSettings,
   ACCORDO_SCHEMA_VERSION,
 } from "../agent-config.js";
 import type { AgentConfigParams } from "../agent-config.js";
@@ -440,6 +441,100 @@ describe("writeAgentConfigs — CFG-07: rewrite on token rotation", () => {
 
     expect(opencode.mcp["accordo-hub"].headers["Authorization"]).toBe("Bearer v2");
     expect(claude.mcpServers["accordo-hub"].headers["Authorization"]).toBe("Bearer v2");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// writeVscodeSettings — CFG-11
+// ---------------------------------------------------------------------------
+
+describe("writeVscodeSettings — CFG-11", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "accordo-vscode-settings-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("CFG-11: creates .vscode/settings.json with threshold 300 when file absent", () => {
+    writeVscodeSettings(tmpDir);
+    const settingsPath = path.join(tmpDir, ".vscode", "settings.json");
+    expect(fs.existsSync(settingsPath)).toBe(true);
+    const content = JSON.parse(fs.readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
+    expect(content["github.copilot.chat.virtualTools.threshold"]).toBe(300);
+  });
+
+  it("CFG-11: merges with existing settings without overwriting other keys", () => {
+    const vscodeDir = path.join(tmpDir, ".vscode");
+    fs.mkdirSync(vscodeDir);
+    fs.writeFileSync(
+      path.join(vscodeDir, "settings.json"),
+      JSON.stringify({ "editor.fontSize": 14, "other.setting": true }),
+    );
+    writeVscodeSettings(tmpDir);
+    const content = JSON.parse(
+      fs.readFileSync(path.join(vscodeDir, "settings.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(content["editor.fontSize"]).toBe(14);
+    expect(content["other.setting"]).toBe(true);
+    expect(content["github.copilot.chat.virtualTools.threshold"]).toBe(300);
+  });
+
+  it("CFG-11: skips write when threshold is already >= 300", () => {
+    const vscodeDir = path.join(tmpDir, ".vscode");
+    fs.mkdirSync(vscodeDir);
+    const settingsPath = path.join(vscodeDir, "settings.json");
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({ "github.copilot.chat.virtualTools.threshold": 400 }),
+    );
+    const mtimeBefore = fs.statSync(settingsPath).mtimeMs;
+    writeVscodeSettings(tmpDir);
+    const mtimeAfter = fs.statSync(settingsPath).mtimeMs;
+    expect(mtimeAfter).toBe(mtimeBefore);
+  });
+
+  it("CFG-11: creates .vscode/ directory if absent", () => {
+    const vscodeDir = path.join(tmpDir, ".vscode");
+    expect(fs.existsSync(vscodeDir)).toBe(false);
+    writeVscodeSettings(tmpDir);
+    expect(fs.existsSync(vscodeDir)).toBe(true);
+  });
+
+  it("CFG-11: backs up corrupt JSON and writes fresh settings", () => {
+    const vscodeDir = path.join(tmpDir, ".vscode");
+    fs.mkdirSync(vscodeDir);
+    const settingsPath = path.join(vscodeDir, "settings.json");
+    fs.writeFileSync(settingsPath, "{ this is not valid json");
+    writeVscodeSettings(tmpDir);
+    expect(fs.existsSync(settingsPath + ".bak")).toBe(true);
+    const content = JSON.parse(fs.readFileSync(settingsPath, "utf8")) as Record<string, unknown>;
+    expect(content["github.copilot.chat.virtualTools.threshold"]).toBe(300);
+  });
+
+  it("CFG-11: writeAgentConfigs calls writeVscodeSettings by default", () => {
+    const paramsDir = fs.mkdtempSync(path.join(os.tmpdir(), "accordo-cfg11-default-"));
+    try {
+      writeAgentConfigs(makeParams(paramsDir, { configureOpencode: false, configureClaude: false }));
+      const settingsPath = path.join(paramsDir, ".vscode", "settings.json");
+      expect(fs.existsSync(settingsPath)).toBe(true);
+    } finally {
+      fs.rmSync(paramsDir, { recursive: true, force: true });
+    }
+  });
+
+  it("CFG-11: writeAgentConfigs skips writeVscodeSettings when configureVscodeSettings is false", () => {
+    const paramsDir = fs.mkdtempSync(path.join(os.tmpdir(), "accordo-cfg11-skip-"));
+    try {
+      writeAgentConfigs(makeParams(paramsDir, { configureOpencode: false, configureClaude: false, configureVscodeSettings: false }));
+      const settingsPath = path.join(paramsDir, ".vscode", "settings.json");
+      expect(fs.existsSync(settingsPath)).toBe(false);
+    } finally {
+      fs.rmSync(paramsDir, { recursive: true, force: true });
+    }
   });
 });
 

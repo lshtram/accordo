@@ -591,17 +591,4 @@ export const editorTools: ExtensionToolDefinition[] = [
     idempotent: true,
     handler: wrapHandler("accordo.editor.format", formatHandler),
   },
-  {
-    name: "accordo.editor.discover",
-    description: "Returns full schemas for all 11 editor tools: open, close, scroll, split, focus, reveal, highlight, clearHighlights, save, saveAll, format.",
-    inputSchema: { type: "object", properties: {}, required: [] },
-    dangerLevel: "safe",
-    idempotent: true,
-    handler: async () => ({
-      group: "editor",
-      tools: editorTools
-        .filter(t => t.group === "editor")
-        .map(({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation }) => ({ name, description, inputSchema, dangerLevel, idempotent, requiresConfirmation })),
-    }),
-  },
 ];
