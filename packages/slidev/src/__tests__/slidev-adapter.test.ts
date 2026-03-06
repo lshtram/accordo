@@ -119,6 +119,29 @@ describe("SlidevAdapter.listSlides", () => {
 // ── goto / next / prev ────────────────────────────────────────────────────────
 
 describe("SlidevAdapter navigation", () => {
+  beforeEach(() => {
+    // goto()     → POST /navigate/{n} (no body returned)
+    // getCurrent → GET  /json         (returns { cursor, total })
+    // We replay the cursor from the adapter's own currentIndex for /json calls
+    // so getCurrent() reflects whatgoto() set, not a hardcoded value.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          // POST /navigate/{n} — Slidev nav endpoint
+          return Promise.resolve({ ok: true });
+        }
+        // GET /json — return cursor = 0 (tests that need specific cursor use getCurrent suite)
+        return Promise.resolve({
+          ok: false, // force fallback to internal cursor
+        } as Response);
+      }),
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("M44-TL-06 / M44-RT-03: goto(0) succeeds — first slide", async () => {
     const adapter = makeAdapter();
     await expect(adapter.goto(0)).resolves.toBeUndefined();
@@ -184,12 +207,13 @@ describe("SlidevAdapter.getCurrent", () => {
   });
 
   it("M44-RT-06 / M44-TL-05: polls GET /json and returns index and title", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
+    // goto() also calls fetch (POST /navigate), so use mockResolvedValue (all calls)
+    vi.mocked(fetch).mockResolvedValue({
       ok: true,
       json: async () => ({ cursor: 1, total: 3 }),
     } as Response);
     const adapter = makeAdapter();
-    await adapter.goto(0); // set slides first
+    await adapter.goto(0); // also calls fetch — consumed by navigate POST
     const result = await adapter.getCurrent();
     expect(result.index).toBe(1);
     expect(typeof result.title).toBe("string");
@@ -197,7 +221,10 @@ describe("SlidevAdapter.getCurrent", () => {
   });
 
   it("M44-RT-06: falls back to internal cursor when /json fetch fails", async () => {
-    vi.mocked(fetch).mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    // goto calls POST /navigate (succeeds); getCurrent calls GET /json (fails)
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({ ok: true } as Response) // navigate POST
+      .mockRejectedValueOnce(new Error("ECONNREFUSED")); // /json GET
     const adapter = makeAdapter();
     await adapter.goto(1);
     const result = await adapter.getCurrent();
@@ -206,7 +233,7 @@ describe("SlidevAdapter.getCurrent", () => {
   });
 
   it("M44-RT-06: uses port from constructor options in the fetch URL", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
+    vi.mocked(fetch).mockResolvedValue({
       ok: true,
       json: async () => ({ cursor: 0, total: 3 }),
     } as Response);
@@ -263,6 +290,112 @@ describe("SlidevAdapter.dispose", () => {
     adapter.dispose();
     // A goto after dispose should not call listeners (no active subscription)
     await adapter.goto(1).catch(() => { /* may throw post-dispose — acceptable */ });
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+// ── goto HTTP navigation ──────────────────────────────────────────────────────
+
+describe("SlidevAdapter.goto HTTP navigation", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("M44-RT-03 / M44-TL-06: calls POST /navigate/{index} on the Slidev server", async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: true } as Response);
+    const adapter = makeAdapter();
+    await adapter.goto(1);
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/navigate/1"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    adapter.dispose();
+  });
+
+  it("M44-RT-03: does not throw when Slidev server is unreachable", async () => {
+    vi.mocked(fetch).mockRejectedValue(new Error("ECONNREFUSED"));
+    const adapter = makeAdapter();
+    await expect(adapter.goto(0)).resolves.toBeUndefined();
+    adapter.dispose();
+  });
+
+  it("M44-RT-03: skips HTTP call when port is 0 (validation-only adapter)", async () => {
+    const adapter = new SlidevAdapter({ port: 0, deck: makeDeck(), pollIntervalMs: 50 });
+    await adapter.goto(1);
+    expect(fetch).not.toHaveBeenCalled();
+    adapter.dispose();
+  });
+});
+
+// ── startPolling ──────────────────────────────────────────────────────────────
+
+describe("SlidevAdapter.startPolling", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("M44-RT-04: emits onSlideChanged when server cursor differs from local", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ cursor: 2, total: 3 }),
+    } as Response);
+    const adapter = makeAdapter();
+    const listener = vi.fn();
+    adapter.onSlideChanged(listener);
+    adapter.startPolling();
+    // Advance timer to trigger one poll
+    await vi.advanceTimersByTimeAsync(100);
+    expect(listener).toHaveBeenCalledWith(2);
+    adapter.dispose();
+  });
+
+  it("M44-RT-04: does not emit when server cursor matches local cursor", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ cursor: 0, total: 3 }),
+    } as Response);
+    const adapter = makeAdapter(); // starts at index 0
+    const listener = vi.fn();
+    adapter.onSlideChanged(listener);
+    adapter.startPolling();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(listener).not.toHaveBeenCalled();
+    adapter.dispose();
+  });
+
+  it("M44-RT-04: calling startPolling() twice does not create duplicate timers", () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ cursor: 0, total: 3 }),
+    } as Response);
+    const adapter = makeAdapter();
+    adapter.startPolling();
+    adapter.startPolling(); // second call should be a no-op
+    adapter.dispose();
+  });
+
+  it("M44-RT-04: polling stops after dispose()", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ cursor: 2, total: 3 }),
+    } as Response);
+    const adapter = makeAdapter();
+    const listener = vi.fn();
+    adapter.onSlideChanged(listener);
+    adapter.startPolling();
+    adapter.dispose();
+    // Advance timer — listener must NOT be called after dispose
+    await vi.advanceTimersByTimeAsync(200);
     expect(listener).not.toHaveBeenCalled();
   });
 });

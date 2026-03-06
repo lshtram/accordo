@@ -95,6 +95,7 @@ export class SlidevAdapter implements PresentationRuntimeAdapter {
   /**
    * M44-TL-06 / M44-RT-03
    * Throws RangeError if index is out of bounds.
+   * Calls POST /navigate/{index} on the Slidev server to actually navigate.
    */
   async goto(index: number): Promise<void> {
     if (index < 0 || index >= this.deck.slides.length) {
@@ -102,11 +103,48 @@ export class SlidevAdapter implements PresentationRuntimeAdapter {
         `Slide index ${index} out of bounds (0–${this.deck.slides.length - 1})`,
       );
     }
+    // Call Slidev HTTP API to actually navigate the running server (0-based index).
+    // Ignore errors — adapter falls back to local cursor if server is unreachable.
+    if (this.port > 0) {
+      try {
+        await fetch(`http://localhost:${this.port}/navigate/${index}`, { method: "POST" });
+      } catch {
+        // Server not yet ready or unreachable — update local state only
+      }
+    }
     const prev = this.currentIndex;
     this.currentIndex = index;
     if (prev !== index) {
       this.emitSlideChanged(index);
     }
+  }
+
+  /**
+   * M44-RT-04
+   * Starts polling GET /json every pollIntervalMs and emits onSlideChanged
+   * when the server's cursor differs from the local cursor.
+   * Safe to call multiple times — subsequent calls are no-ops.
+   */
+  startPolling(): void {
+    if (this.pollTimer !== null || this.port <= 0) return;
+    this.pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(`http://localhost:${this.port}/json`);
+        if (res.ok) {
+          const json = (await res.json()) as { cursor: number; total: number };
+          const serverIndex = json.cursor;
+          if (serverIndex !== this.currentIndex) {
+            const prev = this.currentIndex;
+            this.currentIndex = serverIndex;
+            if (prev !== serverIndex) {
+              this.emitSlideChanged(serverIndex);
+            }
+          }
+        }
+      } catch {
+        // Server not yet ready — keep polling
+      }
+    }, this.pollIntervalMs);
   }
 
   /** M44-TL-07 */
@@ -138,7 +176,7 @@ export class SlidevAdapter implements PresentationRuntimeAdapter {
    * M44-RT-05
    * A valid Slidev deck must:
    *   - Be non-empty
-   *   - Contain at least one `---` separator (more than one slide, or a front-matter block)
+   * Content without a "---" separator is a valid single-slide deck.
    */
   validateDeck(deckFsPath: string, deckContent: string): DeckValidationResult {
     if (!deckContent || !deckContent.trim()) {

@@ -31,6 +31,16 @@
         }
       ]
     },
+    "customEditors": [
+      {
+        "viewType": "accordo.deckPresentation",
+        "displayName": "Accordo Presentation",
+        "selector": [
+          { "filenamePattern": "*.deck.md" }
+        ],
+        "priority": "default"
+      }
+    ],
     "languages": [
       {
         "id": "slidev-deck",

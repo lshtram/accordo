@@ -41,6 +41,8 @@ export type { BridgeAPI };
 interface SessionState {
   adapter: PresentationRuntimeAdapter | null;
   deck: ParsedDeck | null;
+  /** Subscription for adapter.onSlideChanged — disposed when session closes. */
+  slideSubscription: { dispose(): void } | null;
 }
 
 /**
@@ -96,7 +98,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   // Session-local mutable state (reset on close)
-  const session: SessionState = { adapter: null, deck: null };
+  const session: SessionState = { adapter: null, deck: null, slideSubscription: null };
 
   // M44-EXT-02: Tool deps wiring
   const toolDeps: PresentationToolDeps = {
@@ -179,6 +181,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         });
 
         await provider.open(deckUri, adapter, commentsBridge);
+
+        // M44-RT-04: start polling the Slidev server and push slide-index updates
+        // to the webview and state contribution whenever the user navigates manually.
+        adapter.startPolling();
+        session.slideSubscription = adapter.onSlideChanged((index) => {
+          stateContrib.update({ currentSlide: index });
+          provider.getPanel()?.webview.postMessage({ type: "slide-index", index });
+        });
+
         return {};
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
@@ -187,6 +198,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     closeSession: () => {
       provider.close();
+      session.slideSubscription?.dispose();
+      session.slideSubscription = null;
       session.adapter?.dispose();
       session.adapter = null;
       session.deck = null;
@@ -291,11 +304,45 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
+  // M44-EXT-08: CustomTextEditorProvider for .deck.md files.
+  // When a .deck.md file is activated in the explorer or editor, VS Code hands
+  // it to this provider. We immediately start a presentation session AND show a
+  // minimal "opening…" webview so VS Code has a panel to display. The webview
+  // is replaced once the real PresentationProvider panel is ready.
+  const deckEditorProvider: vscode.CustomTextEditorProvider = {
+    resolveCustomTextEditor(
+      document: vscode.TextDocument,
+      webviewPanel: vscode.WebviewPanel,
+    ): void | Thenable<void> {
+      // Show a brief loading screen while the session initialises
+      webviewPanel.webview.html = `<!DOCTYPE html><html><body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#ccc;background:#1e1e1e"><p>Opening presentation…</p></body></html>`;
+      // Open the real session (PresentationProvider creates its own panel beside)
+      void toolDeps.openSession(document.uri.fsPath).then((result) => {
+        if (result.error) {
+          webviewPanel.webview.html = `<!DOCTYPE html><html><body style="padding:20px;font-family:sans-serif;color:#f44;background:#1e1e1e"><p>Failed to open deck: ${result.error}</p></body></html>`;
+        } else {
+          // Session opened successfully — dispose this transient panel.
+          webviewPanel.dispose();
+        }
+      });
+    },
+  };
+
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(
+      "accordo.deckPresentation",
+      deckEditorProvider,
+      { webviewOptions: { retainContextWhenHidden: false }, supportsMultipleEditorsPerDocument: false },
+    ),
+  );
+
   // M44-EXT-05: Publish initial state
   stateContrib.update({});
 
   // Reset state on provider dispose (M44-PVD-06)
   provider.onDispose(() => {
+    session.slideSubscription?.dispose();
+    session.slideSubscription = null;
     session.adapter?.dispose();
     session.adapter = null;
     session.deck = null;

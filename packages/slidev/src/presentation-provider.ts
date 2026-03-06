@@ -18,6 +18,7 @@
  */
 
 import * as vscode from "vscode";
+import { dirname } from "node:path";
 import type {
   ProcessSpawner,
   ChildProcessHandle,
@@ -106,7 +107,7 @@ export class PresentationProvider {
 
     // M44-PVD-02: spawn Slidev dev server
     // cwd = directory containing the deck so Slidev resolves relative assets
-    const deckDir = deckUri.replace(/\/[^\/]+$/, "") || undefined;
+    const deckDir = dirname(deckUri) || undefined;
     const handle = this.options.spawner(
       "npx",
       ["slidev", deckUri, "--port", String(port), "--remote", "false"],

@@ -94,7 +94,9 @@ export const window = {
   createWebviewPanel: vi.fn().mockReturnValue(mockPanel),
   showErrorMessage: vi.fn(),
   showInformationMessage: vi.fn(),
+  showQuickPick: vi.fn().mockResolvedValue(undefined),
   activeTextEditor: null as null | { document: { uri: Uri; fsPath?: string } },
+  registerCustomEditorProvider: vi.fn().mockReturnValue({ dispose: vi.fn() }),
 };
 
 // ── workspace ─────────────────────────────────────────────────────────────────
