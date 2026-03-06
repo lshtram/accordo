@@ -4,40 +4,6 @@ theme: default
 colorSchema: dark
 ---
 
-<style>
-/* Force navigation controls to always be visible in both light and dark modes.
-   Slidev default theme uses UnoCSS `opacity-0 hover:opacity-100` on nav wrapper,
-   and the nav element is .slidev-nav (not a semantic <nav>). */
-
-/* Always-visible nav controls */
-.slidev-nav,
-.nav-controls,
-[class*="slidev-nav"],
-.bottom-3.fixed {
-  opacity: 1 !important;
-}
-
-/* Ensure nav icon buttons are always visible */
-.slidev-icon-btn,
-button.slidev-icon-btn,
-.nav-controls button {
-  opacity: 1 !important;
-  color: #ccc !important;
-}
-.slidev-icon-btn:hover { color: #fff !important; }
-
-/* Light mode: nav bar background contrast */
-html:not(.dark) .slidev-nav,
-html:not(.dark) .nav-controls {
-  background: rgba(40, 40, 55, 0.92) !important;
-}
-/* Dark mode */
-.dark .slidev-nav,
-.dark .nav-controls {
-  background: rgba(18, 18, 18, 0.85) !important;
-}
-</style>
-
 # Accordo IDE
 
 AI-native development environment built on VS Code.

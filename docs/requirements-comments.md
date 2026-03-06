@@ -269,21 +269,62 @@ interface AccordoComment {
 | M40-EXT-08 | All disposables pushed to `context.subscriptions` |
 | M40-EXT-09 | Exposes internal commands for inter-extension calls from `accordo-md-viewer`, including `accordo.comments.internal.getStore` |
 | M40-EXT-10 | `deactivate()` exported (empty implementation) |
+| M40-EXT-11 | Exposes `accordo.comments.internal.getSurfaceAdapter` — a generalized surface adapter command for any surface modality (slides, diagrams, browser, etc.) |
 
 ---
 
 ## 5. Internal Command Protocol
 
-`accordo-comments` exposes internal VS Code commands for consumption by `accordo-md-viewer`:
+`accordo-comments` exposes internal VS Code commands for consumption by other Accordo extensions.
+
+### 5.1 Existing commands (markdown-preview-specific)
 
 | Command | Arguments | Returns |
 |---|---|---|
-| `accordo.comments.internal.getStore` | none | store adapter `{ createThread, reply, resolve, reopen, delete, getThreadsForUri, onChanged }` |
+| `accordo.comments.internal.getStore` | none | store adapter `{ createThread, reply, resolve, reopen, delete, getThreadsForUri, onChanged }` — markdown-preview-specific (takes `blockId` + optional `line`) |
 | `accordo.comments.internal.getThreadsForUri` | `uri: string` | `CommentThread[]` |
 | `accordo.comments.internal.createSurfaceComment` | `{ uri, anchor, body, intent? }` | `CreateCommentResult` |
 | `accordo.comments.internal.resolveThread` | `threadId: string` | `void` |
 
+### 5.2 Generalized Surface Adapter (new — M40-EXT-11)
+
+| Command | Arguments | Returns |
+|---|---|---|
+| `accordo.comments.internal.getSurfaceAdapter` | none | `SurfaceCommentAdapter` (see below) |
+
+The generalized adapter allows **any surface modality** (slides, Excalidraw, browser extension, future surfaces) to create comment threads with full anchor control. Unlike `getStore`, which constructs anchors internally from `blockId`, this adapter lets the caller provide the complete `CommentAnchor`.
+
+```ts
+interface SurfaceCommentAdapter {
+  createThread(args: {
+    uri: string;
+    anchor: CommentAnchor;     // caller constructs the full anchor
+    body: string;
+    intent?: string;
+  }): Promise<CommentThread>;
+  reply(args: { threadId: string; body: string }): Promise<void>;
+  resolve(args: { threadId: string; resolutionNote?: string }): Promise<void>;
+  reopen(args: { threadId: string }): Promise<void>;
+  delete(args: { threadId: string; commentId?: string }): Promise<void>;
+  getThreadsForUri(uri: string): CommentThread[];
+  onChanged(listener: (uri: string) => void): { dispose(): void };
+}
+```
+
+**Modality anchor examples:**
+
+| Surface | surfaceType | Coordinates |
+|---|---|---|
+| Markdown preview | `"markdown-preview"` | `BlockCoordinates { type: "block", blockId, blockType }` |
+| Slides | `"slide"` | `SlideCoordinates { type: "slide", slideIndex, x, y }` |
+| Excalidraw (Phase 5) | `"diagram"` | `DiagramNodeCoordinates { type: "diagram-node", nodeId }` |
+| Browser (future) | `"browser"` | `NormalizedCoordinates { type: "normalized", x, y }` |
+
 These are `vscode.commands.executeCommand` invocations — not MCP tools.
+
+### 5.3 Backwards compatibility
+
+The existing `getStore` command remains unchanged. `md-viewer` continues to use it. The new `getSurfaceAdapter` is additive — no existing consumers are affected.
 
 ---
 
@@ -295,7 +336,7 @@ These are `vscode.commands.executeCommand` invocations — not MCP tools.
 | NativeComments | `src/__tests__/native-comments.test.ts` | M37-NC-01 → M37-NC-09 |
 | CommentTools | `src/__tests__/comment-tools.test.ts` | M38-CT-01 → M38-CT-09 |
 | StateContribution | `src/__tests__/state-contribution.test.ts` | M39-SC-01 → M39-SC-06 |
-| extension (entry) | `src/__tests__/extension.test.ts` | M40-EXT-01 → M40-EXT-10 |
+| extension (entry) | `src/__tests__/extension.test.ts` | M40-EXT-01 → M40-EXT-11 |
 
 ---
 

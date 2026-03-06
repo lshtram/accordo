@@ -9,7 +9,7 @@
 
 import * as vscode from "vscode";
 import type { CommentStore } from "./comment-store.js";
-import type { CommentThread, CommentAnchor, CommentAnchorText, CommentAnchorSurface, AccordoComment } from "@accordo/bridge-types";
+import type { CommentThread, CommentAnchor, CommentAnchorText, CommentAnchorSurface, SlideCoordinates, AccordoComment } from "@accordo/bridge-types";
 
 // ── Intent label map ──────────────────────────────────────────────────────────
 
@@ -394,11 +394,6 @@ export class NativeComments {
   private _createWidget(thread: CommentThread): void {
     if (!this._controller) return;
 
-    // Surface-anchored (slide) comments are displayed in the presentation webview
-    // overlay, not the VS Code Comments panel. Creating a native widget here would
-    // point to the deck .md file and open it in markdown preview when clicked.
-    if (thread.anchor.kind === "surface") return;
-
     const uri = vscode.Uri.parse(thread.anchor.uri);
     let range: vscode.Range;
 
@@ -414,20 +409,40 @@ export class NativeComments {
     const vsComments = thread.comments.map(c => this._buildVsComment(c, thread.status));
     const intent = thread.comments[0]?.intent;
 
+    // For surface-anchored comments (slides), include the slide number in the label
+    // so the user can identify which slide the comment belongs to.
+    const slideTag = this._getSurfaceSlideTag(thread.anchor);
+
     const widget = this._controller.createCommentThread(uri, range, vsComments);
     widget.contextValue = thread.status;
     if (thread.status === "resolved") {
       widget.state = vscode.CommentThreadState.Resolved;
-      widget.label = intent ? `✓ Resolved  ·  ${INTENT_LABEL[intent] ?? intent}` : "✓ Resolved";
+      const parts = ["✓ Resolved"];
+      if (slideTag) parts.push(slideTag);
+      if (intent) parts.push(INTENT_LABEL[intent] ?? intent);
+      widget.label = parts.join("  ·  ");
       widget.canReply = false;
       widget.collapsibleState = vscode.CommentThreadCollapsibleState.Collapsed;
     } else {
       widget.state = vscode.CommentThreadState.Unresolved;
-      widget.label = intent ? INTENT_LABEL[intent] ?? intent : undefined;
+      const parts: string[] = [];
+      if (slideTag) parts.push(slideTag);
+      if (intent) parts.push(INTENT_LABEL[intent] ?? intent);
+      widget.label = parts.length > 0 ? parts.join("  ·  ") : undefined;
       widget.canReply = { name: "You" };
       widget.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
     }
     this._widgets.set(thread.id, widget);
+  }
+
+  /** Extract a "Slide N" tag from a surface anchor if it has slide coordinates. */
+  private _getSurfaceSlideTag(anchor: CommentAnchor): string | null {
+    if (anchor.kind !== "surface") return null;
+    const surface = anchor as CommentAnchorSurface;
+    if (surface.coordinates.type === "slide") {
+      return `Slide ${(surface.coordinates as SlideCoordinates).slideIndex + 1}`;
+    }
+    return surface.surfaceType === "slide" ? "Slide" : null;
   }
 
   /** Look up the store threadId for a VSCode widget. Returns undefined for unsaved draft threads. */
