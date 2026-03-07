@@ -2,7 +2,7 @@
 
 **Package:** `accordo-voice` (new VS Code extension)  
 **Type:** VS Code extension — STT, TTS, narration, scripted sequences  
-**Session:** 10A (core + tools), 10B (scripted narration + text cleaning)  
+**Session:** 10A (core + tools), 10B (scripted narration + summary mode)  
 **Date:** 2026-03-07  
 **Source code reference:** `theia-openspace/openspace-voice-vscode/` + `theia-openspace/extensions/openspace-voice/` + `theia-openspace/packages/voice-core/`  
 **Architecture reference:** [`docs/voice-architecture.md`](voice-architecture.md)
@@ -26,8 +26,8 @@
 5. **Integrated:** Voice tools compose with all existing Accordo commands — editor, presentation, comments, diagrams — enabling rich scripted walkthroughs.
 
 **Session split:**
-- **Session 10A:** voice-core port, provider abstraction, STT/TTS adapters, FSMs, Bridge registration, MCP tools (`voice.readAloud`, `voice.dictation`, `voice.setPolicy`, `voice.discover`), status bar, WebviewView voice panel. Text cleaning (deterministic) included here as it's needed by `readAloud`.
-- **Session 10B:** Scripted narration runtime (`voice.narrate`), LLM-powered summary mode, sentence streaming, utterance library, integration tests with slidev/editor.
+- **Session 10A:** voice-core port, provider abstraction, STT/TTS adapters, FSMs, Bridge registration, MCP tools (`accordo_voice_readAloud`, `accordo_voice_dictation`, `accordo_voice_setPolicy`, `accordo_voice_discover`), status bar, WebviewView voice panel. Deterministic text cleaning included here (needed by `readAloud`).
+- **Session 10B:** Scripted narration runtime (`accordo_voice_narrate`), LLM-powered summary mode, sentence streaming, utterance library, integration tests with slidev/editor.
 
 ---
 
@@ -569,7 +569,7 @@ packages/voice/
 | M50-EXT-14 | State contribution shape: `{ session: SessionState, narration: NarrationState, audio: AudioState, policy: VoicePolicy, sttAvailable: boolean, ttsAvailable: boolean }` |
 | M50-EXT-15 | Sets context key `accordo.voice.narrating` (boolean) for `when` clause on Escape keybinding |
 | M50-EXT-16 | `deactivate()` disposes TTS adapter and all resources |
-| M50-EXT-17 | Extension activates on `onView:accordo-voice-panel` and `onCommand:accordo.voice.*` activation events |
+| M50-EXT-17 | Extension activation events: `onStartupFinished` (ensures MCP tools are registered at VS Code startup without any user action), `onView:accordo-voice-panel`, and `onCommand:accordo.voice.*` |
 | M50-EXT-18 | Graceful degradation: extension activates even without Bridge (BridgeAPI may be null); tools not registered, but local commands still work |
 
 ---
@@ -597,7 +597,7 @@ These modules are defined here for architectural completeness but will be fully 
 | M51-NR-06 | `command` step: calls `vscode.commands.executeCommand(command, ...args)` — any VS Code / Accordo command |
 | M51-NR-07 | `delay` step: waits specified milliseconds |
 | M51-NR-08 | `await-speech` step: blocks until current TTS playback finishes |
-| M51-NR-09 | `highlight` step: calls `accordo_editor_highlight` or applies a temporary decoration on the specified range |
+| M51-NR-09 | `highlight` step: applies a `TextEditorDecorationType` directly via VS Code decoration API on the specified file range |
 | M51-NR-10 | `clear-highlight` step: removes temporary decorations |
 | M51-NR-11 | Steps execute sequentially; any step failure can be `skip` or `abort` per configurable error policy |
 | M51-NR-12 | Cancellation: `cancel()` method stops playback and skips remaining steps |

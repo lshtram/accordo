@@ -47,7 +47,7 @@ The `@openspace-ai/voice-core` package provides `SttProvider`/`TtsProvider` inte
 
 Rather than having the agent call MCP tools step-by-step for a multi-step walkthrough (which requires N MCP round-trips and yields poor timing control), the agent generates a complete `NarrationScript` in one shot and passes it to `accordo_voice_narrate`. The `ScriptRunner` then executes the script autonomously.
 
-**Why this is feasible:** All Accordo capabilities are already registered as VS Code commands. `ScriptRunner` just calls `vscode.commands.executeCommand()` for command steps — no special access is needed.
+**Why this is feasible:** Extension-registered VS Code commands (`accordo.presentation.*`, `accordo.commentsPanel.*`, `accordo.voice.*`, etc.) and built-in VS Code commands (`vscode.open`, `workbench.action.gotoLine`) are all callable via `vscode.commands.executeCommand()`. **Note:** MCP tool names (`accordo_editor_*`) are NOT VS Code commands — use the built-in equivalents in command steps.
 
 **Example script (architecture walkthrough):**
 ```json
@@ -55,9 +55,9 @@ Rather than having the agent call MCP tools step-by-step for a multi-step walkth
   "title": "Hub architecture walkthrough",
   "steps": [
     { "type": "speak", "text": "Let's look at how the Hub connects to the Bridge." },
-    { "type": "command", "command": "accordo_editor_open", "args": ["/docs/architecture.md"] },
+    { "type": "command", "command": "vscode.open", "args": ["file:///workspace/docs/architecture.md"] },
     { "type": "delay", "ms": 800 },
-    { "type": "highlight", "uri": "/docs/architecture.md", "startLine": 43, "endLine": 60, "color": "yellow" },
+    { "type": "highlight", "uri": "docs/architecture.md", "startLine": 43, "endLine": 60, "color": "yellow" },
     { "type": "speak", "text": "Here is the Bridge WebSocket client. It connects to the Hub on port 3000." },
     { "type": "await-speech" },
     { "type": "clear-highlight" }
@@ -378,19 +378,21 @@ ScriptRunner.execute(script)
 
 ### 8.3 Integration with Accordo commands
 
-Any command registered in VS Code is callable from a script step, enabling deep integration:
+Any VS Code command is callable from a `command` step. Extension-registered commands (`accordo.presentation.*`, `accordo.commentsPanel.*`, etc.) and built-in VS Code commands both work.
+
+> **Important:** `accordo_editor_*` names are MCP tool IDs — they are **not** registered VS Code commands and cannot be used in `command` steps. Use VS Code built-in commands or the Accordo extension commands listed below.
 
 ```jsonc
 [
-  // Open a file in the editor
-  { "type": "command", "command": "accordo_editor_open", "args": ["src/main.ts"] },
-  // Navigate to a specific line
-  { "type": "command", "command": "accordo_editor_goto_line", "args": [42] },
-  // Open a presentation deck
+  // Open a file using VS Code built-in command (use a file URI)
+  { "type": "command", "command": "vscode.open", "args": ["file:///workspace/src/main.ts"] },
+  // Navigate to a specific line in the active editor
+  { "type": "command", "command": "workbench.action.gotoLine" },
+  // Open a presentation deck (accordo-slidev registered command)
   { "type": "command", "command": "accordo.presentation.open", "args": ["demo/my.deck.md"] },
   // Navigate to slide 3
   { "type": "command", "command": "accordo.presentation.goto", "args": [3] },
-  // Open a diagram
+  // Open a diagram (accordo-diagram registered command, Session 11)
   { "type": "command", "command": "accordo.diagram.open", "args": ["docs/arch.mmd"] }
 ]
 ```
@@ -524,7 +526,7 @@ During a scripted narration, the agent can reference and navigate to comment thr
 The most common integration pattern — open a file, narrate it, highlight specific lines:
 
 ```json
-{ "type": "command", "command": "accordo_editor_open", "args": ["src/hub.ts"] },
+{ "type": "command", "command": "vscode.open", "args": ["file:///workspace/src/hub.ts"] },
 { "type": "highlight", "uri": "src/hub.ts", "startLine": 80, "endLine": 120, "color": "blue" },
 { "type": "speak", "text": "This is the WebSocket handler for Bridge connections." },
 { "type": "await-speech" },
@@ -563,12 +565,15 @@ When the diagrams modality (Session 11) is implemented, scripted narrations will
 
 ```json
 "activationEvents": [
+  "onStartupFinished",
   "onView:accordo-voice-panel",
   "onCommand:accordo.voice.startDictation",
   "onCommand:accordo.voice.readAloud",
   "onCommand:accordo.voice.stopNarration"
 ]
 ```
+
+`onStartupFinished` ensures `accordo-voice` activates shortly after VS Code startup and registers MCP tools with the Bridge immediately — without requiring a user action. This is the same pattern used by `accordo-editor` and other modality extensions that need agent-first tool availability.
 
 ---
 

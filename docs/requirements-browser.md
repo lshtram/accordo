@@ -185,23 +185,23 @@ export interface BrowserConnectionState {
 
 ## 4. Module Specifications — VSCode Extension (`packages/browser/`)
 
-### M50-BT — Bridge-Types Additions
+### M60-BT — Bridge-Types Additions
 
 **File:** `packages/bridge-types/src/index.ts`
 
 | Requirement ID | Requirement |
 |---|---|
-| M50-BT-01 | `CssSelectorCoordinates` interface exported with fields `type: "css-selector"`, `selector: string`, `textFingerprint: string` |
-| M50-BT-02 | `SurfaceCoordinates` union updated to include `CssSelectorCoordinates` |
-| M50-BT-03 | `BrowserToRelayMessage` discriminated union exported with all Chrome→VSCode message types |
-| M50-BT-04 | `RelayToBrowserMessage` discriminated union exported with all VSCode→Chrome message types |
-| M50-BT-05 | `BrowserRelayMessage` union of both directions exported |
-| M50-BT-06 | `BrowserTabInfo` and `BrowserConnectionState` interfaces exported |
-| M50-BT-07 | No runtime code — types only |
+| M60-BT-01 | `CssSelectorCoordinates` interface exported with fields `type: "css-selector"`, `selector: string`, `textFingerprint: string` |
+| M60-BT-02 | `SurfaceCoordinates` union updated to include `CssSelectorCoordinates` |
+| M60-BT-03 | `BrowserToRelayMessage` discriminated union exported with all Chrome→VSCode message types |
+| M60-BT-04 | `RelayToBrowserMessage` discriminated union exported with all VSCode→Chrome message types |
+| M60-BT-05 | `BrowserRelayMessage` union of both directions exported |
+| M60-BT-06 | `BrowserTabInfo` and `BrowserConnectionState` interfaces exported |
+| M60-BT-07 | No runtime code — types only |
 
 ---
 
-### M51-REL — BrowserRelay
+### M61-REL — BrowserRelay
 
 **File:** `src/browser-relay.ts`
 
@@ -209,25 +209,25 @@ export interface BrowserConnectionState {
 
 | Requirement ID | Requirement |
 |---|---|
-| M51-REL-01 | Creates a WebSocket server bound to `127.0.0.1` on the configured port (default 3001) |
-| M51-REL-02 | Authenticates connections via `x-accordo-browser-token` header on upgrade |
-| M51-REL-03 | Rejects connections with invalid or missing token (close code 4001) |
-| M51-REL-04 | Sends `browser:auth-ok` on successful connection |
-| M51-REL-05 | Tracks connected clients by `tabId`; multiple tabs can connect simultaneously |
-| M51-REL-06 | Parses incoming messages as JSON; validates `type` field against known message types |
-| M51-REL-07 | Routes incoming `comment:*` and `browser:*` messages to registered message handler callback |
-| M51-REL-08 | Provides `send(tabId, message)` to send a message to a specific Chrome tab |
-| M51-REL-09 | Provides `broadcast(url, message)` to send a message to all tabs currently showing `url` |
-| M51-REL-10 | Emits `onConnect(tabId, url, title)`, `onDisconnect(tabId)`, `onNavigate(tabId, url, title)` events |
-| M51-REL-11 | Handles WebSocket errors gracefully (logs, does not crash extension) |
-| M51-REL-12 | `dispose()` closes all connections and shuts down the server |
-| M51-REL-13 | If the port is in use, logs an error and retries with port+1 up to 3 times |
-| M51-REL-14 | Rate-limits incoming messages: 100 messages/second per connection |
-| M51-REL-15 | Maximum message payload: 512KB; oversized messages are rejected |
+| M61-REL-01 | Creates a WebSocket server bound to `127.0.0.1` on the configured port (default 3001) |
+| M61-REL-02 | Authenticates connections via `x-accordo-browser-token` header on upgrade |
+| M61-REL-03 | Rejects connections with invalid or missing token (close code 4001) |
+| M61-REL-04 | Sends `browser:auth-ok` on successful connection |
+| M61-REL-05 | Tracks connected clients by `tabId`; multiple tabs can connect simultaneously |
+| M61-REL-06 | Parses incoming messages as JSON; validates `type` field against known message types |
+| M61-REL-07 | Routes incoming `comment:*` and `browser:*` messages to registered message handler callback |
+| M61-REL-08 | Provides `send(tabId, message)` to send a message to a specific Chrome tab |
+| M61-REL-09 | Provides `broadcast(url, message)` to send a message to all tabs currently showing `url` |
+| M61-REL-10 | Emits `onConnect(tabId, url, title)`, `onDisconnect(tabId)`, `onNavigate(tabId, url, title)` events |
+| M61-REL-11 | Handles WebSocket errors gracefully (logs, does not crash extension) |
+| M61-REL-12 | `dispose()` closes all connections and shuts down the server |
+| M61-REL-13 | If the port is in use, logs an error and retries with port+1 up to 3 times |
+| M61-REL-14 | Rate-limits incoming messages: 100 messages/second per connection |
+| M61-REL-15 | Maximum message payload: 512KB; oversized messages are rejected |
 
 ---
 
-### M52-CBR — BrowserCommentsBridge
+### M62-CBR — BrowserCommentsBridge
 
 **File:** `src/browser-comments-bridge.ts`
 
@@ -235,24 +235,24 @@ export interface BrowserConnectionState {
 
 | Requirement ID | Requirement |
 |---|---|
-| M52-CBR-01 | Obtains `SurfaceCommentAdapter` via `vscode.commands.executeCommand('accordo.comments.internal.getSurfaceAdapter')` |
-| M52-CBR-02 | Handles `comment:create` → parses `blockId` → builds `CommentAnchorSurface` with `surfaceType: "browser"` and `CssSelectorCoordinates` → calls `adapter.createThread()` |
-| M52-CBR-03 | Handles `comment:reply` → calls `adapter.reply({ threadId, body })` |
-| M52-CBR-04 | Handles `comment:resolve` → calls `adapter.resolve({ threadId })` |
-| M52-CBR-05 | Handles `comment:reopen` → calls `adapter.reopen({ threadId })` |
-| M52-CBR-06 | Handles `comment:delete` → calls `adapter.delete({ threadId, commentId })` |
-| M52-CBR-07 | Subscribes to `adapter.onChanged(uri)` → when URI matches a connected Chrome tab's URL, pushes `comments:load` with updated thread list |
-| M52-CBR-08 | `toSdkThread(thread)` converts `CommentThread` to `SdkThread` format: extracts `blockId` from anchor coordinates, computes `hasUnread` from `lastActivity` timestamp |
-| M52-CBR-09 | On `browser:connect` → pushes `comments:load` for the tab's URL (existing threads) |
-| M52-CBR-10 | On `browser:navigate` → pushes `comments:load` for the new URL |
-| M52-CBR-11 | Handles missing comments extension gracefully (no throw; comments disabled) |
-| M52-CBR-12 | `encodeBlockId(coords: CssSelectorCoordinates)` → `"css:{selector}\|fp:{fingerprint}"` |
-| M52-CBR-13 | `parseBlockId(blockId: string)` → `CssSelectorCoordinates \| null` |
-| M52-CBR-14 | `dispose()` unsubscribes from adapter changes |
+| M62-CBR-01 | Obtains `SurfaceCommentAdapter` via `vscode.commands.executeCommand('accordo.comments.internal.getSurfaceAdapter')` |
+| M62-CBR-02 | Handles `comment:create` → parses `blockId` → builds `CommentAnchorSurface` with `surfaceType: "browser"` and `CssSelectorCoordinates` → calls `adapter.createThread()` |
+| M62-CBR-03 | Handles `comment:reply` → calls `adapter.reply({ threadId, body })` |
+| M62-CBR-04 | Handles `comment:resolve` → calls `adapter.resolve({ threadId })` |
+| M62-CBR-05 | Handles `comment:reopen` → calls `adapter.reopen({ threadId })` |
+| M62-CBR-06 | Handles `comment:delete` → calls `adapter.delete({ threadId, commentId })` |
+| M62-CBR-07 | Subscribes to `adapter.onChanged(uri)` → when URI matches a connected Chrome tab's URL, pushes `comments:load` with updated thread list |
+| M62-CBR-08 | `toSdkThread(thread)` converts `CommentThread` to `SdkThread` format: extracts `blockId` from anchor coordinates, computes `hasUnread` from `lastActivity` timestamp |
+| M62-CBR-09 | On `browser:connect` → pushes `comments:load` for the tab's URL (existing threads) |
+| M62-CBR-10 | On `browser:navigate` → pushes `comments:load` for the new URL |
+| M62-CBR-11 | Handles missing comments extension gracefully (no throw; comments disabled) |
+| M62-CBR-12 | `encodeBlockId(coords: CssSelectorCoordinates)` → `"css:{selector}\|fp:{fingerprint}"` |
+| M62-CBR-13 | `parseBlockId(blockId: string)` → `CssSelectorCoordinates \| null` |
+| M62-CBR-14 | `dispose()` unsubscribes from adapter changes |
 
 ---
 
-### M53-STATE — BrowserStateContribution
+### M63-STATE — BrowserStateContribution
 
 **File:** `src/browser-state.ts`
 
@@ -260,16 +260,16 @@ export interface BrowserConnectionState {
 
 | Requirement ID | Requirement |
 |---|---|
-| M53-STATE-01 | Publishes state key `modalities["accordo-browser"]` via `bridge.publishState('accordo-browser', state)` |
-| M53-STATE-02 | State includes `isConnected`, `connectedTabs`, `activeTabUrl`, `activeTabTitle` |
-| M53-STATE-03 | Each tab entry includes `commentCount` (open threads for that URL) |
-| M53-STATE-04 | Publishes on: tab connect, tab disconnect, tab navigate, comment thread create/resolve/delete |
-| M53-STATE-05 | Publishes initial state on activation: `{ isConnected: false, connectedTabs: [], activeTabUrl: null, activeTabTitle: null }` |
-| M53-STATE-06 | `dispose()` stops publishing |
+| M63-STATE-01 | Publishes state key `modalities["accordo-browser"]` via `bridge.publishState('accordo-browser', state)` |
+| M63-STATE-02 | State includes `isConnected`, `connectedTabs`, `activeTabUrl`, `activeTabTitle` |
+| M63-STATE-03 | Each tab entry includes `commentCount` (open threads for that URL) |
+| M63-STATE-04 | Publishes on: tab connect, tab disconnect, tab navigate, comment thread create/resolve/delete |
+| M63-STATE-05 | Publishes initial state on activation: `{ isConnected: false, connectedTabs: [], activeTabUrl: null, activeTabTitle: null }` |
+| M63-STATE-06 | `dispose()` stops publishing |
 
 ---
 
-### M54-SEL — Selector Utilities
+### M64-SEL — Selector Utilities
 
 **File:** `src/selector-utils.ts`
 
@@ -277,38 +277,38 @@ export interface BrowserConnectionState {
 
 | Requirement ID | Requirement |
 |---|---|
-| M54-SEL-01 | `encodeBlockId(selector: string, fingerprint: string)` → `"css:{selector}\|fp:{fingerprint}"` |
-| M54-SEL-02 | `parseBlockId(blockId: string)` → `{ selector: string; fingerprint: string } \| null` |
-| M54-SEL-03 | `parseBlockId` returns `null` for malformed blockIds (no crash) |
-| M54-SEL-04 | No runtime dependencies; pure functions only |
-| M54-SEL-05 | Exported for use by both VSCode extension and Chrome extension (dual-build target) |
+| M64-SEL-01 | `encodeBlockId(selector: string, fingerprint: string)` → `"css:{selector}\|fp:{fingerprint}"` |
+| M64-SEL-02 | `parseBlockId(blockId: string)` → `{ selector: string; fingerprint: string } \| null` |
+| M64-SEL-03 | `parseBlockId` returns `null` for malformed blockIds (no crash) |
+| M64-SEL-04 | No runtime dependencies; pure functions only |
+| M64-SEL-05 | Exported for use by both VSCode extension and Chrome extension (dual-build target) |
 
 ---
 
-### M55-EXT — Extension Entry Point
+### M65-EXT — Extension Entry Point
 
 **File:** `src/extension.ts`
 
 | Requirement ID | Requirement |
 |---|---|
-| M55-EXT-01 | Activates Bridge dependency and acquires `BridgeAPI` exports |
-| M55-EXT-02 | If Bridge unavailable, extension logs warning and deactivates cleanly |
-| M55-EXT-03 | Generates relay token on first activation (UUID v4); stores in `accordo.browser.relayToken` setting |
-| M55-EXT-04 | Creates `BrowserRelay` on configured port |
-| M55-EXT-05 | Creates `BrowserCommentsBridge` wired to relay and comments surface adapter |
-| M55-EXT-06 | Creates `BrowserStateContribution` wired to relay events and Bridge |
-| M55-EXT-07 | Registers `accordo.browser.copyToken` command — copies relay token to clipboard |
-| M55-EXT-08 | Registers `accordo.browser.showConnections` command — shows connected tabs in a quick pick |
-| M55-EXT-09 | Shows relay port and token in status bar item |
-| M55-EXT-10 | If comments extension unavailable, relay still starts but comment messages are ignored with a log warning |
-| M55-EXT-11 | All disposables pushed to `context.subscriptions` |
-| M55-EXT-12 | `deactivate()` exported (calls relay.dispose, bridge.dispose, state.dispose) |
+| M65-EXT-01 | Activates Bridge dependency and acquires `BridgeAPI` exports |
+| M65-EXT-02 | If Bridge unavailable, extension logs warning and deactivates cleanly |
+| M65-EXT-03 | Generates relay token on first activation (UUID v4); stores in `accordo.browser.relayToken` setting |
+| M65-EXT-04 | Creates `BrowserRelay` on configured port |
+| M65-EXT-05 | Creates `BrowserCommentsBridge` wired to relay and comments surface adapter |
+| M65-EXT-06 | Creates `BrowserStateContribution` wired to relay events and Bridge |
+| M65-EXT-07 | Registers `accordo.browser.copyToken` command — copies relay token to clipboard |
+| M65-EXT-08 | Registers `accordo.browser.showConnections` command — shows connected tabs in a quick pick |
+| M65-EXT-09 | Shows relay port and token in status bar item |
+| M65-EXT-10 | If comments extension unavailable, relay still starts but comment messages are ignored with a log warning |
+| M65-EXT-11 | All disposables pushed to `context.subscriptions` |
+| M65-EXT-12 | `deactivate()` exported (calls relay.dispose, bridge.dispose, state.dispose) |
 
 ---
 
 ## 5. Module Specifications — Chrome Extension (`packages/browser-extension/`)
 
-### M56-TAG — DOM Auto-Tagger
+### M66-TAG — DOM Auto-Tagger
 
 **File:** `content/dom-tagger.ts`
 
@@ -316,21 +316,21 @@ export interface BrowserConnectionState {
 
 | Requirement ID | Requirement |
 |---|---|
-| M56-TAG-01 | Tags elements matching: `[id]`, `[data-testid]`, `h1`–`h6`, `p`, `li`, `td`, `th`, `img`, `video`, `canvas`, `pre`, `code`, `form`, `input`, `button`, `select`, `textarea`, `section`, `article`, `main`, `aside`, `nav`, `header`, `footer` |
-| M56-TAG-02 | Skips: `script`, `style`, `meta`, `link`, `noscript` elements |
-| M56-TAG-03 | Skips: elements with `display: none` or `visibility: hidden` (computed style) |
-| M56-TAG-04 | Skips: elements smaller than 10×10 pixels (bounding rect) |
-| M56-TAG-05 | Skips: elements inside `#accordo-overlay` |
-| M56-TAG-06 | Assigns `data-block-id` attribute with value `"css:{selector}\|fp:{fingerprint}"` |
-| M56-TAG-07 | Does not overwrite existing `data-block-id` attributes (idempotent) |
-| M56-TAG-08 | Runs on `document_idle` (initial page load) |
-| M56-TAG-09 | Observes `document.body` with `MutationObserver({ childList: true, subtree: true })` |
-| M56-TAG-10 | Debounces mutation-triggered re-tagging at 200ms |
-| M56-TAG-11 | Re-tags only added/changed subtrees, not the full page |
+| M66-TAG-01 | Tags elements matching: `[id]`, `[data-testid]`, `h1`–`h6`, `p`, `li`, `td`, `th`, `img`, `video`, `canvas`, `pre`, `code`, `form`, `input`, `button`, `select`, `textarea`, `section`, `article`, `main`, `aside`, `nav`, `header`, `footer` |
+| M66-TAG-02 | Skips: `script`, `style`, `meta`, `link`, `noscript` elements |
+| M66-TAG-03 | Skips: elements with `display: none` or `visibility: hidden` (computed style) |
+| M66-TAG-04 | Skips: elements smaller than 10×10 pixels (bounding rect) |
+| M66-TAG-05 | Skips: elements inside `#accordo-overlay` |
+| M66-TAG-06 | Assigns `data-block-id` attribute with value `"css:{selector}\|fp:{fingerprint}"` |
+| M66-TAG-07 | Does not overwrite existing `data-block-id` attributes (idempotent) |
+| M66-TAG-08 | Runs on `document_idle` (initial page load) |
+| M66-TAG-09 | Observes `document.body` with `MutationObserver({ childList: true, subtree: true })` |
+| M66-TAG-10 | Debounces mutation-triggered re-tagging at 200ms |
+| M66-TAG-11 | Re-tags only added/changed subtrees, not the full page |
 
 ---
 
-### M57-CSS — CSS Selector Generator
+### M67-CSS — CSS Selector Generator
 
 **File:** `content/selector-generator.ts`
 
@@ -338,19 +338,19 @@ export interface BrowserConnectionState {
 
 | Requirement ID | Requirement |
 |---|---|
-| M57-CSS-01 | If element has a unique `id`, returns `#{id}` |
-| M57-CSS-02 | If element has a unique `data-testid`, returns `[data-testid="{value}"]` |
-| M57-CSS-03 | Otherwise builds a path using `tag:nth-of-type(n)` from element to nearest ancestor with unique `id` or `body` |
-| M57-CSS-04 | Maximum selector depth: 5 levels |
-| M57-CSS-05 | Validates uniqueness: `document.querySelectorAll(selector).length === 1` |
-| M57-CSS-06 | If initial selector is not unique, extends path with additional ancestor levels |
-| M57-CSS-07 | Returns `null` if unable to generate a unique selector within depth limits |
-| M57-CSS-08 | Handles elements with special characters in IDs (escapes with `CSS.escape()`) |
-| M57-CSS-09 | No runtime dependencies; pure DOM functions only |
+| M67-CSS-01 | If element has a unique `id`, returns `#{id}` |
+| M67-CSS-02 | If element has a unique `data-testid`, returns `[data-testid="{value}"]` |
+| M67-CSS-03 | Otherwise builds a path using `tag:nth-of-type(n)` from element to nearest ancestor with unique `id` or `body` |
+| M67-CSS-04 | Maximum selector depth: 5 levels |
+| M67-CSS-05 | Validates uniqueness: `document.querySelectorAll(selector).length === 1` |
+| M67-CSS-06 | If initial selector is not unique, extends path with additional ancestor levels |
+| M67-CSS-07 | Returns `null` if unable to generate a unique selector within depth limits |
+| M67-CSS-08 | Handles elements with special characters in IDs (escapes with `CSS.escape()`) |
+| M67-CSS-09 | No runtime dependencies; pure DOM functions only |
 
 ---
 
-### M58-FP — Text Fingerprint
+### M68-FP — Text Fingerprint
 
 **File:** `content/text-fingerprint.ts`
 
@@ -358,16 +358,16 @@ export interface BrowserConnectionState {
 
 | Requirement ID | Requirement |
 |---|---|
-| M58-FP-01 | Input: `element.textContent.trim().slice(0, 100)` |
-| M58-FP-02 | Algorithm: FNV-1a 32-bit hash |
-| M58-FP-03 | Output: 8-character lowercase hex string |
-| M58-FP-04 | Deterministic: same input always produces same output |
-| M58-FP-05 | Empty string input produces a valid hash (not null/undefined) |
-| M58-FP-06 | No runtime dependencies; pure function |
+| M68-FP-01 | Input: `element.textContent.trim().slice(0, 100)` |
+| M68-FP-02 | Algorithm: FNV-1a 32-bit hash |
+| M68-FP-03 | Output: 8-character lowercase hex string |
+| M68-FP-04 | Deterministic: same input always produces same output |
+| M68-FP-05 | Empty string input produces a valid hash (not null/undefined) |
+| M68-FP-06 | No runtime dependencies; pure function |
 
 ---
 
-### M59-SW — Background Service Worker
+### M69-SW — Background Service Worker
 
 **File:** `background/service-worker.ts`
 
@@ -375,22 +375,22 @@ export interface BrowserConnectionState {
 
 | Requirement ID | Requirement |
 |---|---|
-| M59-SW-01 | Connects to `ws://localhost:{port}/browser` with `x-accordo-browser-token` header on startup |
-| M59-SW-02 | Port and token read from `chrome.storage.local` (defaults: port 3001, token empty) |
-| M59-SW-03 | On successful connection, receives `browser:auth-ok`; sets internal `connected` state |
-| M59-SW-04 | On auth failure (`browser:auth-fail` or close code 4001), sets `disconnected` state and does not auto-reconnect until settings change |
-| M59-SW-05 | Reconnection on unexpected disconnect: exponential backoff 1s → 2s → 4s → 8s → 16s → 30s (cap) |
-| M59-SW-06 | Routes `chrome.runtime.onMessage` from content scripts → WebSocket (adds `tabId` from sender) |
-| M59-SW-07 | Routes incoming WebSocket messages → `chrome.tabs.sendMessage(tabId)` to the appropriate content script |
-| M59-SW-08 | For `comments:load` messages (which carry `url` not `tabId`): sends to all tabs whose URL matches |
-| M59-SW-09 | Tracks active tabs via `chrome.tabs.onUpdated` and `chrome.tabs.onRemoved` |
-| M59-SW-10 | Sends `browser:connect` when a tab loads and the extension is active; sends `browser:disconnect` when tab closes |
-| M59-SW-11 | Sends `browser:navigate` when a tab's URL changes |
-| M59-SW-12 | Exposes connection status to popup via `chrome.runtime.onMessage` handler (responds to `status:get` with `{ connected, port, tabCount }`) |
+| M69-SW-01 | Connects to `ws://localhost:{port}/browser` with `x-accordo-browser-token` header on startup |
+| M69-SW-02 | Port and token read from `chrome.storage.local` (defaults: port 3001, token empty) |
+| M69-SW-03 | On successful connection, receives `browser:auth-ok`; sets internal `connected` state |
+| M69-SW-04 | On auth failure (`browser:auth-fail` or close code 4001), sets `disconnected` state and does not auto-reconnect until settings change |
+| M69-SW-05 | Reconnection on unexpected disconnect: exponential backoff 1s → 2s → 4s → 8s → 16s → 30s (cap) |
+| M69-SW-06 | Routes `chrome.runtime.onMessage` from content scripts → WebSocket (adds `tabId` from sender) |
+| M69-SW-07 | Routes incoming WebSocket messages → `chrome.tabs.sendMessage(tabId)` to the appropriate content script |
+| M69-SW-08 | For `comments:load` messages (which carry `url` not `tabId`): sends to all tabs whose URL matches |
+| M69-SW-09 | Tracks active tabs via `chrome.tabs.onUpdated` and `chrome.tabs.onRemoved` |
+| M69-SW-10 | Sends `browser:connect` when a tab loads and the extension is active; sends `browser:disconnect` when tab closes |
+| M69-SW-11 | Sends `browser:navigate` when a tab's URL changes |
+| M69-SW-12 | Exposes connection status to popup via `chrome.runtime.onMessage` handler (responds to `status:get` with `{ connected, port, tabCount }`) |
 
 ---
 
-### M60-CS — Content Script (SDK Integration)
+### M70-CS — Content Script (SDK Integration)
 
 **File:** `content/content-script.ts`
 
@@ -398,29 +398,29 @@ export interface BrowserConnectionState {
 
 | Requirement ID | Requirement |
 |---|---|
-| M60-CS-01 | Creates overlay div `#accordo-overlay` at `document_idle` (fixed position, full viewport, pointer-events: none, z-index: 2147483646) |
-| M60-CS-02 | Runs DOM auto-tagger on the page |
-| M60-CS-03 | Initializes `AccordoCommentSDK` with the overlay as container |
-| M60-CS-04 | Provides `coordinateToScreen(blockId)` that parses CSS selector from blockId, calls `document.querySelector()`, returns `getBoundingClientRect()` position |
-| M60-CS-05 | If text fingerprint mismatches (selector found but content changed), returns position with `stale: true` flag |
-| M60-CS-06 | If selector returns no element, returns `null` (pin hidden) |
-| M60-CS-07 | Wires SDK `callbacks.onCreate` → `chrome.runtime.sendMessage({ type: "comment:create", ... })` |
-| M60-CS-08 | Wires SDK `callbacks.onReply` → `chrome.runtime.sendMessage({ type: "comment:reply", ... })` |
-| M60-CS-09 | Wires SDK `callbacks.onResolve` → `chrome.runtime.sendMessage({ type: "comment:resolve", ... })` |
-| M60-CS-10 | Wires SDK `callbacks.onReopen` → `chrome.runtime.sendMessage({ type: "comment:reopen", ... })` |
-| M60-CS-11 | Wires SDK `callbacks.onDelete` → `chrome.runtime.sendMessage({ type: "comment:delete", ... })` |
-| M60-CS-12 | Listens for `chrome.runtime.onMessage` from background: `comments:load` → `sdk.loadThreads()` |
-| M60-CS-13 | Listens for `comments:add` → `sdk.addThread()` |
-| M60-CS-14 | Listens for `comments:update` → `sdk.updateThread()` |
-| M60-CS-15 | Listens for `comments:remove` → `sdk.removeThread()` |
-| M60-CS-16 | Listens for `comments:focus` → `sdk.openPopover()` |
-| M60-CS-17 | Registers scroll and resize listeners → repositions pins via `requestAnimationFrame` debounce (16ms) |
-| M60-CS-18 | Does not initialize if `#accordo-overlay` already exists (prevents duplicate injection) |
-| M60-CS-19 | Listens for `chrome.runtime.onMessage` with `{ type: "toggle" }` → shows/hides the overlay |
+| M70-CS-01 | Creates overlay div `#accordo-overlay` at `document_idle` (fixed position, full viewport, pointer-events: none, z-index: 2147483646) |
+| M70-CS-02 | Runs DOM auto-tagger on the page |
+| M70-CS-03 | Initializes `AccordoCommentSDK` with the overlay as container |
+| M70-CS-04 | Provides `coordinateToScreen(blockId)` that parses CSS selector from blockId, calls `document.querySelector()`, returns `getBoundingClientRect()` position |
+| M70-CS-05 | If text fingerprint mismatches (selector found but content changed), returns position with `stale: true` flag |
+| M70-CS-06 | If selector returns no element, returns `null` (pin hidden) |
+| M70-CS-07 | Wires SDK `callbacks.onCreate` → `chrome.runtime.sendMessage({ type: "comment:create", ... })` |
+| M70-CS-08 | Wires SDK `callbacks.onReply` → `chrome.runtime.sendMessage({ type: "comment:reply", ... })` |
+| M70-CS-09 | Wires SDK `callbacks.onResolve` → `chrome.runtime.sendMessage({ type: "comment:resolve", ... })` |
+| M70-CS-10 | Wires SDK `callbacks.onReopen` → `chrome.runtime.sendMessage({ type: "comment:reopen", ... })` |
+| M70-CS-11 | Wires SDK `callbacks.onDelete` → `chrome.runtime.sendMessage({ type: "comment:delete", ... })` |
+| M70-CS-12 | Listens for `chrome.runtime.onMessage` from background: `comments:load` → `sdk.loadThreads()` |
+| M70-CS-13 | Listens for `comments:add` → `sdk.addThread()` |
+| M70-CS-14 | Listens for `comments:update` → `sdk.updateThread()` |
+| M70-CS-15 | Listens for `comments:remove` → `sdk.removeThread()` |
+| M70-CS-16 | Listens for `comments:focus` → `sdk.openPopover()` |
+| M70-CS-17 | Registers scroll and resize listeners → repositions pins via `requestAnimationFrame` debounce (16ms) |
+| M70-CS-18 | Does not initialize if `#accordo-overlay` already exists (prevents duplicate injection) |
+| M70-CS-19 | Listens for `chrome.runtime.onMessage` with `{ type: "toggle" }` → shows/hides the overlay |
 
 ---
 
-### M61-POP — Popup UI
+### M71-POP — Popup UI
 
 **File:** `popup/popup.html` + `popup/popup.ts`
 
@@ -428,18 +428,18 @@ export interface BrowserConnectionState {
 
 | Requirement ID | Requirement |
 |---|---|
-| M61-POP-01 | Shows connection status: green dot = connected, yellow = connecting, red = disconnected |
-| M61-POP-02 | Shows relay port input (default: 3001); saved to `chrome.storage.local` on change |
-| M61-POP-03 | Shows auth token input (password-masked); saved to `chrome.storage.local` on change |
-| M61-POP-04 | Shows "Connect" / "Disconnect" button |
-| M61-POP-05 | Shows count of active tabs with comments overlay |
-| M61-POP-06 | Shows count of open comment threads on current tab |
-| M61-POP-07 | Toggle switch: enable/disable comments overlay on current tab (sends `toggle` message to content script) |
-| M61-POP-08 | Reconnects on settings change (port or token update triggers disconnect + reconnect) |
+| M71-POP-01 | Shows connection status: green dot = connected, yellow = connecting, red = disconnected |
+| M71-POP-02 | Shows relay port input (default: 3001); saved to `chrome.storage.local` on change |
+| M71-POP-03 | Shows auth token input (password-masked); saved to `chrome.storage.local` on change |
+| M71-POP-04 | Shows "Connect" / "Disconnect" button |
+| M71-POP-05 | Shows count of active tabs with comments overlay |
+| M71-POP-06 | Shows count of open comment threads on current tab |
+| M71-POP-07 | Toggle switch: enable/disable comments overlay on current tab (sends `toggle` message to content script) |
+| M71-POP-08 | Reconnects on settings change (port or token update triggers disconnect + reconnect) |
 
 ---
 
-### M62-THM — Browser Theme CSS
+### M72-THM — Browser Theme CSS
 
 **File:** `content/browser-theme.css`
 
@@ -447,26 +447,26 @@ export interface BrowserConnectionState {
 
 | Requirement ID | Requirement |
 |---|---|
-| M62-THM-01 | Defines all `--vscode-*` CSS variables used by `sdk.css` with browser-appropriate values |
-| M62-THM-02 | Supports light mode (default) and dark mode via `prefers-color-scheme: dark` media query |
-| M62-THM-03 | Pin colors: open = blue, resolved = green, updated = orange (matching VS Code theme) |
-| M62-THM-04 | Font: system-ui/sans-serif stack (not VS Code's monospace) |
-| M62-THM-05 | Does not conflict with host page styles (all variables scoped under `#accordo-overlay`) |
+| M72-THM-01 | Defines all `--vscode-*` CSS variables used by `sdk.css` with browser-appropriate values |
+| M72-THM-02 | Supports light mode (default) and dark mode via `prefers-color-scheme: dark` media query |
+| M72-THM-03 | Pin colors: open = blue, resolved = green, updated = orange (matching VS Code theme) |
+| M72-THM-04 | Font: system-ui/sans-serif stack (not VS Code's monospace) |
+| M72-THM-05 | Does not conflict with host page styles (all variables scoped under `#accordo-overlay`) |
 
 ---
 
 ## 6. Module Specifications — Browser Automation Setup
 
-### M63-AUTO — Automation Documentation & Helper
+### M73-AUTO — Automation Documentation & Helper
 
 **Purpose:** Document and optionally automate the setup of `@playwright/mcp` alongside Accordo Hub.
 
 | Requirement ID | Requirement |
 |---|---|
-| M63-AUTO-01 | `docs/browser-automation-setup.md` documents: install command, `opencode.json` config, `.claude/mcp.json` config, available tools |
-| M63-AUTO-02 | VSCode command `accordo.browser.setupPlaywright` auto-appends Playwright MCP config to `opencode.json` if not already present |
-| M63-AUTO-03 | Does not modify any Accordo Hub or Bridge configuration |
-| M63-AUTO-04 | Works with `@playwright/mcp@latest` as the recommended server |
+| M73-AUTO-01 | `docs/browser-automation-setup.md` documents: install command, `opencode.json` config, `.claude/mcp.json` config, available tools |
+| M73-AUTO-02 | VSCode command `accordo.browser.setupPlaywright` auto-appends Playwright MCP config to `opencode.json` if not already present |
+| M73-AUTO-03 | Does not modify any Accordo Hub or Bridge configuration |
+| M73-AUTO-04 | Works with `@playwright/mcp@latest` as the recommended server |
 
 ---
 
@@ -492,34 +492,34 @@ export interface BrowserConnectionState {
 
 | Requirement ID | Test Scope | Module |
 |---|---|---|
-| M-TST-01 | BrowserRelay: connection lifecycle (connect, auth, reject, disconnect) | M51-REL |
-| M-TST-02 | BrowserRelay: multi-client routing, broadcast by URL | M51-REL |
-| M-TST-03 | BrowserRelay: rate limiting and payload size rejection | M51-REL |
-| M-TST-04 | BrowserCommentsBridge: blockId encoding/decoding roundtrip | M52-CBR |
-| M-TST-05 | BrowserCommentsBridge: anchor construction from blockId | M52-CBR |
-| M-TST-06 | BrowserCommentsBridge: comment:create → adapter.createThread flow | M52-CBR |
-| M-TST-07 | BrowserCommentsBridge: adapter.onChanged → comments:load push to relay | M52-CBR |
-| M-TST-08 | BrowserCommentsBridge: missing comments extension → graceful degradation | M52-CBR |
-| M-TST-09 | BrowserStateContribution: state shape on connect/disconnect/navigate | M53-STATE |
-| M-TST-10 | BrowserStateContribution: commentCount updates | M53-STATE |
-| M-TST-11 | Selector utils: encode/decode roundtrip | M54-SEL |
-| M-TST-12 | Selector utils: malformed input returns null | M54-SEL |
-| M-TST-13 | DOM auto-tagger: correct elements tagged | M56-TAG |
-| M-TST-14 | DOM auto-tagger: skipped elements not tagged | M56-TAG |
-| M-TST-15 | DOM auto-tagger: mutation observer re-tags new elements | M56-TAG |
-| M-TST-16 | DOM auto-tagger: does not overwrite existing blockIds | M56-TAG |
-| M-TST-17 | CSS selector generator: prefers #id over path | M57-CSS |
-| M-TST-18 | CSS selector generator: produces unique selectors | M57-CSS |
-| M-TST-19 | CSS selector generator: respects depth limit | M57-CSS |
-| M-TST-20 | CSS selector generator: handles special chars in IDs | M57-CSS |
-| M-TST-21 | Text fingerprint: deterministic | M58-FP |
-| M-TST-22 | Text fingerprint: empty input handled | M58-FP |
-| M-TST-23 | Service worker: message routing content→relay | M59-SW |
-| M-TST-24 | Service worker: message routing relay→content | M59-SW |
-| M-TST-25 | Service worker: reconnection with backoff | M59-SW |
-| M-TST-26 | Content script: SDK initialization and callback wiring | M60-CS |
-| M-TST-27 | Content script: coordinateToScreen with valid/invalid/stale selectors | M60-CS |
-| M-TST-28 | Extension entry: activation, token generation, wiring | M55-EXT |
+| M-TST-01 | BrowserRelay: connection lifecycle (connect, auth, reject, disconnect) | M61-REL |
+| M-TST-02 | BrowserRelay: multi-client routing, broadcast by URL | M61-REL |
+| M-TST-03 | BrowserRelay: rate limiting and payload size rejection | M61-REL |
+| M-TST-04 | BrowserCommentsBridge: blockId encoding/decoding roundtrip | M62-CBR |
+| M-TST-05 | BrowserCommentsBridge: anchor construction from blockId | M62-CBR |
+| M-TST-06 | BrowserCommentsBridge: comment:create → adapter.createThread flow | M62-CBR |
+| M-TST-07 | BrowserCommentsBridge: adapter.onChanged → comments:load push to relay | M62-CBR |
+| M-TST-08 | BrowserCommentsBridge: missing comments extension → graceful degradation | M62-CBR |
+| M-TST-09 | BrowserStateContribution: state shape on connect/disconnect/navigate | M63-STATE |
+| M-TST-10 | BrowserStateContribution: commentCount updates | M63-STATE |
+| M-TST-11 | Selector utils: encode/decode roundtrip | M64-SEL |
+| M-TST-12 | Selector utils: malformed input returns null | M64-SEL |
+| M-TST-13 | DOM auto-tagger: correct elements tagged | M66-TAG |
+| M-TST-14 | DOM auto-tagger: skipped elements not tagged | M66-TAG |
+| M-TST-15 | DOM auto-tagger: mutation observer re-tags new elements | M66-TAG |
+| M-TST-16 | DOM auto-tagger: does not overwrite existing blockIds | M66-TAG |
+| M-TST-17 | CSS selector generator: prefers #id over path | M67-CSS |
+| M-TST-18 | CSS selector generator: produces unique selectors | M67-CSS |
+| M-TST-19 | CSS selector generator: respects depth limit | M67-CSS |
+| M-TST-20 | CSS selector generator: handles special chars in IDs | M67-CSS |
+| M-TST-21 | Text fingerprint: deterministic | M68-FP |
+| M-TST-22 | Text fingerprint: empty input handled | M68-FP |
+| M-TST-23 | Service worker: message routing content→relay | M69-SW |
+| M-TST-24 | Service worker: message routing relay→content | M69-SW |
+| M-TST-25 | Service worker: reconnection with backoff | M69-SW |
+| M-TST-26 | Content script: SDK initialization and callback wiring | M70-CS |
+| M-TST-27 | Content script: coordinateToScreen with valid/invalid/stale selectors | M70-CS |
+| M-TST-28 | Extension entry: activation, token generation, wiring | M65-EXT |
 | M-TST-29 | Integration: mock Chrome → relay → adapter → verify thread anchor shape | All |
 
 ---
@@ -541,9 +541,9 @@ export interface BrowserConnectionState {
 
 | Package | Change | Modules |
 |---|---|---|
-| `packages/bridge-types/` | Updated — add `CssSelectorCoordinates`, relay messages, browser state types | M50-BT |
-| `packages/browser/` | **New** — VSCode extension | M51-REL, M52-CBR, M53-STATE, M54-SEL, M55-EXT |
-| `packages/browser-extension/` | **New** — Chrome Manifest V3 extension | M56-TAG, M57-CSS, M58-FP, M59-SW, M60-CS, M61-POP, M62-THM |
+| `packages/bridge-types/` | Updated — add `CssSelectorCoordinates`, relay messages, browser state types | M60-BT |
+| `packages/browser/` | **New** — VSCode extension | M61-REL, M62-CBR, M63-STATE, M64-SEL, M65-EXT |
+| `packages/browser-extension/` | **New** — Chrome Manifest V3 extension | M66-TAG, M67-CSS, M68-FP, M69-SW, M70-CS, M71-POP, M72-THM |
 | `packages/hub/` | No change | — |
 | `packages/bridge/` | No change | — |
 | `packages/comments/` | No change | — |
