@@ -3,8 +3,8 @@
  *
  * Requirements tested:
  *   M41b-EXT-01  registerCustomEditorProvider called with PREVIEW_VIEW_TYPE
- *   M41b-EXT-02  CommentStore retrieved via accordo.comments.internal.getStore command
- *   M41b-EXT-03  accordo.preview.open / toggle / openSideBySide commands registered
+ *   M41b-EXT-02  CommentStore retrieved via accordo_comments_internal_getStore command
+ *   M41b-EXT-03  accordo_preview_open / toggle / openSideBySide commands registered
  *   M41b-EXT-04  all disposables pushed to context.subscriptions
  *   M41b-EXT-05  if accordo-comments unavailable, extension is inert (nothing registered)
  */
@@ -55,7 +55,7 @@ function setupCommentsExtPresent(): void {
 
   // Make the internal getStore command return our mock store
   mockState.registeredCommands.set(
-    "accordo.comments.internal.getStore",
+    "accordo_comments_internal_getStore",
     () => MOCK_STORE,
   );
 }
@@ -89,7 +89,7 @@ describe("activate", () => {
     expect(mockState.registeredCommands.has("accordo.preview.toggle")).toBe(true);
     expect(mockState.registeredCommands.has("accordo.preview.openSideBySide")).toBe(true);
     // getStore was NOT called (extension was absent)
-    expect(commands.executeCommand).not.toHaveBeenCalledWith("accordo.comments.internal.getStore");
+    expect(commands.executeCommand).not.toHaveBeenCalledWith("accordo_comments_internal_getStore");
   });
 
   it("M41b-EXT-05: registers preview with null store when getStore returns falsy (inert mode)", async () => {
@@ -99,7 +99,7 @@ describe("activate", () => {
       return undefined;
     });
     // getStore returns undefined (falsy) — falls back to no-op
-    mockState.registeredCommands.set("accordo.comments.internal.getStore", () => undefined);
+    mockState.registeredCommands.set("accordo_comments_internal_getStore", () => undefined);
     const ctx = createMockExtensionContext();
 
     await activate(ctx as never);
@@ -112,13 +112,13 @@ describe("activate", () => {
     expect(mockState.registeredCommands.has("accordo.preview.open")).toBe(true);
   });
 
-  it("M41b-EXT-02: retrieves CommentStore via accordo.comments.internal.getStore", async () => {
+  it("M41b-EXT-02: retrieves CommentStore via accordo_comments_internal_getStore", async () => {
     setupCommentsExtPresent();
     const ctx = createMockExtensionContext();
 
     await activate(ctx as never);
 
-    expect(commands.executeCommand).toHaveBeenCalledWith("accordo.comments.internal.getStore");
+    expect(commands.executeCommand).toHaveBeenCalledWith("accordo_comments_internal_getStore");
   });
 
   it("M41b-EXT-01: registers custom editor provider with PREVIEW_VIEW_TYPE", async () => {
@@ -134,7 +134,7 @@ describe("activate", () => {
     );
   });
 
-  it("reads accordo.preview.defaultSurface and passes supportsMultipleEditorsPerDocument=false when 'text'", async () => {
+  it("reads accordo_preview_defaultSurface and passes supportsMultipleEditorsPerDocument=false when 'text'", async () => {
     setupCommentsExtPresent();
     const ctx = createMockExtensionContext();
     // Mock getConfiguration to return "text" for defaultSurface
@@ -152,7 +152,7 @@ describe("activate", () => {
     );
   });
 
-  it("M41b-EXT-03: registers accordo.preview.open command", async () => {
+  it("M41b-EXT-03: registers accordo_preview_open command", async () => {
     setupCommentsExtPresent();
     const ctx = createMockExtensionContext();
 
@@ -161,7 +161,7 @@ describe("activate", () => {
     expect(mockState.registeredCommands.has("accordo.preview.open")).toBe(true);
   });
 
-  it("M41b-EXT-03: registers accordo.preview.toggle command", async () => {
+  it("M41b-EXT-03: registers accordo_preview_toggle command", async () => {
     setupCommentsExtPresent();
     const ctx = createMockExtensionContext();
 
@@ -170,7 +170,7 @@ describe("activate", () => {
     expect(mockState.registeredCommands.has("accordo.preview.toggle")).toBe(true);
   });
 
-  it("M41b-EXT-03: registers accordo.preview.openSideBySide command", async () => {
+  it("M41b-EXT-03: registers accordo_preview_openSideBySide command", async () => {
     setupCommentsExtPresent();
     const ctx = createMockExtensionContext();
 
@@ -193,7 +193,7 @@ describe("activate", () => {
     }
   });
 
-  it("M41b-EXT-03: accordo.preview.open does nothing if active file is not .md", async () => {
+  it("M41b-EXT-03: accordo_preview_open does nothing if active file is not .md", async () => {
     setupCommentsExtPresent();
     const ctx = createMockExtensionContext();
     await activate(ctx as never);
@@ -222,7 +222,7 @@ describe("activate", () => {
     expect(openWithCalls).toHaveLength(0);
   });
 
-  it("M41b-EXT-03: accordo.preview.open calls vscode.openWith for .md files", async () => {
+  it("M41b-EXT-03: accordo_preview_open calls vscode.openWith for .md files", async () => {
     setupCommentsExtPresent();
     const ctx = createMockExtensionContext();
     await activate(ctx as never);

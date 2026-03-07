@@ -12,8 +12,8 @@
  *
  * Requirements:
  *   M41b-EXT-01  registerCustomEditorProvider(PREVIEW_VIEW_TYPE, ...)
- *   M41b-EXT-02  retrieve CommentStore via accordo.comments.internal.getStore
- *   M41b-EXT-03  register accordo.preview.open / toggle / openSideBySide commands
+ *   M41b-EXT-02  retrieve CommentStore via accordo_comments_internal_getStore
+ *   M41b-EXT-03  register accordo_preview_open / toggle / openSideBySide commands
  *   M41b-EXT-04  all disposables pushed to context.subscriptions
  *   M41b-EXT-05  if accordo-comments unavailable, preview is inert (no comment bridge)
  */
@@ -49,7 +49,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await commentsExt.activate();
       }
       const acquired = (await vscode.commands.executeCommand(
-        "accordo.comments.internal.getStore",
+        "accordo_comments_internal_getStore",
       )) as CommentStoreLike | undefined;
       if (acquired && typeof acquired.createThread === "function") {
         store = acquired;
@@ -117,7 +117,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Finds the live webview panel for the given URI and sends a comments:focus message.
     // Returns true if a panel was found and focused, false otherwise.
     vscode.commands.registerCommand(
-      "accordo.preview.internal.focusThread",
+      "accordo_preview_internal_focusThread",
       (uri: string, threadId: string, blockId?: string): boolean => {
         const panel = CommentablePreview.livePanels.get(uri);
         if (panel) {
