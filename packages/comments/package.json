@@ -9,7 +9,36 @@
   "activationEvents": ["onStartupFinished"],
   "extensionDependencies": ["accordo.accordo-bridge"],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "accordo-comments",
+          "title": "Accordo Comments",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "accordo-comments": [
+        {
+          "id": "accordo-comments-panel",
+          "name": "Comments",
+          "icon": "$(comment-discussion)",
+          "contextualTitle": "Accordo Comments"
+        }
+      ]
+    },
     "commands": [
+      { "command": "accordo.commentsPanel.navigateToAnchor", "title": "Go to Comment Location", "icon": "$(go-to-file)" },
+      { "command": "accordo.commentsPanel.resolve", "title": "Resolve", "icon": "$(pass)" },
+      { "command": "accordo.commentsPanel.reopen", "title": "Reopen", "icon": "$(debug-restart)" },
+      { "command": "accordo.commentsPanel.reply", "title": "Reply", "icon": "$(reply)" },
+      { "command": "accordo.commentsPanel.delete", "title": "Delete Thread", "icon": "$(trash)" },
+      { "command": "accordo.commentsPanel.refresh", "title": "Refresh Comments", "icon": "$(refresh)" },
+      { "command": "accordo.commentsPanel.filterByStatus", "title": "Filter by Status", "icon": "$(filter)" },
+      { "command": "accordo.commentsPanel.filterByIntent", "title": "Filter by Intent", "icon": "$(filter)" },
+      { "command": "accordo.commentsPanel.clearFilters", "title": "Clear Comment Filters", "icon": "$(clear-all)" },
+      { "command": "accordo.commentsPanel.groupBy", "title": "Group Comments By", "icon": "$(list-tree)" },
       { "command": "accordo.comments.new", "title": "Accordo: New Comment" },
       { "command": "accordo.comments.resolveThread", "title": "Resolve", "icon": "$(pass)" },
       { "command": "accordo.comments.deleteThread", "title": "Delete Thread", "icon": "$(trash)" },
@@ -43,7 +72,20 @@
           "when": "commentController == accordo-comments"
         }
       ],
-      "view/item/context": [],
+      "view/title": [
+        { "command": "accordo.commentsPanel.refresh", "when": "view == accordo-comments-panel", "group": "navigation" },
+        { "command": "accordo.commentsPanel.groupBy", "when": "view == accordo-comments-panel", "group": "navigation" },
+        { "command": "accordo.commentsPanel.filterByStatus", "when": "view == accordo-comments-panel", "group": "1_filter@1" },
+        { "command": "accordo.commentsPanel.filterByIntent", "when": "view == accordo-comments-panel", "group": "1_filter@2" },
+        { "command": "accordo.commentsPanel.clearFilters", "when": "view == accordo-comments-panel", "group": "1_filter@3" }
+      ],
+      "view/item/context": [
+        { "command": "accordo.commentsPanel.navigateToAnchor", "when": "view == accordo-comments-panel && viewItem =~ /accordo-thread/", "group": "inline" },
+        { "command": "accordo.commentsPanel.resolve", "when": "view == accordo-comments-panel && (viewItem == accordo-thread-open || viewItem == accordo-thread-stale)", "group": "1_actions@1" },
+        { "command": "accordo.commentsPanel.reopen", "when": "view == accordo-comments-panel && viewItem == accordo-thread-resolved", "group": "1_actions@1" },
+        { "command": "accordo.commentsPanel.reply", "when": "view == accordo-comments-panel && viewItem =~ /accordo-thread/", "group": "1_actions@2" },
+        { "command": "accordo.commentsPanel.delete", "when": "view == accordo-comments-panel && viewItem =~ /accordo-thread/", "group": "1_actions@3" }
+      ],
       "comments/comment/title": [
         {
           "command": "accordo.comments.deleteComment",

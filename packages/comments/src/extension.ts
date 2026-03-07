@@ -19,6 +19,10 @@ import { CommentStore } from "./comment-store.js";
 import { NativeComments } from "./native-comments.js";
 import { createCommentTools } from "./comment-tools.js";
 import { startStateContribution } from "./state-contribution.js";
+import { PanelFilters } from "./panel/panel-filters.js";
+import { CommentsTreeProvider } from "./panel/comments-tree-provider.js";
+import { registerPanelCommands } from "./panel/panel-commands.js";
+import type { NavigationEnv } from "./panel/navigation-router.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -100,12 +104,39 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   nc.restoreThreads(store.getAllThreads());
   nc.registerCommands(store, context);
 
-  // ── Register accordo.comments.new (user-facing) ────────────────────────────
+  // ── Custom Comments Panel (M45-EXT) ──────────────────────────────────────────
+  const filters = new PanelFilters(context.workspaceState);
+  const treeProvider = new CommentsTreeProvider(store, filters);
+  const treeView = vscode.window.createTreeView("accordo-comments-panel", {
+    treeDataProvider: treeProvider,
+    showCollapseAll: true,
+  });
+  context.subscriptions.push(treeView);
+
+  const navEnv: NavigationEnv = {
+    showTextDocument: (uri, options) => vscode.window.showTextDocument(uri, options),
+    executeCommand: (cmd, ...args) => vscode.commands.executeCommand(cmd, ...args),
+    showWarningMessage: (msg) => vscode.window.showWarningMessage(msg),
+    showInformationMessage: (msg) => vscode.window.showInformationMessage(msg),
+    delay: (ms) => new Promise(resolve => setTimeout(resolve, ms)),
+  };
+
+  const panelDisposables = registerPanelCommands(
+    context,
+    store,
+    nc,
+    navEnv,
+    filters,
+    treeProvider,
+  );
+  context.subscriptions.push(...panelDisposables);
+
+  // ── Register accordo_comments_new (user-facing) ────────────────────────────
   // Called by controller.acceptInputCommand when user presses Ctrl+Enter / Save.
   // vscode.CommentReply = { thread: CommentThread, text: string }
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      "accordo.comments.new",
+      "accordo_comments_new",
       async (reply: { thread: vscode.CommentThread; text: string }) => {
         if (!reply?.thread || !reply.text.trim()) return;
         const existingId = nc.getThreadIdForWidget(reply.thread);
@@ -175,7 +206,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // comments and subscribe to store changes without importing VSCode or the
     // full CommentStore class directly.
     vscode.commands.registerCommand(
-      "accordo.comments.internal.getStore",
+      "accordo_comments_internal_getStore",
       () => {
         return {
           async createThread(args: { uri: string; blockId: string; body: string; intent?: string; line?: number }) {
@@ -240,13 +271,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       },
     ),
     vscode.commands.registerCommand(
-      "accordo.comments.internal.getThreadsForUri",
+      "accordo_comments_internal_getThreadsForUri",
       (uri: string) => {
         return store.getAllThreads().filter(t => t.anchor.uri === uri);
       },
     ),
     vscode.commands.registerCommand(
-      "accordo.comments.internal.createSurfaceComment",
+      "accordo_comments_internal_createSurfaceComment",
       async (params: Record<string, unknown>) => {
         return store.createThread({
           uri: params["uri"] as string,
@@ -258,7 +289,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       },
     ),
     vscode.commands.registerCommand(
-      "accordo.comments.internal.resolveThread",
+      "accordo_comments_internal_resolveThread",
       async (threadId: string) => {
         await store.resolve({
           threadId,
@@ -274,7 +305,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // persist comment threads without depending on markdown-specific anchor
     // construction logic from getStore.
     vscode.commands.registerCommand(
-      "accordo.comments.internal.getSurfaceAdapter",
+      "accordo_comments_internal_getSurfaceAdapter",
       (): SurfaceCommentAdapter => {
         return {
           async createThread(args) {
