@@ -3,13 +3,13 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-07  
-**Status:** ACTIVE — Session 9 complete (M45 Custom Comments Panel ✅), Session 10 next (Voice modality)
+**Status:** ACTIVE — Session 9 complete (M45 Custom Comments Panel ✅), Session 10A next (Voice core + tools)
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-07 — Session 9 complete. Custom Comments Panel (M45-TP/NR/CMD/FLT/EXT) fully delivered: 76 new tests. Manual testing round completed — fixed command-ID mismatches, `.deck.md` activation event, `comments:focus` webview handler, slide-sync race, and inline reply UX. 1418 tests total (Hub: 346, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). TypeScript clean. Committed and pushed. Session 10 next: Voice modality (`accordo-voice`).**
+> **As of 2026-03-07 — Session 9 complete. Custom Comments Panel (M45-TP/NR/CMD/FLT/EXT) fully delivered: 76 new tests. Manual testing round completed — fixed command-ID mismatches, `.deck.md` activation event, `comments:focus` webview handler, slide-sync race, and inline reply UX. 1418 tests total (Hub: 346, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). TypeScript clean. Committed and pushed. Session 10A next: Voice core + tools + UI (`accordo-voice`).**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -17,7 +17,7 @@
 | Phase 2 | Comments modality (`accordo-comments`) | ✅ DONE — Week 6+7 complete, 1221 tests |
 | Phase 3 | Presentations modality (`accordo-slidev`) | ✅ DONE — Session 8B complete, 137 tests |
 | Session 9 | Custom Comments Panel (M45 — `accordo-comments` update) | ✅ DONE — 273 comments tests, 1418 total |
-| **Session 10** | **Voice modality (`accordo-voice` — port + Bridge registration)** | 🔜 **NEXT** — existing code in theia-openspace |
+| **Session 10** | **Voice modality (`accordo-voice` — 10A core+tools, 10B scripted narration)** | 🔜 **NEXT** — existing code in theia-openspace |
 | Session 11 | Diagrams modality (`accordo-diagram` — Mermaid + Excalidraw) | ⏳ Pending Session 10 — architecture + workplan ready |
 | Session 12+ | Browser agentation (`accordo-browser` + Chrome extension) | 📋 DEFERRED — architecture + requirements written, complex anchoring needs more design |
 
@@ -216,22 +216,59 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ### Session 10 — Voice (`accordo-voice`)
 
-**Goal:** Port the existing `openspace-voice-vscode` extension (from `theia-openspace`) into the Accordo ecosystem. Register voice capabilities with the Bridge + Hub. Agents can see voice state in the system prompt and invoke TTS for narration.
+**Goal:** Port the existing voice infrastructure from `theia-openspace` into the Accordo ecosystem. Give the agent a voice (TTS narration) and an ear (STT dictation). Register MCP tools with Bridge. Scripted narrations allow the agent to pre-compose multi-step walkthroughs interleaving speech with IDE actions.
 
-**Source code:** `/Users/Shared/dev/theia-openspace/openspace-voice-vscode/` — push-to-talk dictation (Whisper STT) + read-aloud (Kokoro TTS) + playback (platform-aware WAV). Depends on `@openspace-ai/voice-core` for FSMs and adapters.
+**Requirements:** [`docs/requirements-voice.md`](requirements-voice.md)  
+**Source code:** `theia-openspace/openspace-voice-vscode/` + `theia-openspace/extensions/openspace-voice/` + `theia-openspace/packages/voice-core/`
 
-**Key ecosystem context:**
-- **Microsoft VS Code Speech** (1.2M installs): Azure Speech SDK, local processing, 26 languages. Uses VS Code's built-in `vscode.speech` API (STT + TTS). Already integrated with Copilot Chat.
-- **Piper TTS** (1.5K installs): Offline neural TTS. Local processing.
-- Our approach uses **Whisper.cpp** (STT, local) + **Kokoro** (TTS, local) — fully offline, no cloud dependency.
+**Technology decisions (resolved):**
+- **STT:** Whisper.cpp (local, offline) — more advanced than VS Code Speech API (Azure-dependent). Provider interface allows swap-in of VS Code Speech later.
+- **TTS:** Kokoro (local, neural, 82M ONNX) — fully offline, multiple voices. Provider interface allows swap-in of Piper, ElevenLabs, etc.
+- **LLM for summary mode:** Direct API call to configured endpoint (OpenAI/Anthropic/local Ollama). Extension has its own `llmEndpoint` + `llmModel` config.
+- **Voice-core code:** Copied into `packages/voice/src/core/` (no external dependency on `@openspace-ai/voice-core`). Full control.
+- **UI:** Port theia-openspace waveform overlay + input widget as a VS Code `WebviewView` panel + status bar.
 
-**Scope decisions needed (Phase A):**
-1. Should `accordo-voice` use the VS Code Speech provider API (`vscode.speech`) as a provider rather than direct Whisper/Kokoro?
-2. Bridge registration: register `voice.readAloud`, `voice.dictation`, `voice.narrate` as MCP tools?
-3. State contribution: publish voice state (ready/recording/playing/error) to Hub prompt?
-4. Narration integration: wire to `accordo-slidev` narration text for TTS playback?
+**New packages:** `packages/voice/` (`accordo-voice` — VS Code extension)
 
-**New packages:** `packages/voice/` (`accordo-voice` — VSCode extension, ported from openspace-voice-vscode)
+**Implementation split into two sessions:**
+
+#### Session 10A — Core + Tools + UI
+
+**Goal:** Working STT dictation, TTS read-aloud, MCP tool registration, status bar, voice panel. Deterministic text cleaning (no LLM).
+
+| # | Module | Requirements Source | TDD Phases |
+|---|---|---|---|
+| M50-SP | Provider interfaces (`SttProvider`, `TtsProvider`) | requirements-voice.md §4 M50-SP | A → F |
+| M50-WA | `WhisperCppAdapter` — Whisper.cpp STT | requirements-voice.md §4 M50-WA | A → F |
+| M50-KA | `KokoroAdapter` — Kokoro TTS | requirements-voice.md §4 M50-KA | A → F |
+| M50-FSM | Voice FSMs (`SessionFsm`, `AudioFsm`, `NarrationFsm`) + types | requirements-voice.md §4 M50-FSM | A → F |
+| M50-WAV | WAV utility + platform playback | requirements-voice.md §4 M50-WAV | A → F |
+| M50-TC | `TextCleaner` — deterministic markdown→speech cleanup | requirements-voice.md §4 M50-TC | A → F |
+| M50-SS | `SentenceSplitter` — split for incremental TTS | requirements-voice.md §4 M50-SS | A → F |
+| M50-VC | `VoiceVocabulary` — user word replacements | requirements-voice.md §4 M50-VC | A → F |
+| M50-DT | `accordo_voice_discover` MCP tool | requirements-voice.md §4 M50-DT | A → F |
+| M50-RA | `accordo_voice_readAloud` MCP tool | requirements-voice.md §4 M50-RA | A → F |
+| M50-DI | `accordo_voice_dictation` MCP tool | requirements-voice.md §4 M50-DI | A → F |
+| M50-POL | `accordo_voice_setPolicy` MCP tool | requirements-voice.md §4 M50-POL | A → F |
+| M50-SB | `VoiceStatusBar` — status bar management | requirements-voice.md §4 M50-SB | A → F |
+| M50-VP | `VoicePanelProvider` — WebviewView (waveform + controls) | requirements-voice.md §4 M50-VP | A → F |
+| M50-EXT | `extension.ts` — activate, wiring, Bridge registration | requirements-voice.md §4 M50-EXT | A → F |
+
+**Session 10A gate:** Agent can call `accordo_voice_readAloud` to speak cleaned text. Agent calls `accordo_voice_dictation` for STT. Voice state appears in system prompt. Status bar + voice panel show recording/playback state. ~198 new tests.
+
+#### Session 10B — Scripted Narration + Summary Mode
+
+**Goal:** `ScriptRunner` executes multi-step narration scripts interleaving speech with IDE commands. LLM-powered summary mode. Streaming TTS. Utterance library.
+
+| # | Module | Requirements Source | TDD Phases |
+|---|---|---|---|
+| M51-NR | `ScriptRunner` — sequential step executor (speak + command + delay + highlight) | requirements-voice.md §5 M51-NR | A → F |
+| M51-NT | `accordo_voice_narrate` MCP tool | requirements-voice.md §5 M51-NT | A → F |
+| M51-PP | `NarrationPreprocessor` — LLM-powered text→NarrationScript | requirements-voice.md §5 M51-PP | A → F |
+| M51-UL | `UtteranceLibrary` — pre-recorded audio for interjections | requirements-voice.md §5 M51-UL | A → F |
+| M51-STR | Streaming narration — synthesize sentence N+1 while playing N | requirements-voice.md §5 M51-STR | A → F |
+
+**Session 10B gate:** Agent calls `accordo_voice_narrate` with a full script (speak + presentation.goto + editor.open + delay). Script executes autonomously. Summary mode uses LLM. Streaming reduces TTS latency.
 
 ---
 
@@ -288,10 +325,10 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 | # | Module | Requirements Source | TDD Phases |
 |---|---|---|---|
-| M50-BT | `@accordo/bridge-types` — add `CssSelectorCoordinates`, `BrowserRelayMessage`, `BrowserTabInfo` | requirements-browser.md §3 | A → F |
-| M51-REL | `browser-relay.ts` — local WebSocket server, auth, multi-client routing | requirements-browser.md §4 M51 | A → F |
-| M52-CBR | `browser-comments-bridge.ts` — message routing ↔ surface adapter, blockId codec | requirements-browser.md §4 M52 | A → F |
-| M54-SEL | `selector-utils.ts` — blockId encode/decode, pure functions | requirements-browser.md §4 M54 | A → F |
+| M60-BT | `@accordo/bridge-types` — add `CssSelectorCoordinates`, `BrowserRelayMessage`, `BrowserTabInfo` | requirements-browser.md §3 | A → F |
+| M61-REL | `browser-relay.ts` — local WebSocket server, auth, multi-client routing | requirements-browser.md §4 M61 | A → F |
+| M62-CBR | `browser-comments-bridge.ts` — message routing ↔ surface adapter, blockId codec | requirements-browser.md §4 M62 | A → F |
+| M64-SEL | `selector-utils.ts` — blockId encode/decode, pure functions | requirements-browser.md §4 M64 | A → F |
 
 **Session 12A gate:** BrowserRelay accepts WebSocket connections with auth. BrowserCommentsBridge routes comment messages to CommentStore. Integration test: mock client → relay → adapter → thread created with `surfaceType: "browser"` and `CssSelectorCoordinates`.
 
@@ -301,11 +338,11 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 | # | Module | Requirements Source | TDD Phases |
 |---|---|---|---|
-| M53-STATE | `browser-state.ts` — publishes connected tabs + comment counts to Hub | requirements-browser.md §4 M53 | A → F |
-| M55-EXT | `extension.ts` — activation, wiring, token generation, commands | requirements-browser.md §4 M55 | A → F |
-| M56-TAG | `dom-tagger.ts` — DOM element tagging with `data-block-id` | requirements-browser.md §5 M56 | A → F |
-| M57-CSS | `selector-generator.ts` — minimal unique CSS selector paths | requirements-browser.md §5 M57 | A → F |
-| M58-FP | `text-fingerprint.ts` — FNV-1a hash of element text | requirements-browser.md §5 M58 | A → F |
+| M63-STATE | `browser-state.ts` — publishes connected tabs + comment counts to Hub | requirements-browser.md §4 M63 | A → F |
+| M65-EXT | `extension.ts` — activation, wiring, token generation, commands | requirements-browser.md §4 M65 | A → F |
+| M66-TAG | `dom-tagger.ts` — DOM element tagging with `data-block-id` | requirements-browser.md §5 M66 | A → F |
+| M67-CSS | `selector-generator.ts` — minimal unique CSS selector paths | requirements-browser.md §5 M67 | A → F |
+| M68-FP | `text-fingerprint.ts` — FNV-1a hash of element text | requirements-browser.md §5 M68 | A → F |
 
 **Session 12B gate:** VSCode extension activates, generates token, starts relay. DOM auto-tagger correctly assigns blockIds in jsdom. Selector generator produces unique selectors. Fingerprint is deterministic.
 
@@ -315,11 +352,11 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 | # | Module | Requirements Source | TDD Phases |
 |---|---|---|---|
-| M59-SW | `service-worker.ts` — WebSocket client, message routing, reconnection | requirements-browser.md §5 M59 | A → F |
-| M60-CS | `content-script.ts` — SDK initialization, callback wiring, scroll/resize | requirements-browser.md §5 M60 | A → F |
-| M61-POP | `popup.html` + `popup.ts` — configuration UI, connection status | requirements-browser.md §5 M61 | A → F |
-| M62-THM | `browser-theme.css` — VS Code CSS variable mappings for browser | requirements-browser.md §5 M62 | A → F |
-| M63-AUTO | Browser automation setup docs + optional helper command | requirements-browser.md §6 M63 | A → F |
+| M69-SW | `service-worker.ts` — WebSocket client, message routing, reconnection | requirements-browser.md §5 M69 | A → F |
+| M70-CS | `content-script.ts` — SDK initialization, callback wiring, scroll/resize | requirements-browser.md §5 M70 | A → F |
+| M71-POP | `popup.html` + `popup.ts` — configuration UI, connection status | requirements-browser.md §5 M71 | A → F |
+| M72-THM | `browser-theme.css` — VS Code CSS variable mappings for browser | requirements-browser.md §5 M72 | A → F |
+| M73-AUTO | Browser automation setup docs + optional helper command | requirements-browser.md §6 M73 | A → F |
 
 **Session 12C gate:** Chrome extension side-loads in Chrome. Content script injects overlay and Comment SDK. Service worker connects to relay. Comments created in Chrome appear in VS Code. Playwright MCP setup documented.
 
