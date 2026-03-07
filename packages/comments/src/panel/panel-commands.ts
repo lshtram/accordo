@@ -78,8 +78,8 @@ export function registerPanelCommands(
     return item.thread ?? (arg as CommentThread);
   }
 
-  function noArg(): Promise<void> {
-    return windowUI.showInformationMessage("Select a thread in the Comments panel first").then(() => undefined);
+  async function noArg(): Promise<void> {
+    await windowUI.showInformationMessage("Select a thread in the Comments panel first");
   }
 
   const disposables: { dispose(): void }[] = [];
