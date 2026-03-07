@@ -20,7 +20,7 @@ const PANEL_COMMANDS: Record<string, string> = {
   extensions: "workbench.view.extensions",
 };
 
-// ── §4.14 accordo.panel.toggle ────────────────────────────────────────────────
+// ── §4.14 accordo_panel_toggle ────────────────────────────────────────────────
 
 export async function panelToggleHandler(
   args: Record<string, unknown>,
@@ -43,7 +43,7 @@ export async function panelToggleHandler(
   }
 }
 
-// ── §4.15 accordo.layout.zen ─────────────────────────────────────────────────
+// ── §4.15 accordo_layout_zen ─────────────────────────────────────────────────
 
 export async function layoutZenHandler(
   _args: Record<string, unknown>,
@@ -56,7 +56,7 @@ export async function layoutZenHandler(
   }
 }
 
-// ── §4.16 accordo.layout.fullscreen ──────────────────────────────────────────
+// ── §4.16 accordo_layout_fullscreen ──────────────────────────────────────────
 
 export async function layoutFullscreenHandler(
   _args: Record<string, unknown>,
@@ -69,7 +69,7 @@ export async function layoutFullscreenHandler(
   }
 }
 
-// ── §4.23 accordo.layout.joinGroups ──────────────────────────────────────────
+// ── §4.23 accordo_layout_joinGroups ──────────────────────────────────────────
 
 export async function layoutJoinGroupsHandler(
   _args: Record<string, unknown>,
@@ -82,7 +82,7 @@ export async function layoutJoinGroupsHandler(
   }
 }
 
-// ── §4.24 accordo.layout.evenGroups ──────────────────────────────────────────
+// ── §4.24 accordo_layout_evenGroups ──────────────────────────────────────────
 
 export async function layoutEvenGroupsHandler(
   _args: Record<string, unknown>,
@@ -100,7 +100,7 @@ export async function layoutEvenGroupsHandler(
 /** All layout tool definitions for module 20. */
 export const layoutTools: ExtensionToolDefinition[] = [
   {
-    name: "accordo.panel.toggle",
+    name: "accordo_panel_toggle",
     group: "layout",
     description:
       "Toggle visibility of a VSCode sidebar panel (explorer, search, git, debug, extensions).",
@@ -117,10 +117,10 @@ export const layoutTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.panel.toggle", panelToggleHandler),
+    handler: wrapHandler("accordo_panel_toggle", panelToggleHandler),
   },
   {
-    name: "accordo.layout.zen",
+    name: "accordo_layout_zen",
     group: "layout",
     description: "Toggle Zen Mode (distraction-free fullscreen editing).",
     inputSchema: {
@@ -130,10 +130,10 @@ export const layoutTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: false,
-    handler: wrapHandler("accordo.layout.zen", layoutZenHandler),
+    handler: wrapHandler("accordo_layout_zen", layoutZenHandler),
   },
   {
-    name: "accordo.layout.fullscreen",
+    name: "accordo_layout_fullscreen",
     group: "layout",
     description: "Toggle fullscreen mode.",
     inputSchema: {
@@ -143,10 +143,10 @@ export const layoutTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: false,
-    handler: wrapHandler("accordo.layout.fullscreen", layoutFullscreenHandler),
+    handler: wrapHandler("accordo_layout_fullscreen", layoutFullscreenHandler),
   },
   {
-    name: "accordo.layout.joinGroups",
+    name: "accordo_layout_joinGroups",
     group: "layout",
     description: "Collapse all editor splits — merge all groups into one.",
     inputSchema: {
@@ -156,10 +156,10 @@ export const layoutTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.layout.joinGroups", layoutJoinGroupsHandler),
+    handler: wrapHandler("accordo_layout_joinGroups", layoutJoinGroupsHandler),
   },
   {
-    name: "accordo.layout.evenGroups",
+    name: "accordo_layout_evenGroups",
     group: "layout",
     description: "Equalise the width and height of all editor groups.",
     inputSchema: {
@@ -169,6 +169,6 @@ export const layoutTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.layout.evenGroups", layoutEvenGroupsHandler),
+    handler: wrapHandler("accordo_layout_evenGroups", layoutEvenGroupsHandler),
   },
 ];

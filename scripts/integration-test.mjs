@@ -29,46 +29,46 @@ const HUB_BINARY = new URL("../packages/hub/dist/index.js", import.meta.url).pat
 // ── Fake tool registry (mirrors real 40 tools) ────────────────────────────────
 
 const FAKE_TOOLS = [
-  { name: "accordo.editor.open", description: "Open a file in the editor", group: "editor" },
-  { name: "accordo.editor.close", description: "Close an editor tab", group: "editor" },
-  { name: "accordo.editor.scroll", description: "Scroll the active editor", group: "editor" },
-  { name: "accordo.editor.split", description: "Split the editor pane", group: "editor" },
-  { name: "accordo.editor.focus", description: "Focus an editor group", group: "editor" },
-  { name: "accordo.editor.reveal", description: "Reveal a line in the editor", group: "editor" },
-  { name: "accordo.editor.highlight", description: "Highlight lines in the editor", group: "editor" },
-  { name: "accordo.editor.clearHighlights", description: "Clear editor highlights", group: "editor" },
-  { name: "accordo.editor.save", description: "Save active file", group: "editor" },
-  { name: "accordo.editor.saveAll", description: "Save all open files", group: "editor" },
-  { name: "accordo.editor.format", description: "Format the active document", group: "editor" },
-  { name: "accordo.editor.discover", description: "Returns full schemas for all 11 editor tools", group: undefined },
-  { name: "accordo.terminal.open", description: "Open a new terminal", group: "terminal" },
-  { name: "accordo.terminal.run", description: "Run a command in a terminal", group: "terminal" },
-  { name: "accordo.terminal.focus", description: "Focus the terminal panel", group: "terminal" },
-  { name: "accordo.terminal.list", description: "List open terminals", group: "terminal" },
-  { name: "accordo.terminal.close", description: "Close a terminal", group: "terminal" },
-  { name: "accordo.terminal.discover", description: "Returns full schemas for all 5 terminal tools", group: undefined },
-  { name: "accordo.panel.toggle", description: "Toggle sidebar panel visibility", group: "layout" },
-  { name: "accordo.layout.zen", description: "Toggle Zen Mode", group: "layout" },
-  { name: "accordo.layout.fullscreen", description: "Toggle fullscreen mode", group: "layout" },
-  { name: "accordo.layout.joinGroups", description: "Collapse all editor splits", group: "layout" },
-  { name: "accordo.layout.evenGroups", description: "Equalize editor group sizes", group: "layout" },
-  { name: "accordo.layout.discover", description: "Returns full schemas for all 5 layout tools", group: undefined },
-  { name: "accordo.comment.list", description: "List review threads", group: "comments" },
-  { name: "accordo.comment.get", description: "Get a specific review thread", group: "comments" },
-  { name: "accordo.comment.create", description: "Create a review thread", group: "comments" },
-  { name: "accordo.comment.reply", description: "Reply to a review thread", group: "comments" },
-  { name: "accordo.comment.resolve", description: "Resolve a review thread", group: "comments" },
-  { name: "accordo.comment.delete", description: "Delete a review thread", group: "comments" },
-  { name: "accordo.comments.discover", description: "Get schemas for 6 review-thread tools", group: undefined },
-  { name: "accordo.presentation.discover", description: "List Slidev presentation deck files in the workspace. Only returns actual Slidev decks", group: undefined },
-  { name: "accordo.presentation.open", description: "Open a Slidev presentation deck", group: "presentation" },
-  { name: "accordo.presentation.close", description: "Close the active presentation session", group: "presentation" },
-  { name: "accordo.presentation.listSlides", description: "List all slides in the current deck", group: "presentation" },
-  { name: "accordo.presentation.getCurrent", description: "Get the current slide", group: "presentation" },
-  { name: "accordo.presentation.goto", description: "Navigate to a specific slide", group: "presentation" },
-  { name: "accordo.presentation.next", description: "Advance to the next slide", group: "presentation" },
-  { name: "accordo.presentation.prev", description: "Go back to the previous slide", group: "presentation" },
-  { name: "accordo.presentation.generateNarration", description: "Generate narration text for slides", group: "presentation" },
+  { name: "accordo_editor_open", description: "Open a file in the editor", group: "editor" },
+  { name: "accordo_editor_close", description: "Close an editor tab", group: "editor" },
+  { name: "accordo_editor_scroll", description: "Scroll the active editor", group: "editor" },
+  { name: "accordo_editor_split", description: "Split the editor pane", group: "editor" },
+  { name: "accordo_editor_focus", description: "Focus an editor group", group: "editor" },
+  { name: "accordo_editor_reveal", description: "Reveal a line in the editor", group: "editor" },
+  { name: "accordo_editor_highlight", description: "Highlight lines in the editor", group: "editor" },
+  { name: "accordo_editor_clearHighlights", description: "Clear editor highlights", group: "editor" },
+  { name: "accordo_editor_save", description: "Save active file", group: "editor" },
+  { name: "accordo_editor_saveAll", description: "Save all open files", group: "editor" },
+  { name: "accordo_editor_format", description: "Format the active document", group: "editor" },
+  { name: "accordo_editor_discover", description: "Returns full schemas for all 11 editor tools", group: undefined },
+  { name: "accordo_terminal_open", description: "Open a new terminal", group: "terminal" },
+  { name: "accordo_terminal_run", description: "Run a command in a terminal", group: "terminal" },
+  { name: "accordo_terminal_focus", description: "Focus the terminal panel", group: "terminal" },
+  { name: "accordo_terminal_list", description: "List open terminals", group: "terminal" },
+  { name: "accordo_terminal_close", description: "Close a terminal", group: "terminal" },
+  { name: "accordo_terminal_discover", description: "Returns full schemas for all 5 terminal tools", group: undefined },
+  { name: "accordo_panel_toggle", description: "Toggle sidebar panel visibility", group: "layout" },
+  { name: "accordo_layout_zen", description: "Toggle Zen Mode", group: "layout" },
+  { name: "accordo_layout_fullscreen", description: "Toggle fullscreen mode", group: "layout" },
+  { name: "accordo_layout_joinGroups", description: "Collapse all editor splits", group: "layout" },
+  { name: "accordo_layout_evenGroups", description: "Equalize editor group sizes", group: "layout" },
+  { name: "accordo_layout_discover", description: "Returns full schemas for all 5 layout tools", group: undefined },
+  { name: "accordo_comment_list", description: "List review threads", group: "comments" },
+  { name: "accordo_comment_get", description: "Get a specific review thread", group: "comments" },
+  { name: "accordo_comment_create", description: "Create a review thread", group: "comments" },
+  { name: "accordo_comment_reply", description: "Reply to a review thread", group: "comments" },
+  { name: "accordo_comment_resolve", description: "Resolve a review thread", group: "comments" },
+  { name: "accordo_comment_delete", description: "Delete a review thread", group: "comments" },
+  { name: "accordo_comments_discover", description: "Get schemas for 6 review-thread tools", group: undefined },
+  { name: "accordo_presentation_discover", description: "List Slidev presentation deck files in the workspace. Only returns actual Slidev decks", group: undefined },
+  { name: "accordo_presentation_open", description: "Open a Slidev presentation deck", group: "presentation" },
+  { name: "accordo_presentation_close", description: "Close the active presentation session", group: "presentation" },
+  { name: "accordo_presentation_listSlides", description: "List all slides in the current deck", group: "presentation" },
+  { name: "accordo_presentation_getCurrent", description: "Get the current slide", group: "presentation" },
+  { name: "accordo_presentation_goto", description: "Navigate to a specific slide", group: "presentation" },
+  { name: "accordo_presentation_next", description: "Advance to the next slide", group: "presentation" },
+  { name: "accordo_presentation_prev", description: "Go back to the previous slide", group: "presentation" },
+  { name: "accordo_presentation_generateNarration", description: "Generate narration text for slides", group: "presentation" },
 ];
 
 const TOTAL_TOOLS = FAKE_TOOLS.length;
@@ -226,10 +226,10 @@ if (typeof instructions !== "string") {
   }
 
   // Verify presentation.open specifically (the one the agent couldn't see)
-  if (instructions.includes("accordo.presentation.open")) {
-    pass("accordo.presentation.open is visible in system prompt");
+  if (instructions.includes("accordo_presentation_open")) {
+    pass("accordo_presentation_open is visible in system prompt");
   } else {
-    fail("accordo.presentation.open is MISSING from system prompt");
+    fail("accordo_presentation_open is MISSING from system prompt");
   }
 
   // Verify grouped tools are NOT hidden (e.g. editor.open has no discover stub)
@@ -266,9 +266,9 @@ if (mcpTools.length === TOTAL_TOOLS) {
 }
 
 // Check that presentation.open is in the MCP list
-const presOpen = mcpTools.find(t => t.name === "accordo.presentation.open");
-if (presOpen) pass("accordo.presentation.open in MCP tools/list");
-else fail("accordo.presentation.open MISSING from MCP tools/list");
+const presOpen = mcpTools.find(t => t.name === "accordo_presentation_open");
+if (presOpen) pass("accordo_presentation_open in MCP tools/list");
+else fail("accordo_presentation_open MISSING from MCP tools/list");
 
 // ── Step 6: mcp.json format ───────────────────────────────────────────────────
 

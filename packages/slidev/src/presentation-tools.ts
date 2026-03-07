@@ -96,9 +96,23 @@ export function createPresentationTools(
   deps: PresentationToolDeps,
 ): ExtensionToolDefinition[] {
   return [
+    // ── M44-TL-01: discover ──────────────────────────────────────────────────
+    {
+      name: "accordo_presentation_discover",
+      description:
+        "List all Slidev deck files (.md with Slidev frontmatter or deck naming conventions) found in the workspace. Use this before opening a presentation to find available deck paths.",
+      dangerLevel: "safe",
+      // ungrouped — prompt-visible so agents can discover decks without prior context
+      inputSchema: { type: "object", properties: {}, required: [] },
+      handler: async (_args) => {
+        const decks = await deps.discoverDeckFiles();
+        return { decks };
+      },
+    },
+
     // ── M44-TL-02: open ──────────────────────────────────────────────────────
     {
-      name: "accordo.presentation.open",
+      name: "accordo_presentation_open",
       description: "Open a Slidev deck and start a presentation session.",
       dangerLevel: "moderate",
       group: "presentation",
@@ -120,7 +134,7 @@ export function createPresentationTools(
 
     // ── M44-TL-03: close ─────────────────────────────────────────────────────
     {
-      name: "accordo.presentation.close",
+      name: "accordo_presentation_close",
       description: "Close the active presentation session and kill the Slidev process.",
       dangerLevel: "moderate",
       group: "presentation",
@@ -133,7 +147,7 @@ export function createPresentationTools(
 
     // ── M44-TL-04: listSlides ────────────────────────────────────────────────
     {
-      name: "accordo.presentation.listSlides",
+      name: "accordo_presentation_listSlides",
       description: "List all slides in the current deck with metadata.",
       dangerLevel: "safe",
       group: "presentation",
@@ -147,7 +161,7 @@ export function createPresentationTools(
 
     // ── M44-TL-05: getCurrent ────────────────────────────────────────────────
     {
-      name: "accordo.presentation.getCurrent",
+      name: "accordo_presentation_getCurrent",
       description: "Return the current slide index and title.",
       dangerLevel: "safe",
       group: "presentation",
@@ -160,7 +174,7 @@ export function createPresentationTools(
 
     // ── M44-TL-06: goto ──────────────────────────────────────────────────────
     {
-      name: "accordo.presentation.goto",
+      name: "accordo_presentation_goto",
       description: "Navigate to a specific slide by index (0-based).",
       dangerLevel: "safe",
       group: "presentation",
@@ -182,7 +196,7 @@ export function createPresentationTools(
 
     // ── M44-TL-07: next ──────────────────────────────────────────────────────
     {
-      name: "accordo.presentation.next",
+      name: "accordo_presentation_next",
       description: "Advance to the next slide.",
       dangerLevel: "safe",
       group: "presentation",
@@ -192,7 +206,7 @@ export function createPresentationTools(
 
     // ── M44-TL-08: prev ──────────────────────────────────────────────────────
     {
-      name: "accordo.presentation.prev",
+      name: "accordo_presentation_prev",
       description: "Go back to the previous slide.",
       dangerLevel: "safe",
       group: "presentation",
@@ -202,7 +216,7 @@ export function createPresentationTools(
 
     // ── M44-TL-09: generateNarration ─────────────────────────────────────────
     {
-      name: "accordo.presentation.generateNarration",
+      name: "accordo_presentation_generateNarration",
       description: "Generate narration text for a slide or all slides.",
       dangerLevel: "safe",
       group: "presentation",

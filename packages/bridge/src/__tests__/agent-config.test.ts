@@ -46,6 +46,7 @@ function makeParams(
     token: "test-token-abc",
     configureOpencode: true,
     configureClaude: true,
+    configureCopilot: true,
     outputChannel: makeOutputChannel(),
     ...overrides,
   };
@@ -83,19 +84,19 @@ describe("buildOpencodeConfig", () => {
     expect(cfg.mcp["accordo-hub"].headers["Authorization"]).toBe("Bearer my-secret-token");
   });
 
-  it("CFG-04: includes instructions_url pointing to /instructions endpoint", () => {
+  it("CFG-04: includes instructions array with /instructions endpoint", () => {
     const cfg = buildOpencodeConfig(3000, "tok") as Record<string, unknown>;
-    expect(cfg["instructions_url"]).toBe("http://localhost:3000/instructions");
+    expect(cfg["instructions"]).toEqual(["http://localhost:3000/instructions"]);
   });
 
-  it("CFG-04: instructions_url uses the provided port", () => {
+  it("CFG-04: instructions url uses the provided port", () => {
     const cfg = buildOpencodeConfig(4567, "tok") as Record<string, unknown>;
-    expect(cfg["instructions_url"]).toBe("http://localhost:4567/instructions");
+    expect(cfg["instructions"]).toEqual(["http://localhost:4567/instructions"]);
   });
 
-  it("CFG-10: includes _accordo_schema field with current version", () => {
+  it("CFG-10: includes $schema field pointing to opencode schema", () => {
     const cfg = buildOpencodeConfig(3000, "tok") as Record<string, unknown>;
-    expect(cfg["_accordo_schema"]).toBe(ACCORDO_SCHEMA_VERSION);
+    expect(cfg["$schema"]).toBe("https://opencode.ai/config.json");
   });
 });
 
@@ -235,7 +236,7 @@ describe("writeOpencodeConfig", () => {
     expect(raw).toContain("my-real-token");
   });
 
-  it("CFG-04: written file contains instructions_url", () => {
+  it("CFG-04: written file contains instructions url", () => {
     writeOpencodeConfig(makeParams(tmpDir, { port: 3001 }));
     const raw = fs.readFileSync(path.join(tmpDir, "opencode.json"), "utf8");
     expect(raw).toContain("http://localhost:3001/instructions");
@@ -253,10 +254,10 @@ describe("writeOpencodeConfig", () => {
     expect(mode).toBe(0o600);
   });
 
-  it("CFG-10: written file contains _accordo_schema", () => {
+  it("CFG-10: written file contains $schema", () => {
     writeOpencodeConfig(makeParams(tmpDir));
     const raw = fs.readFileSync(path.join(tmpDir, "opencode.json"), "utf8");
-    expect(raw).toContain("_accordo_schema");
+    expect(raw).toContain("opencode.ai/config.json");
   });
 });
 

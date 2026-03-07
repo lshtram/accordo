@@ -134,11 +134,16 @@ export class BridgeServer {
         return;
       }
 
-      // §2.5: Max 1 connection — reject additional with 409
-      if (this.connected) {
-        socket.write("HTTP/1.1 409 Conflict\r\n\r\n");
-        socket.destroy();
-        return;
+      // §2.5: Max 1 connection — evict any stale connection before accepting
+      // the new one.  When VS Code kills the Extension Development Host with
+      // SIGKILL, `deactivate()` is never called, so the bridge never sends a
+      // clean close frame.  The hub would otherwise keep `this.connected = true`
+      // and reject the new session's connection with HTTP 409, which the WS
+      // library surfaces as close code 1006 on the client side.
+      if (this.connected && this.ws) {
+        // Terminate the stale socket before upgrading the new one.
+        try { this.ws.terminate(); } catch { /* already gone */ }
+        this.handleDisconnect();
       }
 
       wss.handleUpgrade(req, socket, head, (ws) => {

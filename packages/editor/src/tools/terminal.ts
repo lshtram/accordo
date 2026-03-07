@@ -66,7 +66,7 @@ export function registerTerminalLifecycle(
   );
 }
 
-// ── §4.9 accordo.terminal.open ────────────────────────────────────────────────
+// ── §4.9 accordo_terminal_open ────────────────────────────────────────────────
 
 export async function terminalOpenHandler(
   args: Record<string, unknown>,
@@ -88,7 +88,7 @@ export async function terminalOpenHandler(
   }
 }
 
-// ── §4.10 accordo.terminal.run ────────────────────────────────────────────────
+// ── §4.10 accordo_terminal_run ────────────────────────────────────────────────
 
 export async function terminalRunHandler(
   args: Record<string, unknown>,
@@ -137,7 +137,7 @@ export async function terminalRunHandler(
   }
 }
 
-// ── §4.11 accordo.terminal.focus ─────────────────────────────────────────────
+// ── §4.11 accordo_terminal_focus ─────────────────────────────────────────────
 
 export async function terminalFocusHandler(
   _args: Record<string, unknown>,
@@ -150,7 +150,7 @@ export async function terminalFocusHandler(
   }
 }
 
-// ── §4.21 accordo.terminal.list ──────────────────────────────────────────────
+// ── §4.21 accordo_terminal_list ──────────────────────────────────────────────
 
 export interface TerminalInfo {
   terminalId: string;
@@ -174,7 +174,7 @@ export async function terminalListHandler(
   }
 }
 
-// ── §4.22 accordo.terminal.close ─────────────────────────────────────────────
+// ── §4.22 accordo_terminal_close ─────────────────────────────────────────────
 
 export async function terminalCloseHandler(
   args: Record<string, unknown>,
@@ -221,7 +221,7 @@ export async function terminalCloseHandler(
 /** All terminal tool definitions for module 18. */
 export const terminalTools: ExtensionToolDefinition[] = [
   {
-    name: "accordo.terminal.open",
+    name: "accordo_terminal_open",
     group: "terminal",
     description: "Create and show a new terminal instance. Returns a stable accordo terminal ID.",
     inputSchema: {
@@ -234,10 +234,10 @@ export const terminalTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "moderate",
     idempotent: false,
-    handler: wrapHandler("accordo.terminal.open", terminalOpenHandler),
+    handler: wrapHandler("accordo_terminal_open", terminalOpenHandler),
   },
   {
-    name: "accordo.terminal.run",
+    name: "accordo_terminal_run",
     group: "terminal",
     description: "Execute a shell command in a terminal. Requires confirmation — this is destructive.",
     inputSchema: {
@@ -250,10 +250,10 @@ export const terminalTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "destructive",
     idempotent: false,
-    handler: wrapHandler("accordo.terminal.run", terminalRunHandler),
+    handler: wrapHandler("accordo_terminal_run", terminalRunHandler),
   },
   {
-    name: "accordo.terminal.focus",
+    name: "accordo_terminal_focus",
     group: "terminal",
     description: "Focus the terminal panel (make it visible and active).",
     inputSchema: {
@@ -263,10 +263,10 @@ export const terminalTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.terminal.focus", terminalFocusHandler),
+    handler: wrapHandler("accordo_terminal_focus", terminalFocusHandler),
   },
   {
-    name: "accordo.terminal.list",
+    name: "accordo_terminal_list",
     group: "terminal",
     description: "List all currently open terminal instances with their stable accordo IDs.",
     inputSchema: {
@@ -276,10 +276,10 @@ export const terminalTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.terminal.list", terminalListHandler),
+    handler: wrapHandler("accordo_terminal_list", terminalListHandler),
   },
   {
-    name: "accordo.terminal.close",
+    name: "accordo_terminal_close",
     group: "terminal",
     description: "Close a specific terminal by its stable accordo ID. Untracked terminals (not opened via accordo) can be closed by name.",
     inputSchema: {
@@ -292,6 +292,6 @@ export const terminalTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "moderate",
     idempotent: true,
-    handler: wrapHandler("accordo.terminal.close", terminalCloseHandler),
+    handler: wrapHandler("accordo_terminal_close", terminalCloseHandler),
   },
 ];

@@ -6,7 +6,7 @@
   "description": "Accordo Presentations — agent-controlled Slidev decks with comment SDK integration",
   "categories": ["Other"],
   "extensionKind": ["workspace"],
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": ["onStartupFinished", "onCustomEditor:accordo.deckPresentation"],
   "extensionDependencies": [
     "accordo.accordo-bridge",
     "accordo.accordo-comments"

@@ -38,7 +38,7 @@ beforeEach(() => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.14 accordo.panel.toggle
+// §4.14 accordo_panel_toggle
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("panelToggleHandler — §4.14", () => {
@@ -80,7 +80,7 @@ describe("panelToggleHandler — §4.14", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.15 accordo.layout.zen
+// §4.15 accordo_layout_zen
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("layoutZenHandler — §4.15", () => {
@@ -99,7 +99,7 @@ describe("layoutZenHandler — §4.15", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.16 accordo.layout.fullscreen
+// §4.16 accordo_layout_fullscreen
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("layoutFullscreenHandler — §4.16", () => {
@@ -118,7 +118,7 @@ describe("layoutFullscreenHandler — §4.16", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.23 accordo.layout.joinGroups
+// §4.23 accordo_layout_joinGroups
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("layoutJoinGroupsHandler — §4.23", () => {
@@ -137,7 +137,7 @@ describe("layoutJoinGroupsHandler — §4.23", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.24 accordo.layout.evenGroups
+// §4.24 accordo_layout_evenGroups
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("layoutEvenGroupsHandler — §4.24", () => {
@@ -168,11 +168,11 @@ describe("layoutTools registration — Module 20", () => {
 
   it("M20-REG-02: all tool names are present", () => {
     const names = layoutTools.map((t) => t.name);
-    expect(names).toContain("accordo.panel.toggle");
-    expect(names).toContain("accordo.layout.zen");
-    expect(names).toContain("accordo.layout.fullscreen");
-    expect(names).toContain("accordo.layout.joinGroups");
-    expect(names).toContain("accordo.layout.evenGroups");
+    expect(names).toContain("accordo_panel_toggle");
+    expect(names).toContain("accordo_layout_zen");
+    expect(names).toContain("accordo_layout_fullscreen");
+    expect(names).toContain("accordo_layout_joinGroups");
+    expect(names).toContain("accordo_layout_evenGroups");
   });
 
   it("M20-REG-03: all tools are safe", () => {
@@ -182,11 +182,11 @@ describe("layoutTools registration — Module 20", () => {
   });
 
   it("M20-REG-04: panel.toggle requires [panel]", () => {
-    expect(byName("accordo.panel.toggle").inputSchema.required).toContain("panel");
+    expect(byName("accordo_panel_toggle").inputSchema.required).toContain("panel");
   });
 
   it("M20-REG-05: panel enum contains all 5 panels", () => {
-    const props = byName("accordo.panel.toggle").inputSchema.properties as Record<
+    const props = byName("accordo_panel_toggle").inputSchema.properties as Record<
       string,
       { enum?: string[] }
     >;
@@ -197,10 +197,10 @@ describe("layoutTools registration — Module 20", () => {
 
   it("M20-REG-06: zen, fullscreen, joinGroups, evenGroups have empty required", () => {
     const noArgTools = [
-      "accordo.layout.zen",
-      "accordo.layout.fullscreen",
-      "accordo.layout.joinGroups",
-      "accordo.layout.evenGroups",
+      "accordo_layout_zen",
+      "accordo_layout_fullscreen",
+      "accordo_layout_joinGroups",
+      "accordo_layout_evenGroups",
     ];
     for (const name of noArgTools) {
       expect(byName(name).inputSchema.required).toEqual([]);

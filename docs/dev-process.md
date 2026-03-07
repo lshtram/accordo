@@ -44,6 +44,12 @@ When working in TDD mode, every implementation module goes through these phases 
 │     @accordo/bridge-types or in the module's own types.         │
 │     Reference any clarifications from step 2.                   │
 │                                                                 │
+│  4.1 For each external technology boundary used by the module   │
+│      (database, embedding provider, object storage, transport), │
+│      define/verify a local abstraction (port/interface) and     │
+│      document the swap contract: what can change vs what stays  │
+│      stable for callers.                                        │
+│                                                                 │
 │  5. Define all public method signatures with JSDoc.             │
 │                                                                 │
 │  6. Verify every requirement has a corresponding interface      │
@@ -117,6 +123,9 @@ When working in TDD mode, every implementation module goes through these phases 
 │       - No handler functions in wire types                      │
 │       - No VSCode imports in Hub packages                       │
 │       - Security middleware is first on every endpoint          │
+│       - External dependencies are behind ports/adapters         │
+│       - Provider/model/backend swaps are isolated to adapter +  │
+│         composition root config                                 │
 │  6. If ANY check fails → fix the code and return to Phase D     │
 │     (run tests again after the fix).                            │
 │  7. Only when ALL checks pass → proceed to Phase D3.            │

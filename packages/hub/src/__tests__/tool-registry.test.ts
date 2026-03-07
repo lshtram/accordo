@@ -27,9 +27,9 @@ function makeTool(name: string, overrides: Partial<ToolRegistration> = {}): Tool
   };
 }
 
-const TOOL_OPEN = makeTool("accordo.editor.open");
-const TOOL_CLOSE = makeTool("accordo.editor.close", { dangerLevel: "moderate" });
-const TOOL_RUN = makeTool("accordo.terminal.run", {
+const TOOL_OPEN = makeTool("accordo_editor_open");
+const TOOL_CLOSE = makeTool("accordo_editor_close", { dangerLevel: "moderate" });
+const TOOL_RUN = makeTool("accordo_terminal_run", {
   dangerLevel: "destructive",
   requiresConfirmation: true,
   idempotent: false,
@@ -50,16 +50,16 @@ describe("ToolRegistry", () => {
     it("§5.1: register stores tools retrievable by name", () => {
       // req-hub §5.1: register(tools: ToolRegistration[]) → void
       registry.register([TOOL_OPEN, TOOL_CLOSE]);
-      expect(registry.get("accordo.editor.open")).toEqual(TOOL_OPEN);
-      expect(registry.get("accordo.editor.close")).toEqual(TOOL_CLOSE);
+      expect(registry.get("accordo_editor_open")).toEqual(TOOL_OPEN);
+      expect(registry.get("accordo_editor_close")).toEqual(TOOL_CLOSE);
     });
 
     it("§5.1: register replaces the entire registry — not additive", () => {
       // req-hub §5.1: toolRegistry messages are full replacements
       registry.register([TOOL_OPEN, TOOL_CLOSE]);
       registry.register([TOOL_RUN]);
-      expect(registry.get("accordo.editor.open")).toBeUndefined();
-      expect(registry.get("accordo.terminal.run")).toBeDefined();
+      expect(registry.get("accordo_editor_open")).toBeUndefined();
+      expect(registry.get("accordo_terminal_run")).toBeDefined();
     });
 
     it("§5.1: register with empty list clears the registry", () => {
@@ -82,17 +82,17 @@ describe("ToolRegistry", () => {
     it("§5.1: get returns the matching tool by name", () => {
       // req-hub §5.1: get(name: string) → ToolRegistration | undefined
       registry.register([TOOL_OPEN, TOOL_RUN]);
-      const result = registry.get("accordo.terminal.run");
+      const result = registry.get("accordo_terminal_run");
       expect(result).toEqual(TOOL_RUN);
     });
 
     it("§5.1: get returns undefined for unknown tool name", () => {
       registry.register([TOOL_OPEN]);
-      expect(registry.get("accordo.nonexistent.tool")).toBeUndefined();
+      expect(registry.get("accordo_nonexistent_tool")).toBeUndefined();
     });
 
     it("§5.1: get returns undefined on empty registry", () => {
-      expect(registry.get("accordo.editor.open")).toBeUndefined();
+      expect(registry.get("accordo_editor_open")).toBeUndefined();
     });
   });
 
@@ -129,7 +129,7 @@ describe("ToolRegistry", () => {
       const mcpTools = registry.toMcpTools();
       expect(mcpTools).toHaveLength(1);
       const tool = mcpTools[0];
-      expect(tool).toHaveProperty("name", "accordo.terminal.run");
+      expect(tool).toHaveProperty("name", "accordo_terminal_run");
       expect(tool).toHaveProperty("description");
       expect(tool).toHaveProperty("inputSchema");
       expect(tool).not.toHaveProperty("dangerLevel");
@@ -151,26 +151,26 @@ describe("ToolRegistry", () => {
 
     it("§5.1: toMcpTools strips group field from output", () => {
       // req-hub §5.1 + arch §3.7: group is an internal field, must not leak to MCP
-      const grouped = makeTool("accordo.editor.open", { group: "editor" });
+      const grouped = makeTool("accordo_editor_open", { group: "editor" });
       registry.register([grouped]);
       const mcpTools = registry.toMcpTools();
       expect(mcpTools).toHaveLength(1);
       expect(mcpTools[0]).not.toHaveProperty("group");
-      expect(mcpTools[0]).toHaveProperty("name", "accordo.editor.open");
+      expect(mcpTools[0]).toHaveProperty("name", "accordo_editor_open");
     });
 
     it("§5.1: toMcpTools includes grouped tools (MCP tools/list is unfiltered)", () => {
       // All tools must appear in tools/list regardless of group — filtering is prompt-engine's job
       const tools = [
-        makeTool("accordo.editor.discover"),
-        makeTool("accordo.editor.open", { group: "editor" }),
-        makeTool("accordo.editor.close", { group: "editor" }),
+        makeTool("accordo_editor_discover"),
+        makeTool("accordo_editor_open", { group: "editor" }),
+        makeTool("accordo_editor_close", { group: "editor" }),
       ];
       registry.register(tools);
       const mcpNames = registry.toMcpTools().map(t => t.name);
-      expect(mcpNames).toContain("accordo.editor.discover");
-      expect(mcpNames).toContain("accordo.editor.open");
-      expect(mcpNames).toContain("accordo.editor.close");
+      expect(mcpNames).toContain("accordo_editor_discover");
+      expect(mcpNames).toContain("accordo_editor_open");
+      expect(mcpNames).toContain("accordo_editor_close");
     });
   });
 

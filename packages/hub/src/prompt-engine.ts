@@ -49,7 +49,7 @@ The complete tool list appears at the end of this prompt.
 **Terminology note:** "Accordo review threads" are VS Code Comments-panel gutter
 thread widgets (the annotation sidebar). They are entirely separate from inline
 code comments (// or /* */). When the developer asks to "add a comment" in the
-context of reviewing or annotating, use accordo.comment.create. When they ask to
+context of reviewing or annotating, use accordo_comment_create. When they ask to
 add or remove source-code comments inside a file, edit the file directly.
 
 ## Constraints

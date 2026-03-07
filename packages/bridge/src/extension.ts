@@ -19,6 +19,7 @@ import * as os from "node:os";
 import { HubManager } from "./hub-manager.js";
 import type { HubManagerConfig } from "./hub-manager.js";
 import { WsClient } from "./ws-client.js";
+import type { WsClientEvents } from "./ws-client.js";
 import { ExtensionRegistry } from "./extension-registry.js";
 import type { ExtensionToolDefinition } from "./extension-registry.js";
 import { CommandRouter } from "./command-router.js";
@@ -251,6 +252,52 @@ export async function activate(
 
   const emitter = connectionStatusEmitter; // captured for callback closures
 
+  /**
+   * Build the WsClientEvents object. Extracted so both onHubReady (first
+   * connection) and onCredentialsRotated (hub respawn when wsClient was
+   * never created) can construct a WsClient with identical handlers.
+   */
+  const makeWsClientEvents = (): WsClientEvents => ({
+    onConnected: () => {
+      emitter.fire(true);
+      outputChannel.appendLine("[accordo-bridge] Connected to Hub ✓");
+    },
+    onDisconnected: (code, reason) => {
+      emitter.fire(false);
+      outputChannel.appendLine(
+        `[accordo-bridge] Disconnected (${code}${reason ? ": " + reason : ""})`,
+      );
+    },
+    onAuthFailure: () => {
+      outputChannel.appendLine(
+        "[accordo-bridge] Auth failure — rotating credentials and respawning Hub",
+      );
+      hubManager?.restart().catch((err: Error) => {
+        outputChannel.appendLine(
+          `[accordo-bridge] Restart after auth failure failed: ${err.message}`,
+        );
+      });
+    },
+    onProtocolMismatch: (msg) => {
+      void vscode.window.showErrorMessage(
+        `Accordo Bridge and Hub versions are incompatible. Update both packages. ${msg}`,
+      );
+    },
+    onInvoke: (message) => {
+      router?.handleInvoke(message).catch((err: Error) => {
+        outputChannel.appendLine(
+          `[accordo-bridge] Invoke handler error: ${err.message}`,
+        );
+      });
+    },
+    onCancel: (message) => {
+      router?.handleCancel(message);
+    },
+    onGetState: (_message) => {
+      statePublisher?.sendSnapshot();
+    },
+  });
+
   hubManager = new HubManager(
     secretStorage,
     outputChannel,
@@ -268,13 +315,14 @@ export async function activate(
 
         // CFG-01 / CFG-02: Write agent config files (opencode.json, .claude/mcp.json)
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (workspaceRoot && (wantOpencode || wantClaude)) {
+        if (workspaceRoot && (wantOpencode || wantClaude || wantCopilot)) {
           writeAgentConfigs({
             workspaceRoot,
             port: currentHubPort,
             token: currentHubToken,
             configureOpencode: wantOpencode,
             configureClaude: wantClaude,
+            configureCopilot: wantCopilot,
             outputChannel,
           });
         } else if (!workspaceRoot) {
@@ -283,46 +331,14 @@ export async function activate(
           );
         }
 
-        wsClient = new WsClient(readyPort, secret, {
-          onConnected: () => {
-            emitter.fire(true);
-            outputChannel.appendLine("[accordo-bridge] Connected to Hub ✓");
-          },
-          onDisconnected: (code, reason) => {
-            emitter.fire(false);
-            outputChannel.appendLine(
-              `[accordo-bridge] Disconnected (${code}${reason ? ": " + reason : ""})`,
-            );
-          },
-          onAuthFailure: () => {
-            outputChannel.appendLine(
-              "[accordo-bridge] Auth failure — rotating credentials and respawning Hub",
-            );
-            hubManager?.restart().catch((err: Error) => {
-              outputChannel.appendLine(
-                `[accordo-bridge] Restart after auth failure failed: ${err.message}`,
-              );
-            });
-          },
-          onProtocolMismatch: (msg) => {
-            void vscode.window.showErrorMessage(
-              `Accordo Bridge and Hub versions are incompatible. Update both packages. ${msg}`,
-            );
-          },
-          onInvoke: (message) => {
-            router?.handleInvoke(message).catch((err: Error) => {
-              outputChannel.appendLine(
-                `[accordo-bridge] Invoke handler error: ${err.message}`,
-              );
-            });
-          },
-          onCancel: (message) => {
-            router?.handleCancel(message);
-          },
-          onGetState: (_message) => {
-            statePublisher?.sendSnapshot();
-          },
-        });
+        // Disconnect any existing (stale) WsClient before creating a new one.
+        if (wsClient) {
+          const stale = wsClient;
+          wsClient = null;
+          await stale.disconnect();
+        }
+
+        wsClient = new WsClient(readyPort, secret, makeWsClientEvents(), () => registry?.getAllTools() ?? []);
 
         await wsClient.connect(
           statePublisher?.getState() ?? StatePublisher.emptyState(),
@@ -360,13 +376,14 @@ export async function activate(
         }
         // CFG-07: rewrite agent config files with new token
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (workspaceRoot && (wantOpencode || wantClaude)) {
+        if (workspaceRoot && (wantOpencode || wantClaude || wantCopilot)) {
           writeAgentConfigs({
             workspaceRoot,
             port: currentHubPort,
             token: newToken,
             configureOpencode: wantOpencode,
             configureClaude: wantClaude,
+            configureCopilot: wantCopilot,
             outputChannel,
           });
         } else if (!workspaceRoot) {
@@ -377,6 +394,20 @@ export async function activate(
         if (wsClient) {
           wsClient.updateSecret(newSecret);
           await wsClient.disconnect();
+          await wsClient.connect(
+            statePublisher?.getState() ?? StatePublisher.emptyState(),
+            registry?.getAllTools() ?? [],
+          );
+        } else {
+          // wsClient was never created — the initial hub spawn crashed before
+          // onHubReady fired, so restart() ran and produced new credentials.
+          // Bootstrap the WsClient now so the bridge actually connects.
+          outputChannel.appendLine(
+            "[accordo-bridge] Creating WsClient after hub respawn (initial spawn had crashed)",
+          );
+          const port = hubManager?.getPort() ?? config.port;
+          currentHubPort = port;
+          wsClient = new WsClient(port, newSecret, makeWsClientEvents(), () => registry?.getAllTools() ?? []);
           await wsClient.connect(
             statePublisher?.getState() ?? StatePublisher.emptyState(),
             registry?.getAllTools() ?? [],

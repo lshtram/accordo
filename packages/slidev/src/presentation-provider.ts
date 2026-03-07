@@ -651,6 +651,18 @@ const COMMENT_OVERLAY_JS = `
       renderPins();
     }
     else if (msg.type === 'slide-index') { currentSlide = msg.index; renderPins(); }
+    else if (msg.type === 'comments:focus') {
+      var focusThread = null;
+      for (var fi = 0; fi < threads.length; fi++) {
+        if (threads[fi].id === msg.threadId) { focusThread = threads[fi]; break; }
+      }
+      if (focusThread) {
+        var coords = getCoords(focusThread);
+        if (coords) { currentSlide = coords.slideIndex; renderPins(); }
+        var pin = overlay.querySelector('[data-thread-id="' + msg.threadId + '"]');
+        openPopover(focusThread, pin || overlay);
+      }
+    }
   });
 
   /* ── Extract slide coordinates from CommentThread anchor ────────────── */

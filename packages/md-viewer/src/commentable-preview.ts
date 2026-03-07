@@ -10,13 +10,13 @@
  *
  * User triggers via:
  *   - Right-click .md file → "Open With" → "Accordo Preview"
- *   - Command: accordo.preview.open (opens current .md file in preview)
- *   - Command: accordo.preview.toggle (toggles current file between preview/text)
- *   - Command: accordo.preview.openSideBySide (opens preview beside text editor)
- *   - Setting: accordo.preview.defaultSurface — when "viewer", opens preview by default
+ *   - Command: accordo_preview_open (opens current .md file in preview)
+ *   - Command: accordo_preview_toggle (toggles current file between preview/text)
+ *   - Command: accordo_preview_openSideBySide (opens preview beside text editor)
+ *   - Setting: accordo_preview_defaultSurface — when "viewer", opens preview by default
  *
  * VS Code configuration contributions (package.json):
- *   accordo.preview.defaultSurface: "viewer" | "text"  (default: "viewer")
+ *   accordo_preview_defaultSurface: "viewer" | "text"  (default: "viewer")
  *
  * Source: M41b — CommentablePreviewEditor
  *
@@ -86,7 +86,7 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
 
   /**
    * Registry of live webview panels, keyed by document URI string.
-   * Used by the accordo.preview.internal.focusThread command to send
+   * Used by the accordo_preview_internal_focusThread command to send
    * comments:focus messages to the correct webview.
    */
   static readonly livePanels = new Map<string, vscode.WebviewPanel>();

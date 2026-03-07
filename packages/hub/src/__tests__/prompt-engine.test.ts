@@ -102,10 +102,10 @@ describe("renderPrompt", () => {
   });
 
   it("§2.3: renderPrompt includes all tool names in tool summary", () => {
-    const tools = [makeTool("accordo.editor.open"), makeTool("accordo.terminal.run")];
+    const tools = [makeTool("accordo_editor_open"), makeTool("accordo_terminal_run")];
     const result = renderPrompt(createEmptyState(), tools);
-    expect(result).toContain("accordo.editor.open");
-    expect(result).toContain("accordo.terminal.run");
+    expect(result).toContain("accordo_editor_open");
+    expect(result).toContain("accordo_terminal_run");
   });
 
   it("§2.3: renderPrompt includes descriptions for tools 1–10", () => {
@@ -209,40 +209,40 @@ describe("renderPrompt", () => {
 
   it("§2.3: grouped tools are included in the prompt alongside ungrouped tools", () => {
     const tools = [
-      makeTool("accordo.editor.open"),
-      { ...makeTool("accordo.editor.scroll"), group: "editor" },
-      { ...makeTool("accordo.editor.close"), group: "editor" },
+      makeTool("accordo_editor_open"),
+      { ...makeTool("accordo_editor_scroll"), group: "editor" },
+      { ...makeTool("accordo_editor_close"), group: "editor" },
     ];
     const result = renderPrompt(createEmptyState(), tools);
-    expect(result).toContain("accordo.editor.open");
-    expect(result).toContain("accordo.editor.scroll");
-    expect(result).toContain("accordo.editor.close");
+    expect(result).toContain("accordo_editor_open");
+    expect(result).toContain("accordo_editor_scroll");
+    expect(result).toContain("accordo_editor_close");
   });
 
   it("§2.3: discover tools and all grouped tools appear together", () => {
     const tools = [
-      makeTool("accordo.editor.discover"),
-      { ...makeTool("accordo.editor.open"), group: "editor" },
-      { ...makeTool("accordo.editor.close"), group: "editor" },
-      makeTool("accordo.terminal.discover"),
-      { ...makeTool("accordo.terminal.run"), group: "terminal" },
+      makeTool("accordo_editor_discover"),
+      { ...makeTool("accordo_editor_open"), group: "editor" },
+      { ...makeTool("accordo_editor_close"), group: "editor" },
+      makeTool("accordo_terminal_discover"),
+      { ...makeTool("accordo_terminal_run"), group: "terminal" },
     ];
     const result = renderPrompt(createEmptyState(), tools);
-    expect(result).toContain("accordo.editor.discover");
-    expect(result).toContain("accordo.terminal.discover");
-    expect(result).toContain("accordo.editor.open");
-    expect(result).toContain("accordo.editor.close");
-    expect(result).toContain("accordo.terminal.run");
+    expect(result).toContain("accordo_editor_discover");
+    expect(result).toContain("accordo_terminal_discover");
+    expect(result).toContain("accordo_editor_open");
+    expect(result).toContain("accordo_editor_close");
+    expect(result).toContain("accordo_terminal_run");
   });
 
   it("§2.3: budget guard applies to all tools when over budget", () => {
     // 4 discover tools + 20 grouped tools = 24 total — all should appear.
     // Budget guard kicks in only when descriptions push past the effective budget.
     const tools: ToolRegistration[] = [
-      makeTool("accordo.editor.discover", "Discover editor tools"),
-      makeTool("accordo.terminal.discover", "Discover terminal tools"),
-      makeTool("accordo.layout.discover", "Discover layout tools"),
-      makeTool("accordo.comments.discover", "Discover comment tools"),
+      makeTool("accordo_editor_discover", "Discover editor tools"),
+      makeTool("accordo_terminal_discover", "Discover terminal tools"),
+      makeTool("accordo_layout_discover", "Discover layout tools"),
+      makeTool("accordo_comments_discover", "Discover comment tools"),
     ];
     for (let i = 0; i < 20; i++) {
       tools.push({ ...makeTool(`accordo.grouped.${i}`, `Grouped tool ${i}`), group: "grouped" });
@@ -258,12 +258,12 @@ describe("renderPrompt", () => {
   it("§2.3: all tools shown even when all are grouped (no discover stubs)", () => {
     // No guardrail needed — all tools always show.
     const tools = [
-      { ...makeTool("accordo.editor.open"), group: "editor" },
-      { ...makeTool("accordo.editor.close"), group: "editor" },
+      { ...makeTool("accordo_editor_open"), group: "editor" },
+      { ...makeTool("accordo_editor_close"), group: "editor" },
     ];
     const result = renderPrompt(createEmptyState(), tools);
-    expect(result).toContain("accordo.editor.open");
-    expect(result).toContain("accordo.editor.close");
+    expect(result).toContain("accordo_editor_open");
+    expect(result).toContain("accordo_editor_close");
     expect(result).not.toContain("No tools registered");
   });
 });

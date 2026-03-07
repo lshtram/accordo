@@ -51,7 +51,7 @@ const fakeState = {
 // ── Sample tool registry ───────────────────────────────────────────────────────
 const fakeTools = [
   {
-    name: "accordo.editor.open",
+    name: "accordo_editor_open",
     description: "Open a file in the VSCode editor",
     inputSchema: {
       type: "object",
@@ -61,7 +61,7 @@ const fakeTools = [
     idempotent: true,
   },
   {
-    name: "accordo.terminal.run",
+    name: "accordo_terminal_run",
     description: "Run a command in a VSCode terminal",
     inputSchema: {
       type: "object",

@@ -23,7 +23,7 @@ export const AUDIT_ROTATION_SIZE_BYTES = 10 * 1024 * 1024;
 export interface AuditEntry {
   /** ISO 8601 timestamp of when the invocation completed */
   ts: string;
-  /** Tool name, e.g. "accordo.editor.open" */
+  /** Tool name, e.g. "accordo_editor_open" */
   tool: string;
   /**
    * SHA-256 hex digest of JSON.stringify(args).

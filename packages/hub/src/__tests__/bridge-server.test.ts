@@ -106,7 +106,7 @@ describe("BridgeServer", () => {
     it("§6: invoke rejects with error when Bridge is not connected", async () => {
       // req-hub §6: "Bridge not connected → { code: -32603, message: 'Bridge not connected' }"
       await expect(
-        server.invoke("accordo.editor.open", { path: "/foo.ts" }, 5000)
+        server.invoke("accordo_editor_open", { path: "/foo.ts" }, 5000)
       ).rejects.toThrow();
     });
 
@@ -116,7 +116,7 @@ describe("BridgeServer", () => {
       // without a live Bridge connection (maxConcurrent=0 means no capacity).
       const tightServer = new BridgeServer({ secret: "s", maxConcurrent: 0, maxQueueDepth: 0 });
       try {
-        await tightServer.invoke("accordo.editor.open", {}, 5000);
+        await tightServer.invoke("accordo_editor_open", {}, 5000);
         expect.fail("should have thrown");
       } catch (e) {
         expect(e).toBeInstanceOf(JsonRpcError);

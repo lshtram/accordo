@@ -122,16 +122,15 @@ export function registerPanelCommands(
     provider.refresh();
   }));
 
-  // M45-CMD-05: reply
+  // M45-CMD-05: reply — navigate to anchor and open its inline input UI
+  // (gutter widget for text anchors, slide popover for surface anchors).
+  // This avoids the top-of-screen showInputBox dialog in favour of native,
+  // in-context input controls.
   disposables.push(commands.registerCommand("accordo.commentsPanel.reply", async (arg: unknown) => {
     const thread = extractThread(arg);
     if (!thread) { await noArg(); return; }
-    const body = await windowUI.showInputBox({ prompt: "Reply", placeHolder: "Type your reply…" });
-    if (!body) return;
-    await store.reply({ threadId: thread.id!, body, author: PANEL_AUTHOR });
-    const updated = store.getThread(thread.id!);
-    if (updated) nc.updateThread(updated);
-    provider.refresh();
+    const { navigateToThread } = await import("./navigation-router.js");
+    await navigateToThread(thread, navEnv);
   }));
 
   // M45-CMD-06: delete

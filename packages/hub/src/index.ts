@@ -78,6 +78,8 @@ export function resolveConfig(args: CliArgs): {
   bridgeSecret: string;
   maxConcurrent: number;
   auditFile: string;
+  /** Empty string disables debug logging; undefined uses default path. */
+  debugLogFile: string | undefined;
   logLevel: "debug" | "info" | "warn" | "error";
 } {
   const token = process.env["ACCORDO_TOKEN"];
@@ -99,6 +101,13 @@ export function resolveConfig(args: CliArgs): {
   );
   const auditFile = process.env["ACCORDO_AUDIT_FILE"] ?? defaultAuditFile;
 
+  // Debug log path — disabled when env var is set to "false" or "off" or ""
+  const debugLogEnv = process.env["ACCORDO_DEBUG_LOG"];
+  const debugLogFile =
+    debugLogEnv === "false" || debugLogEnv === "off" || debugLogEnv === ""
+      ? ""    // empty string → HubServer will disable the logger
+      : (debugLogEnv ?? undefined);  // undefined → HubServer uses default path
+
   // §4.2: ACCORDO_HUB_PORT is the env-var fallback for port.
   // CLI --port wins when explicitly set (differs from DEFAULT_HUB_PORT);
   // env var wins over the compile-time default.
@@ -115,6 +124,7 @@ export function resolveConfig(args: CliArgs): {
     bridgeSecret,
     maxConcurrent,
     auditFile,
+    debugLogFile,
     logLevel: args.logLevel,
   };
 }

@@ -52,53 +52,61 @@ function getToolByName(tools: ReturnType<typeof createPresentationTools>, name: 
 describe("createPresentationTools — tool count and names", () => {
   it("M44-TL-02 through M44-TL-09: returns exactly 8 tools", () => {
     const tools = createPresentationTools(makeDeps());
-    expect(tools).toHaveLength(8);
+    expect(tools).toHaveLength(9);
   });
 
-  it("M44-TL-02 through M44-TL-09: all expected tool names present", () => {
+  it("M44-TL-01 through M44-TL-09: all expected tool names present", () => {
     const tools = createPresentationTools(makeDeps());
     const names = tools.map((t) => t.name);
-    expect(names).toContain("accordo.presentation.open");
-    expect(names).toContain("accordo.presentation.close");
-    expect(names).toContain("accordo.presentation.listSlides");
-    expect(names).toContain("accordo.presentation.getCurrent");
-    expect(names).toContain("accordo.presentation.goto");
-    expect(names).toContain("accordo.presentation.next");
-    expect(names).toContain("accordo.presentation.prev");
-    expect(names).toContain("accordo.presentation.generateNarration");
+    expect(names).toContain("accordo_presentation_discover");
+    expect(names).toContain("accordo_presentation_open");
+    expect(names).toContain("accordo_presentation_close");
+    expect(names).toContain("accordo_presentation_listSlides");
+    expect(names).toContain("accordo_presentation_getCurrent");
+    expect(names).toContain("accordo_presentation_goto");
+    expect(names).toContain("accordo_presentation_next");
+    expect(names).toContain("accordo_presentation_prev");
+    expect(names).toContain("accordo_presentation_generateNarration");
   });
 });
 
 // ── Grouping and danger levels ────────────────────────────────────────────────
 
 describe("createPresentationTools — grouping and danger levels", () => {
+  it("M44-TL-01: discover is ungrouped (no group property) and dangerLevel safe", () => {
+    const tools = createPresentationTools(makeDeps());
+    const discover = getToolByName(tools, "accordo_presentation_discover");
+    expect(discover.group).toBeUndefined();
+    expect(discover.dangerLevel).toBe("safe");
+  });
+
   it("M44-TL-02: open is in group 'presentation'", () => {
     const tools = createPresentationTools(makeDeps());
-    const open = getToolByName(tools, "accordo.presentation.open");
+    const open = getToolByName(tools, "accordo_presentation_open");
     expect(open.group).toBe("presentation");
   });
 
   it("M44-TL-02: open danger level is 'moderate'", () => {
     const tools = createPresentationTools(makeDeps());
-    const open = getToolByName(tools, "accordo.presentation.open");
+    const open = getToolByName(tools, "accordo_presentation_open");
     expect(open.dangerLevel).toBe("moderate");
   });
 
   it("M44-TL-03: close danger level is 'moderate'", () => {
     const tools = createPresentationTools(makeDeps());
-    const close = getToolByName(tools, "accordo.presentation.close");
+    const close = getToolByName(tools, "accordo_presentation_close");
     expect(close.dangerLevel).toBe("moderate");
   });
 
   it("M44-TL-04 through 09: navigation/read tools are in group 'presentation' and 'safe'", () => {
     const tools = createPresentationTools(makeDeps());
     const readToolNames = [
-      "accordo.presentation.listSlides",
-      "accordo.presentation.getCurrent",
-      "accordo.presentation.goto",
-      "accordo.presentation.next",
-      "accordo.presentation.prev",
-      "accordo.presentation.generateNarration",
+      "accordo_presentation_listSlides",
+      "accordo_presentation_getCurrent",
+      "accordo_presentation_goto",
+      "accordo_presentation_next",
+      "accordo_presentation_prev",
+      "accordo_presentation_generateNarration",
     ];
     for (const name of readToolNames) {
       const tool = getToolByName(tools, name);
@@ -108,49 +116,70 @@ describe("createPresentationTools — grouping and danger levels", () => {
   });
 });
 
+// ── Handler: discover ────────────────────────────────────────────────────────
+
+describe("accordo_presentation_discover handler", () => {
+  it("M44-TL-01: calls discoverDeckFiles and returns { decks } array", async () => {
+    const deps = makeDeps({
+      discoverDeckFiles: vi.fn().mockResolvedValue(["slides.md", "demo/deck.md"]),
+    });
+    const tools = createPresentationTools(deps);
+    const result = await getToolByName(tools, "accordo_presentation_discover").handler({});
+    expect(deps.discoverDeckFiles).toHaveBeenCalled();
+    expect(result).toMatchObject({ decks: ["slides.md", "demo/deck.md"] });
+  });
+
+  it("M44-TL-01: returns empty decks array when none found", async () => {
+    const deps = makeDeps({ discoverDeckFiles: vi.fn().mockResolvedValue([]) });
+    const tools = createPresentationTools(deps);
+    const result = await getToolByName(tools, "accordo_presentation_discover").handler({});
+    expect(result).toMatchObject({ decks: [] });
+  });
+});
+
 // ── Handler: open ─────────────────────────────────────────────────────────────
 
-describe("accordo.presentation.open handler", () => {
+describe("accordo_presentation_open handler", () => {
   it("M44-TL-02: calls openSession with deckUri argument", async () => {
     const deps = makeDeps();
     const tools = createPresentationTools(deps);
-    await getToolByName(tools, "accordo.presentation.open").handler({ deckUri: "/slides.md" });
+    await getToolByName(tools, "accordo_presentation_open").handler({ deckUri: "/slides.md" });
     expect(deps.openSession).toHaveBeenCalledWith("/slides.md");
   });
 
   it("M44-TL-02 / M44-NFR-04: propagates structured error from openSession", async () => {
     const deps = makeDeps({ openSession: vi.fn().mockResolvedValue({ error: "File not found" }) });
     const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo.presentation.open").handler({ deckUri: "/missing.md" });
+    const result = await getToolByName(tools, "accordo_presentation_open").handler({ deckUri: "/missing.md" });
     expect(result).toMatchObject({ error: "File not found" });
   });
 
   it("M44-NFR-04: missing deckUri arg returns structured error (no throw)", async () => {
     const deps = makeDeps();
     const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo.presentation.open").handler({});
+    const result = await getToolByName(tools, "accordo_presentation_open").handler({});
     expect(result).toMatchObject({ error: expect.any(String) });
   });
 });
 
 // ── Handler: close ────────────────────────────────────────────────────────────
 
-describe("accordo.presentation.close handler", () => {
+describe("accordo_presentation_close handler", () => {
   it("M44-TL-03: calls closeSession", async () => {
     const deps = makeDeps();
     const tools = createPresentationTools(deps);
-    await getToolByName(tools, "accordo.presentation.close").handler({});
+    await getToolByName(tools, "accordo_presentation_close").handler({});
     expect(deps.closeSession).toHaveBeenCalled();
   });
 });
 
 // ── Handler: listSlides ───────────────────────────────────────────────────────
 
-describe("accordo.presentation.listSlides handler", () => {
+describe("accordo_presentation_listSlides handler", () => {
   it("M44-TL-04: calls listSlides and returns result", async () => {
     const deps = makeDeps();
     const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo.presentation.listSlides").handler({});
+    const result = await getToolByName(tools, "accordo_presentation_listSlides").handler({});
     expect(deps.listSlides).toHaveBeenCalled();
     expect(result).toMatchObject({ slides: expect.any(Array) });
   });
@@ -158,18 +187,18 @@ describe("accordo.presentation.listSlides handler", () => {
   it("M44-NFR-04: propagates structured error when no session open", async () => {
     const deps = makeDeps({ listSlides: vi.fn().mockResolvedValue({ error: "No session open" }) });
     const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo.presentation.listSlides").handler({});
+    const result = await getToolByName(tools, "accordo_presentation_listSlides").handler({});
     expect(result).toMatchObject({ error: expect.any(String) });
   });
 });
 
 // ── Handler: getCurrent ───────────────────────────────────────────────────────
 
-describe("accordo.presentation.getCurrent handler", () => {
+describe("accordo_presentation_getCurrent handler", () => {
   it("M44-TL-05: calls getCurrent and returns index + title", async () => {
     const deps = makeDeps();
     const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo.presentation.getCurrent").handler({});
+    const result = await getToolByName(tools, "accordo_presentation_getCurrent").handler({});
     expect(deps.getCurrent).toHaveBeenCalled();
     expect(result).toMatchObject({ index: 0, title: "Introduction" });
   });
@@ -177,63 +206,63 @@ describe("accordo.presentation.getCurrent handler", () => {
 
 // ── Handler: goto ─────────────────────────────────────────────────────────────
 
-describe("accordo.presentation.goto handler", () => {
+describe("accordo_presentation_goto handler", () => {
   it("M44-TL-06: calls goto with the provided index", async () => {
     const deps = makeDeps();
     const tools = createPresentationTools(deps);
-    await getToolByName(tools, "accordo.presentation.goto").handler({ index: 2 });
+    await getToolByName(tools, "accordo_presentation_goto").handler({ index: 2 });
     expect(deps.goto).toHaveBeenCalledWith(2);
   });
 
   it("M44-NFR-04: missing index returns structured error (no throw)", async () => {
     const deps = makeDeps();
     const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo.presentation.goto").handler({});
+    const result = await getToolByName(tools, "accordo_presentation_goto").handler({});
     expect(result).toMatchObject({ error: expect.any(String) });
   });
 });
 
 // ── Handler: next / prev ──────────────────────────────────────────────────────
 
-describe("accordo.presentation.next handler", () => {
+describe("accordo_presentation_next handler", () => {
   it("M44-TL-07: calls next()", async () => {
     const deps = makeDeps();
     const tools = createPresentationTools(deps);
-    await getToolByName(tools, "accordo.presentation.next").handler({});
+    await getToolByName(tools, "accordo_presentation_next").handler({});
     expect(deps.next).toHaveBeenCalled();
   });
 });
 
-describe("accordo.presentation.prev handler", () => {
+describe("accordo_presentation_prev handler", () => {
   it("M44-TL-08: calls prev()", async () => {
     const deps = makeDeps();
     const tools = createPresentationTools(deps);
-    await getToolByName(tools, "accordo.presentation.prev").handler({});
+    await getToolByName(tools, "accordo_presentation_prev").handler({});
     expect(deps.prev).toHaveBeenCalled();
   });
 });
 
 // ── Handler: generateNarration ────────────────────────────────────────────────
 
-describe("accordo.presentation.generateNarration handler", () => {
+describe("accordo_presentation_generateNarration handler", () => {
   it("M44-TL-09: calls generateNarration with slideIndex when provided", async () => {
     const deps = makeDeps();
     const tools = createPresentationTools(deps);
-    await getToolByName(tools, "accordo.presentation.generateNarration").handler({ slideIndex: 1 });
+    await getToolByName(tools, "accordo_presentation_generateNarration").handler({ slideIndex: 1 });
     expect(deps.generateNarration).toHaveBeenCalledWith(1);
   });
 
   it("M44-TL-09: calls generateNarration with 'all' when no index provided", async () => {
     const deps = makeDeps();
     const tools = createPresentationTools(deps);
-    await getToolByName(tools, "accordo.presentation.generateNarration").handler({});
+    await getToolByName(tools, "accordo_presentation_generateNarration").handler({});
     expect(deps.generateNarration).toHaveBeenCalledWith("all");
   });
 
   it("M44-TL-09: returns narrations array", async () => {
     const deps = makeDeps();
     const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo.presentation.generateNarration").handler({});
+    const result = await getToolByName(tools, "accordo_presentation_generateNarration").handler({});
     expect(result).toMatchObject({ narrations: expect.any(Array) });
   });
 
@@ -242,7 +271,7 @@ describe("accordo.presentation.generateNarration handler", () => {
       generateNarration: vi.fn().mockResolvedValue({ error: "No deck open" }),
     });
     const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo.presentation.generateNarration").handler({});
+    const result = await getToolByName(tools, "accordo_presentation_generateNarration").handler({});
     expect(result).toMatchObject({ error: expect.any(String) });
   });
 });
@@ -259,13 +288,13 @@ describe("createPresentationTools — input schemas", () => {
 
   it("M44-TL-02: open schema requires deckUri property", () => {
     const tools = createPresentationTools(makeDeps());
-    const open = getToolByName(tools, "accordo.presentation.open");
+    const open = getToolByName(tools, "accordo_presentation_open");
     expect(open.inputSchema.properties).toHaveProperty("deckUri");
   });
 
   it("M44-TL-06: goto schema requires index property", () => {
     const tools = createPresentationTools(makeDeps());
-    const goto = getToolByName(tools, "accordo.presentation.goto");
+    const goto = getToolByName(tools, "accordo_presentation_goto");
     expect(goto.inputSchema.properties).toHaveProperty("index");
   });
 });

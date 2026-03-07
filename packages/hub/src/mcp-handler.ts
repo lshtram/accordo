@@ -7,12 +7,13 @@
  * Requirements: requirements-hub.md §2.1, §5.5, §6
  */
 
-import { ACCORDO_PROTOCOL_VERSION } from "@accordo/bridge-types";
+import { MCP_PROTOCOL_VERSION } from "@accordo/bridge-types";
 import type { ToolRegistry } from "./tool-registry.js";
 import type { BridgeServer } from "./bridge-server.js";
 import { JsonRpcError } from "./errors.js";
 import { hashArgs, writeAuditEntry } from "./audit-log.js";
 import type { AuditEntry } from "./audit-log.js";
+import type { McpDebugLogger } from "./debug-log.js";
 
 /** Represents an active MCP session */
 export interface Session {
@@ -59,6 +60,12 @@ export interface McpHandlerDeps {
    * requirements-hub.md §7
    */
   auditFile?: string;
+  /**
+   * Optional debug logger. When provided, every JSON-RPC exchange is logged
+   * in full — including the tool list returned by tools/list and the
+   * instructions text injected into the agent's context by initialize.
+   */
+  debugLogger?: McpDebugLogger;
 }
 
 export class McpHandler {
@@ -67,12 +74,14 @@ export class McpHandler {
   private bridgeServer: BridgeServer;
   private toolCallTimeout: number;
   private auditFile: string | undefined;
+  private debugLogger: McpDebugLogger | undefined;
 
   constructor(deps: McpHandlerDeps) {
     this.toolRegistry = deps.toolRegistry;
     this.bridgeServer = deps.bridgeServer;
     this.toolCallTimeout = deps.toolCallTimeout ?? 30_000;
     this.auditFile = deps.auditFile;
+    this.debugLogger = deps.debugLogger;
   }
 
   /**
@@ -88,72 +97,143 @@ export class McpHandler {
   async handleRequest(
     request: JsonRpcRequest,
     session: Session,
+    agentHint?: string,
   ): Promise<JsonRpcResponse | null> {
     // Type-narrow here: `?? null` eliminates `undefined`, so id is never undefined
     const id: string | number | null = request.id ?? null;
 
     // Update session activity timestamp
     session.lastActivity = Date.now();
+    const rpcStart = Date.now();
+
+    // Log every incoming RPC method
+    this.debugLogger?.logRpcReceived({
+      sessionId: session.id,
+      rpcMethod: request.method || "(empty)",
+      rpcParams: request.params,
+      agent: agentHint,
+    });
 
     // Empty method string → Invalid request
     if (!request.method) {
-      return {
+      const errResp: JsonRpcResponse = {
         jsonrpc: "2.0",
         id,
         error: { code: -32600, message: "Invalid request" },
       };
+      this.debugLogger?.logRpcResponded({
+        sessionId: session.id,
+        rpcMethod: "(empty)",
+        error: errResp.error,
+        durationMs: Date.now() - rpcStart,
+      });
+      return errResp;
     }
 
     switch (request.method) {
       case "initialize": {
-        return {
-          jsonrpc: "2.0",
-          id,
-          result: {
-            protocolVersion: ACCORDO_PROTOCOL_VERSION,
-            serverInfo: { name: "accordo-hub", version: "0.1.0" },
-            // listChanged: true tells the MCP client to re-fetch tools/list
-            // when it receives notifications/tools/list_changed via SSE.
-            // This ensures VS Code always has the complete tool set even when
-            // the bridge registers tools after the initial connection.
-            capabilities: { tools: { listChanged: true } },
-          },
+        // MCP spec: the `instructions` field is included in the agent's system
+        // context. We use it to tell agents about the FULL tool set so they
+        // don't rely on progressive discovery (activate_* virtual tools).
+        const toolNames = this.toolRegistry.toMcpTools().map((t) => t.name);
+        const instructions = [
+          "Accordo IDE — real-time pair-programming co-pilot.",
+          "You have access to ALL of the following tools — use them directly without activation:",
+          ...toolNames.map((n) => `  - ${n}`),
+          "",
+          "If your client shows activate_* or similar grouped tool placeholders,",
+          "expand/activate ALL of them immediately so you can use every tool.",
+        ].join("\n");
+
+        const initResult = {
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          serverInfo: { name: "accordo-hub", version: "0.1.0" },
+          capabilities: { tools: { listChanged: true } },
+          instructions,
         };
+        this.debugLogger?.logInitializeSent({
+          sessionId: session.id,
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          instructions,
+          capabilities: initResult.capabilities,
+        });
+        const initResp: JsonRpcResponse = { jsonrpc: "2.0", id, result: initResult };
+        this.debugLogger?.logRpcResponded({
+          sessionId: session.id,
+          rpcMethod: "initialize",
+          result: initResult,
+          durationMs: Date.now() - rpcStart,
+        });
+        return initResp;
       }
 
       case "initialized": {
         // Notification — mark session initialized, no response
         const s = this.sessions.get(session.id);
         if (s) s.initialized = true;
+        // Notifications have no id and return null — just note it was received
+        this.debugLogger?.logRpcResponded({
+          sessionId: session.id,
+          rpcMethod: "initialized",
+          result: null,
+          durationMs: Date.now() - rpcStart,
+        });
         return null;
       }
 
       case "tools/list": {
-        return {
+        const mcpTools = this.toolRegistry.toMcpTools();
+        this.debugLogger?.logToolsListSent({ sessionId: session.id, tools: mcpTools });
+        const listResp: JsonRpcResponse = {
           jsonrpc: "2.0",
           id,
-          result: { tools: this.toolRegistry.toMcpTools() },
+          result: { tools: mcpTools },
         };
+        this.debugLogger?.logRpcResponded({
+          sessionId: session.id,
+          rpcMethod: "tools/list",
+          result: { toolCount: mcpTools.length },
+          durationMs: Date.now() - rpcStart,
+        });
+        return listResp;
       }
 
       case "tools/call": {
-        return this.handleToolsCall(request, session, id);
+        const callResp = await this.handleToolsCall(request, session, id);
+        this.debugLogger?.logRpcResponded({
+          sessionId: session.id,
+          rpcMethod: "tools/call",
+          result: callResp.result,
+          error: callResp.error,
+          durationMs: Date.now() - rpcStart,
+        });
+        return callResp;
       }
 
       case "ping": {
-        return {
-          jsonrpc: "2.0",
-          id,
+        const pingResp: JsonRpcResponse = { jsonrpc: "2.0", id, result: {} };
+        this.debugLogger?.logRpcResponded({
+          sessionId: session.id,
+          rpcMethod: "ping",
           result: {},
-        };
+          durationMs: Date.now() - rpcStart,
+        });
+        return pingResp;
       }
 
       default: {
-        return {
+        const unknownResp: JsonRpcResponse = {
           jsonrpc: "2.0",
           id,
           error: { code: -32601, message: "Method not found" },
         };
+        this.debugLogger?.logRpcResponded({
+          sessionId: session.id,
+          rpcMethod: request.method,
+          error: unknownResp.error,
+          durationMs: Date.now() - rpcStart,
+        });
+        return unknownResp;
       }
     }
   }
@@ -361,7 +441,7 @@ export class McpHandler {
    *
    * @returns A new Session with a unique UUID
    */
-  createSession(): Session {
+  createSession(agentHint?: string): Session {
     const now = Date.now();
     const session: Session = {
       id: crypto.randomUUID(),
@@ -370,6 +450,7 @@ export class McpHandler {
       initialized: false,
     };
     this.sessions.set(session.id, session);
+    this.debugLogger?.logSessionCreated(session.id, agentHint);
     return session;
   }
 

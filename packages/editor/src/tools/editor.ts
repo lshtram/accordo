@@ -83,7 +83,7 @@ const FOCUS_COMMANDS = [
   "workbench.action.focusNinthEditorGroup",
 ] as const;
 
-// ── §4.1 accordo.editor.open ─────────────────────────────────────────────────
+// ── §4.1 accordo_editor_open ─────────────────────────────────────────────────
 
 /**
  * Open a file in the editor, optionally scrolling to a line/column.
@@ -110,7 +110,7 @@ export async function openHandler(
   }
 }
 
-// ── §4.2 accordo.editor.close ────────────────────────────────────────────────
+// ── §4.2 accordo_editor_close ────────────────────────────────────────────────
 
 /**
  * Close a specific editor tab, or the active editor if no path given.
@@ -153,7 +153,7 @@ export async function closeHandler(
   }
 }
 
-// ── §4.3 accordo.editor.scroll ───────────────────────────────────────────────
+// ── §4.3 accordo_editor_scroll ───────────────────────────────────────────────
 
 /**
  * Scroll the active editor viewport up or down.
@@ -178,7 +178,7 @@ export async function scrollHandler(
   }
 }
 
-// ── §4.4 accordo.editor.highlight ────────────────────────────────────────────
+// ── §4.4 accordo_editor_highlight ────────────────────────────────────────────
 
 /**
  * Apply a background highlight decoration to a line range.
@@ -225,10 +225,10 @@ export async function highlightHandler(
   }
 }
 
-// ── §4.5 accordo.editor.clearHighlights ──────────────────────────────────────
+// ── §4.5 accordo_editor_clearHighlights ──────────────────────────────────────
 
 /**
- * Remove highlight decorations created by accordo.editor.highlight.
+ * Remove highlight decorations created by accordo_editor_highlight.
  *
  * @param args.decorationId - Optional. Clear only this decoration. Omit → clear all.
  */
@@ -257,7 +257,7 @@ export async function clearHighlightsHandler(
   }
 }
 
-// ── §4.6 accordo.editor.split ────────────────────────────────────────────────
+// ── §4.6 accordo_editor_split ────────────────────────────────────────────────
 
 /**
  * Split the editor in a given direction.
@@ -280,7 +280,7 @@ export async function splitHandler(
   }
 }
 
-// ── §4.7 accordo.editor.focus ────────────────────────────────────────────────
+// ── §4.7 accordo_editor_focus ────────────────────────────────────────────────
 
 /**
  * Focus a specific editor group by 1-based group number.
@@ -303,7 +303,7 @@ export async function focusGroupHandler(
   }
 }
 
-// ── §4.8 accordo.editor.reveal ───────────────────────────────────────────────
+// ── §4.8 accordo_editor_reveal ───────────────────────────────────────────────
 
 /**
  * Reveal a file in the Explorer sidebar without opening it in the editor.
@@ -329,7 +329,7 @@ export async function revealHandler(
   }
 }
 
-// ── §4.17 accordo.editor.save ────────────────────────────────────────────────
+// ── §4.17 accordo_editor_save ────────────────────────────────────────────────
 
 /**
  * Save a specific file, or the active editor if no path given.
@@ -363,7 +363,7 @@ export async function saveHandler(
   }
 }
 
-// ── §4.18 accordo.editor.saveAll ─────────────────────────────────────────────
+// ── §4.18 accordo_editor_saveAll ─────────────────────────────────────────────
 
 /**
  * Save all modified editors. Returns how many were saved.
@@ -380,7 +380,7 @@ export async function saveAllHandler(
   }
 }
 
-// ── §4.19 accordo.editor.format ──────────────────────────────────────────────
+// ── §4.19 accordo_editor_format ──────────────────────────────────────────────
 
 /**
  * Format the active document (or a specific file's open editor).
@@ -422,7 +422,7 @@ export async function formatHandler(
 export const editorTools: ExtensionToolDefinition[] = [
   // ── Module 16 ──────────────────────────────────────────────────────────────
   {
-    name: "accordo.editor.open",
+    name: "accordo_editor_open",
     group: "editor",
     description: "Open a file in the editor, optionally scrolling to a line/column.",
     inputSchema: {
@@ -436,10 +436,10 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.editor.open", openHandler),
+    handler: wrapHandler("accordo_editor_open", openHandler),
   },
   {
-    name: "accordo.editor.close",
+    name: "accordo_editor_close",
     group: "editor",
     description: "Close a specific editor tab, or the active editor if no path given.",
     inputSchema: {
@@ -451,10 +451,10 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.editor.close", closeHandler),
+    handler: wrapHandler("accordo_editor_close", closeHandler),
   },
   {
-    name: "accordo.editor.scroll",
+    name: "accordo_editor_scroll",
     group: "editor",
     description: "Scroll the active editor viewport up or down by line or page.",
     inputSchema: {
@@ -467,10 +467,10 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: false,
-    handler: wrapHandler("accordo.editor.scroll", scrollHandler),
+    handler: wrapHandler("accordo_editor_scroll", scrollHandler),
   },
   {
-    name: "accordo.editor.split",
+    name: "accordo_editor_split",
     group: "editor",
     description: "Split the editor pane right or down.",
     inputSchema: {
@@ -482,10 +482,10 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: false,
-    handler: wrapHandler("accordo.editor.split", splitHandler),
+    handler: wrapHandler("accordo_editor_split", splitHandler),
   },
   {
-    name: "accordo.editor.focus",
+    name: "accordo_editor_focus",
     group: "editor",
     description: "Focus a specific editor group by 1-based group number.",
     inputSchema: {
@@ -497,10 +497,10 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.editor.focus", focusGroupHandler),
+    handler: wrapHandler("accordo_editor_focus", focusGroupHandler),
   },
   {
-    name: "accordo.editor.reveal",
+    name: "accordo_editor_reveal",
     group: "editor",
     description: "Reveal a file in the Explorer sidebar without opening it.",
     inputSchema: {
@@ -512,11 +512,11 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.editor.reveal", revealHandler),
+    handler: wrapHandler("accordo_editor_reveal", revealHandler),
   },
   // ── Module 17 ──────────────────────────────────────────────────────────────
   {
-    name: "accordo.editor.highlight",
+    name: "accordo_editor_highlight",
     group: "editor",
     description: "Apply a colored background highlight to a range of lines.",
     inputSchema: {
@@ -531,12 +531,12 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.editor.highlight", highlightHandler),
+    handler: wrapHandler("accordo_editor_highlight", highlightHandler),
   },
   {
-    name: "accordo.editor.clearHighlights",
+    name: "accordo_editor_clearHighlights",
     group: "editor",
-    description: "Remove highlight decorations created by accordo.editor.highlight.",
+    description: "Remove highlight decorations created by accordo_editor_highlight.",
     inputSchema: {
       type: "object",
       properties: {
@@ -546,10 +546,10 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.editor.clearHighlights", clearHighlightsHandler),
+    handler: wrapHandler("accordo_editor_clearHighlights", clearHighlightsHandler),
   },
   {
-    name: "accordo.editor.save",
+    name: "accordo_editor_save",
     group: "editor",
     description: "Save a specific file, or the active editor if no path given.",
     inputSchema: {
@@ -561,10 +561,10 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.editor.save", saveHandler),
+    handler: wrapHandler("accordo_editor_save", saveHandler),
   },
   {
-    name: "accordo.editor.saveAll",
+    name: "accordo_editor_saveAll",
     group: "editor",
     description: "Save all modified (unsaved) editors.",
     inputSchema: {
@@ -574,10 +574,10 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.editor.saveAll", saveAllHandler),
+    handler: wrapHandler("accordo_editor_saveAll", saveAllHandler),
   },
   {
-    name: "accordo.editor.format",
+    name: "accordo_editor_format",
     group: "editor",
     description: "Format the active document or a specific file using the configured formatter.",
     inputSchema: {
@@ -589,6 +589,6 @@ export const editorTools: ExtensionToolDefinition[] = [
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: wrapHandler("accordo.editor.format", formatHandler),
+    handler: wrapHandler("accordo_editor_format", formatHandler),
   },
 ];

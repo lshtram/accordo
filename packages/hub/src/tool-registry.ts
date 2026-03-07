@@ -28,7 +28,7 @@ export class ToolRegistry {
   /**
    * Look up a single tool by its fully qualified name.
    *
-   * @param name - Tool name, e.g. "accordo.editor.open"
+   * @param name - Tool name, e.g. "accordo_editor_open"
    * @returns The tool registration, or undefined if not found
    */
   get(name: string): ToolRegistration | undefined {

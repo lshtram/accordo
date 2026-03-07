@@ -59,7 +59,7 @@ beforeEach(() => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.9 accordo.terminal.open
+// §4.9 accordo_terminal_open
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("terminalOpenHandler — §4.9", () => {
@@ -132,7 +132,7 @@ describe("terminalOpenHandler — §4.9", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.10 accordo.terminal.run
+// §4.10 accordo_terminal_run
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("terminalRunHandler — §4.10", () => {
@@ -184,7 +184,7 @@ describe("terminalRunHandler — §4.10", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.11 accordo.terminal.focus
+// §4.11 accordo_terminal_focus
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("terminalFocusHandler — §4.11", () => {
@@ -203,7 +203,7 @@ describe("terminalFocusHandler — §4.11", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.21 accordo.terminal.list
+// §4.21 accordo_terminal_list
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("terminalListHandler — §4.21", () => {
@@ -252,7 +252,7 @@ describe("terminalListHandler — §4.21", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.22 accordo.terminal.close
+// §4.22 accordo_terminal_close
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("terminalCloseHandler — §4.22", () => {
@@ -329,32 +329,32 @@ describe("terminalTools registration — Module 18", () => {
 
   it("M18-REG-02: all tool names are present", () => {
     const names = terminalTools.map((t) => t.name);
-    expect(names).toContain("accordo.terminal.open");
-    expect(names).toContain("accordo.terminal.run");
-    expect(names).toContain("accordo.terminal.focus");
-    expect(names).toContain("accordo.terminal.list");
-    expect(names).toContain("accordo.terminal.close");
+    expect(names).toContain("accordo_terminal_open");
+    expect(names).toContain("accordo_terminal_run");
+    expect(names).toContain("accordo_terminal_focus");
+    expect(names).toContain("accordo_terminal_list");
+    expect(names).toContain("accordo_terminal_close");
   });
 
   it("M18-REG-03: terminal.run is destructive", () => {
-    expect(byName("accordo.terminal.run").dangerLevel).toBe("destructive");
+    expect(byName("accordo_terminal_run").dangerLevel).toBe("destructive");
   });
 
   it("M18-REG-04: terminal.open is moderate", () => {
-    expect(byName("accordo.terminal.open").dangerLevel).toBe("moderate");
+    expect(byName("accordo_terminal_open").dangerLevel).toBe("moderate");
   });
 
   it("M18-REG-05: terminal.focus and terminal.list are safe", () => {
-    expect(byName("accordo.terminal.focus").dangerLevel).toBe("safe");
-    expect(byName("accordo.terminal.list").dangerLevel).toBe("safe");
+    expect(byName("accordo_terminal_focus").dangerLevel).toBe("safe");
+    expect(byName("accordo_terminal_list").dangerLevel).toBe("safe");
   });
 
   it("M18-REG-06: terminal.run requires [command]", () => {
-    expect(byName("accordo.terminal.run").inputSchema.required).toContain("command");
+    expect(byName("accordo_terminal_run").inputSchema.required).toContain("command");
   });
 
   it("M18-REG-07: terminal.close has terminalId and name as optional properties", () => {
-    const schema = byName("accordo.terminal.close").inputSchema;
+    const schema = byName("accordo_terminal_close").inputSchema;
     expect(schema.properties).toHaveProperty("terminalId");
     expect(schema.properties).toHaveProperty("name");
     expect(schema.required).toEqual([]);

@@ -27,7 +27,7 @@ function makeTmpDir(): string {
 function makeEntry(overrides: Partial<AuditEntry> = {}): AuditEntry {
   return {
     ts: new Date().toISOString(),
-    tool: "accordo.editor.open",
+    tool: "accordo_editor_open",
     argsHash: "abc123",
     sessionId: "session-id-1",
     result: "success",
@@ -179,7 +179,7 @@ describe("writeAuditEntry", () => {
 
   it("§7: writes a valid JSON line", () => {
     const p = path.join(tmpDir, "audit.jsonl");
-    const entry = makeEntry({ tool: "accordo.editor.close", result: "success" });
+    const entry = makeEntry({ tool: "accordo_editor_close", result: "success" });
     writeAuditEntry(p, entry);
     const line = fs.readFileSync(p, "utf8").trim();
     expect(() => JSON.parse(line)).not.toThrow();
@@ -191,7 +191,7 @@ describe("writeAuditEntry", () => {
     writeAuditEntry(p, entry);
     const parsed = JSON.parse(fs.readFileSync(p, "utf8").trim()) as AuditEntry;
     expect(parsed.ts).toBeDefined();
-    expect(parsed.tool).toBe("accordo.editor.open");
+    expect(parsed.tool).toBe("accordo_editor_open");
     expect(parsed.argsHash).toBe("abc123");
     expect(parsed.sessionId).toBe("session-id-1");
     expect(parsed.result).toBe("success");
@@ -200,16 +200,16 @@ describe("writeAuditEntry", () => {
 
   it("§7: appends multiple entries on successive calls", () => {
     const p = path.join(tmpDir, "audit.jsonl");
-    writeAuditEntry(p, makeEntry({ tool: "accordo.editor.open" }));
-    writeAuditEntry(p, makeEntry({ tool: "accordo.editor.close" }));
+    writeAuditEntry(p, makeEntry({ tool: "accordo_editor_open" }));
+    writeAuditEntry(p, makeEntry({ tool: "accordo_editor_close" }));
     const lines = fs.readFileSync(p, "utf8").trim().split("\n");
     expect(lines.length).toBe(2);
   });
 
   it("§7: each line is independently valid JSON", () => {
     const p = path.join(tmpDir, "audit.jsonl");
-    writeAuditEntry(p, makeEntry({ tool: "accordo.editor.open" }));
-    writeAuditEntry(p, makeEntry({ tool: "accordo.editor.close" }));
+    writeAuditEntry(p, makeEntry({ tool: "accordo_editor_open" }));
+    writeAuditEntry(p, makeEntry({ tool: "accordo_editor_close" }));
     const lines = fs.readFileSync(p, "utf8").trim().split("\n");
     for (const line of lines) {
       expect(() => JSON.parse(line)).not.toThrow();
@@ -239,6 +239,6 @@ describe("writeAuditEntry", () => {
     expect(fs.existsSync(path.join(tmpDir, "audit.1.jsonl"))).toBe(true);
     const newContent = fs.readFileSync(p, "utf8").trim();
     const parsed = JSON.parse(newContent) as AuditEntry;
-    expect(parsed.tool).toBe("accordo.editor.open");
+    expect(parsed.tool).toBe("accordo_editor_open");
   });
 });

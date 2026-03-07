@@ -49,26 +49,56 @@ export interface AgentConfigParams {
   configureOpencode: boolean;
   /** Whether to write .claude/mcp.json (CFG-02) */
   configureClaude: boolean;
+  /** Whether to write .vscode/mcp.json for Copilot */
+  configureCopilot: boolean;
   /** Output channel for warnings (CFG-08) */
   outputChannel: AgentConfigOutputChannel;
 }
 
 /**
- * Build the opencode.json content object.
+ * Build the opencode.json content object, merging with any existing entries.
  * CFG-03, CFG-04, CFG-08, CFG-10
+ *
+ * opencode uses strict JSON schema validation (`$schema: "https://opencode.ai/config.json"`).
+ * Only keys defined by that schema are allowed — custom fields like `_accordo_schema` or
+ * `instructions_url` will cause opencode to reject the file at startup.
+ *
+ * The Hub instructions URL is provided via the `instructions` array so that
+ * opencode loads it as a rules file (equivalent to CFG-04).
+ *
+ * If existingRaw is provided, existing MCP server entries and other opencode-compatible
+ * keys are preserved. This prevents overwriting user-added MCP servers.
  *
  * @param port  - Hub port
  * @param token - Bearer token
+ * @param existingRaw - Raw string content of the existing opencode.json, or undefined
  * @returns Plain object ready for JSON.stringify
  */
 export function buildOpencodeConfig(
   port: number,
   token: string,
+  existingRaw?: string | undefined,
 ): Record<string, unknown> {
+  let existing: Record<string, unknown> = {};
+  if (existingRaw !== undefined) {
+    try {
+      existing = JSON.parse(existingRaw) as Record<string, unknown>;
+    } catch {
+      // corrupt — treat as absent
+      existing = {};
+    }
+  }
+  // Remove legacy keys that opencode rejects
+  delete existing["_accordo_schema"];
+  delete existing["instructions_url"];
+
+  const existingMcp = (existing["mcp"] ?? {}) as Record<string, unknown>;
   return {
-    _accordo_schema: ACCORDO_SCHEMA_VERSION,
-    instructions_url: `http://localhost:${port}/instructions`,
+    ...existing,
+    $schema: "https://opencode.ai/config.json",
+    instructions: [`http://localhost:${port}/instructions`],
     mcp: {
+      ...existingMcp,
       "accordo-hub": {
         type: "remote",
         url: `http://localhost:${port}/mcp`,
@@ -155,17 +185,26 @@ export function appendGitignore(gitignorePath: string, entry: string): void {
 export function writeOpencodeConfig(params: AgentConfigParams): void {
   if (!params.configureOpencode) return;
 
-  const config = buildOpencodeConfig(params.port, params.token);
+  const filePath = path.join(params.workspaceRoot, "opencode.json");
+
+  // Read existing file for merge (preserve user-added MCP servers)
+  let existingRaw: string | undefined;
+  try {
+    existingRaw = fs.readFileSync(filePath, "utf8");
+  } catch {
+    // absent — will create fresh
+  }
+
+  const config = buildOpencodeConfig(params.port, params.token, existingRaw);
 
   // CFG-08: warn if required fields are missing
   if (!config["mcp"]) {
     params.outputChannel.appendLine("[accordo] Warning: opencode.json is missing mcp field");
   }
-  if (!config["instructions_url"]) {
-    params.outputChannel.appendLine("[accordo] Warning: opencode.json is missing instructions_url field");
+  if (!config["instructions"]) {
+    params.outputChannel.appendLine("[accordo] Warning: opencode.json is missing instructions field");
   }
 
-  const filePath = path.join(params.workspaceRoot, "opencode.json");
   fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + "\n", {
     encoding: "utf8",
     mode: 0o600,
@@ -324,8 +363,79 @@ export function removeWorkspaceThreshold(
 }
 
 /**
- * Write all enabled agent config files (opencode + Claude) for the given params.
- * Called from HubManager's onCredentialsRotated and onHubReady callbacks.
+ * Build the .vscode/mcp.json content object for VS Code Copilot, merging
+ * with any existing server entries.
+ *
+ * VS Code expects { "servers": { "<name>": { type, url, headers } } }.
+ *
+ * @param port        - Hub port
+ * @param token       - Bearer token
+ * @param existingRaw - Raw string content of the existing .vscode/mcp.json, or undefined
+ * @returns Plain object ready for JSON.stringify
+ */
+export function buildCopilotConfig(
+  port: number,
+  token: string,
+  existingRaw: string | undefined,
+): Record<string, unknown> {
+  let existing: Record<string, unknown> = {};
+  if (existingRaw !== undefined) {
+    try {
+      existing = JSON.parse(existingRaw) as Record<string, unknown>;
+    } catch {
+      existing = {};
+    }
+  }
+  const existingServers = (existing["servers"] ?? {}) as Record<string, unknown>;
+  return {
+    ...existing,
+    servers: {
+      ...existingServers,
+      "accordo-hub": {
+        type: "http",
+        url: `http://localhost:${port}/mcp`,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    },
+  };
+}
+
+/**
+ * Write .vscode/mcp.json to workspaceRoot for VS Code Copilot MCP discovery.
+ * Merges with existing server entries. No-op when configureCopilot is false.
+ *
+ * @param params - AgentConfigParams
+ */
+export function writeCopilotConfig(params: AgentConfigParams): void {
+  if (!params.configureCopilot) return;
+
+  const vscodeDir = path.join(params.workspaceRoot, ".vscode");
+  const filePath = path.join(vscodeDir, "mcp.json");
+
+  let existingRaw: string | undefined;
+  try {
+    existingRaw = fs.readFileSync(filePath, "utf8");
+  } catch {
+    // absent — will create fresh
+  }
+
+  const config = buildCopilotConfig(params.port, params.token, existingRaw);
+
+  fs.mkdirSync(vscodeDir, { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + "\n", {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+
+  appendGitignore(path.join(params.workspaceRoot, ".gitignore"), ".vscode/mcp.json");
+}
+
+/**
+ * Write all enabled agent config files (opencode + Claude + Copilot) for the
+ * given params. Called from HubManager's onCredentialsRotated and onHubReady
+ * callbacks.
  *
  * Each file is written independently: a failure writing one does not prevent
  * the other from being attempted, and per-file errors are reported through
@@ -346,6 +456,13 @@ export function writeAgentConfigs(params: AgentConfigParams): void {
   } catch (err: unknown) {
     params.outputChannel.appendLine(
       `[accordo-bridge] Failed to write .claude/mcp.json: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  try {
+    writeCopilotConfig(params);
+  } catch (err: unknown) {
+    params.outputChannel.appendLine(
+      `[accordo-bridge] Failed to write .vscode/mcp.json: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }

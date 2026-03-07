@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { ACCORDO_PROTOCOL_VERSION } from "@accordo/bridge-types";
+import { ACCORDO_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from "@accordo/bridge-types";
 import type { ToolRegistration } from "@accordo/bridge-types";
 import { McpHandler } from "../mcp-handler.js";
 import type { JsonRpcRequest, Session } from "../mcp-handler.js";
@@ -37,7 +37,7 @@ function makeRequest(
 }
 
 const SAMPLE_TOOL: ToolRegistration = {
-  name: "accordo.editor.open",
+  name: "accordo_editor_open",
   description: "Open a file in the editor",
   inputSchema: {
     type: "object",
@@ -177,7 +177,7 @@ describe("McpHandler", () => {
       });
       const response = await handler.handleRequest(req, session);
       const result = response?.result as Record<string, unknown>;
-      expect(result).toHaveProperty("protocolVersion", ACCORDO_PROTOCOL_VERSION);
+      expect(result).toHaveProperty("protocolVersion", MCP_PROTOCOL_VERSION);
     });
 
     it("§2.1: initialize result includes serverInfo", async () => {
@@ -270,7 +270,7 @@ describe("McpHandler", () => {
       const result = response?.result as { tools: unknown[] };
       expect(result.tools).toHaveLength(1);
       const t = result.tools[0] as Record<string, unknown>;
-      expect(t["name"]).toBe("accordo.editor.open");
+      expect(t["name"]).toBe("accordo_editor_open");
     });
 
     it("§2.1: tools/list returns empty array when no tools registered", async () => {
@@ -321,13 +321,13 @@ describe("McpHandler", () => {
     it("§6: tools/call — unknown tool returns error -32601", async () => {
       // req-hub §6: "Tool not found → { code: -32601, message: 'Unknown tool: <name>' }"
       const req = makeRequest("tools/call", {
-        name: "accordo.editor.nonexistent",
+        name: "accordo_editor_nonexistent",
         arguments: {},
       });
       const response = await handler.handleRequest(req, session);
       expect(response?.error).toBeDefined();
       expect(response?.error?.code).toBe(-32601);
-      expect(response?.error?.message).toContain("accordo.editor.nonexistent");
+      expect(response?.error?.message).toContain("accordo_editor_nonexistent");
     });
 
     it("§6: tools/call — bridge not connected returns error -32603", async () => {
@@ -336,7 +336,7 @@ describe("McpHandler", () => {
       const s = h.createSession();
       // Bridge is NOT connected (default state)
       const req = makeRequest("tools/call", {
-        name: "accordo.editor.open",
+        name: "accordo_editor_open",
         arguments: { path: "/foo.ts" },
       });
       const response = await h.handleRequest(req, s);
@@ -357,7 +357,7 @@ describe("McpHandler", () => {
       const h = new McpHandler({ toolRegistry, bridgeServer });
       const s = h.createSession();
       const req = makeRequest("tools/call", {
-        name: "accordo.editor.open",
+        name: "accordo_editor_open",
         arguments: { path: "/foo.ts" },
       });
       const response = await h.handleRequest(req, s);
@@ -383,7 +383,7 @@ describe("McpHandler", () => {
         data: { out: 42 },
       });
       const req = makeRequest("tools/call", {
-        name: "accordo.editor.open",
+        name: "accordo_editor_open",
         arguments: { path: "/foo.ts" },
       });
       const response = await h.handleRequest(req, s);
@@ -407,7 +407,7 @@ describe("McpHandler", () => {
         error: "No active editor",
       });
       const req = makeRequest("tools/call", {
-        name: "accordo.editor.open",
+        name: "accordo_editor_open",
         arguments: { path: "/foo.ts" },
       });
       const response = await h.handleRequest(req, s);
@@ -428,7 +428,7 @@ describe("McpHandler", () => {
         new Error("Tool invocation timed out"),
       );
       const req = makeRequest("tools/call", {
-        name: "accordo.editor.open",
+        name: "accordo_editor_open",
         arguments: { path: "/foo.ts" },
       });
       const response = await h.handleRequest(req, s);
@@ -502,7 +502,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
     });
 
     const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/foo.ts" },
     });
     await auditHandler.handleRequest(req, auditSession);
@@ -510,7 +510,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
     // RED: writeAuditEntry is never called in the stub
     expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
       "/tmp/test-audit.jsonl",
-      expect.objectContaining({ result: "success", tool: "accordo.editor.open" }),
+      expect.objectContaining({ result: "success", tool: "accordo_editor_open" }),
     );
   });
 
@@ -523,7 +523,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
     });
 
     const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/foo.ts" },
     });
     await auditHandler.handleRequest(req, auditSession);
@@ -533,7 +533,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
       "/tmp/test-audit.jsonl",
       expect.objectContaining({
         result: "error",
-        tool: "accordo.editor.open",
+        tool: "accordo_editor_open",
         errorMessage: expect.any(String),
       }),
     );
@@ -545,7 +545,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
     );
 
     const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/foo.ts" },
     });
     await auditHandler.handleRequest(req, auditSession);
@@ -553,7 +553,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
     // RED: writeAuditEntry not called
     expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
       "/tmp/test-audit.jsonl",
-      expect.objectContaining({ result: "timeout", tool: "accordo.editor.open" }),
+      expect.objectContaining({ result: "timeout", tool: "accordo_editor_open" }),
     );
   });
 
@@ -565,7 +565,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
     );
 
     const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/foo.ts" },
     });
     await auditHandler.handleRequest(req, auditSession);
@@ -573,7 +573,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
     // RED: writeAuditEntry not called
     expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
       "/tmp/test-audit.jsonl",
-      expect.objectContaining({ result: "error", tool: "accordo.editor.open" }),
+      expect.objectContaining({ result: "error", tool: "accordo_editor_open" }),
     );
   });
 
@@ -586,7 +586,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
     });
 
     const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/file.ts" },
     });
     await auditHandler.handleRequest(req, auditSession);
@@ -608,7 +608,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
     });
 
     const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/file.ts" },
     });
     await auditHandler.handleRequest(req, auditSession);
@@ -628,7 +628,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
 
     const sess = handler.createSession();
     const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/file.ts" },
     });
     await handler.handleRequest(req, sess);
@@ -649,7 +649,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
     });
 
     const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/nonexistent.ts" },
     });
     const response = await auditHandler.handleRequest(req, auditSession);
@@ -659,7 +659,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
       "/tmp/test-audit.jsonl",
       expect.objectContaining({
         result: "error",
-        tool: "accordo.editor.open",
+        tool: "accordo_editor_open",
         errorMessage: "No such file: /nonexistent.ts",
       }),
     );
@@ -680,7 +680,7 @@ describe("McpHandler — §7 audit log integration (M24)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const IDEMPOTENT_TOOL: ToolRegistration = {
-  name: "accordo.editor.open",
+  name: "accordo_editor_open",
   description: "Open a file",
   inputSchema: {
     type: "object",
@@ -693,7 +693,7 @@ const IDEMPOTENT_TOOL: ToolRegistration = {
 };
 
 const NON_IDEMPOTENT_TOOL: ToolRegistration = {
-  name: "accordo.terminal.run",
+  name: "accordo_terminal_run",
   description: "Run a command",
   inputSchema: {
     type: "object",
@@ -728,7 +728,7 @@ describe("McpHandler — M32: idempotent retry on timeout", () => {
       });
 
     const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/foo.ts" },
     });
     const response = await handler.handleRequest(req, session);
@@ -756,7 +756,7 @@ describe("McpHandler — M32: idempotent retry on timeout", () => {
       );
 
     const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/foo.ts" },
     });
     const response = await handler.handleRequest(req, session);
@@ -778,7 +778,7 @@ describe("McpHandler — M32: idempotent retry on timeout", () => {
     );
 
     const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/foo.ts" },
     });
     await handler.handleRequest(req, session);
@@ -808,7 +808,7 @@ describe("McpHandler — M32: idempotent retry on timeout", () => {
       });
 
     const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/foo.ts" },
     });
     await handler.handleRequest(req, session);
@@ -842,7 +842,7 @@ describe("McpHandler — M32: idempotent retry on timeout", () => {
       });
 
     const req = makeRequest("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/foo.ts" },
     });
     const response = await handler.handleRequest(req, session);

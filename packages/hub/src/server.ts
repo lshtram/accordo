@@ -19,6 +19,7 @@ import { ToolRegistry } from "./tool-registry.js";
 import { StateCache } from "./state-cache.js";
 import { renderPrompt } from "./prompt-engine.js";
 import { validateOrigin, validateBearer, validateBridgeSecret } from "./security.js";
+import { McpDebugLogger } from "./debug-log.js";
 
 export interface HubServerOptions {
   /** Port to listen on. Default: 3000 */
@@ -38,6 +39,14 @@ export interface HubServerOptions {
   /** Audit log file path */
   auditFile?: string;
   /**
+   * Path for the MCP debug log (JSONL). When set, every JSON-RPC message
+   * exchanged with any agent is written in full to this file AND echoed to
+   * stderr in real time.
+   * Default: ~/.accordo/mcp-debug.jsonl
+   * Set to empty string "" to disable debug logging.
+   */
+  debugLogFile?: string;
+  /**
    * Absolute path where Hub writes the bearer token for out-of-band agents.
    * Default: ~/.accordo/token. Override in tests to avoid touching the filesystem.
    * requirements-hub.md §2.6, §4.2
@@ -55,15 +64,29 @@ export class HubServer {
   private mcpHandler: McpHandler;
   private startedAt: number | null = null;
   private token: string;
+  private debugLogger: McpDebugLogger | undefined;
   /**
-   * Active SSE connections from MCP clients (VS Code) listening for server
-   * notifications (e.g. notifications/tools/list_changed).
-   * Key: stable UUID per connection.
+   * Active SSE connections from MCP clients (VS Code / opencode / Claude Code)
+   * listening for server notifications (e.g. notifications/tools/list_changed).
+   * Key: stable UUID per connection. Value: response stream + keep-alive timer.
    */
-  private sseConnections = new Map<string, http.ServerResponse>();
+  private sseConnections = new Map<string, { res: http.ServerResponse; keepAlive: ReturnType<typeof setInterval> }>();
+  /**
+   * Fingerprint of the last tool registry snapshot that triggered a
+   * notifications/tools/list_changed push.  Sorted tool names joined with ",".
+   * Prevents duplicate notifications when multiple extensions re-register after
+   * a bridge reconnect but the effective tool set is unchanged.
+   */
+  private lastNotifiedToolHash = "";
 
   constructor(private options: HubServerOptions) {
     this.token = options.token;
+
+    // Initialise debug logger unless explicitly disabled (empty string)
+    if (options.debugLogFile !== "") {
+      this.debugLogger = new McpDebugLogger(options.debugLogFile);
+      console.error(`[hub] MCP debug log → ${this.debugLogger.getLogFile()}`);
+    }
     this.bridgeServer = new BridgeServer({
       secret: options.bridgeSecret,
       maxConcurrent: options.maxConcurrent,
@@ -77,6 +100,7 @@ export class HubServer {
       bridgeServer: this.bridgeServer,
       toolCallTimeout: options.toolCallTimeout,
       auditFile: options.auditFile,
+      debugLogger: this.debugLogger,
     });
 
     // Wire Bridge callbacks to state cache and tool registry
@@ -85,8 +109,13 @@ export class HubServer {
     });
     this.bridgeServer.onRegistryUpdate((tools) => {
       this.toolRegistry.register(tools);
-      // Notify all listening SSE clients that the tool list changed so they
-      // re-fetch tools/list and see the complete set of registered tools.
+      // Only notify SSE clients if the effective tool set actually changed.
+      // Multiple extensions re-register on every bridge reconnect, each calling
+      // onRegistryUpdate separately — without dedup this generates N tool-list
+      // re-fetches per reconnect where N = number of registered extensions.
+      const newHash = this.toolRegistry.list().map(t => t.name).sort().join(",");
+      if (newHash === this.lastNotifiedToolHash) return;
+      this.lastNotifiedToolHash = newHash;
       // MCP spec: notifications/tools/list_changed
       this.pushSseNotification({
         jsonrpc: "2.0" as const,
@@ -276,6 +305,19 @@ export class HubServer {
     let body = "";
     req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
     req.on("end", () => {
+      // Log the raw HTTP request (including body) so we can see what the agent sent
+      const agentHint = this.debugLogger
+        ? this.extractAgentHint(req.headers["user-agent"])
+        : undefined;
+      this.debugLogger?.logHttpRequest({
+        httpMethod: req.method ?? "POST",
+        url: req.url ?? "/mcp",
+        remoteIp: req.socket?.remoteAddress,
+        headers: req.headers as Record<string, string | string[] | undefined>,
+        body,
+        sessionId: incomingSessionId,
+      });
+
       let request: JsonRpcRequest;
       try {
         request = JSON.parse(body) as JsonRpcRequest;
@@ -291,15 +333,16 @@ export class HubServer {
         session = existingSession;
         res.writeHead(200, { "Content-Type": "application/json" });
       } else {
-        session = this.mcpHandler.createSession();
+        session = this.mcpHandler.createSession(this.extractAgentHint(req.headers["user-agent"]));
         res.writeHead(200, {
           "Content-Type": "application/json",
           "Mcp-Session-Id": session.id,
         });
       }
 
+      const agentHintForRequest = this.extractAgentHint(req.headers["user-agent"]);
       this.mcpHandler
-        .handleRequest(request, session)
+        .handleRequest(request, session, agentHintForRequest)
         .then((response) => {
           if (response !== null) {
             res.end(JSON.stringify(response));
@@ -330,6 +373,13 @@ export class HubServer {
     res: http.ServerResponse,
   ): void {
     const connId = Math.random().toString(36).slice(2);
+    const agentHint = this.extractAgentHint(req.headers["user-agent"]);
+
+    // Disable socket-level timeouts so Node doesn't kill this long-lived stream.
+    // Without this, requestTimeout (default 5 min) terminates the SSE connection
+    // and MCP SDK clients log "Error reading from async stream … TypeError: terminated".
+    req.socket.setTimeout(0);
+    req.socket.setKeepAlive(true, 30_000);
 
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -341,11 +391,29 @@ export class HubServer {
     // SSE endpoint confirmation ping
     res.write(": accordo-hub SSE connected\n\n");
 
-    this.sseConnections.set(connId, res);
+    this.debugLogger?.logSseConnect(connId, agentHint);
+
+    // Send SSE comment every 30 s to keep the stream alive.
+    // Without periodic writes, intermediate proxies or TCP stacks may
+    // consider the connection idle and tear it down.
+    const keepAlive = setInterval(() => {
+      try {
+        res.write(": ping\n\n");
+      } catch {
+        // Socket already gone — cleanup happens in req.close handler below
+      }
+    }, 30_000);
+
+    this.sseConnections.set(connId, { res, keepAlive });
 
     // Remove when client disconnects
     req.on("close", () => {
-      this.sseConnections.delete(connId);
+      const entry = this.sseConnections.get(connId);
+      if (entry) {
+        clearInterval(entry.keepAlive);
+        this.sseConnections.delete(connId);
+      }
+      this.debugLogger?.logSseDisconnect(connId);
     });
   }
 
@@ -355,15 +423,33 @@ export class HubServer {
    */
   private pushSseNotification(notification: { jsonrpc: "2.0"; method: string; params: unknown }): void {
     if (this.sseConnections.size === 0) return;
+    this.debugLogger?.logSseNotification(notification.method, this.sseConnections.size);
     const data = `data: ${JSON.stringify(notification)}\n\n`;
-    for (const [id, res] of this.sseConnections) {
+    for (const [id, entry] of this.sseConnections) {
       try {
-        res.write(data);
+        entry.res.write(data);
       } catch {
-        // Connection closed — clean up
+        // Connection closed — clean up timer and entry
+        clearInterval(entry.keepAlive);
         this.sseConnections.delete(id);
       }
     }
+  }
+
+  /**
+   * Extract a short agent identifier string from a User-Agent header value.
+   * Returns undefined when the header is missing.
+   */
+  private extractAgentHint(ua: string | string[] | undefined): string | undefined {
+    if (!ua) return undefined;
+    const uaStr = Array.isArray(ua) ? ua[0] : ua;
+    if (!uaStr) return undefined;
+    const lower = uaStr.toLowerCase();
+    if (lower.includes("github-copilot")) return "copilot";
+    if (lower.includes("opencode")) return "opencode";
+    if (lower.includes("claude")) return "claude";
+    if (lower.includes("cursor")) return "cursor";
+    return uaStr.slice(0, 60);
   }
 
   /**
@@ -494,6 +580,12 @@ export class HubServer {
    * Closes HTTP server, WS connections, removes PID file.
    */
   async stop(): Promise<void> {
+    // Clean up SSE keep-alive timers before closing the server
+    for (const [, entry] of this.sseConnections) {
+      clearInterval(entry.keepAlive);
+    }
+    this.sseConnections.clear();
+
     if (this.httpServer) {
       await new Promise<void>((resolve, reject) => {
         // Non-null assertion is safe: we checked `this.httpServer` immediately above

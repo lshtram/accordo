@@ -96,6 +96,14 @@ export class WsClient {
     private port: number,
     private secret: string,
     private events: WsClientEvents,
+    /**
+     * Optional live provider for the current tool registry.
+     * When supplied, `ws.on("open")` snapshots tools at connection-open time
+     * rather than at `connect()` call time, eliminating the activation-race
+     * window and making the post-connect REG-SYNC re-send unnecessary.
+     * Both the initial connect AND every automatic reconnect benefit.
+     */
+    private getToolsProvider?: () => ToolRegistration[],
   ) {}
 
   /**
@@ -122,8 +130,13 @@ export class WsClient {
     ws.on("open", () => {
       this.state = "connected";
       this.reconnectAttempts = 0;
+      // Snapshot the registry at open-time if a live provider is available.
+      // This covers any registerTools() calls that arrived between connect()
+      // being invoked and the WS handshake completing, without needing a
+      // deferred re-send workaround.
+      const tools = this.getToolsProvider ? this.getToolsProvider() : currentTools;
       this.sendStateSnapshot(currentState);
-      this.sendToolRegistry(currentTools);
+      this.sendToolRegistry(tools);
       this.events.onConnected();
     });
 

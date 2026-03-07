@@ -52,7 +52,7 @@ const SECRET = "e2e-bridge-secret";
 const ALL_TOOLS: ToolRegistration[] = [
   // ── Module 16: editor open/close/scroll/split/focus/reveal ─────────────
   {
-    name: "accordo.editor.open",
+    name: "accordo_editor_open",
     description: "Open a file in the editor, optionally scrolling to a line/column.",
     inputSchema: {
       type: "object",
@@ -68,7 +68,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: true,
   },
   {
-    name: "accordo.editor.close",
+    name: "accordo_editor_close",
     description: "Close a specific editor tab, or the active editor if no path given.",
     inputSchema: {
       type: "object",
@@ -82,7 +82,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: true,
   },
   {
-    name: "accordo.editor.scroll",
+    name: "accordo_editor_scroll",
     description: "Scroll the active editor viewport up or down by line or page.",
     inputSchema: {
       type: "object",
@@ -97,7 +97,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: false,
   },
   {
-    name: "accordo.editor.split",
+    name: "accordo_editor_split",
     description: "Split the editor pane right or down.",
     inputSchema: {
       type: "object",
@@ -111,7 +111,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: false,
   },
   {
-    name: "accordo.editor.focus",
+    name: "accordo_editor_focus",
     description: "Focus a specific editor group by 1-based group number.",
     inputSchema: {
       type: "object",
@@ -125,7 +125,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: true,
   },
   {
-    name: "accordo.editor.reveal",
+    name: "accordo_editor_reveal",
     description: "Reveal a file in the Explorer sidebar without opening it.",
     inputSchema: {
       type: "object",
@@ -141,7 +141,7 @@ const ALL_TOOLS: ToolRegistration[] = [
 
   // ── Module 17: editor highlight/clearHighlights/save/saveAll/format ─────
   {
-    name: "accordo.editor.highlight",
+    name: "accordo_editor_highlight",
     description: "Apply a colored background highlight to a range of lines.",
     inputSchema: {
       type: "object",
@@ -158,8 +158,8 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: true,
   },
   {
-    name: "accordo.editor.clearHighlights",
-    description: "Remove highlight decorations created by accordo.editor.highlight.",
+    name: "accordo_editor_clearHighlights",
+    description: "Remove highlight decorations created by accordo_editor_highlight.",
     inputSchema: {
       type: "object",
       properties: {
@@ -172,7 +172,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: true,
   },
   {
-    name: "accordo.editor.save",
+    name: "accordo_editor_save",
     description: "Save a specific file, or the active editor if no path given.",
     inputSchema: {
       type: "object",
@@ -186,7 +186,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: true,
   },
   {
-    name: "accordo.editor.saveAll",
+    name: "accordo_editor_saveAll",
     description: "Save all modified (unsaved) editors.",
     inputSchema: {
       type: "object",
@@ -198,7 +198,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: true,
   },
   {
-    name: "accordo.editor.format",
+    name: "accordo_editor_format",
     description: "Format the active document or a specific file using the configured formatter.",
     inputSchema: {
       type: "object",
@@ -214,7 +214,7 @@ const ALL_TOOLS: ToolRegistration[] = [
 
   // ── Module 18: terminal ──────────────────────────────────────────────────
   {
-    name: "accordo.terminal.open",
+    name: "accordo_terminal_open",
     description: "Create and show a new terminal instance. Returns a stable accordo terminal ID.",
     inputSchema: {
       type: "object",
@@ -229,7 +229,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: false,
   },
   {
-    name: "accordo.terminal.run",
+    name: "accordo_terminal_run",
     description: "Execute a shell command in a terminal. Requires confirmation — this is destructive.",
     inputSchema: {
       type: "object",
@@ -244,7 +244,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: false,
   },
   {
-    name: "accordo.terminal.focus",
+    name: "accordo_terminal_focus",
     description: "Focus the terminal panel (make it visible and active).",
     inputSchema: {
       type: "object",
@@ -256,7 +256,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: true,
   },
   {
-    name: "accordo.terminal.list",
+    name: "accordo_terminal_list",
     description: "List all currently open terminal instances with their stable accordo IDs.",
     inputSchema: {
       type: "object",
@@ -268,7 +268,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: true,
   },
   {
-    name: "accordo.terminal.close",
+    name: "accordo_terminal_close",
     description: "Close a specific terminal by its stable accordo ID.",
     inputSchema: {
       type: "object",
@@ -284,7 +284,7 @@ const ALL_TOOLS: ToolRegistration[] = [
 
   // ── Module 19: workspace ─────────────────────────────────────────────────
   {
-    name: "accordo.workspace.getTree",
+    name: "accordo_workspace_getTree",
     description: "Return the workspace file tree as a structured object. Respects .gitignore and files.exclude.",
     inputSchema: {
       type: "object",
@@ -299,7 +299,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: true,
   },
   {
-    name: "accordo.workspace.search",
+    name: "accordo_workspace_search",
     description: "Full-text search across workspace files. Returns matching lines with file path and location.",
     inputSchema: {
       type: "object",
@@ -315,7 +315,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: true,
   },
   {
-    name: "accordo.diagnostics.list",
+    name: "accordo_diagnostics_list",
     description: "Return current diagnostics (errors, warnings, hints) from the Language Server.",
     inputSchema: {
       type: "object",
@@ -332,7 +332,7 @@ const ALL_TOOLS: ToolRegistration[] = [
 
   // ── Module 20: layout ────────────────────────────────────────────────────
   {
-    name: "accordo.panel.toggle",
+    name: "accordo_panel_toggle",
     description: "Toggle visibility of a VSCode sidebar panel (explorer, search, git, debug, extensions).",
     inputSchema: {
       type: "object",
@@ -346,7 +346,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: true,
   },
   {
-    name: "accordo.layout.zen",
+    name: "accordo_layout_zen",
     description: "Toggle Zen Mode (distraction-free fullscreen editing).",
     inputSchema: { type: "object", properties: {}, required: [] },
     dangerLevel: "safe",
@@ -354,7 +354,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: false,
   },
   {
-    name: "accordo.layout.fullscreen",
+    name: "accordo_layout_fullscreen",
     description: "Toggle fullscreen mode.",
     inputSchema: { type: "object", properties: {}, required: [] },
     dangerLevel: "safe",
@@ -362,7 +362,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: false,
   },
   {
-    name: "accordo.layout.joinGroups",
+    name: "accordo_layout_joinGroups",
     description: "Collapse all editor splits — merge all groups into one.",
     inputSchema: { type: "object", properties: {}, required: [] },
     dangerLevel: "safe",
@@ -370,7 +370,7 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: true,
   },
   {
-    name: "accordo.layout.evenGroups",
+    name: "accordo_layout_evenGroups",
     description: "Equalise the width and height of all editor groups.",
     inputSchema: { type: "object", properties: {}, required: [] },
     dangerLevel: "safe",
@@ -659,19 +659,19 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
 
   // ── E2E-03 / E2E-04: tools/call round-trips ─────────────────────────────
 
-  it("E2E-03/M16: tools/call accordo.editor.open routes to bridge with correct args", async () => {
+  it("E2E-03/M16: tools/call accordo_editor_open routes to bridge with correct args", async () => {
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
 
     // Pre-wire the fake bridge handler BEFORE sending the MCP call
-    const invoked = bridge.expectInvoke("accordo.editor.open", (id, args) => {
+    const invoked = bridge.expectInvoke("accordo_editor_open", (id, args) => {
       expect(args["path"]).toBe("/workspace/accordo/README.md");
       expect(args["line"]).toBe(10);
       bridge.sendResult(id, { opened: true, path: args["path"] });
     });
 
     const callPromise = session.call("tools/call", {
-      name: "accordo.editor.open",
+      name: "accordo_editor_open",
       arguments: { path: "/workspace/accordo/README.md", line: 10 },
     });
 
@@ -679,7 +679,7 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
     const [invoke, { body }] = await Promise.all([invoked, callPromise]);
 
     // Bridge received the correct tool and args
-    expect(invoke.tool).toBe("accordo.editor.open");
+    expect(invoke.tool).toBe("accordo_editor_open");
     expect(invoke.args["path"]).toBe("/workspace/accordo/README.md");
 
     // MCP response is correct
@@ -690,11 +690,11 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
     expect(parsed["path"]).toBe("/workspace/accordo/README.md");
   });
 
-  it("E2E-03/M17: tools/call accordo.editor.highlight routes with correct args", async () => {
+  it("E2E-03/M17: tools/call accordo_editor_highlight routes with correct args", async () => {
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
 
-    const invoked = bridge.expectInvoke("accordo.editor.highlight", (id, args) => {
+    const invoked = bridge.expectInvoke("accordo_editor_highlight", (id, args) => {
       expect(args["path"]).toBe("/workspace/accordo/src/index.ts");
       expect(args["startLine"]).toBe(5);
       expect(args["endLine"]).toBe(10);
@@ -702,13 +702,13 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
     });
 
     const callPromise = session.call("tools/call", {
-      name: "accordo.editor.highlight",
+      name: "accordo_editor_highlight",
       arguments: { path: "/workspace/accordo/src/index.ts", startLine: 5, endLine: 10 },
     });
 
     const [invoke, { body }] = await Promise.all([invoked, callPromise]);
 
-    expect(invoke.tool).toBe("accordo.editor.highlight");
+    expect(invoke.tool).toBe("accordo_editor_highlight");
     expect(invoke.args["startLine"]).toBe(5);
     expect(invoke.args["endLine"]).toBe(10);
 
@@ -718,23 +718,23 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
     expect(parsed["decorationId"]).toBe("accordo-decoration-1");
   });
 
-  it("E2E-03/M18: tools/call accordo.terminal.run routes with correct args", async () => {
+  it("E2E-03/M18: tools/call accordo_terminal_run routes with correct args", async () => {
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
 
-    const invoked = bridge.expectInvoke("accordo.terminal.run", (id, args) => {
+    const invoked = bridge.expectInvoke("accordo_terminal_run", (id, args) => {
       expect(args["command"]).toBe("echo hello");
       bridge.sendResult(id, { sent: true, terminalId: "accordo-terminal-1" });
     });
 
     const callPromise = session.call("tools/call", {
-      name: "accordo.terminal.run",
+      name: "accordo_terminal_run",
       arguments: { command: "echo hello" },
     });
 
     const [invoke, { body }] = await Promise.all([invoked, callPromise]);
 
-    expect(invoke.tool).toBe("accordo.terminal.run");
+    expect(invoke.tool).toBe("accordo_terminal_run");
     expect(invoke.args["command"]).toBe("echo hello");
 
     expect(body["error"]).toBeUndefined();
@@ -744,11 +744,11 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
     expect(typeof parsed["terminalId"]).toBe("string");
   });
 
-  it("E2E-03/M19: tools/call accordo.workspace.search routes with correct args", async () => {
+  it("E2E-03/M19: tools/call accordo_workspace_search routes with correct args", async () => {
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
 
-    const invoked = bridge.expectInvoke("accordo.workspace.search", (id, args) => {
+    const invoked = bridge.expectInvoke("accordo_workspace_search", (id, args) => {
       expect(args["query"]).toBe("HubServer");
       bridge.sendResult(id, {
         results: [
@@ -758,13 +758,13 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
     });
 
     const callPromise = session.call("tools/call", {
-      name: "accordo.workspace.search",
+      name: "accordo_workspace_search",
       arguments: { query: "HubServer" },
     });
 
     const [invoke, { body }] = await Promise.all([invoked, callPromise]);
 
-    expect(invoke.tool).toBe("accordo.workspace.search");
+    expect(invoke.tool).toBe("accordo_workspace_search");
     expect(invoke.args["query"]).toBe("HubServer");
 
     expect(body["error"]).toBeUndefined();
@@ -774,23 +774,23 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
     expect(parsed.results).toHaveLength(1);
   });
 
-  it("E2E-03/M20: tools/call accordo.panel.toggle routes with correct args", async () => {
+  it("E2E-03/M20: tools/call accordo_panel_toggle routes with correct args", async () => {
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
 
-    const invoked = bridge.expectInvoke("accordo.panel.toggle", (id, args) => {
+    const invoked = bridge.expectInvoke("accordo_panel_toggle", (id, args) => {
       expect(args["panel"]).toBe("explorer");
       bridge.sendResult(id, { visible: true, panel: "explorer" });
     });
 
     const callPromise = session.call("tools/call", {
-      name: "accordo.panel.toggle",
+      name: "accordo_panel_toggle",
       arguments: { panel: "explorer" },
     });
 
     const [invoke, { body }] = await Promise.all([invoked, callPromise]);
 
-    expect(invoke.tool).toBe("accordo.panel.toggle");
+    expect(invoke.tool).toBe("accordo_panel_toggle");
     expect(invoke.args["panel"]).toBe("explorer");
 
     expect(body["error"]).toBeUndefined();
@@ -806,12 +806,12 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
 
-    const invoked = bridge.expectInvoke("accordo.editor.save", (id, _args) => {
+    const invoked = bridge.expectInvoke("accordo_editor_save", (id, _args) => {
       bridge.sendError(id, "No active editor — nothing to save");
     });
 
     const callPromise = session.call("tools/call", {
-      name: "accordo.editor.save",
+      name: "accordo_editor_save",
       arguments: {},
     });
 
@@ -834,7 +834,7 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
     // -32601 is returned synchronously by McpHandler when the tool doesn't
     // exist in the registry — the bridge WS is never touched.
     const { body } = await session.call("tools/call", {
-      name: "accordo.ghost.tool",
+      name: "accordo_ghost_tool",
       arguments: {},
     });
 

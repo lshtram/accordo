@@ -16,7 +16,7 @@ import { McpHandler } from "../mcp-handler.js";
 import { ToolRegistry } from "../tool-registry.js";
 import { BridgeServer } from "../bridge-server.js";
 import { StdioTransport } from "../stdio-transport.js";
-import { ACCORDO_PROTOCOL_VERSION } from "@accordo/bridge-types";
+import { ACCORDO_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from "@accordo/bridge-types";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -98,7 +98,7 @@ describe("Hub HTTP smoke", () => {
     expect(body["id"]).toBe("init-smoke");
     expect(body["error"]).toBeUndefined();
     const result = body["result"] as Record<string, unknown>;
-    expect(result["protocolVersion"]).toBe(ACCORDO_PROTOCOL_VERSION);
+    expect(result["protocolVersion"]).toBe(MCP_PROTOCOL_VERSION);
   });
 
   it("§2.1: POST /mcp ping returns pong", async () => {

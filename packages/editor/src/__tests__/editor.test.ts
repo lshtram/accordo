@@ -2,10 +2,10 @@
  * Tests for src/tools/editor.ts — Modules 16 + 17
  *
  * Module 16 (§4.1–§4.3, §4.6–§4.8):
- *   accordo.editor.open, close, scroll, split, focus, reveal
+ *   accordo_editor_open, close, scroll, split, focus, reveal
  *
  * Module 17 (§4.4–§4.5, §4.17–§4.19):
- *   accordo.editor.highlight, clearHighlights, save, saveAll, format
+ *   accordo_editor_highlight, clearHighlights, save, saveAll, format
  *
  * Phase B — all tests fail RED against "not implemented" stubs.
  *
@@ -96,7 +96,7 @@ beforeEach(() => {
 // Module 16 — Editor view tools
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── §4.1 accordo.editor.open ─────────────────────────────────────────────────
+// ── §4.1 accordo_editor_open ─────────────────────────────────────────────────
 
 describe("openHandler — §4.1", () => {
   it("§4.1-OPEN-01: opens file by absolute path and returns opened path", async () => {
@@ -164,7 +164,7 @@ describe("openHandler rejection — §4.1", () => {
   });
 });
 
-// ── §4.2 accordo.editor.close ────────────────────────────────────────────────
+// ── §4.2 accordo_editor_close ────────────────────────────────────────────────
 
 describe("closeHandler — §4.2", () => {
   it("§4.2-CLOSE-01: closes active editor when no path given", async () => {
@@ -218,7 +218,7 @@ describe("closeHandler rejection — §4.2", () => {
   });
 });
 
-// ── §4.3 accordo.editor.scroll ───────────────────────────────────────────────
+// ── §4.3 accordo_editor_scroll ───────────────────────────────────────────────
 
 describe("scrollHandler — §4.3", () => {
   it("§4.3-SCROLL-01: scrolls down by page and returns new visible start line (1-based)", async () => {
@@ -274,7 +274,7 @@ describe("scrollHandler rejection — §4.3", () => {
   });
 });
 
-// ── §4.6 accordo.editor.split ────────────────────────────────────────────────
+// ── §4.6 accordo_editor_split ────────────────────────────────────────────────
 
 describe("splitHandler — §4.6", () => {
   it("§4.6-SPLIT-01: splits right and returns group count", async () => {
@@ -318,7 +318,7 @@ describe("focusGroupHandler rejection — §4.7", () => {
   });
 });
 
-// ── §4.7 accordo.editor.focus ────────────────────────────────────────────────
+// ── §4.7 accordo_editor_focus ────────────────────────────────────────────────
 
 describe("focusGroupHandler — §4.7", () => {
   beforeEach(() => {
@@ -404,7 +404,7 @@ describe("focusGroupHandler — §4.7", () => {
   });
 });
 
-// ── §4.8 accordo.editor.reveal ───────────────────────────────────────────────
+// ── §4.8 accordo_editor_reveal ───────────────────────────────────────────────
 
 describe("revealHandler — §4.8", () => {
   it("§4.8-REVEAL-01: reveals file in Explorer and returns absolute path", async () => {
@@ -440,7 +440,7 @@ describe("revealHandler — §4.8", () => {
 // Module 17 — Editor decoration + save tools
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── §4.4 accordo.editor.highlight ────────────────────────────────────────────
+// ── §4.4 accordo_editor_highlight ────────────────────────────────────────────
 
 describe("highlightHandler — §4.4", () => {
   it("§4.4-HL-01: creates decoration and returns decorationId", async () => {
@@ -555,7 +555,7 @@ describe("highlightHandler — §4.4", () => {
   });
 });
 
-// ── §4.5 accordo.editor.clearHighlights ──────────────────────────────────────
+// ── §4.5 accordo_editor_clearHighlights ──────────────────────────────────────
 
 describe("clearHighlightsHandler — §4.5", () => {
   it("§4.5-CLR-01: returns { cleared: true, count: 0 } when no decorations exist", async () => {
@@ -613,7 +613,7 @@ describe("clearHighlightsHandler — §4.5", () => {
   });
 });
 
-// ── §4.17 accordo.editor.save ────────────────────────────────────────────────
+// ── §4.17 accordo_editor_save ────────────────────────────────────────────────
 
 describe("saveHandler — §4.17", () => {
   it("§4.17-SAVE-01: saves active editor when no path given", async () => {
@@ -666,7 +666,7 @@ describe("saveHandler — §4.17", () => {
   });
 });
 
-// ── §4.18 accordo.editor.saveAll ─────────────────────────────────────────────
+// ── §4.18 accordo_editor_saveAll ─────────────────────────────────────────────
 
 describe("saveAllHandler — §4.18", () => {
   it("§4.18-SAVEALL-01: saves all dirty documents and returns the count", async () => {
@@ -728,7 +728,7 @@ describe("saveAllHandler rejection — §4.18", () => {
   });
 });
 
-// ── §4.19 accordo.editor.format ──────────────────────────────────────────────
+// ── §4.19 accordo_editor_format ──────────────────────────────────────────────
 
 describe("formatHandler — §4.19", () => {
   it("§4.19-FMT-01: formats active editor when no path given", async () => {
@@ -805,20 +805,20 @@ describe("editorTools registration", () => {
   });
 
   it("REG-02: all module 16 tools are present", () => {
-    expect(toolNames).toContain("accordo.editor.open");
-    expect(toolNames).toContain("accordo.editor.close");
-    expect(toolNames).toContain("accordo.editor.scroll");
-    expect(toolNames).toContain("accordo.editor.split");
-    expect(toolNames).toContain("accordo.editor.focus");
-    expect(toolNames).toContain("accordo.editor.reveal");
+    expect(toolNames).toContain("accordo_editor_open");
+    expect(toolNames).toContain("accordo_editor_close");
+    expect(toolNames).toContain("accordo_editor_scroll");
+    expect(toolNames).toContain("accordo_editor_split");
+    expect(toolNames).toContain("accordo_editor_focus");
+    expect(toolNames).toContain("accordo_editor_reveal");
   });
 
   it("REG-03: all module 17 tools are present", () => {
-    expect(toolNames).toContain("accordo.editor.highlight");
-    expect(toolNames).toContain("accordo.editor.clearHighlights");
-    expect(toolNames).toContain("accordo.editor.save");
-    expect(toolNames).toContain("accordo.editor.saveAll");
-    expect(toolNames).toContain("accordo.editor.format");
+    expect(toolNames).toContain("accordo_editor_highlight");
+    expect(toolNames).toContain("accordo_editor_clearHighlights");
+    expect(toolNames).toContain("accordo_editor_save");
+    expect(toolNames).toContain("accordo_editor_saveAll");
+    expect(toolNames).toContain("accordo_editor_format");
   });
 
   it("REG-04: all tool inputSchemas have type: 'object'", () => {
@@ -837,14 +837,14 @@ describe("editorTools registration", () => {
 
   it("REG-06: reveal, open, highlight, save, saveAll, format, clearHighlights are idempotent", () => {
     const idempotentNames = [
-      "accordo.editor.open",
-      "accordo.editor.reveal",
-      "accordo.editor.highlight",
-      "accordo.editor.clearHighlights",
-      "accordo.editor.save",
-      "accordo.editor.saveAll",
-      "accordo.editor.format",
-      "accordo.editor.focus",
+      "accordo_editor_open",
+      "accordo_editor_reveal",
+      "accordo_editor_highlight",
+      "accordo_editor_clearHighlights",
+      "accordo_editor_save",
+      "accordo_editor_saveAll",
+      "accordo_editor_format",
+      "accordo_editor_focus",
     ];
     for (const name of idempotentNames) {
       const tool = editorTools.find((t) => t.name === name);
@@ -853,7 +853,7 @@ describe("editorTools registration", () => {
   });
 
   it("REG-07: scroll and split are NOT idempotent", () => {
-    const notIdempotent = ["accordo.editor.scroll", "accordo.editor.split"];
+    const notIdempotent = ["accordo_editor_scroll", "accordo_editor_split"];
     for (const name of notIdempotent) {
       const tool = editorTools.find((t) => t.name === name);
       expect(tool?.idempotent ?? false, `${name} should not be idempotent`).toBe(false);
@@ -872,52 +872,52 @@ describe("editorTools registration", () => {
   const tool = (name: string) => editorTools.find((t) => t.name === name)!;
 
   it("REG-09: open requires [path]", () => {
-    expect(tool("accordo.editor.open").inputSchema.required).toEqual(["path"]);
+    expect(tool("accordo_editor_open").inputSchema.required).toEqual(["path"]);
   });
 
   it("REG-10: scroll required includes direction", () => {
-    expect(tool("accordo.editor.scroll").inputSchema.required).toContain("direction");
+    expect(tool("accordo_editor_scroll").inputSchema.required).toContain("direction");
   });
 
   it("REG-11: scroll.direction enum is ['up','down']", () => {
-    const props = tool("accordo.editor.scroll").inputSchema.properties as Record<string, { enum?: string[] }>;
+    const props = tool("accordo_editor_scroll").inputSchema.properties as Record<string, { enum?: string[] }>;
     expect(props["direction"].enum).toEqual(["up", "down"]);
   });
 
   it("REG-12: scroll.by enum is ['line','page'] when present", () => {
-    const props = tool("accordo.editor.scroll").inputSchema.properties as Record<string, { enum?: string[] }>;
+    const props = tool("accordo_editor_scroll").inputSchema.properties as Record<string, { enum?: string[] }>;
     expect(props["by"].enum).toEqual(["line", "page"]);
   });
 
   it("REG-13: highlight requires [path, startLine, endLine]", () => {
-    expect(tool("accordo.editor.highlight").inputSchema.required).toEqual(
+    expect(tool("accordo_editor_highlight").inputSchema.required).toEqual(
       expect.arrayContaining(["path", "startLine", "endLine"]),
     );
   });
 
   it("REG-14: split requires [direction]", () => {
-    expect(tool("accordo.editor.split").inputSchema.required).toContain("direction");
+    expect(tool("accordo_editor_split").inputSchema.required).toContain("direction");
   });
 
   it("REG-15: split.direction enum is ['right','down']", () => {
-    const props = tool("accordo.editor.split").inputSchema.properties as Record<string, { enum?: string[] }>;
+    const props = tool("accordo_editor_split").inputSchema.properties as Record<string, { enum?: string[] }>;
     expect(props["direction"].enum).toEqual(["right", "down"]);
   });
 
   it("REG-16: focus requires [group]", () => {
-    expect(tool("accordo.editor.focus").inputSchema.required).toContain("group");
+    expect(tool("accordo_editor_focus").inputSchema.required).toContain("group");
   });
 
   it("REG-17: reveal requires [path]", () => {
-    expect(tool("accordo.editor.reveal").inputSchema.required).toEqual(["path"]);
+    expect(tool("accordo_editor_reveal").inputSchema.required).toEqual(["path"]);
   });
 
   it("REG-18: clearHighlights has empty required array", () => {
-    expect(tool("accordo.editor.clearHighlights").inputSchema.required).toEqual([]);
+    expect(tool("accordo_editor_clearHighlights").inputSchema.required).toEqual([]);
   });
 
   it("REG-19: saveAll has empty required array", () => {
-    expect(tool("accordo.editor.saveAll").inputSchema.required).toEqual([]);
+    expect(tool("accordo_editor_saveAll").inputSchema.required).toEqual([]);
   });
 });
 

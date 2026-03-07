@@ -25,7 +25,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { HubServer } from "../server.js";
 import type { ToolRegistration } from "@accordo/bridge-types";
-import { ACCORDO_PROTOCOL_VERSION } from "@accordo/bridge-types";
+import { ACCORDO_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from "@accordo/bridge-types";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -321,7 +321,7 @@ describe("§E2E-1 Auth + session lifecycle", () => {
     expect(res.status).toBe(200);
     expect(res.sessionId).toBeTruthy();
     const result = (res.body?.["result"] ?? {}) as Record<string, unknown>;
-    expect(result["protocolVersion"]).toBe(ACCORDO_PROTOCOL_VERSION);
+    expect(result["protocolVersion"]).toBe(MCP_PROTOCOL_VERSION);
   });
 
   it("§E2E-1.6: Mcp-Session-Id is reused across calls", async () => {
@@ -368,7 +368,7 @@ describe("§E2E-1 Auth + session lifecycle", () => {
 describe("§E2E-2 Tool registration", () => {
   it("§E2E-2.1: Bridge registers tools → tools/list returns them", async () => {
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.alpha"), makeToolReg("accordo.test.beta")]);
+    bridge.registerTools([makeToolReg("accordo_test_alpha"), makeToolReg("accordo_test_beta")]);
     await flush();
 
     const session = new McpSession(baseUrl, TOKEN);
@@ -376,15 +376,15 @@ describe("§E2E-2 Tool registration", () => {
     const res = await session.call("tools/list");
     const result = (res.body?.["result"] ?? {}) as Record<string, unknown>;
     const names = (result["tools"] as { name: string }[]).map((t) => t.name);
-    expect(names).toContain("accordo.test.alpha");
-    expect(names).toContain("accordo.test.beta");
+    expect(names).toContain("accordo_test_alpha");
+    expect(names).toContain("accordo_test_beta");
   });
 
   it("§E2E-2.2: re-registration replaces the old registry wholesale", async () => {
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.old")]);
+    bridge.registerTools([makeToolReg("accordo_test_old")]);
     await flush();
-    bridge.registerTools([makeToolReg("accordo.test.new")]);
+    bridge.registerTools([makeToolReg("accordo_test_new")]);
     await flush();
 
     const session = new McpSession(baseUrl, TOKEN);
@@ -392,28 +392,44 @@ describe("§E2E-2 Tool registration", () => {
     const res = await session.call("tools/list");
     const result = (res.body?.["result"] ?? {}) as Record<string, unknown>;
     const names = (result["tools"] as { name: string }[]).map((t) => t.name);
-    expect(names).not.toContain("accordo.test.old");
-    expect(names).toContain("accordo.test.new");
+    expect(names).not.toContain("accordo_test_old");
+    expect(names).toContain("accordo_test_new");
   });
 
-  it("§E2E-2.3: second Bridge connection attempt returns 409", async () => {
+  it("§E2E-2.3: second Bridge connection evicts the first and succeeds (stale-session recovery)", async () => {
     await bridge.connect(baseUrl);
 
-    // Attempt a second connection using a raw WS upgrade
+    // Register a tool on the first connection so we can confirm the second
+    // connection's registry update takes effect.
+    bridge.registerTools([makeToolReg("accordo_test_first")]);
+    await flush();
+
+    // Open a second connection directly.  The Hub should terminate the existing
+    // connection and accept the new one (no 409), enabling recovery when VS Code
+    // kills the Extension Host without calling deactivate().
     const wsUrl = baseUrl.replace("http://", "ws://") + "/bridge";
-    await new Promise<void>((resolve) => {
+    let secondConnected = false;
+    await new Promise<void>((resolve, reject) => {
       const ws2 = new WebSocket(wsUrl, { headers: { "x-accordo-secret": SECRET } });
-      ws2.on("unexpected-response", (_req, res) => {
-        expect(res.statusCode).toBe(409);
+      ws2.on("open", () => {
+        secondConnected = true;
+        ws2.close(1000);
         resolve();
       });
-      ws2.on("error", () => resolve()); // connection refused = also acceptable
+      ws2.on("unexpected-response", (_req, res) => {
+        reject(new Error(`Unexpected HTTP ${res.statusCode} — Hub should evict, not reject`));
+      });
+      ws2.on("error", (err) => reject(err));
+      // Timeout guard
+      setTimeout(() => reject(new Error("Timed out waiting for second WS connect")), 3000);
     });
+
+    expect(secondConnected).toBe(true);
   });
 
   it("§E2E-2.4: tools registered before Bridge disconnects persist until re-registration", async () => {
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.persist")]);
+    bridge.registerTools([makeToolReg("accordo_test_persist")]);
     await flush();
     bridge.disconnect();
     await flush();
@@ -423,15 +439,15 @@ describe("§E2E-2 Tool registration", () => {
     const res = await session.call("tools/list");
     const result = (res.body?.["result"] ?? {}) as Record<string, unknown>;
     const names = (result["tools"] as { name: string }[]).map((t) => t.name);
-    expect(names).toContain("accordo.test.persist");
+    expect(names).toContain("accordo_test_persist");
   });
 
   it("§E2E-2.5: /health toolCount reflects current registry size", async () => {
     await bridge.connect(baseUrl);
     bridge.registerTools([
-      makeToolReg("accordo.test.a"),
-      makeToolReg("accordo.test.b"),
-      makeToolReg("accordo.test.c"),
+      makeToolReg("accordo_test_a"),
+      makeToolReg("accordo_test_b"),
+      makeToolReg("accordo_test_c"),
     ]);
     await flush();
 
@@ -448,7 +464,7 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
     await bridge.connect(baseUrl);
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
-    const res = await session.call("tools/call", { name: "accordo.test.nonexistent", arguments: {} });
+    const res = await session.call("tools/call", { name: "accordo_test_nonexistent", arguments: {} });
     const error = (res.body?.["error"] ?? {}) as Record<string, unknown>;
     expect(error["code"]).toBe(-32601);
     expect(String(error["message"])).toMatch(/unknown tool/i);
@@ -467,14 +483,14 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
     // Register the tool via a bridge, then disconnect — the tool stays in the
     // registry but the bridge is gone, so the invoke itself gets -32603.
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.nobridgenow")]);
+    bridge.registerTools([makeToolReg("accordo_test_nobridgenow")]);
     await flush();
     bridge.disconnect();
     await flush();
 
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
-    const res = await session.call("tools/call", { name: "accordo.test.nobridgenow", arguments: {} });
+    const res = await session.call("tools/call", { name: "accordo_test_nobridgenow", arguments: {} });
     const error = (res.body?.["error"] ?? {}) as Record<string, unknown>;
     expect(error["code"]).toBe(-32603);
     expect(String(error["message"])).toMatch(/bridge/i);
@@ -482,13 +498,13 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
 
   it("§E2E-3.4: successful tool call returns content[0].text = JSON of data", async () => {
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.echo")]);
+    bridge.registerTools([makeToolReg("accordo_test_echo")]);
     bridge.setAutoResponder(() => ({ success: true, data: { hello: "world" } }));
     await flush();
 
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
-    const res = await session.call("tools/call", { name: "accordo.test.echo", arguments: {} });
+    const res = await session.call("tools/call", { name: "accordo_test_echo", arguments: {} });
     const result = (res.body?.["result"] ?? {}) as Record<string, unknown>;
     const content = result["content"] as { type: string; text: string }[];
     expect(content[0].type).toBe("text");
@@ -498,13 +514,13 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
 
   it("§E2E-3.5: tool handler returning error sets isError:true", async () => {
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.fail")]);
+    bridge.registerTools([makeToolReg("accordo_test_fail")]);
     bridge.setAutoResponder(() => ({ success: false, error: "permission denied" }));
     await flush();
 
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
-    const res = await session.call("tools/call", { name: "accordo.test.fail", arguments: {} });
+    const res = await session.call("tools/call", { name: "accordo_test_fail", arguments: {} });
     const result = (res.body?.["result"] ?? {}) as Record<string, unknown>;
     expect(result["isError"]).toBe(true);
     const content = result["content"] as { type: string; text: string }[];
@@ -513,22 +529,22 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
 
   it("§E2E-3.6: tool call timeout returns -32001 after idempotent retry (M32)", { timeout: 2 * TOOL_TIMEOUT_MS + 1000 }, async () => {
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.slow")]);
+    bridge.registerTools([makeToolReg("accordo_test_slow")]);
     // autoResponder is NOT set — bridge receives the invoke but never replies
     await flush();
 
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
-    const res = await session.call("tools/call", { name: "accordo.test.slow", arguments: {} });
+    const res = await session.call("tools/call", { name: "accordo_test_slow", arguments: {} });
     const error = (res.body?.["error"] ?? {}) as Record<string, unknown>;
-    // accordo.test.slow is idempotent:true so M32 retries once on timeout.
+    // accordo_test_slow is idempotent:true so M32 retries once on timeout.
     // Both attempts time out → McpHandler returns the standardised -32001.
     expect(error["code"]).toBe(-32001);
   });
 
   it("§E2E-3.7: tool arguments are forwarded to the Bridge invoke frame", async () => {
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.argcheck")]);
+    bridge.registerTools([makeToolReg("accordo_test_argcheck")]);
     bridge.setAutoResponder(() => ({ success: true, data: {} }));
     await flush();
 
@@ -538,12 +554,12 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
     bridge.clearInvokes();
 
     await session.call("tools/call", {
-      name: "accordo.test.argcheck",
+      name: "accordo_test_argcheck",
       arguments: { path: "/tmp/test.ts", line: 42 },
     });
 
     const invokes = await bridge.waitForInvokes(1);
-    expect(invokes[0].tool).toBe("accordo.test.argcheck");
+    expect(invokes[0].tool).toBe("accordo_test_argcheck");
     expect(invokes[0].args).toEqual({ path: "/tmp/test.ts", line: 42 });
   });
 });
@@ -553,7 +569,7 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
 describe("§E2E-4 Bridge disconnect / reconnect", () => {
   it("§E2E-4.1: disconnect while call is in-flight returns -32603 to the caller", async () => {
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.stall")]);
+    bridge.registerTools([makeToolReg("accordo_test_stall")]);
     // Do NOT set an auto-responder — the invoke will hang until bridge disconnects
     await flush();
 
@@ -561,7 +577,7 @@ describe("§E2E-4 Bridge disconnect / reconnect", () => {
     await session.initialize();
 
     // Fire the call but don't await yet
-    const callPromise = session.call("tools/call", { name: "accordo.test.stall", arguments: {} });
+    const callPromise = session.call("tools/call", { name: "accordo_test_stall", arguments: {} });
 
     // Wait until the Hub has sent the invoke frame to the bridge
     await bridge.waitForInvokes(1);
@@ -577,14 +593,14 @@ describe("§E2E-4 Bridge disconnect / reconnect", () => {
 
   it("§E2E-4.2: calls made after disconnect are rejected immediately", async () => {
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.gone")]);
+    bridge.registerTools([makeToolReg("accordo_test_gone")]);
     await flush();
     bridge.disconnect();
     await flush();
 
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
-    const res = await session.call("tools/call", { name: "accordo.test.gone", arguments: {} });
+    const res = await session.call("tools/call", { name: "accordo_test_gone", arguments: {} });
     const error = (res.body?.["error"] ?? {}) as Record<string, unknown>;
     expect(error["code"]).toBe(-32603);
   });
@@ -603,7 +619,7 @@ describe("§E2E-4 Bridge disconnect / reconnect", () => {
   it("§E2E-4.4: bridge reconnect after disconnect restores call routing", async () => {
     // First connection
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.ping")]);
+    bridge.registerTools([makeToolReg("accordo_test_ping")]);
     bridge.setAutoResponder(() => ({ success: true, data: { ok: true } }));
     await flush();
 
@@ -613,14 +629,14 @@ describe("§E2E-4 Bridge disconnect / reconnect", () => {
     // Second connection — fresh StubBridge instance
     const bridge2 = new StubBridge();
     await bridge2.connect(baseUrl);
-    bridge2.registerTools([makeToolReg("accordo.test.ping")]);
+    bridge2.registerTools([makeToolReg("accordo_test_ping")]);
     bridge2.setAutoResponder(() => ({ success: true, data: { ok: true } }));
     await flush();
 
     try {
       const session = new McpSession(baseUrl, TOKEN);
       await session.initialize();
-      const res = await session.call("tools/call", { name: "accordo.test.ping", arguments: {} });
+      const res = await session.call("tools/call", { name: "accordo_test_ping", arguments: {} });
       const result = (res.body?.["result"] ?? {}) as Record<string, unknown>;
       expect(result["isError"]).toBeUndefined();
     } finally {
@@ -635,7 +651,7 @@ describe("§E2E-5 Concurrency + ordering", () => {
   it("§E2E-5.1: N concurrent calls all succeed", async () => {
     const N = 5;
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.concurrent")]);
+    bridge.registerTools([makeToolReg("accordo_test_concurrent")]);
     bridge.setAutoResponder((_, args) => ({ success: true, data: args }));
     await flush();
 
@@ -644,7 +660,7 @@ describe("§E2E-5 Concurrency + ordering", () => {
 
     const results = await Promise.all(
       Array.from({ length: N }, (_, i) =>
-        session.call("tools/call", { name: "accordo.test.concurrent", arguments: { i } }, i + 1),
+        session.call("tools/call", { name: "accordo_test_concurrent", arguments: { i } }, i + 1),
       ),
     );
 
@@ -658,7 +674,7 @@ describe("§E2E-5 Concurrency + ordering", () => {
   it("§E2E-5.2: out-of-order bridge responses map to correct JSON-RPC request IDs", async () => {
     const N = 4;
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.order")]);
+    bridge.registerTools([makeToolReg("accordo_test_order")]);
     // Do NOT set autoResponder — we'll respond manually in reverse order
     await flush();
 
@@ -667,7 +683,7 @@ describe("§E2E-5 Concurrency + ordering", () => {
 
     // Fire all calls concurrently
     const callPromises = Array.from({ length: N }, (_, i) =>
-      session.call("tools/call", { name: "accordo.test.order", arguments: { seq: i } }, `req-${i}`),
+      session.call("tools/call", { name: "accordo_test_order", arguments: { seq: i } }, `req-${i}`),
     );
 
     // Wait for all invoke frames to arrive at the bridge
@@ -706,13 +722,13 @@ describe("§E2E-5 Concurrency + ordering", () => {
 
     const tightBridge = new StubBridge();
     await tightBridge.connect(tightUrl);
-    tightBridge.registerTools([makeToolReg("accordo.test.busy")]);
+    tightBridge.registerTools([makeToolReg("accordo_test_busy")]);
     await flush();
 
     try {
       const session = new McpSession(tightUrl, TOKEN);
       await session.initialize();
-      const res = await session.call("tools/call", { name: "accordo.test.busy", arguments: {} });
+      const res = await session.call("tools/call", { name: "accordo_test_busy", arguments: {} });
       const error = (res.body?.["error"] ?? {}) as Record<string, unknown>;
       expect(error["code"]).toBe(-32004);
     } finally {
@@ -724,7 +740,7 @@ describe("§E2E-5 Concurrency + ordering", () => {
   it("§E2E-5.4: inflight counter returns to zero after all calls complete", async () => {
     const N = 3;
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.drain")]);
+    bridge.registerTools([makeToolReg("accordo_test_drain")]);
     bridge.setAutoResponder(() => ({ success: true, data: {} }));
     await flush();
 
@@ -733,7 +749,7 @@ describe("§E2E-5 Concurrency + ordering", () => {
 
     await Promise.all(
       Array.from({ length: N }, () =>
-        session.call("tools/call", { name: "accordo.test.drain", arguments: {} }),
+        session.call("tools/call", { name: "accordo_test_drain", arguments: {} }),
       ),
     );
 
@@ -802,20 +818,20 @@ describe("§E2E-6 Week-4 modules", () => {
     const auditUrl = `http://${addr.host}:${addr.port}`;
     const auditBridge = new StubBridge();
     await auditBridge.connect(auditUrl);
-    auditBridge.registerTools([makeToolReg("accordo.test.audit")]);
+    auditBridge.registerTools([makeToolReg("accordo_test_audit")]);
     auditBridge.setAutoResponder(() => ({ success: true, data: { ok: true } }));
     await flush();
 
     try {
       const session = new McpSession(auditUrl, TOKEN);
       await session.initialize();
-      await session.call("tools/call", { name: "accordo.test.audit", arguments: { x: 1 } });
+      await session.call("tools/call", { name: "accordo_test_audit", arguments: { x: 1 } });
       await flush();
 
       const lines = fs.readFileSync(auditFile, "utf8").trim().split("\n");
       expect(lines.length).toBeGreaterThanOrEqual(1);
       const entry = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;
-      expect(entry["tool"]).toBe("accordo.test.audit");
+      expect(entry["tool"]).toBe("accordo_test_audit");
       expect(entry["result"]).toBe("success");
       expect(typeof entry["argsHash"]).toBe("string");
       expect((entry["argsHash"] as string).length).toBe(64); // SHA-256 hex
@@ -843,14 +859,14 @@ describe("§E2E-6 Week-4 modules", () => {
     const auditUrl = `http://${addr.host}:${addr.port}`;
     const auditBridge = new StubBridge();
     await auditBridge.connect(auditUrl);
-    auditBridge.registerTools([makeToolReg("accordo.test.audit.fail")]);
+    auditBridge.registerTools([makeToolReg("accordo_test_audit_fail")]);
     auditBridge.setAutoResponder(() => ({ success: false, error: "simulated tool error" }));
     await flush();
 
     try {
       const session = new McpSession(auditUrl, TOKEN);
       await session.initialize();
-      await session.call("tools/call", { name: "accordo.test.audit.fail", arguments: {} });
+      await session.call("tools/call", { name: "accordo_test_audit_fail", arguments: {} });
       await flush();
 
       const lines = fs.readFileSync(auditFile, "utf8").trim().split("\n");
@@ -868,7 +884,7 @@ describe("§E2E-6 Week-4 modules", () => {
 
   it("§E2E-6.5 (M25): /health response includes 'queued' field", async () => {
     await bridge.connect(baseUrl);
-    bridge.registerTools([makeToolReg("accordo.test.health")]);
+    bridge.registerTools([makeToolReg("accordo_test_health")]);
     await flush();
 
     const res = await fetch(`${baseUrl}/health`);
@@ -894,7 +910,7 @@ describe("§E2E-6 Week-4 modules", () => {
     const busyUrl = `http://${addr.host}:${addr.port}`;
     const busyBridge = new StubBridge();
     await busyBridge.connect(busyUrl);
-    busyBridge.registerTools([makeToolReg("accordo.test.queue")]);
+    busyBridge.registerTools([makeToolReg("accordo_test_queue")]);
     // Do NOT set autoResponder — hold the first request in-flight
     await flush();
 
@@ -903,11 +919,11 @@ describe("§E2E-6 Week-4 modules", () => {
       await session.initialize();
 
       // First call occupies the single in-flight slot
-      const p1 = session.call("tools/call", { name: "accordo.test.queue", arguments: {} });
+      const p1 = session.call("tools/call", { name: "accordo_test_queue", arguments: {} });
       await flush(30);
 
       // Second call must queue (no slot available)
-      const p2 = session.call("tools/call", { name: "accordo.test.queue", arguments: {} });
+      const p2 = session.call("tools/call", { name: "accordo_test_queue", arguments: {} });
       await flush(30);
 
       // Health should now show queued: 1, inflight: 1

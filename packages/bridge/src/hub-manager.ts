@@ -94,6 +94,8 @@ export class HubManager {
   private port: number;
   private restartAttempted = false;
   private killRequested = false;
+  /** Guards against concurrent restart() calls (e.g. exit handler + onAuthFailure racing). */
+  private restartInProgress = false;
 
   constructor(
     private secretStorage: SecretStorage,
@@ -187,6 +189,18 @@ export class HubManager {
    * LCM-12: Restart Hub — soft reauth first, hard fallback if needed.
    */
   async restart(): Promise<void> {
+    if (this.restartInProgress) {
+      return;
+    }
+    this.restartInProgress = true;
+    try {
+      await this._doRestart();
+    } finally {
+      this.restartInProgress = false;
+    }
+  }
+
+  private async _doRestart(): Promise<void> {
     const newSecret = crypto.randomUUID();
     const newToken = crypto.randomUUID();
     const reauthOk = await this.attemptReauth(this.secret ?? "", newSecret, newToken);

@@ -86,7 +86,7 @@ function createMockNc(): NativeCommentsSync {
 
 function createMockNavEnv(): NavigationEnv {
   return {
-    showTextDocument: vi.fn().mockResolvedValue({}),
+    showTextDocument: vi.fn().mockResolvedValue({ revealRange: vi.fn() }),
     executeCommand: vi.fn().mockResolvedValue(undefined),
     showWarningMessage: vi.fn().mockResolvedValue(undefined),
     showInformationMessage: vi.fn().mockResolvedValue(undefined),
@@ -219,7 +219,7 @@ describe("M45-CMD PanelCommands", () => {
     expect(ui.showInformationMessage).toHaveBeenCalled();
   });
 
-  it("M45-CMD-05: reply shows inputBox, calls store.reply with User author", async () => {
+  it("M45-CMD-05: reply navigates to thread anchor — opens gutter widget for text anchors", async () => {
     const thread = makeThread("t1");
     registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
 
@@ -227,27 +227,31 @@ describe("M45-CMD PanelCommands", () => {
       ([id]: string[]) => id === "accordo.commentsPanel.reply",
     )?.[1];
 
-    ui.showInputBox.mockResolvedValueOnce("Here is my reply");
     await handler(makeTreeItem(thread));
 
-    expect(store.reply).toHaveBeenCalledWith(expect.objectContaining({
-      threadId: "t1",
-      body: "Here is my reply",
-      author: { kind: "user", name: "User" },
-    }));
+    // navigateToThread → showTextDocument + expandThread (gutter widget)
+    expect(navEnv.showTextDocument).toHaveBeenCalled();
+    expect(navEnv.executeCommand).toHaveBeenCalledWith(
+      "accordo_comments_internal_expandThread", "t1",
+    );
+    // Does NOT use showInputBox or store.reply (native inline widget handles the reply)
+    expect(ui.showInputBox).not.toHaveBeenCalled();
+    expect(store.reply).not.toHaveBeenCalled();
   });
 
-  it("M45-CMD-05: reply no-ops when inputBox is cancelled", async () => {
+  it("M45-CMD-05: reply no-ops gracefully when called with no argument", async () => {
     registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
 
     const handler = (vsCommands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
       ([id]: string[]) => id === "accordo.commentsPanel.reply",
     )?.[1];
 
-    ui.showInputBox.mockResolvedValueOnce(undefined); // cancelled
-    const thread = makeThread("t1");
-    await handler(makeTreeItem(thread));
+    await handler(undefined); // no thread arg
     expect(store.reply).not.toHaveBeenCalled();
+    expect(navEnv.showTextDocument).not.toHaveBeenCalled();
+    expect(ui.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining("Select a thread"),
+    );
   });
 
   it("M45-CMD-06: delete shows confirm dialog, calls store.delete on confirm", async () => {
@@ -379,15 +383,15 @@ describe("M45-CMD PanelCommands", () => {
   it("M45-CMD-13: author passed to store mutations is always { kind: 'user', name: 'User' }", async () => {
     registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
 
-    // Test via reply
+    // Test via resolve (reply no longer calls store.reply — it delegates to inline UI)
     const handler = (vsCommands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
-      ([id]: string[]) => id === "accordo.commentsPanel.reply",
+      ([id]: string[]) => id === "accordo.commentsPanel.resolve",
     )?.[1];
 
-    ui.showInputBox.mockResolvedValueOnce("my reply");
+    ui.showInputBox.mockResolvedValueOnce("done");
     await handler(makeTreeItem(makeThread("t1")));
 
-    expect(store.reply).toHaveBeenCalledWith(
+    expect(store.resolve).toHaveBeenCalledWith(
       expect.objectContaining({ author: { kind: "user", name: "User" } }),
     );
   });

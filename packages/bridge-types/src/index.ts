@@ -58,7 +58,7 @@ export interface IDEState {
  * Source: requirements-bridge.md §3.1, requirements-editor.md §4
  */
 export interface ExtensionToolDefinition {
-  /** Fully qualified tool name. Convention: "accordo.<category>.<action>" */
+  /** Fully qualified tool name. Convention: "accordo_<category>_<action>" */
   name: string;
   /** One-line description. Appears in system prompt. Max 120 chars. */
   description: string;
@@ -73,7 +73,7 @@ export interface ExtensionToolDefinition {
   /**
    * Optional grouping key (e.g. "editor", "terminal", "comments").
    * Grouped tools are hidden in the system prompt — the agent discovers them
-   * by calling the corresponding accordo.<group>.discover tool.
+   * by calling the corresponding accordo_<group>_discover tool.
    */
   group?: string;
   /**
@@ -94,7 +94,7 @@ export type DangerLevel = "safe" | "moderate" | "destructive";
  * Source: requirements-hub.md §3.4, requirements-bridge.md §3.2
  */
 export interface ToolRegistration {
-  /** Fully qualified name, e.g. "accordo.editor.open" */
+  /** Fully qualified name, e.g. "accordo_editor_open" */
   name: string;
   /** One-line description for the system prompt. Max 120 chars. */
   description: string;
@@ -152,7 +152,7 @@ export interface InvokeMessage {
   type: "invoke";
   /** UUID v4 correlation ID */
   id: string;
-  /** Fully qualified tool name, e.g. "accordo.editor.open" */
+  /** Fully qualified tool name, e.g. "accordo_editor_open" */
   tool: string;
   /** Tool arguments matching the inputSchema */
   args: Record<string, unknown>;
@@ -355,6 +355,9 @@ export interface ConcurrencyStats {
 
 /** Current protocol version. Hub and Bridge must agree on this. */
 export const ACCORDO_PROTOCOL_VERSION = "1";
+
+/** MCP specification protocol version returned in initialize responses. */
+export const MCP_PROTOCOL_VERSION = "2024-11-05";
 
 /** Default Hub port */
 export const DEFAULT_HUB_PORT = 3000;

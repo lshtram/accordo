@@ -218,6 +218,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           provider.getPanel()?.webview.postMessage({ type: "slide-index", index });
         });
 
+        // Initial slide sync: push the server's current slide to the webview immediately
+        // so the comment overlay starts on the correct slide without waiting for the
+        // first 500 ms poll tick (addresses startup race when Slidev resumes a session).
+        void adapter.getCurrent().then(({ index }) => {
+          provider.getPanel()?.webview.postMessage({ type: "slide-index", index });
+        }).catch(() => { /* non-fatal — poller will correct on next tick */ });
+
         // Wire webview prev/next nav buttons → toolDeps (extension host controls the
         // current slide so onSlideChanged fires and slide-index is sent back to webview).
         provider.getPanel()?.webview.onDidReceiveMessage((msg: unknown) => {
