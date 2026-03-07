@@ -74,7 +74,7 @@ function setupExtensions(
 
   // Mock internal getSurfaceAdapter command
   vi.mocked(commands.executeCommand).mockImplementation((cmd: string) => {
-    if (cmd === "accordo.comments.internal.getSurfaceAdapter" && commentsActive) {
+    if (cmd === "accordo_comments_internal_getSurfaceAdapter" && commentsActive) {
       return Promise.resolve({ dispose: vi.fn() });
     }
     return Promise.resolve(undefined);
@@ -123,7 +123,7 @@ describe("M44-EXT-02: Tool registration", () => {
     await activate(ctx);
 
     const [, tools] = (bridge.registerTools as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(tools).toHaveLength(8);
+    expect(tools).toHaveLength(9);
   });
 
   it("registers tools under namespace 'accordo-slidev'", async () => {
@@ -169,7 +169,7 @@ describe("M44-EXT-04: Comments surface adapter", () => {
     await activate(ctx);
 
     expect(commands.executeCommand).toHaveBeenCalledWith(
-      "accordo.comments.internal.getSurfaceAdapter",
+      "accordo_comments_internal_getSurfaceAdapter",
       expect.anything(),
     );
   });
@@ -251,7 +251,7 @@ describe("M44-EXT-06: Works without comments extension", () => {
     await activate(ctx);
 
     const getSurfaceAdapterCalls = (commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls
-      .filter(([cmd]: [string]) => cmd === "accordo.comments.internal.getSurfaceAdapter");
+      .filter(([cmd]: [string]) => cmd === "accordo_comments_internal_getSurfaceAdapter");
     expect(getSurfaceAdapterCalls).toHaveLength(0);
   });
 });

@@ -43,6 +43,12 @@ interface SessionState {
   deck: ParsedDeck | null;
   /** Subscription for adapter.onSlideChanged — disposed when session closes. */
   slideSubscription: { dispose(): void } | null;
+  /**
+   * Set while openSession() is in progress. Navigation tools await this
+   * so that parallel open+navigate calls (common with agent batching)
+   * succeed instead of immediately returning "No presentation session is open."
+   */
+  openingPromise: Promise<void> | null;
 }
 
 /**
@@ -89,7 +95,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     try {
       surfaceAdapter =
         (await vscode.commands.executeCommand<SurfaceAdapterLike>(
-          "accordo.comments.internal.getSurfaceAdapter",
+          "accordo_comments_internal_getSurfaceAdapter",
           "slide",
         )) ?? null;
     } catch {
@@ -98,7 +104,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   // Session-local mutable state (reset on close)
-  const session: SessionState = { adapter: null, deck: null, slideSubscription: null };
+  const session: SessionState = { adapter: null, deck: null, slideSubscription: null, openingPromise: null };
+
+  /**
+   * Returns the active adapter, waiting up to `timeoutMs` (default 10 s) if
+   * openSession() is currently in progress (agent parallelised open + navigate).
+   * Returns an error string when no session is open or opening.
+   */
+  async function requireAdapter(timeoutMs = 10_000): Promise<PresentationRuntimeAdapter | string> {
+    if (session.adapter) return session.adapter;
+    if (!session.openingPromise) return "No presentation session is open.";
+    await Promise.race([
+      session.openingPromise,
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), timeoutMs),
+      ),
+    ]).catch(() => { /* timeout — fall through to null-check below */ });
+    return session.adapter ?? "No presentation session is open.";
+  }
 
   // M44-EXT-02: Tool deps wiring
   const toolDeps: PresentationToolDeps = {
@@ -147,6 +170,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
 
     openSession: async (deckUri: string) => {
+      let resolveOpening!: () => void;
+      session.openingPromise = new Promise<void>((resolve) => {
+        resolveOpening = resolve;
+      });
       try {
         const rawBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(deckUri));
         const raw = Buffer.from(rawBytes).toString("utf-8");
@@ -164,6 +191,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const adapter = new SlidevAdapter({ port, deck });
         session.adapter = adapter;
         session.deck = deck;
+        resolveOpening(); // unblock any navigation tools waiting for the session
 
         const commentsBridge = surfaceAdapter
           ? new PresentationCommentsBridge(surfaceAdapter, {
@@ -202,7 +230,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         return {};
       } catch (err) {
+        resolveOpening(); // unblock waiters even on failure (adapter stays null → they get error)
         return { error: err instanceof Error ? err.message : String(err) };
+      } finally {
+        session.openingPromise = null;
       }
     },
 
@@ -213,22 +244,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       session.adapter?.dispose();
       session.adapter = null;
       session.deck = null;
+      session.openingPromise = null;
     },
 
     listSlides: async () => {
-      if (!session.adapter) return { error: "No presentation session is open." };
-      return session.adapter.listSlides();
+      const a = await requireAdapter();
+      if (typeof a === "string") return { error: a };
+      return a.listSlides();
     },
 
     getCurrent: async () => {
-      if (!session.adapter) return { error: "No presentation session is open." };
-      return session.adapter.getCurrent();
+      const a = await requireAdapter();
+      if (typeof a === "string") return { error: a };
+      return a.getCurrent();
     },
 
     goto: async (index: number) => {
       try {
-        if (!session.adapter) return { error: "No presentation session is open." };
-        await session.adapter.goto(index);
+        const a = await requireAdapter();
+        if (typeof a === "string") return { error: a };
+        await a.goto(index);
         stateContrib.update({ currentSlide: index });
         provider.getPanel()?.webview.postMessage({ type: "slide-index", index, navigate: true });
         return {};
@@ -239,9 +274,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     next: async () => {
       try {
-        if (!session.adapter) return { error: "No presentation session is open." };
-        await session.adapter.next();
-        const current = await session.adapter.getCurrent();
+        const a = await requireAdapter();
+        if (typeof a === "string") return { error: a };
+        await a.next();
+        const current = await a.getCurrent();
         stateContrib.update({ currentSlide: current.index });
         provider.getPanel()?.webview.postMessage({ type: "slide-index", index: current.index, navigate: true });
         return {};
@@ -252,9 +288,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     prev: async () => {
       try {
-        if (!session.adapter) return { error: "No presentation session is open." };
-        await session.adapter.prev();
-        const current = await session.adapter.getCurrent();
+        const a = await requireAdapter();
+        if (typeof a === "string") return { error: a };
+        await a.prev();
+        const current = await a.getCurrent();
         stateContrib.update({ currentSlide: current.index });
         provider.getPanel()?.webview.postMessage({ type: "slide-index", index: current.index, navigate: true });
         return {};
@@ -264,6 +301,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
 
     generateNarration: async (target: number | "all") => {
+      if (!session.deck) {
+        const a = await requireAdapter();
+        if (typeof a === "string") return { error: a };
+      }
       if (!session.deck) return { error: "No presentation session is open." };
       try {
         return generateNarration(session.deck, target);
@@ -322,7 +363,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       async (index?: unknown) => {
         if (typeof index !== "number") {
           vscode.window.showInformationMessage(
-            "accordo.presentation.goto: a numeric slide index is required.",
+            "accordo_presentation_goto: a numeric slide index is required.",
           );
           return;
         }

@@ -64,7 +64,7 @@ describe("M45-NR NavigationRouter", () => {
     expect(typeof navigateToThread).toBe("function");
   });
 
-  it("M45-NR-02: text anchor → showTextDocument with selection range", async () => {
+  it("M45-NR-02: text anchor → showTextDocument with selection range then expands gutter widget", async () => {
     const anchor: CommentAnchorText = {
       kind: "text",
       uri: "file:///project/auth.ts",
@@ -80,6 +80,11 @@ describe("M45-NR NavigationRouter", () => {
     expect(opts.selection).toBeDefined();
     expect(opts.preserveFocus).toBe(false);
     expect(opts.preview).toBe(false);
+    // After navigation, expand the gutter thread widget so inline view opens.
+    expect(env.executeCommand).toHaveBeenCalledWith(
+      "accordo_comments_internal_expandThread",
+      "thread-1",
+    );
   });
 
   it("M45-NR-03: surface/markdown-preview → executeCommand with positional args (uri, threadId, blockId)", async () => {
@@ -112,7 +117,7 @@ describe("M45-NR NavigationRouter", () => {
     // Simulate deck not running: first goto call fails, open + second goto succeeds.
     let gotoCallCount = 0;
     env.executeCommand.mockImplementation(async (cmd: string, ...args: unknown[]) => {
-      if (cmd === "accordo_presentation_goto") {
+      if (cmd === "accordo.presentation.goto") {
         gotoCallCount++;
         if (gotoCallCount === 1) throw new Error("command not found"); // deck not started
         return undefined; // second call succeeds
@@ -124,7 +129,7 @@ describe("M45-NR NavigationRouter", () => {
 
     // Should have opened presentation after first goto failed
     expect(env.executeCommand).toHaveBeenCalledWith(
-      "accordo_presentation_open",
+      "accordo.presentation.open",
       expect.anything(), // URI object
     );
     // Should delay for deck startup
@@ -146,7 +151,7 @@ describe("M45-NR NavigationRouter", () => {
     let callCount = 0;
     env.executeCommand.mockImplementation(async (cmd: string) => {
       callCount++;
-      if (cmd === "accordo_presentation_goto") throw new Error("command not found");
+      if (cmd === "accordo.presentation.goto") throw new Error("command not found");
       return undefined;
     });
 
@@ -154,7 +159,7 @@ describe("M45-NR NavigationRouter", () => {
 
     // Should still have called open
     expect(env.executeCommand).toHaveBeenCalledWith(
-      "accordo_presentation_open",
+      "accordo.presentation.open",
       expect.anything(),
     );
     // Should show info message (not warning — the deck is still open)

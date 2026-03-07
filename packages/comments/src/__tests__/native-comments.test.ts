@@ -350,6 +350,7 @@ describe("§10.1 Commands", () => {
       "accordo.comments.reopenThread",
       "accordo.comments.deleteThread",
       "accordo.comments.deleteComment",
+      "accordo_comments_internal_expandThread",
     ];
     for (const cmd of expectedCommands) {
       expect(mockState.registeredCommands.has(cmd)).toBe(true);

@@ -60,11 +60,16 @@ export async function navigateToThread(
       // For .md files prefer Accordo markdown preview over plain text editor.
       if (anchor.uri.toLowerCase().endsWith(".md")) {
         try {
-          // Fast path: preview already open — just scroll to the comment.
-          await env.executeCommand("accordo_preview_internal_focusThread", anchor.uri, thread.id, undefined);
-          return;
+          // Fast path: preview already open — scroll to the comment and return.
+          // accordo_preview_internal_focusThread returns true when a live panel was
+          // found, false when not. Check the value before returning.
+          const found = await env.executeCommand(
+            "accordo_preview_internal_focusThread", anchor.uri, thread.id, undefined,
+          );
+          if (found) return;
+          // Preview not open — fall through to openWith.
         } catch {
-          // Preview not open — open it then retry.
+          // Command unavailable — fall through to openWith.
         }
         try {
           await env.executeCommand("vscode.openWith", uri, "accordo.markdownPreview");
@@ -83,6 +88,12 @@ export async function navigateToThread(
       const editor = await env.showTextDocument(uri, { selection: range, preserveFocus: false, preview: false });
       // Center the annotated line in the viewport (2 = TextEditorRevealType.InCenter).
       editor.revealRange(range, 2);
+      // Expand the gutter comment thread widget so the inline view is open.
+      try {
+        await env.executeCommand("accordo_comments_internal_expandThread", thread.id);
+      } catch {
+        // Non-critical — widget may already be visible.
+      }
       return;
     }
 
@@ -103,15 +114,15 @@ export async function navigateToThread(
 
         // Fast path: deck already running — goto immediately, no delay needed.
         try {
-          await env.executeCommand("accordo_presentation_goto", coords.slideIndex);
+          await env.executeCommand("accordo.presentation.goto", coords.slideIndex);
           return;
         } catch {
           // Deck not running — open it and wait for startup.
         }
-        await env.executeCommand("accordo_presentation_open", uri);
+        await env.executeCommand("accordo.presentation.open", uri);
         await env.delay(2000);
         try {
-          await env.executeCommand("accordo_presentation_goto", coords.slideIndex);
+          await env.executeCommand("accordo.presentation.goto", coords.slideIndex);
         } catch {
           await env.showInformationMessage(
             "Slidev deck opened. Slide navigation unavailable — install the Accordo Slidev extension.",

@@ -345,6 +345,19 @@ export class NativeComments {
           );
         },
       ),
+      // ── Expand a thread's gutter widget (called by navigation-router) ──────
+      // Sets collapsibleState to Expanded so the inline comment view opens after
+      // showTextDocument navigates to the file.
+      vscode.commands.registerCommand(
+        "accordo_comments_internal_expandThread",
+        (threadId: string): boolean => {
+          const widget = this._widgets.get(threadId);
+          if (widget) {
+            widget.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
+          }
+          return !!widget;
+        },
+      ),
     );
   }
 
