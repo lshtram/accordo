@@ -5,7 +5,7 @@
 **Session:** 10A (core + tools), 10B (scripted narration + text cleaning)  
 **Date:** 2026-03-07  
 **Source code reference:** `theia-openspace/openspace-voice-vscode/` + `theia-openspace/extensions/openspace-voice/` + `theia-openspace/packages/voice-core/`  
-**Architecture reference:** (this document is the architecture for voice)
+**Architecture reference:** [`docs/voice-architecture.md`](voice-architecture.md)
 
 ---
 

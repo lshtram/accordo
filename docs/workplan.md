@@ -218,6 +218,7 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 **Goal:** Port the existing voice infrastructure from `theia-openspace` into the Accordo ecosystem. Give the agent a voice (TTS narration) and an ear (STT dictation). Register MCP tools with Bridge. Scripted narrations allow the agent to pre-compose multi-step walkthroughs interleaving speech with IDE actions.
 
+**Architecture:** [`docs/voice-architecture.md`](voice-architecture.md)  
 **Requirements:** [`docs/requirements-voice.md`](requirements-voice.md)  
 **Source code:** `theia-openspace/openspace-voice-vscode/` + `theia-openspace/extensions/openspace-voice/` + `theia-openspace/packages/voice-core/`
 

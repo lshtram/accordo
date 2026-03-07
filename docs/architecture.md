@@ -787,7 +787,7 @@ The following are explicitly deferred:
 - `accordo-chat` — Users have Copilot Chat, Cline, Claude, etc. No custom chat.
 - `accordo-slidev` — Modality. Requires Phase 1 gate to pass first.
 - `accordo-tldraw` — Modality. Requires Phase 1 gate to pass first.
-- `accordo-voice` — Already implemented. Needs only bridge registration. Added in Phase 4.
+- `accordo-voice` — Voice modality (TTS + STT + scripted narration). Implemented in Phase 2 Session 10. Architecture: [`docs/voice-architecture.md`](voice-architecture.md).
 - Custom IDE packaging — No.
 - Cloud/hosted Hub — No. Local-first only.
 
