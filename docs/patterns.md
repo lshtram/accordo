@@ -17,6 +17,9 @@ patterns:
   P-15: "Integration tests with fixed content strings fail on second run — dedup prevents new insert; fix with sync cleanup fixture before each test"
   P-16: "Async cleanup fixtures in pytest-asyncio cause asyncpg pool-loop mismatch — use sync psycopg2 for pre-test DB cleanup instead of async SQLAlchemy"
   P-17: "Neon.tech asyncpg DSN → psycopg2 DSN: replace +asyncpg driver AND ssl=require → sslmode=require"
+  P-18: "LocalObjectStorage path traversal: always call resolved.relative_to(root_resolved) + raise from None (ruff B904)"
+  P-19: "Chunker fallback overlap check: word-split is unreliable in char-splitting mode — verify overlap with char offsets instead"
+  P-20: "Excluded-path leak check: string `in e.path` matches substrings (.git matches .gitignore) — use Path(e.path).parts set intersection"
 ---
 
 # patterns.md — Agent Working Patterns and Known Friction
@@ -346,8 +349,6 @@ def _clean_workspace() -> Generator[None, None, None]:
 
 Decorate each integration test **class** (not function) with `@pytest.mark.usefixtures("_clean_workspace")`.
 
----
-
 ### P-17 — Neon.tech asyncpg DSN must be converted twice for psycopg2
 
 **Symptom:** `psycopg2.connect(dsn)` raises `ProgrammingError: invalid URI query parameter: "ssl"`
@@ -365,7 +366,65 @@ sync_dsn = (TEST_DATABASE_URL
 
 ---
 
-## Archive (resolved patterns)
+### P-18 — LocalObjectStorage path traversal guard
+
+**Symptom:** When implementing a filesystem-backed `ObjectStorage`, keys containing `../`
+or absolute paths escape the storage root silently.
+
+**Root cause:** `Path(root) / key` does not sanitize `..` traversal components.
+`(root / "../escaped.txt").resolve()` produces a path outside `root`.
+
+**Fix:** Always resolve both sides and call `relative_to` before any file I/O:
+```python
+resolved = (self._root / key).resolve()
+root_resolved = self._root.resolve()
+try:
+    resolved.relative_to(root_resolved)
+except ValueError:
+    raise ValueError(
+        f"Storage key {key!r} escapes storage root {str(root_resolved)!r}"
+    ) from None  # 'from None' required by ruff B904
+```
+
+**Context:** Discovered in WP6 security audit. Applies to any filesystem adapter.
+
+---
+
+### P-19 — Chunker overlap verification: use char offsets, not word lists
+
+**Symptom:** Manual and automated overlap checks that compare `chunk[0].text.split()[-N:]`
+against `chunk[1].text.split()[:N]` can fail spuriously when the chunker is in
+char-splitting fallback mode.
+
+**Root cause:** Char-based sliding windows slice mid-word at chunk boundaries.
+The last word of chunk N may be partial, so it won’t match any complete word at
+the start of chunk N+1 even when the chunks genuinely overlap.
+
+**Fix:** Verify overlap using `Chunk.end_char` and `Chunk.start_char`:
+```python
+overlap_chars = chunk0.end_char - chunk1.start_char
+assert overlap_chars > 0  # reliable in both real-tokenizer and fallback mode
+```
+
+**Context:** Discovered during WP6 D3 testing guide validation in a fallback-mode environment.
+
+---
+
+### P-20 — Excluded-path substring check creates false positives
+
+**Symptom:** Checking whether a file path contains a substring (e.g. `".git" in e.path`)
+produces false positives: a file inside `.gitignore`’s parent dir matches because
+`.gitignore` contains the substring `.git`.
+
+**Root cause:** String substring matching doesn’t respect path segment boundaries.
+
+**Fix:** Use `Path.parts` for accurate segment membership:
+```python
+EXCLUDED = {".git", ".venv", "__pycache__"}
+is_excluded = bool(EXCLUDED & set(Path(entry.path).parts))
+```
+
+**Context:** Discovered during WP6 testing guide validation of MT-1 (scan directory leak check).
 
 *Entries moved here once the root cause has been addressed in tooling or process.*
 
