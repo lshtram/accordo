@@ -20,6 +20,8 @@ patterns:
   P-18: "LocalObjectStorage path traversal: always call resolved.relative_to(root_resolved) + raise from None (ruff B904)"
   P-19: "Chunker fallback overlap check: word-split is unreliable in char-splitting mode — verify overlap with char offsets instead"
   P-20: "Excluded-path leak check: string `in e.path` matches substrings (.git matches .gitignore) — use Path(e.path).parts set intersection"
+  P-21: "VS Code custom editor: onStartupFinished alone misses cold-open — must also add onCustomEditor:<viewType> activationEvent"
+  P-22: "VS Code TreeItem has no native two-line layout — description renders beside label; full two-line requires WebviewView (technical debt)"
 ---
 
 # patterns.md — Agent Working Patterns and Known Friction
@@ -429,3 +431,36 @@ is_excluded = bool(EXCLUDED & set(Path(entry.path).parts))
 *Entries moved here once the root cause has been addressed in tooling or process.*
 
 *(empty — nothing resolved yet)*
+
+---
+
+## Active Patterns (continued from Session 9)
+
+---
+
+### P-21 — VS Code custom editor activation: `onStartupFinished` misses cold-open
+
+**Symptom:** A `.deck.md` file opens in the wrong editor (falls back to md-viewer) when VS Code starts fresh with that file — even though the custom editor provider is declared in `package.json`.
+
+**Root cause:** `"activationEvents": ["onStartupFinished"]` alone is too late. VS Code fires `onCustomEditor:<viewType>` *before* `onStartupFinished` when opening a matching file on cold start. The extension hasn't activated yet, so no `CustomEditorProvider` is registered and VS Code falls back to the next matching provider.
+
+**Fix:** Add the matching `onCustomEditor` event alongside `onStartupFinished`:
+```json
+"activationEvents": ["onStartupFinished", "onCustomEditor:accordo.deckPresentation"]
+```
+
+**Applies to:** Any extension registering a `CustomEditorProvider` that relies only on `onStartupFinished`.
+
+---
+
+### P-22 — VS Code `TreeItem` has no native two-line layout (technical debt)
+
+**Symptom:** Comments panel shows metadata + first-sentence preview on one physical line beside the thread label, not on a visually distinct second line.
+
+**Root cause:** `vscode.TreeItem` exposes only `label` (primary) and `description` (secondary, rendered *beside* label — same line, smaller/dimmer text). There is no `subtitle`, `detail`, or multi-line field in the VS Code tree API.
+
+**Workaround (current):** Place metadata + first-sentence in `item.description`. Functional but not ideal.
+
+**Full fix (deferred to M46):** Replace per-item layout with a `WebviewView` detail pane — `TreeView` shows thread list, `WebviewView` shows full conversation with markdown when a thread is selected.
+
+**Technical debt reference:** Backlog §9 item 9 in `docs/workplan.md`.

@@ -2,26 +2,27 @@
 
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
-**Date:** 2026-03-04  
-**Status:** ACTIVE — Session 8B complete (M44 `accordo-slidev` ✅), Session 9 next (M45 Custom Comments Panel)
+**Date:** 2026-03-07  
+**Status:** ACTIVE — Session 9 complete (M45 Custom Comments Panel ✅), Session 10 next (M50–M55 Browser Agentation)
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-06 — Session 8B complete. `accordo-slidev` full package implemented (M44-NAR/STATE/CBR/RT/PVD/TL/EXT): 137 new tests, 990 in pnpm test output (Hub 344, Editor 186, Comments 197, md-viewer 126, slidev 137). Total estimate: ~1369 (adds bridge 298 + comment-sdk 45). TypeScript clean. D2 fixes applied. Session 9 next: Custom Comments Panel (M45) — architecture + requirements written, prerequisite SDK bug fix queued.**
+> **As of 2026-03-07 — Session 9 complete. Custom Comments Panel (M45-TP/NR/CMD/FLT/EXT) fully delivered: 76 new tests. Manual testing round completed — fixed command-ID mismatches, `.deck.md` activation event, `comments:focus` webview handler, slide-sync race, and inline reply UX. 1418 tests total (Hub: 346, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). TypeScript clean. Committed and pushed. Session 10 next: Browser Agentation (M50–M63).**
 
 | Phase | Goal | Status |
 |------|------|--------|
 | Phase 1 | Control Plane MVP (Hub + Bridge + Editor) | ✅ DONE — 797 tests, v0.1.0 |
 | Phase 2 | Comments modality (`accordo-comments`) | ✅ DONE — Week 6+7 complete, 1221 tests |
 | Phase 3 | Presentations modality (`accordo-slidev`) | ✅ DONE — Session 8B complete, 137 tests |
-| **Session 9** | **Custom Comments Panel (M45 — `accordo-comments` update)** | 🔜 **NEXT** — architecture + requirements ready |
-| Phase 4 | Voice modality (`accordo-voice` bridge registration) | ⏳ Pending Session 9 |
+| Session 9 | Custom Comments Panel (M45 — `accordo-comments` update) | ✅ DONE — 273 comments tests, 1418 total |
+| **Session 10** | **Browser Agentation (M50–M63 — `accordo-browser` + Chrome extension)** | 🔜 **NEXT** — architecture + requirements ready |
+| Phase 4 | Voice modality (`accordo-voice` bridge registration) | ⏳ Pending Session 10 |
 | Phase 5 | Diagrams modality (`accordo-tldraw`) | ⏳ Pending Phase 4 |
 | Phase 6 | Browser agentation (`accordo-browser` + Chrome extension) | 📋 PLANNED — architecture + requirements written |
 
-**Baseline:** 1232 tests green (Hub: 344, Bridge: 298, Editor: 186, Comments: 197, SDK: 45, md-viewer: 126). v0.1.0 on `main`.  
+**Baseline:** 1418 tests green (Hub: 346, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). v0.1.0 on `main`.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -202,7 +203,15 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 | M45-FLT | `panel/panel-filters.ts` — filter state, quick picks, `workspaceState` persistence | requirements-comments-panel.md §3 M45-FLT | A → F |
 | M45-EXT | `extension.ts` additions — wire panel into activate, manifest contributions | requirements-comments-panel.md §3 M45-EXT | A → F |
 
-**Session 9 gate:** Panel sidebar shows all threads grouped by Open/Resolved. Click on any item navigates to the correct surface (text → text editor, slide → Slidev panel, preview → md-viewer popover). Context menu resolve/reopen/reply/delete works. Filters persist across reload. All existing 197 `accordo-comments` tests stay green. Total new tests: ~66.
+**Session 9 gate:** ✅ Panel sidebar shows all threads grouped by Open/Resolved. Click on any item navigates to the correct surface (text → text editor, slide → Slidev panel, preview → md-viewer popover). Context menu resolve/reopen/reply/delete works. Filters persist across reload. 273 total comments tests (76 new). 1418 tests green across all packages.
+
+**Post-gate fixes (manual testing round — 2026-03-07):**
+- Fixed command-ID mismatches (underscore vs dot format) across slidev + md-viewer
+- Added `onCustomEditor:accordo.deckPresentation` activationEvent so `.deck.md` opens in Slidev panel on cold open
+- Added `comments:focus` webview message handler in `COMMENT_OVERLAY_JS` so pin popover opens after nav-router slide jump
+- Fixed startup slide-sync race: push `slide-index` immediately after `startPolling()` via `getCurrent()`
+- Changed `accordo.commentsPanel.reply` to invoke `navigateToThread` (opens inline gutter widget / slide popover) instead of `showInputBox` dialog
+- **Technical debt noted:** VS Code `TreeItem` has no native two-line support; comments panel metadata description is one-line beside label. Proper two-line layout requires a custom `WebviewView` (M46, deferred).
 
 ---
 
@@ -311,11 +320,19 @@ Carried forward — non-blocking:
 4. **Remote topology UX** — Port-forward notification for SSH/devcontainer/Codespaces.
 5. **Checkpoint/rollback** — Git-stash snapshots before destructive tool executions.
 6. **Comments store durability hardening** — Evaluate atomic persistence strategy for `.accordo/comments.json` (temp-file + rename / crash-safe write path). Deferred by product decision during Week 7 comments+SDK alignment.
-7. ~~**Custom Accordo Comments TreeView panel**~~ — **Scheduled for Session 9.** Architecture in `docs/comments-panel-architecture.md`, requirements in `docs/requirements-comments-panel.md`. Modules M45-TP/NR/CMD/FLT/EXT.
+7. ~~**Custom Accordo Comments TreeView panel**~~ — ✅ Delivered in Session 9. See DONE below.
+8. **Bridge status bar item (SB-01/SB-02/SB-03)** — `accordo-bridge` requirements §9 specifies a `$(plug) Accordo: Connected / Disconnected` status bar item with `accordo.bridge.showStatus` command (Hub URL, connection state, tool count, uptime). Never implemented. Add to `packages/bridge/src/extension.ts` in a quick-fix session before Session 10.
+9. **Comments panel two-line layout (M46)** — VS Code `TreeItem` supports only one physical line (label + description). Full conversation preview requires a `WebviewView` detail pane. Deferred to M46 (post Session 10).
 
 ---
 
 ## DONE
+
+### Session 9 — Custom Comments Panel (completed 2026-03-07)
+
+M45-TP/NR/CMD/FLT/EXT delivered. 76 new tests (273 total in accordo-comments). Panel sidebar replaces built-in VS Code Comments panel. Cross-surface navigation (text → text editor, slide → Slidev, preview → md-viewer). Filter state persisted. Post-gate manual testing round fixed 8 issues (see gate notes above).
+
+---
 
 ### Phase 1 — Control Plane MVP (completed 2026-03-03)
 

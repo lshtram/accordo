@@ -207,7 +207,7 @@ Default implementation uses real `vscode` APIs. Tests inject a mock env.
 | M45-CMD-02 | `accordo.commentsPanel.navigateToAnchor` — receives `CommentTreeItem` or `CommentThread` arg; calls `router.navigateToThread(thread)` |
 | M45-CMD-03 | `accordo.commentsPanel.resolve` — `showInputBox({ prompt: "Resolution note" })`; if non-empty calls `store.resolve({ threadId, resolutionNote, author })`; if already resolved shows info message |
 | M45-CMD-04 | `accordo.commentsPanel.reopen` — calls `store.reopen(threadId, author)`; if already open shows info message |
-| M45-CMD-05 | `accordo.commentsPanel.reply` — `showInputBox({ prompt: "Reply" })`; if non-empty calls `store.reply({ threadId, body, author })` |
+| M45-CMD-05 | `accordo.commentsPanel.reply` — calls `navigateToThread(thread, env)` to open the correct in-context input UI: gutter widget inline input for text anchors; slide popover reply textarea for surface/slide anchors. Does **not** use `showInputBox` (no top-of-screen dialog). Consistent with the UX principle that replies happen in-context at the anchor surface. |
 | M45-CMD-06 | `accordo.commentsPanel.delete` — `showWarningMessage("Delete thread and all replies?", "Delete", "Cancel")`; on "Delete" calls `store.delete({ threadId })`; on "Cancel" no-ops |
 | M45-CMD-07 | `accordo.commentsPanel.refresh` — fires `provider.refresh()` (calls `_onDidChangeTreeData.fire(undefined)`) |
 | M45-CMD-08 | `accordo.commentsPanel.filterByStatus` — `showQuickPick(["open", "resolved", "all"])`; on selection calls `filters.setStatus()` then `provider.refresh()` |
