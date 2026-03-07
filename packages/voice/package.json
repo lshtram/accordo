@@ -1,0 +1,137 @@
+{
+  "name": "accordo-voice",
+  "displayName": "Accordo IDE Voice",
+  "publisher": "accordo",
+  "version": "0.1.0",
+  "description": "Accordo IDE Voice — local STT/TTS narration and dictation via Whisper.cpp + Kokoro",
+  "categories": ["Other"],
+  "extensionKind": ["workspace"],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:accordo-voice-panel",
+    "onCommand:accordo.voice.startDictation",
+    "onCommand:accordo.voice.readAloud",
+    "onCommand:accordo.voice.stopNarration"
+  ],
+  "extensionDependencies": ["accordo.accordo-bridge"],
+  "type": "module",
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "package": "vsce package --no-dependencies",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'no lint configured yet'"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "accordo-voice-container",
+          "title": "Voice",
+          "icon": "$(unmute)"
+        }
+      ]
+    },
+    "views": {
+      "accordo-voice-container": [
+        {
+          "id": "accordo-voice-panel",
+          "name": "Voice",
+          "type": "webview",
+          "contextualTitle": "Accordo Voice"
+        }
+      ]
+    },
+    "commands": [
+      { "command": "accordo.voice.startDictation",  "title": "Start Dictation",       "icon": "$(record)" },
+      { "command": "accordo.voice.readAloud",        "title": "Read Selection Aloud",  "icon": "$(play)" },
+      { "command": "accordo.voice.stopNarration",    "title": "Stop Narration",        "icon": "$(debug-stop)" },
+      { "command": "accordo.voice.pauseNarration",   "title": "Pause Narration",       "icon": "$(debug-pause)" },
+      { "command": "accordo.voice.resumeNarration",  "title": "Resume Narration",      "icon": "$(play)" },
+      { "command": "accordo.voice.configure",        "title": "Configure Voice",       "icon": "$(gear)" }
+    ],
+    "keybindings": [
+      {
+        "command": "accordo.voice.startDictation",
+        "key": "ctrl+alt+v",
+        "mac": "cmd+alt+v",
+        "when": "editorFocus"
+      },
+      {
+        "command": "accordo.voice.readAloud",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "accordo.voice.stopNarration",
+        "key": "escape",
+        "when": "accordo.voice.narrating"
+      }
+    ],
+    "configuration": {
+      "title": "Accordo Voice",
+      "properties": {
+        "accordo.voice.whisperPath": {
+          "type": "string",
+          "default": "whisper",
+          "description": "Path to whisper.cpp binary"
+        },
+        "accordo.voice.whisperModelFolder": {
+          "type": "string",
+          "default": "/usr/local/share/whisper",
+          "description": "Directory containing whisper model files"
+        },
+        "accordo.voice.whisperModel": {
+          "type": "string",
+          "default": "ggml-base.en.bin",
+          "description": "Whisper model filename"
+        },
+        "accordo.voice.voice": {
+          "type": "string",
+          "default": "af_sarah",
+          "enum": ["af_sarah", "am_adam", "af_bella", "af_nicole", "am_michael", "bf_emma", "bm_george"],
+          "description": "Kokoro TTS voice"
+        },
+        "accordo.voice.speed": {
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0.5,
+          "maximum": 2.0,
+          "description": "TTS playback speed multiplier"
+        },
+        "accordo.voice.language": {
+          "type": "string",
+          "default": "en-US",
+          "description": "BCP-47 language code for STT/TTS"
+        },
+        "accordo.voice.narrationMode": {
+          "type": "string",
+          "default": "narrate-off",
+          "enum": ["narrate-off", "narrate-everything", "narrate-summary"],
+          "description": "Default narration mode"
+        },
+        "accordo.voice.llmEndpoint": {
+          "type": "string",
+          "default": "",
+          "description": "LLM API endpoint for summary narration mode (e.g. http://localhost:11434/v1)"
+        },
+        "accordo.voice.llmModel": {
+          "type": "string",
+          "default": "",
+          "description": "LLM model name for summary mode (e.g. llama3, gpt-4)"
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@accordo/bridge-types": "workspace:*",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.100.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
