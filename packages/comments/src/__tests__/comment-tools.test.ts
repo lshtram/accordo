@@ -64,12 +64,12 @@ describe("§6 Tool array shape", () => {
 
   it("includes all expected tool names", () => {
     const names = tools.map(t => t.name);
-    expect(names).toContain("accordo.comment.list");
-    expect(names).toContain("accordo.comment.get");
-    expect(names).toContain("accordo.comment.create");
-    expect(names).toContain("accordo.comment.reply");
-    expect(names).toContain("accordo.comment.resolve");
-    expect(names).toContain("accordo.comment.delete");
+    expect(names).toContain("accordo_comment_list");
+    expect(names).toContain("accordo_comment_get");
+    expect(names).toContain("accordo_comment_create");
+    expect(names).toContain("accordo_comment_reply");
+    expect(names).toContain("accordo_comment_resolve");
+    expect(names).toContain("accordo_comment_delete");
   });
 
   it("all tools have descriptions ≤ 120 chars", () => {
@@ -92,21 +92,21 @@ describe("§6 Tool array shape", () => {
   });
 });
 
-// ── §6 accordo.comment.list ─────────────────────────────────────────────────
+// ── §6 accordo_comment_list ─────────────────────────────────────────────────
 
-describe("§6 accordo.comment.list", () => {
+describe("§6 accordo_comment_list", () => {
   it("has dangerLevel 'safe'", () => {
-    const tool = getToolByName(tools, "accordo.comment.list");
+    const tool = getToolByName(tools, "accordo_comment_list");
     expect(tool.dangerLevel).toBe("safe");
   });
 
   it("is idempotent", () => {
-    const tool = getToolByName(tools, "accordo.comment.list");
+    const tool = getToolByName(tools, "accordo_comment_list");
     expect(tool.idempotent).toBe(true);
   });
 
   it("inputSchema has optional uri, status, intent, anchorKind, updatedSince, lastAuthor, limit, offset", () => {
-    const tool = getToolByName(tools, "accordo.comment.list");
+    const tool = getToolByName(tools, "accordo_comment_list");
     const props = tool.inputSchema.properties;
     expect(props["uri"]).toBeDefined();
     expect(props["status"]).toBeDefined();
@@ -121,7 +121,7 @@ describe("§6 accordo.comment.list", () => {
   });
 
   it("handler returns { threads, total, hasMore }", async () => {
-    const tool = getToolByName(tools, "accordo.comment.list");
+    const tool = getToolByName(tools, "accordo_comment_list");
     const result = (await tool.handler({})) as Record<string, unknown>;
     expect(result).toHaveProperty("threads");
     expect(result).toHaveProperty("total");
@@ -129,17 +129,17 @@ describe("§6 accordo.comment.list", () => {
   });
 
   it("each thread summary includes lastAuthor field", async () => {
-    const createTool = getToolByName(tools, "accordo.comment.create");
+    const createTool = getToolByName(tools, "accordo_comment_create");
     await createTool.handler({ uri: "file:///project/src/auth.ts", anchor: { kind: "file" }, body: "agent comment" });
-    const listTool = getToolByName(tools, "accordo.comment.list");
+    const listTool = getToolByName(tools, "accordo_comment_list");
     const { threads } = (await listTool.handler({})) as { threads: { lastAuthor: string }[] };
     expect(threads[0]).toHaveProperty("lastAuthor");
     expect(["user", "agent"]).toContain(threads[0].lastAuthor);
   });
 
   it("updatedSince filter returns only threads active after the timestamp", async () => {
-    const createTool = getToolByName(tools, "accordo.comment.create");
-    const listTool = getToolByName(tools, "accordo.comment.list");
+    const createTool = getToolByName(tools, "accordo_comment_create");
+    const listTool = getToolByName(tools, "accordo_comment_list");
     // Pin system time so thread timestamps are deterministic
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
@@ -154,8 +154,8 @@ describe("§6 accordo.comment.list", () => {
   });
 
   it("lastAuthor=user filter returns only threads where the last comment is from a user", async () => {
-    const createTool = getToolByName(tools, "accordo.comment.create");
-    const listTool = getToolByName(tools, "accordo.comment.list");
+    const createTool = getToolByName(tools, "accordo_comment_create");
+    const listTool = getToolByName(tools, "accordo_comment_list");
     // Agent creates thread (lastAuthor=agent)
     await createTool.handler({ uri: "file:///project/a.ts", anchor: { kind: "file" }, body: "agent note" });
     // Should return 0 threads with lastAuthor=user
@@ -167,8 +167,8 @@ describe("§6 accordo.comment.list", () => {
   });
 
   it("results are sorted by lastActivity descending (most recent first)", async () => {
-    const createTool = getToolByName(tools, "accordo.comment.create");
-    const listTool = getToolByName(tools, "accordo.comment.list");
+    const createTool = getToolByName(tools, "accordo_comment_create");
+    const listTool = getToolByName(tools, "accordo_comment_list");
     await createTool.handler({ uri: "file:///project/first.ts", anchor: { kind: "file" }, body: "first" });
     await createTool.handler({ uri: "file:///project/last.ts", anchor: { kind: "file" }, body: "last" });
     const { threads } = (await listTool.handler({})) as { threads: { anchor: { uri: string }; lastActivity: string }[] };
@@ -177,59 +177,59 @@ describe("§6 accordo.comment.list", () => {
   });
 });
 
-// ── §6 accordo.comment.get ──────────────────────────────────────────────────
+// ── §6 accordo_comment_get ──────────────────────────────────────────────────
 
-describe("§6 accordo.comment.get", () => {
+describe("§6 accordo_comment_get", () => {
   it("has dangerLevel 'safe'", () => {
-    const tool = getToolByName(tools, "accordo.comment.get");
+    const tool = getToolByName(tools, "accordo_comment_get");
     expect(tool.dangerLevel).toBe("safe");
   });
 
   it("is idempotent", () => {
-    const tool = getToolByName(tools, "accordo.comment.get");
+    const tool = getToolByName(tools, "accordo_comment_get");
     expect(tool.idempotent).toBe(true);
   });
 
   it("inputSchema requires threadId", () => {
-    const tool = getToolByName(tools, "accordo.comment.get");
+    const tool = getToolByName(tools, "accordo_comment_get");
     expect(tool.inputSchema.properties["threadId"]).toBeDefined();
     expect(tool.inputSchema.required).toContain("threadId");
   });
 
   it("handler returns { thread } with full CommentThread", async () => {
-    const tool = getToolByName(tools, "accordo.comment.get");
+    const tool = getToolByName(tools, "accordo_comment_get");
     // Should throw or return error for non-existent thread
     await expect(tool.handler({ threadId: "nonexistent" })).rejects.toThrow();
   });
 });
 
-// ── §6 accordo.comment.create ────────────────────────────────────────────────
+// ── §6 accordo_comment_create ────────────────────────────────────────────────
 
-describe("§6 accordo.comment.create", () => {
+describe("§6 accordo_comment_create", () => {
   it("has dangerLevel 'moderate'", () => {
-    const tool = getToolByName(tools, "accordo.comment.create");
+    const tool = getToolByName(tools, "accordo_comment_create");
     expect(tool.dangerLevel).toBe("moderate");
   });
 
   it("is not idempotent", () => {
-    const tool = getToolByName(tools, "accordo.comment.create");
+    const tool = getToolByName(tools, "accordo_comment_create");
     expect(tool.idempotent).toBe(false);
   });
 
   it("inputSchema requires uri, anchor, body", () => {
-    const tool = getToolByName(tools, "accordo.comment.create");
+    const tool = getToolByName(tools, "accordo_comment_create");
     expect(tool.inputSchema.required).toContain("uri");
     expect(tool.inputSchema.required).toContain("anchor");
     expect(tool.inputSchema.required).toContain("body");
   });
 
   it("inputSchema has optional intent", () => {
-    const tool = getToolByName(tools, "accordo.comment.create");
+    const tool = getToolByName(tools, "accordo_comment_create");
     expect(tool.inputSchema.properties["intent"]).toBeDefined();
   });
 
   it("handler returns { created: true, threadId, commentId }", async () => {
-    const tool = getToolByName(tools, "accordo.comment.create");
+    const tool = getToolByName(tools, "accordo_comment_create");
     const result = (await tool.handler({
       uri: "file:///project/src/auth.ts",
       anchor: { kind: "text", startLine: 42 },
@@ -241,87 +241,87 @@ describe("§6 accordo.comment.create", () => {
   });
 });
 
-// ── §6 accordo.comment.reply ─────────────────────────────────────────────────
+// ── §6 accordo_comment_reply ─────────────────────────────────────────────────
 
-describe("§6 accordo.comment.reply", () => {
+describe("§6 accordo_comment_reply", () => {
   it("has dangerLevel 'moderate'", () => {
-    const tool = getToolByName(tools, "accordo.comment.reply");
+    const tool = getToolByName(tools, "accordo_comment_reply");
     expect(tool.dangerLevel).toBe("moderate");
   });
 
   it("is not idempotent", () => {
-    const tool = getToolByName(tools, "accordo.comment.reply");
+    const tool = getToolByName(tools, "accordo_comment_reply");
     expect(tool.idempotent).toBe(false);
   });
 
   it("inputSchema requires threadId, body", () => {
-    const tool = getToolByName(tools, "accordo.comment.reply");
+    const tool = getToolByName(tools, "accordo_comment_reply");
     expect(tool.inputSchema.required).toContain("threadId");
     expect(tool.inputSchema.required).toContain("body");
   });
 
   it("handler throws for non-existent thread", async () => {
-    const tool = getToolByName(tools, "accordo.comment.reply");
+    const tool = getToolByName(tools, "accordo_comment_reply");
     await expect(
       tool.handler({ threadId: "nonexistent", body: "reply" }),
     ).rejects.toThrow();
   });
 });
 
-// ── §6 accordo.comment.resolve ───────────────────────────────────────────────
+// ── §6 accordo_comment_resolve ───────────────────────────────────────────────
 
-describe("§6 accordo.comment.resolve", () => {
+describe("§6 accordo_comment_resolve", () => {
   it("has dangerLevel 'moderate'", () => {
-    const tool = getToolByName(tools, "accordo.comment.resolve");
+    const tool = getToolByName(tools, "accordo_comment_resolve");
     expect(tool.dangerLevel).toBe("moderate");
   });
 
   it("is not idempotent", () => {
-    const tool = getToolByName(tools, "accordo.comment.resolve");
+    const tool = getToolByName(tools, "accordo_comment_resolve");
     expect(tool.idempotent).toBe(false);
   });
 
   it("inputSchema requires threadId, resolutionNote", () => {
-    const tool = getToolByName(tools, "accordo.comment.resolve");
+    const tool = getToolByName(tools, "accordo_comment_resolve");
     expect(tool.inputSchema.required).toContain("threadId");
     expect(tool.inputSchema.required).toContain("resolutionNote");
   });
 
   it("handler throws for non-existent thread", async () => {
-    const tool = getToolByName(tools, "accordo.comment.resolve");
+    const tool = getToolByName(tools, "accordo_comment_resolve");
     await expect(
       tool.handler({ threadId: "nonexistent", resolutionNote: "done" }),
     ).rejects.toThrow();
   });
 });
 
-// ── §6 accordo.comment.delete ────────────────────────────────────────────────
+// ── §6 accordo_comment_delete ────────────────────────────────────────────────
 
-describe("§6 accordo.comment.delete", () => {
+describe("§6 accordo_comment_delete", () => {
   it("has dangerLevel 'moderate'", () => {
-    const tool = getToolByName(tools, "accordo.comment.delete");
+    const tool = getToolByName(tools, "accordo_comment_delete");
     expect(tool.dangerLevel).toBe("moderate");
   });
 
   it("is not idempotent", () => {
-    const tool = getToolByName(tools, "accordo.comment.delete");
+    const tool = getToolByName(tools, "accordo_comment_delete");
     expect(tool.idempotent).toBe(false);
   });
 
   it("inputSchema requires threadId", () => {
-    const tool = getToolByName(tools, "accordo.comment.delete");
+    const tool = getToolByName(tools, "accordo_comment_delete");
     expect(tool.inputSchema.required).toContain("threadId");
   });
 
   it("inputSchema has optional commentId", () => {
-    const tool = getToolByName(tools, "accordo.comment.delete");
+    const tool = getToolByName(tools, "accordo_comment_delete");
     expect(tool.inputSchema.properties["commentId"]).toBeDefined();
     // commentId should NOT be in required
     expect(tool.inputSchema.required).not.toContain("commentId");
   });
 
   it("handler throws for non-existent thread", async () => {
-    const tool = getToolByName(tools, "accordo.comment.delete");
+    const tool = getToolByName(tools, "accordo_comment_delete");
     await expect(
       tool.handler({ threadId: "nonexistent" }),
     ).rejects.toThrow();
@@ -423,7 +423,7 @@ describe("normalizeCommentUri", () => {
   it("create handler stores canonical URI regardless of input form", async () => {
     // workspaceRoot is '' in tests (store.load() not called), so relative paths
     // resolve via process.cwd() — but absolute paths must always work correctly.
-    const createTool = tools.find(t => t.name === "accordo.comment.create")!;
+    const createTool = tools.find(t => t.name === "accordo_comment_create")!;
     const result = await createTool.handler({
       uri: "/Users/Shared/dev/myproject/src/auth.ts",
       anchor: { kind: "text", startLine: 10 },
@@ -434,13 +434,13 @@ describe("normalizeCommentUri", () => {
   });
 
   it("list handler normalizes uri filter before matching", async () => {
-    const createTool = tools.find(t => t.name === "accordo.comment.create")!;
+    const createTool = tools.find(t => t.name === "accordo_comment_create")!;
     await createTool.handler({
       uri: "file:///project/src/auth.ts",
       anchor: { kind: "file" },
       body: "a comment",
     });
-    const listTool = tools.find(t => t.name === "accordo.comment.list")!;
+    const listTool = tools.find(t => t.name === "accordo_comment_list")!;
     // filter with absolute FS path — must normalize and find the thread
     const result = await listTool.handler({ uri: "/project/src/auth.ts" }) as { total: number };
     expect(result.total).toBe(1);

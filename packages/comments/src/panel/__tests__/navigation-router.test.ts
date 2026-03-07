@@ -26,7 +26,7 @@ function makeEnv(): NavigationEnv & {
   delay: ReturnType<typeof vi.fn>;
 } {
   return {
-    showTextDocument: vi.fn().mockResolvedValue({}),
+    showTextDocument: vi.fn().mockResolvedValue({ revealRange: vi.fn() }),
     executeCommand: vi.fn().mockResolvedValue(undefined),
     showWarningMessage: vi.fn().mockResolvedValue(undefined),
     showInformationMessage: vi.fn().mockResolvedValue(undefined),
@@ -100,7 +100,7 @@ describe("M45-NR NavigationRouter", () => {
     );
   });
 
-  it("M45-NR-04: surface/slide → opens deck then delays then goto slide index", async () => {
+  it("M45-NR-04: surface/slide → tries goto immediately; on fail opens deck, delays 2s, retries goto", async () => {
     const anchor: CommentAnchorSurface = {
       kind: "surface",
       uri: "file:///project/deck.md",
@@ -108,20 +108,29 @@ describe("M45-NR NavigationRouter", () => {
       coordinates: { type: "slide", slideIndex: 3, x: 0.5, y: 0.5 },
     };
     const thread = makeThread(anchor);
+
+    // Simulate deck not running: first goto call fails, open + second goto succeeds.
+    let gotoCallCount = 0;
+    env.executeCommand.mockImplementation(async (cmd: string, ...args: unknown[]) => {
+      if (cmd === "accordo_presentation_goto") {
+        gotoCallCount++;
+        if (gotoCallCount === 1) throw new Error("command not found"); // deck not started
+        return undefined; // second call succeeds
+      }
+      return undefined;
+    });
+
     await navigateToThread(thread, env);
 
-    // Should open presentation first
+    // Should have opened presentation after first goto failed
     expect(env.executeCommand).toHaveBeenCalledWith(
       "accordo_presentation_open",
       expect.anything(), // URI object
     );
-    // Should delay for settling
-    expect(env.delay).toHaveBeenCalledWith(500);
-    // Should goto slide index
-    expect(env.executeCommand).toHaveBeenCalledWith(
-      "accordo_presentation_goto",
-      3,
-    );
+    // Should delay for deck startup
+    expect(env.delay).toHaveBeenCalledWith(2000);
+    // Should have attempted goto twice
+    expect(gotoCallCount).toBe(2);
   });
 
   it("M45-NR-04: surface/slide → shows info warning if goto command fails and keeps deck open", async () => {

@@ -308,7 +308,7 @@ describe("§10.2 State publishing", () => {
 // ── §10.3 Inter-extension internal commands ──────────────────────────────────
 
 describe("§10.3 Inter-extension internal commands", () => {
-  it("registers 'accordo.comments.internal.getThreadsForUri' command", async () => {
+  it("registers 'accordo_comments_internal_getThreadsForUri' command", async () => {
     const bridge = createMockBridge();
     setupBridgeExtension(bridge);
     const ctx = createMockExtensionContext();
@@ -316,11 +316,11 @@ describe("§10.3 Inter-extension internal commands", () => {
     await activate(ctx);
 
     expect(
-      mockState.registeredCommands.has("accordo.comments.internal.getThreadsForUri"),
+      mockState.registeredCommands.has("accordo_comments_internal_getThreadsForUri"),
     ).toBe(true);
   });
 
-  it("registers 'accordo.comments.internal.createSurfaceComment' command", async () => {
+  it("registers 'accordo_comments_internal_createSurfaceComment' command", async () => {
     const bridge = createMockBridge();
     setupBridgeExtension(bridge);
     const ctx = createMockExtensionContext();
@@ -328,11 +328,11 @@ describe("§10.3 Inter-extension internal commands", () => {
     await activate(ctx);
 
     expect(
-      mockState.registeredCommands.has("accordo.comments.internal.createSurfaceComment"),
+      mockState.registeredCommands.has("accordo_comments_internal_createSurfaceComment"),
     ).toBe(true);
   });
 
-  it("registers 'accordo.comments.internal.resolveThread' command", async () => {
+  it("registers 'accordo_comments_internal_resolveThread' command", async () => {
     const bridge = createMockBridge();
     setupBridgeExtension(bridge);
     const ctx = createMockExtensionContext();
@@ -340,7 +340,7 @@ describe("§10.3 Inter-extension internal commands", () => {
     await activate(ctx);
 
     expect(
-      mockState.registeredCommands.has("accordo.comments.internal.resolveThread"),
+      mockState.registeredCommands.has("accordo_comments_internal_resolveThread"),
     ).toBe(true);
   });
 });
@@ -350,12 +350,12 @@ describe("§10.3 Inter-extension internal commands", () => {
 describe("§10.3 getSurfaceAdapter (M40-EXT-11)", () => {
   function getAdapter(): SurfaceCommentAdapter {
     const handler = mockState.registeredCommands.get(
-      "accordo.comments.internal.getSurfaceAdapter",
+      "accordo_comments_internal_getSurfaceAdapter",
     );
     return handler?.() as SurfaceCommentAdapter;
   }
 
-  it("[M40-EXT-11] registers 'accordo.comments.internal.getSurfaceAdapter' command", async () => {
+  it("[M40-EXT-11] registers 'accordo_comments_internal_getSurfaceAdapter' command", async () => {
     const bridge = createMockBridge();
     setupBridgeExtension(bridge);
     const ctx = createMockExtensionContext();
@@ -363,7 +363,7 @@ describe("§10.3 getSurfaceAdapter (M40-EXT-11)", () => {
     await activate(ctx);
 
     expect(
-      mockState.registeredCommands.has("accordo.comments.internal.getSurfaceAdapter"),
+      mockState.registeredCommands.has("accordo_comments_internal_getSurfaceAdapter"),
     ).toBe(true);
   });
 

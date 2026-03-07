@@ -164,6 +164,39 @@ function basename(uri: string): string {
   return uri.split("/").pop() ?? uri;
 }
 
+/** Extracts the first sentence of a comment body for the collapsed preview. */
+function firstSentence(body: string, maxLen = 72): string {
+  let end = body.length;
+  for (const ch of [".", "!", "?", "\n"]) {
+    const i = body.indexOf(ch);
+    if (i >= 0 && i < end) end = i + 1;
+  }
+  const s = body.slice(0, end).trim();
+  return s.length > maxLen ? s.slice(0, maxLen) + "\u2026" : s;
+}
+
+/** Returns a numeric sort key for an anchor (0-based line / slide index). */
+function anchorSortKey(anchor: CommentAnchor): number {
+  if (anchor.kind === "text") return anchor.range.startLine;
+  if (anchor.kind === "surface") {
+    const c = anchor.coordinates;
+    if (c.type === "slide") return (c as SlideCoordinates).slideIndex;
+    if (c.type === "pdf-page") {
+      const p = c as PdfPageCoordinates;
+      return p.page * 100000 + Math.round(p.y * 100000);
+    }
+    if (c.type === "normalized") return Math.round((c as NormalizedCoordinates).y * 100000);
+  }
+  return 0;
+}
+
+/** Stable comparator: sort threads by URI then by position within the file. */
+function sortByLocation(a: CommentThread, b: CommentThread): number {
+  const uriCmp = a.anchor.uri.localeCompare(b.anchor.uri);
+  if (uriCmp !== 0) return uriCmp;
+  return anchorSortKey(a.anchor) - anchorSortKey(b.anchor);
+}
+
 // ── CommentsTreeProvider ─────────────────────────────────────────────────────
 
 /**
@@ -221,9 +254,9 @@ export class CommentsTreeProvider implements vscode.TreeDataProvider<CommentTree
           list.push(t);
           fileMap.set(file, list);
         }
-        // Sort files by thread count descending
+        // Sort files alphabetically
         return [...fileMap.entries()]
-          .sort((a, b) => b[1].length - a[1].length)
+          .sort((a, b) => a[0].localeCompare(b[0]))
           .map(([file, threads]) => {
             const header = new CommentTreeItem(`${file} (${threads.length})`);
             header.isGroupHeader = true;
@@ -238,7 +271,7 @@ export class CommentsTreeProvider implements vscode.TreeDataProvider<CommentTree
         const file = element.group;
         return [...filtered]
           .filter(t => basename(t.anchor.uri) === file)
-          .sort((a, b) => b.lastActivity.localeCompare(a.lastActivity))
+          .sort(sortByLocation)
           .map(t => this._makeThreadItem(t));
       }
       return [];
@@ -269,7 +302,7 @@ export class CommentsTreeProvider implements vscode.TreeDataProvider<CommentTree
       const groupStatus = element.group as "open" | "resolved";
       return [...filtered]
         .filter(t => t.status === groupStatus)
-        .sort((a, b) => b.lastActivity.localeCompare(a.lastActivity))
+        .sort(sortByLocation)
         .map(t => this._makeThreadItem(t));
     }
 
@@ -303,6 +336,8 @@ export class CommentsTreeProvider implements vscode.TreeDataProvider<CommentTree
     if (emoji) descParts.push(emoji);
     descParts.push(`${replies} ${replies === 1 ? "reply" : "replies"}`);
     descParts.push(date);
+    const preview = thread.comments[0]?.body ? firstSentence(thread.comments[0].body) : "";
+    if (preview) descParts.push(preview);
     item.description = descParts.join(" · ");
 
     // Tooltip: full first comment body + author + timestamp
@@ -327,7 +362,7 @@ export class CommentsTreeProvider implements vscode.TreeDataProvider<CommentTree
     item.isGroupHeader = false;
     item.isComment = true;
     item.collapsibleState = vscode.TreeItemCollapsibleState.None;
-    item.contextValue = "accordo-comment";
+    item.contextValue = `accordo-thread-${thread.status}-comment`;
     item.description = `${comment.body.slice(0, 80)} · ${formatLastActivity(comment.createdAt)}`;
     item.tooltip = `${comment.body}\n— ${comment.author.name} · ${comment.createdAt}`;
     return item;

@@ -81,8 +81,8 @@
       ],
       "view/item/context": [
         { "command": "accordo.commentsPanel.navigateToAnchor", "when": "view == accordo-comments-panel && viewItem =~ /accordo-thread/", "group": "inline" },
-        { "command": "accordo.commentsPanel.resolve", "when": "view == accordo-comments-panel && (viewItem == accordo-thread-open || viewItem == accordo-thread-stale)", "group": "1_actions@1" },
-        { "command": "accordo.commentsPanel.reopen", "when": "view == accordo-comments-panel && viewItem == accordo-thread-resolved", "group": "1_actions@1" },
+        { "command": "accordo.commentsPanel.resolve", "when": "view == accordo-comments-panel && viewItem =~ /accordo-thread-(open|stale)/", "group": "1_actions@1" },
+        { "command": "accordo.commentsPanel.reopen", "when": "view == accordo-comments-panel && viewItem =~ /accordo-thread-resolved/", "group": "1_actions@1" },
         { "command": "accordo.commentsPanel.reply", "when": "view == accordo-comments-panel && viewItem =~ /accordo-thread/", "group": "1_actions@2" },
         { "command": "accordo.commentsPanel.delete", "when": "view == accordo-comments-panel && viewItem =~ /accordo-thread/", "group": "1_actions@3" }
       ],

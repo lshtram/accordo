@@ -241,7 +241,11 @@ export class CommentStore {
 
     const total = threads.length;
     const offset = options.offset ?? 0;
-    const limit = Math.min(options.limit ?? COMMENT_LIST_DEFAULT_LIMIT, COMMENT_LIST_MAX_LIMIT);
+    // When no uri filter is given the result spans all files — use a smaller
+    // default (20) to avoid flooding the agent context window with unrelated
+    // threads.  A uri-scoped query keeps the full COMMENT_LIST_DEFAULT_LIMIT.
+    const defaultLimit = options.uri !== undefined ? COMMENT_LIST_DEFAULT_LIMIT : 20;
+    const limit = Math.min(options.limit ?? defaultLimit, COMMENT_LIST_MAX_LIMIT);
     const page = threads.slice(offset, offset + limit);
     const hasMore = total > offset + limit;
 

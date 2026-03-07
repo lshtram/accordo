@@ -1,7 +1,7 @@
 /**
  * CommentTools — 6 MCP tools for agent interaction with comments.
  *
- * Tools: accordo.comment.list, .get, .create, .reply, .resolve, .delete
+ * Tools: accordo_comment_list, .get, .create, .reply, .resolve, .delete
  * Registered via BridgeAPI.registerTools('accordo-comments', tools).
  *
  * Source: comments-architecture.md §6
@@ -59,11 +59,11 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
   const rateLimiter = new CreateRateLimiter();
 
   const tools: ExtensionToolDefinition[] = [
-    // ── accordo.comment.list ──────────────────────────────────────────────
+    // ── accordo_comment_list ──────────────────────────────────────────────
     {
-      name: "accordo.comment.list",
+      name: "accordo_comment_list",
       group: "comments",
-      description: "List comment threads. Filters: uri, status, intent, anchorKind, updatedSince, lastAuthor (user|agent), limit, offset.",
+      description: "List comment threads. Pass uri to scope to one file; omitting queries all files. Filters: status, intent, limit, offset.",
       dangerLevel: "safe",
       idempotent: true,
       inputSchema: {
@@ -75,7 +75,7 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
           anchorKind: { type: "string", description: "Filter by anchor type", enum: ["text", "surface", "file"] },
           updatedSince: { type: "string", description: "ISO 8601 timestamp — return only threads active after this time" },
           lastAuthor: { type: "string", description: "Return threads whose last comment was from this author kind", enum: ["user", "agent"] },
-          limit: { type: "number", description: "Max results to return (default 50, max 200)" },
+          limit: { type: "number", description: "Max results to return (default 20 when unfiltered, 50 when uri is specified; max 200)" },
           offset: { type: "number", description: "Pagination offset (default 0)" },
         },
         required: [],
@@ -96,9 +96,9 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
       },
     },
 
-    // ── accordo.comment.get ───────────────────────────────────────────────
+    // ── accordo_comment_get ───────────────────────────────────────────────
     {
-      name: "accordo.comment.get",
+      name: "accordo_comment_get",
       group: "comments",
       description: "Get a specific comment thread with all comments and context.",
       dangerLevel: "safe",
@@ -118,9 +118,9 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
       },
     },
 
-    // ── accordo.comment.create ────────────────────────────────────────────
+    // ── accordo_comment_create ────────────────────────────────────────────
     {
-      name: "accordo.comment.create",
+      name: "accordo_comment_create",
       group: "comments",
       description: "Create a comment thread. anchor: {kind:'text',startLine:N} or {kind:'file'}. intent: fix|explain|refactor|review|design",
       dangerLevel: "moderate",
@@ -186,11 +186,11 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
       },
     },
 
-    // ── accordo.comment.reply ─────────────────────────────────────────────
+    // ── accordo_comment_reply ─────────────────────────────────────────────
     {
-      name: "accordo.comment.reply",
+      name: "accordo_comment_reply",
       group: "comments",
-      description: "Reply to an existing comment thread. Use accordo.comment.list to find threadId values.",
+      description: "Reply to an existing comment thread. Use accordo_comment_list to find threadId values.",
       dangerLevel: "moderate",
       idempotent: false,
       inputSchema: {
@@ -216,9 +216,9 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
       },
     },
 
-    // ── accordo.comment.resolve ───────────────────────────────────────────
+    // ── accordo_comment_resolve ───────────────────────────────────────────
     {
-      name: "accordo.comment.resolve",
+      name: "accordo_comment_resolve",
       group: "comments",
       description: "Mark a comment thread as resolved. Always include a resolutionNote summarising what was done.",
       dangerLevel: "moderate",
@@ -246,9 +246,9 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
       },
     },
 
-    // ── accordo.comment.delete ────────────────────────────────────────────
+    // ── accordo_comment_delete ────────────────────────────────────────────
     {
-      name: "accordo.comment.delete",
+      name: "accordo_comment_delete",
       group: "comments",
       description: "Delete a specific comment or an entire comment thread.",
       dangerLevel: "moderate",

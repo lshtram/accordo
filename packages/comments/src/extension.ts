@@ -136,7 +136,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // vscode.CommentReply = { thread: CommentThread, text: string }
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      "accordo_comments_new",
+      "accordo.comments.new",
       async (reply: { thread: vscode.CommentThread; text: string }) => {
         if (!reply?.thread || !reply.text.trim()) return;
         const existingId = nc.getThreadIdForWidget(reply.thread);
@@ -235,23 +235,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               const coords: BlockCoordinates = { type: "block", blockId: args.blockId, blockType: inferBlockType(args.blockId) };
               anchor = { kind: "surface", uri: args.uri, surfaceType: "markdown-preview", coordinates: coords } as CommentAnchorSurface;
             }
-            const result = await store.createThread({ uri: args.uri, anchor, body: args.body, intent: args.intent as CommentIntent | undefined, author: { kind: "user", name: "You" } });
+            const result = await store.createThread({ uri: args.uri, anchor, body: args.body, intent: args.intent as CommentIntent | undefined, author: { kind: "user", name: "User" } });
             const thread = store.getThread(result.threadId)!;
             nc.addThread(thread);
             return thread;
           },
           async reply(args: { threadId: string; body: string }) {
-            await store.reply({ threadId: args.threadId, body: args.body, author: { kind: "user", name: "You" } });
+            await store.reply({ threadId: args.threadId, body: args.body, author: { kind: "user", name: "User" } });
             const updated = store.getThread(args.threadId);
             if (updated) nc.updateThread(updated);
           },
           async resolve(args: { threadId: string; resolutionNote?: string }) {
-            await store.resolve({ threadId: args.threadId, resolutionNote: args.resolutionNote ?? "", author: { kind: "user", name: "You" } });
+            await store.resolve({ threadId: args.threadId, resolutionNote: args.resolutionNote ?? "", author: { kind: "user", name: "User" } });
             const updated = store.getThread(args.threadId);
             if (updated) nc.updateThread(updated);
           },
           async reopen(args: { threadId: string }) {
-            await store.reopen(args.threadId, { kind: "user", name: "You" });
+            await store.reopen(args.threadId, { kind: "user", name: "User" });
             const updated = store.getThread(args.threadId);
             if (updated) nc.updateThread(updated);
           },
@@ -284,7 +284,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           anchor: params["anchor"] as CommentAnchor,
           body: params["body"] as string,
           intent: params["intent"] as CommentIntent | undefined,
-          author: { kind: "user", name: "System" },
+          author: { kind: "user", name: "User" },
         });
       },
     ),
@@ -294,7 +294,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await store.resolve({
           threadId,
           resolutionNote: "Resolved via internal API",
-          author: { kind: "user", name: "System" },
+          author: { kind: "user", name: "User" },
         });
         nc.updateThread(store.getThread(threadId)!);
       },
@@ -314,7 +314,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               anchor: args.anchor,
               body: args.body,
               intent: args.intent as CommentIntent | undefined,
-              author: { kind: "user", name: "System" },
+              author: { kind: "user", name: "User" },
             });
             // ! is safe: createThread always persists before returning, so the
             // thread is guaranteed present in the store at this point.
@@ -326,7 +326,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await store.reply({
               threadId: args.threadId,
               body: args.body,
-              author: { kind: "user", name: "System" },
+              author: { kind: "user", name: "User" },
             });
             const updated = store.getThread(args.threadId);
             if (updated) nc.updateThread(updated);
@@ -335,13 +335,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await store.resolve({
               threadId: args.threadId,
               resolutionNote: args.resolutionNote ?? "",
-              author: { kind: "user", name: "System" },
+              author: { kind: "user", name: "User" },
             });
             const updated = store.getThread(args.threadId);
             if (updated) nc.updateThread(updated);
           },
           async reopen(args) {
-            await store.reopen(args.threadId, { kind: "user", name: "System" });
+            await store.reopen(args.threadId, { kind: "user", name: "User" });
             const updated = store.getThread(args.threadId);
             if (updated) nc.updateThread(updated);
           },

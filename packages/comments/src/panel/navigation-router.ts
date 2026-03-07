@@ -56,7 +56,33 @@ export async function navigateToThread(
       const { Uri, Range } = await import("vscode");
       const uri = Uri.parse(anchor.uri);
       const range = new Range(anchor.range.startLine, 0, anchor.range.endLine, 0);
-      await env.showTextDocument(uri, { selection: range, preserveFocus: false, preview: false });
+
+      // For .md files prefer Accordo markdown preview over plain text editor.
+      if (anchor.uri.toLowerCase().endsWith(".md")) {
+        try {
+          // Fast path: preview already open — just scroll to the comment.
+          await env.executeCommand("accordo_preview_internal_focusThread", anchor.uri, thread.id, undefined);
+          return;
+        } catch {
+          // Preview not open — open it then retry.
+        }
+        try {
+          await env.executeCommand("vscode.openWith", uri, "accordo.markdownPreview");
+        } catch {
+          // vscode.openWith not available — fall through to text editor.
+        }
+        await env.delay(400);
+        try {
+          await env.executeCommand("accordo_preview_internal_focusThread", anchor.uri, thread.id, undefined);
+          return;
+        } catch {
+          // Preview still not available — fall through to text editor.
+        }
+      }
+
+      const editor = await env.showTextDocument(uri, { selection: range, preserveFocus: false, preview: false });
+      // Center the annotated line in the viewport (2 = TextEditorRevealType.InCenter).
+      editor.revealRange(range, 2);
       return;
     }
 
@@ -74,8 +100,16 @@ export async function navigateToThread(
         const { Uri } = await import("vscode");
         const uri = Uri.parse(uriStr);
         const coords = anchor.coordinates as { slideIndex: number };
+
+        // Fast path: deck already running — goto immediately, no delay needed.
+        try {
+          await env.executeCommand("accordo_presentation_goto", coords.slideIndex);
+          return;
+        } catch {
+          // Deck not running — open it and wait for startup.
+        }
         await env.executeCommand("accordo_presentation_open", uri);
-        await env.delay(500);
+        await env.delay(2000);
         try {
           await env.executeCommand("accordo_presentation_goto", coords.slideIndex);
         } catch {

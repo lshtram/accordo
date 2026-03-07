@@ -66,6 +66,10 @@ export class NativeComments {
     };
 
     this._controller = controller;
+    // acceptInputCommand is not in @types/vscode but is supported at runtime —
+    // it wires the Ctrl+Enter / Submit button in the comment input box.
+    (controller as unknown as { acceptInputCommand: { id: string; title: string } }).acceptInputCommand =
+      { id: "accordo.comments.new", title: "Add Comment" };
     context.subscriptions.push(controller);
 
     return {
@@ -297,7 +301,7 @@ export class NativeComments {
           // and posts comments:focus — the webview will scroll to blockId or to
           // the pin element and open the popover.
           const focused: boolean = await vscode.commands.executeCommand(
-            "accordo.preview.internal.focusThread",
+            "accordo_preview_internal_focusThread",
             uri,
             threadId,
             blockId,
@@ -338,7 +342,7 @@ export class NativeComments {
           // Allow the panel to initialize before sending the focus message
           await new Promise<void>((r) => setTimeout(r, 300));
           await vscode.commands.executeCommand(
-            "accordo.preview.internal.focusThread",
+            "accordo_preview_internal_focusThread",
             uri,
             threadId,
             blockId,

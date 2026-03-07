@@ -99,6 +99,32 @@ export class ThemeIcon {
   }
 }
 
+// ── TreeItemCollapsibleState ──────────────────────────────────────────────────
+
+export enum TreeItemCollapsibleState {
+  None = 0,
+  Collapsed = 1,
+  Expanded = 2,
+}
+
+// ── TreeItem ─────────────────────────────────────────────────────────────────
+
+export class TreeItem {
+  label: string | { label: string } | undefined;
+  description?: string;
+  tooltip?: string | MarkdownString;
+  iconPath?: ThemeIcon;
+  contextValue?: string;
+  collapsibleState?: TreeItemCollapsibleState;
+  command?: { command: string; title: string; arguments?: unknown[] };
+  resourceUri?: Uri;
+
+  constructor(label: string | { label: string }, collapsibleState?: TreeItemCollapsibleState) {
+    this.label = label;
+    this.collapsibleState = collapsibleState;
+  }
+}
+
 // ── CommentMode ──────────────────────────────────────────────────────────────
 
 export enum CommentMode {
@@ -270,9 +296,17 @@ export const window = {
   },
   showTextDocument: vi.fn().mockResolvedValue(undefined),
   showInputBox: vi.fn().mockResolvedValue(undefined),
+  showQuickPick: vi.fn().mockResolvedValue(undefined),
   showInformationMessage: vi.fn().mockResolvedValue(undefined),
   showWarningMessage: vi.fn().mockResolvedValue(undefined),
   showErrorMessage: vi.fn().mockResolvedValue(undefined),
+  createTreeView: vi.fn().mockImplementation((_viewId: string, _options: unknown) => {
+    return {
+      onDidChangeSelection: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      reveal: vi.fn(),
+      dispose: vi.fn(),
+    };
+  }),
 };
 
 // ── workspace ────────────────────────────────────────────────────────────────

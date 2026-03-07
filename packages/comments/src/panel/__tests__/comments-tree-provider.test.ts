@@ -168,11 +168,14 @@ describe("M45-TP CommentsTreeProvider", () => {
 
   // ── getChildren (group) ──────────────────────────────────────────────────
 
-  it("M45-TP-05: thread items within group sorted by lastActivity descending", () => {
+  it("M45-TP-05: thread items within group sorted by file location (URI then line number) ascending", () => {
     const threads = [
-      makeThread({ id: "t1", status: "open", lastActivity: "2026-03-06T01:00:00Z" }),
-      makeThread({ id: "t2", status: "open", lastActivity: "2026-03-06T03:00:00Z" }),
-      makeThread({ id: "t3", status: "open", lastActivity: "2026-03-06T02:00:00Z" }),
+      makeThread({ id: "t1", status: "open",
+        anchor: { kind: "text", uri: "file:///project/src/auth.ts", range: { startLine: 50, startChar: 0, endLine: 50, endChar: 0 }, docVersion: 0 } as CommentAnchorText }),
+      makeThread({ id: "t2", status: "open",
+        anchor: { kind: "text", uri: "file:///project/src/auth.ts", range: { startLine: 10, startChar: 0, endLine: 10, endChar: 0 }, docVersion: 0 } as CommentAnchorText }),
+      makeThread({ id: "t3", status: "open",
+        anchor: { kind: "text", uri: "file:///project/src/auth.ts", range: { startLine: 30, startChar: 0, endLine: 30, endChar: 0 }, docVersion: 0 } as CommentAnchorText }),
     ];
     store = createMockStore(threads);
     const provider = new CommentsTreeProvider(store, filters);
@@ -182,9 +185,9 @@ describe("M45-TP CommentsTreeProvider", () => {
     const children = provider.getChildren(openGroup);
 
     expect(children).toHaveLength(3);
-    expect(children[0].thread!.id).toBe("t2"); // most recent
-    expect(children[1].thread!.id).toBe("t3");
-    expect(children[2].thread!.id).toBe("t1"); // oldest
+    expect(children[0].thread!.id).toBe("t2"); // line 10 — first
+    expect(children[1].thread!.id).toBe("t3"); // line 30
+    expect(children[2].thread!.id).toBe("t1"); // line 50 — last
   });
 
   // ── Thread item fields ───────────────────────────────────────────────────
@@ -391,7 +394,7 @@ describe("M45-TP CommentsTreeProvider", () => {
     expect(String(commentItems[0].description)).toContain("This is a longer comment body");
   });
 
-  it("M45-TP-18: comment item contextValue = 'accordo-comment'", () => {
+  it("M45-TP-18: comment item contextValue encodes thread status for context menu", () => {
     const threads = [
       makeThread({
         id: "t1", status: "open",
@@ -407,7 +410,7 @@ describe("M45-TP CommentsTreeProvider", () => {
     const threadItems = provider.getChildren(roots[0]);
     const commentItems = provider.getChildren(threadItems[0]);
 
-    expect(commentItems[0].contextValue).toBe("accordo-comment");
+    expect(commentItems[0].contextValue).toBe("accordo-thread-open-comment");
   });
 
   // ── Group mode: by-file ──────────────────────────────────────────────────
