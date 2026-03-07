@@ -315,8 +315,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
 
   const tools = createPresentationTools(toolDeps);
-  const toolsDisposable = bridge.registerTools("accordo-slidev", tools);
-  context.subscriptions.push(toolsDisposable);
+  // Wrap in try/catch: bridge.registerTools sends over WebSocket which may not
+  // be connected yet on first startup. The extension must still finish activating
+  // so the custom editor provider for .deck.md files gets registered.
+  try {
+    const toolsDisposable = bridge.registerTools("accordo-slidev", tools);
+    context.subscriptions.push(toolsDisposable);
+  } catch {
+    // Hub not connected — tools unavailable, extension remains functional for deck opening.
+  }
 
   // ── VS Code command registrations (explorer context menu, command palette) ──
 
@@ -375,6 +382,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
   );
 
+  // Internal goto command — used by the Comments Panel navigation router.
+  // Unlike the public accordo.presentation.goto, this THROWS on error so the
+  // router's try/catch can detect "no session" and fall through to openSession.
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "accordo_presentation_internal_goto",
+      async (index?: unknown) => {
+        if (typeof index !== "number") throw new Error("slide index required");
+        const result = await toolDeps.goto(index);
+        if (result.error) throw new Error(result.error);
+      },
+    ),
+  );
+
+  // Internal focusThread command — posts a comments:focus message to the
+  // presentation webview so the comment popover opens at the current slide.
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "accordo_presentation_internal_focusThread",
+      (threadId: string): boolean => {
+        const panel = provider.getPanel();
+        if (panel) {
+          void panel.webview.postMessage({ type: "comments:focus", threadId });
+          return true;
+        }
+        return false;
+      },
+    ),
+  );
+
   // M44-EXT-08: CustomTextEditorProvider for .deck.md files.
   // When a .deck.md file is activated in the explorer or editor, VS Code hands
   // it to this provider. We immediately start a presentation session AND show a
@@ -423,7 +460,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // M44-EXT-05: Publish initial state
-  stateContrib.update({});
+  try {
+    stateContrib.update({});
+  } catch {
+    // Hub not connected on first startup — state will be published on next session open.
+  }
 
   // Reset state on provider dispose (M44-PVD-06)
   provider.onDispose(() => {

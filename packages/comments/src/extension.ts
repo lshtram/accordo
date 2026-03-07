@@ -119,6 +119,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showWarningMessage: (msg) => vscode.window.showWarningMessage(msg),
     showInformationMessage: (msg) => vscode.window.showInformationMessage(msg),
     delay: (ms) => new Promise(resolve => setTimeout(resolve, ms)),
+    visibleTextEditorUris: () => vscode.window.visibleTextEditors.map(e => e.document.uri.toString()),
   };
 
   const panelDisposables = registerPanelCommands(

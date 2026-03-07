@@ -286,6 +286,39 @@ describe("accordo.presentation.goto VS Code command", () => {
   });
 });
 
+// ── Internal commands for Comments Panel navigation router ────────────────────
+
+describe("accordo_presentation_internal_goto and _focusThread commands", () => {
+  it("registers accordo_presentation_internal_goto as a VS Code command", async () => {
+    const bridge = makeBridge();
+    setupExtensions(bridge, false);
+    const ctx = makeExtensionContext();
+
+    await activate(ctx);
+
+    const registeredCmds = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([cmd]: [string]) => cmd,
+    );
+    expect(registeredCmds).toContain("accordo_presentation_internal_goto");
+    expect(registeredCmds).toContain("accordo_presentation_internal_focusThread");
+  });
+});
+
+// ── Activation robustness when bridge.registerTools throws ───────────────────
+
+describe("activation robustness", () => {
+  it("does not throw when bridge.registerTools throws (hub not connected)", async () => {
+    const bridge = makeBridge();
+    (bridge.registerTools as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+    });
+    setupExtensions(bridge, false);
+    const ctx = makeExtensionContext();
+
+    await expect(activate(ctx)).resolves.not.toThrow();
+  });
+});
+
 // ── deactivate ────────────────────────────────────────────────────────────────
 
 describe("deactivate", () => {

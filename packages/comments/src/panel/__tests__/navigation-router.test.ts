@@ -24,6 +24,7 @@ function makeEnv(): NavigationEnv & {
   showWarningMessage: ReturnType<typeof vi.fn>;
   showInformationMessage: ReturnType<typeof vi.fn>;
   delay: ReturnType<typeof vi.fn>;
+  visibleTextEditorUris: ReturnType<typeof vi.fn>;
 } {
   return {
     showTextDocument: vi.fn().mockResolvedValue({ revealRange: vi.fn() }),
@@ -31,6 +32,7 @@ function makeEnv(): NavigationEnv & {
     showWarningMessage: vi.fn().mockResolvedValue(undefined),
     showInformationMessage: vi.fn().mockResolvedValue(undefined),
     delay: vi.fn().mockResolvedValue(undefined),
+    visibleTextEditorUris: vi.fn().mockReturnValue([]),
   };
 }
 
@@ -87,6 +89,61 @@ describe("M45-NR NavigationRouter", () => {
     );
   });
 
+  it("M45-NR-02b: text anchor on .md with text editor visible → navigates to text editor, not preview", async () => {
+    const anchor: CommentAnchorText = {
+      kind: "text",
+      uri: "file:///project/README.md",
+      range: { startLine: 10, startChar: 0, endLine: 10, endChar: 0 },
+      docVersion: 0,
+    };
+    const thread = makeThread(anchor);
+    // Simulate file already open in text editor
+    env.visibleTextEditorUris.mockReturnValue(["file:///project/README.md"]);
+
+    await navigateToThread(thread, env);
+
+    // Should go straight to text editor — must NOT attempt to open preview
+    expect(env.executeCommand).not.toHaveBeenCalledWith(
+      "accordo_preview_internal_focusThread",
+      expect.anything(), expect.anything(), expect.anything(),
+    );
+    expect(env.executeCommand).not.toHaveBeenCalledWith(
+      "vscode.openWith", expect.anything(), "accordo.markdownPreview",
+    );
+    expect(env.showTextDocument).toHaveBeenCalledTimes(1);
+    const [uri, opts] = env.showTextDocument.mock.calls[0];
+    expect(uri.toString()).toContain("README.md");
+    expect(opts.selection).toBeDefined();
+  });
+
+  it("M45-NR-02c: text anchor on .md with no text editor open → opens Accordo preview", async () => {
+    const anchor: CommentAnchorText = {
+      kind: "text",
+      uri: "file:///project/README.md",
+      range: { startLine: 5, startChar: 0, endLine: 5, endChar: 0 },
+      docVersion: 0,
+    };
+    const thread = makeThread(anchor);
+    // No text editor open for this file
+    env.visibleTextEditorUris.mockReturnValue([]);
+    // Preview already open — focusThread returns true
+    env.executeCommand.mockImplementation(async (cmd: string) => {
+      if (cmd === "accordo_preview_internal_focusThread") return true;
+      return undefined;
+    });
+
+    await navigateToThread(thread, env);
+
+    expect(env.executeCommand).toHaveBeenCalledWith(
+      "accordo_preview_internal_focusThread",
+      "file:///project/README.md",
+      "thread-1",
+      undefined,
+    );
+    // Should not open text editor since preview handled it
+    expect(env.showTextDocument).not.toHaveBeenCalled();
+  });
+
   it("M45-NR-03: surface/markdown-preview → executeCommand with positional args (uri, threadId, blockId)", async () => {
     const anchor: CommentAnchorSurface = {
       kind: "surface",
@@ -114,10 +171,10 @@ describe("M45-NR NavigationRouter", () => {
     };
     const thread = makeThread(anchor);
 
-    // Simulate deck not running: first goto call fails, open + second goto succeeds.
+    // Simulate deck not running: first internal goto fails, open + second goto succeeds.
     let gotoCallCount = 0;
     env.executeCommand.mockImplementation(async (cmd: string, ...args: unknown[]) => {
-      if (cmd === "accordo.presentation.goto") {
+      if (cmd === "accordo_presentation_internal_goto") {
         gotoCallCount++;
         if (gotoCallCount === 1) throw new Error("command not found"); // deck not started
         return undefined; // second call succeeds
@@ -127,14 +184,14 @@ describe("M45-NR NavigationRouter", () => {
 
     await navigateToThread(thread, env);
 
-    // Should have opened presentation after first goto failed
+    // Should have opened presentation after first internal goto failed
     expect(env.executeCommand).toHaveBeenCalledWith(
       "accordo.presentation.open",
       expect.anything(), // URI object
     );
     // Should delay for deck startup
     expect(env.delay).toHaveBeenCalledWith(2000);
-    // Should have attempted goto twice
+    // Should have attempted internal goto twice
     expect(gotoCallCount).toBe(2);
   });
 
@@ -147,11 +204,11 @@ describe("M45-NR NavigationRouter", () => {
     };
     const thread = makeThread(anchor);
 
-    // Make goto throw (command not found)
+    // Make internal goto throw (command not found)
     let callCount = 0;
     env.executeCommand.mockImplementation(async (cmd: string) => {
       callCount++;
-      if (cmd === "accordo.presentation.goto") throw new Error("command not found");
+      if (cmd === "accordo_presentation_internal_goto") throw new Error("command not found");
       return undefined;
     });
 
@@ -263,5 +320,6 @@ describe("M45-NR NavigationRouter", () => {
     expect(typeof e.showWarningMessage).toBe("function");
     expect(typeof e.showInformationMessage).toBe("function");
     expect(typeof e.delay).toBe("function");
+    expect(typeof e.visibleTextEditorUris).toBe("function");
   });
 });

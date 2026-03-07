@@ -91,6 +91,7 @@ function createMockNavEnv(): NavigationEnv {
     showWarningMessage: vi.fn().mockResolvedValue(undefined),
     showInformationMessage: vi.fn().mockResolvedValue(undefined),
     delay: vi.fn().mockResolvedValue(undefined),
+    visibleTextEditorUris: vi.fn().mockReturnValue([]),
   };
 }
 
