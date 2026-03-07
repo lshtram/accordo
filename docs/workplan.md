@@ -3,13 +3,13 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-07  
-**Status:** ACTIVE — Session 9 complete (M45 Custom Comments Panel ✅), Session 10 next (M50–M55 Browser Agentation)
+**Status:** ACTIVE — Session 9 complete (M45 Custom Comments Panel ✅), Session 10 next (Voice modality)
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-07 — Session 9 complete. Custom Comments Panel (M45-TP/NR/CMD/FLT/EXT) fully delivered: 76 new tests. Manual testing round completed — fixed command-ID mismatches, `.deck.md` activation event, `comments:focus` webview handler, slide-sync race, and inline reply UX. 1418 tests total (Hub: 346, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). TypeScript clean. Committed and pushed. Session 10 next: Browser Agentation (M50–M63).**
+> **As of 2026-03-07 — Session 9 complete. Custom Comments Panel (M45-TP/NR/CMD/FLT/EXT) fully delivered: 76 new tests. Manual testing round completed — fixed command-ID mismatches, `.deck.md` activation event, `comments:focus` webview handler, slide-sync race, and inline reply UX. 1418 tests total (Hub: 346, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). TypeScript clean. Committed and pushed. Session 10 next: Voice modality (`accordo-voice`).**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -17,10 +17,9 @@
 | Phase 2 | Comments modality (`accordo-comments`) | ✅ DONE — Week 6+7 complete, 1221 tests |
 | Phase 3 | Presentations modality (`accordo-slidev`) | ✅ DONE — Session 8B complete, 137 tests |
 | Session 9 | Custom Comments Panel (M45 — `accordo-comments` update) | ✅ DONE — 273 comments tests, 1418 total |
-| **Session 10** | **Browser Agentation (M50–M63 — `accordo-browser` + Chrome extension)** | 🔜 **NEXT** — architecture + requirements ready |
-| Phase 4 | Voice modality (`accordo-voice` bridge registration) | ⏳ Pending Session 10 |
-| Phase 5 | Diagrams modality (`accordo-tldraw`) | ⏳ Pending Phase 4 |
-| Phase 6 | Browser agentation (`accordo-browser` + Chrome extension) | 📋 PLANNED — architecture + requirements written |
+| **Session 10** | **Voice modality (`accordo-voice` — port + Bridge registration)** | 🔜 **NEXT** — existing code in theia-openspace |
+| Session 11 | Diagrams modality (`accordo-diagram` — Mermaid + Excalidraw) | ⏳ Pending Session 10 — architecture + workplan ready |
+| Session 12+ | Browser agentation (`accordo-browser` + Chrome extension) | 📋 DEFERRED — architecture + requirements written, complex anchoring needs more design |
 
 **Baseline:** 1418 tests green (Hub: 346, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). v0.1.0 on `main`.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
@@ -215,27 +214,55 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ---
 
-### Phase 4 — Voice (`accordo-voice` bridge registration)
+### Session 10 — Voice (`accordo-voice`)
 
-**Goal:** The voice extension (already implemented) is registered with the Bridge + Hub. Agents can see voice state in the system prompt.
+**Goal:** Port the existing `openspace-voice-vscode` extension (from `theia-openspace`) into the Accordo ecosystem. Register voice capabilities with the Bridge + Hub. Agents can see voice state in the system prompt and invoke TTS for narration.
 
-**Note from architecture.md:** "Already implemented. Needs only bridge registration." This should be a 1-week effort.
+**Source code:** `/Users/Shared/dev/theia-openspace/openspace-voice-vscode/` — push-to-talk dictation (Whisper STT) + read-aloud (Kokoro TTS) + playback (platform-aware WAV). Depends on `@openspace-ai/voice-core` for FSMs and adapters.
 
-**New packages:** None — existing `accordo-voice` gains BridgeAPI registration.
+**Key ecosystem context:**
+- **Microsoft VS Code Speech** (1.2M installs): Azure Speech SDK, local processing, 26 languages. Uses VS Code's built-in `vscode.speech` API (STT + TTS). Already integrated with Copilot Chat.
+- **Piper TTS** (1.5K installs): Offline neural TTS. Local processing.
+- Our approach uses **Whisper.cpp** (STT, local) + **Kokoro** (TTS, local) — fully offline, no cloud dependency.
+
+**Scope decisions needed (Phase A):**
+1. Should `accordo-voice` use the VS Code Speech provider API (`vscode.speech`) as a provider rather than direct Whisper/Kokoro?
+2. Bridge registration: register `voice.readAloud`, `voice.dictation`, `voice.narrate` as MCP tools?
+3. State contribution: publish voice state (ready/recording/playing/error) to Hub prompt?
+4. Narration integration: wire to `accordo-slidev` narration text for TTS playback?
+
+**New packages:** `packages/voice/` (`accordo-voice` — VSCode extension, ported from openspace-voice-vscode)
 
 ---
 
-### Phase 5 — Diagrams (`accordo-tldraw`)
+### Session 11 — Diagrams (`accordo-diagram`)
 
-**Goal:** Agent can read and control a tldraw/Excalidraw canvas in a VSCode webview. Tools: `diagram.createNode`, `diagram.deleteNode`, `diagram.connect`, `diagram.getState`. Comment SDK integrated for per-node annotations.
+**Goal:** Agent and human co-edit Mermaid diagrams in a dual-pane webview (Monaco text editor + Excalidraw interactive canvas). Reconciler preserves layout across topology changes. 14 MCP tools for diagram CRUD, topology edits, and visual customization.
 
-**No architecture doc yet.** Architecture phase A task will produce it.
+**Architecture:** [`docs/diag_arch_v4.2.md`](diag_arch_v4.2.md) v4.2 — DRAFT, comprehensive  
+**Workplan:** [`docs/diag_workplan.md`](diag_workplan.md) — 17 modules (A1–A17), ~295 tests estimated  
 
-**New packages:** `accordo-tldraw` (VSCode extension + tldraw webview)
+**Key design decisions:**
+- Two-file canonical model: `.mmd` (Mermaid topology) + `.layout.json` (positions/styles)
+- Mermaid node IDs as stable identity primitives — no UGM intermediary
+- Dagre for initial auto-layout; Excalidraw for interactive canvas (pre-built bundle)
+- Kroki API for semantic rendering (SVG/PNG export)
+- Reconciler is stateless and deterministic — layout survives topology changes
+
+**Key ecosystem context:**
+- **Mermaid Chart** (472K installs): Official Mermaid extension, preview + edit
+- **Mermaid Editor** (240K installs, 4.5★): Popular community editor
+- **Mermaid Graphical Editor** (62K installs, 4.9★): Drag-and-drop visual editing
+- **Excalidraw** (426K installs, 4.9★): Standalone whiteboard, `.excalidraw` files
+- **tldraw** (102K installs, 5.0★): Standalone whiteboard, `.tldr` files
+- **Microsoft vscode-mermAId** (106K installs, 5.0★): AI-powered Mermaid generation via Copilot
+- Our differentiator: **bidirectional Mermaid ↔ Excalidraw sync with layout preservation** — no existing extension does this
+
+**New packages:** `packages/diagram/` (`accordo-diagram` — VSCode extension + Excalidraw webview)
 
 ---
 
-### Phase 6 — Browser Agentation (`accordo-browser` + Chrome Extension)
+### Session 12+ — Browser Agentation (`accordo-browser` + Chrome Extension) [DEFERRED]
 
 **Goal:** Human and agent co-browse the web with spatial comment threads anchored to DOM elements on any web page. A Chrome Manifest V3 extension embeds the existing `@accordo/comment-sdk` in the browser. A VSCode extension relays comments to the `CommentStore` via the generalized surface adapter. Browser automation is provided off-the-shelf by `@playwright/mcp` (no Accordo code).
 
@@ -255,7 +282,7 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 **Implementation split across 3 sessions:**
 
-#### Session 10A — Types + VSCode Extension Core
+#### Session 12A — Types + VSCode Extension Core
 
 **Goal:** `CssSelectorCoordinates` type in bridge-types. `BrowserRelay` WebSocket server and `BrowserCommentsBridge` in the VSCode extension. End-to-end comment flow from mock Chrome messages → relay → CommentStore.
 
@@ -266,9 +293,9 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 | M52-CBR | `browser-comments-bridge.ts` — message routing ↔ surface adapter, blockId codec | requirements-browser.md §4 M52 | A → F |
 | M54-SEL | `selector-utils.ts` — blockId encode/decode, pure functions | requirements-browser.md §4 M54 | A → F |
 
-**Session 10A gate:** BrowserRelay accepts WebSocket connections with auth. BrowserCommentsBridge routes comment messages to CommentStore. Integration test: mock client → relay → adapter → thread created with `surfaceType: "browser"` and `CssSelectorCoordinates`.
+**Session 12A gate:** BrowserRelay accepts WebSocket connections with auth. BrowserCommentsBridge routes comment messages to CommentStore. Integration test: mock client → relay → adapter → thread created with `surfaceType: "browser"` and `CssSelectorCoordinates`.
 
-#### Session 10B — VSCode Extension Completion + Chrome Extension Core
+#### Session 12B — VSCode Extension Completion + Chrome Extension Core
 
 **Goal:** State contribution, extension entry point. Chrome extension DOM auto-tagger, selector generator, fingerprint. Content script bootstraps Comment SDK.
 
@@ -280,9 +307,9 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 | M57-CSS | `selector-generator.ts` — minimal unique CSS selector paths | requirements-browser.md §5 M57 | A → F |
 | M58-FP | `text-fingerprint.ts` — FNV-1a hash of element text | requirements-browser.md §5 M58 | A → F |
 
-**Session 10B gate:** VSCode extension activates, generates token, starts relay. DOM auto-tagger correctly assigns blockIds in jsdom. Selector generator produces unique selectors. Fingerprint is deterministic.
+**Session 12B gate:** VSCode extension activates, generates token, starts relay. DOM auto-tagger correctly assigns blockIds in jsdom. Selector generator produces unique selectors. Fingerprint is deterministic.
 
-#### Session 10C — Chrome Extension Completion + Automation Docs
+#### Session 12C — Chrome Extension Completion + Automation Docs
 
 **Goal:** Service worker, content script SDK integration, popup UI, theme CSS. Playwright setup documentation.
 
@@ -294,7 +321,7 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 | M62-THM | `browser-theme.css` — VS Code CSS variable mappings for browser | requirements-browser.md §5 M62 | A → F |
 | M63-AUTO | Browser automation setup docs + optional helper command | requirements-browser.md §6 M63 | A → F |
 
-**Session 10C gate:** Chrome extension side-loads in Chrome. Content script injects overlay and Comment SDK. Service worker connects to relay. Comments created in Chrome appear in VS Code. Playwright MCP setup documented.
+**Session 12C gate:** Chrome extension side-loads in Chrome. Content script injects overlay and Comment SDK. Service worker connects to relay. Comments created in Chrome appear in VS Code. Playwright MCP setup documented.
 
 ---
 

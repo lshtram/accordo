@@ -91,12 +91,12 @@ These apply regardless of which mode you are in:
 2. **Run tests before committing.** `pnpm test` must be clean in the affected package.
 3. **Conventional commits.** `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 4. **One module per commit** when in TDD mode. Batch only within the same phase.
-5. **Scan [`docs/patterns.md`](docs/patterns.md) before any non-trivial task.** Read only
-   the YAML front matter (the `patterns:` block at the top) to see what is documented —
-   load the full file only if a relevant pattern ID applies. When you hit new friction —
-   a tool behaving unexpectedly, a workaround you had to invent, a process step that is
-   fragile — add an entry to `patterns.md` immediately (YAML summary line + full section).
-   Entries are periodically reviewed with the user and either resolved or archived.
+5. **Scan pattern files before any non-trivial task.** There are two:
+   - [`docs/patterns.md`](docs/patterns.md) — generic agent tool patterns (all projects)
+   - [`docs/accordo-patterns.md`](docs/accordo-patterns.md) — Accordo-specific patterns
+   Read only the YAML front matter to see what is documented — load the full section
+   only if a relevant pattern ID applies. When you hit new friction, add an entry to
+   the appropriate file (generic tool issue → `patterns.md`, project-specific → `accordo-patterns.md`).
 
 ---
 
@@ -121,7 +121,8 @@ These are project-level decisions that override or extend `coding-guidelines.md 
 | [`docs/requirements-hub.md`](docs/requirements-hub.md) | Hub functional requirements |
 | [`docs/requirements-bridge.md`](docs/requirements-bridge.md) | Bridge functional requirements |
 | [`docs/requirements-editor.md`](docs/requirements-editor.md) | Editor tools requirements |
-| [`docs/patterns.md`](docs/patterns.md) | Agent working patterns, known friction, and workarounds |
+| [`docs/patterns.md`](docs/patterns.md) | Generic agent tool patterns (shared across projects) |
+| [`docs/accordo-patterns.md`](docs/accordo-patterns.md) | Accordo-specific patterns (VS Code, Hub, Bridge) |
 | [`.copilot/compound.md`](.copilot/compound.md) | Compound mode — instructions for session retrospective |
 
 ---
