@@ -77,6 +77,14 @@ export enum StatusBarAlignment {
   Right = 2,
 }
 
+// ── ConfigurationTarget ───────────────────────────────────────────────────────
+
+export enum ConfigurationTarget {
+  Global = 1,
+  Workspace = 2,
+  WorkspaceFolder = 3,
+}
+
 // ── StatusBarItem mock ────────────────────────────────────────────────────────
 
 export function createStatusBarItemMock() {
