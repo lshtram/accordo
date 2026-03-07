@@ -77,6 +77,7 @@ The following are added to `packages/comments/package.json`. Existing contributi
 | `accordo.commentsPanel.filterByStatus` | Filter by Status | `$(filter)` |
 | `accordo.commentsPanel.filterByIntent` | Filter by Intent | `$(tag)` |
 | `accordo.commentsPanel.clearFilters` | Clear Filters | `$(clear-all)` |
+| `accordo.commentsPanel.groupBy` | Group By… | `$(list-tree)` |
 
 ### 2.4 Menus
 
@@ -166,15 +167,16 @@ The following are added to `packages/comments/package.json`. Existing contributi
 | Requirement ID | Requirement |
 |---|---|
 | M45-NR-01 | Exports `async function navigateToThread(thread: CommentThread, vscodeEnv?: NavigationEnv): Promise<void>` |
-| M45-NR-02 | `anchor.kind === "text"` → calls `vscode.window.showTextDocument(uri, { selection: new vscode.Range(startLine, 0, endLine, 0), preserveFocus: false, preview: false })` |
-| M45-NR-03 | `anchor.kind === "surface"` + `surfaceType === "markdown-preview"` → `vscode.commands.executeCommand('accordo.preview.internal.focusThread', uri, thread.id, coords.blockId)` |
-| M45-NR-04 | `anchor.kind === "surface"` + `surfaceType === "slide"` → first executes `accordo.presentation.open` with the anchor's URI, then waits 500ms, then executes a slide-navigation VS Code command with `coords.slideIndex` (`accordo.presentation.goto` if available, otherwise fallback internal command); if unavailable, show information warning and keep the deck open |
+| M45-NR-02 | `anchor.kind === "text"` → calls `vscode.window.showTextDocument(uri, { selection: new vscode.Range(startLine, 0, endLine, 0), preserveFocus: false, preview: false })`. **Smart viewer**: if `env.findOpenViewForUri(uri)` returns `"markdown-preview"` first route via preview command instead. |
+| M45-NR-03 | `anchor.kind === "surface"` + `surfaceType === "markdown-preview"` → `vscode.commands.executeCommand('accordo_preview_internal_focusThread', uri, thread.id, coords.blockId)` |
+| M45-NR-04 | `anchor.kind === "surface"` + `surfaceType === "slide"` → first executes `accordo_presentation_goto` with `(uri, coords.slideIndex)`; if deck not yet open executes `accordo.presentation.open` first then waits 500ms before navigating; if goto command unavailable shows info warning |
 | M45-NR-05 | `anchor.kind === "surface"` + `surfaceType === "browser"` → executes `accordo.browser.focusThread` with `thread.id`; if command is not registered (throws), silently swallows the error and shows `showInformationMessage('Browser extension not connected')` |
 | M45-NR-06 | `anchor.kind === "surface"` + `surfaceType === "diagram"` → executes `accordo.diagram.focusThread` with `thread.id`; same graceful fallback as M45-NR-05 |
-| M45-NR-07 | `anchor.kind === "file"` → `vscode.window.showTextDocument(uri, { preserveFocus: false, preview: false })` |
+| M45-NR-07 | `anchor.kind === "file"` → smart viewer: same logic as M45-NR-11 applied to the file URI |
 | M45-NR-08 | Any unrecognised `surfaceType` falls back to `showTextDocument(anchor.uri)` |
 | M45-NR-09 | All navigation errors (command not found, file not found) are caught; on failure shows `vscode.window.showWarningMessage('Could not navigate to thread: <message>')` |
 | M45-NR-10 | `NavigationEnv` interface — injectable abstraction over `vscode.window`, `vscode.commands`, and `setTimeout` — allows unit testing without real VS Code |
+| M45-NR-11 | **Smart viewer selection**: before opening any file, check `env.findOpenViewForUri(uri)` which returns `"text" \| "markdown-preview" \| "slide" \| null`. If `"markdown-preview"` → route via `accordo_preview_internal_focusThread`. If `"slide"` → route via `accordo_presentation_goto`. If `"text"` or `null` → use `showTextDocument`. If file is not open (`null`) and the URI is `.md`, attempt accordo-preview first (command `accordo.preview.open`); if unavailable fall back to `showTextDocument`. If URI is a presentation deck (`.deck.md` or slidev convention), attempt `accordo.presentation.open` first. |
 
 **`NavigationEnv` interface (for testability):**
 
@@ -214,6 +216,7 @@ Default implementation uses real `vscode` APIs. Tests inject a mock env.
 | M45-CMD-11 | After every `store` mutation, the `NativeComments` instance (`nc`) is updated to sync gutter widgets: `nc.updateThread(thread)` / `nc.removeThread(threadId)`. This mirrors the pattern in `SurfaceCommentAdapter` in `extension.ts` |
 | M45-CMD-12 | All commands no-op gracefully when called with no argument (e.g., from command palette with no tree selection) — shows `showInformationMessage('Select a thread in the Comments panel first')` |
 | M45-CMD-13 | Author passed to store mutations is always `{ kind: "user", name: "User" }` (consistent with existing store caller pattern in `native-comments.ts` / `extension.ts`) |
+| M45-CMD-14 | `accordo.commentsPanel.groupBy` — `showQuickPick(["by-status", "by-file", "by-activity"])` with descriptive labels; on selection calls `filters.setGroupMode(mode)` then `provider.refresh()` |
 
 ---
 
@@ -239,6 +242,8 @@ Default implementation uses real `vscode` APIs. Tests inject a mock env.
 | M45-FLT-11 | `getSummary(): string` — returns human-readable active filter description (e.g. `"open, fix intent"`) or empty string when no filters active |
 | M45-FLT-12 | `isActive(): boolean` — returns `true` if any filter field is non-default |
 | M45-FLT-13 | On construction, loads persisted filter state from `workspaceState` under key `"accordo.commentsPanel.filters"`; validates each field against allowed values; unknown/invalid values reset to `undefined` |
+| M45-FLT-14 | `get groupMode(): GroupMode` — returns current group mode; defaults to `"by-status"` |
+| M45-FLT-15 | `setGroupMode(value: GroupMode)` — sets group mode; persists to `workspaceState`; invalid values loaded from storage fall back to `"by-status"` |
 
 **Filter persistence key:** `"accordo.commentsPanel.filters"`
 
@@ -316,11 +321,11 @@ Before TDD for M45 begins, apply the following bug fix to `@accordo/comment-sdk`
 
 | Module | Test file | Requirement IDs covered | Approx. test count |
 |---|---|---|---|
-| M45-TP CommentsTreeProvider | `panel/__tests__/comments-tree-provider.test.ts` | M45-TP-01 → M45-TP-16 | 16 |
-| M45-NR NavigationRouter | `panel/__tests__/navigation-router.test.ts` | M45-NR-01 → M45-NR-10 | 10 |
-| M45-CMD PanelCommands | `panel/__tests__/panel-commands.test.ts` | M45-CMD-01 → M45-CMD-13 | 16 |
-| M45-FLT PanelFilters | `panel/__tests__/panel-filters.test.ts` | M45-FLT-01 → M45-FLT-13 | 14 |
+| M45-TP CommentsTreeProvider | `panel/__tests__/comments-tree-provider.test.ts` | M45-TP-01 → M45-TP-24 | 27 |
+| M45-NR NavigationRouter | `panel/__tests__/navigation-router.test.ts` | M45-NR-01 → M45-NR-11 | 11 |
+| M45-CMD PanelCommands | `panel/__tests__/panel-commands.test.ts` | M45-CMD-01 → M45-CMD-14 | 18 |
+| M45-FLT PanelFilters | `panel/__tests__/panel-filters.test.ts` | M45-FLT-01 → M45-FLT-15 | 21 |
 | M45-EXT Extension Integration | `__tests__/extension.test.ts` (additions) | M45-EXT-01 → M45-EXT-10 | 10 |
-| **Total** | | | **~66** |
+| **Total** | | | **~87** |
 
 All 197 existing `accordo-comments` tests must remain green after M45 implementation. Test command: `pnpm --filter accordo-comments test 2>&1 | tail -15`.
