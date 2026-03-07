@@ -66,10 +66,6 @@ export class NativeComments {
     };
 
     this._controller = controller;
-    // acceptInputCommand is not in @types/vscode but is supported at runtime —
-    // it wires the Ctrl+Enter / Submit button in the comment input box.
-    (controller as unknown as { acceptInputCommand: { id: string; title: string } }).acceptInputCommand =
-      { id: "accordo.comments.new", title: "Add Comment" };
     context.subscriptions.push(controller);
 
     return {
