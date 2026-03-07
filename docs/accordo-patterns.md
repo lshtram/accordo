@@ -5,6 +5,7 @@ patterns:
   P-14: "Hub dist is per-file tsc output, not a bundle — grep specific dist/*.js files"
   P-21: "Custom editor cold-open needs onCustomEditor activation event alongside onStartupFinished"
   P-22: "TreeItem has no two-line layout — description renders beside label; need WebviewView for detail"
+  P-23: "group field on ToolRegistration is metadata only — ALL tools always visible; no progressive disclosure"
 ---
 
 # accordo-patterns.md — Accordo-Specific Patterns
@@ -63,3 +64,34 @@ VS Code fires `onCustomEditor:<viewType>` *before* `onStartupFinished` on cold s
 
 - **Current workaround:** Metadata + first-sentence in `item.description`.
 - **Full fix (deferred to M46):** `WebviewView` detail pane alongside TreeView.
+---
+
+## P-23 — `group` field is metadata only — ALL tools always visible
+
+**Symptom:** Agent (or developer) assumes that setting `group: "voice"` (or any group) on an
+`ExtensionToolDefinition` / `ToolRegistration` hides those tools from the agent until a
+`accordo_<group>_discover` tool is called. This is **wrong**.
+
+**Reality (as of current implementation):**
+- Hub's `toMcpTools()` **strips** `group` from the MCP wire output but includes every tool
+  regardless of whether `group` is set.
+- The system prompt (`GET /instructions`) includes **all** registered tools — grouped and ungrouped.
+- MCP `tools/list` returns **all** registered tools.
+- `group` is purely a categorisation label. It survives the Bridge → Hub registration payload
+  and is available for UI/filtering but has **no effect on tool visibility**.
+- There is **no progressive-disclosure mechanism** in the current codebase. The design was
+  proposed and then removed. The tests that confirm this:
+  - `packages/hub/src/__tests__/tool-registry.test.ts`: *"toMcpTools includes grouped tools
+    (MCP tools/list is unfiltered)"*
+  - `packages/hub/src/__tests__/prompt-engine.test.ts`: *"grouped tools are included in the
+    prompt alongside ungrouped tools"*
+
+**What `accordo_<group>_discover` tools DO instead:**
+Their value is **runtime state inspection** — reporting provider availability, current FSM
+state, current policy, etc. They are not a gate to unlock other tools.
+
+**Sources to update if you find stale progressive-disclosure language:**
+- `packages/bridge-types/src/index.ts` — JSDoc on `group` field
+- `docs/architecture.md` — §3.7 description
+- `docs/requirements-hub.md` — template structure section
+- Test comments mentioning "forwarded for progressive disclosure"

@@ -142,7 +142,7 @@ describe("ExtensionRegistry", () => {
     });
 
     it("REG-04: group field is included in getAllTools() wire format", () => {
-      // arch §3.7: group is forwarded to Hub for progressive disclosure
+      // arch §3.7: group is forwarded to Hub as metadata (no visibility effect — all tools always shown)
       const tool = makeTool("extA:grouped", { group: "editor" } as Partial<ExtensionToolDefinition>);
       registry.registerTools("extA", [tool]);
       const wire = registry.getAllTools();

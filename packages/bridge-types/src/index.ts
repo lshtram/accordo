@@ -71,9 +71,11 @@ export interface ExtensionToolDefinition {
   /** Whether this tool is safe to retry on timeout. Default: false */
   idempotent?: boolean;
   /**
-   * Optional grouping key (e.g. "editor", "terminal", "comments").
-   * Grouped tools are hidden in the system prompt — the agent discovers them
-   * by calling the corresponding accordo_<group>_discover tool.
+   * Optional grouping key (e.g. "editor", "terminal", "voice").
+   * Metadata only — all tools appear in MCP `tools/list` and the system prompt
+   * regardless of whether `group` is set. The field is stripped from the MCP
+   * wire format by Hub but forwarded in the Bridge → Hub registration payload.
+   * Use it for categorisation / filtering in UI; it has no effect on tool visibility.
    */
   group?: string;
   /**
@@ -107,8 +109,9 @@ export interface ToolRegistration {
   /** Whether this tool is safe to retry on timeout */
   idempotent: boolean;
   /**
-   * Optional grouping key. Grouped tools are hidden in the system prompt;
-   * the agent discovers them via the corresponding .discover tool.
+   * Optional grouping key. Metadata only — all tools are always included in
+   * MCP `tools/list` regardless of this field. Hub strips it from the MCP
+   * wire format but carries it in the registration payload.
    */
   group?: string;
 }

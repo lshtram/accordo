@@ -65,10 +65,10 @@ When launched with `--stdio`:
 ```
 [Fixed prefix: ~300 tokens — identity, behaviour guidelines]
 [Dynamic state: activeFile, openEditors, workspace, terminals, modalities]
-[Tool summary: visible tools only (grouped tools hidden, one .discover stub per group)]
+[Tool summary: all registered tools — grouped and ungrouped, full name + description]
 ```
 
-**Progressive tool disclosure:** Tools with a `group` field are excluded from the tool summary. For each group, a single `accordo.<group>.discover` tool is visible. The agent calls it to learn the full schemas of the group’s tools on demand. This keeps the prompt compact as modalities grow.
+**Tool visibility:** All registered tools are included in the system prompt and in MCP `tools/list`, regardless of whether they carry a `group` field. The `group` field is metadata only (stripped from MCP wire output; present in Bridge → Hub payload). There is no progressive-disclosure or hidden-tools mechanism.
 
 **Token budget:** Dynamic section MUST NOT exceed 1,500 tokens. If exceeded:
 1. Omit null/empty fields from state
