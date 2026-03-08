@@ -17,7 +17,8 @@
       //   a) In the EDH window: Ctrl+Shift+P → "Accordo: Show Connection Status"
       //   b) In any terminal: curl http://localhost:3000/health   ← expect toolCount > 0
       //   c) In Copilot chat: the Accordo MCP server appears automatically
-      "name": "Launch Bridge + Editor (Extension Development Host)",
+      //   d) Status bar should show Bridge + Voice indicators (bottom-right)
+      "name": "Launch Bridge + Editor + Voice (Extension Development Host)",
       "type": "extensionHost",
       "request": "launch",
       "args": [
@@ -30,6 +31,8 @@
         "--extensionDevelopmentPath=${workspaceFolder}/packages/md-viewer",
         // accordo-slidev: Slidev presentation modality + 9 MCP tools
         "--extensionDevelopmentPath=${workspaceFolder}/packages/slidev",
+        // accordo-voice: STT/TTS narration + dictation (requires accordo-bridge)
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/voice",
         // Open this repo in the EDH so it has a real workspace to report
         "${workspaceFolder}"
       ],
@@ -38,7 +41,8 @@
         "${workspaceFolder}/packages/editor/dist/**/*.js",
         "${workspaceFolder}/packages/comments/dist/**/*.js",
         "${workspaceFolder}/packages/md-viewer/dist/**/*.js",
-        "${workspaceFolder}/packages/slidev/dist/**/*.js"
+        "${workspaceFolder}/packages/slidev/dist/**/*.js",
+        "${workspaceFolder}/packages/voice/dist/**/*.js"
       ],
       "preLaunchTask": "build-all",
       "sourceMaps": true

@@ -40,10 +40,13 @@ Expected output: `Tests  211 passed (211)`. If any fail, do not proceed to manua
 
 ## 3. Setup Prerequisites for Manual Testing
 
-1. Build the workspace: `pnpm build`
-2. Open VS Code Extension Development Host: press **F5** from `packages/bridge` (starts Bridge), then launch again from `packages/voice`.
-3. Confirm the Bridge is running: its status bar indicator is visible.
-4. Confirm `accordo-voice` is active: a **Voice** item appears in the status bar (bottom-right).
+1. Build the workspace: `pnpm build` (or press **Cmd+Shift+B** in VS Code).
+2. Press **F5** from the **root workspace** — this uses `.vscode/launch.json` which loads Bridge, Editor, Comments, Md-Viewer, Slidev, **and Voice** all together into a single Extension Development Host window.
+   - The configuration is named **"Launch Bridge + Editor + Voice (Extension Development Host)"**.
+   - Do NOT press F5 from inside a package folder — that won't load the other extensions.
+3. A new VS Code window (the EDH) opens with this repo as its workspace.
+4. Wait ~3 seconds for all extensions to activate.
+5. Confirm: **Voice** status bar item appears on the bottom-right of the EDH window.
 
 ---
 
@@ -131,7 +134,9 @@ Voice: af_sarah | Speed: 1.0 | Mode: narrate-off
 
 ### Opening the panel
 
-1. Open **View → Open View** → search "Voice".
+1. In the EDH window: **View → Open View…** → type `Voice` → select **"Voice"** (under Accordo Voice).
+   - Or: **Cmd+Shift+P** → type `Open View` → `Voice`.
+   - The panel docks in the bottom panel area by default.
 2. **Expected panel contents:**
    - A waveform canvas (32 animated bars)
    - A circular **Hold to speak** mic button
@@ -140,7 +145,11 @@ Voice: af_sarah | Speed: 1.0 | Mode: narrate-off
 
 ### Mic push-to-talk
 
-1. Click and hold the mic button.
+**Mouse:** Click and hold the mic button in the Voice panel.
+
+**Keyboard alternative:** `Cmd+Alt+V` calls `accordo.voice.startDictation` but the command is currently a stub — actual recording starts via the mic button in the panel, or by asking the agent (`accordo_voice_dictation { "action": "start" }`).
+
+1. Click and hold the mic button in the panel.
 2. **Expected:** Status bar → `⏺ Voice: Recording…`; panel label reads "Recording…"
 3. Release the mic button.
 4. **Expected:** Status bar → `⟳ Voice: Transcribing…`; label reads "Transcribing…"
@@ -170,23 +179,22 @@ Voice: af_sarah | Speed: 1.0 | Mode: narrate-off
 
 All commands are accessible via **Command Palette** (`Cmd+Shift+P`) — search "Voice".
 
-| Command | Palette name | Keybinding | Active when |
+| Command | Palette name | Keybinding | Status |
 |---|---|---|---|
-| `accordo.voice.startDictation` | Start Dictation | `Cmd+Alt+V` | Editor focused |
-| `accordo.voice.readAloud` | Read Selection Aloud | `Cmd+Alt+R` | Editor has selection |
-| `accordo.voice.stopNarration` | Stop Narration | `Escape` | `accordo.voice.narrating` context |
-| `accordo.voice.pauseNarration` | Pause Narration | — | — |
-| `accordo.voice.resumeNarration` | Resume Narration | — | — |
-| `accordo.voice.configure` | Configure Voice | — | — |
+| `accordo.voice.startDictation` | Start Dictation | `Cmd+Alt+V` | Stub — actual recording via panel or agent |
+| `accordo.voice.readAloud` | Read Selection Aloud | `Cmd+Alt+R` | Stub — actual synthesis via agent |
+| `accordo.voice.stopNarration` | Stop Narration | `Escape` (when narrating) | **Functional** — stops narration FSM |
+| `accordo.voice.pauseNarration` | Pause Narration | — | **Functional** — pauses narration FSM |
+| `accordo.voice.resumeNarration` | Resume Narration | — | **Functional** — resumes narration FSM |
+| `accordo.voice.configure` | Configure Voice | — | **Functional** — opens Settings for `accordo.voice` |
 
 ### Steps
 
-1. Open any file, place cursor in the editor.
-2. `Cmd+Shift+P` → **Start Dictation** → Enter.
-3. **Expected:** Status bar → `⏺ Voice: Recording…`
-4. Speak for 2–3 seconds; then `Cmd+Shift+P` → **Stop Narration** (or press `Escape`).
-5. Select some text in the editor → press `Cmd+Alt+R`.
-6. **Expected:** Audio plays the selected text (requires kokoro-js).
+1. Press `Cmd+Shift+P` → type "Configure Voice" → Enter.
+   **Expected:** Settings UI opens, filtered to `accordo.voice.*` settings.
+2. Trigger narration via the agent, then press `Escape`.
+   **Expected:** Narration stops, status bar returns to `🔊 Voice: Ready`.
+3. `Cmd+Alt+V` and `Cmd+Alt+R` are registered (no error) but are no-ops until wired to direct recording/synthesis in a future milestone.
 
 ---
 
