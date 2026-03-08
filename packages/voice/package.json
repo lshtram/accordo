@@ -20,6 +20,10 @@
   "extensionDependencies": [
     "accordo.accordo-bridge"
   ],
+  "engines": {
+    "node": ">=20",
+    "vscode": "^1.100.0"
+  },
   "type": "module",
   "main": "./dist/extension.js",
   "scripts": {
