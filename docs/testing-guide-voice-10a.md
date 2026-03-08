@@ -27,16 +27,14 @@ Expected output: `Tests  211 passed (211)`. If any fail, do not proceed to manua
 - Model: `/usr/local/share/whisper/ggml-base.en.bin`
 - Default VS Code settings (`accordo.voice.whisperPath: "whisper"`, `accordo.voice.whisperModelFolder: "/usr/local/share/whisper"`, `accordo.voice.whisperModel: "ggml-base.en.bin"`) match the installation — no configuration change needed.
 
-### kokoro-js (TTS) ❌ Not installed
+### kokoro-js (TTS) ✅ Installed
 
-`kokoro-js` is an optional runtime dependency loaded dynamically. It is not bundled with the extension.
+- Version: `1.2.1` (declared in `packages/voice/package.json`)
+- Located at: `packages/voice/node_modules/kokoro-js`
+- All voice `.bin` files present (af_sarah, am_adam, bf_emma, bm_george, etc.)
+- `KokoroTTS` and `TextSplitterStream` export correctly — confirmed by dynamic import check
 
-**To install:**
-```bash
-cd packages/voice && pnpm add kokoro-js
-```
-
-Until installed, the extension activates in a degraded state: status bar shows `🔇 Voice: Off`, narration tools return an error, and a warning notification appears on startup.
+> Previously used (and confirmed working) in the `theia-openspace` project on this machine.
 
 ---
 
@@ -70,20 +68,20 @@ These modules have no user-visible UI. Verify via `pnpm --filter accordo-voice t
 
 **Goal:** Confirm the extension loads, status bar appears, and the correct notification fires based on provider availability.
 
-### 5.1 With kokoro-js NOT installed (current state)
+### 5.1 With both providers installed (current state)
 
 1. Open Extension Development Host.
 2. Wait ~2 seconds for activation.
-3. **Expected status bar (bottom-right):** `🔇 Voice: Off`
+3. **Expected status bar (bottom-right):** `🔊 Voice: Ready`
+4. No warning notification.
+5. Open **View → Output** → select channel **"Accordo Voice"** — confirm providers available logged.
+
+### 5.2 Degraded state (kokoro-js removed or unavailable)
+
+1. Temporarily rename or remove `packages/voice/node_modules/kokoro-js`.
+2. Reload Extension Development Host.
+3. **Expected status bar:** `🔇 Voice: Off`
 4. **Expected notification:** Warning toast — *"Accordo Voice: providers not available. Install Whisper.cpp and kokoro-js."*
-5. Open **View → Output** → select channel **"Accordo Voice"** — confirm no crash, only a warning log.
-
-### 5.2 With both providers installed
-
-1. Install `kokoro-js` (see §2) and reload the Extension Development Host.
-2. **Expected status bar:** `🔊 Voice: Ready`
-3. No warning notification.
-4. Output channel shows provider availability confirmed.
 
 ### 5.3 Without Bridge extension
 
