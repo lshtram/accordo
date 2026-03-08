@@ -4,8 +4,12 @@
  * M50-KA
  */
 
+import { createRequire } from "node:module";
 import type { TtsProvider, TtsSynthesisRequest, TtsSynthesisResult } from "../providers/tts-provider.js";
 import type { CancellationToken } from "../providers/stt-provider.js";
+
+/** CJS require scoped to this file — used only for availability check in ESM context. */
+const _cjsRequire = createRequire(import.meta.url);
 
 // ---------------------------------------------------------------------------
 // Injectable seams for testing
@@ -115,7 +119,7 @@ export class KokoroAdapter implements TtsProvider {
 
   /** M50-KA constructor */
   constructor(options: KokoroAdapterOptions = {}) {
-    this._resolve = options.resolveFn ?? ((id) => require.resolve(id));
+    this._resolve = options.resolveFn ?? ((id) => _cjsRequire.resolve(id));
     this._import = options.importFn ?? ((id) => import(id));
   }
 
