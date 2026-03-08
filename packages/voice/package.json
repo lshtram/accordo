@@ -4,8 +4,12 @@
   "publisher": "accordo",
   "version": "0.1.0",
   "description": "Accordo IDE Voice — local STT/TTS narration and dictation via Whisper.cpp + Kokoro",
-  "categories": ["Other"],
-  "extensionKind": ["workspace"],
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
   "activationEvents": [
     "onStartupFinished",
     "onView:accordo-voice-panel",
@@ -13,7 +17,9 @@
     "onCommand:accordo.voice.readAloud",
     "onCommand:accordo.voice.stopNarration"
   ],
-  "extensionDependencies": ["accordo.accordo-bridge"],
+  "extensionDependencies": [
+    "accordo.accordo-bridge"
+  ],
   "type": "module",
   "main": "./dist/extension.js",
   "scripts": {
@@ -46,12 +52,36 @@
       ]
     },
     "commands": [
-      { "command": "accordo.voice.startDictation",  "title": "Start Dictation",       "icon": "$(record)" },
-      { "command": "accordo.voice.readAloud",        "title": "Read Selection Aloud",  "icon": "$(play)" },
-      { "command": "accordo.voice.stopNarration",    "title": "Stop Narration",        "icon": "$(debug-stop)" },
-      { "command": "accordo.voice.pauseNarration",   "title": "Pause Narration",       "icon": "$(debug-pause)" },
-      { "command": "accordo.voice.resumeNarration",  "title": "Resume Narration",      "icon": "$(play)" },
-      { "command": "accordo.voice.configure",        "title": "Configure Voice",       "icon": "$(gear)" }
+      {
+        "command": "accordo.voice.startDictation",
+        "title": "Start Dictation",
+        "icon": "$(record)"
+      },
+      {
+        "command": "accordo.voice.readAloud",
+        "title": "Read Selection Aloud",
+        "icon": "$(play)"
+      },
+      {
+        "command": "accordo.voice.stopNarration",
+        "title": "Stop Narration",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "accordo.voice.pauseNarration",
+        "title": "Pause Narration",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "accordo.voice.resumeNarration",
+        "title": "Resume Narration",
+        "icon": "$(play)"
+      },
+      {
+        "command": "accordo.voice.configure",
+        "title": "Configure Voice",
+        "icon": "$(gear)"
+      }
     ],
     "keybindings": [
       {
@@ -93,14 +123,22 @@
         "accordo.voice.voice": {
           "type": "string",
           "default": "af_sarah",
-          "enum": ["af_sarah", "am_adam", "af_bella", "af_nicole", "am_michael", "bf_emma", "bm_george"],
+          "enum": [
+            "af_sarah",
+            "am_adam",
+            "af_bella",
+            "af_nicole",
+            "am_michael",
+            "bf_emma",
+            "bm_george"
+          ],
           "description": "Kokoro TTS voice"
         },
         "accordo.voice.speed": {
           "type": "number",
-          "default": 1.0,
+          "default": 1,
           "minimum": 0.5,
-          "maximum": 2.0,
+          "maximum": 2,
           "description": "TTS playback speed multiplier"
         },
         "accordo.voice.language": {
@@ -111,7 +149,11 @@
         "accordo.voice.narrationMode": {
           "type": "string",
           "default": "narrate-off",
-          "enum": ["narrate-off", "narrate-everything", "narrate-summary"],
+          "enum": [
+            "narrate-off",
+            "narrate-everything",
+            "narrate-summary"
+          ],
           "description": "Default narration mode"
         },
         "accordo.voice.llmEndpoint": {
@@ -133,5 +175,8 @@
     "@types/vscode": "^1.100.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "kokoro-js": "1.2.1"
   }
 }
