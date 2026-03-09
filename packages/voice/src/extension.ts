@@ -603,6 +603,7 @@ export async function activate(
           cleanText: cleanTextForNarration,
           playAudio: (pcm, sampleRate) => playPcmAudio(pcm, sampleRate),
           streamSpeak: streamingSpeak,
+          log: (msg) => logger.log(msg),
         }),
         createDictationTool({
           sessionFsm,

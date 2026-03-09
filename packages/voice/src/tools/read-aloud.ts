@@ -27,11 +27,13 @@ export interface ReadAloudToolDeps {
    * original blocking single-shot path (used in tests).
    */
   streamSpeak?: StreamSpeakFn;
+  /** Optional logger for per-sentence timing lines (voice output channel). */
+  log?: (msg: string) => void;
 }
 
 /** M50-RA */
 export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefinition {
-  const { sessionFsm, narrationFsm, ttsProvider, cleanText, playAudio, streamSpeak } = deps;
+  const { sessionFsm, narrationFsm, ttsProvider, cleanText, playAudio, streamSpeak, log } = deps;
 
   return {
     name: "accordo_voice_readAloud",
@@ -86,10 +88,12 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
         // after only its synthesis latency. Tool call returns immediately so
         // the MCP timeout does not cut off long texts.
         narrationFsm.audioReady();
+        log?.(`[readAloud] handler: availMs=${t1 - t0} handlerMs=~${Date.now() - t0} chars=${rawText.length}`);
         void streamSpeak(processedText, ttsProvider, {
           language: policy.language,
           voice,
           speed,
+          log,
         }).then(() => {
           narrationFsm.complete();
         }).catch(() => {
