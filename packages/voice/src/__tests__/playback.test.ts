@@ -209,17 +209,7 @@ describe("createPreSpawnedPlayer — low-latency stdin-pipe playback", () => {
     vi.mocked(fsMock.mkdtemp).mockResolvedValue("/tmp/accordo-wav-xyz");
   });
 
-  it("pre-spawns afplay /dev/stdin on macOS", () => {
-    const { spawnFn, procs } = makeSpawnWithStdin();
-    createPreSpawnedPlayer({ platform: "darwin", spawnFn });
-    expect(procs.length).toBe(1);
-    expect(procs[0]!.spawnCmd).toBe("afplay");
-    expect(procs[0]!.spawnArgs).toEqual(["/dev/stdin"]);
-    // abort to clean up
-    procs[0]!.emitClose(0);
-  });
-
-  it("pre-spawns aplay - on Linux", () => {
+  it("pre-spawns aplay - on Linux (stdin pipe supported)", () => {
     const { spawnFn, procs } = makeSpawnWithStdin();
     createPreSpawnedPlayer({ platform: "linux", spawnFn });
     expect(procs.length).toBe(1);
@@ -228,9 +218,23 @@ describe("createPreSpawnedPlayer — low-latency stdin-pipe playback", () => {
     procs[0]!.emitClose(0);
   });
 
-  it("play() writes WAV to stdin and waits for exit", async () => {
+  it("macOS deferred path uses writeFile — afplay does not support stdin pipe", async () => {
     const { spawnFn, procs } = makeSpawnWithStdin();
     const player = createPreSpawnedPlayer({ platform: "darwin", spawnFn });
+    // No process pre-spawned — afplay requires a seekable file
+    expect(procs.length).toBe(0);
+    const playPromise = player.play(new Uint8Array([0]), 22050);
+    await flush();
+    // Deferred path writes temp file then spawns afplay
+    expect(fsMock.writeFile).toHaveBeenCalled();
+    expect(procs.length).toBe(1);
+    procs[0]!.emitClose(0);
+    await playPromise;
+  });
+
+  it("play() writes WAV to stdin and waits for exit (Linux)", async () => {
+    const { spawnFn, procs } = makeSpawnWithStdin();
+    const player = createPreSpawnedPlayer({ platform: "linux", spawnFn });
     const playPromise = player.play(new Uint8Array([1, 2, 3, 4]), 22050);
     await flush();
     // WAV header + data should have been written to stdin
@@ -240,25 +244,25 @@ describe("createPreSpawnedPlayer — low-latency stdin-pipe playback", () => {
     await playPromise;
   });
 
-  it("play() rejects when afplay exits with non-zero code", async () => {
+  it("play() rejects when aplay exits with non-zero code", async () => {
     const { spawnFn, procs } = makeSpawnWithStdin();
-    const player = createPreSpawnedPlayer({ platform: "darwin", spawnFn });
+    const player = createPreSpawnedPlayer({ platform: "linux", spawnFn });
     const playPromise = player.play(new Uint8Array([0]), 22050);
     await flush();
     procs[0]!.emitClose(1);
-    await expect(playPromise).rejects.toThrow(/afplay/i);
+    await expect(playPromise).rejects.toThrow(/aplay/i);
   });
 
-  it("abort() kills the pre-spawned process", async () => {
+  it("abort() kills the pre-spawned process (Linux)", async () => {
     const { spawnFn, procs } = makeSpawnWithStdin();
-    const player = createPreSpawnedPlayer({ platform: "darwin", spawnFn });
+    const player = createPreSpawnedPlayer({ platform: "linux", spawnFn });
     player.abort();
     expect(procs[0]!.killed).toBe(true);
   });
 
-  it("abort() after play() does nothing (idempotent)", async () => {
+  it("abort() after play() does nothing (idempotent, Linux)", async () => {
     const { spawnFn, procs } = makeSpawnWithStdin();
-    const player = createPreSpawnedPlayer({ platform: "darwin", spawnFn });
+    const player = createPreSpawnedPlayer({ platform: "linux", spawnFn });
     const playPromise = player.play(new Uint8Array([0]), 22050);
     await flush();
     procs[0]!.emitClose(0);

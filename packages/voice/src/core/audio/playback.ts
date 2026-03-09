@@ -170,9 +170,12 @@ export function createPreSpawnedPlayer(options?: PlaybackOptions): PreSpawnedPla
   const spawn = options?.spawnFn ?? (nodeSpawn as unknown as SpawnFn);
   const platform = options?.platform ?? (process.platform as NodeJS.Platform);
 
-  // On Windows we cannot pipe WAV into PowerShell's SoundPlayer; fall back to
-  // the normal temp-file approach so behaviour remains correct on all platforms.
-  if (platform === "win32" || (platform !== "darwin" && platform !== "linux")) {
+  // Only Linux aplay supports true streaming stdin-pipe (aplay -).
+  // macOS afplay requires a seekable file descriptor — /dev/stdin is not
+  // seekable, so afplay exits immediately with no audio. Windows / other
+  // platforms also can't pipe, so all non-Linux paths use the deferred
+  // temp-file approach via playPcmAudio.
+  if (platform !== "linux") {
     return {
       play: (pcm, sampleRate) => playPcmAudio(pcm, sampleRate, options),
       abort: () => {
@@ -181,10 +184,9 @@ export function createPreSpawnedPlayer(options?: PlaybackOptions): PreSpawnedPla
     };
   }
 
-  // macOS: afplay reads a WAV from /dev/stdin (sequential, no seeking needed).
   // Linux: aplay reads WAV from stdin when '-' is passed as the file argument.
-  const cmd = platform === "darwin" ? "afplay" : "aplay";
-  const args = platform === "darwin" ? ["/dev/stdin"] : ["-"];
+  const cmd = "aplay";
+  const args = ["-"];
 
   // Spawn immediately — the process blocks waiting for stdin data.
   const proc = spawn(cmd, args, { stdio: "pipe" }) as ReturnType<SpawnFn> & {
