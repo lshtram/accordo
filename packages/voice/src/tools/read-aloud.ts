@@ -54,12 +54,14 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
       required: ["text"],
     },
     handler: async (args: Record<string, unknown>) => {
+      const t0 = Date.now();
       const rawText = (args.text as string) ?? "";
       if (!rawText.trim()) {
         return { spoken: false, reason: "empty text" };
       }
 
       const available = await ttsProvider.isAvailable();
+      const t1 = Date.now();
       if (!available) {
         return { error: "TTS provider is not available" };
       }
@@ -97,6 +99,8 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
           speaking: true,
           textLength: rawText.length,
           voice,
+          _handlerMs: Date.now() - t0,
+          _availMs: t1 - t0,
         };
       }
 

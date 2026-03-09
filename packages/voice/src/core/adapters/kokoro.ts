@@ -121,6 +121,15 @@ export class KokoroAdapter implements TtsProvider {
   constructor(options: KokoroAdapterOptions = {}) {
     this._resolve = options.resolveFn ?? ((id) => _cjsRequire.resolve(id));
     this._import = options.importFn ?? ((id) => import(id));
+    // M50-KA-02: Eagerly cache availability at construction time so the handler
+    // path (isAvailable() call from readAloud tool) never hits the synchronous
+    // require.resolve() on the extension host event loop mid-request.
+    try {
+      this._resolve("kokoro-js");
+      this._available = true;
+    } catch {
+      this._available = false;
+    }
   }
 
   /** M50-KA-02 — cached after first check */
@@ -128,6 +137,7 @@ export class KokoroAdapter implements TtsProvider {
     if (this._available !== undefined) {
       return this._available;
     }
+    // Fallback path (only reachable if resolveFn was injected but skipped constructor logic)
     try {
       this._resolve("kokoro-js");
       this._available = true;

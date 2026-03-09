@@ -650,6 +650,24 @@ export async function activate(
         }
         if (!ttsAvailable) {
           logger.log("TTS (kokoro) unavailable — read-aloud disabled");
+        } else {
+          // M50-EXT-07: Pre-load the ONNX model now so the first readAloud
+          // tool call doesn't incur the 3-5 s model-load latency.
+          logger.log("tts: starting ONNX model pre-warm");
+          void Promise.resolve(
+            tts.synthesize({
+              text: ".",
+              language: sessionFsm.policy.language,
+              voice: sessionFsm.policy.voice,
+              speed: 1.0,
+            }),
+          )
+            .then(() => {
+              logger.log("tts: ONNX model pre-warm complete");
+            })
+            .catch((err: unknown) => {
+              logger.log(`tts: pre-warm failed (non-fatal) — ${String(err)}`);
+            });
         }
         reconcileSessionState("availability-check");
       },
@@ -666,6 +684,24 @@ export async function activate(
         void vscode.window.showWarningMessage(
           `Accordo Voice: Whisper not found at "${whisperPath}". Set accordo.voice.whisperPath in settings.`,
         );
+      }
+      if (ttsAvailable) {
+        // Pre-load ONNX model so the first read-aloud command is instant.
+        logger.log("tts: starting ONNX model pre-warm (no-bridge)");
+        void Promise.resolve(
+          tts.synthesize({
+            text: ".",
+            language: sessionFsm.policy.language,
+            voice: sessionFsm.policy.voice,
+            speed: 1.0,
+          }),
+        )
+          .then(() => {
+            logger.log("tts: ONNX model pre-warm complete (no-bridge)");
+          })
+          .catch((err: unknown) => {
+            logger.log(`tts: pre-warm failed (non-fatal, no-bridge) — ${String(err)}`);
+          });
       }
       reconcileSessionState("availability-check-no-bridge");
     });
