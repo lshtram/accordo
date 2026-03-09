@@ -1,0 +1,9 @@
+{
+  "name": "sherpa-profile",
+  "version": "1.0.0",
+  "description": "Standalone benchmark: Sherpa-ONNX Kokoro TTS vs current JS ONNX",
+  "private": true,
+  "dependencies": {
+    "sherpa-onnx": "latest"
+  }
+}
