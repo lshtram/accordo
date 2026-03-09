@@ -17,9 +17,14 @@ import type { CancellationToken } from "../core/providers/stt-provider.js";
 // ---------------------------------------------------------------------------
 vi.mock("../core/audio/playback.js", () => ({
   playPcmAudio: vi.fn().mockResolvedValue(undefined),
+  // Multi-sentence path uses pre-spawned players instead of raw playPcmAudio.
+  createPreSpawnedPlayer: vi.fn(() => ({
+    play: vi.fn().mockResolvedValue(undefined),
+    abort: vi.fn(),
+  })),
 }));
 
-import { playPcmAudio } from "../core/audio/playback.js";
+import { playPcmAudio, createPreSpawnedPlayer } from "../core/audio/playback.js";
 import { streamingSpeak } from "../core/audio/streaming-tts.js";
 
 // ---------------------------------------------------------------------------
@@ -138,8 +143,11 @@ describe("M51-STR: streaming pipeline behaviour", () => {
       provider,
       { language: "en-US" },
     );
-    // Each sentence should produce a playback call
-    expect(playPcmAudio).toHaveBeenCalledTimes(3);
+    // Multi-sentence path uses pre-spawned players (one per sentence).
+    expect(vi.mocked(createPreSpawnedPlayer)).toHaveBeenCalledTimes(3);
+    const totalPlayCalls = vi.mocked(createPreSpawnedPlayer).mock.results
+      .reduce((sum, r) => sum + (vi.mocked(r.value.play).mock.calls.length), 0);
+    expect(totalPlayCalls).toBe(3);
   });
 
   it("M51-STR-04: first sentence synthesized and played before remaining sentences", async () => {
@@ -151,9 +159,11 @@ describe("M51-STR: streaming pipeline behaviour", () => {
         return { audio: new Uint8Array(10), sampleRate: 22050 };
       }),
     });
-    vi.mocked(playPcmAudio).mockImplementation(async () => {
-      callOrder.push("play");
-    });
+    // Multi-sentence path uses pre-spawned players
+    vi.mocked(createPreSpawnedPlayer).mockImplementation(() => ({
+      play: vi.fn(async () => { callOrder.push("play"); }),
+      abort: vi.fn(),
+    }));
 
     await streamingSpeak("First. Second.", provider, { language: "en-US" });
 
@@ -176,9 +186,11 @@ describe("M51-STR: streaming pipeline behaviour", () => {
         return { audio, sampleRate: 22050 };
       }),
     });
-    vi.mocked(playPcmAudio).mockImplementation(async (pcm: Uint8Array) => {
-      playedAudio.push(pcm);
-    });
+    // Multi-sentence path routes through pre-spawned players
+    vi.mocked(createPreSpawnedPlayer).mockImplementation(() => ({
+      play: vi.fn(async (pcm: Uint8Array) => { playedAudio.push(pcm); }),
+      abort: vi.fn(),
+    }));
 
     await streamingSpeak("A. B. C.", provider, { language: "en-US" });
 
