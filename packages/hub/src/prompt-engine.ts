@@ -158,13 +158,32 @@ export function renderPrompt(
     );
   }
 
+  // Only include modalities where isOpen === true, excluding accordo-comments
+  // (handled by dedicated section above) and accordo-voice (handled by M51-SN).
+  const openModalities = Object.entries(state.modalities).filter(
+    ([k, v]) => v["isOpen"] === true && k !== "accordo-comments" && k !== "accordo-voice",
+  );
+  if (openModalities.length > 0) {
+    const modalLines = openModalities.map(
+      ([k, v]) => `  ${k}: ${JSON.stringify(v)}`,
+    );
+    stateLines.push(`**Extension state:**\n${modalLines.join("\n")}`);
+  }
+
+  const stateSection =
+    stateLines.length > 0
+      ? `## Current IDE State\n\n${stateLines.join("\n\n")}`
+      : `## Current IDE State\n\nNo active session.`;
+
   // ── Voice section (M51-SN) ───────────────────────────────────────────────
-  // When accordo-voice publishes state with policy.enabled = true, render a
-  // dedicated section with narration directive instead of a raw JSON dump.
+  // Rendered as a top-level section BEFORE the state dump so the narration
+  // directive appears early in the prompt and is treated as an instruction,
+  // not as informational state data. Models deprioritize late instructions.
   const voiceModality = state.modalities["accordo-voice"];
   const voicePolicy = voiceModality?.["policy"] as Record<string, unknown> | undefined;
   const voiceEnabled = voicePolicy?.["enabled"] === true;
 
+  let voiceSection = "";
   if (voiceEnabled) {
     const session = (voiceModality?.["session"] as string | undefined) ?? "inactive";
     const sttAvailable = voiceModality?.["sttAvailable"] === true;
@@ -192,25 +211,8 @@ export function renderPrompt(
       );
     }
 
-    stateLines.push(`## Voice\n\n${voiceLines.join("\n")}`);
+    voiceSection = `## Voice\n\n${voiceLines.join("\n")}`;
   }
-
-  // Only include modalities where isOpen === true, excluding accordo-comments
-  // (handled by dedicated section above) and accordo-voice (handled by M51-SN).
-  const openModalities = Object.entries(state.modalities).filter(
-    ([k, v]) => v["isOpen"] === true && k !== "accordo-comments" && k !== "accordo-voice",
-  );
-  if (openModalities.length > 0) {
-    const modalLines = openModalities.map(
-      ([k, v]) => `  ${k}: ${JSON.stringify(v)}`,
-    );
-    stateLines.push(`**Extension state:**\n${modalLines.join("\n")}`);
-  }
-
-  const stateSection =
-    stateLines.length > 0
-      ? `## Current IDE State\n\n${stateLines.join("\n\n")}`
-      : `## Current IDE State\n\nNo active session.`;
 
   // ── Tool section ─────────────────────────────────────────────────────────
   // Show every registered tool — all are directly callable via MCP.
@@ -231,5 +233,6 @@ export function renderPrompt(
     toolSection = `## Registered Tools\n\n${tools.map((t) => `- ${t.name}`).join("\n")}`;
   }
 
-  return `${fixed}\n\n${stateSection}\n\n${toolSection}`;
+  const sections = [fixed, voiceSection, stateSection, toolSection].filter(Boolean);
+  return sections.join("\n\n");
 }
