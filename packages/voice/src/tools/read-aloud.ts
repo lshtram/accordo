@@ -9,8 +9,10 @@ import type { SessionFsm } from "../core/fsm/session-fsm.js";
 import type { NarrationFsm } from "../core/fsm/narration-fsm.js";
 import type { TtsProvider } from "../core/providers/tts-provider.js";
 import type { CleanMode } from "../text/text-cleaner.js";
+import type { StreamingSpeakOptions } from "../core/audio/streaming-tts.js";
 
 export type PlayAudioFn = (pcm: Uint8Array, sampleRate: number) => Promise<void>;
+export type StreamSpeakFn = (text: string, ttsProvider: TtsProvider, options: StreamingSpeakOptions) => Promise<void>;
 
 export interface ReadAloudToolDeps {
   sessionFsm: SessionFsm;
@@ -18,11 +20,18 @@ export interface ReadAloudToolDeps {
   ttsProvider: TtsProvider;
   cleanText: (text: string, mode: CleanMode) => string;
   playAudio: PlayAudioFn;
+  /**
+   * M51-STR: Optional streaming pipeline. When provided, audio starts after
+   * the first sentence is synthesized (not the full text) and the tool call
+   * returns immediately (fire-and-forget). When absent, falls back to the
+   * original blocking single-shot path (used in tests).
+   */
+  streamSpeak?: StreamSpeakFn;
 }
 
 /** M50-RA */
 export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefinition {
-  const { sessionFsm, narrationFsm, ttsProvider, cleanText, playAudio } = deps;
+  const { sessionFsm, narrationFsm, ttsProvider, cleanText, playAudio, streamSpeak } = deps;
 
   return {
     name: "accordo_voice_readAloud",
@@ -61,20 +70,52 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
       const policy = sessionFsm.policy;
       const voice = (args.voice as string | undefined) ?? policy.voice;
       const speed = (args.speed as number | undefined) ?? policy.speed;
+      if (speed < 0.5 || speed > 2.0) {
+        return { error: `Invalid speed: ${String(speed)} (expected 0.5-2.0)` };
+      }
+      const effectiveMode =
+        policy.narrationMode === "narrate-off" ? "narrate-everything" : policy.narrationMode;
 
-      narrationFsm.enqueue({ text: processedText, mode: policy.narrationMode });
+      narrationFsm.enqueue({ text: processedText, mode: effectiveMode });
       narrationFsm.startProcessing();
 
-      const result = await ttsProvider.synthesize({
-        text: processedText,
-        language: policy.language,
-        voice,
-        speed,
-      });
+      if (streamSpeak) {
+        // M51-STR: Fire-and-forget streaming — first sentence starts playing
+        // after only its synthesis latency. Tool call returns immediately so
+        // the MCP timeout does not cut off long texts.
+        narrationFsm.audioReady();
+        void streamSpeak(processedText, ttsProvider, {
+          language: policy.language,
+          voice,
+          speed,
+        }).then(() => {
+          narrationFsm.complete();
+        }).catch(() => {
+          narrationFsm.error();
+        });
+        return {
+          speaking: true,
+          textLength: rawText.length,
+          voice,
+        };
+      }
 
-      narrationFsm.audioReady();
-      await playAudio(result.audio, result.sampleRate ?? 22050);
-      narrationFsm.complete();
+      // Original blocking path — fallback when streamSpeak is not injected (used in tests)
+      try {
+        const result = await ttsProvider.synthesize({
+          text: processedText,
+          language: policy.language,
+          voice,
+          speed,
+        });
+
+        narrationFsm.audioReady();
+        await playAudio(result.audio, result.sampleRate ?? 22050);
+        narrationFsm.complete();
+      } catch (err) {
+        narrationFsm.error();
+        return { error: `Read aloud failed: ${String(err)}` };
+      }
 
       return {
         spoken: true,
