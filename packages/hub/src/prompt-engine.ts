@@ -203,14 +203,14 @@ export function renderPrompt(
 
     if (narrationMode === "narrate-summary") {
       voiceLines.push(
-        "Directive: After each response, call accordo_voice_readAloud with a 2-3 sentence spoken summary of your answer. Keep it concise and natural for spoken delivery. Do not repeat the full response — summarize the key points.",
+        "Directive: Before writing your response, call accordo_voice_readAloud with a 2-3 sentence spoken summary of what you are about to say. Fire the tool call first so audio begins while the user reads your reply. Keep it concise and natural for spoken delivery. Do not repeat the full response — summarize the key points.",
       );
       voiceLines.push(
         "If accordo_voice_readAloud is not available or returns a 'disabled' error, call activate_voice_interaction_tools first, then retry the readAloud call.",
       );
     } else if (narrationMode === "narrate-everything") {
       voiceLines.push(
-        "Directive: After each response, call accordo_voice_readAloud with your full response text. The text cleaning pipeline will handle markdown/code conversion to spoken form.",
+        "Directive: Before writing your response, call accordo_voice_readAloud with your full response text. Fire the tool call first so audio begins while the user reads your reply. The text cleaning pipeline will handle markdown/code conversion to spoken form.",
       );
       voiceLines.push(
         "If accordo_voice_readAloud is not available or returns a 'disabled' error, call activate_voice_interaction_tools first, then retry the readAloud call.",
