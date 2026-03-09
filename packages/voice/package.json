@@ -15,6 +15,8 @@
     "onView:accordo-voice-panel",
     "onCommand:accordo.voice.startDictation",
     "onCommand:accordo.voice.readAloud",
+    "onCommand:accordo.voice.testTts",
+    "onCommand:accordo.voice.testStt",
     "onCommand:accordo.voice.stopNarration"
   ],
   "extensionDependencies": [
@@ -67,6 +69,16 @@
         "icon": "$(play)"
       },
       {
+        "command": "accordo.voice.testTts",
+        "title": "Test TTS (Smoke Test)",
+        "icon": "$(megaphone)"
+      },
+      {
+        "command": "accordo.voice.testStt",
+        "title": "Test STT (Smoke Test)",
+        "icon": "$(pulse)"
+      },
+      {
         "command": "accordo.voice.stopNarration",
         "title": "Stop Narration",
         "icon": "$(debug-stop)"
@@ -90,15 +102,14 @@
     "keybindings": [
       {
         "command": "accordo.voice.startDictation",
-        "key": "ctrl+alt+v",
-        "mac": "cmd+alt+v",
-        "when": "editorFocus"
+        "key": "ctrl+m",
+        "mac": "ctrl+m"
       },
       {
         "command": "accordo.voice.readAloud",
         "key": "ctrl+alt+r",
-        "mac": "cmd+alt+r",
-        "when": "editorHasSelection"
+        "mac": "ctrl+alt+r",
+        "when": "editorTextFocus && editorHasSelection"
       },
       {
         "command": "accordo.voice.stopNarration",
@@ -123,6 +134,29 @@
           "type": "string",
           "default": "ggml-base.en.bin",
           "description": "Whisper model filename"
+        },
+        "accordo.voice.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable voice session when providers are available"
+        },
+        "accordo.voice.inputTarget": {
+          "type": "string",
+          "default": "focus-text-input",
+          "enum": [
+            "focus-text-input",
+            "agent-conversation"
+          ],
+          "markdownEnumDescriptions": [
+            "Insert transcript into the currently focused text input.",
+            "Focus the agent chat conversation input and insert transcript there."
+          ],
+          "description": "Where dictation transcripts should be inserted"
+        },
+        "accordo.voice.recordingReadyChime": {
+          "type": "boolean",
+          "default": false,
+          "description": "Play a short ready chime when the microphone is prepared and recording is about to start"
         },
         "accordo.voice.voice": {
           "type": "string",
@@ -181,6 +215,7 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "kokoro-js": "1.2.1"
+    "kokoro-js": "1.2.1",
+    "sherpa-onnx-node": "latest"
   }
 }

@@ -11,6 +11,7 @@ import type { TtsProvider } from "./core/providers/tts-provider.js";
 import type { VoicePolicy } from "./core/fsm/types.js";
 import { WhisperCppAdapter } from "./core/adapters/whisper-cpp.js";
 import { KokoroAdapter } from "./core/adapters/kokoro.js";
+import { SherpaKokoroAdapter } from "./core/adapters/sherpa-kokoro.js";
 import { SessionFsm } from "./core/fsm/session-fsm.js";
 import { AudioFsm } from "./core/fsm/audio-fsm.js";
 import { NarrationFsm } from "./core/fsm/narration-fsm.js";
@@ -121,7 +122,20 @@ export async function activate(
     log: (msg) => logger.log(`[whisper] ${msg}`),
   });
 
-  const tts: TtsProvider = deps?.ttsProvider ?? new KokoroAdapter();
+  // M50-SK: Try Sherpa (C++ runtime, ~3-6× faster) first; fall back to KokoroJS.
+  let tts: TtsProvider;
+  if (deps?.ttsProvider) {
+    tts = deps.ttsProvider;
+  } else {
+    const sherpa = new SherpaKokoroAdapter();
+    if (await sherpa.isAvailable()) {
+      tts = sherpa;
+      logger.log("tts: using sherpa-kokoro (C++ runtime)");
+    } else {
+      tts = new KokoroAdapter();
+      logger.log("tts: sherpa model not found — using kokoro-js (JS ONNX). To enable Sherpa: download kokoro-en-v0_19 to ~/.accordo/models/kokoro-en-v0_19");
+    }
+  }
   _ttsProvider = tts;
 
   // ── M50-EXT-03: Create FSMs ────────────────────────────────────────────────
