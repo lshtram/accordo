@@ -3,13 +3,13 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-07  
-**Status:** ACTIVE — Session 9 complete (M45 Custom Comments Panel ✅), Session 10A next (Voice core + tools)
+**Status:** ACTIVE — Session 10B complete (M51-SN + M51-STR ✅), Session 11 next (Diagrams)
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-07 — Session 9 complete. Custom Comments Panel (M45-TP/NR/CMD/FLT/EXT) fully delivered: 76 new tests. Manual testing round completed — fixed command-ID mismatches, `.deck.md` activation event, `comments:focus` webview handler, slide-sync race, and inline reply UX. 1418 tests total (Hub: 346, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). TypeScript clean. Committed and pushed. Session 10A next: Voice core + tools + UI (`accordo-voice`).**
+> **As of 2026-03-09 — Session 10B complete. M51-SN (Hub voice/narration directive) + M51-STR (streaming TTS pipeline) fully delivered: 25 new tests. Hub: 356, Voice: 226. 1654 tests total (Hub: 356, Voice: 226, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). TypeScript clean. Committed and pushed. Session 11 next: Diagrams modality (`accordo-diagram`).**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -17,11 +17,11 @@
 | Phase 2 | Comments modality (`accordo-comments`) | ✅ DONE — Week 6+7 complete, 1221 tests |
 | Phase 3 | Presentations modality (`accordo-slidev`) | ✅ DONE — Session 8B complete, 137 tests |
 | Session 9 | Custom Comments Panel (M45 — `accordo-comments` update) | ✅ DONE — 273 comments tests, 1418 total |
-| **Session 10** | **Voice modality (`accordo-voice` — 10A core+tools, 10B scripted narration)** | 🔜 **NEXT** — existing code in theia-openspace |
+| **Session 10** | **Voice modality (`accordo-voice` — 10A core+tools, 10B summary narration)** | ✅ DONE — 10A: 211 voice tests; 10B: M51-SN + M51-STR, 25 new tests |
 | Session 11 | Diagrams modality (`accordo-diagram` — Mermaid + Excalidraw) | ⏳ Pending Session 10 — architecture + workplan ready |
 | Session 12+ | Browser agentation (`accordo-browser` + Chrome extension) | 📋 DEFERRED — architecture + requirements written, complex anchoring needs more design |
 
-**Baseline:** 1418 tests green (Hub: 346, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). v0.1.0 on `main`.  
+**Baseline:** 1654 tests green (Hub: 356, Voice: 226, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). v0.1.0 on `main`.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -216,7 +216,7 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ### Session 10 — Voice (`accordo-voice`)
 
-**Goal:** Port the existing voice infrastructure from `theia-openspace` into the Accordo ecosystem. Give the agent a voice (TTS narration) and an ear (STT dictation). Register MCP tools with Bridge. Scripted narrations allow the agent to pre-compose multi-step walkthroughs interleaving speech with IDE actions.
+**Goal:** Port the existing voice infrastructure from `theia-openspace` into the Accordo ecosystem. Give the agent a voice (TTS narration) and an ear (STT dictation). Register MCP tools with Bridge. Summary narration mode enables the agent to auto-narrate a spoken summary of each response via system-prompt directive.
 
 **Architecture:** [`docs/voice-architecture.md`](voice-architecture.md)  
 **Requirements:** [`docs/requirements-voice.md`](requirements-voice.md)  
@@ -225,9 +225,11 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 **Technology decisions (resolved):**
 - **STT:** Whisper.cpp (local, offline) — more advanced than VS Code Speech API (Azure-dependent). Provider interface allows swap-in of VS Code Speech later.
 - **TTS:** Kokoro (local, neural, 82M ONNX) — fully offline, multiple voices. Provider interface allows swap-in of Piper, ElevenLabs, etc.
-- **LLM for summary mode:** Direct API call to configured endpoint (OpenAI/Anthropic/local Ollama). Extension has its own `llmEndpoint` + `llmModel` config.
+- **Summary mode:** Agent-driven via system-prompt directive. The agent generates a 2-3 sentence spoken summary inline and calls `readAloud`. No separate LLM call from the voice extension.
 - **Voice-core code:** Copied into `packages/voice/src/core/` (no external dependency on `@openspace-ai/voice-core`). Full control.
 - **UI:** Port theia-openspace waveform overlay + input widget as a VS Code `WebviewView` panel + status bar.
+
+> **Scripted walkthroughs** (multi-step sequences interleaving speech, IDE commands, delays, and highlighting) are **not part of the voice extension**. They will be implemented in a dedicated scripting module (future session) so they work without voice installed — e.g. with subtitles instead of audio.
 
 **New packages:** `packages/voice/` (`accordo-voice` — VS Code extension)
 
@@ -257,19 +259,36 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 **Session 10A gate:** Agent can call `accordo_voice_readAloud` to speak cleaned text. Agent calls `accordo_voice_dictation` for STT. Voice state appears in system prompt. Status bar + voice panel show recording/playback state. ~198 new tests.
 
-#### Session 10B — Scripted Narration + Summary Mode
+#### Session 10B — Summary Narration + Streaming TTS
 
-**Goal:** `ScriptRunner` executes multi-step narration scripts interleaving speech with IDE commands. LLM-powered summary mode. Streaming TTS. Utterance library.
+**Goal:** Hub system prompt includes a narration directive when summary mode is enabled. Streaming TTS pipeline reduces latency for longer text. No new MCP tools — `readAloud` (from 10A) is the only tool involved.
 
 | # | Module | Requirements Source | TDD Phases |
 |---|---|---|---|
-| M51-NR | `ScriptRunner` — sequential step executor (speak + command + delay + highlight) | requirements-voice.md §5 M51-NR | A → F |
-| M51-NT | `accordo_voice_narrate` MCP tool | requirements-voice.md §5 M51-NT | A → F |
-| M51-PP | `NarrationPreprocessor` — LLM-powered text→NarrationScript | requirements-voice.md §5 M51-PP | A → F |
-| M51-UL | `UtteranceLibrary` — pre-recorded audio for interjections | requirements-voice.md §5 M51-UL | A → F |
-| M51-STR | Streaming narration — synthesize sentence N+1 while playing N | requirements-voice.md §5 M51-STR | A → F |
+| M51-SN | Hub prompt engine update — narration directive when `narrationMode` is `narrate-summary` or `narrate-everything` | requirements-voice.md §5 M51-SN | ✅ A → F |
+| M51-STR | Streaming TTS — sentence-level pipeline (synthesize N+1 while playing N) | requirements-voice.md §5 M51-STR | ✅ A → F |
 
-**Session 10B gate:** Agent calls `accordo_voice_narrate` with a full script (speak + presentation.goto + editor.open + delay). Script executes autonomously. Summary mode uses LLM. Streaming reduces TTS latency.
+**Session 10B gate:** When `narrationMode` is `narrate-summary`, the agent's system prompt includes a directive to call `readAloud` with a spoken summary after each response. Streaming TTS plays first sentence while synthesizing next. ~25 new tests.
+
+---
+
+### Session 10C — Scripted Walkthroughs (future, separate from voice) [DEFERRED]
+
+**Goal:** A scripting runtime that executes multi-step sequences interleaving IDE commands, delays, highlights, and optionally speech (via voice extension if installed) or subtitles (if not). The agent generates a complete script in one shot; the runtime executes it without further MCP round-trips.
+
+**Key design principle:** Works without `accordo-voice` installed. If voice is available, `speak` steps call TTS. If not, `speak` steps render as subtitles or are skipped. This separation ensures presentations, code walkthroughs, and demos are a first-class capability regardless of audio setup.
+
+**Candidate location:** Bridge extension (has access to `vscode.commands.executeCommand`), or a standalone `accordo-script` extension.
+
+**Modules (preliminary):**
+- Script format: `NarrationScript` type — steps: `speak`, `command`, `delay`, `highlight`, `clear-highlight`, `await-speech`, `subtitle`
+- `ScriptRunner` — sequential step executor with cancellation, progress events, error policy (skip/abort)
+- `accordo_script_run` MCP tool — receives a script, delegates to ScriptRunner
+- Script validation — JSON schema, step count limit, command whitelist
+- Integration with voice (optional): if voice state is published, `speak` steps use TTS. Otherwise fall back to subtitle overlay.
+- Integration with all modality commands: `accordo.presentation.*`, `accordo.commentsPanel.*`, `vscode.open`, `workbench.action.gotoLine`, future `accordo.diagram.*`
+
+**Architecture and requirements:** To be written when session begins. Core design already documented in [`docs/voice-architecture.md`](voice-architecture.md) ADR-04 (separation rationale).
 
 ---
 
@@ -388,6 +407,7 @@ Carried forward — non-blocking:
 7. ~~**Custom Accordo Comments TreeView panel**~~ — ✅ Delivered in Session 9. See DONE below.
 8. **Bridge status bar item (SB-01/SB-02/SB-03)** — `accordo-bridge` requirements §9 specifies a `$(plug) Accordo: Connected / Disconnected` status bar item with `accordo.bridge.showStatus` command (Hub URL, connection state, tool count, uptime). Never implemented. Add to `packages/bridge/src/extension.ts` in a quick-fix session before Session 10.
 9. **Comments panel two-line layout (M46)** — VS Code `TreeItem` supports only one physical line (label + description). Full conversation preview requires a `WebviewView` detail pane. Deferred to M46 (post Session 10).
+10. **Scripted Walkthroughs (Session 10C)** — Multi-step sequences (speech + IDE commands + delays + highlights) separated from voice extension. Works with subtitles or silent mode. See Session 10C outline in §6.
 
 ---
 
