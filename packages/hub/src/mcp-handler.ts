@@ -8,12 +8,14 @@
  */
 
 import { MCP_PROTOCOL_VERSION } from "@accordo/bridge-types";
+import type { IDEState } from "@accordo/bridge-types";
 import type { ToolRegistry } from "./tool-registry.js";
 import type { BridgeServer } from "./bridge-server.js";
 import { JsonRpcError } from "./errors.js";
 import { hashArgs, writeAuditEntry } from "./audit-log.js";
 import type { AuditEntry } from "./audit-log.js";
 import type { McpDebugLogger } from "./debug-log.js";
+import { renderPrompt } from "./prompt-engine.js";
 
 /** Represents an active MCP session */
 export interface Session {
@@ -50,6 +52,15 @@ export interface McpHandlerDeps {
   /** Bridge server for routing tools/call invocations */
   bridgeServer: BridgeServer;
   /**
+   * Returns the current IDE state snapshot used to render the full system
+   * prompt in the MCP initialize response. When provided, the initialize
+   * instructions field contains the output of renderPrompt() — including
+   * ## Voice, ## Open Comment Threads, and live IDE state — so agents that
+   * only read initialize (e.g. VS Code Copilot) see the same directives
+   * as agents that load /instructions separately (e.g. OpenCode).
+   */
+  getState?: () => IDEState;
+  /**
    * Timeout in ms for a single tool-call invocation.
    * Default: 30 000. Override in tests to avoid 30-second waits.
    */
@@ -75,10 +86,12 @@ export class McpHandler {
   private toolCallTimeout: number;
   private auditFile: string | undefined;
   private debugLogger: McpDebugLogger | undefined;
+  private getState: (() => IDEState) | undefined;
 
   constructor(deps: McpHandlerDeps) {
     this.toolRegistry = deps.toolRegistry;
     this.bridgeServer = deps.bridgeServer;
+    this.getState = deps.getState;
     this.toolCallTimeout = deps.toolCallTimeout ?? 30_000;
     this.auditFile = deps.auditFile;
     this.debugLogger = deps.debugLogger;
@@ -133,17 +146,21 @@ export class McpHandler {
     switch (request.method) {
       case "initialize": {
         // MCP spec: the `instructions` field is included in the agent's system
-        // context. We use it to tell agents about the FULL tool set so they
-        // don't rely on progressive discovery (activate_* virtual tools).
-        const toolNames = this.toolRegistry.toMcpTools().map((t) => t.name);
-        const instructions = [
-          "Accordo IDE — real-time pair-programming co-pilot.",
-          "You have access to ALL of the following tools — use them directly without activation:",
-          ...toolNames.map((n) => `  - ${n}`),
-          "",
-          "If your client shows activate_* or similar grouped tool placeholders,",
-          "expand/activate ALL of them immediately so you can use every tool.",
-        ].join("\n");
+        // context. Render the full system prompt so agents that only read
+        // initialize (e.g. VS Code Copilot) receive the same directives —
+        // ## Voice narration directive, ## Open Comment Threads, live IDE state
+        // — as agents that separately load /instructions (e.g. OpenCode).
+        const toolNames = this.toolRegistry.list();
+        const instructions = this.getState
+          ? renderPrompt(this.getState(), toolNames)
+          : [
+              "Accordo IDE — real-time pair-programming co-pilot.",
+              "You have access to ALL of the following tools — use them directly without activation:",
+              ...this.toolRegistry.toMcpTools().map((t) => `  - ${t.name}`),
+              "",
+              "If your client shows activate_* or similar grouped tool placeholders,",
+              "expand/activate ALL of them immediately so you can use every tool.",
+            ].join("\n");
 
         const initResult = {
           protocolVersion: MCP_PROTOCOL_VERSION,

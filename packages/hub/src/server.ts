@@ -98,6 +98,7 @@ export class HubServer {
     this.mcpHandler = new McpHandler({
       toolRegistry: this.toolRegistry,
       bridgeServer: this.bridgeServer,
+      getState: () => this.stateCache.getState(),
       toolCallTimeout: options.toolCallTimeout,
       auditFile: options.auditFile,
       debugLogger: this.debugLogger,
