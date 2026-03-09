@@ -74,6 +74,7 @@ If any test fails, do not proceed to manual testing.
    Do **not** press F5 from inside a package sub-folder — that loads only one extension.
 3. Wait ~3 seconds for all extensions to activate.
 4. Confirm the **Voice** status bar item appears at the bottom-right of the EDH window (`🔊 Voice: Ready`).
+   > **Important:** If the status bar shows `🔇 Voice: Off`, go to **Settings** → search `accordo.voice.enabled` → **check the checkbox**. This setting defaults to `false` and gates the entire `## Voice` system prompt section.
 5. Start the Hub in a terminal:
    ```bash
    ACCORDO_TOKEN=demo-token ACCORDO_BRIDGE_SECRET=demo-secret \
@@ -89,9 +90,9 @@ These tests confirm the Hub sends the correct Voice section to the agent dependi
 
 ### 4.1 Enable voice with narrate-summary
 
-1. In the EDH, open **Settings** (`Cmd+,`) → search `accordo.voice.narrationMode`.
-2. Set it to **`narrate-summary`**.
-3. Confirm TTS is enabled via the status bar (`🔊 Voice: Ready`).
+1. In the EDH, open **Settings** (`Cmd+,`) → search **`accordo.voice.enabled`** → **check the checkbox** (must be `true` or the `## Voice` section never appears).
+2. In Settings, search `accordo.voice.narrationMode` → set it to **`narrate-summary`**.
+3. Confirm the status bar shows `🔊 Voice: Ready` (not `🔇 Voice: Off`).
 4. Ask the agent:
    > *"What is in your current system prompt about voice or narration?"*
 
