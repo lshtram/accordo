@@ -391,3 +391,189 @@ describe("M42: Open Comment Threads section in system prompt", () => {
     expect(result).not.toContain('"summary"');
   });
 });
+
+// ── M51-SN: Voice section + narration directive ─────────────────────────────
+
+describe("M51-SN: Voice section + narration directive in system prompt", () => {
+  function makeVoiceModality(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      isOpen: true,
+      session: "active",
+      narration: "idle",
+      audio: "idle",
+      policy: {
+        enabled: true,
+        narrationMode: "narrate-summary",
+        speed: 1.0,
+        voice: "af_sarah",
+        language: "en-US",
+      },
+      sttAvailable: true,
+      ttsAvailable: true,
+      ...overrides,
+    };
+  }
+
+  it("M51-SN-01: '## Voice' section rendered when voice modality is present and enabled", () => {
+    // req-voice M51-SN-01: section appears when voice state published with policy.enabled = true
+    const state = makeState({
+      modalities: { "accordo-voice": makeVoiceModality() },
+    });
+    const result = renderPrompt(state, []);
+    expect(result).toContain("## Voice");
+  });
+
+  it("M51-SN-01: no '## Voice' section when voice modality is absent", () => {
+    const result = renderPrompt(createEmptyState(), []);
+    expect(result).not.toContain("## Voice");
+  });
+
+  it("M51-SN-05: no '## Voice' section when policy.enabled is false", () => {
+    // req-voice M51-SN-05: directive only when policy.enabled is true
+    const state = makeState({
+      modalities: {
+        "accordo-voice": makeVoiceModality({
+          policy: {
+            enabled: false,
+            narrationMode: "narrate-summary",
+            speed: 1.0,
+            voice: "af_sarah",
+            language: "en-US",
+          },
+        }),
+      },
+    });
+    const result = renderPrompt(state, []);
+    expect(result).not.toContain("## Voice");
+  });
+
+  it("M51-SN-02: narrate-summary directive contains the exact required text", () => {
+    // req-voice M51-SN-02: exact directive wording for narrate-summary
+    const state = makeState({
+      modalities: { "accordo-voice": makeVoiceModality() },
+    });
+    const result = renderPrompt(state, []);
+    expect(result).toContain("call accordo_voice_readAloud");
+    expect(result).toContain("2-3 sentence spoken summary");
+    expect(result).toContain("Do not repeat the full response");
+  });
+
+  it("M51-SN-04: narrate-everything directive instructs full response readback", () => {
+    // req-voice M51-SN-04: different directive for narrate-everything
+    const state = makeState({
+      modalities: {
+        "accordo-voice": makeVoiceModality({
+          policy: {
+            enabled: true,
+            narrationMode: "narrate-everything",
+            speed: 1.0,
+            voice: "af_sarah",
+            language: "en-US",
+          },
+        }),
+      },
+    });
+    const result = renderPrompt(state, []);
+    expect(result).toContain("call accordo_voice_readAloud");
+    expect(result).toContain("full response text");
+    expect(result).toContain("text cleaning pipeline");
+  });
+
+  it("M51-SN-03: narrate-off produces no narration directive", () => {
+    // req-voice M51-SN-03: no directive when narrate-off
+    const state = makeState({
+      modalities: {
+        "accordo-voice": makeVoiceModality({
+          policy: {
+            enabled: true,
+            narrationMode: "narrate-off",
+            speed: 1.0,
+            voice: "af_sarah",
+            language: "en-US",
+          },
+        }),
+      },
+    });
+    const result = renderPrompt(state, []);
+    // The Voice section may still render (status info), but no narration directive
+    expect(result).not.toContain("accordo_voice_readAloud");
+    expect(result).not.toContain("spoken summary");
+    expect(result).not.toContain("full response text");
+  });
+
+  it("M51-SN-01: voice status line includes session and provider availability", () => {
+    // The ## Voice section must show human-readable status
+    const state = makeState({
+      modalities: {
+        "accordo-voice": makeVoiceModality({
+          session: "active",
+          sttAvailable: true,
+          ttsAvailable: true,
+        }),
+      },
+    });
+    const result = renderPrompt(state, []);
+    // Expect readable status like "Active" and provider names
+    expect(result).toContain("Active");
+    // Should mention STT and TTS availability
+    expect(result).toMatch(/STT|Whisper/i);
+    expect(result).toMatch(/TTS|Kokoro/i);
+  });
+
+  it("M51-SN-01: voice mode line includes narrationMode, speed, and voice — in ## Voice section", () => {
+    // Strings must appear inside the dedicated ## Voice section, not just anywhere
+    // in the raw JSON modality dump (false-green guard).
+    const state = makeState({
+      modalities: {
+        "accordo-voice": makeVoiceModality({
+          policy: {
+            enabled: true,
+            narrationMode: "narrate-summary",
+            speed: 1.5,
+            voice: "bf_emma",
+            language: "en-US",
+          },
+        }),
+      },
+    });
+    const result = renderPrompt(state, []);
+    // Extract the ## Voice section (everything from the header to the next ## header)
+    const voiceSection = result.match(/## Voice[\s\S]*?(?=\n## |\n\n##|$)/)?.[0] ?? "";
+    expect(voiceSection).toBeTruthy(); // section must exist
+    expect(voiceSection).toContain("narrate-summary");
+    expect(voiceSection).toContain("1.5");
+    expect(voiceSection).toContain("bf_emma");
+  });
+
+  it("M51-SN-05+M42: accordo-voice NOT in generic Extension state block", () => {
+    // Same pattern as M42: voice gets a dedicated section, excluded from JSON dump
+    const state = makeState({
+      modalities: {
+        "accordo-voice": makeVoiceModality(),
+        "accordo-slides": { isOpen: true, slide: 1 },
+      },
+    });
+    const result = renderPrompt(state, []);
+    // accordo-slides should still appear in generic Extension state
+    expect(result).toContain("accordo-slides");
+    // accordo-voice should NOT appear in generic Extension state JSON
+    // (it has its own ## Voice section)
+    const extStateLine = result.split("\n").find((l) => l.includes("accordo-voice") && l.includes("{"));
+    expect(extStateLine).toBeUndefined();
+  });
+
+  it("M51-SN-06: prompt stays within token budget with voice directive", () => {
+    // req-voice M51-SN-06: ~60 tokens for directive, must fit in budget
+    const state = makeState({
+      modalities: { "accordo-voice": makeVoiceModality() },
+      activeFile: "/workspace/main.ts",
+      openEditors: Array.from({ length: 10 }, (_, i) => `/workspace/file${i}.ts`),
+    });
+    const tools = Array.from({ length: 16 }, (_, i) =>
+      makeTool(`accordo.tool.${i}`, "x".repeat(120)),
+    );
+    const result = renderPrompt(state, tools);
+    const tokens = estimateTokens(result);
+    expect(tokens).toBeLessThanOrEqual(PROMPT_TOKEN_BUDGET + 300);
+  });
+});

@@ -158,10 +158,47 @@ export function renderPrompt(
     );
   }
 
+  // ── Voice section (M51-SN) ───────────────────────────────────────────────
+  // When accordo-voice publishes state with policy.enabled = true, render a
+  // dedicated section with narration directive instead of a raw JSON dump.
+  const voiceModality = state.modalities["accordo-voice"];
+  const voicePolicy = voiceModality?.["policy"] as Record<string, unknown> | undefined;
+  const voiceEnabled = voicePolicy?.["enabled"] === true;
+
+  if (voiceEnabled) {
+    const session = (voiceModality?.["session"] as string | undefined) ?? "inactive";
+    const sttAvailable = voiceModality?.["sttAvailable"] === true;
+    const ttsAvailable = voiceModality?.["ttsAvailable"] === true;
+    const narrationMode = (voicePolicy?.["narrationMode"] as string | undefined) ?? "narrate-off";
+    const speed = (voicePolicy?.["speed"] as number | undefined) ?? 1.0;
+    const voice = (voicePolicy?.["voice"] as string | undefined) ?? "";
+
+    const sessionLabel = session.charAt(0).toUpperCase() + session.slice(1);
+    const sttLabel = sttAvailable ? "Whisper STT" : "No STT";
+    const ttsLabel = ttsAvailable ? "Kokoro TTS" : "No TTS";
+
+    const voiceLines: string[] = [
+      `Status: ${sessionLabel} (${sttLabel} + ${ttsLabel})`,
+      `Mode: ${narrationMode}, speed ${speed}\u00d7, voice ${voice}`,
+    ];
+
+    if (narrationMode === "narrate-summary") {
+      voiceLines.push(
+        "Directive: After each response, call accordo_voice_readAloud with a 2-3 sentence spoken summary of your answer. Keep it concise and natural for spoken delivery. Do not repeat the full response — summarize the key points.",
+      );
+    } else if (narrationMode === "narrate-everything") {
+      voiceLines.push(
+        "Directive: After each response, call accordo_voice_readAloud with your full response text. The text cleaning pipeline will handle markdown/code conversion to spoken form.",
+      );
+    }
+
+    stateLines.push(`## Voice\n\n${voiceLines.join("\n")}`);
+  }
+
   // Only include modalities where isOpen === true, excluding accordo-comments
-  // (it is handled by the dedicated section above).
+  // (handled by dedicated section above) and accordo-voice (handled by M51-SN).
   const openModalities = Object.entries(state.modalities).filter(
-    ([k, v]) => v["isOpen"] === true && k !== "accordo-comments",
+    ([k, v]) => v["isOpen"] === true && k !== "accordo-comments" && k !== "accordo-voice",
   );
   if (openModalities.length > 0) {
     const modalLines = openModalities.map(
