@@ -421,7 +421,10 @@ export class McpHandler {
           return {
             jsonrpc: "2.0",
             id,
-            error: { code: -32001, message: "Tool invocation timed out" },
+            result: {
+              content: [{ type: "text", text: "Tool invocation timed out" }],
+              isError: true,
+            },
           };
         }
       }
@@ -429,10 +432,19 @@ export class McpHandler {
       if (err instanceof JsonRpcError) {
         const isTimeout = err.code === -32001 || err.message.toLowerCase().includes("timed out");
         audit(isTimeout ? "timeout" : "error", err.message);
+        // Return a tool-level error (isError:true) rather than a JSON-RPC
+        // error.  MCP spec says tools/call should always return a result —
+        // only genuine protocol failures (malformed JSON-RPC, unknown method)
+        // belong in the top-level error field.  Returning a JSON-RPC error
+        // for "Bridge not connected" causes some MCP clients (e.g. VS Code
+        // Copilot) to crash internally because they expect a .result object.
         return {
           jsonrpc: "2.0",
           id,
-          error: { code: err.code, message: err.message },
+          result: {
+            content: [{ type: "text", text: err.message }],
+            isError: true,
+          },
         };
       }
       const msg = err instanceof Error ? err.message : String(err);
@@ -441,14 +453,20 @@ export class McpHandler {
         return {
           jsonrpc: "2.0",
           id,
-          error: { code: -32001, message: "Tool invocation timed out" },
+          result: {
+            content: [{ type: "text", text: "Tool invocation timed out" }],
+            isError: true,
+          },
         };
       }
       audit("error", msg);
       return {
         jsonrpc: "2.0",
         id,
-        error: { code: -32603, message: msg },
+        result: {
+          content: [{ type: "text", text: msg }],
+          isError: true,
+        },
       };
     }
   }

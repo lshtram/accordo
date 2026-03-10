@@ -479,9 +479,10 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
     expect(error["code"]).toBe(-32602);
   });
 
-  it("§E2E-3.3: tool call with no Bridge connected returns -32603", async () => {
+  it("§E2E-3.3: tool call with no Bridge connected returns isError result", async () => {
     // Register the tool via a bridge, then disconnect — the tool stays in the
-    // registry but the bridge is gone, so the invoke itself gets -32603.
+    // registry but the bridge is gone, so the invoke itself fails.
+    // MCP spec: tools/call always returns result — not a JSON-RPC error.
     await bridge.connect(baseUrl);
     bridge.registerTools([makeToolReg("accordo_test_nobridgenow")]);
     await flush();
@@ -491,9 +492,10 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
     const res = await session.call("tools/call", { name: "accordo_test_nobridgenow", arguments: {} });
-    const error = (res.body?.["error"] ?? {}) as Record<string, unknown>;
-    expect(error["code"]).toBe(-32603);
-    expect(String(error["message"])).toMatch(/bridge/i);
+    const result = (res.body?.["result"] ?? {}) as Record<string, unknown>;
+    expect(result["isError"]).toBe(true);
+    const content = result["content"] as { type: string; text: string }[];
+    expect(content[0].text).toMatch(/bridge/i);
   });
 
   it("§E2E-3.4: successful tool call returns content[0].text = JSON of data", async () => {
@@ -527,7 +529,7 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
     expect(content[0].text).toBe("permission denied");
   });
 
-  it("§E2E-3.6: tool call timeout returns -32001 after idempotent retry (M32)", { timeout: 2 * TOOL_TIMEOUT_MS + 1000 }, async () => {
+  it("§E2E-3.6: tool call timeout returns isError result after idempotent retry (M32)", { timeout: 2 * TOOL_TIMEOUT_MS + 1000 }, async () => {
     await bridge.connect(baseUrl);
     bridge.registerTools([makeToolReg("accordo_test_slow")]);
     // autoResponder is NOT set — bridge receives the invoke but never replies
@@ -536,10 +538,12 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
     const res = await session.call("tools/call", { name: "accordo_test_slow", arguments: {} });
-    const error = (res.body?.["error"] ?? {}) as Record<string, unknown>;
     // accordo_test_slow is idempotent:true so M32 retries once on timeout.
-    // Both attempts time out → McpHandler returns the standardised -32001.
-    expect(error["code"]).toBe(-32001);
+    // Both attempts time out → McpHandler returns isError tool result.
+    const result = (res.body?.["result"] ?? {}) as Record<string, unknown>;
+    expect(result["isError"]).toBe(true);
+    const content = result["content"] as { type: string; text: string }[];
+    expect(content[0].text).toMatch(/timed out/i);
   });
 
   it("§E2E-3.7: tool arguments are forwarded to the Bridge invoke frame", async () => {
@@ -567,7 +571,7 @@ describe("§E2E-3 Tool-call success, error, timeout", () => {
 // ── §E2E-4 Bridge disconnect / reconnect during in-flight call ────────────────
 
 describe("§E2E-4 Bridge disconnect / reconnect", () => {
-  it("§E2E-4.1: disconnect while call is in-flight returns -32603 to the caller", async () => {
+  it("§E2E-4.1: disconnect while call is in-flight returns isError result", async () => {
     await bridge.connect(baseUrl);
     bridge.registerTools([makeToolReg("accordo_test_stall")]);
     // Do NOT set an auto-responder — the invoke will hang until bridge disconnects
@@ -586,9 +590,10 @@ describe("§E2E-4 Bridge disconnect / reconnect", () => {
     bridge.disconnect();
 
     const res = await callPromise;
-    const error = (res.body?.["error"] ?? {}) as Record<string, unknown>;
-    expect(error["code"]).toBe(-32603);
-    expect(String(error["message"])).toMatch(/disconnected/i);
+    const result = (res.body?.["result"] ?? {}) as Record<string, unknown>;
+    expect(result["isError"]).toBe(true);
+    const content = result["content"] as { type: string; text: string }[];
+    expect(content[0].text).toMatch(/disconnected/i);
   });
 
   it("§E2E-4.2: calls made after disconnect are rejected immediately", async () => {
@@ -601,8 +606,8 @@ describe("§E2E-4 Bridge disconnect / reconnect", () => {
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
     const res = await session.call("tools/call", { name: "accordo_test_gone", arguments: {} });
-    const error = (res.body?.["error"] ?? {}) as Record<string, unknown>;
-    expect(error["code"]).toBe(-32603);
+    const result = (res.body?.["result"] ?? {}) as Record<string, unknown>;
+    expect(result["isError"]).toBe(true);
   });
 
   it("§E2E-4.3: /health shows disconnected after bridge closes", async () => {
@@ -729,8 +734,10 @@ describe("§E2E-5 Concurrency + ordering", () => {
       const session = new McpSession(tightUrl, TOKEN);
       await session.initialize();
       const res = await session.call("tools/call", { name: "accordo_test_busy", arguments: {} });
-      const error = (res.body?.["error"] ?? {}) as Record<string, unknown>;
-      expect(error["code"]).toBe(-32004);
+      const result = (res.body?.["result"] ?? {}) as Record<string, unknown>;
+      expect(result["isError"]).toBe(true);
+      const content = result["content"] as { type: string; text: string }[];
+      expect(content[0].text).toMatch(/busy|queue/i);
     } finally {
       tightBridge.disconnect();
       await tightServer.stop();

@@ -330,8 +330,9 @@ describe("McpHandler", () => {
       expect(response?.error?.message).toContain("accordo_editor_nonexistent");
     });
 
-    it("§6: tools/call — bridge not connected returns error -32603", async () => {
-      // req-hub §6: "Bridge not connected → { code: -32603 }"
+    it("§6: tools/call — bridge not connected returns isError tool result", async () => {
+      // req-hub §6: "Bridge not connected" — MCP tools/call always returns
+      // a result with isError:true, not a JSON-RPC error.
       const { handler: h, toolRegistry } = createHandler([SAMPLE_TOOL]);
       const s = h.createSession();
       // Bridge is NOT connected (default state)
@@ -340,12 +341,14 @@ describe("McpHandler", () => {
         arguments: { path: "/foo.ts" },
       });
       const response = await h.handleRequest(req, s);
-      expect(response?.error).toBeDefined();
-      expect(response?.error?.code).toBe(-32603);
+      expect(response?.error).toBeUndefined();
+      const result = response?.result as { content: { type: string; text: string }[]; isError?: boolean };
+      expect(result?.isError).toBe(true);
+      expect(result?.content[0].text).toMatch(/bridge/i);
     });
 
-    it("§6: tools/call — queue full returns error -32004", async () => {
-      // req-hub §6: "Server busy → { code: -32004 }"
+    it("§6: tools/call — queue full returns isError tool result", async () => {
+      // req-hub §6: "Server busy" — returned as tool-level isError:true
       // Configure maxConcurrent=0, maxQueueDepth=0 forces queue-full state
       const toolRegistry = new ToolRegistry();
       toolRegistry.register([SAMPLE_TOOL]);
@@ -361,8 +364,10 @@ describe("McpHandler", () => {
         arguments: { path: "/foo.ts" },
       });
       const response = await h.handleRequest(req, s);
-      expect(response?.error).toBeDefined();
-      expect(response?.error?.code).toBe(-32004);
+      expect(response?.error).toBeUndefined();
+      const result = response?.result as { content: { type: string; text: string }[]; isError?: boolean };
+      expect(result?.isError).toBe(true);
+      expect(result?.content[0].text).toMatch(/busy|queue/i);
     });
 
     it("§2.1: tools/call — preserves request ID in error responses", async () => {
@@ -432,8 +437,10 @@ describe("McpHandler", () => {
         arguments: { path: "/foo.ts" },
       });
       const response = await h.handleRequest(req, s);
-      expect(response?.error).toBeDefined();
-      expect(response?.error?.code).toBe(-32001);
+      expect(response?.error).toBeUndefined();
+      const result = response?.result as { content: { type: string; text: string }[]; isError?: boolean };
+      expect(result?.isError).toBe(true);
+      expect(result?.content[0].text).toMatch(/timed out/i);
     });
   });
 
@@ -763,8 +770,11 @@ describe("McpHandler — M32: idempotent retry on timeout", () => {
 
     // RED: invoke only called once today
     expect(invokeSpy).toHaveBeenCalledTimes(2);
-    // Returns timeout error after retry exhaustion
-    expect(response?.error?.code).toBe(-32001);
+    // Returns isError tool result after retry exhaustion
+    expect(response?.error).toBeUndefined();
+    const result = response?.result as { content: { type: string; text: string }[]; isError?: boolean };
+    expect(result?.isError).toBe(true);
+    expect(result?.content[0].text).toMatch(/timed out/i);
   });
 
   it("M32: retry does not happen more than once (no infinite loop)", async () => {
