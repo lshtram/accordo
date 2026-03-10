@@ -7,9 +7,10 @@
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { SessionFsm } from "../core/fsm/session-fsm.js";
 import type { NarrationFsm } from "../core/fsm/narration-fsm.js";
-import type { TtsProvider } from "../core/providers/tts-provider.js";
+import type { TtsProvider, TtsSynthesisResult } from "../core/providers/tts-provider.js";
 import type { CleanMode } from "../text/text-cleaner.js";
 import type { StreamingSpeakOptions } from "../core/audio/streaming-tts.js";
+import { splitIntoSentences } from "../text/sentence-splitter.js";
 
 export type PlayAudioFn = (pcm: Uint8Array, sampleRate: number) => Promise<void>;
 export type StreamSpeakFn = (text: string, ttsProvider: TtsProvider, options: StreamingSpeakOptions) => Promise<void>;
@@ -84,21 +85,47 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
       narrationFsm.startProcessing();
 
       if (streamSpeak) {
-        // M51-STR: Fire-and-forget streaming — first sentence starts playing
-        // after only its synthesis latency. Tool call returns immediately so
-        // the MCP timeout does not cut off long texts.
-        narrationFsm.audioReady();
-        log?.(`[readAloud] handler: availMs=${t1 - t0} handlerMs=~${Date.now() - t0} chars=${rawText.length}`);
-        void streamSpeak(processedText, ttsProvider, {
-          language: policy.language,
-          voice,
-          speed,
-          log,
-        }).then(() => {
-          narrationFsm.complete();
-        }).catch(() => {
+        // M51-STR: Synthesize sentence 0 before returning so we can report a
+        // real error if the engine fails to load (fail-fast). Once sentence 0
+        // is synthesised successfully, play it + stream the remainder in the
+        // background while the agent writes its text response.
+        const sentences = splitIntoSentences(processedText);
+        const firstText = sentences[0] ?? processedText;
+        let firstResult: TtsSynthesisResult;
+        try {
+          firstResult = await ttsProvider.synthesize({
+            text: firstText,
+            language: policy.language,
+            voice,
+            speed,
+          });
+        } catch (err) {
           narrationFsm.error();
-        });
+          return { error: `TTS synthesis failed: ${String(err)}` };
+        }
+
+        narrationFsm.audioReady();
+        log?.(`[readAloud] first-sentence synth ok (${Date.now() - t0}ms), streaming rest in background. chars=${rawText.length}`);
+
+        // Play sentence 0 + stream sentences 1..N in background.
+        const remainder = sentences.length > 1 ? sentences.slice(1).join(" ") : null;
+        void (async () => {
+          try {
+            await playAudio(firstResult.audio, firstResult.sampleRate ?? 22050);
+            if (remainder) {
+              await streamSpeak(remainder, ttsProvider, {
+                language: policy.language,
+                voice,
+                speed,
+                log,
+              });
+            }
+            narrationFsm.complete();
+          } catch {
+            narrationFsm.error();
+          }
+        })();
+
         return {
           speaking: true,
           textLength: rawText.length,
