@@ -57,26 +57,60 @@ if (!fs.existsSync(MODEL_DIR)) {
 
 let sherpa_onnx;
 try {
-  sherpa_onnx = require('sherpa-onnx');
+  sherpa_onnx = require('sherpa-onnx-node');
 } catch (e) {
-  console.error('sherpa-onnx not installed — run: npm install');
+  console.error('sherpa-onnx-node not installed — run: npm install');
   process.exit(1);
+}
+
+// ─── WAV writer (Float32 → 16-bit PCM WAV) ───────────────────────────────────
+
+function writeWav(filePath, floatSamples, sampleRate) {
+  const numSamples    = floatSamples.length;
+  const numChannels   = 1;
+  const bitsPerSample = 16;
+  const byteRate      = sampleRate * numChannels * bitsPerSample / 8;
+  const blockAlign    = numChannels * bitsPerSample / 8;
+  const dataSize      = numSamples * blockAlign;
+  const buf = Buffer.allocUnsafe(44 + dataSize);
+
+  buf.write('RIFF', 0);
+  buf.writeUInt32LE(36 + dataSize, 4);
+  buf.write('WAVE', 8);
+  buf.write('fmt ', 12);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1,  20);   // PCM
+  buf.writeUInt16LE(numChannels, 22);
+  buf.writeUInt32LE(sampleRate, 24);
+  buf.writeUInt32LE(byteRate,  28);
+  buf.writeUInt16LE(blockAlign, 32);
+  buf.writeUInt16LE(bitsPerSample, 34);
+  buf.write('data', 36);
+  buf.writeUInt32LE(dataSize, 40);
+
+  let offset = 44;
+  for (let i = 0; i < numSamples; i++) {
+    const s = Math.max(-1, Math.min(1, floatSamples[i]));
+    buf.writeInt16LE(s < 0 ? s * 32768 : s * 32767, offset);
+    offset += 2;
+  }
+  fs.writeFileSync(filePath, buf);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// sherpa-onnx-node uses a different (nested) config shape than the WASM version
 function makeConfig(numThreads) {
   return {
-    offlineTtsModelConfig: {
-      offlineTtsKokoroModelConfig: {
-        model:      path.join(MODEL_DIR, 'model.onnx'),
-        voices:     path.join(MODEL_DIR, 'voices.bin'),
-        tokens:     path.join(MODEL_DIR, 'tokens.txt'),
-        dataDir:    path.join(MODEL_DIR, 'espeak-ng-data'),
-        lengthScale: 1.0,
+    model: {
+      kokoro: {
+        model:   path.join(MODEL_DIR, 'model.onnx'),
+        voices:  path.join(MODEL_DIR, 'voices.bin'),
+        tokens:  path.join(MODEL_DIR, 'tokens.txt'),
+        dataDir: path.join(MODEL_DIR, 'espeak-ng-data'),
       },
+      debug: false,
       numThreads,
-      debug: 0,     // set to 1 for verbose sherpa logs
       provider: 'cpu',
     },
     maxNumSentences: 1,
@@ -84,6 +118,7 @@ function makeConfig(numThreads) {
 }
 
 function audioLenMs(audio) {
+  // sherpa-onnx-node returns {samples: Float32Array, sampleRate: number}
   return Math.round((audio.samples.length / audio.sampleRate) * 1000);
 }
 
@@ -110,7 +145,7 @@ for (const numThreads of THREADS) {
   console.log('─'.repeat(64));
 
   const loadStart = Date.now();
-  const tts = sherpa_onnx.createOfflineTts(makeConfig(numThreads));
+  const tts = new sherpa_onnx.OfflineTts(makeConfig(numThreads));
   const loadMs = Date.now() - loadStart;
 
   console.log(`  load:        ${loadMs} ms`);
@@ -131,16 +166,21 @@ for (const numThreads of THREADS) {
     console.log(`  s${i}: synth=${synthMs} ms  audio=${lenMs} ms  RTF=${rtf}${marker}`);
     rows.push({ synthMs, lenMs });
 
-    // Save a quality sample (numThreads=2, first sentence, first time)
-    if (numThreads === 2 && i === 0 && !sampleSaved) {
-      tts.save(SAMPLE_WAV, audio);
+    // Save a quality sample (first sentence, first time)
+    if (!sampleSaved) {
+      // Use built-in writeWave if available, otherwise our custom writer
+      if (typeof sherpa_onnx.writeWave === 'function') {
+        sherpa_onnx.writeWave(SAMPLE_WAV, audio);
+      } else {
+        writeWav(SAMPLE_WAV, audio.samples, audio.sampleRate);
+      }
       sampleSaved = true;
       console.log(`       → saved to ${SAMPLE_WAV}`);
     }
   }
 
   results.push({ numThreads, loadMs, rows });
-  tts.free();
+  if (typeof tts.free === 'function') tts.free();
 }
 
 // ─── Summary table ────────────────────────────────────────────────────────────

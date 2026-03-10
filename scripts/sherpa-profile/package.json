@@ -4,6 +4,6 @@
   "description": "Standalone benchmark: Sherpa-ONNX Kokoro TTS vs current JS ONNX",
   "private": true,
   "dependencies": {
-    "sherpa-onnx": "latest"
+    "sherpa-onnx-node": "latest"
   }
 }

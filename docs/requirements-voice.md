@@ -1,8 +1,8 @@
 # accordo-voice — Voice Modality Requirements Specification
 
 **Package:** `accordo-voice` (new VS Code extension)  
-**Type:** VS Code extension — STT, TTS, narration, scripted sequences  
-**Session:** 10A (core + tools), 10B (scripted narration + summary mode)  
+**Type:** VS Code extension — STT, TTS, narration, summary mode  
+**Session:** 10A (core + tools), 10B (summary narration + streaming TTS)  
 **Date:** 2026-03-07  
 **Source code reference:** `theia-openspace/openspace-voice-vscode/` + `theia-openspace/extensions/openspace-voice/` + `theia-openspace/packages/voice-core/`  
 **Architecture reference:** [`docs/voice-architecture.md`](voice-architecture.md)
@@ -11,7 +11,7 @@
 
 ## 1. Purpose
 
-`accordo-voice` is a VS Code extension that gives the Accordo agent a voice — both literal (TTS narration) and figurative (STT dictation). It ports and extends the voice infrastructure from theia-openspace into the Accordo monorepo, registering MCP tools so the agent can read text aloud, narrate presentations, execute scripted walkthroughs, and accept voice input.
+`accordo-voice` is a VS Code extension that gives the Accordo agent a voice — both literal (TTS narration) and figurative (STT dictation). It ports and extends the voice infrastructure from theia-openspace into the Accordo monorepo, registering MCP tools so the agent can read text aloud and accept voice input. In summary mode, the agent auto-narrates a spoken summary of each response via system-prompt instruction.
 
 **Technology stack:**
 - **STT:** Whisper.cpp (local, offline) via `WhisperCppAdapter`
@@ -21,13 +21,15 @@
 **Design principles:**
 1. **Local-first:** All audio processing runs locally. No cloud dependency for core STT/TTS.
 2. **Provider-agnostic:** Providers are behind interfaces. New providers (VS Code Speech API, ElevenLabs, Piper, etc.) can be added without changing tool/command code.
-3. **Scriptable:** An agent can generate a complete narration script in one shot and hand it off for execution — no step-by-step MCP round-trips.
+3. **Summary-capable:** In summary mode, the agent generates a concise spoken summary of each response and sends it to `readAloud` — no separate LLM call needed, the agent is the summarizer.
 4. **Text-aware:** Pre-TTS cleaning is markdown/code-aware. Content that doesn't speak well (code blocks, math, URLs) is replaced with natural spoken equivalents.
-5. **Integrated:** Voice tools compose with all existing Accordo commands — editor, presentation, comments, diagrams — enabling rich scripted walkthroughs.
+5. **Voice-only scope:** This extension owns STT and TTS. Scripted walkthroughs (multi-step sequences interleaving speech with IDE commands) are a separate capability in a dedicated scripting module — not part of the voice extension.
 
 **Session split:**
 - **Session 10A:** voice-core port, provider abstraction, STT/TTS adapters, FSMs, Bridge registration, MCP tools (`accordo_voice_readAloud`, `accordo_voice_dictation`, `accordo_voice_setPolicy`, `accordo_voice_discover`), status bar, WebviewView voice panel. Deterministic text cleaning included here (needed by `readAloud`).
-- **Session 10B:** Scripted narration runtime (`accordo_voice_narrate`), LLM-powered summary mode, sentence streaming, utterance library, integration tests with slidev/editor.
+- **Session 10B:** Summary narration mode (system-prompt directive for auto-narration of agent responses), streaming TTS (sentence-level pipeline for reduced latency).
+
+> **Scripted walkthroughs** (multi-step sequences interleaving speech, IDE commands, delays, and highlighting) are **not part of the voice extension**. They live in a separate scripting module (future session) so they work without the voice extension installed — e.g. with subtitles instead of audio.
 
 ---
 
@@ -184,17 +186,7 @@ packages/voice/
       "type": "string",
       "default": "narrate-off",
       "enum": ["narrate-off", "narrate-everything", "narrate-summary"],
-      "description": "Default narration mode"
-    },
-    "accordo.voice.llmEndpoint": {
-      "type": "string",
-      "default": "",
-      "description": "LLM API endpoint for summary narration mode (e.g. http://localhost:11434/v1)"
-    },
-    "accordo.voice.llmModel": {
-      "type": "string",
-      "default": "",
-      "description": "LLM model name for summary mode (e.g. llama3, gpt-4)"
+      "description": "Default narration mode. narrate-summary adds a system-prompt directive for the agent to auto-narrate a spoken summary of each response."
     }
   }
 }
@@ -574,77 +566,44 @@ packages/voice/
 
 ---
 
-## 5. Module Specifications — Session 10B (Preview)
-
-These modules are defined here for architectural completeness but will be fully specified and implemented in Session 10B.
+## 5. Module Specifications — Session 10B
 
 ---
 
-### M51-NR — Narration Script Runtime (Session 10B)
+### M51-SN — Summary Narration Prompt (Session 10B)
 
-**File:** `src/narration/script-runner.ts`  
-**Test file:** `src/__tests__/script-runner.test.ts`
+**File:** Hub prompt engine update (system prompt conditional section)  
+**Test file:** `packages/hub/src/__tests__/prompt-engine.test.ts` (additional cases)
 
-**Purpose:** Execute a `NarrationScript` — a sequence of steps interleaving speech, VS Code commands, delays, and highlighting. The agent generates the full script in one shot; the runtime executes it without further MCP round-trips.
-
-| Requirement ID | Requirement |
-|---|---|
-| M51-NR-01 | Exports `class ScriptRunner` with `execute(script: NarrationScript): Promise<ScriptResult>` |
-| M51-NR-02 | `NarrationScript` type: `{ title: string, style?: NarrationStyle, steps: NarrationStep[] }` |
-| M51-NR-03 | `NarrationStep` union type: `speak`, `speak-file`, `command`, `delay`, `await-speech`, `highlight`, `clear-highlight` |
-| M51-NR-04 | `speak` step: cleans text (via TextCleaner), synthesizes with TTS, plays audio |
-| M51-NR-05 | `speak-file` step: reads file URI content (optionally a line range), cleans, synthesizes, plays |
-| M51-NR-06 | `command` step: calls `vscode.commands.executeCommand(command, ...args)` — any VS Code / Accordo command |
-| M51-NR-07 | `delay` step: waits specified milliseconds |
-| M51-NR-08 | `await-speech` step: blocks until current TTS playback finishes |
-| M51-NR-09 | `highlight` step: applies a `TextEditorDecorationType` directly via VS Code decoration API on the specified file range |
-| M51-NR-10 | `clear-highlight` step: removes temporary decorations |
-| M51-NR-11 | Steps execute sequentially; any step failure can be `skip` or `abort` per configurable error policy |
-| M51-NR-12 | Cancellation: `cancel()` method stops playback and skips remaining steps |
-| M51-NR-13 | Progress: emits `onProgress(stepIndex, totalSteps, stepType)` events |
-| M51-NR-14 | Returns `ScriptResult`: `{ completed: boolean, stepsExecuted: number, totalSteps: number, durationMs: number, error?: string }` |
-
-### M51-NT — Narrate Tool (Session 10B)
-
-**File:** `src/tools/narrate.ts`
+**Purpose:** When `narrationMode === 'narrate-summary'` is published in voice state, the Hub's system prompt includes a directive instructing the agent to call `accordo_voice_readAloud` with a concise spoken summary after each response. The agent is the summarizer — no separate LLM call is needed.
 
 | Requirement ID | Requirement |
 |---|---|
-| M51-NT-01 | Tool name: `accordo_voice_narrate` |
-| M51-NT-02 | Input: `{ script: NarrationScript }` (the full script object) |
-| M51-NT-03 | Delegates to `ScriptRunner.execute(script)` |
-| M51-NT-04 | Returns `ScriptResult` |
-| M51-NT-05 | Only one script can execute at a time; calling while a script is running returns `{ error: "narration in progress" }` |
+| M51-SN-01 | When voice state `policy.narrationMode` is `'narrate-summary'`, the Hub prompt engine appends a narration directive to the `## Voice` section |
+| M51-SN-02 | Directive text: `"After each response, call accordo_voice_readAloud with a 2-3 sentence spoken summary of your answer. Keep it concise and natural for spoken delivery. Do not repeat the full response — summarize the key points."` |
+| M51-SN-03 | When `narrationMode` is `'narrate-off'` or `'narrate-everything'`, no directive is appended |
+| M51-SN-04 | When `narrationMode` is `'narrate-everything'`, the directive is: `"After each response, call accordo_voice_readAloud with your full response text. The text cleaning pipeline will handle markdown/code conversion to spoken form."` |
+| M51-SN-05 | The directive is only rendered when voice state is published and `policy.enabled` is true |
+| M51-SN-06 | Prompt token budget: the directive adds ~60 tokens; prompt engine accounts for this in budget calculations |
 
-### M51-PP — Narration Preprocessor (Session 10B)
+### M51-STR — Streaming TTS (Session 10B)
 
-**File:** `src/narration/preprocessor.ts`
+**File:** `src/core/audio/streaming-tts.ts`  
+**Test file:** `src/__tests__/streaming-tts.test.ts`
 
-| Requirement ID | Requirement |
-|---|---|
-| M51-PP-01 | Exports `class NarrationPreprocessor` accepting `LlmCaller` function |
-| M51-PP-02 | `process(text, mode)`: calls LLM with mode-specific prompt, parses response as `NarrationSegmentScript` |
-| M51-PP-03 | Graceful fallback: if LLM call fails or returns invalid JSON, returns raw text as single speech segment |
-| M51-PP-04 | Supports custom prompts per mode (everything, summary, custom styles) via `narrationPrompts` policy field |
-| M51-PP-05 | LLM caller is injected — routes to configured endpoint (`accordo.voice.llmEndpoint`) via direct HTTP API call |
-
-### M51-UL — Utterance Library (Session 10B)
-
-**File:** `src/narration/utterance-library.ts`
+**Purpose:** Sentence-level TTS pipeline that reduces perceived latency for longer `readAloud` calls. Splits cleaned text into sentences and synthesizes them incrementally — starts playing sentence N while synthesizing sentence N+1.
 
 | Requirement ID | Requirement |
 |---|---|
-| M51-UL-01 | Maps utterance IDs (`hmm`, `wow`, `nice`, `uh-oh`, `interesting`) to pre-recorded audio files |
-| M51-UL-02 | Random variant selection when multiple files exist per utterance ID |
-| M51-UL-03 | Returns file path or null if utterance ID unknown |
+| M51-STR-01 | Exports `streamingSpeak(text, ttsProvider, options): Promise<void>` |
+| M51-STR-02 | Splits cleaned text into sentences via `SentenceSplitter` |
+| M51-STR-03 | Synthesizes sentences incrementally — starts playing sentence N while synthesizing N+1 |
+| M51-STR-04 | Reduces perceived latency: first audio plays after synthesizing only the first sentence, not the entire text |
+| M51-STR-05 | Cancellation: accepts a `CancellationToken`; stops synthesis and playback when cancelled |
+| M51-STR-06 | Falls back to single-shot synthesis for texts ≤ 1 sentence |
+| M51-STR-07 | Integrates with `readAloud` tool: when streaming is enabled (default for texts > 1 sentence), `readAloud` delegates to `streamingSpeak` |
 
-### M51-STR — Streaming Narration (Session 10B)
-
-| Requirement ID | Requirement |
-|---|---|
-| M51-STR-01 | Splits cleaned text into sentences via `SentenceSplitter` |
-| M51-STR-02 | Synthesizes sentences incrementally — starts playing sentence N while synthesizing N+1 |
-| M51-STR-03 | Reduces perceived latency for long text narration |
+> **Removed from voice scope:** `ScriptRunner`, `NarrationScript`, `accordo_voice_narrate`, `NarrationPreprocessor`, `UtteranceLibrary`. These are part of the **Scripted Walkthroughs** module (future session) — a voice-independent capability that lives outside `packages/voice/`. See workplan for details.
 
 ---
 
@@ -666,12 +625,6 @@ interface VoiceStateSummary {
   };
   sttAvailable: boolean;
   ttsAvailable: boolean;
-  /** Set when a script narration is in progress (Session 10B) */
-  activeScript?: {
-    title: string;
-    currentStep: number;
-    totalSteps: number;
-  };
 }
 ```
 
@@ -679,23 +632,23 @@ interface VoiceStateSummary {
 ```markdown
 ## Voice
 Status: Active (Whisper STT + Kokoro TTS)
-Mode: narrate-everything, speed 1.0×, voice af_sarah
-Narration: Playing (step 5/12 of "Architecture Overview")
+Mode: narrate-summary, speed 1.0×, voice af_sarah
+Directive: After each response, call accordo_voice_readAloud with a 2-3 sentence spoken summary.
 ```
 
 ---
 
 ## 7. Non-Requirements (Session 10A — explicitly out of scope)
 
-- **No scripted narration runtime.** `ScriptRunner` and `accordo_voice_narrate` are Session 10B.
-- **No LLM-powered summary mode.** Deterministic text cleaning only in 10A.
-- **No streaming TTS.** Single-shot synthesis per text block. Streaming deferred to 10B (M51-STR).
-- **No utterance library.** Pre-recorded audio files are Session 10B.
-- **No auto-narration of agent responses.** Narrate-everything mode needs preprocessor (10B).
+- **No scripted narration runtime.** `ScriptRunner`, `NarrationScript`, and `accordo_voice_narrate` are **not part of the voice extension**. They belong to a separate scripting module (future session) that works independently of voice.
+- **No LLM calls from the voice extension.** Summary mode is agent-driven via system prompt directive. The voice extension has no `llmEndpoint` or `llmModel` config.
+- **No streaming TTS in 10A.** Single-shot synthesis per text block. Streaming deferred to 10B (M51-STR).
+- **No utterance library.** Pre-recorded interjection audio files are deferred to the scripting module.
+- **No auto-narration of agent responses in 10A.** Summary narration mode requires the Hub prompt directive (10B).
 - **No recording from within the webview.** Audio capture uses Node.js `node-record-lpcm16`, not WebAudio API.
 - **No language auto-detection.** Manual language selection only (matches whisper.cpp `--language` flag).
 - **No changes to existing extensions** (`accordo-comments`, `accordo-editor`, `accordo-slidev`, etc.).
-- **No changes to Hub or Bridge** beyond consuming existing `publishState()` and `registerTools()` APIs.
+- **No changes to Hub or Bridge** beyond consuming existing `publishState()` and `registerTools()` APIs (10A). Hub prompt update in 10B adds the narration directive.
 
 ---
 
@@ -740,8 +693,6 @@ Narration: Playing (step 5/12 of "Architecture Overview")
 |---|---|---|
 | `accordo-voice` → `accordo-bridge` | Runtime (optional) | `getExtension().exports` — Bridge provides `registerTools()` and `publishState()` |
 | `accordo-voice` → `@accordo/bridge-types` | Compile-time | Types: `ExtensionToolDefinition`, `ToolInputSchema`, `DangerLevel` |
-| `accordo-voice` → `accordo-editor` | Indirect (10B) | ScriptRunner executes `accordo_editor_*` commands via `vscode.commands.executeCommand` |
-| `accordo-voice` → `accordo-slidev` | Indirect (10B) | ScriptRunner executes `accordo_presentation_*` commands |
 
 ### 9.3 System Dependencies
 

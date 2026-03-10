@@ -43,41 +43,30 @@ The `@openspace-ai/voice-core` package provides `SttProvider`/`TtsProvider` inte
 - Eliminates a cross-repo dependency that could drift or become unavailable.
 - All Accordo packages are self-contained in the monorepo.
 
-### ADR-03 — Scripted narration: agent composes the full script, runtime executes it
+### ADR-03 — Summary narration: agent-driven, no LLM in voice extension
 
-Rather than having the agent call MCP tools step-by-step for a multi-step walkthrough (which requires N MCP round-trips and yields poor timing control), the agent generates a complete `NarrationScript` in one shot and passes it to `accordo_voice_narrate`. The `ScriptRunner` then executes the script autonomously.
-
-**Why this is feasible:** Extension-registered VS Code commands (`accordo.presentation.*`, `accordo.commentsPanel.*`, `accordo.voice.*`, etc.) and built-in VS Code commands (`vscode.open`, `workbench.action.gotoLine`) are all callable via `vscode.commands.executeCommand()`. **Note:** MCP tool names (`accordo_editor_*`) are NOT VS Code commands — use the built-in equivalents in command steps.
-
-**Example script (architecture walkthrough):**
-```json
-{
-  "title": "Hub architecture walkthrough",
-  "steps": [
-    { "type": "speak", "text": "Let's look at how the Hub connects to the Bridge." },
-    { "type": "command", "command": "vscode.open", "args": ["file:///workspace/docs/architecture.md"] },
-    { "type": "delay", "ms": 800 },
-    { "type": "highlight", "uri": "docs/architecture.md", "startLine": 43, "endLine": 60, "color": "yellow" },
-    { "type": "speak", "text": "Here is the Bridge WebSocket client. It connects to the Hub on port 3000." },
-    { "type": "await-speech" },
-    { "type": "clear-highlight" }
-  ]
-}
-```
-
-**NarrationScript** has a `style` field (`informative`, `conversational`, `dramatic`, `whisper`) that controls the LLM narration prompt in 10B summary mode. Future: more styles, utterance library emotions.
-
-### ADR-04 — LLM routing for summary mode: direct API call
-
-For `narrate-summary` mode (Session 10B), the voice extension calls the configured LLM directly rather than routing through VS Code APIs or the Hub.
+For summary mode, the agent is the summarizer. When `narrationMode === 'narrate-summary'` is published in voice state, the Hub's system prompt includes a directive telling the agent to call `accordo_voice_readAloud` with a concise spoken summary after each response.
 
 | Option | Verdict |
 |---|---|
-| Direct HTTP API call to configured `llmEndpoint`/`llmModel` | **Chosen** — same pattern as other local LLM integrations, works with any OpenAI-compatible endpoint |
-| VS Code Language Model API (`vscode.lm`) | Not chosen as primary — constrains to extensions marketplace models, less flexible for local inference |
-| Route via Hub | Not chosen — Hub is editor-agnostic compute layer; it should not own LLM credentials |
+| Agent generates summary inline, sends to `readAloud` via system-prompt directive | **Chosen** — zero added infrastructure, agent has full context, ~7% token overhead |
+| Voice extension calls LLM directly to summarize (ADR-04 original) | Not chosen — duplicates agent context, adds LLM dependency + config, doubles output tokens |
+| Hooks/plugins per agent client for response interception | Not chosen — not portable across agent clients (Copilot, Claude, OpenCode) |
 
-The LLM is optional and `narrate-summary` mode gracefully falls back to `narrate-full` (deterministic cleaning) if no endpoint is configured or the LLM call fails.
+**Why the agent is the best summarizer:** It already has the full response context. A separate LLM call would duplicate the content (doubling output tokens) and add latency. The system-prompt approach is universal across all MCP-capable agents.
+
+**Compliance model:** The instruction in the system prompt is clear and positioned prominently. Agent compliance is ~95%+ for well-structured directives. Missing a summary degrades UX but doesn't break anything — the text response is always visible.
+
+### ADR-04 — Voice-only scope: scripting lives elsewhere
+
+Scripted walkthroughs (the `NarrationScript` format, `ScriptRunner`, and `accordo_script_run` tool) are **not part of the voice extension**.
+
+| Option | Verdict |
+|---|---|
+| Scripting as a separate module (Bridge extension or standalone) | **Chosen** — works without voice installed (subtitles, visual-only), no circular dependency |
+| Scripting inside voice extension (original plan) | Not chosen — couples presentation scripting to audio; user without voice loses scripting entirely |
+
+**Rationale:** A user who doesn't want audio (or can't use it) should still be able to run a scripted walkthrough with subtitles, code navigation, slide transitions, and highlights. The voice extension provides TTS; it does not own orchestration.
 
 ### ADR-05 — Voice panel: port Theia waveform widget as WebviewView
 
@@ -107,7 +96,7 @@ The `theia-openspace` voice extension ships a canvas-based waveform overlay (`Vo
 │  │         │                  │ transcribe()           │ synthesize()  │   │
 │  │  ┌──────▼──────────────────▼────────────────────────▼───────────┐   │   │
 │  │  │  MCP Tools: discover / readAloud / dictation / setPolicy     │   │   │
-│  │  │  (Session 10B: + narrate)                                    │   │   │
+│  │  │                                                              │   │   │
 │  │  └────────────────────────┬────────────────────────────────────┘   │   │
 │  │                           │ registerTools()                         │   │
 │  │  ┌────────────────────────▼────────────────────────────────────┐   │   │
@@ -134,7 +123,6 @@ The `theia-openspace` voice extension ships a canvas-based waveform overlay (`Vo
 │  AI Agent                                                                   │
 │  → accordo_voice_discover, accordo_voice_readAloud,                        │
 │    accordo_voice_dictation, accordo_voice_setPolicy                         │
-│  → (10B) accordo_voice_narrate                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -179,10 +167,6 @@ packages/voice/
     ├── ui/
     │   ├── status-bar.ts           # VoiceStatusBar (StatusBarItem)
     │   └── voice-panel.ts          # VoicePanelProvider (WebviewView)
-    ├── narration/                  # Session 10B — scripted narration
-    │   ├── script-runner.ts        # ScriptRunner.execute(NarrationScript)
-    │   ├── preprocessor.ts         # NarrationPreprocessor (LLM summary)
-    │   └── utterance-library.ts    # UtteranceLibrary (pre-recorded audio)
     └── __tests__/                  # All test files co-located
 ```
 
@@ -316,86 +300,66 @@ Final sentence array → TTS synthesis (one sentence at a time)
 
 **Headings-only mode** (`narrate-headings`): extracts heading text + first sentence after each heading for a structural overview narration.
 
-**Summary mode** (Session 10B, requires LLM): `NarrationPreprocessor` calls the configured LLM endpoint to produce a spoken-word summary, optionally as a structured `NarrationScript` with emotion/style markers.
-
-### 7.2 LLM call contract (Session 10B)
-
-```typescript
-// POST accord.voice.llmEndpoint  (OpenAI-compatible)
-{
-  model: "accordo.voice.llmModel",
-  messages: [
-    { role: "system", content: NARRATION_SYSTEM_PROMPT[style] },
-    { role: "user",   content: rawText }
-  ]
-}
-// Response: NarrationScript JSON or plain text (fallback)
-```
-
-Fallback chain: LLM call fails → return raw text as single `speak` segment → `cleanTextForNarration` applied.
+**Summary mode** (Session 10B): When `narrationMode === 'narrate-summary'`, the Hub system prompt includes a directive telling the agent to call `readAloud` with a 2-3 sentence spoken summary after each response. The agent is the summarizer — no LLM call from the voice extension.
 
 ---
 
-## 8. Scripted Narration Design (Session 10B)
+## 8. Summary Narration Design (Session 10B)
 
-### 8.1 NarrationScript Format
+### 8.1 System prompt directive
 
-```typescript
-type NarrationScript = {
-  title: string;
-  style?: 'informative' | 'conversational' | 'dramatic' | 'whisper';
-  steps: NarrationStep[];
-};
+When `narrationMode === 'narrate-summary'` is published in voice state, the Hub prompt engine appends a directive to the `## Voice` section:
 
-type NarrationStep =
-  | { type: 'speak';           text: string; cleanMode?: 'narrate-full' | 'raw' }
-  | { type: 'speak-file';      uri: string; startLine?: number; endLine?: number }
-  | { type: 'command';         command: string; args?: unknown[] }
-  | { type: 'delay';           ms: number }
-  | { type: 'await-speech' }
-  | { type: 'highlight';       uri: string; startLine: number; endLine: number; color?: string }
-  | { type: 'clear-highlight' };
+```markdown
+## Voice
+Status: Active (Whisper STT + Kokoro TTS)
+Mode: narrate-summary, speed 1.0×, voice af_sarah (en-US)
+
+**Narration directive:** After each response, call `accordo_voice_readAloud` with a 2-3 sentence
+spoken summary of your answer. Keep it concise and natural for spoken delivery.
+Do not repeat the full response — summarize the key points.
 ```
 
-### 8.2 Execution model
-
-```
-ScriptRunner.execute(script)
-   ├── for each step in script.steps:
-   │     ├── speak:           cleanText → synthesize → play → await completion
-   │     ├── speak-file:      readFile(uri, range) → cleanText → synthesize → play
-   │     ├── command:         vscode.commands.executeCommand(cmd, ...args)
-   │     ├── delay:           sleep(ms)
-   │     ├── await-speech:    await current playback
-   │     ├── highlight:       vscode.window.activeTextEditor.setDecorations(...)
-   │     └── clear-highlight: remove decorations
-   └── return ScriptResult { completed, stepsExecuted, totalSteps, durationMs }
+For `narrate-everything` mode, the directive changes to:
+```markdown
+**Narration directive:** After each response, call `accordo_voice_readAloud` with your full response text.
+The text cleaning pipeline will handle markdown/code conversion to spoken form.
 ```
 
-**Cancellation:** `ScriptRunner.cancel()` interrupts the current playback and skips remaining steps. VS Code command `accordo.voice.stopNarration` calls this.
+When `narrate-off`, no directive is included.
 
-**Error policy:** each step can be configured to `skip` (continue to next step) or `abort` (throw). Default: `skip` for `command` steps, `abort` for `speak` steps if TTS unavailable.
+### 8.2 Flow
 
-### 8.3 Integration with Accordo commands
-
-Any VS Code command is callable from a `command` step. Extension-registered commands (`accordo.presentation.*`, `accordo.commentsPanel.*`, etc.) and built-in VS Code commands both work.
-
-> **Important:** `accordo_editor_*` names are MCP tool IDs — they are **not** registered VS Code commands and cannot be used in `command` steps. Use VS Code built-in commands or the Accordo extension commands listed below.
-
-```jsonc
-[
-  // Open a file using VS Code built-in command (use a file URI)
-  { "type": "command", "command": "vscode.open", "args": ["file:///workspace/src/main.ts"] },
-  // Navigate to a specific line in the active editor
-  { "type": "command", "command": "workbench.action.gotoLine" },
-  // Open a presentation deck (accordo-slidev registered command)
-  { "type": "command", "command": "accordo.presentation.open", "args": ["demo/my.deck.md"] },
-  // Navigate to slide 3
-  { "type": "command", "command": "accordo.presentation.goto", "args": [3] },
-  // Open a diagram (accordo-diagram registered command, Session 11)
-  { "type": "command", "command": "accordo.diagram.open", "args": ["docs/arch.mmd"] }
-]
 ```
+Agent generates response → Agent calls readAloud(summary) → voice extension:
+   cleanTextForNarration(summary) → splitIntoSentences →
+   for each sentence: synthesize → play (streaming pipeline, 10B)
+```
+
+Token overhead: ~100-150 tokens for the summary tool call on a typical response. This is ~7% overhead vs. the original plan of re-narrating the entire response through a separate LLM call (which would have doubled output tokens).
+
+### 8.3 Streaming TTS pipeline (M51-STR)
+
+For longer text (> 1 sentence), the streaming pipeline reduces perceived latency:
+
+```
+streamingSpeak(cleanedText):
+   sentences = splitIntoSentences(cleanedText)
+   for i in range(sentences):
+     audio[i] = synthesize(sentences[i])     ← starts immediately
+     if i > 0: await playback(audio[i-1])    ← plays previous while synthesizing current
+   await playback(audio[last])
+```
+
+First audio plays after synthesizing only the first sentence (~200-300ms with Kokoro), not the entire text.
+
+### 8.4 Graceful degradation
+
+| Condition | Behaviour |
+|---|---|
+| Agent doesn't call `readAloud` after a response | Silent — user still sees the text response. No error. |
+| TTS provider unavailable | `readAloud` returns error result. Agent sees the error. |
+| `narrationMode` set to `narrate-off` | No directive in system prompt. Agent doesn't call `readAloud` unless explicitly asked. |
 
 ---
 
@@ -455,12 +419,6 @@ bridge.publishState('accordo-voice', {
   },
   sttAvailable: true,
   ttsAvailable: true,
-  // (Session 10B) present when a script is executing:
-  activeScript: {
-    title: 'Architecture Overview',
-    currentStep: 5,
-    totalSteps: 12
-  }
 });
 ```
 
@@ -469,8 +427,8 @@ bridge.publishState('accordo-voice', {
 ```markdown
 ## Voice
 Status: Active (Whisper STT + Kokoro TTS)
-Mode: narrate-everything, speed 1.0×, voice af_sarah (en-US)
-Narration: Playing — step 5 of 12 "Architecture Overview"
+Mode: narrate-summary, speed 1.0×, voice af_sarah (en-US)
+Directive: After each response, call accordo_voice_readAloud with a 2-3 sentence spoken summary.
 ```
 
 When `session === 'inactive'` or no voice state is published, the `## Voice` section is omitted from the system prompt (standard Hub token budget behaviour).
@@ -501,41 +459,14 @@ bridge?.publishState('accordo-voice', currentState);
 
 ## 12. Cross-Modality Integration
 
-### 12.1 Slidev (presentations)
+The voice extension integrates with other modalities through the `readAloud` tool. When an agent is working with presentations, comments, or code, it can call `readAloud` with any text to speak it aloud. The voice extension does not need to know about the source modality.
 
-The `accordo_voice_narrate` tool (Session 10B) can include `accordo.presentation.*` command steps, enabling the agent to narrate slide decks:
+**Examples of agent-driven narration:**
+- Agent calls `accordo.presentation.generateNarration` to get slide notes, then `readAloud` with the result
+- Agent reads a comment thread and calls `readAloud` with a summary
+- Agent explains code and calls `readAloud` with the explanation
 
-```json
-{ "type": "command", "command": "accordo.presentation.goto", "args": [2] },
-{ "type": "speak", "text": "Here we see the Hub architecture." }
-```
-
-The slidev extension also exposes `accordo.presentation.generateNarration` which returns per-slide narration text — the voice extension can consume this and assemble a full-deck script.
-
-### 12.2 Comments
-
-During a scripted narration, the agent can reference and navigate to comment threads:
-
-```json
-{ "type": "command", "command": "accordo.commentsPanel.navigateToAnchor", "args": [threadId] },
-{ "type": "speak", "text": "There's a review comment here asking about the error handling." }
-```
-
-### 12.3 Editor tools
-
-The most common integration pattern — open a file, narrate it, highlight specific lines:
-
-```json
-{ "type": "command", "command": "vscode.open", "args": ["file:///workspace/src/hub.ts"] },
-{ "type": "highlight", "uri": "src/hub.ts", "startLine": 80, "endLine": 120, "color": "blue" },
-{ "type": "speak", "text": "This is the WebSocket handler for Bridge connections." },
-{ "type": "await-speech" },
-{ "type": "clear-highlight" }
-```
-
-### 12.4 Diagrams (Session 11, future)
-
-When the diagrams modality (Session 11) is implemented, scripted narrations will similarly be able to execute `accordo.diagram.*` commands to pan/zoom diagrams while narrating.
+> **Scripted multi-step walkthroughs** (interleaving speech with file navigation, slide transitions, highlights, and delays) are a **separate scripting module** (future session). The voice extension may be consumed by the scripting module as a TTS provider, but it does not own or execute scripts.
 
 ---
 
@@ -559,7 +490,7 @@ When the diagrams modality (Session 11) is implemented, scripted narrations will
 | whisper.cpp not found | STT tools return error, dictation command disabled, status bar shows warning |
 | kokoro-js not installed | TTS tools return error, read-aloud disabled, narration mode degraded |
 | Both STT and TTS missing | Status bar shows `$(error) Voice: Unavailable`, message with install instructions |
-| LLM endpoint not configured (10B) | `narrate-summary` mode falls back to `narrate-full` |
+| LLM endpoint not configured (10B) | Not applicable — summary narration is agent-driven via system prompt, no LLM config in voice extension |
 
 ### 13.3 Extension manifest activationEvents
 
@@ -582,9 +513,9 @@ When the diagrams modality (Session 11) is implemented, scripted narrations will
 | Session | Modules | Key deliverable |
 |---|---|---|
 | **10A** | M50-SP, M50-WA, M50-KA, M50-FSM, M50-WAV, M50-TC, M50-SS, M50-VC, M50-DT, M50-RA, M50-DI, M50-POL, M50-SB, M50-VP, M50-EXT | Voice extension with 4 MCP tools, status bar, waveform panel, ~198 tests |
-| **10B** | M51-NR, M51-NT, M51-PP, M51-UL, M51-STR | Scripted narration, LLM summary mode, utterance library, streaming TTS |
+| **10B** | M51-SN, M51-STR | Summary narration prompt (Hub update), streaming TTS pipeline, ~25 tests |
 
-**Test baseline to preserve:** 1418 existing tests across Hub/Bridge/Editor/Comments/SDK/md-viewer/slidev. New `packages/voice` adds ~198 tests (10A) and ~60 tests (10B estimate).
+**Test baseline to preserve:** 1418 existing tests across Hub/Bridge/Editor/Comments/SDK/md-viewer/slidev. New `packages/voice` adds ~198 tests (10A) and ~25 tests (10B).
 
 ---
 
@@ -604,5 +535,3 @@ The following theia-openspace files are the authoritative source for the ported 
 | `src/text/sentence-splitter.ts` | `extensions/openspace-voice/src/common/sentence-splitter.ts` |
 | `src/ui/voice-panel.ts` (waveform) | `extensions/openspace-voice/src/browser/voice-waveform-overlay.ts` |
 | `src/ui/voice-panel.ts` (mic button) | `extensions/openspace-voice/src/browser/voice-input-widget.tsx` |
-| `src/narration/preprocessor.ts` | `extensions/openspace-voice/src/node/narration-preprocessor.ts` |
-| `src/narration/utterance-library.ts` | `extensions/openspace-voice/src/node/utterance-library.ts` |

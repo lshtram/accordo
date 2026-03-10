@@ -63,30 +63,59 @@ When working in TDD mode, every implementation module goes through these phases 
 ├─────────────────────────────────────────────────────────────────┤
 │  Phase B — Write Failing Tests                                  │
 │                                                                 │
+│  0. BEFORE writing tests, create stub implementations for every │
+│     module under test. Stubs must:                              │
+│       - Be importable (no ModuleNotFoundError at collection)    │
+│       - Define all public classes, methods, and functions with  │
+│         the correct signatures                                  │
+│       - Raise NotImplementedError (or return a wrong value)     │
+│         in every method body — never silently succeed           │
+│     This ensures test failures are requirement-level assertion  │
+│     failures, not trivial collection errors.                    │
+│                                                                 │
 │  1. Write test file(s) for the module. Use vitest.              │
 │  2. For EVERY requirement in the spec, write at least one       │
 │     test. The test name MUST reference the requirement ID       │
 │     (e.g. "CONC-01: maintains in-flight counter").              │
 │  3. Cover happy path, error cases, and edge cases.              │
 │  4. Tests MUST import from the real module (not mocks of it).   │
-│  5. Run the tests — they MUST ALL FAIL (red).                   │
-│     If any test passes on the stub, the test is wrong.          │
+│  5. Run the tests — they MUST ALL FAIL (red), with one explicit │
+│     exception for structural contract tests (see below).        │
+│     CRITICAL: "red" means assertion failures or NotImplemented  │
+│     errors inside test bodies — NOT collection/import errors.   │
+│     If any test fails at collection (ImportError, ModuleNot-    │
+│     FoundError), fix the stub first before calling Phase B done.│
+│     EXCEPTION — structural contract tests MAY pass on stubs:    │
+│       - Tests that verify class/function shape (abstract class, │
+│         abstract method names, constructor signature, model      │
+│         field existence). These test structural contracts, not  │
+│         behavior, and are valid even when behavior is stub-only.│
+│       - ALL other tests must fail. If a behavior test passes    │
+│         on a stub, the test is wrong — fix it.                  │
 │  6. Tests define the complete functional contract.              │
 │     If you can't write a test for a requirement, the            │
 │     requirement is incomplete — fix it first.                   │
 │                                                                 │
-│  Deliverable: Comprehensive failing test suite.                 │
+│  Deliverable: Comprehensive failing test suite (assertion-level │
+│               failures only — zero collection errors).          │
 ├─────────────────────────────────────────────────────────────────┤
 │  Phase B2 — Demonstrate to User                                 │
 │                                                                 │
 │  1. STOP. Do not write implementation code yet.                 │
 │  2. Show the user the test file(s).                             │
 │  3. Run the tests and show they all fail (red).                 │
+│     GATE: If the run shows ANY collection/import errors, do     │
+│     NOT present B2. Fix the stubs and rerun until ALL failures  │
+│     are assertion-level (test bodies executed, functions called,│
+│     wrong values returned or NotImplementedError raised).       │
+│     Structural contract tests (abstract class shape, model      │
+│     fields, signatures) are allowed to pass on stubs.           │
 │  4. Walk the user through what each test validates.             │
 │  5. Confirm with the user that the test coverage is sufficient. │
 │  6. Wait for user acknowledgement before continuing.            │
 │                                                                 │
-│  Deliverable: User approves the test suite.                     │
+│  Deliverable: User approves the test suite (assertion-level     │
+│               failures demonstrated, zero collection errors).   │
 ├─────────────────────────────────────────────────────────────────┤
 │  Phase C — Implement                                            │
 │                                                                 │
@@ -306,12 +335,12 @@ Before writing any test that calls `parseArgs` or `resolveConfig`:
 3. Cross-reference each field against the test file. No field may be untested.
 4. Any field sourced from env vars must have: (a) a test when the env var is set, (b) a test when it's absent (defaults or throws).
 
-**5. Syntax validation per file**  
-After writing each test file, run it in isolation before moving on:
+**5. Syntax validation per file AND stub import check**  
+After writing each test file, create the corresponding stub if it doesn't yet exist, then run the test file in isolation:
 ```
 pnpm vitest run src/__tests__/<module>.test.ts
 ```
-Catch syntax/transform errors immediately, not at end-of-batch. A failing test that says "not implemented" is correct. A transform error means fix now.
+Catch syntax/transform errors and collection failures immediately, not at end-of-batch. A failing test that says "not implemented" is correct. A transform error or ImportError means fix now — do NOT present B2 with collection failures outstanding.
 
 **6. Post-edit fragment scan**  
 After any batch edit, visually scan each modified file for:
