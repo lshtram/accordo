@@ -12,6 +12,7 @@
 
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -41,6 +42,54 @@ export interface SherpaSubprocessAdapterOptions {
   workerPath?: string;
   /** Override subprocess spawn (inject a fake worker in tests). */
   spawnFn?: WorkerSpawnFn;
+  /** Override Node.js binary path (for testing). */
+  nodePath?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Find a real (non-Electron) Node.js binary
+// ---------------------------------------------------------------------------
+
+/**
+ * Locate a system Node.js binary that is NOT the Electron binary.
+ *
+ * Why: `process.execPath` inside VS Code points to the Electron binary.
+ * Even with `ELECTRON_RUN_AS_NODE=1`, Electron's V8/NAPI layer still blocks
+ * `napi_create_external_arraybuffer` ("External buffers are not allowed"),
+ * which sherpa-onnx-node relies on.  We need a real Node.js binary.
+ *
+ * Strategy:
+ *   1. `which node` — respects the user's PATH, works on macOS/Linux
+ *   2. Well-known install locations (Homebrew, nvm, fnm, Volta, system)
+ *   3. Fallback to `process.execPath` (will use ELECTRON_RUN_AS_NODE=1)
+ */
+export function findSystemNode(): string {
+  // 1. `which node` — fast and portable
+  try {
+    const result = execFileSync("which", ["node"], {
+      encoding: "utf8",
+      timeout: 3000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (result && fs.existsSync(result)) return result;
+  } catch { /* not found or timed out */ }
+
+  // 2. Well-known paths (macOS / Linux)
+  const candidates = [
+    "/opt/homebrew/bin/node",               // Homebrew ARM Mac
+    "/usr/local/bin/node",                  // Homebrew Intel Mac / system install
+    path.join(os.homedir(), ".nvm/current/bin/node"),
+    path.join(os.homedir(), ".local/share/fnm/aliases/default/bin/node"),
+    path.join(os.homedir(), ".volta/bin/node"),
+    "/usr/bin/node",                        // System package manager
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+
+  // 3. Fallback — Electron with ELECTRON_RUN_AS_NODE=1 (may still fail for
+  //    native addons that use external buffers, but it's better than nothing)
+  return process.execPath;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +132,7 @@ export class SherpaSubprocessAdapter implements TtsProvider {
   private readonly _exists: (p: string) => boolean;
   private readonly _workerPath: string;
   private readonly _spawnFn: WorkerSpawnFn;
+  private readonly _nodePath: string;
 
   /** M50-SP-02 — cached availability */
   private _available: boolean | undefined = undefined;
@@ -108,9 +158,12 @@ export class SherpaSubprocessAdapter implements TtsProvider {
     this._exists     = opts.existsFn   ?? ((p) => fs.existsSync(p));
     this._workerPath = opts.workerPath ??
       fileURLToPath(new URL("sherpa-worker.js", import.meta.url));
+    this._nodePath = opts.nodePath ?? findSystemNode();
     this._spawnFn = opts.spawnFn ??
-      ((wp) => cp.spawn(process.execPath, [wp], {
+      ((wp) => cp.spawn(this._nodePath, [wp], {
         stdio: ["pipe", "pipe", "pipe"],
+        // ELECTRON_RUN_AS_NODE is a no-op when _nodePath is real Node.js,
+        // but harmless — and needed if findSystemNode() fell back to Electron.
         env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
       }));
 
