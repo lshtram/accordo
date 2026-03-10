@@ -209,7 +209,10 @@ export class SherpaKokoroAdapter implements TtsProvider {
     if (this._loadingPromise !== null) return this._loadingPromise;
 
     this._loadingPromise = this._import("sherpa-onnx-node").then(async (mod) => {
-      const { OfflineTts } = mod as SherpaModule;
+      // sherpa-onnx-node is a CJS module wrapped in an ESM default export —
+      // OfflineTts lives on .default, not at the top level.
+      const resolved = (mod as { default?: SherpaModule } & SherpaModule);
+      const { OfflineTts } = resolved.default ?? resolved;
       const config = this._buildConfig();
 
       // Prefer static createAsync() (non-blocking engine init) if available
