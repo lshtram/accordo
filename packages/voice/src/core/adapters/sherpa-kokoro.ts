@@ -179,10 +179,16 @@ export class SherpaKokoroAdapter implements TtsProvider {
     const speed = request.speed ?? 1.0;
 
     // Prefer generateAsync (runs on libuv thread pool, non-blocking) if the
-    // native addon exposes it; fall back to sync generate() on old versions.
+    // native addon exposes it; fall back to sync generate() on old versions or
+    // when the VS Code extension host's thread pool is saturated (same root
+    // cause as the createAsync timeout above).
     const sherpaAudio: SherpaAudio =
       typeof engine.generateAsync === "function"
-        ? await engine.generateAsync({ text: request.text, sid, speed })
+        ? await Promise.race<SherpaAudio>([
+            engine.generateAsync({ text: request.text, sid, speed }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("generateAsync timed out")), 2000)),
+          ]).catch(() => engine.generate({ text: request.text, sid, speed }))
         : engine.generate({ text: request.text, sid, speed });
 
     const pcm = float32ToInt16Pcm(sherpaAudio.samples);
@@ -215,10 +221,18 @@ export class SherpaKokoroAdapter implements TtsProvider {
       const { OfflineTts } = resolved.default ?? resolved;
       const config = this._buildConfig();
 
-      // Prefer static createAsync() (non-blocking engine init) if available
+      // Prefer createAsync() (non-blocking engine init using the libuv thread
+      // pool). However, in VS Code's extension host the thread pool can be
+      // saturated by VS Code's own internals, causing createAsync to never
+      // resolve. Race against a 3 s deadline and fall back to the synchronous
+      // constructor (brief main-thread block, but reliable).
       const engine: SherpaOfflineTts =
         typeof OfflineTts.createAsync === "function"
-          ? await OfflineTts.createAsync(config)
+          ? await Promise.race<SherpaOfflineTts>([
+              OfflineTts.createAsync(config),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("createAsync timed out")), 3000)),
+            ]).catch(() => new OfflineTts(config) as SherpaOfflineTts)
           : new OfflineTts(config);
 
       this._engine = engine;
