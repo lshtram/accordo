@@ -177,9 +177,18 @@ export const window = {
     setDecorations: ReturnType<typeof vi.fn>;
   },
   registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
+  onDidChangeActiveTextEditor: vi.fn(() => ({ dispose: vi.fn() })),
   createTextEditorDecorationType: vi.fn(() => ({
     dispose: vi.fn(),
     key: "mock-decoration",
+  })),
+  createOutputChannel: vi.fn(() => ({
+    appendLine: vi.fn(),
+    append: vi.fn(),
+    show: vi.fn(),
+    hide: vi.fn(),
+    dispose: vi.fn(),
+    clear: vi.fn(),
   })),
   _getLastStatusBarItem: () => _statusBarItem,
 };

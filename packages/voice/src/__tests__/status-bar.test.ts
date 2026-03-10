@@ -67,6 +67,12 @@ describe("VoiceStatusBar", () => {
     expect(item.text).toBe("$(play) Voice: Narrating\u2026");
   });
 
+  it("M50-SB-04: narration=processing → text '$(loading~spin) Voice: Preparing narration…'", () => {
+    bar.update("active", "idle", "processing");
+    const item = (vscode.window as unknown as { _getLastStatusBarItem: () => { text: string } })._getLastStatusBarItem();
+    expect(item.text).toBe("$(loading~spin) Voice: Preparing narration\u2026");
+  });
+
   it("M50-SB-05: narration=playing → command is 'accordo.voice.stopNarration'", () => {
     bar.update("active", "idle", "playing");
     const item = (vscode.window as unknown as { _getLastStatusBarItem: () => { command: string } })._getLastStatusBarItem();

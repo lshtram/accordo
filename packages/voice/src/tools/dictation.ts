@@ -40,43 +40,71 @@ export function createDictationTool(deps: DictationToolDeps): ExtensionToolDefin
   const DEFAULT_SAMPLE_RATE = 16000;
 
   async function doStart(): Promise<Record<string, unknown>> {
+    if (_activeRecording) {
+      return { recording: true };
+    }
+
     const available = await sttProvider.isAvailable();
     if (!available) {
       return { error: "STT provider is not available" };
     }
 
-    sessionFsm.pushToTalkStart();
-    audioFsm.startCapture();
-    _activeRecording = startRecording(DEFAULT_SAMPLE_RATE);
+    try {
+      sessionFsm.pushToTalkStart();
+      audioFsm.startCapture();
+      _activeRecording = startRecording(DEFAULT_SAMPLE_RATE);
+    } catch (err) {
+      _activeRecording = null;
+      return { error: `Failed to start recording: ${String(err)}` };
+    }
 
     return { recording: true };
   }
 
-  async function doStop(insertAtCursor?: boolean): Promise<Record<string, unknown>> {
+  async function doStop(
+    insertAtCursor?: boolean,
+    languageOverride?: string,
+  ): Promise<Record<string, unknown>> {
     if (!_activeRecording) {
       return { error: "No active recording" };
     }
 
-    audioFsm.stopCapture();
-    const pcm = await _activeRecording.stop();
-    _activeRecording = null;
+    try {
+      audioFsm.stopCapture();
+      const pcm = await _activeRecording.stop();
+      _activeRecording = null;
 
-    const transcribeResult = await sttProvider.transcribe({
-      audio: pcm,
-      sampleRate: DEFAULT_SAMPLE_RATE,
-      language: sessionFsm.policy.language,
-    });
+      const transcribeResult = await sttProvider.transcribe({
+        audio: pcm,
+        sampleRate: DEFAULT_SAMPLE_RATE,
+        language: languageOverride ?? sessionFsm.policy.language,
+      });
 
-    audioFsm.transcriptReady();
-    sessionFsm.pushToTalkEnd();
+      audioFsm.transcriptReady();
+      sessionFsm.pushToTalkEnd();
 
-    const text = vocabulary.process(transcribeResult.text);
+      const text = vocabulary.process(transcribeResult.text);
 
-    if (insertAtCursor && insertText) {
-      await insertText(text);
+      if (insertAtCursor && insertText) {
+        await insertText(text);
+      }
+
+      return { text };
+    } catch (err) {
+      _activeRecording = null;
+      try {
+        audioFsm.error();
+        audioFsm.reset();
+      } catch {
+        // Ignore state-recovery errors and still return structured error result.
+      }
+      try {
+        sessionFsm.pushToTalkEnd();
+      } catch {
+        // Ignore state-recovery errors and still return structured error result.
+      }
+      return { error: `Dictation failed: ${String(err)}` };
     }
-
-    return { text };
   }
 
   return {
@@ -107,11 +135,12 @@ export function createDictationTool(deps: DictationToolDeps): ExtensionToolDefin
     handler: async (args: Record<string, unknown>) => {
       const action = args.action as "start" | "stop" | "toggle";
       const insertAtCursor = args.insertAtCursor as boolean | undefined;
+      const language = args.language as string | undefined;
 
       if (action === "start") return doStart();
-      if (action === "stop") return doStop(insertAtCursor);
+      if (action === "stop") return doStop(insertAtCursor, language);
       if (action === "toggle") {
-        return _activeRecording ? doStop(insertAtCursor) : doStart();
+        return _activeRecording ? doStop(insertAtCursor, language) : doStart();
       }
 
       return { error: `Unknown action: ${String(action)}` };

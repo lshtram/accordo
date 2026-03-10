@@ -128,9 +128,9 @@ describe("VoicePanelProvider", () => {
   });
 
   describe("incoming webview messages", () => {
-    it("M50-VP-10: micDown message triggers onMicDown callback", () => {
-      const onMicDown = vi.fn();
-      const callbacks: VoicePanelCallbacks = { onMicDown };
+    it("M50-VP-10: micToggle message triggers onMicToggle callback", () => {
+      const onMicToggle = vi.fn();
+      const callbacks: VoicePanelCallbacks = { onMicToggle };
       const provider = new VoicePanelProvider(callbacks);
       const view = makeWebviewView();
       provider.resolveWebviewView(
@@ -139,24 +139,9 @@ describe("VoicePanelProvider", () => {
         FAKE_TOKEN as unknown as Parameters<typeof provider.resolveWebviewView>[2],
       );
 
-      view._sendMessage({ type: "micDown" });
+      view._sendMessage({ type: "micToggle" });
 
-      expect(onMicDown).toHaveBeenCalled();
-    });
-
-    it("M50-VP-10: micUp message triggers onMicUp callback", () => {
-      const onMicUp = vi.fn();
-      const provider = new VoicePanelProvider({ onMicUp });
-      const view = makeWebviewView();
-      provider.resolveWebviewView(
-        view as unknown as Parameters<typeof provider.resolveWebviewView>[0],
-        FAKE_CONTEXT as unknown as Parameters<typeof provider.resolveWebviewView>[1],
-        FAKE_TOKEN as unknown as Parameters<typeof provider.resolveWebviewView>[2],
-      );
-
-      view._sendMessage({ type: "micUp" });
-
-      expect(onMicUp).toHaveBeenCalled();
+      expect(onMicToggle).toHaveBeenCalled();
     });
 
     it("M50-VP-10: stopNarration message triggers onStopNarration callback", () => {

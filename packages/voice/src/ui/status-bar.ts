@@ -19,9 +19,14 @@ function resolveDisplay(
   session: SessionState,
   audio: AudioState,
   narration: NarrationState,
+  micPreparing: boolean,
 ): StatusDisplay {
   if (session === "inactive") {
     return { text: "$(mute) Voice: Off", command: "accordo.voice.configure" };
+  }
+
+  if (micPreparing) {
+    return { text: "$(loading~spin) Voice: Preparing mic\u2026", command: "accordo.voice.configure" };
   }
 
   if (audio === "error") {
@@ -42,6 +47,10 @@ function resolveDisplay(
 
   if (narration === "playing") {
     return { text: "$(play) Voice: Narrating\u2026", command: "accordo.voice.stopNarration" };
+  }
+
+  if (narration === "processing" || narration === "queued") {
+    return { text: "$(loading~spin) Voice: Preparing narration\u2026", command: "accordo.voice.stopNarration" };
   }
 
   if (narration === "paused") {
@@ -73,8 +82,9 @@ export class VoiceStatusBar implements vscode.Disposable {
     audio: AudioState,
     narration: NarrationState,
     policy?: VoicePolicy,
+    micPreparing = false,
   ): void {
-    const display = resolveDisplay(session, audio, narration);
+    const display = resolveDisplay(session, audio, narration, micPreparing);
     this._item.text = display.text;
     this._item.command = display.command;
     this._item.color = display.color;

@@ -9,9 +9,10 @@ import type { SessionState, AudioState, NarrationState } from "../core/fsm/types
 
 /** Callbacks from the webview UI → extension. M50-VP-10 */
 export interface VoicePanelCallbacks {
-  onMicDown?: () => void;
-  onMicUp?: () => void;
+  onMicToggle?: () => void;
   onStopNarration?: () => void;
+  onTestTts?: () => void;
+  onTestStt?: () => void;
 }
 
 // ── nonce generator ────────────────────────────────────────────────────────────
@@ -33,8 +34,7 @@ function buildHtml(nonce: string): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <style>
     body { margin: 0; padding: 8px; background: #1e1e1e; color: #ccc; font-family: sans-serif; }
     #status { font-size: 12px; margin-bottom: 6px; }
@@ -50,13 +50,17 @@ function buildHtml(nonce: string): string {
   <div id="status" role="status">Voice Off</div>
   <canvas id="waveform" width="320" height="60" aria-label="Voice waveform"></canvas>
   <div id="controls">
-    <button id="mic-btn" title="Push to talk — hold mic to record">Mic</button>
+    <button id="mic-btn" title="Toggle dictation recording">Mic</button>
     <button id="stop-btn" title="Stop narration">Stop</button>
+    <button id="test-tts-btn" title="Play TTS smoke test">Test TTS</button>
+    <button id="test-stt-btn" title="Run STT smoke test">Test STT</button>
   </div>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const micBtn  = document.getElementById('mic-btn');
     const stopBtn = document.getElementById('stop-btn');
+    const testTtsBtn = document.getElementById('test-tts-btn');
+    const testSttBtn = document.getElementById('test-stt-btn');
     const canvas  = document.getElementById('waveform');
     const ctx     = canvas.getContext('2d');
     const BARS    = 32;
@@ -72,11 +76,10 @@ function buildHtml(nonce: string): string {
       });
     }
 
-    micBtn.addEventListener('mousedown',  () => vscode.postMessage({ type: 'micDown' }));
-    micBtn.addEventListener('mouseup',    () => vscode.postMessage({ type: 'micUp' }));
-    micBtn.addEventListener('touchstart', () => vscode.postMessage({ type: 'micDown' }));
-    micBtn.addEventListener('touchend',   () => vscode.postMessage({ type: 'micUp' }));
+    micBtn.addEventListener('click',         () => vscode.postMessage({ type: 'micToggle' }));
     stopBtn.addEventListener('click',     () => vscode.postMessage({ type: 'stopNarration' }));
+    testTtsBtn.addEventListener('click',  () => vscode.postMessage({ type: 'testTts' }));
+    testSttBtn.addEventListener('click',  () => vscode.postMessage({ type: 'testStt' }));
 
     window.addEventListener('message', event => {
       const msg = event.data;
@@ -137,9 +140,10 @@ export class VoicePanelProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html = buildHtml(nonce);
 
     webviewView.webview.onDidReceiveMessage((msg: { type: string }) => {
-      if (msg.type === "micDown") this._callbacks.onMicDown?.();
-      else if (msg.type === "micUp") this._callbacks.onMicUp?.();
+      if (msg.type === "micToggle") this._callbacks.onMicToggle?.();
       else if (msg.type === "stopNarration") this._callbacks.onStopNarration?.();
+      else if (msg.type === "testTts") this._callbacks.onTestTts?.();
+      else if (msg.type === "testStt") this._callbacks.onTestStt?.();
     });
   }
 

@@ -17,13 +17,17 @@ const flush = (): Promise<void> =>
 // ---------------------------------------------------------------------------
 vi.mock("node:fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
-  readFile: vi.fn().mockResolvedValue("Hello world"),
+  readFile: vi.fn().mockResolvedValue("Hello world" as unknown as Buffer),
   unlink: vi.fn().mockResolvedValue(undefined),
+  rm: vi.fn().mockResolvedValue(undefined),
   mkdtemp: vi.fn().mockResolvedValue("/tmp/accordo-voice-xyz"),
+  access: vi.fn().mockResolvedValue(undefined),
+  readdir: vi.fn().mockResolvedValue(["ggml-base.en.bin"]),
 }));
 
 vi.mock("node:os", () => ({
   tmpdir: vi.fn(() => "/tmp"),
+  homedir: vi.fn(() => "/home/test"),
 }));
 
 import { WhisperCppAdapter } from "../core/adapters/whisper-cpp.js";
@@ -78,9 +82,12 @@ function makeSpawn(): { spawnFn: SpawnFn; procs: FakeProc[] } {
 describe("WhisperCppAdapter", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(fsMock.access).mockResolvedValue(undefined);
+    vi.mocked(fsMock.readdir).mockResolvedValue(["ggml-base.en.bin"]);
     vi.mocked(fsMock.writeFile).mockResolvedValue(undefined);
     vi.mocked(fsMock.readFile).mockResolvedValue("Hello world" as unknown as Buffer);
     vi.mocked(fsMock.unlink).mockResolvedValue(undefined);
+    vi.mocked(fsMock.rm).mockResolvedValue(undefined);
     vi.mocked(fsMock.mkdtemp).mockResolvedValue("/tmp/accordo-voice-xyz");
   });
 
@@ -231,11 +238,18 @@ describe("WhisperCppAdapter", () => {
   it("M50-WA-06: cancellation token: if isCancellationRequested, kills process and rejects", async () => {
     const { spawnFn, procs } = makeSpawn();
     const adapter = new WhisperCppAdapter({ spawnFn });
-    const token = { isCancellationRequested: false };
+    const cancelHandlers: Array<() => void> = [];
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: (handler: () => void) => {
+        cancelHandlers.push(handler);
+      },
+    };
     const promise = adapter.transcribe({ audio: new Uint8Array([0]), language: "en" }, token);
 
     await flush();
     token.isCancellationRequested = true;
+    for (const handler of cancelHandlers) handler();
     // Trigger close after cancel flag is set (simulates cancel detection)
     procs[0]!.emitClose(null);
 

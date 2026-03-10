@@ -4,9 +4,9 @@
  * M50-WA
  */
 
-import { mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { access, mkdtemp, readdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { join, isAbsolute, resolve as resolvePath } from "node:path";
 import { spawn as nodeSpawn } from "node:child_process";
 import type { SttProvider, SttTranscriptionRequest, SttTranscriptionResult, CancellationToken } from "../providers/stt-provider.js";
 
@@ -17,6 +17,8 @@ export type SpawnFn = (
   options: { stdio: "pipe" },
 ) => {
   kill(): void;
+  stdout?: { on(event: "data", cb: (chunk: Buffer) => void): void };
+  stderr?: { on(event: "data", cb: (chunk: Buffer) => void): void };
   on(event: "error", cb: (err: Error) => void): void;
   on(event: "close", cb: (code: number | null) => void): void;
 };
@@ -26,11 +28,81 @@ export interface WhisperCppAdapterOptions {
   modelFolder?: string;
   modelFile?: string;
   spawnFn?: SpawnFn;
+  /** Optional logger — receives whisper CLI args, exit code, stderr, etc. */
+  log?: (msg: string) => void;
+  /**
+   * Override model resolution for testing.
+   * If provided, used instead of the built-in auto-discovery.
+   * Return null to simulate "no model found".
+   */
+  resolveModelFn?: (folder: string, file: string, log: (msg: string) => void) => Promise<string | null>;
 }
 
 const DEFAULT_BINARY = "whisper";
-const DEFAULT_MODEL_FOLDER = join(tmpdir(), "whisper-models");
+const DEFAULT_MODEL_FOLDER = "";
 const DEFAULT_MODEL_FILE = "ggml-base.en.bin";
+
+/**
+ * Directories to search for ggml model files when modelFolder is not configured.
+ * Checked in order — first directory containing any *.bin file wins.
+ */
+function getModelSearchDirs(): string[] {
+  const home = homedir();
+  return [
+    // VoiceInk ships whisper.cpp models here on macOS
+    join(home, "Library", "Application Support", "com.prakashjoshipax.VoiceInk", "WhisperModels"),
+    // Homebrew whisper-cpp test model
+    "/opt/homebrew/Cellar/whisper-cpp/1.8.3/share/whisper-cpp",
+    // Common XDG / home locations
+    join(home, ".whisper", "models"),
+    join(home, ".cache", "whisper"),
+    join(tmpdir(), "whisper-models"),
+  ];
+}
+
+/** Resolve the absolute model path from config, or auto-discover from known dirs. */
+async function resolveModelPath(
+  modelFolder: string,
+  modelFile: string,
+  log: (msg: string) => void,
+): Promise<string | null> {
+  // 1. Explicit config — honor it if non-empty
+  if (modelFolder.trim()) {
+    const p = isAbsolute(modelFolder) ? join(modelFolder, modelFile) : resolvePath(modelFolder, modelFile);
+    try {
+      await access(p);
+      log(`model: using configured path ${p}`);
+      return p;
+    } catch {
+      log(`model: configured path not found: ${p}`);
+    }
+  }
+
+  // 2. Auto-discover: look for any *.bin file in known dirs
+  const searchDirs = getModelSearchDirs();
+  for (const dir of searchDirs) {
+    try {
+      const files = await readdir(dir);
+      const bins = files.filter((f) => f.endsWith(".bin"));
+      if (bins.length > 0) {
+        // Prefer exact modelFile name, otherwise take first found
+        const preferred = bins.includes(modelFile) ? modelFile : bins[0]!;
+        const p = join(dir, preferred);
+        log(`model: auto-discovered ${p}`);
+        return p;
+      }
+    } catch {
+      // dir doesn't exist or not readable — skip
+    }
+  }
+
+  log(
+    `model: no model file found. Searched:\n` +
+    searchDirs.map((d) => `  ${d}`).join("\n") +
+    `\nSet accordo.voice.whisperModelFolder in VS Code settings, or download a model from https://huggingface.co/ggerganov/whisper.cpp`,
+  );
+  return null;
+}
 
 /** Build a minimal 44-byte WAV header + PCM data. */
 function buildWav(pcm: Uint8Array, sampleRate = 16000): Buffer {
@@ -68,6 +140,8 @@ export class WhisperCppAdapter implements SttProvider {
   private readonly _modelFolder: string;
   private readonly _modelFile: string;
   private readonly _spawn: SpawnFn;
+  private readonly _log: (msg: string) => void;
+  private readonly _resolveModel: (folder: string, file: string, log: (msg: string) => void) => Promise<string | null>;
 
   /** M50-WA-02 */
   constructor(options: WhisperCppAdapterOptions = {}) {
@@ -75,26 +149,44 @@ export class WhisperCppAdapter implements SttProvider {
     this._modelFolder = options.modelFolder ?? DEFAULT_MODEL_FOLDER;
     this._modelFile = options.modelFile ?? DEFAULT_MODEL_FILE;
     this._spawn = options.spawnFn ?? (nodeSpawn as unknown as SpawnFn);
+    this._log = options.log ?? (() => { /* no-op */ });
+    this._resolveModel = options.resolveModelFn ?? resolveModelPath;
   }
 
   /** M50-WA-03 */
   async isAvailable(): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
+    // Check 1: binary on PATH
+    const binaryOk = await new Promise<boolean>((resolve) => {
       let settled = false;
       const proc = this._spawn(this._binaryPath, ["--help"], { stdio: "pipe" });
-
-      proc.on("error", () => {
+      proc.on("error", (err) => {
         if (settled) return;
         settled = true;
+        this._log(`isAvailable: binary "${this._binaryPath}" not found — ${String(err)}`);
         resolve(false);
       });
-
       proc.on("close", (code) => {
         if (settled) return;
         settled = true;
+        if (code !== 0) this._log(`isAvailable: binary "${this._binaryPath}" --help exited ${String(code)}`);
         resolve(code === 0);
       });
     });
+
+    if (!binaryOk) {
+      this._log(`isAvailable: FAIL — whisper binary not found at "${this._binaryPath}". Install whisper.cpp (brew install whisper-cpp) or set accordo.voice.whisperPath.`);
+      return false;
+    }
+
+    // Check 2: model file exists (or can be auto-discovered)
+    const modelPath = await this._resolveModel(this._modelFolder, this._modelFile, this._log);
+    if (!modelPath) {
+      this._log(`isAvailable: FAIL — no whisper model file found. Download one at https://huggingface.co/ggerganov/whisper.cpp and set accordo.voice.whisperModelFolder.`);
+      return false;
+    }
+
+    this._log(`isAvailable: OK — binary=${this._binaryPath} model=${modelPath}`);
+    return true;
   }
 
   /** M50-WA-04 */
@@ -107,15 +199,32 @@ export class WhisperCppAdapter implements SttProvider {
     const prefix = join(tmpDir, "output");
     const txtPath = `${prefix}.txt`;
 
+    this._log(`transcribe: audioBytes=${request.audio.byteLength} sampleRate=${request.sampleRate} lang=${request.language ?? "auto"}`);
+
+    if (request.audio.byteLength === 0) {
+      this._log("transcribe: audio is empty — skipping whisper, returning empty string");
+      return { text: "" };
+    }
+
+    const modelPath = await this._resolveModel(this._modelFolder, this._modelFile, this._log);
+    if (!modelPath) {
+      throw new Error(
+        `No whisper model file found. Download a model from https://huggingface.co/ggerganov/whisper.cpp ` +
+        `and set accordo.voice.whisperModelFolder in VS Code settings.`,
+      );
+    }
+
     try {
       await writeFile(wavPath, buildWav(request.audio, request.sampleRate));
 
-      const modelPath = join(this._modelFolder, this._modelFile);
+      this._log(`transcribe: wavPath=${wavPath} modelPath=${modelPath} prefix=${prefix}`);
       const text = await this._runWhisper(wavPath, modelPath, prefix, token);
+      this._log(`transcribe: result="${text.slice(0, 120)}"`);  
       return { text };
     } finally {
       // M50-WA-05 — always clean up temp files
       await Promise.allSettled([unlink(wavPath), unlink(txtPath)]);
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
     }
   }
 
@@ -127,16 +236,32 @@ export class WhisperCppAdapter implements SttProvider {
   ): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       let settled = false;
+      const stderrChunks: Buffer[] = [];
+
+      const args = ["-m", modelPath, "-otxt", "-of", prefix, "-f", wavPath];
+      this._log(`whisper cmd: ${this._binaryPath} ${args.join(" ")}`);
 
       const proc = this._spawn(
         this._binaryPath,
-        ["-m", modelPath, "-otxt", "-of", prefix, "-f", wavPath],
+        args,
         { stdio: "pipe" },
       );
+
+      proc.stderr?.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+      token?.onCancellationRequested(() => {
+        if (settled) return;
+        settled = true;
+        proc.kill();
+        reject(new Error("Operation cancelled"));
+      });
 
       /** M50-WA-06 — check token on close */
       const finish = (code: number | null): void => {
         if (settled) return; // M50-WA-07 — settled-guard
+
+        const stderrText = Buffer.concat(stderrChunks).toString("utf8").trim();
+        if (stderrText) this._log(`whisper stderr: ${stderrText.slice(0, 500)}`);
+        this._log(`whisper exit code: ${String(code)}`);
 
         if (token?.isCancellationRequested) {
           settled = true;
@@ -152,14 +277,23 @@ export class WhisperCppAdapter implements SttProvider {
         }
 
         settled = true;
+        // whisper may write no output file when audio is silent/too short
         readFile(`${prefix}.txt`, "utf8")
           .then((text) => resolve(typeof text === "string" ? text.trim() : String(text).trim()))
-          .catch(reject);
+          .catch((err: NodeJS.ErrnoException) => {
+            if (err.code === "ENOENT") {
+              this._log("whisper wrote no output.txt — treating as empty transcript");
+              resolve("");
+            } else {
+              reject(err);
+            }
+          });
       };
 
       proc.on("error", (err) => {
         if (settled) return; // M50-WA-07
         settled = true;
+        this._log(`whisper spawn error: ${String(err)}`);
         reject(err);
       });
 
