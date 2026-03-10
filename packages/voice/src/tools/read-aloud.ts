@@ -10,7 +10,6 @@ import type { NarrationFsm } from "../core/fsm/narration-fsm.js";
 import type { TtsProvider } from "../core/providers/tts-provider.js";
 import type { CleanMode } from "../text/text-cleaner.js";
 import type { StreamingSpeakOptions } from "../core/audio/streaming-tts.js";
-import { splitIntoSentences } from "../text/sentence-splitter.js";
 
 export type PlayAudioFn = (pcm: Uint8Array, sampleRate: number) => Promise<void>;
 export type StreamSpeakFn = (text: string, ttsProvider: TtsProvider, options: StreamingSpeakOptions) => Promise<void>;
@@ -85,39 +84,24 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
       narrationFsm.startProcessing();
 
       if (streamSpeak) {
-        // M51-STR: Fire-and-forget — synthesize and play entirely in the
-        // background so the tool call returns instantly.  The agent should not
-        // be blocked while audio is being generated / played.
-        const sentences = splitIntoSentences(processedText);
+        // M51-STR: Fire-and-forget — delegate to the streaming pipeline which
+        // handles sentence splitting, synthesis, and overlapped playback.
+        // The tool call returns instantly so the agent is never blocked.
+        // Mark audio as "playing" eagerly — the pipeline starts playback
+        // as soon as the first sentence is synthesized.
+        narrationFsm.audioReady();
 
-        void (async () => {
-          try {
-            const firstText = sentences[0] ?? processedText;
-            const firstResult = await ttsProvider.synthesize({
-              text: firstText,
-              language: policy.language,
-              voice,
-              speed,
-            });
-            narrationFsm.audioReady();
-            log?.(`[readAloud] first-sentence synth ok (${Date.now() - t0}ms), streaming rest in background. chars=${rawText.length}`);
-            await playAudio(firstResult.audio, firstResult.sampleRate ?? 22050);
-
-            const remainder = sentences.length > 1 ? sentences.slice(1).join(" ") : null;
-            if (remainder) {
-              await streamSpeak(remainder, ttsProvider, {
-                language: policy.language,
-                voice,
-                speed,
-                log,
-              });
-            }
-            narrationFsm.complete();
-          } catch (bgErr) {
+        void streamSpeak(processedText, ttsProvider, {
+          language: policy.language,
+          voice,
+          speed,
+          log,
+        })
+          .then(() => { narrationFsm.complete(); })
+          .catch((bgErr) => {
             log?.(`[readAloud] background playback failed: ${String(bgErr)}`);
             narrationFsm.error();
-          }
-        })();
+          });
 
         return {
           speaking: true,
