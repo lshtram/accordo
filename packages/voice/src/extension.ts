@@ -11,7 +11,7 @@ import type { TtsProvider } from "./core/providers/tts-provider.js";
 import type { VoicePolicy } from "./core/fsm/types.js";
 import { WhisperCppAdapter } from "./core/adapters/whisper-cpp.js";
 import { KokoroAdapter } from "./core/adapters/kokoro.js";
-import { SherpaKokoroAdapter } from "./core/adapters/sherpa-kokoro.js";
+import { SherpaSubprocessAdapter } from "./core/adapters/sherpa-subprocess.js";
 import { SessionFsm } from "./core/fsm/session-fsm.js";
 import { AudioFsm } from "./core/fsm/audio-fsm.js";
 import { NarrationFsm } from "./core/fsm/narration-fsm.js";
@@ -127,10 +127,10 @@ export async function activate(
   if (deps?.ttsProvider) {
     tts = deps.ttsProvider;
   } else {
-    const sherpa = new SherpaKokoroAdapter();
+    const sherpa = new SherpaSubprocessAdapter();
     if (await sherpa.isAvailable()) {
       tts = sherpa;
-      logger.log("tts: using sherpa-kokoro (C++ runtime)");
+      logger.log("tts: using sherpa-kokoro (C++ subprocess — bypasses extension host buffer restriction)");
     } else {
       tts = new KokoroAdapter();
       logger.log("tts: sherpa model not found — using kokoro-js (JS ONNX). To enable Sherpa: download kokoro-en-v0_19 to ~/.accordo/models/kokoro-en-v0_19");
