@@ -242,6 +242,18 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
 
 // Run when executed directly; skip when imported by tests
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // ── Process-level crash guards ──────────────────────────────────────────
+  // An unhandled exception or rejection should NEVER silently kill the Hub.
+  // Log the error and keep running — the Bridge will reconnect, and the MCP
+  // clients will retry.  Only a truly unrecoverable state (OOM, SIGKILL)
+  // should take the process down.
+  process.on("uncaughtException", (err) => {
+    console.error("[hub] UNCAUGHT EXCEPTION (process kept alive):", err);
+  });
+  process.on("unhandledRejection", (reason) => {
+    console.error("[hub] UNHANDLED REJECTION (process kept alive):", reason);
+  });
+
   main().catch((err: unknown) => {
     console.error("[hub] Fatal:", err);
     process.exit(1);

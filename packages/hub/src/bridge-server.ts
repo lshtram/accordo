@@ -154,13 +154,25 @@ export class BridgeServer {
         this.handleDisconnect();
       }
 
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        wss.emit("connection", ws, req);
-      });
+      try {
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          wss.emit("connection", ws, req);
+        });
+      } catch (err) {
+        console.error(`[hub:bridge] handleUpgrade error: ${(err as Error).message ?? err}`);
+        socket.destroy();
+      }
     });
 
     wss.on("connection", (ws: WsSocket) => {
       this.handleConnect(ws);
+    });
+
+    // Prevent unhandled 'error' on the WebSocketServer from crashing the
+    // Node.js process.  Errors here are typically OS-level socket issues
+    // (e.g. ECONNRESET from a stale Bridge) — log and continue.
+    wss.on("error", (err) => {
+      console.error(`[hub:bridge] WebSocketServer error: ${(err as Error).message ?? err}`);
     });
   }
 
@@ -336,37 +348,44 @@ export class BridgeServer {
    * (cancels the grace timer in the latter case).
    */
   private handleConnect(ws: WsSocket): void {
-    console.error("[hub:bridge] Bridge connected");
-    // Cancel any running grace timer — Bridge reconnected within the window.
-    if (this.graceTimer !== null) {
-      clearTimeout(this.graceTimer);
-      this.graceTimer = null;
-    }
-
-    this.ws = ws;
-    this.connected = true;
-
-    // §9.2: Heartbeat — send ping every 30 s
-    this.pingInterval = setInterval(() => {
-      if (ws.readyState === ws.OPEN) {
-        this.send({ type: "ping", ts: Date.now() });
+    try {
+      console.error("[hub:bridge] Bridge connected");
+      // Cancel any running grace timer — Bridge reconnected within the window.
+      if (this.graceTimer !== null) {
+        clearTimeout(this.graceTimer);
+        this.graceTimer = null;
       }
-    }, PING_INTERVAL_MS);
 
-    ws.on("message", (data) => {
-      this.handleMessage(data.toString());
-    });
+      this.ws = ws;
+      this.connected = true;
 
-    ws.on("close", () => {
-      this.handleDisconnect();
-    });
+      // §9.2: Heartbeat — send ping every 30 s
+      this.pingInterval = setInterval(() => {
+        if (ws.readyState === ws.OPEN) {
+          this.send({ type: "ping", ts: Date.now() });
+        }
+      }, PING_INTERVAL_MS);
 
-    // Capture the error for logging.  The ws library always emits 'close'
-    // after 'error', so handleDisconnect() will run from the close handler;
-    // calling it here as well would double-fire.  Just log the error.
-    ws.on("error", (err) => {
-      console.error(`[hub:bridge] socket error: ${(err as Error).message ?? err}`);
-    });
+      ws.on("message", (data) => {
+        this.handleMessage(data.toString());
+      });
+
+      ws.on("close", () => {
+        this.handleDisconnect();
+      });
+
+      // Capture the error for logging.  The ws library always emits 'close'
+      // after 'error', so handleDisconnect() will run from the close handler;
+      // calling it here as well would double-fire.  Just log the error.
+      ws.on("error", (err) => {
+        console.error(`[hub:bridge] socket error: ${(err as Error).message ?? err}`);
+      });
+    } catch (err) {
+      console.error(`[hub:bridge] handleConnect error: ${(err as Error).message ?? err}`);
+      // Best effort: close the socket so Bridge gets a clean close event
+      // and schedules reconnection.  Don't let the error propagate.
+      try { ws.terminate(); } catch { /* already gone */ }
+    }
   }
 
   private send(msg: Record<string, unknown>): void {
