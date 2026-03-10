@@ -109,7 +109,10 @@ export class SherpaSubprocessAdapter implements TtsProvider {
     this._workerPath = opts.workerPath ??
       fileURLToPath(new URL("sherpa-worker.js", import.meta.url));
     this._spawnFn = opts.spawnFn ??
-      ((wp) => cp.spawn(process.execPath, [wp], { stdio: ["pipe", "pipe", "inherit"] }));
+      ((wp) => cp.spawn(process.execPath, [wp], {
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      }));
 
     // Eagerly cache availability (sync) so isAvailable() hot-path is instant
     try {
@@ -209,18 +212,30 @@ export class SherpaSubprocessAdapter implements TtsProvider {
         }
       });
 
+      // Capture stderr so worker crashes produce useful diagnostics
+      let stderrBuf = "";
+      worker.stderr?.on("data", (chunk: Buffer | string) => {
+        stderrBuf += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+        // Cap buffer to avoid unbounded growth on chatty workers
+        if (stderrBuf.length > 4096) stderrBuf = stderrBuf.slice(-4096);
+      });
+
       worker.on("error", (err: Error) => {
         this._initReject?.(err);
         this._clearInit();
         this._failAllPending(err);
       });
 
-      worker.on("exit", () => {
+      worker.on("exit", (code) => {
         this._worker = null;
         this._workerReady = false;
         this._initPromise = null;
         this._clearInit();
-        this._failAllPending(new Error("sherpa worker exited unexpectedly"));
+        const detail = stderrBuf.trim();
+        const msg = detail
+          ? `sherpa worker exited (code ${code}): ${detail.slice(0, 300)}`
+          : `sherpa worker exited unexpectedly (code ${code})`;
+        this._failAllPending(new Error(msg));
       });
 
       // Send init message
