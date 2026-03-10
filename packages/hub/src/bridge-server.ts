@@ -141,8 +141,15 @@ export class BridgeServer {
       // and reject the new session's connection with HTTP 409, which the WS
       // library surfaces as close code 1006 on the client side.
       if (this.connected && this.ws) {
-        // Terminate the stale socket before upgrading the new one.
-        try { this.ws.terminate(); } catch { /* already gone */ }
+        const stale = this.ws;
+        // Strip event listeners BEFORE terminate() so that the async `close`
+        // event the ws library emits after socket destruction does not fire
+        // handleDisconnect() a second time — which would arrive after
+        // handleConnect() has already registered the new socket, nulling out
+        // this.ws and this.connected and orphaning the new connection.
+        stale.removeAllListeners();
+        stale.on("error", () => {}); // prevent unhandled-error throw on RST
+        try { stale.terminate(); } catch { /* already gone */ }
         this.handleDisconnect();
       }
 

@@ -199,6 +199,12 @@ export class WsClient {
 
   /**
    * Gracefully close the connection. No reconnect after explicit close.
+   *
+   * Strips all event listeners from the underlying WebSocket BEFORE closing it.
+   * This prevents the stale socket's `close` event from firing `onDisconnected`
+   * (or worse, `_scheduleReconnect`) after the caller has already created a new
+   * WsClient or called `connect()` again — which would silently reset
+   * `noReconnect = false` before the old close event arrives.
    */
   async disconnect(): Promise<void> {
     this.noReconnect = true;
@@ -207,8 +213,13 @@ export class WsClient {
       this.reconnectTimer = null;
     }
     if (this.ws !== null) {
-      this.ws.close(1000);
+      const ws = this.ws;
       this.ws = null;
+      ws.removeAllListeners();
+      // Keep a no-op error listener so that any in-flight RST from Hub does
+      // not become an unhandled 'error' event that throws in Node.js.
+      ws.on("error", () => {});
+      ws.close(1000);
     }
   }
 
