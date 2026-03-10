@@ -521,11 +521,22 @@ describe("HubManager", () => {
   // ── attemptReauth (LCM-12) ────────────────────────────────────────────────
 
   describe("attemptReauth (LCM-12)", () => {
-    it("LCM-12: attemptReauth() returns a Promise<boolean>", () => {
+    it("LCM-12: attemptReauth() returns a Promise<boolean>", async () => {
+      vi.useRealTimers();
+      // Stub http.request so no real TCP connection is made (port 3000 may be occupied).
+      const fakeReq = {
+        on: vi.fn().mockImplementation(function (this: typeof fakeReq, event: string, cb: (e: Error) => void) {
+          if (event === "error") setImmediate(() => cb(new Error("mocked ECONNREFUSED")));
+          return this;
+        }),
+        write: vi.fn().mockReturnThis(),
+        end: vi.fn().mockReturnThis(),
+      };
+      vi.spyOn(http, "request").mockReturnValueOnce(fakeReq as unknown as http.ClientRequest);
       const { manager } = makeManager();
       const result = manager.attemptReauth("current-secret", "new-secret", "new-token");
       expect(result).toBeInstanceOf(Promise);
-      return result.catch(() => {});
+      await result; // resolves to false via error handler
     });
 
     it("LCM-12: attemptReauth() returns false when Hub is not reachable", async () => {
@@ -586,11 +597,14 @@ describe("HubManager", () => {
   // ── restart (LCM-12) ─────────────────────────────────────────────────────
 
   describe("restart (LCM-12)", () => {
-    it("LCM-12: restart() returns a Promise", () => {
+    it("LCM-12: restart() returns a Promise", async () => {
+      vi.useRealTimers();
       const { manager } = makeManager();
+      // Stub attemptReauth so restart returns early without real network I/O.
+      vi.spyOn(manager, "attemptReauth").mockResolvedValue(true);
       const result = manager.restart();
       expect(result).toBeInstanceOf(Promise);
-      return result.catch(() => {});
+      await result; // resolves immediately (reauth success → early return)
     });
 
     it("LCM-12: restart() attempts soft reauth before hard kill+respawn", async () => {
@@ -635,6 +649,7 @@ describe("HubManager", () => {
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import http from "node:http";
 import { afterAll } from "vitest";
 
 const tmpPidFile = path.join(os.tmpdir(), `accordo-test-hub-${process.pid}.pid`);
@@ -905,5 +920,85 @@ describe("HubManager — restart() LCM-12 credential persistence (M30-bridge)", 
       "accordo.hubToken",
       expect.any(String),
     );
+  });
+});
+
+// ── Dynamic port: portFilePath discovery ───────────────────────────────────────
+
+const tmpPortFile = path.join(os.tmpdir(), `accordo-test-hub-${process.pid}.port`);
+afterAll(() => { try { fs.unlinkSync(tmpPortFile); } catch { /* ignore */ } });
+
+describe("HubManager — portFilePath: dynamic port discovery", () => {
+  beforeEach(() => { vi.useRealTimers(); });
+  afterEach(() => {
+    try { fs.unlinkSync(tmpPortFile); } catch { /* ignore */ }
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("activate() uses port from portFilePath when Hub already healthy on that port", async () => {
+    // Hub previously started on port 3001 and wrote the port file.
+    fs.writeFileSync(tmpPortFile, "3001");
+    const { manager, events } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { port: 3000, portFilePath: tmpPortFile, autoStart: false },
+    });
+    vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+
+    await manager.activate();
+
+    // onHubReady must be called with port 3001 (from file), not 3000 (config)
+    expect(events.onHubReady).toHaveBeenCalledWith(3001, expect.any(String));
+    expect(manager.getPort()).toBe(3001);
+  });
+
+  it("activate() ignores portFilePath when file is absent (uses configured port)", async () => {
+    // No port file exists — Hub hasn't started yet or is on default port.
+    const { manager, events } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { port: 3000, portFilePath: "/tmp/accordo-nonexistent-port.port", autoStart: false },
+    });
+    vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+
+    await manager.activate();
+
+    expect(events.onHubReady).toHaveBeenCalledWith(3000, expect.any(String));
+    expect(manager.getPort()).toBe(3000);
+  });
+
+  it("pollHealth() updates port from portFilePath on each iteration", async () => {
+    vi.useFakeTimers();
+    // Port file is written by Hub after it starts.
+    let callCount = 0;
+    const { manager } = makeManager({
+      config: { port: 3000, portFilePath: tmpPortFile },
+    });
+    vi.spyOn(manager, "checkHealth").mockImplementation(async () => {
+      callCount++;
+      return callCount >= 2; // healthy on 2nd call
+    });
+
+    // Write port file before the 2nd poll fires
+    const p = manager.pollHealth(5000, 500);
+    await vi.advanceTimersByTimeAsync(100);
+    fs.writeFileSync(tmpPortFile, "3002"); // Hub started on 3002
+    await vi.advanceTimersByTimeAsync(1100); // advance past 2 poll intervals (500ms + 1000ms)
+    await p;
+
+    expect(manager.getPort()).toBe(3002);
+  });
+
+  it("portFilePath with invalid content is ignored, port stays unchanged", async () => {
+    fs.writeFileSync(tmpPortFile, "not-a-port");
+    const { manager, events } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { port: 4567, portFilePath: tmpPortFile, autoStart: false },
+    });
+    vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+
+    await manager.activate();
+
+    expect(manager.getPort()).toBe(4567); // unchanged
+    expect(events.onHubReady).toHaveBeenCalledWith(4567, expect.any(String));
   });
 });

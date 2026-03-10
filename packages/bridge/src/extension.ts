@@ -197,6 +197,8 @@ export async function activate(
     hubEntryPoint,
     // M29: default PID file location mirrors what Hub writes at startup
     pidFilePath: path.join(os.homedir(), ".accordo", "hub.pid"),
+    // Dynamic port: Hub writes the actual bound port here after startup
+    portFilePath: path.join(os.homedir(), ".accordo", "hub.port"),
   };
 
   // ── Registry (tool registrations from consumer extensions) ───────────────

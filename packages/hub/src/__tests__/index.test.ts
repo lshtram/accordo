@@ -213,3 +213,36 @@ describe("resolveConfig", () => {
     expect(config.logLevel).toBe("debug");
   });
 });
+
+// ── findFreePort ────────────────────────────────────────────────────────────────
+
+import { findFreePort } from "../index.js";
+
+describe("findFreePort", () => {
+  it("returns preferred port when it is free", async () => {
+    // Probe that always says free
+    const alwaysFree = async () => true;
+    const port = await findFreePort(3000, "127.0.0.1", 5, alwaysFree);
+    expect(port).toBe(3000);
+  });
+
+  it("skips occupied ports and returns the first free one", async () => {
+    // First two ports busy, third free
+    let calls = 0;
+    const probe = async () => { calls++; return calls > 2; };
+    const port = await findFreePort(3000, "127.0.0.1", 5, probe);
+    expect(port).toBe(3002);
+  });
+
+  it("throws when all tried ports are occupied", async () => {
+    const neverFree = async () => false;
+    await expect(findFreePort(3000, "127.0.0.1", 3, neverFree))
+      .rejects.toThrow(/No free port/);
+  });
+
+  it("returns the preferred port when it is the only one tried and is free", async () => {
+    const probe = async (port: number) => port === 4000;
+    const result = await findFreePort(4000, "127.0.0.1", 1, probe);
+    expect(result).toBe(4000);
+  });
+});

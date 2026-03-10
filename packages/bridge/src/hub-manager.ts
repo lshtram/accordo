@@ -57,6 +57,13 @@ export interface HubManagerConfig {
    * requirements-hub.md §8
    */
   pidFilePath?: string;
+  /**
+   * Absolute path to the hub.port file Hub writes after binding.
+   * When set, activate() and pollHealth() read this file to discover the
+   * actual bound port (which may differ from `port` when dynamic selection
+   * picked a different one). Override in tests to avoid touching the filesystem.
+   */
+  portFilePath?: string;
 }
 
 /**
@@ -151,6 +158,10 @@ export class HubManager {
         return;
       }
     }
+
+    // Discover actual port from hub.port file (Hub writes it after binding).
+    // This handles the case where a previous activation chose a different port.
+    this._applyPortFile();
 
     const healthy = await this.checkHealth();
     if (healthy) {
@@ -330,6 +341,9 @@ export class HubManager {
           resolve(false);
           return;
         }
+        // Pick up the actual port Hub wrote to hub.port (may differ from
+        // configured port when dynamic selection chose a different one).
+        this._applyPortFile();
         this.checkHealth()
           .then((healthy) => {
             if (healthy) {
@@ -464,5 +478,21 @@ export class HubManager {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Read hub.port file (if configured) and update this.port when a valid
+   * port number is found. No-op if portFilePath is not configured or the
+   * file doesn't exist yet (Hub may still be starting).
+   */
+  private _applyPortFile(): void {
+    if (!this.config.portFilePath) return;
+    try {
+      const raw = fs.readFileSync(this.config.portFilePath, "utf8").trim();
+      const p = Number(raw);
+      if (Number.isInteger(p) && p > 0 && p < 65536) {
+        this.port = p;
+      }
+    } catch { /* file not written yet — ignore */ }
   }
 }

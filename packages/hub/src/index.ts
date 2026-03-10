@@ -14,12 +14,58 @@
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs";
+import net from "node:net";
 import { DEFAULT_HUB_PORT } from "@accordo/bridge-types";
 import { HubServer } from "./server.js";
 import { McpHandler } from "./mcp-handler.js";
 import { ToolRegistry } from "./tool-registry.js";
 import { BridgeServer } from "./bridge-server.js";
 import { StdioTransport } from "./stdio-transport.js";
+
+// ---------------------------------------------------------------------------
+// Dynamic port selection
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if a TCP port is free by attempting to bind to it.
+ * Injectable probe function enables unit testing without real sockets.
+ */
+export function isPortFree(
+  port: number,
+  host: string,
+  _net: typeof net = net,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = _net.createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => server.close(() => resolve(true)));
+    server.listen(port, host);
+  });
+}
+
+/**
+ * Find the first free TCP port starting from `preferred`.
+ * Tries up to `maxTries` consecutive ports.
+ *
+ * @param preferred - First port to try (e.g. 3000)
+ * @param host      - Interface to bind on (e.g. "127.0.0.1")
+ * @param maxTries  - How many ports to attempt before giving up (default: 20)
+ * @param probe     - Injectable probe function (default: isPortFree)
+ */
+export async function findFreePort(
+  preferred: number,
+  host: string,
+  maxTries = 20,
+  probe: (port: number, host: string) => Promise<boolean> = isPortFree,
+): Promise<number> {
+  for (let i = 0; i < maxTries; i++) {
+    const candidate = preferred + i;
+    if (await probe(candidate, host)) {
+      return candidate;
+    }
+  }
+  throw new Error(`No free port found in range ${preferred}–${preferred + maxTries - 1}`);
+}
 
 export interface CliArgs {
   port: number;
@@ -150,24 +196,41 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     await transport.start();
   } else {
     const accordoDir = path.join(os.homedir(), ".accordo");
+
+    // Dynamic port selection: find first free port starting from config.port.
+    // This prevents EADDRINUSE when another process (e.g. SSH tunnel, VS Code
+    // port forward) has grabbed the preferred port.
+    const actualPort = await findFreePort(config.port, config.host);
+    if (actualPort !== config.port) {
+      console.error(`[hub] Port ${config.port} in use — using ${actualPort}`);
+    }
+
     const server = new HubServer({
       ...config,
+      port: actualPort,
       // M30-hub: path where updateToken() writes the rotated token on reauth
       tokenFilePath: path.join(accordoDir, "token"),
     });
     await server.start();
 
-    // §4.2 + §8: Write token and PID to ~/.accordo/ (mode 0700 dir, 0600 files)
+    // §4.2 + §8: Write token, PID, and actual port to ~/.accordo/
+    // (mode 0700 dir, 0600 files). The Bridge reads hub.port to discover the
+    // actual bound port when it differs from the configured default.
     fs.mkdirSync(accordoDir, { recursive: true, mode: 0o700 });
     fs.writeFileSync(path.join(accordoDir, "token"), config.token, { mode: 0o600 });
     fs.writeFileSync(path.join(accordoDir, "hub.pid"), String(process.pid), { mode: 0o600 });
+    fs.writeFileSync(path.join(accordoDir, "hub.port"), String(actualPort), { mode: 0o600 });
+    console.error(`[hub] Listening on ${config.host}:${actualPort}`);
 
     // Keep alive until signal
     await new Promise<void>((resolve) => {
       const shutdown = () => {
         server.stop().catch(() => {}).finally(() => {
-          // Remove PID file on clean shutdown
-          try { fs.unlinkSync(path.join(os.homedir(), ".accordo", "hub.pid")); } catch { /* ignore */ }
+          // Remove PID and port files on clean shutdown
+          const pidFile = path.join(os.homedir(), ".accordo", "hub.pid");
+          const portFile = path.join(os.homedir(), ".accordo", "hub.port");
+          try { fs.unlinkSync(pidFile); } catch { /* ignore */ }
+          try { fs.unlinkSync(portFile); } catch { /* ignore */ }
           resolve();
         });
       };
