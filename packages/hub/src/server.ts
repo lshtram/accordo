@@ -351,7 +351,8 @@ export class HubServer {
             res.end();
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error(`[hub:mcp] handleRequest error: ${err instanceof Error ? err.message : String(err)}`);
           res.end();
         });
     });
@@ -392,6 +393,7 @@ export class HubServer {
     // SSE endpoint confirmation ping
     res.write(": accordo-hub SSE connected\n\n");
 
+    console.error(`[hub:sse] new SSE connection id=${connId} agent=${agentHint ?? "unknown"}`);
     this.debugLogger?.logSseConnect(connId, agentHint);
 
     // Send SSE comment every 30 s to keep the stream alive.
@@ -414,6 +416,7 @@ export class HubServer {
         clearInterval(entry.keepAlive);
         this.sseConnections.delete(connId);
       }
+      console.error(`[hub:sse] SSE disconnected id=${connId} (remaining=${this.sseConnections.size})`);
       this.debugLogger?.logSseDisconnect(connId);
     });
   }
@@ -424,6 +427,7 @@ export class HubServer {
    */
   private pushSseNotification(notification: { jsonrpc: "2.0"; method: string; params: unknown }): void {
     if (this.sseConnections.size === 0) return;
+    console.error(`[hub:sse] pushing ${notification.method} to ${this.sseConnections.size} client(s)`);
     this.debugLogger?.logSseNotification(notification.method, this.sseConnections.size);
     const data = `data: ${JSON.stringify(notification)}\n\n`;
     for (const [id, entry] of this.sseConnections) {

@@ -126,9 +126,13 @@ export class BridgeServer {
       // Only handle /bridge path
       if (req.url !== "/bridge") return;
 
+      const remoteAddr = (socket as unknown as { remoteAddress?: string }).remoteAddress ?? "unknown";
+      console.error(`[hub:bridge] WS upgrade request from ${remoteAddr}`);
+
       // §2.5: Validate secret on upgrade — 401 if wrong
       const providedSecret = req.headers["x-accordo-secret"];
       if (providedSecret !== this.secret) {
+        console.error(`[hub:bridge] WS upgrade REJECTED — bad secret from ${remoteAddr}`);
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
         return;
@@ -188,24 +192,29 @@ export class BridgeServer {
     // Queue-full check runs BEFORE connection check so it is testable without a
     // live Bridge connection (degenerate configs: maxConcurrent=0, maxQueueDepth=0).
     if (this.inflight >= this.maxConcurrent && this.queued >= this.maxQueueDepth) {
+      console.error(`[hub:bridge] invoke(${tool}) REJECTED — queue full (inflight=${this.inflight}, queued=${this.queued})`);
       throw new JsonRpcError("Server busy — invocation queue full", -32004);
     }
     if (!this.connected || !this.ws) {
       if (this.graceTimer !== null) {
+        console.error(`[hub:bridge] invoke(${tool}) REJECTED — Bridge reconnecting (grace window active)`);
         throw new JsonRpcError("Bridge reconnecting", -32603);
       }
+      console.error(`[hub:bridge] invoke(${tool}) REJECTED — Bridge not connected`);
       throw new JsonRpcError("Bridge not connected", -32603);
     }
 
     // CONC-03: queue when at concurrency limit (but queue not full)
     if (this.inflight >= this.maxConcurrent) {
       this.queued++;
+      console.error(`[hub:bridge] invoke(${tool}) QUEUED (inflight=${this.inflight}, queued=${this.queued})`);
       return new Promise<ResultMessage>((resolve, reject) => {
         this.invokeQueue.push({ tool, args, timeout, resolve, reject });
       });
     }
 
     const id = randomUUID();
+    console.error(`[hub:bridge] invoke(${tool}) → Bridge [id=${id.slice(0,8)}, timeout=${timeout}ms, inflight=${this.inflight + 1}]`);
 
     return new Promise<ResultMessage>((resolve, reject) => {
       this.inflight++;
@@ -215,6 +224,7 @@ export class BridgeServer {
         this.inflight--;
         this.send({ type: "cancel", id });
         this.dequeueAndDispatch();
+        console.error(`[hub:bridge] invoke(${tool}) TIMED OUT after ${timeout}ms [id=${id.slice(0,8)}]`);
         reject(new JsonRpcError(`Tool invocation timed out after ${timeout}ms`, -32000));
       }, timeout);
 
@@ -403,6 +413,7 @@ export class BridgeServer {
     }
     this.messageCount++;
     if (this.messageCount > this.maxMessagesPerSecond) {
+      console.error(`[hub:bridge] rate-limited — dropped message (>${this.maxMessagesPerSecond} msg/s)`);
       return; // drop — do not close the connection
     }
 
@@ -410,7 +421,18 @@ export class BridgeServer {
     try {
       msg = JSON.parse(raw) as BridgeMessage;
     } catch {
+      console.error(`[hub:bridge] dropped malformed frame (${raw.length} bytes)`);
       return; // Ignore malformed frames
+    }
+
+    // Log every inbound message type (except pong, which is noisy)
+    if (msg.type !== "pong") {
+      const extra = msg.type === "result" ? ` id=${(msg as ResultMessage).id?.slice(0,8)} success=${(msg as ResultMessage).success}`
+        : msg.type === "toolRegistry" ? ` tools=${((msg as { tools?: unknown[] }).tools ?? []).length}`
+        : msg.type === "stateUpdate" ? ` keys=${Object.keys((msg as { patch?: Record<string, unknown> }).patch ?? {}).join(",")}`
+        : msg.type === "stateSnapshot" ? ` proto=${(msg as { protocolVersion?: string }).protocolVersion}`
+        : "";
+      console.error(`[hub:bridge] ← ${msg.type}${extra}`);
     }
 
     switch (msg.type) {
@@ -459,7 +481,10 @@ export class BridgeServer {
           this.pendingInvokes.delete(msg.id);
           this.inflight--;
           this.dequeueAndDispatch();
+          console.error(`[hub:bridge] ← result [id=${msg.id.slice(0,8)}, success=${(msg as ResultMessage).success}, inflight=${this.inflight}]`);
           pending.resolve(msg as ResultMessage);
+        } else {
+          console.error(`[hub:bridge] ← result [id=${msg.id.slice(0,8)}] — no pending invoke (orphan)`);
         }
         break;
       }
@@ -495,7 +520,9 @@ export class BridgeServer {
     // would create duplicate grace timers and double-reject pending calls.
     if (!this.connected) return;
 
-    console.error("[hub:bridge] Bridge disconnected");
+    const pendingCount = this.pendingInvokes.size;
+    const queuedCount = this.invokeQueue.length;
+    console.error(`[hub:bridge] Bridge disconnected (pending=${pendingCount}, queued=${queuedCount}, graceMs=${this.graceWindowMs})`);
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
       this.pingInterval = null;

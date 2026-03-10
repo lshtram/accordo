@@ -340,7 +340,7 @@ export async function activate(
           await stale.disconnect();
         }
 
-        wsClient = new WsClient(readyPort, secret, makeWsClientEvents(), () => registry?.getAllTools() ?? []);
+        wsClient = new WsClient(readyPort, secret, makeWsClientEvents(), () => registry?.getAllTools() ?? [], (msg) => outputChannel.appendLine(msg));
 
         await wsClient.connect(
           statePublisher?.getState() ?? StatePublisher.emptyState(),
@@ -409,7 +409,7 @@ export async function activate(
           );
           const port = hubManager?.getPort() ?? config.port;
           currentHubPort = port;
-          wsClient = new WsClient(port, newSecret, makeWsClientEvents(), () => registry?.getAllTools() ?? []);
+          wsClient = new WsClient(port, newSecret, makeWsClientEvents(), () => registry?.getAllTools() ?? [], (msg) => outputChannel.appendLine(msg));
           await wsClient.connect(
             statePublisher?.getState() ?? StatePublisher.emptyState(),
             registry?.getAllTools() ?? [],

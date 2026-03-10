@@ -106,6 +106,8 @@ export class WsClient {
      * Both the initial connect AND every automatic reconnect benefit.
      */
     private getToolsProvider?: () => ToolRegistration[],
+    /** Optional log sink.  Defaults to console.error for diagnostics. */
+    private log: (msg: string) => void = (msg) => console.error(msg),
   ) {}
 
   /**
@@ -124,6 +126,7 @@ export class WsClient {
     this.noReconnect = false;
     this.state = "connecting";
 
+    this.log(`[ws-client] connecting to ws://127.0.0.1:${this.port}/bridge (attempt=${this.reconnectAttempts})`);
     const ws = new WebSocket(`ws://127.0.0.1:${this.port}/bridge`, {
       headers: { "x-accordo-secret": this.secret },
     });
@@ -137,17 +140,22 @@ export class WsClient {
       // being invoked and the WS handshake completing, without needing a
       // deferred re-send workaround.
       const tools = this.getToolsProvider ? this.getToolsProvider() : currentTools;
+      this.log(`[ws-client] connected — sending stateSnapshot + toolRegistry (${tools.length} tools)`);
       this.sendStateSnapshot(currentState);
       this.sendToolRegistry(tools);
       this.events.onConnected();
     });
 
     ws.on("message", (data: Buffer) => {
-      if (data.length > MAX_MESSAGE_SIZE) return;
+      if (data.length > MAX_MESSAGE_SIZE) {
+        this.log(`[ws-client] dropped oversized message (${data.length} bytes, max=${MAX_MESSAGE_SIZE})`);
+        return;
+      }
       let msg: HubToBridgeMessage;
       try {
         msg = JSON.parse(data.toString()) as HubToBridgeMessage;
       } catch {
+        this.log(`[ws-client] dropped malformed JSON frame (${data.length} bytes)`);
         // Drop malformed messages — Hub should never send non-JSON, but guard defensively.
         return;
       }
@@ -156,17 +164,23 @@ export class WsClient {
         return;
       }
       if (msg.type === "invoke") {
-        this.events.onInvoke(msg as InvokeMessage);
+        const inv = msg as InvokeMessage;
+        this.log(`[ws-client] ← invoke ${inv.tool} [id=${inv.id.slice(0,8)}]`);
+        this.events.onInvoke(inv);
         return;
       }
       if (msg.type === "cancel") {
-        this.events.onCancel(msg as CancelMessage);
+        const can = msg as CancelMessage;
+        this.log(`[ws-client] ← cancel [id=${can.id.slice(0,8)}]`);
+        this.events.onCancel(can);
         return;
       }
       if (msg.type === "getState") {
+        this.log("[ws-client] ← getState");
         this.events.onGetState(msg as GetStateMessage);
         return;
       }
+      this.log(`[ws-client] ← unknown message type: ${String((msg as Record<string, unknown>).type)}`);
     });
 
     // Capture WebSocket errors so the close handler can report the real reason.
@@ -181,6 +195,7 @@ export class WsClient {
       } else {
         this.lastError = err.message || String(err);
       }
+      this.log(`[ws-client] socket error: ${this.lastError}`);
     });
 
     ws.on("close", (code: number, reason: Buffer) => {
@@ -191,8 +206,7 @@ export class WsClient {
       const detail = this.lastError && code === 1006
         ? `${reasonStr ? reasonStr + " — " : ""}${this.lastError}`
         : reasonStr;
-      this.lastError = null;
-      this.events.onDisconnected(code, detail);
+      this.lastError = null;      this.log(`[ws-client] closed code=${code} detail=${detail || "(none)"}`);      this.events.onDisconnected(code, detail);
       if (code === WS_CLOSE_AUTH_FAILURE) {
         this.events.onAuthFailure();
         return;
@@ -211,6 +225,7 @@ export class WsClient {
     const delay = this.getReconnectDelay(this.reconnectAttempts);
     this.reconnectAttempts++;
     this.state = "reconnecting";
+    this.log(`[ws-client] scheduling reconnect #${this.reconnectAttempts} in ${delay}ms`);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (this.lastState !== null) {
@@ -229,6 +244,7 @@ export class WsClient {
    * `noReconnect = false` before the old close event arrives.
    */
   async disconnect(): Promise<void> {
+    this.log("[ws-client] disconnect() called (explicit teardown)");
     this.noReconnect = true;
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
@@ -251,6 +267,7 @@ export class WsClient {
    * @param result - Tool invocation result
    */
   sendResult(result: ResultMessage): void {
+    this.log(`[ws-client] → result [id=${result.id.slice(0,8)}, success=${result.success}]`);
     this.ws?.send(JSON.stringify(result));
   }
 
@@ -272,6 +289,7 @@ export class WsClient {
   sendStateSnapshot(state: IDEState): void {
     // Always refresh the reconnect cache so WS-07 replays the latest state.
     this.lastState = state;
+    this.log(`[ws-client] → stateSnapshot (connected=${this.state === "connected"})`);
     this.ws?.send(
       JSON.stringify({
         type: "stateSnapshot",
@@ -290,6 +308,7 @@ export class WsClient {
   sendToolRegistry(tools: ToolRegistration[]): void {
     // Always refresh the reconnect cache so WS-07 replays the latest tools.
     this.lastTools = tools;
+    this.log(`[ws-client] → toolRegistry (${tools.length} tools, connected=${this.state === "connected"})`);
     this.ws?.send(JSON.stringify({ type: "toolRegistry", tools }));
   }
 
