@@ -121,7 +121,8 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
               });
             }
             narrationFsm.complete();
-          } catch {
+          } catch (bgErr) {
+            log?.(`[readAloud] background playback failed: ${String(bgErr)}`);
             narrationFsm.error();
           }
         })();
