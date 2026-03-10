@@ -72,7 +72,7 @@ export interface WsClientEvents {
 /**
  * WebSocket client for Bridge → Hub communication.
  *
- * WS-01: Connects to ws://localhost:{port}/bridge
+ * WS-01: Connects to ws://127.0.0.1:{port}/bridge
  * WS-02: Passes x-accordo-secret in upgrade headers
  * WS-03: On open: sends stateSnapshot with protocolVersion
  * WS-04: On open: sends toolRegistry with all registered tools
@@ -91,6 +91,8 @@ export class WsClient {
   private lastState: IDEState | null = null;
   private lastTools: ToolRegistration[] = [];
   private noReconnect = false;
+  /** Captures the last WebSocket error so the close handler can include it. */
+  private lastError: string | null = null;
 
   constructor(
     private port: number,
@@ -122,7 +124,7 @@ export class WsClient {
     this.noReconnect = false;
     this.state = "connecting";
 
-    const ws = new WebSocket(`ws://localhost:${this.port}/bridge`, {
+    const ws = new WebSocket(`ws://127.0.0.1:${this.port}/bridge`, {
       headers: { "x-accordo-secret": this.secret },
     });
     this.ws = ws;
@@ -167,16 +169,36 @@ export class WsClient {
       }
     });
 
+    // Capture WebSocket errors so the close handler can report the real reason.
+    // Without this, errors (e.g. maxPayload exceeded, socket reset) become
+    // unhandled EventEmitter 'error' events that throw in Node.js.
+    ws.on("error", (err: Error) => {
+      // AggregateError (Node 18+ happy-eyeballs) wraps per-address errors;
+      // surface the individual messages so the log is actually useful.
+      if (err.constructor.name === "AggregateError" && Array.isArray((err as unknown as { errors: Error[] }).errors)) {
+        const subs = (err as unknown as { errors: Error[] }).errors.map(e => e.message).join("; ");
+        this.lastError = `AggregateError: ${subs}`;
+      } else {
+        this.lastError = err.message || String(err);
+      }
+    });
+
     ws.on("close", (code: number, reason: Buffer) => {
       this.state = "disconnected";
       const reasonStr = reason.toString();
-      this.events.onDisconnected(code, reasonStr);
+      // Include captured error detail for 1006 (abnormal close) so the real
+      // failure reason is visible instead of a bare close code.
+      const detail = this.lastError && code === 1006
+        ? `${reasonStr ? reasonStr + " — " : ""}${this.lastError}`
+        : reasonStr;
+      this.lastError = null;
+      this.events.onDisconnected(code, detail);
       if (code === WS_CLOSE_AUTH_FAILURE) {
         this.events.onAuthFailure();
         return;
       }
       if (code === WS_CLOSE_PROTOCOL_MISMATCH) {
-        this.events.onProtocolMismatch(reasonStr);
+        this.events.onProtocolMismatch(detail);
         return;
       }
       if (!this.noReconnect) {

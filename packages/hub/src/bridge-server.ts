@@ -141,6 +141,7 @@ export class BridgeServer {
       // and reject the new session's connection with HTTP 409, which the WS
       // library surfaces as close code 1006 on the client side.
       if (this.connected && this.ws) {
+        console.error("[hub:bridge] evicting stale Bridge socket");
         const stale = this.ws;
         // Strip event listeners BEFORE terminate() so that the async `close`
         // event the ws library emits after socket destruction does not fire
@@ -335,6 +336,7 @@ export class BridgeServer {
    * (cancels the grace timer in the latter case).
    */
   private handleConnect(ws: WsSocket): void {
+    console.error("[hub:bridge] Bridge connected");
     // Cancel any running grace timer — Bridge reconnected within the window.
     if (this.graceTimer !== null) {
       clearTimeout(this.graceTimer);
@@ -359,8 +361,11 @@ export class BridgeServer {
       this.handleDisconnect();
     });
 
-    ws.on("error", () => {
-      this.handleDisconnect();
+    // Capture the error for logging.  The ws library always emits 'close'
+    // after 'error', so handleDisconnect() will run from the close handler;
+    // calling it here as well would double-fire.  Just log the error.
+    ws.on("error", (err) => {
+      console.error(`[hub:bridge] socket error: ${(err as Error).message ?? err}`);
     });
   }
 
@@ -399,8 +404,12 @@ export class BridgeServer {
           );
           return;
         }
-        // Update state cache (full replacement via callback)
-        this.stateUpdateCb?.(msg.state);
+        // Update state cache (full replacement via callback).
+        // Guard with try-catch so a bad payload doesn't crash the Hub
+        // and tear down the WebSocket (which surfaces as close 1006).
+        try { this.stateUpdateCb?.(msg.state); } catch (e) {
+          console.error(`[hub:bridge] stateUpdateCb threw: ${(e as Error).message ?? e}`);
+        }
         // Resolve any waiting requestState() call
         if (this.pendingStateRequest) {
           const pending = this.pendingStateRequest;
@@ -411,12 +420,16 @@ export class BridgeServer {
       }
 
       case "stateUpdate": {
-        this.stateUpdateCb?.(msg.patch);
+        try { this.stateUpdateCb?.(msg.patch); } catch (e) {
+          console.error(`[hub:bridge] stateUpdateCb threw: ${(e as Error).message ?? e}`);
+        }
         break;
       }
 
       case "toolRegistry": {
-        this.registryUpdateCb?.(msg.tools);
+        try { this.registryUpdateCb?.(msg.tools); } catch (e) {
+          console.error(`[hub:bridge] registryUpdateCb threw: ${(e as Error).message ?? e}`);
+        }
         break;
       }
 
@@ -458,6 +471,12 @@ export class BridgeServer {
   }
 
   private handleDisconnect(): void {
+    // Idempotency guard: ws emits both 'error' and 'close' on failures,
+    // and stale-eviction calls this explicitly.  Without the guard we
+    // would create duplicate grace timers and double-reject pending calls.
+    if (!this.connected) return;
+
+    console.error("[hub:bridge] Bridge disconnected");
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
       this.pingInterval = null;

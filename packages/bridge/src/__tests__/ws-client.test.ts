@@ -259,18 +259,18 @@ describe("WsClient", () => {
 
   // ── WS-01: URL format ────────────────────────────────────────────────────
 
-  describe("WS-01: connect() uses ws://localhost:{port}/bridge", () => {
-    it("WS-01: constructs WebSocket with exact URL ws://localhost:{port}/bridge", async () => {
+  describe("WS-01: connect() uses ws://127.0.0.1:{port}/bridge", () => {
+    it("WS-01: constructs WebSocket with exact URL ws://127.0.0.1:{port}/bridge", async () => {
       const { client } = makeClient(4321);
       await client.connect(IDLE_STATE, []).catch(() => {});
       expect(mockWsState.instance).not.toBeNull();
-      expect(mockWsState.instance!.url).toBe("ws://localhost:4321/bridge");
+      expect(mockWsState.instance!.url).toBe("ws://127.0.0.1:4321/bridge");
     });
 
     it("WS-01: port number is reflected in the URL", async () => {
       const { client } = makeClient(9999);
       await client.connect(IDLE_STATE, []).catch(() => {});
-      expect(mockWsState.instance?.url).toBe("ws://localhost:9999/bridge");
+      expect(mockWsState.instance?.url).toBe("ws://127.0.0.1:9999/bridge");
     });
   });
 
