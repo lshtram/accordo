@@ -8,6 +8,9 @@
  */
 
 import { randomUUID } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
 import type http from "node:http";
 import { WebSocketServer } from "ws";
 import type { WebSocket as WsSocket } from "ws";
@@ -103,6 +106,8 @@ export class BridgeServer {
   private graceWindowMs: number = 15_000;
   private onGraceExpired: (() => void) | undefined;
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** File path for bridge-server diagnostic logging. */
+  private logFile: string;
 
   constructor(options: BridgeServerOptions) {
     this.secret = options.secret;
@@ -112,6 +117,17 @@ export class BridgeServer {
     this.maxMessagesPerSecond = options.maxMessagesPerSecond ?? 100;
     this.graceWindowMs = options.graceWindowMs ?? 15_000;
     this.onGraceExpired = options.onGraceExpired;
+
+    const dir = path.join(os.homedir(), ".accordo");
+    try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch { /* ignore */ }
+    this.logFile = path.join(dir, "bridge-server.log");
+  }
+
+  /** Append a timestamped line to the diagnostic log file (never stderr). */
+  private log(msg: string): void {
+    try {
+      fs.appendFileSync(this.logFile, `${new Date().toISOString()} ${msg}\n`);
+    } catch { /* swallow */ }
   }
 
   /**
@@ -127,12 +143,12 @@ export class BridgeServer {
       if (req.url !== "/bridge") return;
 
       const remoteAddr = (socket as unknown as { remoteAddress?: string }).remoteAddress ?? "unknown";
-      console.error(`[hub:bridge] WS upgrade request from ${remoteAddr}`);
+      this.log(`[hub:bridge] WS upgrade request from ${remoteAddr}`);
 
       // §2.5: Validate secret on upgrade — 401 if wrong
       const providedSecret = req.headers["x-accordo-secret"];
       if (providedSecret !== this.secret) {
-        console.error(`[hub:bridge] WS upgrade REJECTED — bad secret from ${remoteAddr}`);
+        this.log(`[hub:bridge] WS upgrade REJECTED — bad secret from ${remoteAddr}`);
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
         return;
@@ -145,7 +161,7 @@ export class BridgeServer {
       // and reject the new session's connection with HTTP 409, which the WS
       // library surfaces as close code 1006 on the client side.
       if (this.connected && this.ws) {
-        console.error("[hub:bridge] evicting stale Bridge socket");
+        this.log("[hub:bridge] evicting stale Bridge socket");
         const stale = this.ws;
         // Strip event listeners BEFORE terminate() so that the async `close`
         // event the ws library emits after socket destruction does not fire
@@ -163,7 +179,7 @@ export class BridgeServer {
           wss.emit("connection", ws, req);
         });
       } catch (err) {
-        console.error(`[hub:bridge] handleUpgrade error: ${(err as Error).message ?? err}`);
+        this.log(`[hub:bridge] handleUpgrade error: ${(err as Error).message ?? err}`);
         socket.destroy();
       }
     });
@@ -176,7 +192,7 @@ export class BridgeServer {
     // Node.js process.  Errors here are typically OS-level socket issues
     // (e.g. ECONNRESET from a stale Bridge) — log and continue.
     wss.on("error", (err) => {
-      console.error(`[hub:bridge] WebSocketServer error: ${(err as Error).message ?? err}`);
+      this.log(`[hub:bridge] WebSocketServer error: ${(err as Error).message ?? err}`);
     });
   }
 
@@ -192,29 +208,29 @@ export class BridgeServer {
     // Queue-full check runs BEFORE connection check so it is testable without a
     // live Bridge connection (degenerate configs: maxConcurrent=0, maxQueueDepth=0).
     if (this.inflight >= this.maxConcurrent && this.queued >= this.maxQueueDepth) {
-      console.error(`[hub:bridge] invoke(${tool}) REJECTED — queue full (inflight=${this.inflight}, queued=${this.queued})`);
+      this.log(`[hub:bridge] invoke(${tool}) REJECTED — queue full (inflight=${this.inflight}, queued=${this.queued})`);
       throw new JsonRpcError("Server busy — invocation queue full", -32004);
     }
     if (!this.connected || !this.ws) {
       if (this.graceTimer !== null) {
-        console.error(`[hub:bridge] invoke(${tool}) REJECTED — Bridge reconnecting (grace window active)`);
+        this.log(`[hub:bridge] invoke(${tool}) REJECTED — Bridge reconnecting (grace window active)`);
         throw new JsonRpcError("Bridge reconnecting", -32603);
       }
-      console.error(`[hub:bridge] invoke(${tool}) REJECTED — Bridge not connected`);
+      this.log(`[hub:bridge] invoke(${tool}) REJECTED — Bridge not connected`);
       throw new JsonRpcError("Bridge not connected", -32603);
     }
 
     // CONC-03: queue when at concurrency limit (but queue not full)
     if (this.inflight >= this.maxConcurrent) {
       this.queued++;
-      console.error(`[hub:bridge] invoke(${tool}) QUEUED (inflight=${this.inflight}, queued=${this.queued})`);
+      this.log(`[hub:bridge] invoke(${tool}) QUEUED (inflight=${this.inflight}, queued=${this.queued})`);
       return new Promise<ResultMessage>((resolve, reject) => {
         this.invokeQueue.push({ tool, args, timeout, resolve, reject });
       });
     }
 
     const id = randomUUID();
-    console.error(`[hub:bridge] invoke(${tool}) → Bridge [id=${id.slice(0,8)}, timeout=${timeout}ms, inflight=${this.inflight + 1}]`);
+    this.log(`[hub:bridge] invoke(${tool}) → Bridge [id=${id.slice(0,8)}, timeout=${timeout}ms, inflight=${this.inflight + 1}]`);
 
     return new Promise<ResultMessage>((resolve, reject) => {
       this.inflight++;
@@ -224,7 +240,7 @@ export class BridgeServer {
         this.inflight--;
         this.send({ type: "cancel", id });
         this.dequeueAndDispatch();
-        console.error(`[hub:bridge] invoke(${tool}) TIMED OUT after ${timeout}ms [id=${id.slice(0,8)}]`);
+        this.log(`[hub:bridge] invoke(${tool}) TIMED OUT after ${timeout}ms [id=${id.slice(0,8)}]`);
         reject(new JsonRpcError(`Tool invocation timed out after ${timeout}ms`, -32000));
       }, timeout);
 
@@ -359,7 +375,7 @@ export class BridgeServer {
    */
   private handleConnect(ws: WsSocket): void {
     try {
-      console.error("[hub:bridge] Bridge connected");
+      this.log("[hub:bridge] Bridge connected");
       // Cancel any running grace timer — Bridge reconnected within the window.
       if (this.graceTimer !== null) {
         clearTimeout(this.graceTimer);
@@ -388,10 +404,10 @@ export class BridgeServer {
       // after 'error', so handleDisconnect() will run from the close handler;
       // calling it here as well would double-fire.  Just log the error.
       ws.on("error", (err) => {
-        console.error(`[hub:bridge] socket error: ${(err as Error).message ?? err}`);
+        this.log(`[hub:bridge] socket error: ${(err as Error).message ?? err}`);
       });
     } catch (err) {
-      console.error(`[hub:bridge] handleConnect error: ${(err as Error).message ?? err}`);
+      this.log(`[hub:bridge] handleConnect error: ${(err as Error).message ?? err}`);
       // Best effort: close the socket so Bridge gets a clean close event
       // and schedules reconnection.  Don't let the error propagate.
       try { ws.terminate(); } catch { /* already gone */ }
@@ -413,7 +429,7 @@ export class BridgeServer {
     }
     this.messageCount++;
     if (this.messageCount > this.maxMessagesPerSecond) {
-      console.error(`[hub:bridge] rate-limited — dropped message (>${this.maxMessagesPerSecond} msg/s)`);
+      this.log(`[hub:bridge] rate-limited — dropped message (>${this.maxMessagesPerSecond} msg/s)`);
       return; // drop — do not close the connection
     }
 
@@ -421,7 +437,7 @@ export class BridgeServer {
     try {
       msg = JSON.parse(raw) as BridgeMessage;
     } catch {
-      console.error(`[hub:bridge] dropped malformed frame (${raw.length} bytes)`);
+      this.log(`[hub:bridge] dropped malformed frame (${raw.length} bytes)`);
       return; // Ignore malformed frames
     }
 
@@ -432,7 +448,7 @@ export class BridgeServer {
         : msg.type === "stateUpdate" ? ` keys=${Object.keys((msg as { patch?: Record<string, unknown> }).patch ?? {}).join(",")}`
         : msg.type === "stateSnapshot" ? ` proto=${(msg as { protocolVersion?: string }).protocolVersion}`
         : "";
-      console.error(`[hub:bridge] ← ${msg.type}${extra}`);
+      this.log(`[hub:bridge] ← ${msg.type}${extra}`);
     }
 
     switch (msg.type) {
@@ -449,7 +465,7 @@ export class BridgeServer {
         // Guard with try-catch so a bad payload doesn't crash the Hub
         // and tear down the WebSocket (which surfaces as close 1006).
         try { this.stateUpdateCb?.(msg.state); } catch (e) {
-          console.error(`[hub:bridge] stateUpdateCb threw: ${(e as Error).message ?? e}`);
+          this.log(`[hub:bridge] stateUpdateCb threw: ${(e as Error).message ?? e}`);
         }
         // Resolve any waiting requestState() call
         if (this.pendingStateRequest) {
@@ -462,14 +478,14 @@ export class BridgeServer {
 
       case "stateUpdate": {
         try { this.stateUpdateCb?.(msg.patch); } catch (e) {
-          console.error(`[hub:bridge] stateUpdateCb threw: ${(e as Error).message ?? e}`);
+          this.log(`[hub:bridge] stateUpdateCb threw: ${(e as Error).message ?? e}`);
         }
         break;
       }
 
       case "toolRegistry": {
         try { this.registryUpdateCb?.(msg.tools); } catch (e) {
-          console.error(`[hub:bridge] registryUpdateCb threw: ${(e as Error).message ?? e}`);
+          this.log(`[hub:bridge] registryUpdateCb threw: ${(e as Error).message ?? e}`);
         }
         break;
       }
@@ -481,10 +497,10 @@ export class BridgeServer {
           this.pendingInvokes.delete(msg.id);
           this.inflight--;
           this.dequeueAndDispatch();
-          console.error(`[hub:bridge] ← result [id=${msg.id.slice(0,8)}, success=${(msg as ResultMessage).success}, inflight=${this.inflight}]`);
+          this.log(`[hub:bridge] ← result [id=${msg.id.slice(0,8)}, success=${(msg as ResultMessage).success}, inflight=${this.inflight}]`);
           pending.resolve(msg as ResultMessage);
         } else {
-          console.error(`[hub:bridge] ← result [id=${msg.id.slice(0,8)}] — no pending invoke (orphan)`);
+          this.log(`[hub:bridge] ← result [id=${msg.id.slice(0,8)}] — no pending invoke (orphan)`);
         }
         break;
       }
@@ -522,7 +538,7 @@ export class BridgeServer {
 
     const pendingCount = this.pendingInvokes.size;
     const queuedCount = this.invokeQueue.length;
-    console.error(`[hub:bridge] Bridge disconnected (pending=${pendingCount}, queued=${queuedCount}, graceMs=${this.graceWindowMs})`);
+    this.log(`[hub:bridge] Bridge disconnected (pending=${pendingCount}, queued=${queuedCount}, graceMs=${this.graceWindowMs})`);
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
       this.pingInterval = null;

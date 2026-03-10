@@ -203,14 +203,14 @@ export function renderPrompt(
 
     if (narrationMode === "narrate-summary") {
       voiceLines.push(
-        "Directive: After each response, call accordo_voice_readAloud with a 2-3 sentence spoken summary of your answer. Keep it concise and natural for spoken delivery. Do not repeat the full response — summarize the key points.",
+        "Directive: You MUST call accordo_voice_readAloud as the LAST tool call in EVERY response — including the very first one. Pass a 2-3 sentence spoken summary of your answer. Keep it concise and natural for spoken delivery. Do not repeat the full response — summarize the key points. This is a mandatory step, not optional.",
       );
       voiceLines.push(
         "If accordo_voice_readAloud returns an error or is unavailable, skip the voice step and proceed with your text response — do not retry.",
       );
     } else if (narrationMode === "narrate-everything") {
       voiceLines.push(
-        "Directive: After each response, call accordo_voice_readAloud with your full response text. The text cleaning pipeline will handle markdown/code conversion to spoken form.",
+        "Directive: You MUST call accordo_voice_readAloud as the LAST tool call in EVERY response — including the very first one. Pass your full response text. The text cleaning pipeline will handle markdown/code conversion to spoken form. This is a mandatory step, not optional.",
       );
       voiceLines.push(
         "If accordo_voice_readAloud returns an error or is unavailable, skip the voice step and proceed with your text response — do not retry.",

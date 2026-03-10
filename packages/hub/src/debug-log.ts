@@ -242,14 +242,16 @@ export class McpDebugLogger {
     this.write({ kind: "sse_notification", rpcMethod: method, message: `pushed to ${connCount} SSE client(s)` });
   }
 
+  /** Log a generic error message. */
+  logError(message: string): void {
+    this.write({ kind: "error", message });
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   private write(fields: Omit<DebugEntry, "ts">): void {
     const entry: DebugEntry = { ts: new Date().toISOString(), ...fields };
     const line = JSON.stringify(entry);
-
-    // Always emit to stderr — visible in the server terminal in real time
-    process.stderr.write(`[mcp-debug] ${line}\n`);
 
     if (!this.enabled) return;
     try {
