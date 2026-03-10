@@ -2,14 +2,14 @@
 
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
-**Date:** 2026-03-07  
-**Status:** ACTIVE — Session 10B complete (M51-SN + M51-STR ✅), Session 11 next (Diagrams)
+**Date:** 2026-03-10  
+**Status:** ACTIVE — Session 10C complete (voice robustness + simplification ✅), Session 11 next (Diagrams)
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-09 — Session 10B complete. M51-SN (Hub voice/narration directive) + M51-STR (streaming TTS pipeline) fully delivered: 25 new tests. Hub: 356, Voice: 226. 1654 tests total (Hub: 356, Voice: 226, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). TypeScript clean. Committed and pushed. Session 11 next: Diagrams modality (`accordo-diagram`).**
+> **As of 2026-03-10 — Session 10C complete. Full-session voice robustness hardening: dynamic port selection, WS disconnect handling, sherpa subprocess architecture (system Node vs Electron), readAloud fire-and-forget, Hub crash guards, Hub log noise eliminated, WS diagnostic logging, readAloud handler simplified (delegates fully to streamingSpeak). Hub: 360, Voice: 261. 1689 tests total (Hub: 360, Voice: 261, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). TypeScript clean. Committed and pushed. Session 11 next: Diagrams modality (`accordo-diagram`). Deferred: TTS inter-sentence silence (speech fluency).**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -17,11 +17,11 @@
 | Phase 2 | Comments modality (`accordo-comments`) | ✅ DONE — Week 6+7 complete, 1221 tests |
 | Phase 3 | Presentations modality (`accordo-slidev`) | ✅ DONE — Session 8B complete, 137 tests |
 | Session 9 | Custom Comments Panel (M45 — `accordo-comments` update) | ✅ DONE — 273 comments tests, 1418 total |
-| **Session 10** | **Voice modality (`accordo-voice` — 10A core+tools, 10B summary narration)** | ✅ DONE — 10A: 211 voice tests; 10B: M51-SN + M51-STR, 25 new tests |
-| Session 11 | Diagrams modality (`accordo-diagram` — Mermaid + Excalidraw) | ⏳ Pending Session 10 — architecture + workplan ready |
+| **Session 10** | **Voice modality (`accordo-voice` — 10A core+tools, 10B summary narration, 10C robustness)** | ✅ DONE — 10A: 211; 10B: +25; 10C: hardening + simplification, 261 total voice tests |
+| Session 11 | Diagrams modality (`accordo-diagram` — Mermaid + Excalidraw) | ⏳ Next |
 | Session 12+ | Browser agentation (`accordo-browser` + Chrome extension) | 📋 DEFERRED — architecture + requirements written, complex anchoring needs more design |
 
-**Baseline:** 1654 tests green (Hub: 356, Voice: 226, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). v0.1.0 on `main`.  
+**Baseline:** 1689 tests green (Hub: 360, Voice: 261, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). v0.1.0 on `main`.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -272,7 +272,35 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ---
 
-### Session 10C — Scripted Walkthroughs (future, separate from voice) [DEFERRED]
+#### Session 10C — Voice Robustness + Hardening (post-integration)
+
+**Goal:** Full-session debugging and hardening of the voice integration stack — from MCP plumbing through to TTS audio output. No new features; stabilise what was built in 10A+10B.
+
+**Fixes delivered (15 commits):**
+
+| Fix | Details |
+|---|---|
+| Dynamic Hub port | Port selection loops from 3000 until a free port is found — no more EADDRINUSE on reload |
+| TTS silent failure | `createAsync`/`generateAsync` availability check before branching; proper error propagation |
+| WS 1006 disconnect | Strip stale listeners before reconnect; idempotent disconnect path; ghost-disconnect eliminated |
+| Sherpa subprocess | Sherpa-onnx-node uses external ArrayBuffers (blocked by Electron). Solution: spawn sherpa-worker.ts in a real system Node.js binary (not Electron). `findSystemNode()` tries `which node`, well-known paths, then falls back to Electron + `ELECTRON_RUN_AS_NODE=1`. |
+| readAloud timeout | Handler is now fully fire-and-forget (<5ms). All synthesis + playback runs in background. |
+| Hub crash prevention | `process.on('uncaughtException')` + `process.on('unhandledRejection')` guards; wss error handler. |
+| Hub stderr noise | All bridge-server diagnostics write to `~/.accordo/bridge-server.log`. `McpDebugLogger` file-only (no stderr echo). Hub terminal is now clean. Added `logError()` helper. |
+| WS diagnostic logging | Comprehensive logging on every WS lifecycle path in bridge-server, ws-client, server, extension — feeds `bridge-server.log`. |
+| Prompt directive | Strengthened from "after each response" to "MUST call as LAST tool call in EVERY response — including the very first one." |
+| readAloud simplification | Removed manual first-sentence split/synthesize/play pattern. `readAloud` handler now delegates the full text to `streamingSpeak`, which handles splitting, overlap, and playback. Eliminates duplicate sentence-splitting. |
+
+**Key finding from log analysis:** The MCP response format was always correct (`result.content` array, `durationMs: 4`). The "TypeError: Cannot read properties of undefined (reading 'invoke')" reported by Copilot is an **internal Copilot MCP client bug** — not an Accordo issue. Confirmed by analysing `~/.accordo/mcp-debug.jsonl`. opencode client worked correctly throughout.
+
+**Session 10C gate:** ✅ 360 Hub + 261 Voice tests green. TTS end-to-end confirmed working with opencode. Hub terminal clean. All WS lifecycle events logged to file for future debugging.
+
+**Deferred from Session 10C:**
+- **TTS inter-sentence silence (speech fluency):** A perceptible gap exists between sentences during streaming playback. Hypothesis: Kokoro engine appends trailing silence to each synthesized audio clip. Investigation: read synthesized PCM buffers and check for trailing silence; consider trimming silence at playback boundary or adjusting `maxNumSentences` in worker config. Track in deferred tasks below.
+
+---
+
+### Session 10D — Scripted Walkthroughs (future, separate from voice) [DEFERRED]
 
 **Goal:** A scripting runtime that executes multi-step sequences interleaving IDE commands, delays, highlights, and optionally speech (via voice extension if installed) or subtitles (if not). The agent generates a complete script in one shot; the runtime executes it without further MCP round-trips.
 
@@ -407,11 +435,18 @@ Carried forward — non-blocking:
 7. ~~**Custom Accordo Comments TreeView panel**~~ — ✅ Delivered in Session 9. See DONE below.
 8. **Bridge status bar item (SB-01/SB-02/SB-03)** — `accordo-bridge` requirements §9 specifies a `$(plug) Accordo: Connected / Disconnected` status bar item with `accordo.bridge.showStatus` command (Hub URL, connection state, tool count, uptime). Never implemented. Add to `packages/bridge/src/extension.ts` in a quick-fix session before Session 10.
 9. **Comments panel two-line layout (M46)** — VS Code `TreeItem` supports only one physical line (label + description). Full conversation preview requires a `WebviewView` detail pane. Deferred to M46 (post Session 10).
-10. **Scripted Walkthroughs (Session 10C)** — Multi-step sequences (speech + IDE commands + delays + highlights) separated from voice extension. Works with subtitles or silent mode. See Session 10C outline in §6.
+10. **Scripted Walkthroughs (Session 10D)** — Multi-step sequences (speech + IDE commands + delays + highlights) separated from voice extension. Works with subtitles or silent mode. See Session 10D outline in §6.
+11. **TTS inter-sentence silence (speech fluency)** — A perceptible gap exists between synthesized sentences during streaming playback. Hypothesis: Kokoro engine appends trailing silence to each audio clip. Investigate: read synthesized PCM, detect silence at end, trim in `streamingSpeak` before playback boundary. Low priority — TTS is functional, gap is cosmetic.
 
 ---
 
 ## DONE
+
+### Session 10C — Voice Robustness + Hardening (completed 2026-03-10)
+
+15 fixes delivered. Dynamic port, WS disconnect, sherpa subprocess (system Node), readAloud fire-and-forget, Hub crash guards, Hub log cleanup, WS diagnostic logging, readAloud simplification. Hub: 360, Voice: 261. 1689 tests total. See Session 10C section above.
+
+---
 
 ### Session 9 — Custom Comments Panel (completed 2026-03-07)
 
