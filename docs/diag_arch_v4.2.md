@@ -1247,6 +1247,11 @@ Mermaid's rendering layer (`dagre-d3-es`) fuses layout and SVG drawing into one 
 
 **A4 scope (diag.1):** `computeInitialLayout` dispatches on `diagramType`. For diag.1, only `flowchart`, `stateDiagram-v2`, `classDiagram`, and `erDiagram` receive real dagre implementations. `block-beta` and `mindmap` throw `"not supported in diag.1"` with a clear error so the caller can fall back gracefully. The dispatch structure means each type is a one-arm change in diag.2 with no cross-module impact.
 
+**TECH DEBT — TD-AL-01: Layout-aware incremental re-layout.**
+`computeInitialLayout` is a cold-start function: it lays out the full graph from scratch, ignoring any existing positions. This is correct for `accordo_diagram_create`, but not optimal when the agent adds several nodes to an *existing* diagram that already has a manually curated layout. In that case, running a full re-layout would destroy the human's positioning decisions. The current mitigation is the reconciler's `placement.ts` (A6) which places only *unplaced* nodes around their neighbours without touching existing positions. That is adequate for single-node additions.
+
+The unsolved case is **batch structural changes** (e.g., agent rewrites a large subgraph, or user pastes in a new cluster). The ideal solution is a *layout-aware* re-layout that pins already-placed nodes as fixed constraints and runs dagre only over the changed subgraph and its immediate neighbours. Dagre supports fixed-node constraints via `node.fixed = true` — this is a known extension path. Target phase: **diag.4**.
+
 ---
 
 ## 16. File Format Reference
@@ -1408,7 +1413,7 @@ packages/diagram/
 
 ### diag.4 — Advanced
 
-- Better placement: local dagre layout for new subgraphs, not just single-node placement
+- **TD-AL-01** — Layout-aware incremental re-layout: pin existing nodes as dagre fixed constraints, re-run layout only over changed subgraph + immediate neighbours. Solves batch-add and subgraph-rewrite scenarios gracefully without destroying existing hand-positioned layout.
 - `convert2mermaid` import path (draw.io, Excalidraw → Mermaid)
 - tldraw projection using the same layout.json (canvas-agnostic by design)
 - Cross-diagram references (node in diagram A linked to node in diagram B)
