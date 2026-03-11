@@ -723,7 +723,7 @@ describe("§5.4 Scale Limits", () => {
   });
 
   it("rejects thread creation at COMMENT_MAX_THREADS cap", async () => {
-    // Create threads up to the limit
+    // Create threads up to the limit (500 iterations — needs generous timeout under concurrent CI load)
     for (let i = 0; i < COMMENT_MAX_THREADS; i++) {
       await store.createThread(makeCreateParams({
         uri: `file:///project/file-${i}.ts`,
@@ -741,7 +741,7 @@ describe("§5.4 Scale Limits", () => {
         body: "Over limit",
       })),
     ).rejects.toThrow();
-  });
+  }, 30_000);
 });
 
 // ── §5.2 Serialization ──────────────────────────────────────────────────────

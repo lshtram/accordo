@@ -614,7 +614,7 @@ describe("§E2E-4 Bridge disconnect / reconnect", () => {
     await bridge.connect(baseUrl);
     await flush();
     bridge.disconnect();
-    await flush();
+    await flush(100); // WS close event needs more time to propagate under concurrent load
 
     const res = await fetch(`${baseUrl}/health`);
     const body = (await res.json()) as Record<string, unknown>;
