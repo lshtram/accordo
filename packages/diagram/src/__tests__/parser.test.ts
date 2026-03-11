@@ -36,6 +36,7 @@ let _mockDb: MockDb = {};
 
 const mermaidMock = {
   default: {
+    initialize: vi.fn(),
     mermaidAPI: {
       getDiagramFromText: vi.fn((_source: string) => ({
         parser: { yy: _mockDb },
@@ -576,9 +577,52 @@ describe("parseMermaid — error handling", () => {
         throw Object.assign(new Error("bad syntax"), { hash: { line: 5 } });
       }
     );
-    const result = parseMermaid("not valid at all");
+    // Use flowchart source so detectDiagramType succeeds and getDiagramFromText
+    // is actually called (consuming the mockImplementationOnce above).
+    const result = parseMermaid("flowchart TD\n  A --[broken syntax");
     expect(result.valid).toBe(false);
     if (result.valid) return;
     expect(typeof result.error.line).toBe("number");
+  });
+});
+
+// ── 13. Unsupported diagram types ─────────────────────────────────────────────
+
+describe("parseMermaid — unsupported diagram types", () => {
+  it("returns valid=false for sequenceDiagram", () => {
+    const result = parseMermaid("sequenceDiagram\nA->>B: hi");
+    expect(result.valid).toBe(false);
+    if (result.valid) return;
+    expect(result.error.message).toContain("sequenceDiagram");
+  });
+
+  it("returns valid=false for gantt", () => {
+    const result = parseMermaid("gantt\n  title T");
+    expect(result.valid).toBe(false);
+  });
+
+  it("does not call getDiagramFromText for unsupported types", () => {
+    mermaidMock.default.mermaidAPI.getDiagramFromText.mockClear();
+    parseMermaid("sequenceDiagram\nA->>B: hi");
+    expect(mermaidMock.default.mermaidAPI.getDiagramFromText).not.toHaveBeenCalled();
+  });
+});
+
+// ── 14. Vertex text-field fallback ────────────────────────────────────────────
+
+describe("parseMermaid — vertex text-field fallback", () => {
+  it("extracts label from vertex.text when vertex.label is absent", () => {
+    setMockDb({
+      getVertices: () => ({
+        X: { id: "X", text: "TextLabel", type: "square", domId: "X", classes: [] },
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+    });
+    const result = parseMermaid("flowchart TD\n  X[TextLabel]");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.diagram.nodes.get("X")?.label).toBe("TextLabel");
   });
 });

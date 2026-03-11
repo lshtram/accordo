@@ -336,7 +336,7 @@ The adapter module has one function per diagram type. Each function accesses `di
 **Flowchart** (diag.1 — MVP):
 ```typescript
 // diagram.parser.yy exposes:
-//   getVertices()   → Map<id, { id, text, type, classes[], ... }>
+//   getVertices()   → Map<id, { id, label, type, classes[], ... }>
 //   getEdges()      → Array<{ start, end, text, type, stroke, ... }>
 //   getSubGraphs()  → Array<{ id, title, nodes[], ... }>
 //   getDirection()  → "TD" | "LR" | ...

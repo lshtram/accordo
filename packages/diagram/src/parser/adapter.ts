@@ -19,6 +19,11 @@ import type {
 } from "../types.js";
 import { parseFlowchart } from "./flowchart.js";
 
+// §6.6 — parse-only mode: no SVG rendering, no DOM required.
+(mermaid as { initialize(cfg: { startOnLoad: boolean }): void }).initialize({
+  startOnLoad: false,
+});
+
 const SPATIAL_TYPES = new Set<string>([
   "flowchart",
   "block-beta",
@@ -101,6 +106,16 @@ export function parseMermaid(source: string): ParseResult {
     return {
       valid: false,
       error: { line: 0, message: "Unrecognised or empty diagram source" },
+    };
+  }
+
+  if (type !== "flowchart") {
+    return {
+      valid: false,
+      error: {
+        line: 0,
+        message: `Diagram type '${type}' is not supported in diag.1 (flowchart only)`,
+      },
     };
   }
 

@@ -30,7 +30,8 @@ export type FlowchartDb = Record<string, unknown>;
 
 interface MermaidVertex {
   id: string;
-  label: string;
+  label?: string; // mermaid 11.x primary field
+  text?: string;  // fallback for older internal API shapes
   type: string;
   classes?: string[];
 }
@@ -97,7 +98,7 @@ export function parseFlowchart(db: FlowchartDb): ParsedDiagram {
   for (const [id, v] of Object.entries(rawVertices)) {
     nodes.set(id, {
       id,
-      label: v.label,
+      label: v.label ?? v.text ?? "",
       shape: SHAPE_MAP[v.type] ?? "rectangle",
       classes: v.classes ? [...v.classes] : [],
       cluster: nodeToCluster.get(id),
