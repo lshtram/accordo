@@ -333,7 +333,7 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ### Session 11 — Diagrams (`accordo-diagram`)
 
-**Goal:** Agent and human co-edit Mermaid diagrams in a dual-pane webview (Monaco text editor + Excalidraw interactive canvas). Reconciler preserves layout across topology changes. 15 MCP tools for diagram CRUD, topology edits, visual customization, and aesthetic guidance (`diagram.style_guide`).
+**Goal:** Agent and human co-edit Mermaid diagrams in a dual-pane webview (Monaco text editor + Excalidraw interactive canvas). Reconciler preserves layout across topology changes. 15 MCP tools (6 in diag.1, 9 in diag.2) for diagram CRUD, topology edits, visual customization, and aesthetic guidance (`accordo_diagram_style_guide`).
 
 **Architecture:** [`docs/diag_arch_v4.2.md`](diag_arch_v4.2.md) v4.2 — DRAFT, comprehensive  
 **Workplan:** [`docs/diag_workplan.md`](diag_workplan.md) — 17 modules (A1–A17), ~295 tests estimated  
@@ -342,8 +342,12 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 - Two-file canonical model: `.mmd` (Mermaid topology) + `.layout.json` (positions/styles)
 - Mermaid node IDs as stable identity primitives — no UGM intermediary
 - Dagre for initial auto-layout; Excalidraw for interactive canvas (pre-built bundle)
-- Kroki API for semantic rendering (SVG/PNG export)
+- Semantic export (Kroki) always available; canvas export when webview is open
 - Reconciler is stateless and deterministic — layout survives topology changes
+- Comment SDK integration: diagram nodes are commentable surfaces (follows md-viewer pattern)
+- Script compatibility: all MCP tools auto-registered as VS Code commands via Bridge dual-registration
+- Implementation phases renamed diag.1/diag.2/diag.3/diag.4 (avoid confusion with TDD phases A–F)
+- Draw-on animation and sequential diagram mode deferred from diag.1 to diag.2
 
 **Key ecosystem context:**
 - **Mermaid Chart** (472K installs): Official Mermaid extension, preview + edit

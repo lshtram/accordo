@@ -333,7 +333,7 @@ interface ParsedCluster {
 
 The adapter module has one function per diagram type. Each function accesses `diagram.parser.yy` (the internal `db`) to extract the data, then normalizes it to the `ParsedDiagram` interface.
 
-**Flowchart** (Phase A — MVP):
+**Flowchart** (diag.1 — MVP):
 ```typescript
 // diagram.parser.yy exposes:
 //   getVertices()   → Map<id, { id, text, type, classes[], ... }>
@@ -342,7 +342,7 @@ The adapter module has one function per diagram type. Each function accesses `di
 //   getDirection()  → "TD" | "LR" | ...
 ```
 
-**Class diagram** (Phase B):
+**Class diagram** (diag.2):
 ```typescript
 // diagram.parser.yy exposes:
 //   getClasses()    → Map<name, { id, members[], methods[], ... }>
@@ -350,7 +350,7 @@ The adapter module has one function per diagram type. Each function accesses `di
 //   getNamespaces() → Array<{ id, classes[], ... }>
 ```
 
-**State diagram** (Phase B):
+**State diagram** (diag.2):
 ```typescript
 // diagram.parser.yy exposes:
 //   getRootDoc()    → Array<{ stmt, id, description, ... }>
@@ -358,7 +358,7 @@ The adapter module has one function per diagram type. Each function accesses `di
 //   getRelations()  → Array<{ id1, id2, description, ... }>
 ```
 
-**ER diagram** (Phase B):
+**ER diagram** (diag.2):
 ```typescript
 // diagram.parser.yy exposes:
 //   getEntities()       → Map<name, { attributes[], ... }>
@@ -370,7 +370,7 @@ The adapter module has one function per diagram type. Each function accesses `di
 - Pin `mermaid` to an exact version (e.g., `11.4.1`) in `package.json`.
 - The adapter module has a comprehensive test suite — one test per node shape, edge type, and cluster configuration for each supported diagram type.
 - On mermaid upgrade: run the adapter tests. If they fail, update the adapter. The rest of the system is unaffected because it programs against `ParsedDiagram`.
-- The adapter file is expected to be ~400 lines for all Phase A+B diagram types.
+- The adapter file is expected to be ~400 lines for all diag.1+diag.2 diagram types.
 
 ### 6.5 Parse validation
 
@@ -400,7 +400,7 @@ mermaid.initialize({ startOnLoad: false });
 const diagram = await mermaid.mermaidAPI.getDiagramFromText(source);
 ```
 
-If `getDiagramFromText` requires a DOM in any version, the fallback is to run it inside a minimal JSDOM context. This is a known risk to test during Phase A spike.
+If `getDiagramFromText` requires a DOM in any version, the fallback is to run it inside a minimal JSDOM context. This is a known risk to test during diag.1 spike.
 
 ---
 
@@ -504,7 +504,7 @@ When the canvas renders and encounters nodes in the `unplaced` list:
 7. The human can then drag to the preferred location.
 ```
 
-This is the MVP strategy. It is not perfect but it is deterministic, collision-free, and produces results in the right neighbourhood. For batch adds (agent adds 5+ nodes at once), consider running a local dagre layout on just the new subgraph and its immediate neighbours (Phase D improvement).
+This is the MVP strategy. It is not perfect but it is deterministic, collision-free, and produces results in the right neighbourhood. For batch adds (agent adds 5+ nodes at once), consider running a local dagre layout on just the new subgraph and its immediate neighbours (diag.4 improvement).
 
 ### 7.4 Invalid Mermaid handling
 
@@ -605,7 +605,7 @@ async function renderSemantic(
 }
 ```
 
-The `diagram.render` MCP tool (§10) defaults to canvas export for spatial diagrams and Kroki for sequential diagrams. The agent can explicitly request either mode.
+The `accordo_diagram_render` MCP tool (§10) defaults to semantic export (Kroki) which is always available — it only needs the `.mmd` file. Canvas export (Excalidraw → SVG/PNG preserving layout) requires the diagram webview to be open. If canvas mode is requested but the webview is closed, the tool falls back to semantic mode and includes a warning in the output.
 
 ---
 
@@ -623,7 +623,7 @@ The scope of this module:
 - Draw subgraph/cluster backgrounds with labels
 - Support all Excalidraw interaction events (drag, resize, select, delete)
 
-**Estimated complexity:** ~600 lines for Phase A (flowchart only), ~1000 lines for all spatial types.
+**Estimated complexity:** ~600 lines for diag.1 (flowchart only), ~1000 lines for all spatial types.
 
 ### 9.2 Shape mapping
 
@@ -639,7 +639,7 @@ The scope of this module:
 | `[(text)]` cylinder | `rectangle` with custom styling | Excalidraw v0.18+ supports custom shapes |
 | Subgraph | `rectangle` (background) + `text` (label) | Semi-transparent fill, dashed stroke |
 
-**Phase A simplification:** For MVP, all exotic shapes (parallelogram, hexagon, cylinder) render as rounded rectangles with a shape indicator in the label (e.g., `⬡ text`). Full shape fidelity is Phase B.
+**diag.1 simplification:** For MVP, all exotic shapes (parallelogram, hexagon, cylinder) render as rounded rectangles with a shape indicator in the label (e.g., `⬡ text`). Full shape fidelity is diag.2.
 
 **Roughness defaults:** All generated elements receive `roughness: layout.aesthetics.roughness` (default `1`) and `fontFamily: "Excalifont"`. This gives the hand-drawn aesthetic without any additional configuration. When `roughness` is `0`, elements render with clean/crisp strokes (useful for formal exports or presentations). The roughness value is stored once in `aesthetics` and applied uniformly — the canvas generator reads it from `LayoutStore.aesthetics` and sets it on every `ExcalidrawElement` it produces.
 
@@ -754,22 +754,22 @@ The diagram extension registers these tools via `BridgeAPI.registerTools()`, fol
 
 | Tool | Danger | Idempotent | Timeout |
 |---|---|---|---|
-| `accordo.diagram.list` | safe | yes | fast |
-| `accordo.diagram.get` | safe | yes | fast |
-| `accordo.diagram.create` | moderate | no | fast |
-| `accordo.diagram.patch` | moderate | no | interactive |
-| `accordo.diagram.add_node` | moderate | no | fast |
-| `accordo.diagram.remove_node` | moderate | no | fast |
-| `accordo.diagram.add_edge` | moderate | no | fast |
-| `accordo.diagram.remove_edge` | moderate | no | fast |
-| `accordo.diagram.add_cluster` | moderate | no | fast |
-| `accordo.diagram.move_node` | safe | yes | fast |
-| `accordo.diagram.resize_node` | safe | yes | fast |
-| `accordo.diagram.set_node_style` | safe | yes | fast |
-| `accordo.diagram.set_edge_routing` | safe | yes | fast |
-| `accordo.diagram.render` | safe | yes | interactive |
+| `accordo_diagram_list` | safe | yes | fast |
+| `accordo_diagram_get` | safe | yes | fast |
+| `accordo_diagram_create` | moderate | no | fast |
+| `accordo_diagram_patch` | moderate | no | interactive |
+| `accordo_diagram_add_node` | moderate | no | fast |
+| `accordo_diagram_remove_node` | moderate | no | fast |
+| `accordo_diagram_add_edge` | moderate | no | fast |
+| `accordo_diagram_remove_edge` | moderate | no | fast |
+| `accordo_diagram_add_cluster` | moderate | no | fast |
+| `accordo_diagram_move_node` | safe | yes | fast |
+| `accordo_diagram_resize_node` | safe | yes | fast |
+| `accordo_diagram_set_node_style` | safe | yes | fast |
+| `accordo_diagram_set_edge_routing` | safe | yes | fast |
+| `accordo_diagram_render` | safe | yes | interactive |
 
-### `accordo.diagram.list`
+### `accordo_diagram_list`
 
 ```typescript
 input: {
@@ -789,7 +789,7 @@ output: {
 
 Globs for `**/*.mmd` in the workspace. Returns metadata for each diagram found. This is how the agent discovers existing diagrams.
 
-### `accordo.diagram.create`
+### `accordo_diagram_create`
 
 ```typescript
 input: {
@@ -808,7 +808,7 @@ output: {
 
 Writes the `.mmd` file. Parses it. For spatial diagrams: runs initial auto-layout via dagre and writes `layout.json` with all nodes placed. For sequential diagrams: no layout file.
 
-### `accordo.diagram.get`
+### `accordo_diagram_get`
 
 ```typescript
 input: {
@@ -843,7 +843,7 @@ output: {
 
 Returns the semantic graph. The agent can reason about this without parsing Mermaid or reading canvas JSON.
 
-### `accordo.diagram.patch`
+### `accordo_diagram_patch`
 
 ```typescript
 input: {
@@ -865,7 +865,7 @@ output: {
 }
 ```
 
-### `accordo.diagram.add_node`
+### `accordo_diagram_add_node`
 
 ```typescript
 input: {
@@ -888,7 +888,7 @@ output: {
 
 Updates the Mermaid source (adds node + optional edges + optional subgraph entry) and layout.json (adds node entry or to unplaced[]).
 
-### `accordo.diagram.move_node`
+### `accordo_diagram_move_node`
 
 ```typescript
 input: {
@@ -907,7 +907,7 @@ output: {
 
 Updates layout.json only. Mermaid source is not touched. This is a pure layout operation.
 
-### `accordo.diagram.set_node_style`
+### `accordo_diagram_set_node_style`
 
 ```typescript
 input: {
@@ -935,13 +935,13 @@ output: {
 
 Updates only the `style` field for the node in layout.json. Other layout fields (position, size) are untouched.
 
-### `accordo.diagram.render`
+### `accordo_diagram_render`
 
 ```typescript
 input: {
   path: string;
   format: "svg" | "png";
-  mode?: "canvas" | "semantic";  // default: "canvas" for spatial, "semantic" for sequential
+  mode?: "canvas" | "semantic";  // default: "semantic" (always available); "canvas" requires open webview
   output_path?: string;          // if omitted, derives from diagram path
 }
 
@@ -1006,7 +1006,7 @@ The Monaco text editor (Mermaid pane) has its own undo stack. We do NOT try to s
 
 ### 11.4 Phase note
 
-The operation log is a **Phase B** feature. Phase A ships without undo beyond Monaco's built-in text undo. This is documented in the status bar: "Diagram undo: coming soon."
+The operation log is a **diag.2** feature. diag.1 ships without undo beyond Monaco's built-in text undo. This is documented in the status bar: "Diagram undo: coming soon."
 
 ---
 
@@ -1014,7 +1014,7 @@ The operation log is a **Phase B** feature. Phase A ships without undo beyond Mo
 
 ### 12.1 The scenario
 
-Agent and human edits are not concurrent (VSCode is single-user). But they can interleave rapidly. Example: the agent sends a `diagram.patch` while the human is mid-drag on the canvas.
+Agent and human edits are not concurrent (VSCode is single-user). But they can interleave rapidly. Example: the agent sends a `accordo_diagram_patch` while the human is mid-drag on the canvas.
 
 ### 12.2 Strategy
 
@@ -1028,9 +1028,9 @@ When an agent edit lands while the human is interacting with the canvas:
 4. **The webview shows a toast notification:** "Diagram updated by agent — canvas refreshed."
 5. If the human had unsaved canvas changes (e.g., mid-drag), those changes are lost.
 
-### 12.3 Dirty-canvas guard (Phase B)
+### 12.3 Dirty-canvas guard (diag.2)
 
-In Phase B, the extension host tracks whether the canvas has unsaved changes (the webview reports a `canvas:dirty` flag). If an agent edit arrives while the canvas is dirty:
+In diag.2, the extension host tracks whether the canvas has unsaved changes (the webview reports a `canvas:dirty` flag). If an agent edit arrives while the canvas is dirty:
 
 1. The human's pending layout changes are extracted from the webview.
 2. The agent's topology change is applied first (reconciliation).
@@ -1050,13 +1050,13 @@ Both the agent (via MCP tools) and the human (via VSCode webview) have full acce
 
 **Create a diagram:**
 ```
-diagram.create(path, mermaid_content)
+accordo_diagram_create(path, mermaid_content)
 ```
 Writes the `.mmd` file, parses it, runs placement, writes `layout.json`.
 
 **Read a diagram:**
 ```
-diagram.get(path)
+accordo_diagram_get(path)
 → {
     type: "flowchart",
     mermaid_source: "flowchart TD\n    auth[\"Auth Service\"]\n    ...",
@@ -1070,41 +1070,41 @@ The agent sees both the semantic graph and the raw Mermaid source.
 
 **List diagrams:**
 ```
-diagram.list(workspace_path?)
+accordo_diagram_list(workspace_path?)
 → [ { path: "diagrams/arch.mmd", type: "flowchart", node_count: 12, ... } ]
 ```
 The agent discovers existing diagrams without globbing.
 
 **Edit topology:**
 ```
-diagram.patch(path, new_mermaid)
+accordo_diagram_patch(path, new_mermaid)
 ```
 Full replacement of Mermaid content. Reconciler runs and preserves existing layout.
 
 Or fine-grained topology tools:
 ```
-diagram.add_node(path, { id, label, type, cluster? })
-diagram.remove_node(path, node_id)
-diagram.add_edge(path, { from, to, label? })
-diagram.remove_edge(path, { from, to, label? })
-diagram.add_cluster(path, { id, label, members })
+accordo_diagram_add_node(path, { id, label, type, cluster? })
+accordo_diagram_remove_node(path, node_id)
+accordo_diagram_add_edge(path, { from, to, label? })
+accordo_diagram_remove_edge(path, { from, to, label? })
+accordo_diagram_add_cluster(path, { id, label, members })
 ```
 
 **Edit layout and aesthetics:**
 ```
-diagram.move_node(path, node_id, x, y)
-diagram.resize_node(path, node_id, w, h)
-diagram.set_node_style(path, node_id, style_patch)
-diagram.move_cluster(path, cluster_id, x, y)
-diagram.set_cluster_style(path, cluster_id, style_patch)
-diagram.set_edge_routing(path, edge_key, { routing, waypoints })
+accordo_diagram_move_node(path, node_id, x, y)
+accordo_diagram_resize_node(path, node_id, w, h)
+accordo_diagram_set_node_style(path, node_id, style_patch)
+accordo_diagram_move_cluster(path, cluster_id, x, y)
+accordo_diagram_set_cluster_style(path, cluster_id, style_patch)
+accordo_diagram_set_edge_routing(path, edge_key, { routing, waypoints })
 ```
 
 The agent can say "move the Auth Service box to x=80, y=200" or "make the critical path nodes red." These update `layout.json` directly without touching the Mermaid source. No topology change is implied by a layout change.
 
 **Render:**
 ```
-diagram.render(path, format: "svg"|"png", mode?: "canvas"|"semantic")
+accordo_diagram_render(path, format: "svg"|"png", mode?: "canvas"|"semantic")
 → { output_path, mode }
 ```
 
@@ -1220,7 +1220,7 @@ The Mermaid file is always the topology truth, even when the change was initiate
 | Initial auto-layout | `dagre` | Used on first render and for unplaced nodes |
 | Rendering / export | **Kroki** self-hosted or Kroki.io | SVG/PNG for semantic renders |
 | Canvas export | Excalidraw built-in `exportToSvg` / `exportToBlob` | SVG/PNG preserving layout |
-| Legacy import | `convert2mermaid` | Convert draw.io/Excalidraw files to Mermaid (Phase D) |
+| Legacy import | `convert2mermaid` | Convert draw.io/Excalidraw files to Mermaid (diag.4) |
 
 **Note on `@excalidraw/mermaid-to-excalidraw`:** This library is NOT used as a pipeline step. Research confirms it produces ephemeral Excalidraw element IDs and requires a DOM for position extraction. Instead, the canvas is built directly from (parsed Mermaid graph + layout.json), constructing Excalidraw elements programmatically (§9). This gives us full control over element construction and eliminates the ID-stability problem entirely.
 
@@ -1297,10 +1297,10 @@ packages/diagram/
       adapter.ts                  # Mermaid parser adapter (§6) — THE critical module
       adapter.test.ts             # Comprehensive tests per shape/edge/cluster type
       flowchart.ts                # Flowchart-specific db extraction
-      class-diagram.ts            # Phase B
-      state-diagram.ts            # Phase B
-      er-diagram.ts               # Phase B
-      mindmap.ts                  # Phase B
+      class-diagram.ts            # diag.2
+      state-diagram.ts            # diag.2
+      er-diagram.ts               # diag.2
+      mindmap.ts                  # diag.2
 
     reconciler/
       reconciler.ts               # Core reconciliation engine (§7)
@@ -1333,13 +1333,13 @@ packages/diagram/
       export.ts                   # Canvas export (Excalidraw → SVG/PNG)
 ```
 
-**Estimated total implementation:** ~3000 lines for Phase A, ~5000 lines for Phase A+B.
+**Estimated total implementation:** ~3000 lines for diag.1, ~5000 lines for diag.1+diag.2.
 
 ---
 
 ## 18. Implementation Roadmap
 
-### Phase A — Core engine (MVP)
+### diag.1 — Core engine (MVP)
 
 - Mermaid parser adapter: flowchart only (§6)
 - Reconciliation engine: topology and layout reconciliation (§7.1, §7.2)
@@ -1348,22 +1348,21 @@ packages/diagram/
 - layout.json read/write/patch (including `aesthetics` field)
 - Canvas generator: (Mermaid + layout.json) → Excalidraw elements, flowchart shapes (§9)
 - **Roughness and Excalifont defaults applied to all generated elements (§22)**
-- **Draw-on animation: progressive element loading at canvas render time (§22)**
-- **Draw-on / static toggle in webview toolbar (§14.1)**
 - Auto-layout for new diagrams and unplaced nodes (dagre)
-- MCP tools: `diagram.list`, `diagram.create`, `diagram.get`, `diagram.patch`, `diagram.render`
-- **`diagram.style_guide` MCP tool — returns diagram-type-specific aesthetic guidance (§23)**
-- **`diagram.create` injects standard classDef palette into generated Mermaid (§23)**
-- VSCode webview: dual-pane Mermaid + Excalidraw (spatial), single-pane + Kroki (sequential)
+- MCP tools: `accordo_diagram_list`, `accordo_diagram_create`, `accordo_diagram_get`, `accordo_diagram_patch`, `accordo_diagram_render`
+- **`accordo_diagram_style_guide` MCP tool — returns diagram-type-specific aesthetic guidance (§23)**
+- **`accordo_diagram_create` injects standard classDef palette into generated Mermaid (§23)**
+- VSCode webview: dual-pane Mermaid + Excalidraw (spatial diagrams only)
 - Canvas → layout.json sync (drag/drop, resize)
-- Kroki integration for semantic SVG export
-- Excalidraw-based canvas export for visual SVG/PNG
+- Semantic export always available via Kroki (SVG/PNG from Mermaid source)
+- Canvas export available when diagram webview is open (Excalidraw → SVG/PNG)
 - Agent edit notification toasts in webview
+- Comment SDK integration: webview loads `@accordo/comment-sdk`, registers surface adapter (§25)
 - Parser adapter test suite (comprehensive shape/edge/cluster coverage)
 
-**Support: flowchart only. Agent + human can both create and edit. Layout preserved across all edits. Both export modes available. Hand-drawn aesthetic on by default.**
+**Support: flowchart only. Agent + human can both create and edit. Layout preserved across all edits. Semantic export always available; canvas export when webview is open. Hand-drawn aesthetic (roughness=1) on by default. Comment threads can be pinned to diagram nodes.**
 
-### Phase B — Full topology tools + all spatial types + undo
+### diag.2 — Full topology tools + all spatial types + undo + animation
 
 - Fine-grained MCP tools: `add_node`, `remove_node`, `add_edge`, etc.
 - Layout MCP tools: `move_node`, `set_node_style`, `set_edge_routing`
@@ -1375,16 +1374,18 @@ packages/diagram/
 - Undo/redo via operation log (§11)
 - Dirty-canvas guard for agent conflicts (§12.3)
 - Full shape fidelity in canvas generator (all Mermaid shapes)
+- **Draw-on animation: progressive element loading at canvas render time (§22)**
+- **Draw-on / static toggle in webview toolbar (§14.1)**
+- **Sequential diagram mode: single-pane Mermaid editor + Kroki live preview (§8.2)**
 
-### Phase C — Sequential diagrams + polish
+### diag.3 — Sequential diagrams polish + CI
 
-- Sequential diagram editing: Mermaid editor + Kroki live preview pane
-- PNG/SVG export command for sequential diagrams
+- Sequential diagram PNG/SVG export command
 - CI validation tool (does diagram render cleanly?)
 - Diagram type picker on new-diagram command
 - Performance optimization: partial scene updates for layout-only changes (§9.5)
 
-### Phase D — Advanced
+### diag.4 — Advanced
 
 - Better placement: local dagre layout for new subgraphs, not just single-node placement
 - `convert2mermaid` import path (draw.io, Excalidraw → Mermaid)
@@ -1402,7 +1403,7 @@ packages/diagram/
 |---|---|---|
 | No hand-drawn aesthetic specification | Roughness=1 + Excalifont applied as defaults to all canvas elements (§22) | Diagrams were visually bland; quality should be excellent on first agent pass |
 | No animation system | Draw-on animation via progressive element loading; user-toggleable roughness/animation (§22) | excalidraw-mcp proves animated draw-on is high-value UX; must be on by default |
-| No aesthetic cheat sheet for agent | `diagram.style_guide` tool + automatic classDef injection on `diagram.create` (§23) | Agent produces plain monochrome diagrams without explicit color/style guidance |
+| No aesthetic cheat sheet for agent | `accordo_diagram_style_guide` tool + automatic classDef injection on `accordo_diagram_create` (§23) | Agent produces plain monochrome diagrams without explicit color/style guidance |
 | No per-diagram-type conventions | Diagram Type Style Guides: per-type color palettes, node role mappings, subgraph patterns (§24) | Each diagram type has distinct conventions the agent must follow; generic guidance is insufficient |
 | `aesthetics` absent from layout.json schema | `aesthetics: { roughness, animationMode, theme }` added to layout store (§5) | Settings must persist per-diagram, not be a global preference |
 | Animation was not scoped | Progressive element loading at render time; seed-jitter during streaming; viewport interpolation (§22) | Concrete implementation prevents misunderstanding of how the animation integrates |
@@ -1420,8 +1421,8 @@ packages/diagram/
 | Unplaced node placement without collision check | Collision avoidance pass after placement (§7.3) | Batch adds produce overlapping nodes without it |
 | No undo story | Operation log with file-level undo/redo (§11) | Canvas undo destroyed on scene regeneration |
 | Kroki export only (ignores layout.json) | Dual export: canvas export (preserves layout) + semantic render (Kroki) (§8) | "Export" showing different layout than canvas is confusing |
-| diagram.list deferred to Phase C | diagram.list in Phase A (§10) | Agent needs to discover diagrams from day one |
-| Conflict: "drag is lost" (no notification) | Toast notification + Phase B dirty-canvas guard (§12) | Silent data loss is bad UX |
+| accordo_diagram_list deferred to diag.3 | accordo_diagram_list in diag.1 (§10) | Agent needs to discover diagrams from day one |
+| Conflict: "drag is lost" (no notification) | Toast notification + diag.2 dirty-canvas guard (§12) | Silent data loss is bad UX |
 | Rename annotation persists indefinitely | Auto-cleanup after reconciliation (§4.3) | Prevents re-application on next cycle |
 | Sequential diagrams lumped into unified architecture | Sequential diagrams acknowledged as a separate, simpler feature (§2.2, §8.2) | Honest scoping — they share almost no architecture |
 | `@mermaid-js/mermaid-zenuml` referenced for parsing | Corrected: use main `mermaid` package; `@mermaid-js/parser` doesn't cover key types (§15) | Misleading library reference in v4.0 |
@@ -1435,12 +1436,12 @@ packages/diagram/
 | Risk | Severity | Mitigation |
 |---|---|---|
 | Mermaid `db` API changes on upgrade | High | Pin exact version. Adapter test suite catches breaks. Isolate in single module. |
-| `getDiagramFromText` requires DOM in some version | Medium | Test in Phase A spike. Fallback: minimal JSDOM context (~10 lines). |
+| `getDiagramFromText` requires DOM in some version | Medium | Test in diag.1 spike. Fallback: minimal JSDOM context (~10 lines). |
 | Excalidraw webview bundle size | Medium | Tree-shake. Excalidraw supports dynamic import for webview. |
 | Canvas generation performance on large diagrams (100+ nodes) | Medium | Partial updates for layout-only changes. Increase debounce on large diagrams. |
 | Dagre layout quality for initial placement | Low | Dagre is battle-tested for DAG layout. Users can adjust after. |
-| ER diagram undirected edges | Low | Phase D — use canonical ordering (alphabetical entity names) for edge keys. |
-| Mermaid syntax edge cases (HTML labels, special chars, click events) | Medium | Phase A: support standard syntax only. Add edge cases incrementally via adapter tests. |
+| ER diagram undirected edges | Low | diag.4 — use canonical ordering (alphabetical entity names) for edge keys. |
+| Mermaid syntax edge cases (HTML labels, special chars, click events) | Medium | diag.1: support standard syntax only. Add edge cases incrementally via adapter tests. |
 
 ---
 
@@ -1478,7 +1479,7 @@ All text elements use `fontFamily: "Excalifont"` (Excalidraw's hand-drawn font) 
 
 Rough.js renders differently for the same element depending on `seed`. The canvas generator exploits this:
 
-**During streaming** (agent is in the middle of a `diagram.patch` or `diagram.create` response):
+**During streaming** (agent is in the middle of a `accordo_diagram_patch` or `accordo_diagram_create` response):
 - Each incremental render of new elements applies a random seed: `seed: Math.floor(Math.random() * 1e9)`
 - This causes the strokes to "redraw" slightly differently on each frame — the hand-drawn animation effect
 - `morphdom`-style DOM diffing preserves existing elements (no re-animation of already-rendered nodes)
@@ -1531,7 +1532,7 @@ The webview uses Excalidraw's `updateScene()` with `CaptureUpdateAction.NEVER` t
 
 When `animationMode === "static"`, the full scene is sent in a single `host:load-scene` message. The webview renders it all at once.
 
-**Agent-initiated changes** (e.g., `diagram.patch` arriving while the diagram is open): the extension host sends a `host:load-scene` message with `animationMode` from `layout.json`. New elements appear with the draw-on animation; existing elements that didn't change are not re-animated (the webview tracks which element IDs were already present via the mermaidId→excalidrawId map).
+**Agent-initiated changes** (e.g., `accordo_diagram_patch` arriving while the diagram is open): the extension host sends a `host:load-scene` message with `animationMode` from `layout.json`. New elements appear with the draw-on animation; existing elements that didn't change are not re-animated (the webview tracks which element IDs were already present via the mermaidId→excalidrawId map).
 
 ### 22.5 Viewport Interpolation
 
@@ -1554,7 +1555,7 @@ This replaces the `cameraUpdate` pseudo-element approach of excalidraw-mcp. Beca
 ### 22.6 Animation pipeline summary
 
 ```
-diagram.create / diagram.patch
+accordo_diagram_create / accordo_diagram_patch
   → reconciler runs
   → canvas-generator produces ExcalidrawElement[] with roughness + seeds
   → Extension host checks layout.aesthetics.animationMode
@@ -1573,16 +1574,16 @@ diagram.create / diagram.patch
 Without guidance, agents produce monochrome diagrams with no color differentiation, undersized nodes (text gets clipped), and no semantic visual hierarchy. This is the same problem excalidraw-mcp solves with its `RECALL_CHEAT_SHEET`.
 
 In Accordo, the aesthetic specification is delivered through two channels:
-1. **The `diagram.style_guide` MCP tool** — the agent calls this before creating or significantly editing a diagram (mirrors excalidraw-mcp's `read_me`)
-2. **Automatic classDef injection** — `diagram.create` writes a standard palette into the Mermaid source so the diagram has visual defaults even if the agent never calls `style_guide`
+1. **The `accordo_diagram_style_guide` MCP tool** — the agent calls this before creating or significantly editing a diagram (mirrors excalidraw-mcp's `read_me`)
+2. **Automatic classDef injection** — `accordo_diagram_create` writes a standard palette into the Mermaid source so the diagram has visual defaults even if the agent never calls `style_guide`
 
 **Key difference from excalidraw-mcp:** excalidraw-mcp's cheat sheet must teach absolute coordinate positioning because the agent specifies pixel positions. Accordo's guide does not cover coordinates at all — dagre handles placement. Instead the guide teaches *semantic role assignment* (which classDef to use, what subgraph pattern to apply) and *Mermaid conventions* (which node shape to use for each semantic role). This is a narrower, more actionable specification.
 
-### 23.2 The `diagram.style_guide` tool
+### 23.2 The `accordo_diagram_style_guide` tool
 
 ```typescript
 // Tool 15 — new in v4.2
-accordo.diagram.style_guide
+accordo_diagram_style_guide
 
 input: {
   diagram_type: DiagramType;  // "flowchart" | "classDiagram" | etc.
@@ -1612,7 +1613,7 @@ The `diagram_conventions` field is the per-type guide from §24. The agent recei
 
 | Tool | Danger | Idempotent | Timeout |
 |---|---|---|---|
-| `accordo.diagram.style_guide` | safe | yes | fast |
+| `accordo_diagram_style_guide` | safe | yes | fast |
 
 ### 23.3 Universal color palette
 
@@ -1634,7 +1635,7 @@ The same palette applies across all diagram types. Role names are the link betwe
 
 ### 23.4 Automatic classDef injection
 
-When `diagram.create` writes the `.mmd` file, the handler checks whether the source already contains `classDef` statements. If not, it appends the standard block:
+When `accordo_diagram_create` writes the `.mmd` file, the handler checks whether the source already contains `classDef` statements. If not, it appends the standard block:
 
 ```mermaid
 %% --- Accordo standard palette ---
@@ -1648,7 +1649,7 @@ classDef decision   fill:#d0bfff,stroke:#8b5cf6,stroke-width:2px
 classDef infra      fill:#e5e5e5,stroke:#888,stroke-width:1px
 ```
 
-The injected block is marked with the `%% --- Accordo standard palette ---` comment so it can be identified and replaced (not duplicated) on subsequent `diagram.patch` calls. If the agent provides its own `classDef` block, the automatic block is omitted.
+The injected block is marked with the `%% --- Accordo standard palette ---` comment so it can be identified and replaced (not duplicated) on subsequent `accordo_diagram_patch` calls. If the agent provides its own `classDef` block, the automatic block is omitted.
 
 **Consequence:** Every diagram created through Accordo has a visual palette available from the first render. Nodes that use `:::service` in the Mermaid source immediately render in the correct color without any additional configuration.
 
@@ -1672,7 +1673,7 @@ These are passed to dagre as `nodesep` and `ranksep` values, ensuring nodes neve
 
 ## 24. Diagram Type Style Guides
 
-This section defines the per-type conventions that the `diagram.style_guide` tool returns in its `diagram_conventions` field. These are the "teaching" instructions that tell the agent how to structure each diagram type.
+This section defines the per-type conventions that the `accordo_diagram_style_guide` tool returns in its `diagram_conventions` field. These are the "teaching" instructions that tell the agent how to structure each diagram type.
 
 **Important distinction from excalidraw-mcp:** excalidraw-mcp's cheat sheet teaches absolute pixel positioning because the agent must specify coordinates. Accordo's guides focus entirely on *semantic structure* — which Mermaid constructs to use, what classDef roles to assign, and what subgraph patterns convey meaning. Dagre handles coordinates automatically. This makes the guides shorter and more reliably actionable.
 
@@ -1712,7 +1713,7 @@ subgraph data["Data Layer"]
     cache:::database
 end
 ```
-Apply `zone`, `data-zone`, or `logic-zone` styles to cluster backgrounds via `diagram.set_cluster_style`.
+Apply `zone`, `data-zone`, or `logic-zone` styles to cluster backgrounds via `accordo_diagram_set_cluster_style`.
 
 *Stage pattern* (for TD pipeline diagrams — one subgraph per pipeline stage).
 
@@ -1736,7 +1737,7 @@ flowchart LR
         db
     end
 ```
-(Standard palette classDefs are injected automatically by `diagram.create`.)
+(Standard palette classDefs are injected automatically by `accordo_diagram_create`.)
 
 ---
 
@@ -1755,7 +1756,7 @@ flowchart LR
 | Repository | `<<repository>>` | `database` |
 | Utility/helper | `<<utility>>` | `infra` (gray) |
 
-**Relationship colors** (applied via `diagram.set_edge_routing` style field):
+**Relationship colors** (applied via `accordo_diagram_set_edge_routing` style field):
 
 | Relationship | Edge style |
 |---|---|
@@ -1807,7 +1808,7 @@ classDiagram
 | Warning / degraded | `#fff3bf` | `#f59e0b` |
 | Idle / waiting | `#e5e5e5` | `#888888` |
 
-Apply these via `diagram.set_node_style` after creation. The `diagram.style_guide` response includes a ready-to-use call sequence for the standard states.
+Apply these via `accordo_diagram_set_node_style` after creation. The `accordo_diagram_style_guide` response includes a ready-to-use call sequence for the standard states.
 
 **Built-in pseudo-states:** Use `[*]` for initial and terminal — do not create explicit nodes for these.
 
@@ -1840,7 +1841,7 @@ stateDiagram-v2
 | Junction / associative | `#fff3bf` | `#f59e0b` |
 | Event / audit | `#ffd8a8` | `#f59e0b` |
 
-Apply via `diagram.set_node_style` after creation.
+Apply via `accordo_diagram_set_node_style` after creation.
 
 **Cardinality notation:**
 - `||--||` one-to-one
@@ -1848,7 +1849,7 @@ Apply via `diagram.set_node_style` after creation.
 - `||--|{` one-to-one-or-many
 - `o{--o{` zero-or-many to zero-or-many
 
-**Large schemas (10+ entities):** Use `diagram.move_node` after auto-layout to cluster related entities visually. There are no subgraphs in erDiagram; proximity is the only grouping mechanism.
+**Large schemas (10+ entities):** Use `accordo_diagram_move_node` after auto-layout to cluster related entities visually. There are no subgraphs in erDiagram; proximity is the only grouping mechanism.
 
 **Minimum viable skeleton:**
 ```mermaid
@@ -1901,4 +1902,93 @@ mindmap
 
 ### 24.6 Sequential diagrams (reference)
 
-Sequential diagrams (sequence, gantt, git graph, timeline, quadrant) go through Kroki only (§8.2). There is no canvas, no Excalidraw rendering, and no aesthetic system. The Mermaid source IS the complete artifact. The `diagram.style_guide` tool returns an empty response for sequential types with the note: "Sequential diagrams are rendered via Kroki; no aesthetic configuration is available."
+Sequential diagrams (sequence, gantt, git graph, timeline, quadrant) go through Kroki only (§8.2). There is no canvas, no Excalidraw rendering, and no aesthetic system. The Mermaid source IS the complete artifact. The `accordo_diagram_style_guide` tool returns an empty response for sequential types with the note: "Sequential diagrams are rendered via Kroki; no aesthetic configuration is available."
+
+---
+
+## 25. Comments Integration
+
+The diagram webview is a commentable surface. Users and agents can pin comment threads to specific diagram nodes, edges, or regions — exactly as the markdown viewer pins comments to document blocks.
+
+### 25.1 Architecture
+
+The diagram extension follows the same three-layer pattern established by `packages/md-viewer/`:
+
+1. **Webview layer** — loads `@accordo/comment-sdk` (vanilla JS, framework-agnostic). The SDK renders pin icons on diagram nodes and handles Alt+click to create new threads.
+
+2. **Extension host layer** — a `DiagramCommentsBridge` wires the webview's postMessage channel to the `SurfaceCommentAdapter` obtained via `vscode.commands.executeCommand('accordo_comments_internal_getSurfaceAdapter')`. It routes `comment:create`, `comment:reply`, `comment:resolve`, `comment:reopen`, `comment:delete` messages from the webview to the comments store, and pushes `comments:load` / `comments:add` / `comments:update` messages back to the webview.
+
+3. **Comment store** — the existing `CommentStore` in `packages/comments/` stores threads. No changes to the comments package are needed.
+
+### 25.2 Block ID mapping
+
+Every diagram node that can receive a comment gets a `data-block-id` attribute in the Excalidraw webview DOM. The block ID is the Mermaid node ID (the stable identity primitive from §4.1).
+
+```
+Block ID format: "node:{mermaidId}"
+Examples: "node:auth", "node:api", "node:db"
+Edge comments: "edge:{from}->{to}:{ordinal}"
+Cluster comments: "cluster:{clusterId}"
+```
+
+The `coordinateToScreen` callback (required by the SDK) maps a block ID to the screen position of the corresponding Excalidraw element:
+
+```typescript
+sdk.init({
+  container: document.getElementById('excalidraw-container'),
+  coordinateToScreen: (blockId: string) => {
+    const [kind, id] = blockId.split(':', 2);
+    const excalId = idMap.get(id); // mermaidId → excalidrawId
+    if (!excalId) return null;
+    const el = document.querySelector(`[data-block-id="${blockId}"]`);
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return { x: rect.right, y: rect.top };
+  },
+  callbacks: { onCreate, onReply, onResolve, onReopen, onDelete }
+});
+```
+
+### 25.3 Comment anchors
+
+Comments on diagrams use the `surface` anchor kind with diagram-specific coordinates:
+
+```typescript
+{
+  kind: "surface",
+  coordinates: {
+    nodeId: "auth",           // Mermaid node ID
+    surfaceType: "diagram",
+    diagramPath: "diagrams/arch.mmd"
+  }
+}
+```
+
+This anchor survives topology changes: as long as the Mermaid node ID exists, the comment stays attached. If the node is deleted, the comment thread becomes orphaned (visible in the Comments panel but with no pin on the canvas).
+
+### 25.4 Implementation scope in diag.1
+
+| Component | Work |
+|---|---|
+| `webview.ts` | Load `@accordo/comment-sdk`, initialize with `coordinateToScreen`, wire callbacks to postMessage |
+| `webview.html` | Include comment-sdk bundle via `<script>` |
+| `panel.ts` | `DiagramCommentsBridge` class: obtain surface adapter, route messages, push updates |
+| `protocol.ts` | Add comment-related message types to the host ↔ webview protocol |
+
+No changes to `@accordo/comment-sdk`, `packages/comments/`, or `packages/bridge/` are needed. The diagram extension is a pure consumer of the existing comment infrastructure.
+
+### 25.5 Script engine compatibility
+
+All diagram MCP tools are automatically callable from `accordo-script` command steps. Bridge's `registerTools()` dual-registers every MCP tool as a VS Code command (see `packages/bridge/src/extension.ts` line ~464). A script can create and patch diagrams:
+
+```json
+{
+  "steps": [
+    { "type": "command", "command": "accordo_diagram_create", "args": { "path": "diagrams/arch.mmd", "content": "flowchart TD\n  A-->B" } },
+    { "type": "delay", "ms": 500 },
+    { "type": "command", "command": "accordo_diagram_patch", "args": { "path": "diagrams/arch.mmd", "content": "flowchart TD\n  A-->B\n  B-->C" } }
+  ]
+}
+```
+
+No changes to `accordo-script` are needed. Tool names follow the `accordo_<category>_<action>` convention which is valid as VS Code command IDs.

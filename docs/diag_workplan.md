@@ -18,7 +18,7 @@ The diagram modality follows the exact pattern established by `accordo-editor`:
 │                                                                      │
 │  ┌────────────────────────────────────────────────────────────────┐  │
 │  │  accordo-diagram  (extensionKind: ["workspace"])               │  │
-│  │  • 14 diagram MCP tools                                        │  │
+│  │  • 15 diagram MCP tools (6 in diag.1, 9 added in diag.2)      │  │
 │  │  • Webview panel (Mermaid editor + Excalidraw canvas)          │  │
 │  │  • Registers tools via BridgeAPI.registerTools()               │  │
 │  │  • Publishes modality state via BridgeAPI.publishState()       │  │
@@ -32,7 +32,7 @@ The diagram modality follows the exact pattern established by `accordo-editor`:
 ┌────────────────────────▼──────────────────────────────────────────────┐
 │  accordo-hub → MCP → Agent                                            │
 │                                                                        │
-│  Agent calls: accordo.diagram.create, .get, .patch, .move_node, etc.  │
+│  Agent calls: accordo_diagram_create, _get, _patch, _move_node, etc. │
 │  Hub routes invoke → Bridge → accordo-diagram handler                  │
 │  Handler reads/writes .mmd + .layout.json on disk                      │
 │  Handler updates webview if open                                       │
@@ -150,10 +150,10 @@ packages/diagram/
 │   │   ├── adapter.test.ts         # Comprehensive per-shape/edge/cluster tests
 │   │   ├── flowchart.ts            # Flowchart db extraction
 │   │   ├── flowchart.test.ts
-│   │   ├── class-diagram.ts        # Phase B
-│   │   ├── state-diagram.ts        # Phase B
-│   │   ├── er-diagram.ts           # Phase B
-│   │   └── mindmap.ts              # Phase B
+│   │   ├── class-diagram.ts        # diag.2
+│   │   ├── state-diagram.ts        # diag.2
+│   │   ├── er-diagram.ts           # diag.2
+│   │   └── mindmap.ts              # diag.2
 │   │
 │   ├── reconciler/
 │   │   ├── reconciler.ts           # Core reconciliation (§7.1, §7.2)
@@ -177,8 +177,12 @@ packages/diagram/
 │   │   └── edge-router.ts          # Edge path computation between node boundaries
 │   │
 │   ├── tools/
-│   │   ├── diagram-tools.ts        # All 14 MCP tool definitions + handlers
+│   │   ├── diagram-tools.ts        # All 15 MCP tool definitions + handlers
 │   │   └── diagram-tools.test.ts
+│   │
+│   ├── comments/
+│   │   ├── diagram-comments-bridge.ts  # Wires webview ↔ SurfaceCommentAdapter
+│   │   └── diagram-comments-bridge.test.ts
 │   │
 │   ├── render/
 │   │   ├── kroki.ts                # Kroki API client
@@ -190,8 +194,8 @@ packages/diagram/
 │       ├── panel.ts                # VSCode webview panel management
 │       ├── panel.test.ts
 │       ├── protocol.ts             # Message types between host ↔ webview
-│       ├── webview.html            # Webview HTML shell
-│       └── webview.ts              # Webview-side: Excalidraw + Monaco + messaging
+│       ├── webview.html            # Webview HTML shell (loads comment-sdk)
+│       └── webview.ts              # Webview-side: Excalidraw + Monaco + SDK + messaging
 │
 └── media/
     └── excalidraw-bundle.js        # Pre-built Excalidraw for webview
@@ -203,7 +207,8 @@ packages/diagram/
 {
   "dependencies": {
     "mermaid": "11.4.1",
-    "dagre": "^0.8.5"
+    "dagre": "^0.8.5",
+    "@accordo/comment-sdk": "workspace:*"
   },
   "devDependencies": {
     "@accordo/bridge-types": "workspace:*",
@@ -399,7 +404,7 @@ types.ts                          # no dependencies — pure type definitions
     └── extension.ts                 # depends on: tools, panel, BridgeAPI
 ```
 
-### 4.2 Implementation modules — Phase A (MVP)
+### 4.2 Implementation modules — diag.1 (MVP)
 
 Each module follows the TDD cycle from `dev-process.md`.
 
@@ -423,9 +428,9 @@ Each module follows the TDD cycle from `dev-process.md`.
 | A16 | Webview frontend | `webview/webview.html`, `webview/webview.ts` | ~400 | Excalidraw, Monaco | manual test |
 | A17 | Extension entry | `extension.ts` | ~60 | A14, A15, BridgeAPI | ~10 |
 
-**Total Phase A estimate:** ~3000 lines of implementation, ~303 unit tests.
+**Total diag.1 estimate:** ~3000 lines of implementation, ~303 unit tests.
 
-**A14 tool count: 6 Phase A tools** — `diagram.list`, `diagram.get`, `diagram.create`, `diagram.patch`, `diagram.render`, `diagram.style_guide`.
+**A14 tool count: 6 diag.1 tools** — `accordo_diagram_list`, `accordo_diagram_get`, `accordo_diagram_create`, `accordo_diagram_patch`, `accordo_diagram_render`, `accordo_diagram_style_guide`.
 
 ---
 
@@ -602,7 +607,7 @@ export function layoutUnplaced(
 ): Map<string, { x: number; y: number; w: number; h: number }>;
 ```
 
-`layoutFull` is called on `diagram.create`. `layoutUnplaced` is called by the reconciler for newly added nodes.
+`layoutFull` is called on `accordo_diagram_create`. `layoutUnplaced` is called by the reconciler for newly added nodes.
 
 ### A5: Edge identity (`reconciler/edge-identity.ts`)
 
@@ -664,7 +669,7 @@ The reconciler does NOT read or write files. It takes inputs and returns outputs
 
 Converts `(ParsedDiagram + LayoutStore) → ExcalidrawElement[]`.
 
-Phase A supports flowchart shapes only. See v4.2 §9.2 for the shape mapping table.
+diag.1 supports flowchart shapes only. See v4.2 §9.2 for the shape mapping table.
 
 `canvas-generator.ts` reads `layout.aesthetics.roughness` (default `1`) and applies it plus `fontFamily: Excalifont` to every generated element — the hand-drawn aesthetic from day one. Stable seeds (derived from node IDs) are written back to `layout.json` after final render so the diagram looks identical on every subsequent open.
 
@@ -694,30 +699,30 @@ Each tool handler:
 5. If webview is open: triggers canvas refresh
 6. Returns structured result to agent
 
-**Phase A tools (MVP — 6 tools):**
+**diag.1 tools (MVP — 6 tools):**
 
 | Tool | Handler logic |
 |---|---|
-| `diagram.list` | `glob('**/*.mmd')` → detect type per file → return metadata |
-| `diagram.get` | `parseMermaid(source)` → return semantic graph + raw source |
-| `diagram.create` | write .mmd (inject standard classDef palette if none present) → parse → `layoutFull()` → write layout.json with `aesthetics: { roughness: 1, animationMode: "draw-on" }` |
-| `diagram.patch` | write .mmd → `reconcile(old, new, layout)` → write layout.json |
-| `diagram.render` | canvas mode: request from webview. semantic mode: `renderMermaid()` |
-| `diagram.style_guide` | returns per-diagram-type palette, node sizing defaults, conventions, and starter template (v4.2 §23) — no disk I/O, pure lookup |
+| `accordo_diagram_list` | `glob('**/*.mmd')` → detect type per file → return metadata |
+| `accordo_diagram_get` | `parseMermaid(source)` → return semantic graph + raw source |
+| `accordo_diagram_create` | write .mmd (inject standard classDef palette if none present) → parse → `layoutFull()` → write layout.json with `aesthetics: { roughness: 1, animationMode: "draw-on" }` |
+| `accordo_diagram_patch` | write .mmd → `reconcile(old, new, layout)` → write layout.json |
+| `accordo_diagram_render` | canvas mode: request from webview. semantic mode: `renderMermaid()` |
+| `accordo_diagram_style_guide` | returns per-diagram-type palette, node sizing defaults, conventions, and starter template (v4.2 §23) — no disk I/O, pure lookup |
 
-**Phase B tools (added later):**
+**diag.2 tools (added later):**
 
 | Tool | Handler logic |
 |---|---|
-| `diagram.add_node` | Insert into Mermaid AST → reconcile |
-| `diagram.remove_node` | Remove from Mermaid → reconcile |
-| `diagram.add_edge` | Insert into Mermaid → reconcile |
-| `diagram.remove_edge` | Remove from Mermaid → reconcile |
-| `diagram.add_cluster` | Insert subgraph into Mermaid → reconcile |
-| `diagram.move_node` | Patch layout.json only |
-| `diagram.resize_node` | Patch layout.json only |
-| `diagram.set_node_style` | Patch layout.json only |
-| `diagram.set_edge_routing` | Patch layout.json only |
+| `accordo_diagram_add_node` | Insert into Mermaid AST → reconcile |
+| `accordo_diagram_remove_node` | Remove from Mermaid → reconcile |
+| `accordo_diagram_add_edge` | Insert into Mermaid → reconcile |
+| `accordo_diagram_remove_edge` | Remove from Mermaid → reconcile |
+| `accordo_diagram_add_cluster` | Insert subgraph into Mermaid → reconcile |
+| `accordo_diagram_move_node` | Patch layout.json only |
+| `accordo_diagram_resize_node` | Patch layout.json only |
+| `accordo_diagram_set_node_style` | Patch layout.json only |
+| `accordo_diagram_set_edge_routing` | Patch layout.json only |
 
 ### A15: Webview panel (`webview/panel.ts`)
 
@@ -799,7 +804,7 @@ This module is tested manually (webview context, not Node.js).
 | Day | Module | Output |
 |---|---|---|
 | Mon | A11: webview protocol + A12: kroki.ts | Type definitions + ~10 kroki tests |
-| Mon–Tue | A13: export.ts + A14: diagram-tools.ts | ~50 tests, all 5 Phase A tools |
+| Mon–Tue | A13: export.ts + A14: diagram-tools.ts | ~50 tests, all 5 diag.1 tools |
 | Wed–Thu | A15: panel.ts | ~15 tests, webview lifecycle |
 | Thu–Fri | A16: webview frontend (HTML + TS) | Manual testing, dual-pane rendering |
 | Fri | A17: extension.ts | ~10 tests, activation + registration |
@@ -822,32 +827,34 @@ This module is tested manually (webview context, not Node.js).
 | Thu | Modality state: publishState to Hub, visible in /instructions | Agents see diagram context |
 | Fri | Documentation: README, tool descriptions, known limitations | Docs complete |
 
-**Gate:** Full Phase A exit criteria met (see §7).
+**Gate:** Full diag.1 exit criteria met (see §7).
 
 ---
 
-## 7. Phase A Exit Criteria
+## 7. diag.1 Exit Criteria
 
-All of these must be true before Phase A is complete:
+All of these must be true before diag.1 is complete:
 
 1. **Parser:** Flowchart Mermaid → ParsedDiagram extraction works for all standard shapes, edges, clusters
 2. **Reconciler:** Topology changes preserve existing layout. New nodes are auto-placed without collision.
 3. **Canvas:** Excalidraw scene generated correctly from ParsedDiagram + LayoutStore, with `roughness: 1` + `fontFamily: Excalifont` applied to all elements
-4. **Aesthetics:** Draw-on animation (progressive element loading) is on by default. User can toggle roughness/animationMode via webview toolbar dropdown. Settings persist per-diagram in `layout.json aesthetics`.
-5. **MCP tools (6):** `diagram.list`, `.create`, `.get`, `.patch`, `.render`, `.style_guide` callable by agent via Hub → Bridge → accordo-diagram
-6. **style_guide:** `diagram.create` auto-injects the standard classDef color palette. `diagram.style_guide` returns the full per-type guide including palette, node sizing, conventions, and a starter template.
-7. **Webview:** Dual-pane panel (Mermaid + Excalidraw) renders correctly
+4. **Aesthetics:** Roughness=1 (hand-drawn) on by default. `aesthetics` field persists per-diagram in `layout.json`. (Draw-on animation deferred to diag.2.)
+5. **MCP tools (6):** `accordo_diagram_list`, `_create`, `_get`, `_patch`, `_render`, `_style_guide` callable by agent via Hub → Bridge → accordo-diagram
+6. **style_guide:** `accordo_diagram_create` auto-injects the standard classDef color palette. `accordo_diagram_style_guide` returns the full per-type guide including palette, node sizing, conventions, and a starter template.
+7. **Webview:** Dual-pane panel (Mermaid + Excalidraw) renders correctly for spatial diagrams
 8. **Sync:** Mermaid edits → reconcile → canvas refresh (500ms debounce, invalid state handled)
 9. **Sync:** Canvas drag/resize → layout.json patch (immediate, no Mermaid change)
-10. **Export:** Both canvas (Excalidraw) and semantic (Kroki) exports produce SVG/PNG
+10. **Export:** Semantic export (Kroki) always available. Canvas export (Excalidraw → SVG/PNG) available when webview is open; falls back to semantic with warning when closed.
 11. **External edits:** Agent .mmd edit on disk → webview refreshes with toast notification
 12. **Modality state:** Diagram context appears in Hub's /instructions prompt
-13. **Tests:** All unit tests pass, zero TypeScript errors
-14. **Integration:** At least one real agent (Claude Code) successfully creates and patches a diagram using `style_guide` first
+13. **Comments:** Diagram webview loads `@accordo/comment-sdk`, registers `SurfaceCommentAdapter`, and supports comment threads pinned to diagram nodes via `data-block-id` attributes
+14. **Script compatibility:** All 6 MCP tools are auto-registered as VS Code commands via Bridge dual-registration, callable as `command` steps in `accordo-script`
+15. **Tests:** All unit tests pass, zero TypeScript errors
+16. **Integration:** At least one real agent (Claude Code) successfully creates and patches a diagram using `style_guide` first
 
 ---
 
-## 8. Phase B Plan (after Phase A gate)
+## 8. diag.2 Plan (after diag.1 gate)
 
 | Module | Description |
 |---|---|
@@ -860,6 +867,9 @@ All of these must be true before Phase A is complete:
 | Undo/redo | Operation log (50-entry ring buffer), file-level undo |
 | Dirty-canvas guard | Merge human layout changes with agent topology changes |
 | Full shape fidelity | All Mermaid node shapes in canvas generator |
+| Draw-on animation | Progressive element loading at canvas render time (§22 in arch doc) |
+| Animation toggle | Draw-on / static toggle in webview toolbar dropdown |
+| Sequential diagrams | Single-pane Mermaid editor + Kroki live preview for sequence, gantt, git graph, timeline, quadrant |
 
 ---
 
@@ -879,13 +889,16 @@ All of these must be true before Phase A is complete:
 
 ## 10. What Touches Existing Packages
 
-The diagram extension is a new package. It does NOT modify Hub, Bridge, or Editor code. It only depends on the BridgeAPI contract.
+The diagram extension is a new package. It does NOT modify Hub, Bridge, Editor, or Comments code. It consumes the BridgeAPI contract and the SurfaceCommentAdapter from the comments package.
 
 | Existing package | Change needed | Details |
 |---|---|---|
 | `@accordo/bridge-types` | None | Diagram types are internal to `packages/diagram/src/types.ts`. Only `BridgeAPI`, `ExtensionToolDefinition`, and `ToolRegistration` are used from bridge-types, and they are already sufficient. |
+| `@accordo/comment-sdk` | None | Diagram webview loads the SDK bundle. No API changes needed — `SdkInitOptions`, `SdkCallbacks`, and `coordinateToScreen` are sufficient. |
+| `accordo-comments` | None | Diagram extension calls `accordo_comments_internal_getSurfaceAdapter` to get a `SurfaceCommentAdapter`. The adapter interface and registration are already in place (M40-EXT-11). |
 | `accordo-hub` | None | Hub routes tool calls generically. It doesn't know or care about diagram-specific logic. The prompt engine will include diagram modality state automatically via the `modalities` field in IDEState. |
-| `accordo-bridge` | None | Bridge routes invocations by tool name. When accordo-diagram registers tools, Bridge sends them to Hub. No code change in Bridge. |
+| `accordo-bridge` | None | Bridge routes invocations by tool name. When accordo-diagram registers tools, Bridge sends them to Hub. No code change in Bridge. Dual-registration of tools as VS Code commands is automatic — diagram tools are callable by `accordo-script` with zero changes. |
+| `accordo-script` | None | Command steps call `vscode.commands.executeCommand(toolName, args)`. Diagram tools are auto-registered as commands by Bridge. No script engine changes needed. |
 | `pnpm-workspace.yaml` | None | Already uses `packages/*` glob — `packages/diagram` is picked up automatically |
 | `tsconfig.base.json` | None | This file defines only `compilerOptions`; individual packages have their own `tsconfig.json` with `extends` and `references`. No change needed. |
 | Root `package.json` | None | Build script `pnpm -r run build` picks up new package automatically |
