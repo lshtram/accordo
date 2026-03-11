@@ -1,10 +1,26 @@
 # Accordo — Diagram Modality Implementation Plan
 
-**Status:** DRAFT
+**Status:** IN PROGRESS
 **Date:** 2026-03-11
 **Depends on:** Session 10D complete (1837 tests green)
 **Architecture:** `docs/diag_arch_v4.2.md`
 **Dev process:** `docs/dev-process.md` (TDD cycle A→F)
+
+## Current Status (as of 2026-03-11)
+
+| Module | State | Commit | Tests |
+|---|---|---|---|
+| A1 Internal types | ✅ DONE | `9b0200f` | 36 pass |
+| A2 Flowchart parser | ✅ DONE | `2d439e5` + `429c53d` | 67 pass |
+| A3 Layout store | ✅ DONE | `15a4369` | 54 pass |
+| A4 Auto-layout (dagre) | 📋 NOT STARTED | — | — |
+| A5–A17 | 📋 NOT STARTED | — | — |
+
+**Total passing:** 157 tests (A1 + A2 + A3)  
+**Next module:** A4 Auto-layout — `layout/auto-layout.ts`
+
+> **LS-ID note:** Requirement IDs `LS-01..LS-12` used in layout-store tests are
+> locally derived. A canonical mapping should be established in a future pass.
 
 ---
 
