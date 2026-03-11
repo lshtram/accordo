@@ -776,6 +776,12 @@ accordo-editor/               VSCode extension — "accordo.accordo-editor"
   Published: VSCode Marketplace
   extensionKind: ["workspace"]
   extensionDependencies: ["accordo.accordo-bridge"]
+
+accordo-script/               VSCode extension — "accordo.accordo-script"
+  Published: VSCode Marketplace
+  extensionKind: ["workspace"]
+  extensionDependencies: ["accordo.accordo-bridge"]
+  See: §13 Component: accordo-script
 ```
 
 ---
@@ -788,7 +794,7 @@ The following are explicitly deferred:
 - `accordo-slidev` — Modality. Requires Phase 1 gate to pass first.
 - `accordo-tldraw` — Modality. Requires Phase 1 gate to pass first.
 - `accordo-voice` — Voice modality (TTS + STT + summary narration). Implemented in Phase 2 Session 10. Architecture: [`docs/voice-architecture.md`](voice-architecture.md).
-- `accordo-script` — Scripted walkthroughs (multi-step sequences: speech + IDE commands + delays + highlights). Separated from voice so it works without audio (subtitles, visual-only). Future session. Will live in Bridge or as a standalone extension.
+- `accordo-script` — Scripted walkthroughs. Implemented in Phase 2 Session 10D. Architecture ref: `docs/voice-architecture.md` ADR-04. Requirements: `docs/requirements-script.md`.
 - Custom IDE packaging — No.
 - Cloud/hosted Hub — No. Local-first only.
 
@@ -831,3 +837,66 @@ CommentStore (accordo-comments)
 ### 12.4 Built-in Comments panel limitation
 
 The VS Code **built-in Comments panel** (bottom-bar `workbench.panel.comments`) does **not** support custom context menu contributions or click-to-navigate overrides. See `docs/patterns.md` P-12 for full analysis. A custom **Accordo Comments TreeView** sidebar panel is tracked in `docs/workplan.md` deferred backlog #7 and will replace the built-in panel as the primary navigation surface.
+
+---
+
+## 13. Component: accordo-script (Session 10D)
+
+> **Agent note [2026-03-11]:** Established during Session 10D. The script module is the automation layer that sequences multi-step IDE experiences from a single agent call.
+
+### 13.1 Role
+
+Exposes a **declarative scripting runtime** as MCP tools. The agent produces a `NarrationScript` JSON object in one call; `accordo-script` executes each step sequentially without further round-trips.
+
+Designed to be **voice-optional**: `speak` steps synthesise audio if `accordo-voice` is installed; otherwise they fall back to the subtitle bar and continue. This ensures automated demos, code walkthroughs, and teaching sequences work on any machine regardless of audio setup.
+
+### 13.2 Step Types
+
+| Step `type` | Fields | Behaviour |
+|---|---|---|
+| `speak` | `text` | Calls `accordo.voice.speakText` command if voice installed; otherwise shows subtitle |
+| `subtitle` | `text`, `durationMs?` | Shows text in status bar subtitle bar for `durationMs` (default 3000) |
+| `delay` | `ms` | Pauses execution for `ms` milliseconds |
+| `highlight` | `path`, `startLine`, `endLine`, `color?` | Highlights a range in a file using editor decorations |
+| `clear-highlights` | — | Clears all active highlights |
+| `command` | `command`, `args?` | Calls `vscode.commands.executeCommand(command, ...args)` |
+
+**`command` universality:** The Bridge `registerTools()` wrapper auto-registers every Accordo MCP tool as a VS Code command (same name as the tool). This means every tool from every modality (editor, voice, comments, presentations, diagrams, …) is reachable via `command` steps, with zero changes to `accordo-script`.
+
+### 13.3 MCP Tools
+
+| Tool | Purpose | Danger | Idempotent |
+|---|---|---|---|
+| `accordo_script_run` | Accept and execute a `NarrationScript` | moderate | no |
+| `accordo_script_stop` | Cancel the running script | safe | yes |
+| `accordo_script_status` | Poll execution progress (current step, state) | safe | yes |
+| `accordo_script_discover` | Return full reference card (step types, command IDs, example) | safe | yes |
+
+### 13.4 LLM Schema Design
+
+The `accordo_script_run` input schema uses a **flat property list with inline example** rather than a deep `oneOf` discriminated union. Lessons learned:
+
+- `oneOf` with many variants causes LLMs to pick the easiest variant (the last in the list with zero required fields) when generating under token pressure.
+- Numeric `minItems`/`maxItems` constraints are interpreted by LLMs as target values, not bounds — causing scripts padded to exactly `maxItems` steps.
+- A flat schema with a concrete example in `description` (e.g. `speak/delay/speak` pattern) produces correct, varied scripts reliably.
+
+`accordo_script_discover` provides the full annotated reference as a tool call result, decoupling schema discoverability from the run tool's schema size.
+
+### 13.5 Internal File Structure
+
+```
+accordo-script/
+├── src/
+│   ├── extension.ts           — activate(), wire tools, Bridge registration
+│   ├── script-types.ts        — NarrationScript, ScriptStep discriminated union, ScriptState
+│   ├── script-runner.ts       — ScriptRunner: sequential executor, cancellation, error policy
+│   ├── subtitle-bar.ts        — ScriptSubtitleBar: status bar text, auto-clear
+│   └── tools/
+│       ├── run-script.ts          — accordo_script_run: accept, validate, start script
+│       ├── stop-script.ts         — accordo_script_stop: cancel running script
+│       ├── script-status.ts       — accordo_script_status: poll progress
+│       └── script-discover.ts     — accordo_script_discover: reference card
+├── package.json
+├── tsconfig.json
+└── vitest.config.ts
+```

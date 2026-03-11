@@ -103,6 +103,15 @@ export class HubManager {
   private killRequested = false;
   /** Guards against concurrent restart() calls (e.g. exit handler + onAuthFailure racing). */
   private restartInProgress = false;
+  /**
+   * Set to true by deactivate() to suppress any post-deactivation callbacks
+   * from the spawn exit-handler or pollHealth timer chains.  Prevents calls
+   * into already-disposed VSCode resources (outputChannel, EventEmitter) when
+   * the Extension Development Host is killed without a clean deactivate().
+   */
+  private deactivated = false;
+  /** Cancellation token for the current pollHealth loop. */
+  private pollCancelled = false;
 
   constructor(
     private secretStorage: SecretStorage,
@@ -190,10 +199,13 @@ export class HubManager {
 
   /**
    * LCM-11: Graceful deactivation. Close WS but do NOT kill Hub.
+   * Also silences any in-flight spawn exit-handlers and pollHealth loops
+   * so they don't call back into already-disposed VS Code resources.
    */
   async deactivate(): Promise<void> {
+    this.deactivated = true;
+    this.pollCancelled = true;
     // LCM-11: do NOT kill the Hub process — it stays alive for CLI agents
-    return;
   }
 
   /**
@@ -314,6 +326,10 @@ export class HubManager {
       if (this.config.pidFilePath) {
         try { fs.unlinkSync(this.config.pidFilePath); } catch { /* already gone */ }
       }
+      // Guard: if the extension host was killed (or deactivate() was called),
+      // this handler fires on a stale object whose event callbacks reference
+      // already-disposed VS Code resources.  Silently drop the exit event.
+      if (this.deactivated) return;
       if (!this.killRequested) {
         this.hubProcess = null;
         if (!this.restartAttempted) {
@@ -334,10 +350,11 @@ export class HubManager {
    * @returns true if Hub became healthy, false on timeout
    */
   async pollHealth(maxWaitMs = 10000, intervalMs = 500): Promise<boolean> {
+    this.pollCancelled = false;
     const deadline = Date.now() + maxWaitMs;
     return new Promise((resolve) => {
       const attempt = () => {
-        if (Date.now() >= deadline) {
+        if (this.pollCancelled || Date.now() >= deadline) {
           resolve(false);
           return;
         }
@@ -346,6 +363,7 @@ export class HubManager {
         this._applyPortFile();
         this.checkHealth()
           .then((healthy) => {
+            if (this.pollCancelled) { resolve(false); return; }
             if (healthy) {
               resolve(true);
             } else if (Date.now() < deadline) {
@@ -355,6 +373,7 @@ export class HubManager {
             }
           })
           .catch(() => {
+            if (this.pollCancelled) { resolve(false); return; }
             if (Date.now() < deadline) {
               setTimeout(attempt, intervalMs);
             } else {

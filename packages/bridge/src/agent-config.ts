@@ -91,12 +91,12 @@ export function buildOpencodeConfig(
   // Remove legacy keys that opencode rejects
   delete existing["_accordo_schema"];
   delete existing["instructions_url"];
+  delete existing["instructions"];
 
   const existingMcp = (existing["mcp"] ?? {}) as Record<string, unknown>;
   return {
     ...existing,
     $schema: "https://opencode.ai/config.json",
-    instructions: [`http://localhost:${port}/instructions`],
     mcp: {
       ...existingMcp,
       "accordo-hub": {

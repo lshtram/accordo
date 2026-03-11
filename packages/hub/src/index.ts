@@ -195,6 +195,12 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     const transport = new StdioTransport({ handler: mcpHandler });
     await transport.start();
   } else {
+    // In HTTP mode stdin is unused.  Unref it so a dead PTY file descriptor
+    // (parent VS Code killed) does not keep libuv polling an invalid fd.
+    if (process.stdin.unref) {
+      process.stdin.unref();
+    }
+
     const accordoDir = path.join(os.homedir(), ".accordo");
 
     // Dynamic port selection: find first free port starting from config.port.
@@ -242,6 +248,27 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
 
 // Run when executed directly; skip when imported by tests
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // ── Orphan-prevention: close IPC channel ────────────────────────────────
+  // When VS Code launches the Hub via its Electron "Code Helper (Plugin)"
+  // child process, an IPC channel is implicitly opened.  If the parent
+  // VS Code process dies (e.g. debug session killed, window closed), the
+  // IPC file descriptor breaks and libuv spins at 100 % CPU because the
+  // Electron event-loop integration continuously polls the dead fd.
+  // The Hub never uses Node.js IPC (process.send / process.on('message')),
+  // so we proactively disconnect the channel at startup.  This must happen
+  // BEFORE the event loop can enter the spin state.
+  if (typeof process.disconnect === "function") {
+    try { process.disconnect(); } catch { /* already disconnected */ }
+  }
+
+  // ── SIGHUP: terminal session death ──────────────────────────────────────
+  // When the controlling terminal (VS Code integrated terminal, PTY) closes,
+  // the OS delivers SIGHUP.  Shut down cleanly instead of becoming orphaned.
+  process.on("SIGHUP", () => {
+    console.error("[hub] SIGHUP received — shutting down");
+    process.exit(0);
+  });
+
   // ── Process-level crash guards ──────────────────────────────────────────
   // An unhandled exception or rejection should NEVER silently kill the Hub.
   // Log the error and keep running — the Bridge will reconnect, and the MCP

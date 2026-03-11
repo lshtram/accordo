@@ -2,14 +2,14 @@
 
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
-**Date:** 2026-03-10  
-**Status:** ACTIVE — Session 10C complete (voice robustness + simplification ✅), Session 11 next (Diagrams)
+**Date:** 2026-03-11  
+**Status:** ACTIVE — Session 10D complete (accordo-script ✅), Session 11 next (Diagrams)
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-10 — Session 10C complete. Full-session voice robustness hardening: dynamic port selection, WS disconnect handling, sherpa subprocess architecture (system Node vs Electron), readAloud fire-and-forget, Hub crash guards, Hub log noise eliminated, WS diagnostic logging, readAloud handler simplified (delegates fully to streamingSpeak). Hub: 360, Voice: 261. 1689 tests total (Hub: 360, Voice: 261, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). TypeScript clean. Committed and pushed. Session 11 next: Diagrams modality (`accordo-diagram`). Deferred: TTS inter-sentence silence (speech fluency).**
+> **As of 2026-03-11 — Session 10D complete. New `accordo-script` VS Code extension delivering 4 MCP tools: `accordo_script_run`, `accordo_script_stop`, `accordo_script_status`, `accordo_script_discover`. ScriptRunner executes sequential multi-step scripts (speak, subtitle, delay, highlight, clear-highlights, command steps). Bridge dual-registers every MCP tool as a VS Code command so `command` steps reach all Accordo modalities without changes to accordo-script. schema flattened for LLM-friendly generation; `accordo_script_discover` returns full reference card. OpenCode config fixed (type: remote). 1837 tests total (Hub: 360, Voice: 269, Bridge: 310, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149, Script: 133). TypeScript clean. Committed and pushed. Session 11 next: Diagrams modality (`accordo-diagram`).**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -18,10 +18,11 @@
 | Phase 3 | Presentations modality (`accordo-slidev`) | ✅ DONE — Session 8B complete, 137 tests |
 | Session 9 | Custom Comments Panel (M45 — `accordo-comments` update) | ✅ DONE — 273 comments tests, 1418 total |
 | **Session 10** | **Voice modality (`accordo-voice` — 10A core+tools, 10B summary narration, 10C robustness)** | ✅ DONE — 10A: 211; 10B: +25; 10C: hardening + simplification, 261 total voice tests |
+| **Session 10D** | **Scripted walkthroughs (`accordo-script` — ScriptRunner, 4 MCP tools, Bridge dual-registration)** | ✅ DONE — 133 tests |
 | Session 11 | Diagrams modality (`accordo-diagram` — Mermaid + Excalidraw) | ⏳ Next |
 | Session 12+ | Browser agentation (`accordo-browser` + Chrome extension) | 📋 DEFERRED — architecture + requirements written, complex anchoring needs more design |
 
-**Baseline:** 1689 tests green (Hub: 360, Voice: 261, Bridge: 307, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149). v0.1.0 on `main`.  
+**Baseline:** 1837 tests green (Hub: 360, Voice: 269, Bridge: 310, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149, Script: 133). v0.1.0 on `main`.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -300,23 +301,33 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ---
 
-### Session 10D — Scripted Walkthroughs (future, separate from voice) [DEFERRED]
+### Session 10D — Scripted Walkthroughs (`accordo-script`) ✅ DONE
 
 **Goal:** A scripting runtime that executes multi-step sequences interleaving IDE commands, delays, highlights, and optionally speech (via voice extension if installed) or subtitles (if not). The agent generates a complete script in one shot; the runtime executes it without further MCP round-trips.
 
-**Key design principle:** Works without `accordo-voice` installed. If voice is available, `speak` steps call TTS. If not, `speak` steps render as subtitles or are skipped. This separation ensures presentations, code walkthroughs, and demos are a first-class capability regardless of audio setup.
+**Architecture ref:** [`docs/voice-architecture.md`](voice-architecture.md) ADR-04 (separation rationale)  
+**Requirements:** [`docs/requirements-script.md`](requirements-script.md)  
+**Testing guide:** [`docs/testing-guide-script-10d.md`](testing-guide-script-10d.md)  
+**New package:** `packages/script/` (`accordo-script` VS Code extension)
 
-**Candidate location:** Bridge extension (has access to `vscode.commands.executeCommand`), or a standalone `accordo-script` extension.
+| # | Module | Requirements Source | TDD Phases |
+|---|---|---|---|
+| M52-RT | `script-runner.ts` — `ScriptRunner`: step executor, cancellation, error policy (skip/abort) | requirements-script.md §4 M52-RT | ✅ A → F |
+| M52-SB | `subtitle-bar.ts` — `ScriptSubtitleBar`: status bar subtitle display, voice fallback | requirements-script.md §4 M52-SB | ✅ A → F |
+| M52-RUN | `tools/run-script.ts` — `accordo_script_run` MCP tool: receive + validate + execute script | requirements-script.md §4 M52-RUN | ✅ A → F |
+| M52-STOP | `tools/stop-script.ts` — `accordo_script_stop` MCP tool: cancel running script | requirements-script.md §4 M52-STOP | ✅ A → F |
+| M52-STAT | `tools/script-status.ts` — `accordo_script_status` MCP tool: poll execution progress | requirements-script.md §4 M52-STAT | ✅ A → F |
+| M52-DISC | `tools/script-discover.ts` — `accordo_script_discover` MCP tool: full reference card for agents | requirements-script.md §4 M52-DISC | ✅ A → F |
+| M52-EXT | `extension.ts` — activate, wires all tools, Bridge registration | requirements-script.md §4 M52-EXT | ✅ A → F |
 
-**Modules (preliminary):**
-- Script format: `NarrationScript` type — steps: `speak`, `command`, `delay`, `highlight`, `clear-highlight`, `await-speech`, `subtitle`
-- `ScriptRunner` — sequential step executor with cancellation, progress events, error policy (skip/abort)
-- `accordo_script_run` MCP tool — receives a script, delegates to ScriptRunner
-- Script validation — JSON schema, step count limit, command whitelist
-- Integration with voice (optional): if voice state is published, `speak` steps use TTS. Otherwise fall back to subtitle overlay.
-- Integration with all modality commands: `accordo.presentation.*`, `accordo.commentsPanel.*`, `vscode.open`, `workbench.action.gotoLine`, future `accordo.diagram.*`
+**Key implementation decisions:**
+- `command` steps call `vscode.commands.executeCommand` with any VS Code command ID. Bridge auto-registers every MCP tool as a VS Code command in `registerTools()`, making ALL Accordo tools reachable via `command` steps with zero changes to `accordo-script`.
+- Schema uses flat property list + inline example in `description` (not deep `oneOf`) — LLMs generate correct scripts reliably.
+- `accordo_script_discover` returns a full reference card: all step types with fields, complete command ID map for all Accordo modalities, VS Code builtins, and a worked example.
+- `accordo.voice.speakText` VS Code command added to `accordo-voice` as the `speak` step integration point.
+- OpenCode MCP config: `"type": "remote"` is the correct value per OpenCode's JSON schema (not `"http"`).
 
-**Architecture and requirements:** To be written when session begins. Core design already documented in [`docs/voice-architecture.md`](voice-architecture.md) ADR-04 (separation rationale).
+**Session 10D gate:** ✅ 133 tests green. ScriptRunner executes all step types. Agent can script a full presentation walkthrough with voice, highlights, navigation, and delays in a single MCP call. `accordo_script_discover` provides schema-level self-documentation for agents.
 
 ---
 
@@ -437,6 +448,42 @@ Carried forward — non-blocking:
 9. **Comments panel two-line layout (M46)** — VS Code `TreeItem` supports only one physical line (label + description). Full conversation preview requires a `WebviewView` detail pane. Deferred to M46 (post Session 10).
 10. **Scripted Walkthroughs (Session 10D)** — Multi-step sequences (speech + IDE commands + delays + highlights) separated from voice extension. Works with subtitles or silent mode. See Session 10D outline in §6.
 11. **TTS inter-sentence silence (speech fluency)** — A perceptible gap exists between synthesized sentences during streaming playback. Hypothesis: Kokoro engine appends trailing silence to each audio clip. Investigate: read synthesized PCM, detect silence at end, trim in `streamingSpeak` before playback boundary. Low priority — TTS is functional, gap is cosmetic.
+
+---
+
+### Voice Code Review — Hardening Tasks (from review 2026-03-10)
+
+Identified in a post-session-10C code review. No blocking issues — voice is functional. Address before or during the next session that touches the voice package.
+
+**P1 — Bugs affecting reliability:**
+
+12. **[P1] Bridge reconnect replays stale modality state** — `WsClient.sendStateUpdate()` sends incremental patches but never updates `lastState`. On reconnect, `_scheduleReconnect()` replays the stale snapshot from initial connection time. Voice prompt directives in Hub drift until the next explicit state mutation. Fix: merge each `sendStateUpdate` patch into `lastState` in `ws-client.ts`, or have `sendStateSnapshot` pull from `StatePublisher.currentState`. Evidence: `packages/bridge/src/ws-client.ts` (reconnect path) + `packages/bridge/src/state-publisher.ts` (`publishState`).
+
+13. **[P1] `bridgeUsable = false` is permanent after a single transient error** — In `extension.ts`, any `publishState` or `registerTools` error sets `bridgeUsable = false` and there is no code path that ever resets it. A brief bridge restart or activation race permanently disables voice state publishing and MCP tool availability for the VS Code session lifetime. Fix: retry on next config change / state push, or implement a bridge health re-check path. Evidence: `packages/voice/src/extension.ts` (two `bridgeUsable = false` assignments in `syncUiAndState` and tool registration catch block).
+
+14. **[P1] `readAloud` tool-path is fire-and-forget with no session lock** — Two rapid `accordo_voice_readAloud` tool calls can spawn overlapping `streamSpeak` pipelines that race on `narrationFsm` transitions and produce overlapping audio. Additionally, `doStopNarration()` / `doPauseNarration()` operate on `activeNarrationPlayback` (command path) and cannot cancel tool-initiated `streamSpeak` playback, so the stop command has no effect on agent-narrated text. Fix: introduce a session-level playback lock and store a cancellation handle for the active `streamSpeak` pipeline so stop/pause/resume commands reach it. Evidence: `packages/voice/src/tools/read-aloud.ts` (fire-and-forget `void streamSpeak(...)`) + `packages/voice/src/extension.ts` (`doStopNarration` only touches `activeNarrationPlayback`).
+
+**P2 — Quality and correctness issues:**
+
+15. **[P2] `sherpa-onnx-node` pinned to `latest`** — The native TTS dependency is unprefixed (`"sherpa-onnx-node": "latest"`), making installs non-reproducible across machines and time; a binary ABI change can silently break TTS without a code change. Fix: pin to the current known-good version (e.g. `"1.10.38"`). Evidence: `packages/voice/package.json`.
+
+16. **[P2] Dead config entries `llmEndpoint` / `llmModel`** — `package.json` still contributes `accordo.voice.llmEndpoint` and `accordo.voice.llmModel` to VS Code settings, but voice-architecture.md ADR-03 explicitly says there is no LLM in the voice extension (summary mode is agent-driven). These settings are never read anywhere in the code. They appear in the Settings UI and mislead debugging. Fix: remove both configuration contributions from `packages/voice/package.json`.
+
+17. **[P2] CSP nonce uses `Math.random()` — not cryptographically secure** — `generateNonce()` in `voice-panel.ts` uses `Math.floor(Math.random() * ...)`. CSP nonces must be unpredictable to be effective. Fix: replace with `import { randomBytes } from 'node:crypto'; randomBytes(16).toString('hex')`. Evidence: `packages/voice/src/ui/voice-panel.ts`.
+
+18. **[P2] `doSpeakText` is a registered command that throws** — The `accordo.voice.speakText` command is registered and callable programmatically (despite `"enablement": "false"` in package.json which only hides it from the palette), but its handler `doSpeakText` contains `throw new Error("not implemented")`. Any call from `accordo-script` or another extension will throw an unhandled error. Fix: implement the handler (M52-VS) or replace the throw with a graceful no-op / warning message. Evidence: `packages/voice/src/extension.ts` line ~472.
+
+19. **[P2] `doResumeNarration` checks `isPlaying()` instead of FSM state** — The guard `if (!activeNarrationPlayback?.isPlaying()) return` is fragile: `isPlaying()` returns `true` even when paused via `SIGSTOP` (the flag is only cleared on process close). The semantically correct guard is `narrationFsm.state === 'paused'`. Works by coincidence now, but future platform changes could silently break resume. Evidence: `packages/voice/src/extension.ts` `doResumeNarration`.
+
+**P3 — Informational / low risk:**
+
+20. **[P3] Pre-spawned player only works on Linux** — `createPreSpawnedPlayer()` only pre-spawns a process on Linux (`aplay -`). On macOS (primary dev platform) it falls back to temp-file `playPcmAudio` for every sentence — the streaming latency benefit is largely absent on macOS. Not a bug, but the streaming pipeline docs imply latency benefits that only fully materialise on Linux. No action required unless macOS streaming latency becomes a complaint.
+
+21. **[P3] Sherpa worker does not validate input fields before use** — `sherpa-worker.ts` passes `modelDir` directly from the parent's stdin JSON into file path strings without sanitization. Risk is minimal (stdin is only writable by the extension host process), but worth noting for future threat modelling if the worker IPC boundary widens.
+
+22. **[P3] Vocabulary entry length / content not bounded** — `VoiceVocabulary` persists entries in `workspaceState` with no validation on `from`/`to` length. A very long `from` string causes O(n*m) scanning on every STT transcript. Low practical risk given the feature is user-controlled and single-user.
+
+23. **[P3] `sox` availability cache is not re-checkable within a session** — `recordingAvailableCache` is set once on first dictation and never cleared. If the user installs sox mid-session, they must reload the VS Code window to pick it up. Minor UX friction; no fix required unless reported.
 
 ---
 

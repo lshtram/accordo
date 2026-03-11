@@ -84,14 +84,9 @@ describe("buildOpencodeConfig", () => {
     expect(cfg.mcp["accordo-hub"].headers["Authorization"]).toBe("Bearer my-secret-token");
   });
 
-  it("CFG-04: includes instructions array with /instructions endpoint", () => {
+  it("CFG-04: does not include instructions field", () => {
     const cfg = buildOpencodeConfig(3000, "tok") as Record<string, unknown>;
-    expect(cfg["instructions"]).toEqual(["http://localhost:3000/instructions"]);
-  });
-
-  it("CFG-04: instructions url uses the provided port", () => {
-    const cfg = buildOpencodeConfig(4567, "tok") as Record<string, unknown>;
-    expect(cfg["instructions"]).toEqual(["http://localhost:4567/instructions"]);
+    expect(cfg["instructions"]).toBeUndefined();
   });
 
   it("CFG-10: includes $schema field pointing to opencode schema", () => {
@@ -236,10 +231,10 @@ describe("writeOpencodeConfig", () => {
     expect(raw).toContain("my-real-token");
   });
 
-  it("CFG-04: written file contains instructions url", () => {
+  it("CFG-04: written file does not contain instructions field", () => {
     writeOpencodeConfig(makeParams(tmpDir, { port: 3001 }));
     const raw = fs.readFileSync(path.join(tmpDir, "opencode.json"), "utf8");
-    expect(raw).toContain("http://localhost:3001/instructions");
+    expect(raw).not.toContain("/instructions");
   });
 
   it("CFG-06: appends opencode.json to workspace .gitignore", () => {

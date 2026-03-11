@@ -467,6 +467,37 @@ export async function activate(
     }
   }
 
+  // ── M52-VS: speakText — called by accordo-script to narrate script steps ──
+
+  async function doSpeakText(args: {
+    text: string;
+    voice?: string;
+    speed?: number;
+    block?: boolean;
+  }): Promise<void> {
+    const available = await tts.isAvailable();
+    if (!available) return;
+
+    const policy = sessionFsm.policy;
+    const cleaned = cleanTextForNarration(args.text, "narrate-full");
+
+    const synthesizeAndPlay = async (): Promise<void> => {
+      const result = await tts.synthesize({
+        text: cleaned,
+        language: policy.language,
+        voice: args.voice ?? policy.voice,
+        speed: args.speed ?? policy.speed,
+      });
+      await playPcmAudio(result.audio, result.sampleRate ?? 22050);
+    };
+
+    if (args.block !== false) {
+      await synthesizeAndPlay();
+    } else {
+      void synthesizeAndPlay();
+    }
+  }
+
   async function doTestStt(): Promise<void> {
     logger.log("smoke: stt test invoked");
     if (dictState.active) {
@@ -590,6 +621,13 @@ export async function activate(
         "@ext:accordo.accordo-voice",
       );
     }),
+    // ── M52-VS: speakText command — used by accordo-script ──────────────────
+    vscode.commands.registerCommand(
+      "accordo.voice.speakText",
+      (args: { text: string; voice?: string; speed?: number; block?: boolean }) => {
+        return doSpeakText(args);
+      },
+    ),
   ];
   context.subscriptions.push(...commandDisposables);
 

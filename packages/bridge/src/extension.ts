@@ -455,10 +455,23 @@ export async function activate(
       tools: ExtensionToolDefinition[],
     ): vscode.Disposable {
       const inner = registry!.registerTools(extensionId, tools);
+
+      // Dual-register every MCP tool as a VS Code command so scripts can
+      // invoke any tool via { "type": "command", "command": "<toolName>", "args": {...} }.
+      // Uses the MCP tool name directly (e.g. "accordo_editor_open") as the
+      // command ID — valid in VS Code despite the underscore convention.
+      const cmdDisposables = tools.map((tool) =>
+        vscode.commands.registerCommand(
+          tool.name,
+          (args?: unknown) => tool.handler((args as Record<string, unknown>) ?? {}),
+        ),
+      );
+
       return {
         dispose() {
           inner.dispose();
           statePublisher?.removeModalityState(extensionId);
+          for (const d of cmdDisposables) d.dispose();
         },
       };
     },
@@ -506,7 +519,10 @@ export async function deactivate(): Promise<void> {
   await wsClient?.disconnect();
   wsClient = null;
 
-  // hubManager: do NOT kill Hub (LCM-11 — Hub serves CLI agents independently)
+  // LCM-11: do NOT kill Hub — it serves CLI agents independently.
+  // But do call deactivate() to arm the deactivated guard so the spawn
+  // exit-handler and pollHealth timer chain don't fire into disposed resources.
+  await hubManager?.deactivate();
   hubManager = null;
 
   connectionStatusEmitter?.dispose();

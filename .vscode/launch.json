@@ -33,6 +33,8 @@
         "--extensionDevelopmentPath=${workspaceFolder}/packages/slidev",
         // accordo-voice: STT/TTS narration + dictation (requires accordo-bridge)
         "--extensionDevelopmentPath=${workspaceFolder}/packages/voice",
+        // accordo-script: scripted multi-step IDE walkthroughs via MCP
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/script",
         // Open this repo in the EDH so it has a real workspace to report
         "${workspaceFolder}"
       ],
@@ -42,7 +44,8 @@
         "${workspaceFolder}/packages/comments/dist/**/*.js",
         "${workspaceFolder}/packages/md-viewer/dist/**/*.js",
         "${workspaceFolder}/packages/slidev/dist/**/*.js",
-        "${workspaceFolder}/packages/voice/dist/**/*.js"
+        "${workspaceFolder}/packages/voice/dist/**/*.js",
+        "${workspaceFolder}/packages/script/dist/**/*.js"
       ],
       "preLaunchTask": "build-all",
       "sourceMaps": true

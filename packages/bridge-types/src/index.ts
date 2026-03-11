@@ -126,13 +126,24 @@ export interface ToolInputSchema {
 }
 
 export interface ToolPropertySchema {
-  type: string;
-  description: string;
+  type?: string;
+  description?: string;
   enum?: string[];
+  const?: unknown;
   default?: unknown;
   /** Nested property definitions for type:'object' properties */
   properties?: Record<string, ToolPropertySchema>;
   required?: string[];
+  additionalProperties?: boolean | ToolPropertySchema;
+  /** For type:'array' */
+  items?: ToolPropertySchema | { oneOf: ToolPropertySchema[] };
+  minItems?: number;
+  maxItems?: number;
+  /** Numeric range constraints */
+  minimum?: number;
+  maximum?: number;
+  /** Discriminated union */
+  oneOf?: ToolPropertySchema[];
 }
 
 /**
