@@ -1922,7 +1922,7 @@ The diagram extension follows the same three-layer pattern established by `packa
 
 ### 25.2 Block ID mapping
 
-Every diagram node that can receive a comment gets a `data-block-id` attribute in the Excalidraw webview DOM. The block ID is the Mermaid node ID (the stable identity primitive from §4.1).
+The block ID is the Mermaid node ID (the stable identity primitive from §4.1), prefixed by element kind.
 
 ```
 Block ID format: "node:{mermaidId}"
@@ -1931,46 +1931,59 @@ Edge comments: "edge:{from}->{to}:{ordinal}"
 Cluster comments: "cluster:{clusterId}"
 ```
 
-The `coordinateToScreen` callback (required by the SDK) maps a block ID to the screen position of the corresponding Excalidraw element:
+**Canvas-aware pin positioning.** Excalidraw renders on an HTML `<canvas>` — shapes are NOT individual DOM elements, so `querySelector('[data-block-id]')` is not available. Instead, the diagram webview maintains an in-memory `IdMap` (mermaidId ↔ excalidrawId, rebuilt on every scene generation — see §9.4). The `coordinateToScreen` callback resolves block IDs by looking up the Excalidraw element geometry from the scene and converting to screen coordinates:
 
 ```typescript
 sdk.init({
-  container: document.getElementById('excalidraw-container'),
+  container: canvasWrapper,  // the <div> that wraps the Excalidraw <canvas>
   coordinateToScreen: (blockId: string) => {
-    const [kind, id] = blockId.split(':', 2);
-    const excalId = idMap.get(id); // mermaidId → excalidrawId
+    const [_kind, id] = blockId.split(':', 2);
+    const excalId = idMap.mermaidToExcalidraw.get(id);
     if (!excalId) return null;
-    const el = document.querySelector(`[data-block-id="${blockId}"]`);
+    const el = excalidrawApi.getSceneElements().find(e => e.id === excalId);
     if (!el) return null;
-    const rect = el.getBoundingClientRect();
-    return { x: rect.right, y: rect.top };
+    const { scrollX, scrollY, zoom } = excalidrawApi.getAppState();
+    // Convert element coords → screen coords
+    const x = (el.x + el.width + scrollX) * zoom.value;
+    const y = (el.y + scrollY) * zoom.value;
+    return { x, y };
   },
   callbacks: { onCreate, onReply, onResolve, onReopen, onDelete }
 });
 ```
 
+The SDK's Alt+click handler cannot use `closest('[data-block-id]')` on a canvas surface. The diagram webview intercepts Alt+click itself, uses `excalidrawApi.getElementAtPosition(x, y)` to find the hit element, maps back via `IdMap.excalidrawToMermaid`, then calls `sdk.callbacks.onCreate(blockId, ...)` directly.
+```
+
 ### 25.3 Comment anchors
 
-Comments on diagrams use the `surface` anchor kind with diagram-specific coordinates:
+Comments on diagrams use the `CommentAnchorSurface` type from `@accordo/bridge-types`. All required fields must be present:
 
 ```typescript
-{
+import type { CommentAnchorSurface } from "@accordo/bridge-types";
+
+const anchor: CommentAnchorSurface = {
   kind: "surface",
+  uri: "file:///workspace/diagrams/arch.mmd",  // file URI of the .mmd
+  surfaceType: "diagram",                      // SurfaceType literal
   coordinates: {
-    nodeId: "auth",           // Mermaid node ID
-    surfaceType: "diagram",
-    diagramPath: "diagrams/arch.mmd"
-  }
-}
+    type: "diagram-node",                      // DiagramNodeCoordinates
+    nodeId: "auth",                            // Mermaid node ID
+  },
+};
 ```
+
+The `DiagramNodeCoordinates` type (`{ type: "diagram-node"; nodeId: string }`) already exists in bridge-types (see `SurfaceCoordinates` union). No new coordinate type is needed.
 
 This anchor survives topology changes: as long as the Mermaid node ID exists, the comment stays attached. If the node is deleted, the comment thread becomes orphaned (visible in the Comments panel but with no pin on the canvas).
 
-### 25.4 Implementation scope in diag.1
+### 25.4 Implementation scope (diag.2)
+
+Comment integration is deferred to diag.2 to keep diag.1 focused on the core rendering pipeline. The work items are:
 
 | Component | Work |
 |---|---|
-| `webview.ts` | Load `@accordo/comment-sdk`, initialize with `coordinateToScreen`, wire callbacks to postMessage |
+| `webview.ts` | Load `@accordo/comment-sdk`, initialize with canvas-aware `coordinateToScreen` (§25.2), intercept Alt+click on canvas → hit-test via Excalidraw API |
 | `webview.html` | Include comment-sdk bundle via `<script>` |
 | `panel.ts` | `DiagramCommentsBridge` class: obtain surface adapter, route messages, push updates |
 | `protocol.ts` | Add comment-related message types to the host ↔ webview protocol |

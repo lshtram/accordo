@@ -804,7 +804,7 @@ This module is tested manually (webview context, not Node.js).
 | Day | Module | Output |
 |---|---|---|
 | Mon | A11: webview protocol + A12: kroki.ts | Type definitions + ~10 kroki tests |
-| Mon–Tue | A13: export.ts + A14: diagram-tools.ts | ~50 tests, all 5 diag.1 tools |
+| Mon–Tue | A13: export.ts + A14: diagram-tools.ts | ~50 tests, all 6 diag.1 tools |
 | Wed–Thu | A15: panel.ts | ~15 tests, webview lifecycle |
 | Thu–Fri | A16: webview frontend (HTML + TS) | Manual testing, dual-pane rendering |
 | Fri | A17: extension.ts | ~10 tests, activation + registration |
@@ -819,7 +819,6 @@ This module is tested manually (webview context, not Node.js).
 |---|---|---|
 | Mon | Integration test: agent creates diagram → human opens in webview → agent adds nodes → positions preserved | E2E verified |
 | Mon | Integration test: human drags nodes → agent reads diagram → sees updated positions | E2E verified |
-| Tue | Sequential diagram support (single-pane Monaco + Kroki preview) | Sequential diagrams render |
 | Tue | File watcher: agent edits .mmd on disk → webview refreshes with toast | External edit flow works |
 | Wed | Export: canvas SVG/PNG via Excalidraw + semantic SVG/PNG via Kroki | Both export paths work |
 | Wed | Error handling: invalid Mermaid states, missing files, Kroki unavailable | Errors handled gracefully |
@@ -847,10 +846,9 @@ All of these must be true before diag.1 is complete:
 10. **Export:** Semantic export (Kroki) always available. Canvas export (Excalidraw → SVG/PNG) available when webview is open; falls back to semantic with warning when closed.
 11. **External edits:** Agent .mmd edit on disk → webview refreshes with toast notification
 12. **Modality state:** Diagram context appears in Hub's /instructions prompt
-13. **Comments:** Diagram webview loads `@accordo/comment-sdk`, registers `SurfaceCommentAdapter`, and supports comment threads pinned to diagram nodes via `data-block-id` attributes
-14. **Script compatibility:** All 6 MCP tools are auto-registered as VS Code commands via Bridge dual-registration, callable as `command` steps in `accordo-script`
-15. **Tests:** All unit tests pass, zero TypeScript errors
-16. **Integration:** At least one real agent (Claude Code) successfully creates and patches a diagram using `style_guide` first
+13. **Script compatibility:** All 6 MCP tools are auto-registered as VS Code commands via Bridge dual-registration, callable as `command` steps in `accordo-script`
+14. **Tests:** All unit tests pass, zero TypeScript errors
+15. **Integration:** At least one real agent (Claude Code) successfully creates and patches a diagram using `style_guide` first
 
 ---
 
@@ -870,6 +868,7 @@ All of these must be true before diag.1 is complete:
 | Draw-on animation | Progressive element loading at canvas render time (§22 in arch doc) |
 | Animation toggle | Draw-on / static toggle in webview toolbar dropdown |
 | Sequential diagrams | Single-pane Mermaid editor + Kroki live preview for sequence, gantt, git graph, timeline, quadrant |
+| Comments integration | Diagram webview loads `@accordo/comment-sdk`, registers `SurfaceCommentAdapter`, pins threads to nodes via canvas-aware hit-testing (§25 in arch doc) |
 
 ---
 
