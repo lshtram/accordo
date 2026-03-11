@@ -1357,10 +1357,9 @@ packages/diagram/
 - Semantic export always available via Kroki (SVG/PNG from Mermaid source)
 - Canvas export available when diagram webview is open (Excalidraw → SVG/PNG)
 - Agent edit notification toasts in webview
-- Comment SDK integration: webview loads `@accordo/comment-sdk`, registers surface adapter (§25)
 - Parser adapter test suite (comprehensive shape/edge/cluster coverage)
 
-**Support: flowchart only. Agent + human can both create and edit. Layout preserved across all edits. Semantic export always available; canvas export when webview is open. Hand-drawn aesthetic (roughness=1) on by default. Comment threads can be pinned to diagram nodes.**
+**Support: flowchart only. Agent + human can both create and edit. Layout preserved across all edits. Semantic export always available; canvas export when webview is open. Hand-drawn aesthetic (roughness=1) on by default.**
 
 ### diag.2 — Full topology tools + all spatial types + undo + animation
 
@@ -1377,6 +1376,7 @@ packages/diagram/
 - **Draw-on animation: progressive element loading at canvas render time (§22)**
 - **Draw-on / static toggle in webview toolbar (§14.1)**
 - **Sequential diagram mode: single-pane Mermaid editor + Kroki live preview (§8.2)**
+- Comment SDK integration: webview loads `@accordo/comment-sdk`, registers canvas-aware surface adapter (§25)
 
 ### diag.3 — Sequential diagrams polish + CI
 
