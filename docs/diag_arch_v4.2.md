@@ -1943,17 +1943,23 @@ sdk.init({
     const el = excalidrawApi.getSceneElements().find(e => e.id === excalId);
     if (!el) return null;
     const { scrollX, scrollY, zoom } = excalidrawApi.getAppState();
-    // Convert element coords → screen coords
-    const x = (el.x + el.width + scrollX) * zoom.value;
-    const y = (el.y + scrollY) * zoom.value;
+    const rect = canvasWrapper.getBoundingClientRect();
+    // Convert scene coords → screen coords relative to container
+    const x = (el.x + el.width + scrollX) * zoom.value + rect.left;
+    const y = (el.y + scrollY) * zoom.value + rect.top;
     return { x, y };
   },
   callbacks: { onCreate, onReply, onResolve, onReopen, onDelete }
 });
 ```
 
-The SDK's Alt+click handler cannot use `closest('[data-block-id]')` on a canvas surface. The diagram webview intercepts Alt+click itself, uses `excalidrawApi.getElementAtPosition(x, y)` to find the hit element, maps back via `IdMap.excalidrawToMermaid`, then calls `sdk.callbacks.onCreate(blockId, ...)` directly.
-```
+> **Provisional API.** The Excalidraw imperative API (`getSceneElements`, `getAppState`,
+> element hit-testing) may differ across library versions. The coordinate transform above
+> captures the *design intent* — map scene geometry to viewport pixels via scroll + zoom +
+> container offset. The exact method names and zoom structure must be verified against the
+> Excalidraw version bundled in diag.2.
+
+**Alt+click on canvas.** The SDK's built-in Alt+click handler uses `closest('[data-block-id]')`, which does not work on a `<canvas>` surface. The diagram webview intercepts Alt+click itself, performs hit-testing against Excalidraw elements (e.g. checking element bounding boxes at the click point), maps the hit back to a block ID via `IdMap.excalidrawToMermaid`, and then posts a `comment:create` message to the extension host via `postMessage`. The host-side `DiagramCommentsBridge` handles thread creation through the `SurfaceCommentAdapter` — the SDK's `callbacks.onCreate` is never called directly because `AccordoCommentSDK` does not expose callbacks as a public property after `init()`.
 
 ### 25.3 Comment anchors
 
