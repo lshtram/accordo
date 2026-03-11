@@ -1958,6 +1958,12 @@ sdk.init({
 > captures the *design intent* — map scene geometry to viewport pixels via scroll + zoom +
 > container offset. The exact method names and zoom structure must be verified against the
 > Excalidraw version bundled in diag.2.
+>
+> **DPI / CSS scale caution.** In zoomed editor windows and high-DPI displays the
+> `getBoundingClientRect()` values and `devicePixelRatio` may diverge from CSS pixel space.
+> During diag.2 integration, manually verify pin placement at 125 %, 150 %, and 200 % OS
+> scaling and at VSCode editor zoom levels. Adjust the transform with `window.devicePixelRatio`
+> or CSS `transform: scale(...)` compensation as needed.
 
 **Alt+click on canvas.** The SDK's built-in Alt+click handler uses `closest('[data-block-id]')`, which does not work on a `<canvas>` surface. The diagram webview intercepts Alt+click itself, performs hit-testing against Excalidraw elements (e.g. checking element bounding boxes at the click point), maps the hit back to a block ID via `IdMap.excalidrawToMermaid`, and then posts a `comment:create` message to the extension host via `postMessage`. The host-side `DiagramCommentsBridge` handles thread creation through the `SurfaceCommentAdapter` — the SDK's `callbacks.onCreate` is never called directly because `AccordoCommentSDK` does not expose callbacks as a public property after `init()`.
 

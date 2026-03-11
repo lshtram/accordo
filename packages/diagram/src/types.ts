@@ -1,0 +1,361 @@
+/**
+ * A1 — Internal types for accordo-diagram
+ *
+ * Pure type definitions. No runtime code. Every other module imports from here.
+ *
+ * Source: diag_arch_v4.2.md §4, §5, §6, §7
+ *
+ * Requirements coverage:
+ *   §4 Identity model   → DiagramType, SpatialDiagramType, SequentialDiagramType,
+ *                          NodeId, EdgeKey, ClusterId, RenameAnnotation
+ *   §5 Layout store     → LayoutStore, NodeLayout, EdgeLayout, ClusterLayout,
+ *                          NodeStyle, EdgeStyle, ClusterStyle, AestheticsConfig, NodeSizing
+ *   §6 Parser adapter   → ParsedDiagram, ParsedNode, ParsedEdge, ParsedCluster,
+ *                          ParseResult, NodeShape, EdgeType
+ *   §7 Reconciler       → ReconcileResult
+ */
+
+// ── §4 Identity ────────────────────────────────────────────────────────────────
+
+/**
+ * Spatial diagrams: nodes exist in 2D space, positions preserved across edits.
+ * Require both .mmd and .layout.json files.
+ */
+export type SpatialDiagramType =
+  | "flowchart"
+  | "block-beta"
+  | "classDiagram"
+  | "stateDiagram-v2"
+  | "erDiagram"
+  | "mindmap";
+
+/**
+ * Sequential diagrams: order is layout, no position preservation needed.
+ * Single .mmd file only, rendered via Kroki. No canvas, no Excalidraw.
+ */
+export type SequentialDiagramType =
+  | "sequenceDiagram"
+  | "gantt"
+  | "gitGraph"
+  | "timeline"
+  | "quadrantChart";
+
+/** All supported diagram types. */
+export type DiagramType = SpatialDiagramType | SequentialDiagramType;
+
+/**
+ * Stable Mermaid node identity.
+ * Unique for the lifetime of the diagram. Valid Mermaid identifier.
+ * Mindmap nodes use dot-separated path IDs (e.g. "root.Security.Auth").
+ */
+export type NodeId = string;
+
+/**
+ * Edge identity key.
+ * Format: "{fromId}->{toId}:{ordinal}"
+ * Examples: "auth->api:0", "auth->api:1"
+ * Ordinal is 0-based among all edges with the same (from, to) pair, in
+ * declaration order.
+ */
+export type EdgeKey = string;
+
+/** Cluster identity from Mermaid subgraph/namespace ID. */
+export type ClusterId = string;
+
+/**
+ * Rename annotation parsed from a Mermaid comment.
+ * Format in source: "%% @rename: old_id -> new_id"
+ * Returned by the parser; consumed and stripped by the reconciler.
+ */
+export interface RenameAnnotation {
+  oldId: NodeId;
+  newId: NodeId;
+}
+
+// ── §5 Layout store ────────────────────────────────────────────────────────────
+
+/**
+ * Complete on-disk layout for a spatial diagram (.layout.json).
+ * Stores positions, sizes, and styles for every node, edge, and cluster.
+ */
+export interface LayoutStore {
+  /** Semantic version of the layout.json format. Must be "1.0" for diag.1. */
+  version: "1.0";
+  /** Diagram type this layout was created for (used for validation). */
+  diagram_type: SpatialDiagramType;
+  /** Node layout entries, keyed by Mermaid node ID. */
+  nodes: Record<NodeId, NodeLayout>;
+  /** Edge layout entries, keyed by EdgeKey. */
+  edges: Record<EdgeKey, EdgeLayout>;
+  /** Cluster layout entries, keyed by ClusterId. */
+  clusters: Record<ClusterId, ClusterLayout>;
+  /**
+   * Nodes that exist in Mermaid source but have no position in `nodes`.
+   * Added by the reconciler when new nodes appear. Processed by the placement
+   * engine on the next render and promoted to `nodes`.
+   */
+  unplaced: NodeId[];
+  /** Global aesthetic settings applied to all canvas elements. */
+  aesthetics: AestheticsConfig;
+}
+
+/** Layout entry for a single node. */
+export interface NodeLayout {
+  /** X coordinate (pixels from canvas origin). */
+  x: number;
+  /** Y coordinate (pixels from canvas origin). */
+  y: number;
+  /** Width in pixels. Default: per-type NodeSizing.w. */
+  w: number;
+  /** Height in pixels. Default: per-type NodeSizing.h. */
+  h: number;
+  /** Per-node visual style overrides. Empty {} means use diagram defaults. */
+  style: NodeStyle;
+  /**
+   * Stable Rough.js seed derived deterministically from node ID on final render.
+   * Ensures identical appearance across sessions. Computed on first render if absent.
+   */
+  seed?: number;
+}
+
+/** Layout entry for a single edge. */
+export interface EdgeLayout {
+  /**
+   * Routing strategy. Default: "auto" (dagre-computed).
+   * Extended values ("curved", "orthogonal", "direct") added in diag.2.
+   */
+  routing: "auto" | "curved" | "orthogonal" | "direct" | string;
+  /**
+   * Intermediate waypoints between endpoints.
+   * Empty [] means derive the path from `routing`.
+   */
+  waypoints: ReadonlyArray<{ readonly x: number; readonly y: number }>;
+  /** Per-edge visual style overrides. */
+  style: EdgeStyle;
+}
+
+/** Layout entry for a cluster (Mermaid subgraph/namespace). */
+export interface ClusterLayout {
+  /** X coordinate of top-left corner. */
+  x: number;
+  /** Y coordinate of top-left corner. */
+  y: number;
+  /** Width in pixels. */
+  w: number;
+  /** Height in pixels. */
+  h: number;
+  /** Cluster label text as declared in Mermaid source. */
+  label: string;
+  /** Per-cluster visual style overrides. */
+  style: ClusterStyle;
+}
+
+/**
+ * Per-node visual style overrides.
+ * All fields optional: empty {} means inherit diagram defaults.
+ * Highest priority in the three-tier style inheritance (§5.1).
+ */
+export interface NodeStyle {
+  /** Background fill color (hex "#rrggbb" or named). */
+  backgroundColor?: string;
+  /** Border/stroke color. */
+  strokeColor?: string;
+  /** Border width in pixels. */
+  strokeWidth?: number;
+  /** Whether the stroke is dashed (true = external/contract semantic). */
+  strokeDash?: boolean;
+  /** Mermaid shape hint. See NodeShape for valid values. */
+  shape?: NodeShape;
+  /** Font size in pixels. */
+  fontSize?: number;
+  /** Text/font color. */
+  fontColor?: string;
+  /** Font weight. Default: "normal". */
+  fontWeight?: "normal" | "bold";
+  /** Opacity [0, 1]. Default: 1. */
+  opacity?: number;
+}
+
+/** Per-edge visual style overrides. All fields optional. */
+export interface EdgeStyle {
+  strokeColor?: string;
+  /** Line width in pixels. Default: 1.5. */
+  strokeWidth?: number;
+  /** Whether line is dashed. */
+  strokeDash?: boolean;
+}
+
+/** Per-cluster visual style overrides. All fields optional. */
+export interface ClusterStyle {
+  /** Background fill (usually semi-transparent). */
+  backgroundColor?: string;
+  strokeColor?: string;
+  /** Whether cluster border is dashed. */
+  strokeDash?: boolean;
+}
+
+/**
+ * Global aesthetic configuration stored per-diagram in layout.json.
+ * Applied uniformly to all Excalidraw elements by the canvas generator.
+ */
+export interface AestheticsConfig {
+  /**
+   * Rough.js hand-drawn effect level.
+   * 0 = crisp | 1 = hand-drawn (default).
+   */
+  roughness?: number;
+  /**
+   * Animation mode for canvas rendering.
+   * "draw-on" = progressive element loading (default, diag.2 implementation).
+   * "static" = full scene loads immediately.
+   */
+  animationMode?: "draw-on" | "static";
+  /** Theme identifier (reserved for future presets). Default: "hand-drawn". */
+  theme?: string;
+}
+
+/**
+ * Default node dimensions and spacing per diagram type.
+ * Used by dagre auto-layout and the canvas generator.
+ */
+export interface NodeSizing {
+  /** Default width in pixels. */
+  w: number;
+  /** Default height in pixels. */
+  h: number;
+  /** Horizontal spacing between nodes (dagre nodesep). */
+  hSpacing: number;
+  /** Vertical spacing between ranks (dagre ranksep). */
+  vSpacing: number;
+}
+
+// ── §6 Parser adapter ──────────────────────────────────────────────────────────
+
+/**
+ * Valid Mermaid node shapes.
+ * Determines how ParsedNode.shape maps to an Excalidraw element (§9.2).
+ */
+export type NodeShape =
+  | "rectangle"
+  | "rounded"
+  | "diamond"
+  | "circle"
+  | "cylinder"
+  | "stadium"
+  | "parallelogram"
+  | "hexagon"
+  | "ellipse"
+  | string; // open for future diagram types
+
+/**
+ * Edge arrow/line style.
+ * Values beyond the first four are diagram-type-specific.
+ */
+export type EdgeType =
+  | "arrow"
+  | "dotted"
+  | "thick"
+  | "bold"
+  | "inheritance"
+  | "composition"
+  | "aggregation"
+  | "realization"
+  | string; // open for future types
+
+/**
+ * Stable output from the parser adapter.
+ * Hides all mermaid internal API details. Used throughout the system to reason
+ * about diagram structure independent of the underlying Mermaid version.
+ */
+export interface ParsedDiagram {
+  /** Detected diagram type from the first line of source. */
+  type: DiagramType;
+  /** All nodes, keyed by their Mermaid ID. */
+  nodes: Map<NodeId, ParsedNode>;
+  /** All edges in declaration order. */
+  edges: readonly ParsedEdge[];
+  /** All clusters (subgraphs / namespaces). */
+  clusters: readonly ParsedCluster[];
+  /** @rename annotations found in the source (stripped before write-back). */
+  renames: readonly RenameAnnotation[];
+  /** Flow direction hint, if present (e.g. "TD", "LR"). */
+  direction?: "TD" | "LR" | "RL" | "BT";
+}
+
+/** Parsed representation of a single node. */
+export interface ParsedNode {
+  /** Unique Mermaid node ID (stable identity). */
+  id: NodeId;
+  /** Display label/text. */
+  label: string;
+  /** Node shape used in Mermaid syntax. */
+  shape: NodeShape;
+  /**
+   * Applied Mermaid classDef names (e.g. ["service", "critical"]).
+   * Used to resolve visual defaults from classDef blocks.
+   */
+  classes: readonly string[];
+  /** Parent cluster ID if this node is inside a subgraph/namespace. */
+  cluster?: ClusterId;
+}
+
+/** Parsed representation of a single edge. */
+export interface ParsedEdge {
+  /** Source node ID. */
+  from: NodeId;
+  /** Target node ID. */
+  to: NodeId;
+  /** Edge label/annotation. Empty string "" if none. */
+  label: string;
+  /**
+   * 0-based ordinal among all edges with the same (from, to) pair, in
+   * declaration order. Used to build the EdgeKey.
+   */
+  ordinal: number;
+  /** Arrow/line style. Default: "arrow". */
+  type: EdgeType;
+}
+
+/** Parsed representation of a cluster (subgraph or namespace). */
+export interface ParsedCluster {
+  /** Unique cluster ID from the Mermaid subgraph/namespace directive. */
+  id: ClusterId;
+  /** Label text displayed on the cluster background. */
+  label: string;
+  /** Node IDs that are direct members (not members of nested sub-clusters). */
+  members: readonly NodeId[];
+  /** Parent cluster ID if this cluster is nested inside another. */
+  parent?: ClusterId;
+}
+
+/**
+ * Result of a parse operation.
+ * Discriminated union: `valid` flag narrows to either the parsed diagram or
+ * a structured error.
+ */
+export type ParseResult =
+  | { valid: true; diagram: ParsedDiagram }
+  | { valid: false; error: { line: number; message: string } };
+
+// ── §7 Reconciler ──────────────────────────────────────────────────────────────
+
+/**
+ * Output of a reconciliation pass.
+ * Describes what changed so callers can update UI state and trigger re-renders.
+ */
+export interface ReconcileResult {
+  /** Updated layout after topology changes. */
+  layout: LayoutStore;
+  /** Mermaid source with @rename annotations stripped (if any were present). */
+  mermaidCleaned?: string;
+  /** Summary of structural changes made during this pass. */
+  changes: {
+    nodesAdded: readonly NodeId[];
+    nodesRemoved: readonly NodeId[];
+    edgesAdded: number;
+    edgesRemoved: number;
+    clustersChanged: number;
+    /** Human-readable rename descriptions: ["old_id -> new_id", ...] */
+    renamesApplied: readonly string[];
+  };
+}
