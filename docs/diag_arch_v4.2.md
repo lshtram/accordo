@@ -1217,7 +1217,9 @@ The Mermaid file is always the topology truth, even when the change was initiate
 |---|---|---|
 | Mermaid parsing | `mermaid` package (parse mode, pinned version) | Internal `db` API via adapter (§6) |
 | Canvas display | Excalidraw (webview bundle) | Interactive editing surface |
-| Initial auto-layout | `dagre` | Used on first render and for unplaced nodes |
+| Initial auto-layout — flowchart, classDiagram, stateDiagram-v2, erDiagram | `@dagrejs/dagre` | Headless Sugiyama layered layout (see §15.1) |
+| Initial auto-layout — block-beta (diag.2) | `cytoscape` + `cytoscape-fcose` | Force-directed with cluster support; headless-ready |
+| Initial auto-layout — mindmap (diag.2) | `d3-hierarchy` | Radial tree from centre; fully headless |
 | Rendering / export | **Kroki** self-hosted or Kroki.io | SVG/PNG for semantic renders |
 | Canvas export | Excalidraw built-in `exportToSvg` / `exportToBlob` | SVG/PNG preserving layout |
 | Legacy import | `convert2mermaid` | Convert draw.io/Excalidraw files to Mermaid (diag.4) |
@@ -1225,6 +1227,25 @@ The Mermaid file is always the topology truth, even when the change was initiate
 **Note on `@excalidraw/mermaid-to-excalidraw`:** This library is NOT used as a pipeline step. Research confirms it produces ephemeral Excalidraw element IDs and requires a DOM for position extraction. Instead, the canvas is built directly from (parsed Mermaid graph + layout.json), constructing Excalidraw elements programmatically (§9). This gives us full control over element construction and eliminates the ID-stability problem entirely.
 
 **Note on `@mermaid-js/parser`:** The official Langium-based parser does NOT yet support flowcharts, class diagrams, state diagrams, ER diagrams, or sequence diagrams. It only covers niche types (architecture, gitGraph, pie, radar). We use the main `mermaid` package's internal JISON parser via the adapter layer (§6).
+
+### §15.1 Layout Engine Strategy per Diagram Type
+
+Mermaid itself (v11.x) is composed on multiple layout engines — they are split across separate npm packages which we can call directly in headless mode, without involving Mermaid's own rendering or DOM. This gives us the same algorithmic quality Mermaid achieves, without fragile SVG coordinate extraction.
+
+| Diagram type | Category | Layout algorithm | Our package | diag phase |
+|---|---|---|---|---|
+| `flowchart` | Spatial | Sugiyama layered directed graph | `@dagrejs/dagre` | diag.1 ✅ |
+| `stateDiagram-v2` | Spatial | Sugiyama layered directed graph | `@dagrejs/dagre` | diag.1 ✅ |
+| `classDiagram` | Spatial | Sugiyama layered directed graph | `@dagrejs/dagre` | diag.1 ✅ |
+| `erDiagram` | Spatial | Sugiyama layered (undirected — use `rankdir: LR`, no forced direction) | `@dagrejs/dagre` | diag.1 ✅ adequate |
+| `block-beta` | Spatial | Force-directed with cluster containment | `cytoscape` + `cytoscape-fcose` | diag.2 |
+| `mindmap` | Spatial | Radial tree from root | `d3-hierarchy` | diag.2 |
+| `sequenceDiagram`, `gantt`, `gitGraph`, `timeline`, `quadrantChart` | Sequential | N/A — Kroki renders these entirely | — | all |
+
+**Why not "use Mermaid's layout by rendering to SVG and parsing coordinates" (Kroki extraction approach):**
+Mermaid's rendering layer (`dagre-d3-es`) fuses layout and SVG drawing into one pass. Extracting positions from the SVG output is fragile — the coordinate transform chain (viewBox, CSS offsets, nested `<g>` transforms) changes between Mermaid versions. Since we pin Mermaid at `11.12.3` and the underlying layout libraries are stable independent packages, calling them directly gives us the same quality with zero fragility.
+
+**A4 scope (diag.1):** `computeInitialLayout` dispatches on `diagramType`. For diag.1, only `flowchart`, `stateDiagram-v2`, `classDiagram`, and `erDiagram` receive real dagre implementations. `block-beta` and `mindmap` throw `"not supported in diag.1"` with a clear error so the caller can fall back gracefully. The dispatch structure means each type is a one-arm change in diag.2 with no cross-module impact.
 
 ---
 

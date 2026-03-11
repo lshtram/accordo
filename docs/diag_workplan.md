@@ -429,7 +429,7 @@ Each module follows the TDD cycle from `dev-process.md`.
 | A1 | Internal types | `types.ts` | ~120 | none | type compilation |
 | A2 | Flowchart parser | `parser/adapter.ts`, `parser/flowchart.ts` | ~300 | mermaid | ~40 |
 | A3 | Layout store | `layout/layout-store.ts` | ~150 | types, node:fs | ~25 |
-| A4 | Auto-layout (dagre) | `layout/auto-layout.ts` | ~100 | types, dagre | ~15 |
+| A4 | Auto-layout (dispatch) | `layout/auto-layout.ts` | ~120 | types, @dagrejs/dagre | ~20 |
 | A5 | Edge identity | `reconciler/edge-identity.ts` | ~80 | types | ~20 |
 | A6 | Unplaced placement | `reconciler/placement.ts` | ~120 | types | ~20 |
 | A7 | Reconciler | `reconciler/reconciler.ts` | ~250 | A2, A3, A5, A6 | ~35 |
