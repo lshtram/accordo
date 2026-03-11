@@ -333,7 +333,7 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ### Session 11 — Diagrams (`accordo-diagram`)
 
-**Goal:** Agent and human co-edit Mermaid diagrams in a dual-pane webview (Monaco text editor + Excalidraw interactive canvas). Reconciler preserves layout across topology changes. 14 MCP tools for diagram CRUD, topology edits, and visual customization.
+**Goal:** Agent and human co-edit Mermaid diagrams in a dual-pane webview (Monaco text editor + Excalidraw interactive canvas). Reconciler preserves layout across topology changes. 15 MCP tools for diagram CRUD, topology edits, visual customization, and aesthetic guidance (`diagram.style_guide`).
 
 **Architecture:** [`docs/diag_arch_v4.2.md`](diag_arch_v4.2.md) v4.2 — DRAFT, comprehensive  
 **Workplan:** [`docs/diag_workplan.md`](diag_workplan.md) — 17 modules (A1–A17), ~295 tests estimated  

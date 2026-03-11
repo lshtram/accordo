@@ -1,9 +1,9 @@
 # Accordo — Diagram Modality Implementation Plan
 
 **Status:** DRAFT
-**Date:** 2026-03-02
-**Depends on:** Phase 1 completion (Hub + Bridge + Editor — Weeks 3–5)
-**Architecture:** `docs/diag_arch_v4.1.md`
+**Date:** 2026-03-11
+**Depends on:** Session 10D complete (1837 tests green)
+**Architecture:** `docs/diag_arch_v4.2.md`
 **Dev process:** `docs/dev-process.md` (TDD cycle A→F)
 
 ---
@@ -418,12 +418,14 @@ Each module follows the TDD cycle from `dev-process.md`.
 | A11 | Webview protocol | `webview/protocol.ts` | ~60 | types | type compilation |
 | A12 | Kroki client | `render/kroki.ts` | ~80 | node:https | ~10 |
 | A13 | Export coordinator | `render/export.ts` | ~60 | A12, protocol | ~10 |
-| A14 | MCP tool definitions | `tools/diagram-tools.ts` | ~400 | A2–A13 | ~40 |
+| A14 | MCP tool definitions | `tools/diagram-tools.ts` | ~450 | A2–A13 | ~45 |
 | A15 | Webview panel | `webview/panel.ts` | ~300 | vscode, protocol, A7, A10 | ~15 |
 | A16 | Webview frontend | `webview/webview.html`, `webview/webview.ts` | ~400 | Excalidraw, Monaco | manual test |
 | A17 | Extension entry | `extension.ts` | ~60 | A14, A15, BridgeAPI | ~10 |
 
-**Total Phase A estimate:** ~2950 lines of implementation, ~295 unit tests.
+**Total Phase A estimate:** ~3000 lines of implementation, ~303 unit tests.
+
+**A14 tool count: 6 Phase A tools** — `diagram.list`, `diagram.get`, `diagram.create`, `diagram.patch`, `diagram.render`, `diagram.style_guide`.
 
 ---
 
@@ -450,7 +452,7 @@ type SequentialDiagramType =
   | "timeline" | "quadrantChart";
 
 // Parser output
-interface ParsedDiagram { ... }  // see diag_arch_v4.1.md §6.2
+interface ParsedDiagram { ... }  // see diag_arch_v4.2.md §6.2
 interface ParsedNode { ... }
 interface ParsedEdge { ... }
 interface ParsedCluster { ... }
@@ -476,6 +478,13 @@ interface LayoutStore {
   edges: Record<string, EdgeLayout>;
   clusters: Record<string, ClusterLayout>;
   unplaced: string[];
+  aesthetics: AestheticsConfig;  // roughness, animationMode, theme (v4.2 §5)
+}
+
+interface AestheticsConfig {
+  roughness: number;             // 0 = crisp, 1 = hand-drawn (default: 1)
+  animationMode: "draw-on" | "static";  // default: "draw-on"
+  theme?: string;
 }
 
 interface NodeLayout {
@@ -597,7 +606,7 @@ export function layoutUnplaced(
 
 ### A5: Edge identity (`reconciler/edge-identity.ts`)
 
-Implements the edge matching algorithm from v4.1 §4.4.
+Implements the edge matching algorithm from v4.2 §4.4.
 
 ```typescript
 export function matchEdges(
@@ -655,11 +664,13 @@ The reconciler does NOT read or write files. It takes inputs and returns outputs
 
 Converts `(ParsedDiagram + LayoutStore) → ExcalidrawElement[]`.
 
-Phase A supports flowchart shapes only. See v4.1 §9.2 for the shape mapping table.
+Phase A supports flowchart shapes only. See v4.2 §9.2 for the shape mapping table.
+
+`canvas-generator.ts` reads `layout.aesthetics.roughness` (default `1`) and applies it plus `fontFamily: Excalifont` to every generated element — the hand-drawn aesthetic from day one. Stable seeds (derived from node IDs) are written back to `layout.json` after final render so the diagram looks identical on every subsequent open.
 
 ### A11: Webview protocol (`webview/protocol.ts`)
 
-Typed message definitions for extension host ↔ webview communication. See v4.1 §9.4.
+Typed message definitions for extension host ↔ webview communication. See v4.2 §9.4.
 
 ### A12: Kroki client (`render/kroki.ts`)
 
@@ -683,15 +694,16 @@ Each tool handler:
 5. If webview is open: triggers canvas refresh
 6. Returns structured result to agent
 
-**Phase A tools (MVP):**
+**Phase A tools (MVP — 6 tools):**
 
 | Tool | Handler logic |
 |---|---|
 | `diagram.list` | `glob('**/*.mmd')` → detect type per file → return metadata |
 | `diagram.get` | `parseMermaid(source)` → return semantic graph + raw source |
-| `diagram.create` | write .mmd → parse → `layoutFull()` → write layout.json |
+| `diagram.create` | write .mmd (inject standard classDef palette if none present) → parse → `layoutFull()` → write layout.json with `aesthetics: { roughness: 1, animationMode: "draw-on" }` |
 | `diagram.patch` | write .mmd → `reconcile(old, new, layout)` → write layout.json |
 | `diagram.render` | canvas mode: request from webview. semantic mode: `renderMermaid()` |
+| `diagram.style_guide` | returns per-diagram-type palette, node sizing defaults, conventions, and starter template (v4.2 §23) — no disk I/O, pure lookup |
 
 **Phase B tools (added later):**
 
@@ -820,16 +832,18 @@ All of these must be true before Phase A is complete:
 
 1. **Parser:** Flowchart Mermaid → ParsedDiagram extraction works for all standard shapes, edges, clusters
 2. **Reconciler:** Topology changes preserve existing layout. New nodes are auto-placed without collision.
-3. **Canvas:** Excalidraw scene generated correctly from ParsedDiagram + LayoutStore
-4. **MCP tools:** `diagram.list`, `.create`, `.get`, `.patch`, `.render` callable by agent via Hub → Bridge → accordo-diagram
-5. **Webview:** Dual-pane panel (Mermaid + Excalidraw) renders correctly
-6. **Sync:** Mermaid edits → reconcile → canvas refresh (500ms debounce, invalid state handled)
-7. **Sync:** Canvas drag/resize → layout.json patch (immediate, no Mermaid change)
-8. **Export:** Both canvas (Excalidraw) and semantic (Kroki) exports produce SVG/PNG
-9. **External edits:** Agent .mmd edit on disk → webview refreshes with toast notification
-10. **Modality state:** Diagram context appears in Hub's /instructions prompt
-11. **Tests:** All unit tests pass, zero TypeScript errors
-12. **Integration:** At least one real agent (Claude Code) successfully creates and patches a diagram
+3. **Canvas:** Excalidraw scene generated correctly from ParsedDiagram + LayoutStore, with `roughness: 1` + `fontFamily: Excalifont` applied to all elements
+4. **Aesthetics:** Draw-on animation (progressive element loading) is on by default. User can toggle roughness/animationMode via webview toolbar dropdown. Settings persist per-diagram in `layout.json aesthetics`.
+5. **MCP tools (6):** `diagram.list`, `.create`, `.get`, `.patch`, `.render`, `.style_guide` callable by agent via Hub → Bridge → accordo-diagram
+6. **style_guide:** `diagram.create` auto-injects the standard classDef color palette. `diagram.style_guide` returns the full per-type guide including palette, node sizing, conventions, and a starter template.
+7. **Webview:** Dual-pane panel (Mermaid + Excalidraw) renders correctly
+8. **Sync:** Mermaid edits → reconcile → canvas refresh (500ms debounce, invalid state handled)
+9. **Sync:** Canvas drag/resize → layout.json patch (immediate, no Mermaid change)
+10. **Export:** Both canvas (Excalidraw) and semantic (Kroki) exports produce SVG/PNG
+11. **External edits:** Agent .mmd edit on disk → webview refreshes with toast notification
+12. **Modality state:** Diagram context appears in Hub's /instructions prompt
+13. **Tests:** All unit tests pass, zero TypeScript errors
+14. **Integration:** At least one real agent (Claude Code) successfully creates and patches a diagram using `style_guide` first
 
 ---
 
@@ -872,9 +886,9 @@ The diagram extension is a new package. It does NOT modify Hub, Bridge, or Edito
 | `@accordo/bridge-types` | None | Diagram types are internal to `packages/diagram/src/types.ts`. Only `BridgeAPI`, `ExtensionToolDefinition`, and `ToolRegistration` are used from bridge-types, and they are already sufficient. |
 | `accordo-hub` | None | Hub routes tool calls generically. It doesn't know or care about diagram-specific logic. The prompt engine will include diagram modality state automatically via the `modalities` field in IDEState. |
 | `accordo-bridge` | None | Bridge routes invocations by tool name. When accordo-diagram registers tools, Bridge sends them to Hub. No code change in Bridge. |
-| `pnpm-workspace.yaml` | Add entry | `- 'packages/diagram'` |
-| `tsconfig.base.json` | Add reference | `{ "path": "./packages/diagram" }` |
-| Root `package.json` | None | Build script `tsc -b` picks up new reference automatically |
+| `pnpm-workspace.yaml` | None | Already uses `packages/*` glob — `packages/diagram` is picked up automatically |
+| `tsconfig.base.json` | None | This file defines only `compilerOptions`; individual packages have their own `tsconfig.json` with `extends` and `references`. No change needed. |
+| Root `package.json` | None | Build script `pnpm -r run build` picks up new package automatically |
 
 ---
 
