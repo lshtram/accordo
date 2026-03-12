@@ -608,22 +608,30 @@ All mutations return a new `LayoutStore` object (immutable pattern). The caller 
 
 ### A4: Auto-layout (`layout/auto-layout.ts`)
 
-Dagre wrapper. Produces initial positions for a full `ParsedDiagram` or for a set of unplaced nodes.
+Dagre dispatch layer. Produces initial positions for a full `ParsedDiagram`. Only the four
+dagre-backed spatial types are supported in diag.1; `block-beta` and `mindmap` (and all
+sequential types) throw `UnsupportedDiagramTypeError`.
 
 ```typescript
-export function layoutFull(
-  parsed: ParsedDiagram,
-  options?: { direction?: "TD" | "LR" | "RL" | "BT"; nodeSpacing?: number }
-): LayoutStore;
+export interface LayoutOptions {
+  rankdir?: "TB" | "LR" | "RL" | "BT"; // default "TB"
+  nodeSpacing?: number;                 // default 60
+  rankSpacing?: number;                 // default 80
+}
 
-export function layoutUnplaced(
+export class UnsupportedDiagramTypeError extends Error { ... }
+
+export function computeInitialLayout(
   parsed: ParsedDiagram,
-  existingLayout: LayoutStore,
-  unplacedIds: string[]
-): Map<string, { x: number; y: number; w: number; h: number }>;
+  options?: LayoutOptions
+): LayoutStore;
 ```
 
-`layoutFull` is called on `accordo_diagram_create`. `layoutUnplaced` is called by the reconciler for newly added nodes.
+`computeInitialLayout` is called on `accordo_diagram_create`. Placement of unplaced nodes
+after a reconcile cycle is handled by A6 (`placeNodes`).
+
+> **Tech debt TD-AL-01**: layout-aware incremental re-layout (pin existing nodes as dagre
+> fixed constraints, re-run over changed subgraph only) is deferred to diag.4.
 
 ### A5: Edge identity (`reconciler/edge-identity.ts`)
 
