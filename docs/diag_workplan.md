@@ -16,13 +16,18 @@
 | A4 Auto-layout (dispatch) | ✅ DONE | `f49bb9e` + `391abf2` | 36 pass |
 | A5 Edge identity | ✅ DONE | — | 22 pass |
 | A6 Placement | ✅ DONE | — | 20 pass |
+| A7 Reconciler | ✅ DONE | `bef728f` | 36 pass (RC-01..RC-36) |
 | A8 Shape map | ✅ DONE | — | 15 pass |
 | A9 Edge router | ✅ DONE | — | 15 pass |
+| A10 Canvas generator | ✅ DONE | `bef728f` | 27 pass (CG-01..CG-27) |
 | A11 Protocol types | ✅ DONE | — | type-only |
-| A7, A10, A14–A17 | 📋 NOT STARTED | — | — |
+| A14 MCP tool definitions | ✅ DONE | — | 45 pass (DT-01..DT-45) |
+| A15 Webview panel | 📋 NOT STARTED | — | ~15 estimated |
+| A16 Webview frontend | 📋 NOT STARTED | — | manual test only |
+| A17 Extension entry | 📋 NOT STARTED | — | ~10 estimated |
 
-**Total passing:** 264 tests (A1 + A2 + A3 + A4 + A5 + A6 + A8 + A9 + integration)  
-**Next module:** A7 / A10
+**Total passing (packages/diagram):** 377 tests  
+**Next module:** A15 (Webview panel) — unblocked
 
 > **LS-ID note:** Requirement IDs `LS-01..LS-12` used in layout-store tests are
 > locally derived. A canonical mapping should be established in a future pass.

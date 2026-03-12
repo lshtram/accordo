@@ -75,7 +75,7 @@ const EDGE_TYPE_MAP: Readonly<Record<number, EdgeType>> = {
  * here so breakage on Mermaid upgrades is isolated to this file.
  */
 export function parseFlowchart(db: FlowchartDb): ParsedDiagram {
-  const rawVertices = (db.getVertices as () => Record<string, MermaidVertex>)();
+  const rawVertices = (db.getVertices as () => Record<string, MermaidVertex> | Map<string, MermaidVertex>)();
   const rawEdges = (db.getEdges as () => MermaidEdge[])();
   const rawSubgraphs = (db.getSubGraphs as () => MermaidSubgraph[])();
   const direction = (db.getDirection as () => string)() as
@@ -95,7 +95,11 @@ export function parseFlowchart(db: FlowchartDb): ParsedDiagram {
 
   // Build nodes map
   const nodes = new Map<NodeId, ParsedNode>();
-  for (const [id, v] of Object.entries(rawVertices)) {
+  const vertexEntries: [string, MermaidVertex][] =
+    rawVertices instanceof Map
+      ? ([...rawVertices.entries()] as [string, MermaidVertex][])
+      : (Object.entries(rawVertices) as [string, MermaidVertex][]);
+  for (const [id, v] of vertexEntries) {
     nodes.set(id, {
       id,
       label: v.label ?? v.text ?? "",
