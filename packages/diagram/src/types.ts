@@ -13,6 +13,7 @@
  *   §6 Parser adapter   → ParsedDiagram, ParsedNode, ParsedEdge, ParsedCluster,
  *                          ParseResult, NodeShape, EdgeType
  *   §7 Reconciler       → ReconcileResult
+ *   §9 Canvas generator  → ExcalidrawElement, CanvasScene
  */
 
 // ── §4 Identity ────────────────────────────────────────────────────────────────
@@ -351,4 +352,72 @@ export interface ReconcileResult {
     /** Human-readable rename descriptions: ["old_id -> new_id", ...] */
     renamesApplied: readonly string[];
   };
+}
+
+// ── §9 Canvas generator ────────────────────────────────────────────────────────
+
+/**
+ * A single Excalidraw element produced by the canvas generator.
+ * Generated fresh on each render — `id` is NOT stable and is not stored in
+ * layout.json.  `mermaidId` links back to the stable Mermaid node/edge/cluster
+ * ID so consumers can reconcile scene changes back to layout.
+ *
+ * Source: diag_arch_v4.2.md §9.3
+ */
+export interface ExcalidrawElement {
+  /** Excalidraw element ID — generated fresh on every render (not persisted). */
+  id: string;
+  /** Stable back-link to the Mermaid node/edge/cluster this element represents. */
+  mermaidId: string;
+  /** Excalidraw element type. */
+  type: "rectangle" | "diamond" | "ellipse" | "arrow" | "text";
+  /** X coordinate (pixels from canvas origin). */
+  x: number;
+  /** Y coordinate (pixels from canvas origin). */
+  y: number;
+  /** Width in pixels. */
+  width: number;
+  /** Height in pixels. */
+  height: number;
+  /** Rough.js hand-drawn level (0 = crisp, 1 = hand-drawn default). */
+  roughness: number;
+  /** Font family.  Always "Excalifont" for all elements in diag.1. */
+  fontFamily: string;
+  /** Text content — for node shape elements and standalone text labels. */
+  label?: string;
+  /** Arrow path in absolute canvas coordinates.  Only set for type "arrow". */
+  points?: ReadonlyArray<[number, number]>;
+  /** Excalidraw binding for the arrow start.  null for explicit-path arrows. */
+  startBinding?: { elementId: string; focus: number; gap: number } | null;
+  /** Excalidraw binding for the arrow end.  null for explicit-path arrows. */
+  endBinding?: { elementId: string; focus: number; gap: number } | null;
+  /** Background fill color (hex or named). */
+  backgroundColor?: string;
+  /** Stroke/border color. */
+  strokeColor?: string;
+  /** Border width in pixels. */
+  strokeWidth?: number;
+  /** Stroke line style. */
+  strokeStyle?: "solid" | "dashed";
+  /** Corner rounding level.  null = crisp corners.  Only for rectangles. */
+  roundness?: number | null;
+}
+
+/**
+ * Complete Excalidraw canvas scene produced by generateCanvas().
+ * Elements are in render order: cluster backgrounds → node shapes → edges.
+ * The returned layout reflects any unplaced nodes that were resolved during
+ * generation (layout.unplaced[] is always empty in the returned value).
+ *
+ * Source: diag_arch_v4.2.md §9.3
+ */
+export interface CanvasScene {
+  /** All Excalidraw elements in render order. */
+  elements: ExcalidrawElement[];
+  /**
+   * Updated layout store.
+   * Any nodes that were in unplaced[] have been promoted to nodes{}.
+   * The returned layout.unplaced[] is always empty.
+   */
+  layout: LayoutStore;
 }

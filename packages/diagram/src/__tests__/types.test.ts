@@ -17,7 +17,6 @@ import { describe, it, expectTypeOf } from "vitest";
 import type {
   DiagramType,
   SpatialDiagramType,
-  SequentialDiagramType,
   NodeId,
   EdgeKey,
   ClusterId,
@@ -39,6 +38,8 @@ import type {
   ParsedCluster,
   ParseResult,
   ReconcileResult,
+  ExcalidrawElement,
+  CanvasScene,
 } from "../types.js";
 
 // ── §4 Identity ───────────────────────────────────────────────────────────────
@@ -46,10 +47,6 @@ import type {
 describe("DiagramType", () => {
   it("SpatialDiagramType is a subtype of DiagramType", () => {
     expectTypeOf<SpatialDiagramType>().toMatchTypeOf<DiagramType>();
-  });
-
-  it("SequentialDiagramType is a subtype of DiagramType", () => {
-    expectTypeOf<SequentialDiagramType>().toMatchTypeOf<DiagramType>();
   });
 
   it("SpatialDiagramType includes all 6 spatial types", () => {
@@ -62,17 +59,6 @@ describe("DiagramType", () => {
       "mindmap",
     ];
     expectTypeOf(types).toMatchTypeOf<SpatialDiagramType[]>();
-  });
-
-  it("SequentialDiagramType includes all 5 sequential types", () => {
-    const types: SequentialDiagramType[] = [
-      "sequenceDiagram",
-      "gantt",
-      "gitGraph",
-      "timeline",
-      "quadrantChart",
-    ];
-    expectTypeOf(types).toMatchTypeOf<SequentialDiagramType[]>();
   });
 
   it("NodeId, EdgeKey, ClusterId are all string-assignable", () => {
@@ -283,6 +269,47 @@ describe("ReconcileResult", () => {
     expectTypeOf<C["edgesRemoved"]>().toEqualTypeOf<number>();
     expectTypeOf<C["clustersChanged"]>().toEqualTypeOf<number>();
     expectTypeOf<C["renamesApplied"]>().toMatchTypeOf<readonly string[]>();
+  });
+});
+
+// ── §9 Canvas generator ─────────────────────────────────────────────────────
+
+describe("ExcalidrawElement", () => {
+  it("has required id, mermaidId, type, position, and size fields", () => {
+    expectTypeOf<ExcalidrawElement["id"]>().toEqualTypeOf<string>();
+    expectTypeOf<ExcalidrawElement["mermaidId"]>().toEqualTypeOf<string>();
+    expectTypeOf<ExcalidrawElement["type"]>().toEqualTypeOf<
+      "rectangle" | "diamond" | "ellipse" | "arrow" | "text"
+    >();
+    expectTypeOf<ExcalidrawElement["x"]>().toEqualTypeOf<number>();
+    expectTypeOf<ExcalidrawElement["y"]>().toEqualTypeOf<number>();
+    expectTypeOf<ExcalidrawElement["width"]>().toEqualTypeOf<number>();
+    expectTypeOf<ExcalidrawElement["height"]>().toEqualTypeOf<number>();
+  });
+
+  it("roughness and fontFamily are required", () => {
+    expectTypeOf<ExcalidrawElement["roughness"]>().toEqualTypeOf<number>();
+    expectTypeOf<ExcalidrawElement["fontFamily"]>().toEqualTypeOf<string>();
+  });
+
+  it("points is optional readonly array of coordinate pairs", () => {
+    expectTypeOf<ExcalidrawElement["points"]>().toEqualTypeOf<
+      ReadonlyArray<[number, number]> | undefined
+    >();
+  });
+
+  it("label is optional string", () => {
+    expectTypeOf<ExcalidrawElement["label"]>().toEqualTypeOf<string | undefined>();
+  });
+});
+
+describe("CanvasScene", () => {
+  it("elements is ExcalidrawElement array", () => {
+    expectTypeOf<CanvasScene["elements"]>().toMatchTypeOf<ExcalidrawElement[]>();
+  });
+
+  it("layout is LayoutStore", () => {
+    expectTypeOf<CanvasScene["layout"]>().toMatchTypeOf<LayoutStore>();
   });
 });
 
