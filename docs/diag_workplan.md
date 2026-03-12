@@ -12,12 +12,14 @@
 |---|---|---|---|
 | A1 Internal types | ✅ DONE | `9b0200f` | 36 pass |
 | A2 Flowchart parser | ✅ DONE | `2d439e5` + `429c53d` | 67 pass |
+| A1 Internal types | ✅ DONE | `9b0200f` | 36 pass |
+| A2 Flowchart parser | ✅ DONE | `2d439e5` + `429c53d` | 67 pass |
 | A3 Layout store | ✅ DONE | `15a4369` | 54 pass |
-| A4 Auto-layout (dagre) | 📋 NOT STARTED | — | — |
+| A4 Auto-layout (dispatch) | ✅ DONE | `f49bb9e` | 35 pass |
 | A5–A17 | 📋 NOT STARTED | — | — |
 
-**Total passing:** 157 tests (A1 + A2 + A3)  
-**Next module:** A4 Auto-layout — `layout/auto-layout.ts`
+**Total passing:** 192 tests (A1 + A2 + A3 + A4)  
+**Next module:** A5 Edge identity — `reconciler/edge-identity.ts`
 
 > **LS-ID note:** Requirement IDs `LS-01..LS-12` used in layout-store tests are
 > locally derived. A canonical mapping should be established in a future pass.
