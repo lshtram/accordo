@@ -190,8 +190,8 @@ describe("parseMermaid — node extraction", () => {
     });
   });
 
-  it("extracts all nodes with correct IDs", () => {
-    const result = parseMermaid("flowchart TD\n  A[Rectangle]");
+  it("extracts all nodes with correct IDs", async () => {
+    const result = await parseMermaid("flowchart TD\n  A[Rectangle]");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect([...result.diagram.nodes.keys()]).toEqual(
@@ -207,15 +207,15 @@ describe("parseMermaid — node extraction", () => {
     ["E", "stadium"],
     ["F", "cylinder"],
     ["G", "hexagon"],
-  ] as const)("node %s maps to shape %s", (id, shape) => {
-    const result = parseMermaid("flowchart TD");
+  ] as const)("node %s maps to shape %s", async (id, shape) => {
+    const result = await parseMermaid("flowchart TD");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.nodes.get(id)?.shape).toBe(shape);
   });
 
-  it("node label is extracted correctly", () => {
-    const result = parseMermaid("flowchart TD\n  A[Rectangle]");
+  it("node label is extracted correctly", async () => {
+    const result = await parseMermaid("flowchart TD\n  A[Rectangle]");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.nodes.get("A")?.label).toBe("Rectangle");
@@ -243,15 +243,15 @@ describe("parseMermaid — edge extraction", () => {
     });
   });
 
-  it("extracts 4 edges total", () => {
-    const result = parseMermaid("flowchart LR");
+  it("extracts 4 edges total", async () => {
+    const result = await parseMermaid("flowchart LR");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.edges).toHaveLength(4);
   });
 
-  it("correctly identifies from/to for each edge", () => {
-    const result = parseMermaid("flowchart LR");
+  it("correctly identifies from/to for each edge", async () => {
+    const result = await parseMermaid("flowchart LR");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     const { edges } = result.diagram;
@@ -261,36 +261,36 @@ describe("parseMermaid — edge extraction", () => {
     expect(edges[2].to).toBe("C");
   });
 
-  it("edge label is extracted", () => {
-    const result = parseMermaid("flowchart LR");
+  it("edge label is extracted", async () => {
+    const result = await parseMermaid("flowchart LR");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.edges[2].label).toBe("link");
   });
 
-  it("edges with no label have empty string label", () => {
-    const result = parseMermaid("flowchart LR");
+  it("edges with no label have empty string label", async () => {
+    const result = await parseMermaid("flowchart LR");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.edges[0].label).toBe("");
   });
 
-  it("edge type: type=1 maps to 'arrow'", () => {
-    const result = parseMermaid("flowchart LR");
+  it("edge type: type=1 maps to 'arrow'", async () => {
+    const result = await parseMermaid("flowchart LR");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.edges[0].type).toBe("arrow");
   });
 
-  it("edge type: type=2 maps to 'dotted'", () => {
-    const result = parseMermaid("flowchart LR");
+  it("edge type: type=2 maps to 'dotted'", async () => {
+    const result = await parseMermaid("flowchart LR");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.edges[2].type).toBe("dotted");
   });
 
-  it("edge type: type=3 maps to 'thick'", () => {
-    const result = parseMermaid("flowchart LR");
+  it("edge type: type=3 maps to 'thick'", async () => {
+    const result = await parseMermaid("flowchart LR");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.edges[3].type).toBe("thick");
@@ -316,8 +316,8 @@ describe("parseMermaid — edge ordinals", () => {
     });
   });
 
-  it("three edges A→B get ordinals 0, 1, 2", () => {
-    const result = parseMermaid("flowchart TD");
+  it("three edges A→B get ordinals 0, 1, 2", async () => {
+    const result = await parseMermaid("flowchart TD");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     const abEdges = result.diagram.edges.filter(
@@ -346,31 +346,31 @@ describe("parseMermaid — cluster extraction", () => {
     });
   });
 
-  it("extracts 2 clusters", () => {
-    const result = parseMermaid("flowchart TD");
+  it("extracts 2 clusters", async () => {
+    const result = await parseMermaid("flowchart TD");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.clusters).toHaveLength(2);
   });
 
-  it("cluster id and label are correct", () => {
-    const result = parseMermaid("flowchart TD");
+  it("cluster id and label are correct", async () => {
+    const result = await parseMermaid("flowchart TD");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     const grp = result.diagram.clusters.find((c) => c.id === "grp1");
     expect(grp?.label).toBe("Group One");
   });
 
-  it("cluster members include correct node IDs", () => {
-    const result = parseMermaid("flowchart TD");
+  it("cluster members include correct node IDs", async () => {
+    const result = await parseMermaid("flowchart TD");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     const grp = result.diagram.clusters.find((c) => c.id === "grp1");
     expect(grp?.members).toEqual(expect.arrayContaining(["A", "B"]));
   });
 
-  it("nodes inside a cluster carry the cluster field", () => {
-    const result = parseMermaid("flowchart TD");
+  it("nodes inside a cluster carry the cluster field", async () => {
+    const result = await parseMermaid("flowchart TD");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.nodes.get("A")?.cluster).toBe("grp1");
@@ -381,14 +381,14 @@ describe("parseMermaid — cluster extraction", () => {
 // ── 7. Direction detection ────────────────────────────────────────────────────
 
 describe("parseMermaid — direction", () => {
-  it.each(["TD", "LR", "RL", "BT"] as const)("detects direction %s", (dir) => {
+  it.each(["TD", "LR", "RL", "BT"] as const)("detects direction %s", async (dir) => {
     setMockDb({
       getVertices: () => ({}),
       getEdges: () => [],
       getSubGraphs: () => [],
       getDirection: () => dir,
     });
-    const result = parseMermaid(`flowchart ${dir}`);
+    const result = await parseMermaid(`flowchart ${dir}`);
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.direction).toBe(dir);
@@ -407,22 +407,22 @@ describe("parseMermaid — empty diagram", () => {
     });
   });
 
-  it("'flowchart TD' with no nodes returns empty node map", () => {
-    const result = parseMermaid("flowchart TD");
+  it("'flowchart TD' with no nodes returns empty node map", async () => {
+    const result = await parseMermaid("flowchart TD");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.nodes.size).toBe(0);
   });
 
-  it("empty diagram returns empty edges array", () => {
-    const result = parseMermaid("flowchart TD");
+  it("empty diagram returns empty edges array", async () => {
+    const result = await parseMermaid("flowchart TD");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.edges).toHaveLength(0);
   });
 
-  it("empty diagram returns empty clusters array", () => {
-    const result = parseMermaid("flowchart TD");
+  it("empty diagram returns empty clusters array", async () => {
+    const result = await parseMermaid("flowchart TD");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.clusters).toHaveLength(0);
@@ -444,8 +444,8 @@ describe("parseMermaid — classDef / class annotations", () => {
     });
   });
 
-  it("node with classes carries classes array", () => {
-    const result = parseMermaid("flowchart TD");
+  it("node with classes carries classes array", async () => {
+    const result = await parseMermaid("flowchart TD");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.nodes.get("A")?.classes).toEqual(
@@ -453,8 +453,8 @@ describe("parseMermaid — classDef / class annotations", () => {
     );
   });
 
-  it("node with no classes has empty classes array", () => {
-    const result = parseMermaid("flowchart TD");
+  it("node with no classes has empty classes array", async () => {
+    const result = await parseMermaid("flowchart TD");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.nodes.get("B")?.classes).toHaveLength(0);
@@ -464,7 +464,7 @@ describe("parseMermaid — classDef / class annotations", () => {
 // ── 10. Rename annotations ────────────────────────────────────────────────────
 
 describe("parseMermaid — rename annotations", () => {
-  it("detects a single @rename annotation in source", () => {
+  it("detects a single @rename annotation in source", async () => {
     setMockDb({
       getVertices: () => ({
         new_auth: makeVertex("new_auth", "Auth", "square"),
@@ -478,7 +478,7 @@ describe("parseMermaid — rename annotations", () => {
       "%% @rename: auth -> new_auth",
       "  new_auth[Auth]",
     ].join("\n");
-    const result = parseMermaid(source);
+    const result = await parseMermaid(source);
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.renames).toHaveLength(1);
@@ -488,7 +488,7 @@ describe("parseMermaid — rename annotations", () => {
     });
   });
 
-  it("detects multiple @rename annotations", () => {
+  it("detects multiple @rename annotations", async () => {
     setMockDb({
       getVertices: () => ({}),
       getEdges: () => [],
@@ -500,20 +500,20 @@ describe("parseMermaid — rename annotations", () => {
       "%% @rename: a -> a2",
       "%% @rename: b -> b2",
     ].join("\n");
-    const result = parseMermaid(source);
+    const result = await parseMermaid(source);
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.renames).toHaveLength(2);
   });
 
-  it("returns empty renames array when no annotations present", () => {
+  it("returns empty renames array when no annotations present", async () => {
     setMockDb({
       getVertices: () => ({}),
       getEdges: () => [],
       getSubGraphs: () => [],
       getDirection: () => "TD",
     });
-    const result = parseMermaid("flowchart TD\n  A-->B");
+    const result = await parseMermaid("flowchart TD\n  A-->B");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.renames).toHaveLength(0);
@@ -523,14 +523,14 @@ describe("parseMermaid — rename annotations", () => {
 // ── 11. %% comments ignored ───────────────────────────────────────────────────
 
 describe("parseMermaid — %% comments", () => {
-  it("source with only %% comments before first node still parses", () => {
+  it("source with only %% comments before first node still parses", async () => {
     setMockDb({
       getVertices: () => ({ A: makeVertex("A", "A", "square") }),
       getEdges: () => [],
       getSubGraphs: () => [],
       getDirection: () => "TD",
     });
-    const result = parseMermaid(
+    const result = await parseMermaid(
       "%% title: arch\nflowchart TD\n  A[A]"
     );
     expect(result.valid).toBe(true);
@@ -542,19 +542,19 @@ describe("parseMermaid — %% comments", () => {
 // ── 12. Invalid / error input ─────────────────────────────────────────────────
 
 describe("parseMermaid — error handling", () => {
-  it("returns valid=false when getDiagramFromText throws", () => {
+  it("returns valid=false when getDiagramFromText throws", async () => {
     mermaidMock.default.mermaidAPI.getDiagramFromText.mockImplementationOnce(
       () => {
         throw Object.assign(new Error("Parse error"), { hash: { line: 3 } });
       }
     );
-    const result = parseMermaid("flowchart TD\n  A--[broken");
+    const result = await parseMermaid("flowchart TD\n  A--[broken");
     expect(result.valid).toBe(false);
     if (result.valid) return;
     expect(result.error.message).toBeTruthy();
   });
 
-  it("error result has a line number", () => {
+  it("error result has a line number", async () => {
     mermaidMock.default.mermaidAPI.getDiagramFromText.mockImplementationOnce(
       () => {
         throw Object.assign(new Error("bad syntax"), { hash: { line: 5 } });
@@ -562,7 +562,7 @@ describe("parseMermaid — error handling", () => {
     );
     // Use flowchart source so detectDiagramType succeeds and getDiagramFromText
     // is actually called (consuming the mockImplementationOnce above).
-    const result = parseMermaid("flowchart TD\n  A --[broken syntax");
+    const result = await parseMermaid("flowchart TD\n  A --[broken syntax");
     expect(result.valid).toBe(false);
     if (result.valid) return;
     expect(typeof result.error.line).toBe("number");
@@ -572,8 +572,8 @@ describe("parseMermaid — error handling", () => {
 // ── 13. Unsupported diagram types ─────────────────────────────────────────────
 
 describe("parseMermaid — unsupported diagram types", () => {
-  it("returns valid=false for sequenceDiagram", () => {
-    const result = parseMermaid("sequenceDiagram\nA->>B: hi");
+  it("returns valid=false for sequenceDiagram", async () => {
+    const result = await parseMermaid("sequenceDiagram\nA->>B: hi");
     expect(result.valid).toBe(false);
     if (result.valid) return;
     // sequenceDiagram is a known-but-unsupported sequential type — gets a specific error
@@ -581,14 +581,14 @@ describe("parseMermaid — unsupported diagram types", () => {
     expect(result.error.message).toContain("sequenceDiagram");
   });
 
-  it("returns valid=false for gantt", () => {
-    const result = parseMermaid("gantt\n  title T");
+  it("returns valid=false for gantt", async () => {
+    const result = await parseMermaid("gantt\n  title T");
     expect(result.valid).toBe(false);
   });
 
-  it("does not call getDiagramFromText for unsupported types", () => {
+  it("does not call getDiagramFromText for unsupported types", async () => {
     mermaidMock.default.mermaidAPI.getDiagramFromText.mockClear();
-    parseMermaid("sequenceDiagram\nA->>B: hi");
+    await parseMermaid("sequenceDiagram\nA->>B: hi");
     expect(mermaidMock.default.mermaidAPI.getDiagramFromText).not.toHaveBeenCalled();
   });
 });
@@ -596,7 +596,7 @@ describe("parseMermaid — unsupported diagram types", () => {
 // ── 14. Vertex text-field fallback ────────────────────────────────────────────
 
 describe("parseMermaid — vertex text-field fallback", () => {
-  it("extracts label from vertex.text when vertex.label is absent", () => {
+  it("extracts label from vertex.text when vertex.label is absent", async () => {
     setMockDb({
       getVertices: () => ({
         X: { id: "X", text: "TextLabel", type: "square", domId: "X", classes: [] },
@@ -605,7 +605,7 @@ describe("parseMermaid — vertex text-field fallback", () => {
       getSubGraphs: () => [],
       getDirection: () => "TD",
     });
-    const result = parseMermaid("flowchart TD\n  X[TextLabel]");
+    const result = await parseMermaid("flowchart TD\n  X[TextLabel]");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.nodes.get("X")?.label).toBe("TextLabel");

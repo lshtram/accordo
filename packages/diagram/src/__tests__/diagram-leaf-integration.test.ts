@@ -5,6 +5,7 @@ import { matchEdges } from "../reconciler/edge-identity.js";
 import { placeNodes } from "../reconciler/placement.js";
 import { getShapeProps } from "../canvas/shape-map.js";
 import { routeEdge } from "../canvas/edge-router.js";
+import { parseMermaid } from "../parser/adapter.js";
 import type { HostToWebviewMessage, WebviewToHostMessage } from "../webview/protocol.js";
 import type { ParsedDiagram, ParsedEdge, ParsedNode, LayoutStore, SpatialDiagramType } from "../types.js";
 
@@ -144,5 +145,22 @@ describe("diagram leaf integration", () => {
 
     expect(toHost.type).toBe("canvas:edge-routed");
     expect(toWebview.type).toBe("host:parse-error");
+  });
+
+  // ── Real-parser contract test (no mocks) ──────────────────────────────────
+  // Verifies that parseMermaid() correctly awaits the Mermaid 11.x async API
+  // and returns a structured ParsedDiagram — catching any sync/async regression
+  // at the boundary between adapter.ts and the mermaid library.
+  it("real parseMermaid('flowchart TD\\nA-->B') resolves valid diagram with correct shape", async () => {
+    const result = await parseMermaid("flowchart TD\nA-->B");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return; // narrow type
+    expect(result.diagram.type).toBe("flowchart");
+    // In Node.js, Mermaid 11.x populates edges for bare A-->B syntax.
+    // Vertices only populate with explicit labels (A[label]), which requires
+    // DOMPurify sanitization and a DOM environment — so nodes.size may be 0.
+    expect(result.diagram.edges).toHaveLength(1);
+    expect(result.diagram.edges[0]?.from).toBe("A");
+    expect(result.diagram.edges[0]?.to).toBe("B");
   });
 });

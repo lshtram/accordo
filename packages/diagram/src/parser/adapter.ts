@@ -78,7 +78,7 @@ export function isSpatialType(type: string): type is DiagramType {
  * Returns `{ valid: false, error }` for syntax errors or unsupported types
  * rather than throwing. Callers must check `.valid` before using `.diagram`.
  */
-export function parseMermaid(source: string): ParseResult {
+export async function parseMermaid(source: string): Promise<ParseResult> {
   const type = detectDiagramType(source);
   if (type === null) {
     // Check whether the source starts with a known-but-unsupported sequential type
@@ -126,15 +126,15 @@ export function parseMermaid(source: string): ParseResult {
   // access is in the per-type files (flowchart.ts etc.).
   type MermaidDb = Record<string, unknown>;
   interface MermaidDiagram {
-    parser: { yy: MermaidDb };
+    parser: { yy: MermaidDb; parser?: { yy: MermaidDb } };
   }
   const mermaidApi = (mermaid as unknown as {
-    mermaidAPI: { getDiagramFromText(s: string): MermaidDiagram };
+    mermaidAPI: { getDiagramFromText(s: string): Promise<MermaidDiagram> };
   }).mermaidAPI;
 
   let diag: MermaidDiagram;
   try {
-    diag = mermaidApi.getDiagramFromText(source);
+    diag = await mermaidApi.getDiagramFromText(source);
   } catch (e: unknown) {
     const err = e as { message?: string; hash?: { line?: number } };
     return {
@@ -146,7 +146,11 @@ export function parseMermaid(source: string): ParseResult {
     };
   }
 
-  const parsed = parseFlowchart(diag.parser.yy);
+  // Mermaid 11.x wraps the real db at diag.parser.parser.yy; the top-level
+  // diag.parser.yy is an empty proxy when running in a real Node environment.
+  // Mocked tests return the db directly at diag.parser.yy (no inner parser).
+  const db = diag.parser.parser?.yy ?? diag.parser.yy;
+  const parsed = parseFlowchart(db);
   return {
     valid: true,
     diagram: { ...parsed, type, renames },
