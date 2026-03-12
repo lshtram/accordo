@@ -14,10 +14,15 @@
 | A2 Flowchart parser | ✅ DONE | `2d439e5` + `429c53d` | 67 pass |
 | A3 Layout store | ✅ DONE | `15a4369` | 54 pass |
 | A4 Auto-layout (dispatch) | ✅ DONE | `f49bb9e` + `391abf2` | 36 pass |
-| A5–A17 | 📋 NOT STARTED | — | — |
+| A5 Edge identity | ✅ DONE | — | 22 pass |
+| A6 Placement | ✅ DONE | — | 20 pass |
+| A8 Shape map | ✅ DONE | — | 15 pass |
+| A9 Edge router | ✅ DONE | — | 15 pass |
+| A11 Protocol types | ✅ DONE | — | type-only |
+| A7, A10, A12–A17 | 📋 NOT STARTED | — | — |
 
-**Total passing:** 193 tests (A1 + A2 + A3 + A4)  
-**Next module:** A5 Edge identity — `reconciler/edge-identity.ts`
+**Total passing:** 270 tests (A1 + A2 + A3 + A4 + A5 + A6 + A8 + A9 + integration)  
+**Next module:** A7 / A10 / A12+
 
 > **LS-ID note:** Requirement IDs `LS-01..LS-12` used in layout-store tests are
 > locally derived. A canonical mapping should be established in a future pass.
@@ -517,7 +522,7 @@ interface NodeLayout {
 }
 
 interface EdgeLayout {
-  routing: "auto" | "manual";
+  routing: "auto" | "curved" | "orthogonal" | "direct" | string;
   waypoints: Array<{ x: number; y: number }>;
   style: Partial<EdgeStyle>;
 }
@@ -889,7 +894,7 @@ All of these must be true before diag.1 is complete:
 | A3 Layout store | 54 | `15a4369` | `addUnplaced` intra-batch dedup bug found and fixed via richer fixture |
 | A4 Auto-layout (dispatch) | 36 | `f49bb9e`, `391abf2` | erDiagram LR default added (arch §15.1); `layoutFull` API renamed to `computeInitialLayout`; workplan stale `layoutFull` refs corrected |
 
-**Actual total:** 193 tests passing (A1 + A2 + A3 + A4)
+**Actual total:** 270 tests passing (A1 + A2 + A3 + A4 + A5 + A6 + A8 + A9 + A11 + integration)
 
 **Spec gaps found during implementation:**
 - A3: `addUnplaced` filter-based dedup missed intra-batch duplicates — fixed with iterative Set; rich 6-node fixture added to expose the bug
