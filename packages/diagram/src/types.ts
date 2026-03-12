@@ -6,7 +6,7 @@
  * Source: diag_arch_v4.2.md §4, §5, §6, §7
  *
  * Requirements coverage:
- *   §4 Identity model   → DiagramType, SpatialDiagramType, SequentialDiagramType,
+ *   §4 Identity model   → DiagramType, SpatialDiagramType,
  *                          NodeId, EdgeKey, ClusterId, RenameAnnotation
  *   §5 Layout store     → LayoutStore, NodeLayout, EdgeLayout, ClusterLayout,
  *                          NodeStyle, EdgeStyle, ClusterStyle, AestheticsConfig, NodeSizing
@@ -30,18 +30,11 @@ export type SpatialDiagramType =
   | "mindmap";
 
 /**
- * Sequential diagrams: order is layout, no position preservation needed.
- * Single .mmd file only, rendered via Kroki. No canvas, no Excalidraw.
+ * All diagram types supported by this extension.
+ * Only spatial types: this extension is a shared 2D whiteboard.
+ * Non-spatial types (sequence, gantt, etc.) are not in scope.
  */
-export type SequentialDiagramType =
-  | "sequenceDiagram"
-  | "gantt"
-  | "gitGraph"
-  | "timeline"
-  | "quadrantChart";
-
-/** All supported diagram types. */
-export type DiagramType = SpatialDiagramType | SequentialDiagramType;
+export type DiagramType = SpatialDiagramType;
 
 /**
  * Stable Mermaid node identity.

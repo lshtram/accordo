@@ -2,7 +2,7 @@
  * A2 — Parser adapter tests
  *
  * Tests verify the public contract of parseMermaid(), detectDiagramType(),
- * isSpatialType(), and isSequentialType() from parser/adapter.ts.
+ * and isSpatialType() from parser/adapter.ts.
  *
  * All tests are RED in Phase B (stubs throw "not implemented").
  * They turn GREEN in Phase C after implementation.
@@ -80,7 +80,7 @@ function makeSubgraph(id: string, title: string, nodes: string[]) {
 // ── Import the module under test (after vi.mock declaration) ──────────────────
 // Dynamic import keeps mock hoisting correct.
 
-const { parseMermaid, detectDiagramType, isSpatialType, isSequentialType } =
+const { parseMermaid, detectDiagramType, isSpatialType } =
   await import("../parser/adapter.js");
 
 // ── 1. Type detection ─────────────────────────────────────────────────────────
@@ -94,10 +94,8 @@ describe("detectDiagramType", () => {
     expect(detectDiagramType("graph TD\n  A-->B")).toBe("flowchart");
   });
 
-  it("detects 'sequenceDiagram'", () => {
-    expect(detectDiagramType("sequenceDiagram\n  A->>B: hi")).toBe(
-      "sequenceDiagram"
-    );
+  it("returns null for unsupported type 'sequenceDiagram'", () => {
+    expect(detectDiagramType("sequenceDiagram\n  A->>B: hi")).toBeNull();
   });
 
   it("detects 'classDiagram'", () => {
@@ -114,24 +112,24 @@ describe("detectDiagramType", () => {
     expect(detectDiagramType("erDiagram\n  FOO {")).toBe("erDiagram");
   });
 
-  it("detects 'gantt'", () => {
-    expect(detectDiagramType("gantt\n  title G")).toBe("gantt");
+  it("returns null for unsupported type 'gantt'", () => {
+    expect(detectDiagramType("gantt\n  title G")).toBeNull();
   });
 
-  it("detects 'gitGraph'", () => {
-    expect(detectDiagramType("gitGraph\n  commit")).toBe("gitGraph");
+  it("returns null for unsupported type 'gitGraph'", () => {
+    expect(detectDiagramType("gitGraph\n  commit")).toBeNull();
   });
 
   it("detects 'mindmap'", () => {
     expect(detectDiagramType("mindmap\n  root((M))")).toBe("mindmap");
   });
 
-  it("detects 'timeline'", () => {
-    expect(detectDiagramType("timeline\n  title T")).toBe("timeline");
+  it("returns null for unsupported type 'timeline'", () => {
+    expect(detectDiagramType("timeline\n  title T")).toBeNull();
   });
 
-  it("detects 'quadrantChart'", () => {
-    expect(detectDiagramType("quadrantChart\n  title Q")).toBe("quadrantChart");
+  it("returns null for unsupported type 'quadrantChart'", () => {
+    expect(detectDiagramType("quadrantChart\n  title Q")).toBeNull();
   });
 
   it("returns null for empty string", () => {
@@ -149,7 +147,7 @@ describe("detectDiagramType", () => {
   });
 });
 
-// ── 2. isSpatialType / isSequentialType ───────────────────────────────────────
+// ── 2. isSpatialType ─────────────────────────────────────────────────────────
 
 describe("isSpatialType", () => {
   const spatialTypes: DiagramType[] = [
@@ -160,30 +158,15 @@ describe("isSpatialType", () => {
     "erDiagram",
     "mindmap",
   ];
-  const sequentialTypes: DiagramType[] = [
-    "sequenceDiagram",
-    "gantt",
-    "gitGraph",
-    "timeline",
-    "quadrantChart",
-  ];
 
   it.each(spatialTypes)("returns true for %s", (t) => {
     expect(isSpatialType(t)).toBe(true);
   });
 
-  it.each(sequentialTypes)("returns false for %s", (t) => {
-    expect(isSpatialType(t)).toBe(false);
-  });
-});
-
-describe("isSequentialType", () => {
-  it("returns true for 'sequenceDiagram'", () => {
-    expect(isSequentialType("sequenceDiagram")).toBe(true);
-  });
-
-  it("returns false for 'flowchart'", () => {
-    expect(isSequentialType("flowchart")).toBe(false);
+  it("returns false for unrecognised string", () => {
+    expect(isSpatialType("sequenceDiagram")).toBe(false);
+    expect(isSpatialType("gantt")).toBe(false);
+    expect(isSpatialType("unknown")).toBe(false);
   });
 });
 
@@ -593,6 +576,8 @@ describe("parseMermaid — unsupported diagram types", () => {
     const result = parseMermaid("sequenceDiagram\nA->>B: hi");
     expect(result.valid).toBe(false);
     if (result.valid) return;
+    // sequenceDiagram is a known-but-unsupported sequential type — gets a specific error
+    expect(result.error.message).toContain("not supported by this extension");
     expect(result.error.message).toContain("sequenceDiagram");
   });
 

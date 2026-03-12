@@ -19,10 +19,10 @@
 | A8 Shape map | ✅ DONE | — | 15 pass |
 | A9 Edge router | ✅ DONE | — | 15 pass |
 | A11 Protocol types | ✅ DONE | — | type-only |
-| A7, A10, A12–A17 | 📋 NOT STARTED | — | — |
+| A7, A10, A14–A17 | 📋 NOT STARTED | — | — |
 
-**Total passing:** 270 tests (A1 + A2 + A3 + A4 + A5 + A6 + A8 + A9 + integration)  
-**Next module:** A7 / A10 / A12+
+**Total passing:** 264 tests (A1 + A2 + A3 + A4 + A5 + A6 + A8 + A9 + integration)  
+**Next module:** A7 / A10
 
 > **LS-ID note:** Requirement IDs `LS-01..LS-12` used in layout-store tests are
 > locally derived. A canonical mapping should be established in a future pass.
@@ -205,12 +205,6 @@ packages/diagram/
 │   │   ├── diagram-comments-bridge.ts  # Wires webview ↔ SurfaceCommentAdapter
 │   │   └── diagram-comments-bridge.test.ts
 │   │
-│   ├── render/
-│   │   ├── kroki.ts                # Kroki API client
-│   │   ├── kroki.test.ts
-│   │   ├── export.ts               # Canvas export coordination
-│   │   └── export.test.ts
-│   │
 │   └── webview/
 │       ├── panel.ts                # VSCode webview panel management
 │       ├── panel.test.ts
@@ -242,8 +236,6 @@ packages/diagram/
 ```
 
 **Excalidraw** is bundled into the webview separately (pre-built JS loaded via `<script>` in webview.html), not a Node.js dependency. It runs only in the webview's browser context.
-
-**Kroki** is an HTTP API — no npm dependency needed. Just `fetch()`.
 
 ---
 
@@ -410,17 +402,13 @@ types.ts                          # no dependencies — pure type definitions
     │
     ├── canvas/canvas-generator.ts   # depends on: types, shape-map, edge-router
     │
-    ├── render/kroki.ts              # depends on: node:https (fetch)
-    │
-    ├── render/export.ts             # depends on: kroki, webview protocol
-    │
     ├── webview/protocol.ts          # depends on: types
     │
     ├── webview/panel.ts             # depends on: vscode, protocol, canvas-generator,
     │                                #   reconciler, layout-store, adapter
     │
     ├── tools/diagram-tools.ts       # depends on: adapter, reconciler, layout-store,
-    │                                #   auto-layout, render, panel
+    │                                #   auto-layout, panel
     │
     └── extension.ts                 # depends on: tools, panel, BridgeAPI
 ```
@@ -442,9 +430,7 @@ Each module follows the TDD cycle from `dev-process.md`.
 | A9 | Edge router | `canvas/edge-router.ts` | ~120 | types | ~15 |
 | A10 | Canvas generator | `canvas/canvas-generator.ts` | ~250 | A8, A9 | ~25 |
 | A11 | Webview protocol | `webview/protocol.ts` | ~60 | types | type compilation |
-| A12 | Kroki client | `render/kroki.ts` | ~80 | node:https | ~10 |
-| A13 | Export coordinator | `render/export.ts` | ~60 | A12, protocol | ~10 |
-| A14 | MCP tool definitions | `tools/diagram-tools.ts` | ~450 | A2–A13 | ~45 |
+| A14 | MCP tool definitions | `tools/diagram-tools.ts` | ~450 | A2–A11 | ~45 |
 | A15 | Webview panel | `webview/panel.ts` | ~300 | vscode, protocol, A7, A10 | ~15 |
 | A16 | Webview frontend | `webview/webview.html`, `webview/webview.ts` | ~400 | Excalidraw, Monaco | manual test |
 | A17 | Extension entry | `extension.ts` | ~60 | A14, A15, BridgeAPI | ~10 |
@@ -462,20 +448,12 @@ Each module follows the TDD cycle from `dev-process.md`.
 Pure type definitions. No runtime code. Used by all other modules.
 
 ```typescript
-// Diagram type detection
+// Diagram type detection — spatial only
 type DiagramType =
-  | "flowchart" | "block-beta" | "classDiagram"
-  | "stateDiagram-v2" | "erDiagram" | "mindmap"
-  | "sequenceDiagram" | "gantt" | "gitGraph"
-  | "timeline" | "quadrantChart";
-
-type SpatialDiagramType =
   | "flowchart" | "block-beta" | "classDiagram"
   | "stateDiagram-v2" | "erDiagram" | "mindmap";
 
-type SequentialDiagramType =
-  | "sequenceDiagram" | "gantt" | "gitGraph"
-  | "timeline" | "quadrantChart";
+type SpatialDiagramType = DiagramType; // all types are spatial
 
 // Parser output
 interface ParsedDiagram { ... }  // see diag_arch_v4.2.md §6.2
@@ -560,8 +538,7 @@ The adapter exposes a stable `ParsedDiagram` interface. Internally, it accesses 
 // adapter.ts — public API
 export function parseMermaid(source: string): ParseResult;
 export function detectDiagramType(source: string): DiagramType | null;
-export function isSpatialType(type: DiagramType): type is SpatialDiagramType;
-export function isSequentialType(type: DiagramType): type is SequentialDiagramType;
+export function isSpatialType(type: string): type is DiagramType;
 ```
 
 ```typescript
@@ -706,16 +683,6 @@ diag.1 supports flowchart shapes only. See v4.2 §9.2 for the shape mapping tabl
 
 Typed message definitions for extension host ↔ webview communication. See v4.2 §9.4.
 
-### A12: Kroki client (`render/kroki.ts`)
-
-```typescript
-export async function renderMermaid(
-  source: string,
-  format: "svg" | "png",
-  krokiUrl?: string          // default: "https://kroki.io"
-): Promise<Buffer>;
-```
-
 ### A14: MCP tool definitions (`tools/diagram-tools.ts`)
 
 All 14 tools defined as `ExtensionToolDefinition[]` following the `accordo-editor` pattern.
@@ -736,7 +703,7 @@ Each tool handler:
 | `accordo_diagram_get` | `parseMermaid(source)` → return semantic graph + raw source |
 | `accordo_diagram_create` | write .mmd (inject standard classDef palette if none present) → parse → `computeInitialLayout()` → write layout.json with `aesthetics: { roughness: 1, animationMode: "draw-on" }` |
 | `accordo_diagram_patch` | write .mmd → `reconcile(old, new, layout)` → write layout.json |
-| `accordo_diagram_render` | canvas mode: request from webview. semantic mode: `renderMermaid()` |
+| `accordo_diagram_render` | canvas export via Excalidraw API (requires webview open); returns `{ output_path }` |
 | `accordo_diagram_style_guide` | returns per-diagram-type palette, node sizing defaults, conventions, and starter template (v4.2 §23) — no disk I/O, pure lookup |
 
 **diag.2 tools (added later):**
@@ -826,14 +793,14 @@ This module is tested manually (webview context, not Node.js).
 
 **Gate:** `reconcile(old, new, layout)` preserves positions for unchanged nodes. `generateCanvas(parsed, layout)` produces valid Excalidraw elements. Layout changes survive topology edits.
 
-### Week D3 — Tools + Rendering + Webview
+### Week D3 — Tools + Webview
 
 **Goal:** MCP tools callable by agent. Webview renders diagrams.
 
 | Day | Module | Output |
 |---|---|---|
-| Mon | A11: webview protocol + A12: kroki.ts | Type definitions + ~10 kroki tests |
-| Mon–Tue | A13: export.ts + A14: diagram-tools.ts | ~50 tests, all 6 diag.1 tools |
+| Mon | A11: webview protocol | Type definitions |
+| Mon–Tue | A14: diagram-tools.ts | ~45 tests, all 5 diag.1 tools |
 | Wed–Thu | A15: panel.ts | ~15 tests, webview lifecycle |
 | Thu–Fri | A16: webview frontend (HTML + TS) | Manual testing, dual-pane rendering |
 | Fri | A17: extension.ts | ~10 tests, activation + registration |
@@ -849,8 +816,8 @@ This module is tested manually (webview context, not Node.js).
 | Mon | Integration test: agent creates diagram → human opens in webview → agent adds nodes → positions preserved | E2E verified |
 | Mon | Integration test: human drags nodes → agent reads diagram → sees updated positions | E2E verified |
 | Tue | File watcher: agent edits .mmd on disk → webview refreshes with toast | External edit flow works |
-| Wed | Export: canvas SVG/PNG via Excalidraw + semantic SVG/PNG via Kroki | Both export paths work |
-| Wed | Error handling: invalid Mermaid states, missing files, Kroki unavailable | Errors handled gracefully |
+| Wed | Export: canvas SVG/PNG via Excalidraw API | Canvas export works |
+| Wed | Error handling: invalid Mermaid states, missing files, webview closed on render | Errors handled gracefully |
 | Thu | Performance: test with 50-node, 100-node diagrams | Acceptable latency |
 | Thu | Modality state: publishState to Hub, visible in /instructions | Agents see diagram context |
 | Fri | Documentation: README, tool descriptions, known limitations | Docs complete |
@@ -872,7 +839,7 @@ All of these must be true before diag.1 is complete:
 7. **Webview:** Dual-pane panel (Mermaid + Excalidraw) renders correctly for spatial diagrams
 8. **Sync:** Mermaid edits → reconcile → canvas refresh (500ms debounce, invalid state handled)
 9. **Sync:** Canvas drag/resize → layout.json patch (immediate, no Mermaid change)
-10. **Export:** Semantic export (Kroki) always available. Canvas export (Excalidraw → SVG/PNG) available when webview is open; falls back to semantic with warning when closed.
+10. **Export:** Canvas export (Excalidraw API → SVG/PNG) available when webview is open. Returns actionable error if webview is closed. No fallback path.
 11. **External edits:** Agent .mmd edit on disk → webview refreshes with toast notification
 12. **Modality state:** Diagram context appears in Hub's /instructions prompt
 13. **Script compatibility:** All 6 MCP tools are auto-registered as VS Code commands via Bridge dual-registration, callable as `command` steps in `accordo-script`
@@ -894,7 +861,7 @@ All of these must be true before diag.1 is complete:
 | A3 Layout store | 54 | `15a4369` | `addUnplaced` intra-batch dedup bug found and fixed via richer fixture |
 | A4 Auto-layout (dispatch) | 36 | `f49bb9e`, `391abf2` | erDiagram LR default added (arch §15.1); `layoutFull` API renamed to `computeInitialLayout`; workplan stale `layoutFull` refs corrected |
 
-**Actual total:** 270 tests passing (A1 + A2 + A3 + A4 + A5 + A6 + A8 + A9 + A11 + integration)
+**Actual total:** 264 tests passing (A1 + A2 + A3 + A4 + A5 + A6 + A8 + A9 + A11 + integration)
 
 **Spec gaps found during implementation:**
 - A3: `addUnplaced` filter-based dedup missed intra-batch duplicates — fixed with iterative Set; rich 6-node fixture added to expose the bug
@@ -922,7 +889,7 @@ All of these must be true before diag.1 is complete:
 | Full shape fidelity | All Mermaid node shapes in canvas generator |
 | Draw-on animation | Progressive element loading at canvas render time (§22 in arch doc) |
 | Animation toggle | Draw-on / static toggle in webview toolbar dropdown |
-| Sequential diagrams | Single-pane Mermaid editor + Kroki live preview for sequence, gantt, git graph, timeline, quadrant |
+
 | Comments integration | Diagram webview loads `@accordo/comment-sdk`, registers `SurfaceCommentAdapter`, pins threads to nodes via canvas-aware hit-testing (§25 in arch doc) |
 
 ---
@@ -936,7 +903,7 @@ All of these must be true before diag.1 is complete:
 | Excalidraw bundle size bloats webview | Medium | Tree-shake. Load async. Measure in Week D3. |
 | Canvas generation performance (100+ nodes) | Medium | Partial updates for layout-only changes. Profile in Week D4. |
 | Dagre produces poor layout for certain graph shapes | Low | Users can adjust. This is initial placement only. |
-| Kroki service unavailable | Low | Cache renders. Graceful error: "Rendering service unavailable." |
+
 | Monaco editor in webview conflicts with Excalidraw keyboard shortcuts | Medium | Keyboard shortcut scoping by pane focus. Test in Week D3. |
 
 ---
@@ -970,7 +937,6 @@ All modules tested in isolation with mocks. Same patterns as Hub and Bridge test
 - Reconciler: pure function — test with input/output pairs
 - Canvas generator: snapshot tests for element arrays
 - Tools: mock `vscode.workspace.fs`, mock webview panel
-- Kroki: mock `fetch()`
 
 ### Integration tests
 

@@ -14,7 +14,7 @@ The diagram modality must satisfy six hard requirements:
 2. **Both can edit topology** (nodes, edges, relationships, structure).
 3. **Both can edit layout and aesthetics** (positions, colors, groupings, routing).
 4. **Every edit preserves existing logical and aesthetic information** — no regeneration destroys what either party built.
-5. **All major diagram types are supported** in a single unified model.
+5. **Only spatial (2D collaborative whiteboard) diagram types are supported** — if a diagram type has no canvas layout to co-design, it is not in scope for this extension.
 6. **The implementation is simple enough to build and maintain** without a dedicated team.
 
 These principles break from v3.1 in one critical way: **there is no privileged modality**. Agents are not "topology-only" contributors and humans are not "layout-only" contributors. Both can do anything. The system's job is to reconcile changes safely, whoever made them.
@@ -40,21 +40,11 @@ Nodes exist in 2D space. The human's positioning decisions are meaningful and mu
 
 These diagram types store a `*.layout.json` sidecar alongside the Mermaid source. The sidecar holds positions, sizes, and visual styles.
 
-### 2.2 Sequential Diagrams
+### 2.2 Out-of-Scope Diagram Types
 
-Order *is* the layout. Positions are implicit; there is nothing to preserve across edits beyond the sequence itself.
+This extension is strictly a collaborative spatial whiteboard. Diagram types where order is the layout (sequence diagrams, gantt, git graphs, timelines, quadrant charts) have no 2D canvas to collaborate on and are **not supported** by this extension. If a user opens a `.mmd` file with an unsupported type, the extension returns a clear error: the file is not opened in the dual-pane panel.
 
-| Type | Mermaid Syntax |
-|---|---|
-| Sequence diagram | `sequenceDiagram` |
-| Gantt chart | `gantt` |
-| Git graph | `gitGraph` |
-| Timeline | `timeline` |
-| Quadrant | `quadrantChart` |
-
-These diagram types have **no layout sidecar**. The Mermaid file is the complete truth. Both agent and human edit the Mermaid directly; Kroki renders the result.
-
-**Architectural note:** Sequential diagrams share almost no architecture with spatial diagrams beyond the `.mmd` file extension and type detection. They are effectively a Mermaid-text-editor-with-preview feature. This document focuses on spatial diagrams. Sequential diagrams are covered briefly in §8.2.
+Out-of-scope types may be addressed by a separate extension or tool purpose-built for text-based diagram viewing.
 
 ### 2.3 Type Detection
 
@@ -74,14 +64,7 @@ Each spatial diagram is exactly two files:
 
 Nothing else is stored. No UGM. No map file. No cached Excalidraw scene. No rendered SVG on disk.
 
-The Excalidraw interactive scene and the Kroki SVG preview are **generated on demand** from these two files and held only in memory / the webview. They are never written to disk as truth stores.
-
-Sequential diagrams are a single file:
-
-```
-/diagrams/
-  onboarding-flow.mmd   ← Complete truth for sequence diagrams
-```
+The Excalidraw interactive scene is **generated on demand** from these two files and held only in memory / the webview. It is never written to disk as a truth store.
 
 ### 3.1 Why not four files (vs v3.1)?
 
@@ -537,75 +520,40 @@ Mindmaps use path-based IDs. When the mindmap structure changes:
 
 ---
 
-## 8. Rendering and Export
+## 8. Canvas Export
 
-### 8.1 The dual-export problem
+### 8.1 Single export path
 
-The system has two rendering paths that produce different results:
+This extension is a shared spatial whiteboard. The only diagrams it supports have a 2D canvas that the agent and human co-design together. There is exactly one export path:
 
-1. **Kroki rendering** — takes Mermaid source, produces SVG/PNG using Mermaid's own auto-layout. This ignores layout.json entirely. The result looks like a fresh mermaid render, not like the user's canvas.
-
-2. **Canvas export** — takes the Excalidraw scene (which reflects layout.json positions), exports to SVG/PNG. This looks exactly like what the user sees.
-
-Both are valuable for different purposes:
-
-| Export type | Source | Reflects layout.json | Use case |
-|---|---|---|---|
-| **Canvas export** (Excalidraw SVG/PNG) | Excalidraw scene in webview | Yes | "What you see is what you get" — docs, presentations, PRs |
-| **Semantic render** (Kroki SVG/PNG) | Mermaid source | No | CI validation, clean auto-layout, Mermaid-native styling |
-
-### 8.2 Sequential diagram rendering
-
-Sequential diagrams (sequence, gantt, git graph, timeline, quadrant) go through Kroki only. There is no canvas, no layout.json, and no Excalidraw involvement.
-
-The webview for sequential diagrams is a single-pane view:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  [onboarding-flow.mmd]                       [Render SVG]   │
-├─────────────────────────┬───────────────────────────────────┤
-│  sequenceDiagram        │                                   │
-│    Alice->>Bob: Hello   │   [Kroki SVG preview]             │
-│    Bob-->>Alice: Hi!    │                                   │
-│                         │    Alice ──────► Bob               │
-│                         │           Hello                    │
-│                         │    Alice ◄────── Bob               │
-│                         │            Hi!                     │
-└─────────────────────────┴───────────────────────────────────┘
-```
-
-Editing triggers: Mermaid change → 500ms debounce → re-render via Kroki → update preview.
-
-### 8.3 Rendering implementation
-
-**Canvas export** (primary for spatial diagrams):
+**Canvas export** — takes the Excalidraw scene (which reflects layout.json positions), exports to SVG/PNG via Excalidraw's built-in API. This is a faithful vector reproduction of the curated canvas, not a re-render or screenshot.
 
 ```typescript
 async function exportCanvas(
   path: string,
   format: "svg" | "png"
 ): Promise<string> {
-  // 1. Request export from Excalidraw webview
-  //    Excalidraw has built-in exportToSvg() and exportToBlob()
-  // 2. Write to output path
-  // 3. Return output path
+  // 1. Send canvas:export-request message to Excalidraw webview
+  //    Excalidraw calls exportToSvg() or exportToBlob() internally
+  // 2. Receive canvas:export-ready { format, data } response
+  // 3. Write to output path
+  // 4. Return output path
 }
 ```
 
-**Semantic render** (Kroki):
+### 8.2 Webview requirement
 
-```typescript
-async function renderSemantic(
-  mmdPath: string,
-  format: "svg" | "png"
-): Promise<string> {
-  // 1. Read .mmd source
-  // 2. POST to Kroki /mermaid/{format}
-  // 3. Return rendered output (optionally cache by content hash)
-}
+Canvas export requires the diagram webview to be open. If the webview is closed when `accordo_diagram_render` is called, the tool returns a structured error:
+
+```json
+{ "error": "Canvas export requires the diagram to be open in the webview. Use accordo_diagram_open to open it first." }
 ```
 
-The `accordo_diagram_render` MCP tool (§10) defaults to semantic export (Kroki) which is always available — it only needs the `.mmd` file. Canvas export (Excalidraw → SVG/PNG preserving layout) requires the diagram webview to be open. If canvas mode is requested but the webview is closed, the tool falls back to semantic mode and includes a warning in the output.
+There is no fallback rendering path. Sequential diagram types (sequenceDiagram, gantt, gitGraph, timeline, quadrantChart) are not supported by this extension and return an error at parse time.
+
+### 8.3 No semantic fallback
+
+Kroki is not used anywhere in this extension. The extension does not have a "semantic render" mode. A diagram that cannot be rendered from the canvas cannot be rendered at all — this is intentional. The curated layout.json positions are the product; a stripped auto-layout re-render would discard them.
 
 ---
 
@@ -782,7 +730,6 @@ output: {
     type: DiagramType;
     node_count: number;
     last_modified: string;       // ISO 8601
-    has_layout: boolean;         // false for sequential diagrams
   }>;
 }
 ```
@@ -806,7 +753,7 @@ output: {
 }
 ```
 
-Writes the `.mmd` file. Parses it. For spatial diagrams: runs initial auto-layout via dagre and writes `layout.json` with all nodes placed. For sequential diagrams: no layout file.
+Writes the `.mmd` file. Parses it. Runs initial auto-layout via dagre and writes `layout.json` with all nodes placed.
 
 ### `accordo_diagram_get`
 
@@ -941,23 +888,19 @@ Updates only the `style` field for the node in layout.json. Other layout fields 
 input: {
   path: string;
   format: "svg" | "png";
-  mode?: "canvas" | "semantic";  // default: "semantic" (always available); "canvas" requires open webview
-  output_path?: string;          // if omitted, derives from diagram path
+  output_path?: string;  // if omitted, derives from diagram path
 }
 
 output: {
   rendered: true;
   output_path: string;
   format: string;
-  mode: "canvas" | "semantic";
 }
 ```
 
-**Canvas mode:** Exports from the Excalidraw webview (preserves layout.json positions). Requires the diagram to be open in the webview.
+Exports the Excalidraw canvas as SVG or PNG via Excalidraw's built-in `exportToSvg()` / `exportToBlob()` API. Preserves all layout.json positions — the output is a faithful vector copy of what the user sees on screen.
 
-**Semantic mode:** Calls Kroki with the Mermaid source (auto-layout, ignores layout.json).
-
-If the diagram is not open in a webview and canvas mode is requested, the tool falls back to semantic mode and includes a warning in the output.
+Requires the diagram to be open in the webview. If not open, returns an error with instructions to open it first. There is no fallback rendering path.
 
 ---
 
@@ -1104,16 +1047,16 @@ The agent can say "move the Auth Service box to x=80, y=200" or "make the critic
 
 **Render:**
 ```
-accordo_diagram_render(path, format: "svg"|"png", mode?: "canvas"|"semantic")
-→ { output_path, mode }
+accordo_diagram_render(path, format: "svg"|"png")
+→ { output_path }   // canvas export via Excalidraw API; requires webview open
 ```
 
 ### 13.2 Human capabilities (VSCode webview)
 
-The human interacts through a dual-pane panel (spatial) or single-pane panel (sequential):
+The human interacts through the dual-pane panel:
 
-**Left pane:** Mermaid text editor (standard Monaco editor, syntax highlighting)
-**Right pane:** Excalidraw canvas (interactive) — spatial diagrams only
+**Left pane:** Mermaid text editor (Monaco, syntax highlighting)
+**Right pane:** Excalidraw canvas (interactive)
 
 Both panes are live — editing either one updates the other.
 
@@ -1171,8 +1114,6 @@ Selection writes to `layout.json aesthetics` and triggers a canvas re-render. Th
 **Export dropdown** offers:
 - Export as SVG (canvas) — what you see
 - Export as PNG (canvas) — what you see
-- Export as SVG (semantic) — Kroki auto-layout
-- Export as PNG (semantic) — Kroki auto-layout
 
 **Status bar** (bottom): node count, unplaced count, layout coverage %, diagram type, last reconciled indicator.
 
@@ -1182,18 +1123,14 @@ Selection writes to `layout.json aesthetics` and triggers a canvas re-render. Th
 - Canvas interaction → immediate layout.json patch → Mermaid pane unchanged
 - Any file change on disk (from agent) → webview reloads with toast notification
 
-### 14.2 Webview panel — Sequential diagrams
-
-Single-pane: Monaco editor (left) + Kroki SVG preview (right). No Excalidraw. No layout.json.
-
-### 14.3 Commands
+### 14.2 Commands
 
 | Command | Action |
 |---|---|
 | `accordo.diagram.new` | Open diagram type picker, create new diagram |
 | `accordo.diagram.open` | Open existing `.mmd` in appropriate panel |
 | `accordo.diagram.reconcile` | Force full reconciliation pass |
-| `accordo.diagram.render` | Export via dialog (format + mode selection) |
+| `accordo.diagram.render` | Export canvas as SVG or PNG via Excalidraw API |
 | `accordo.diagram.resetLayout` | Discard layout.json, re-run auto-layout |
 | `accordo.diagram.fitView` | Fit canvas viewport to all nodes |
 
@@ -1220,8 +1157,7 @@ The Mermaid file is always the topology truth, even when the change was initiate
 | Initial auto-layout — flowchart, classDiagram, stateDiagram-v2, erDiagram | `@dagrejs/dagre` | Headless Sugiyama layered layout (see §15.1) |
 | Initial auto-layout — block-beta (diag.2) | `cytoscape` + `cytoscape-fcose` | Force-directed with cluster support; headless-ready |
 | Initial auto-layout — mindmap (diag.2) | `d3-hierarchy` | Radial tree from centre; fully headless |
-| Rendering / export | **Kroki** self-hosted or Kroki.io | SVG/PNG for semantic renders |
-| Canvas export | Excalidraw built-in `exportToSvg` / `exportToBlob` | SVG/PNG preserving layout |
+| Canvas export | Excalidraw built-in `exportToSvg` / `exportToBlob` | SVG/PNG preserving full layout and aesthetics |
 | Legacy import | `convert2mermaid` | Convert draw.io/Excalidraw files to Mermaid (diag.4) |
 
 **Note on `@excalidraw/mermaid-to-excalidraw`:** This library is NOT used as a pipeline step. Research confirms it produces ephemeral Excalidraw element IDs and requires a DOM for position extraction. Instead, the canvas is built directly from (parsed Mermaid graph + layout.json), constructing Excalidraw elements programmatically (§9). This gives us full control over element construction and eliminates the ID-stability problem entirely.
@@ -1240,7 +1176,6 @@ Mermaid itself (v11.x) is composed on multiple layout engines — they are split
 | `erDiagram` | Spatial | Sugiyama layered (undirected — use `rankdir: LR`, no forced direction) | `@dagrejs/dagre` | diag.1 ✅ adequate |
 | `block-beta` | Spatial | Force-directed with cluster containment | `cytoscape` + `cytoscape-fcose` | diag.2 |
 | `mindmap` | Spatial | Radial tree from root | `d3-hierarchy` | diag.2 |
-| `sequenceDiagram`, `gantt`, `gitGraph`, `timeline`, `quadrantChart` | Sequential | N/A — Kroki renders these entirely | — | all |
 
 **Why not "use Mermaid's layout by rendering to SVG and parsing coordinates" (Kroki extraction approach):**
 Mermaid's rendering layer (`dagre-d3-es`) fuses layout and SVG drawing into one pass. Extracting positions from the SVG output is fragile — the coordinate transform chain (viewBox, CSS offsets, nested `<g>` transforms) changes between Mermaid versions. Since we pin Mermaid at `11.12.3` and the underlying layout libraries are stable independent packages, calling them directly gives us the same quality with zero fragility.
@@ -1353,10 +1288,6 @@ packages/diagram/
       panel.ts                    # VSCode webview panel management
       webview.html                # Webview HTML shell
       webview.ts                  # Webview-side script (Excalidraw + Monaco + messaging)
-
-    render/
-      kroki.ts                    # Kroki API client
-      export.ts                   # Canvas export (Excalidraw → SVG/PNG)
 ```
 
 **Estimated total implementation:** ~3000 lines for diag.1, ~5000 lines for diag.1+diag.2.
@@ -1377,15 +1308,14 @@ packages/diagram/
 - Auto-layout for new diagrams and unplaced nodes (dagre)
 - MCP tools: `accordo_diagram_list`, `accordo_diagram_create`, `accordo_diagram_get`, `accordo_diagram_patch`, `accordo_diagram_render`
 - **`accordo_diagram_style_guide` MCP tool — returns diagram-type-specific aesthetic guidance (§23)**
-- **`accordo_diagram_create` injects standard classDef palette into generated Mermaid (§23)**
-- VSCode webview: dual-pane Mermaid + Excalidraw (spatial diagrams only)
+- `accordo_diagram_create` injects standard classDef palette into generated Mermaid (§23)
+- VSCode webview: dual-pane Mermaid + Excalidraw
 - Canvas → layout.json sync (drag/drop, resize)
-- Semantic export always available via Kroki (SVG/PNG from Mermaid source)
-- Canvas export available when diagram webview is open (Excalidraw → SVG/PNG)
+- Canvas export via Excalidraw API (SVG/PNG, what-you-see-is-what-you-get)
 - Agent edit notification toasts in webview
 - Parser adapter test suite (comprehensive shape/edge/cluster coverage)
 
-**Support: flowchart only. Agent + human can both create and edit. Layout preserved across all edits. Semantic export always available; canvas export when webview is open. Hand-drawn aesthetic (roughness=1) on by default.**
+**Support: flowchart only. Agent + human can both create and edit. Layout preserved across all edits. Canvas export always produces the curated scene. Hand-drawn aesthetic (roughness=1) on by default.**
 
 ### diag.2 — Full topology tools + all spatial types + undo + animation
 
@@ -1401,12 +1331,10 @@ packages/diagram/
 - Full shape fidelity in canvas generator (all Mermaid shapes)
 - **Draw-on animation: progressive element loading at canvas render time (§22)**
 - **Draw-on / static toggle in webview toolbar (§14.1)**
-- **Sequential diagram mode: single-pane Mermaid editor + Kroki live preview (§8.2)**
 - Comment SDK integration: webview loads `@accordo/comment-sdk`, registers canvas-aware surface adapter (§25)
 
-### diag.3 — Sequential diagrams polish + CI
+### diag.3 — Polish + CI
 
-- Sequential diagram PNG/SVG export command
 - CI validation tool (does diagram render cleanly?)
 - Diagram type picker on new-diagram command
 - Performance optimization: partial scene updates for layout-only changes (§9.5)
@@ -1446,11 +1374,11 @@ packages/diagram/
 | No invalid-Mermaid handling | Validation gate + last-valid-state hold + error indicator (§7.4) | Every keystroke produces invalid intermediate states |
 | Unplaced node placement without collision check | Collision avoidance pass after placement (§7.3) | Batch adds produce overlapping nodes without it |
 | No undo story | Operation log with file-level undo/redo (§11) | Canvas undo destroyed on scene regeneration |
-| Kroki export only (ignores layout.json) | Dual export: canvas export (preserves layout) + semantic render (Kroki) (§8) | "Export" showing different layout than canvas is confusing |
+| Kroki export only (ignores layout.json) | Canvas export only via Excalidraw API — faithful vector copy of the curated canvas (§8) | Sequential models removed; Kroki discards layout.json positions |
 | accordo_diagram_list deferred to diag.3 | accordo_diagram_list in diag.1 (§10) | Agent needs to discover diagrams from day one |
 | Conflict: "drag is lost" (no notification) | Toast notification + diag.2 dirty-canvas guard (§12) | Silent data loss is bad UX |
 | Rename annotation persists indefinitely | Auto-cleanup after reconciliation (§4.3) | Prevents re-application on next cycle |
-| Sequential diagrams lumped into unified architecture | Sequential diagrams acknowledged as a separate, simpler feature (§2.2, §8.2) | Honest scoping — they share almost no architecture |
+| Sequential diagrams acknowledged as a separate, simpler feature (§2.2, §8.2) | Sequential diagram types are out of scope — this extension is a shared spatial whiteboard only | Principled scope reduction: if there is no 2D canvas to collaborate on, it is not this extension's concern |
 | `@mermaid-js/mermaid-zenuml` referenced for parsing | Corrected: use main `mermaid` package; `@mermaid-js/parser` doesn't cover key types (§15) | Misleading library reference in v4.0 |
 | ~300 line reconciler estimate | ~400 lines (accounts for edge identity + collision avoidance) | More honest sizing |
 | No module structure | Full file/directory layout (§17) | Ready for implementation |
@@ -1923,12 +1851,6 @@ mindmap
             Primary DB
             Cache
 ```
-
----
-
-### 24.6 Sequential diagrams (reference)
-
-Sequential diagrams (sequence, gantt, git graph, timeline, quadrant) go through Kroki only (§8.2). There is no canvas, no Excalidraw rendering, and no aesthetic system. The Mermaid source IS the complete artifact. The `accordo_diagram_style_guide` tool returns an empty response for sequential types with the note: "Sequential diagrams are rendered via Kroki; no aesthetic configuration is available."
 
 ---
 

@@ -13,7 +13,6 @@ import mermaid from "mermaid";
 import type {
   DiagramType,
   SpatialDiagramType,
-  SequentialDiagramType,
   ParseResult,
   RenameAnnotation,
 } from "../types.js";
@@ -33,28 +32,19 @@ const SPATIAL_TYPES = new Set<string>([
   "mindmap",
 ]);
 
-const SEQUENTIAL_TYPES = new Set<string>([
-  "sequenceDiagram",
-  "gantt",
-  "gitGraph",
-  "timeline",
-  "quadrantChart",
-]);
-
 // More-specific patterns must come before shorter matches.
 const TYPE_PATTERNS: ReadonlyArray<[RegExp, DiagramType]> = [
   [/^(flowchart|graph)\b/, "flowchart"],
   [/^stateDiagram-v2\b/, "stateDiagram-v2"],
-  [/^sequenceDiagram\b/, "sequenceDiagram"],
   [/^classDiagram\b/, "classDiagram"],
   [/^erDiagram\b/, "erDiagram"],
-  [/^gantt\b/, "gantt"],
-  [/^gitGraph\b/, "gitGraph"],
   [/^mindmap\b/, "mindmap"],
-  [/^timeline\b/, "timeline"],
-  [/^quadrantChart\b/, "quadrantChart"],
   [/^block-beta\b/, "block-beta"],
 ];
+
+// Known sequential/non-spatial types that are explicitly out of scope.
+const UNSUPPORTED_TYPE_RE =
+  /^(sequenceDiagram|gantt|gitGraph|timeline|quadrantChart)\b/;
 
 const RENAME_RE = /%% @rename: (\S+) -> (\S+)/g;
 
@@ -75,23 +65,11 @@ export function detectDiagramType(source: string): DiagramType | null {
 }
 
 /**
- * Type guard: returns true when `type` is a SpatialDiagramType.
- * Spatial diagrams have 2-D node positions and need a .layout.json file.
+ * Type guard: returns true when the string is a supported spatial diagram type.
+ * Use this to validate types detected from file content before processing.
  */
-export function isSpatialType(
-  type: DiagramType
-): type is SpatialDiagramType {
+export function isSpatialType(type: string): type is DiagramType {
   return SPATIAL_TYPES.has(type);
-}
-
-/**
- * Type guard: returns true when `type` is a SequentialDiagramType.
- * Sequential diagrams are rendered via Kroki only; no canvas involved.
- */
-export function isSequentialType(
-  type: DiagramType
-): type is SequentialDiagramType {
-  return SEQUENTIAL_TYPES.has(type);
 }
 
 /**
@@ -103,6 +81,23 @@ export function isSequentialType(
 export function parseMermaid(source: string): ParseResult {
   const type = detectDiagramType(source);
   if (type === null) {
+    // Check whether the source starts with a known-but-unsupported sequential type
+    // so callers receive an actionable message rather than a generic error.
+    for (const line of source.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("%%")) continue;
+      const m = UNSUPPORTED_TYPE_RE.exec(trimmed);
+      if (m) {
+        return {
+          valid: false,
+          error: {
+            line: 0,
+            message: `Diagram type '${m[1]}' is not supported by this extension. Only spatial types are supported: flowchart, classDiagram, stateDiagram-v2, erDiagram, mindmap, block-beta.`,
+          },
+        };
+      }
+      break; // first meaningful line checked — no need to scan further
+    }
     return {
       valid: false,
       error: { line: 0, message: "Unrecognised or empty diagram source" },
