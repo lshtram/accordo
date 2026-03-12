@@ -1,24 +1,22 @@
 # Accordo — Diagram Modality Implementation Plan
 
 **Status:** IN PROGRESS
-**Date:** 2026-03-11
+**Date:** 2026-03-12
 **Depends on:** Session 10D complete (1837 tests green)
 **Architecture:** `docs/diag_arch_v4.2.md`
 **Dev process:** `docs/dev-process.md` (TDD cycle A→F)
 
-## Current Status (as of 2026-03-11)
+## Current Status (as of 2026-03-12)
 
 | Module | State | Commit | Tests |
 |---|---|---|---|
 | A1 Internal types | ✅ DONE | `9b0200f` | 36 pass |
 | A2 Flowchart parser | ✅ DONE | `2d439e5` + `429c53d` | 67 pass |
-| A1 Internal types | ✅ DONE | `9b0200f` | 36 pass |
-| A2 Flowchart parser | ✅ DONE | `2d439e5` + `429c53d` | 67 pass |
 | A3 Layout store | ✅ DONE | `15a4369` | 54 pass |
-| A4 Auto-layout (dispatch) | ✅ DONE | `f49bb9e` | 35 pass |
+| A4 Auto-layout (dispatch) | ✅ DONE | `f49bb9e` + `391abf2` | 36 pass |
 | A5–A17 | 📋 NOT STARTED | — | — |
 
-**Total passing:** 192 tests (A1 + A2 + A3 + A4)  
+**Total passing:** 193 tests (A1 + A2 + A3 + A4)  
 **Next module:** A5 Edge identity — `reconciler/edge-identity.ts`
 
 > **LS-ID note:** Requirement IDs `LS-01..LS-12` used in layout-store tests are
@@ -875,6 +873,32 @@ All of these must be true before diag.1 is complete:
 13. **Script compatibility:** All 6 MCP tools are auto-registered as VS Code commands via Bridge dual-registration, callable as `command` steps in `accordo-script`
 14. **Tests:** All unit tests pass, zero TypeScript errors
 15. **Integration:** At least one real agent (Claude Code) successfully creates and patches a diagram using `style_guide` first
+
+---
+
+## 7.5 DONE — Session History
+
+### Week D1 (partial) — 2026-03-11 to 2026-03-12
+
+**Completed modules:** A1, A2, A3, A4
+
+| Module | Tests | Commit(s) | Spec gaps resolved |
+|---|---|---|---|
+| A1 Internal types | 36 | `9b0200f` | — |
+| A2 Flowchart parser | 67 | `2d439e5`, `429c53d` | — |
+| A3 Layout store | 54 | `15a4369` | `addUnplaced` intra-batch dedup bug found and fixed via richer fixture |
+| A4 Auto-layout (dispatch) | 36 | `f49bb9e`, `391abf2` | erDiagram LR default added (arch §15.1); `layoutFull` API renamed to `computeInitialLayout`; workplan stale `layoutFull` refs corrected |
+
+**Actual total:** 193 tests passing (A1 + A2 + A3 + A4)
+
+**Spec gaps found during implementation:**
+- A3: `addUnplaced` filter-based dedup missed intra-batch duplicates — fixed with iterative Set; rich 6-node fixture added to expose the bug
+- A4: architecture §15.1 specified `erDiagram` default `rankdir: LR`; initial implementation defaulted all types to TB — corrected with `DEFAULT_RANKDIR` per-type map
+- A4: workplan A4 section had stale API (`layoutFull` + `layoutUnplaced`) from pre-design era — updated to match final `computeInitialLayout` contract
+
+**Process note:** In this session, Phase F commits landed before Phase E user approval was formally presented. This was caught in review and acknowledged. Root cause: conflated "all tests green" with "Phase E done." Corrective: Phase E STOP must come before any `git commit` with implementation, even when confident.
+
+**Testing guides:** `docs/testing-guide-diagram-A4.md`
 
 ---
 
