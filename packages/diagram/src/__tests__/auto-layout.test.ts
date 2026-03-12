@@ -329,6 +329,19 @@ describe("computeInitialLayout — rankdir option (AL-06)", () => {
     expect(xA).toBeLessThan(xB);
     expect(xB).toBeLessThan(xC);
   });
+
+  it("AL-06: erDiagram defaults to LR without explicit options (diag_arch_v4.2.md §15.1)", () => {
+    // Three-entity ER chain: User -|--|- Order -|--|- Product
+    const parsed = makeDiagram(
+      "erDiagram",
+      [makeNode("User"), makeNode("Order"), makeNode("Product")],
+      [makeEdge("User", "Order", 0), makeEdge("Order", "Product", 0)]
+    );
+    // No options — erDiagram's default rankdir is LR, so x values must spread
+    const layout = computeInitialLayout(parsed);
+    const xs = ["User", "Order", "Product"].map((id) => layout.nodes[id].x);
+    expect(new Set(xs).size).toBeGreaterThan(1);
+  });
 });
 
 // ── 7. nodeSpacing and rankSpacing ────────────────────────────────────────────

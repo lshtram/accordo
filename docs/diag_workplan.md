@@ -731,7 +731,7 @@ Each tool handler:
 |---|---|
 | `accordo_diagram_list` | `glob('**/*.mmd')` → detect type per file → return metadata |
 | `accordo_diagram_get` | `parseMermaid(source)` → return semantic graph + raw source |
-| `accordo_diagram_create` | write .mmd (inject standard classDef palette if none present) → parse → `layoutFull()` → write layout.json with `aesthetics: { roughness: 1, animationMode: "draw-on" }` |
+| `accordo_diagram_create` | write .mmd (inject standard classDef palette if none present) → parse → `computeInitialLayout()` → write layout.json with `aesthetics: { roughness: 1, animationMode: "draw-on" }` |
 | `accordo_diagram_patch` | write .mmd → `reconcile(old, new, layout)` → write layout.json |
 | `accordo_diagram_render` | canvas mode: request from webview. semantic mode: `renderMermaid()` |
 | `accordo_diagram_style_guide` | returns per-diagram-type palette, node sizing defaults, conventions, and starter template (v4.2 §23) — no disk I/O, pure lookup |

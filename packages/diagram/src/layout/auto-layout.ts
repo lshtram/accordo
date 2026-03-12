@@ -51,6 +51,16 @@ const FALLBACK_DIMS = { w: 180, h: 60 };
 /** Padding added around member-node centres when computing cluster bounds. */
 const CLUSTER_MARGIN = 20;
 
+/**
+ * Per-type rankdir defaults (diag_arch_v4.2.md §15.1).
+ * erDiagram is conventionally read left-to-right and its relationships are
+ * undirected, so LR gives a more natural reading direction than TB.
+ * All other dagre types default to TB.
+ */
+const DEFAULT_RANKDIR: Partial<Record<string, LayoutOptions["rankdir"]>> = {
+  erDiagram: "LR",
+};
+
 // ── Public interfaces ─────────────────────────────────────────────────────────
 
 /**
@@ -204,8 +214,9 @@ export function computeInitialLayout(
     throw new UnsupportedDiagramTypeError(parsed.type);
   }
 
+  const typeDefaultRankdir = DEFAULT_RANKDIR[parsed.type] ?? "TB";
   const opts: Required<LayoutOptions> = {
-    rankdir:     options?.rankdir     ?? "TB",
+    rankdir:     options?.rankdir     ?? typeDefaultRankdir,
     nodeSpacing: options?.nodeSpacing ?? 60,
     rankSpacing: options?.rankSpacing ?? 80,
   };

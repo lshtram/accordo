@@ -43,7 +43,7 @@ All four test files must pass. The A4-specific file is
 pnpm typecheck
 ```
 
-Expected: exits `0` with no output. Any line of TypeScript error output is a failure.
+Expected: exits `0`. Any line beginning with a file path and `error TS` is a failure; pnpm script banners on success are normal.
 
 ---
 
