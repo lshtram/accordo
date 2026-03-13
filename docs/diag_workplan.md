@@ -22,12 +22,12 @@
 | A10 Canvas generator | ✅ DONE | `bef728f` | 27 pass (CG-01..CG-27) |
 | A11 Protocol types | ✅ DONE | — | type-only |
 | A14 MCP tool definitions | ✅ DONE | — | 45 pass (DT-01..DT-45) |
-| A15 Webview panel | 📋 NOT STARTED | — | ~15 estimated |
+| A15 Webview panel | ✅ DONE | `aa7d8ec` | 15 pass (AP-01..AP-15) |
 | A16 Webview frontend | 📋 NOT STARTED | — | manual test only |
 | A17 Extension entry | 📋 NOT STARTED | — | ~10 estimated |
 
-**Total passing (packages/diagram):** 377 tests  
-**Next module:** A15 (Webview panel) — unblocked
+**Total passing (packages/diagram):** 393 tests  
+**Next module:** A16 (Webview frontend) — unblocked
 
 > **LS-ID note:** Requirement IDs `LS-01..LS-12` used in layout-store tests are
 > locally derived. A canonical mapping should be established in a future pass.

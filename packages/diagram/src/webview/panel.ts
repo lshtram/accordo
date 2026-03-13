@@ -338,8 +338,9 @@ export class DiagramPanel {
   private _handleExportReady(format: string, data: string): void {
     if (!this._pendingExport) return;
     const { resolve, format: expectedFormat } = this._pendingExport;
-    this._pendingExport = null;
+    // Check format BEFORE clearing — a mismatched reply must not orphan the promise.
     if (format !== expectedFormat) return;
+    this._pendingExport = null;
     resolve(Buffer.from(data, "base64"));
   }
 }

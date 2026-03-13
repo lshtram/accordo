@@ -194,6 +194,30 @@ describe("DiagramPanel.requestExport()", () => {
     expect(result.toString("utf8")).toBe(svgContent);
   });
 
+  it("AP-09b: a mismatched canvas:export-ready reply does not resolve or strand the pending export", async () => {
+    const panel = await DiagramPanel.create(ctx as never, mmdPath);
+
+    const exportPromise = panel.requestExport("svg");
+
+    // Webview replies with the wrong format — must be ignored
+    vscPanel.webview.simulateMessage({
+      type: "canvas:export-ready",
+      format: "png", // requested svg, got png
+      data: btoa("<binary/>"),
+    });
+
+    // Promise must still be pending — a second export request should get ExportBusyError
+    await expect(panel.requestExport("svg")).rejects.toThrow(ExportBusyError);
+
+    // Now the correct reply arrives — original promise resolves
+    vscPanel.webview.simulateMessage({
+      type: "canvas:export-ready",
+      format: "svg",
+      data: btoa("<svg/>"),
+    });
+    await expect(exportPromise).resolves.toBeInstanceOf(Buffer);
+  });
+
   it("AP-10: rejects with ExportBusyError when a second export is requested while one is in flight", async () => {
     const panel = await DiagramPanel.create(ctx as never, mmdPath);
 
