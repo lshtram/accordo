@@ -45,7 +45,7 @@ The diagram modality follows the exact pattern established by `accordo-editor`:
 │  ┌────────────────────────────────────────────────────────────────┐  │
 │  │  accordo-diagram  (extensionKind: ["workspace"])               │  │
 │  │  • 15 diagram MCP tools (6 in diag.1, 9 added in diag.2)      │  │
-│  │  • Webview panel (Mermaid editor + Excalidraw canvas)          │  │
+│  │  • Webview panel (Excalidraw canvas, canvas-only)               │  │
 │  │  • Registers tools via BridgeAPI.registerTools()               │  │
 │  │  • Publishes modality state via BridgeAPI.publishState()       │  │
 │  └────────────────────┬───────────────────────────────────────────┘  │
@@ -215,7 +215,7 @@ packages/diagram/
 │       ├── panel.test.ts
 │       ├── protocol.ts             # Message types between host ↔ webview
 │       ├── webview.html            # Webview HTML shell (loads comment-sdk)
-│       └── webview.ts              # Webview-side: Excalidraw + Monaco + SDK + messaging
+│       └── webview.ts              # Webview-side: Excalidraw canvas + SDK + host messaging
 │
 └── media/
     └── excalidraw-bundle.js        # Pre-built Excalidraw for webview
@@ -285,37 +285,44 @@ Agent                    Hub          Bridge       accordo-diagram        Disk
   │◄──────────────────────│             │                │                  │
 ```
 
-### 3.2 Human edits Mermaid text (webview open)
+### 3.2 Human edits Mermaid source (opens .mmd as text, saves, panel refreshes)
+
+The webview shows Excalidraw only. To edit Mermaid source the human opens the
+`.mmd` file as a normal VS Code text editor tab (File Explorer or `Ctrl+P`),
+edits it, and saves. The extension's file watcher triggers the refresh.
 
 ```
-Human (Monaco editor in webview)     Webview         Extension Host        Disk
-  │                                    │                  │                  │
-  │ types "db[(Database)]"             │                  │                  │
-  │───────────────────────────────────►│                  │                  │
-  │                                    │ 500ms debounce   │                  │
-  │                                    │ ................ │                  │
-  │                                    │ postMessage:     │                  │
-  │                                    │ mermaid-changed  │                  │
-  │                                    │ {source}         │                  │
-  │                                    │─────────────────►│                  │
-  │                                    │                  │ validate(source) │
-  │                                    │                  │ if invalid:      │
-  │                                    │                  │   postMessage:   │
-  │                                    │ parse-error      │   parse-error    │
-  │                                    │◄─────────────────│   {line, msg}    │
-  │ red squiggle on error line         │                  │   STOP           │
-  │◄───────────────────────────────────│                  │                  │
-  │                                    │                  │ if valid:        │
-  │                                    │                  │ write .mmd       │
-  │                                    │                  │─────────────────►│
-  │                                    │                  │ reconcile()      │
-  │                                    │                  │ write layout.json│
-  │                                    │                  │─────────────────►│
-  │                                    │                  │ generateCanvas() │
-  │                                    │ load-scene       │                  │
-  │                                    │◄─────────────────│                  │
-  │ canvas updates with new node       │                  │                  │
-  │◄───────────────────────────────────│                  │                  │
+Human (VS Code text editor)     Extension Host             Webview          Disk
+  │                                  │                        │               │
+  │ opens arch.mmd as text           │                        │               │
+  │ (File Explorer / Ctrl+P)         │                        │               │
+  │──────────────────────────────────►                        │               │
+  │ edits source, saves (⌘S)         │                        │               │
+  │─────────────────────────────────►│                        │               │
+  │                                  │ file watcher fires     │               │
+  │                                  │ onMermaidFileChanged   │               │
+  │                                  │                        │               │
+  │                                  │ readFile + parseMermaid│               │
+  │                                  │──────────────────────────────────────►│
+  │                                  │ reconcile()            │               │
+  │                                  │──────────────────────────────────────►│
+  │                                  │ generateCanvas()       │               │
+  │                                  │                        │               │
+  │                                  │ postMessage:           │               │
+  │                                  │ host:load-scene        │               │
+  │                                  │───────────────────────►│               │
+  │                                  │                        │ canvas updates│
+  │                                  │                        │               │
+  │                                  │ (on parse failure:     │               │
+  │                                  │ postMessage:           │               │
+  │                                  │ host:error-overlay     │               │
+  │                                  │ {message}              │               │
+  │                                  │───────────────────────►│               │
+  │                                  │                        │ error overlay │
+  │                                  │                        │ shown; canvas │
+  │                                  │                        │ unchanged.    │
+  │                                  │                        │ Clears on next│
+  │                                  │                        │ load-scene.)  │
 ```
 
 ### 3.3 Human drags a node (webview open)
@@ -437,7 +444,7 @@ Each module follows the TDD cycle from `dev-process.md`.
 | A11 | Webview protocol | `webview/protocol.ts` | ~60 | types | type compilation |
 | A14 | MCP tool definitions | `tools/diagram-tools.ts` | ~450 | A2–A11 | ~45 |
 | A15 | Webview panel | `webview/panel.ts` | ~300 | vscode, protocol, A7, A10 | ~15 |
-| A16 | Webview frontend | `webview/webview.html`, `webview/webview.ts` | ~400 | Excalidraw, Monaco | manual test |
+| A16 | Webview frontend | `webview/webview.html`, `webview/webview.ts` | ~300 | Excalidraw | manual test |
 | A17 | Extension entry | `extension.ts` | ~60 | A14, A15, BridgeAPI | ~10 |
 
 **Total diag.1 estimate:** ~3000 lines of implementation, ~303 unit tests.
@@ -727,7 +734,7 @@ Each tool handler:
 
 ### A15: Webview panel (`webview/panel.ts`)
 
-VSCode webview panel manager. Creates, shows, and communicates with the dual-pane webview.
+VSCode webview panel manager. Creates, shows, and communicates with the Excalidraw canvas webview.
 
 ```typescript
 export class DiagramPanel {
@@ -751,18 +758,19 @@ export class DiagramPanel {
 ```
 
 The panel manages:
-- Monaco editor instance (Mermaid pane) — synced with .mmd file on disk
 - Excalidraw canvas instance — generated from parse + layout
-- File watchers for external changes (agent edits)
-- Debounced reconciliation on text changes
-- Layout.json updates on canvas interactions
+- File watcher for `.mmd` and `.layout.json` changes on disk (agent edits or human text-editor saves)
+- Debounced reconciliation and scene refresh on file change (500 ms)
+- Layout.json patch on canvas interactions (drag, resize)
 
 ### A16: Webview frontend
 
 The webview HTML loads:
 - Pre-built Excalidraw bundle (React-based)
-- Monaco editor (from VSCode's built-in)
-- Custom messaging layer that talks to extension host
+- Custom messaging layer that communicates with the extension host
+
+No in-panel text editor. The `.mmd` source is edited as a normal VS Code text
+file. The webview is intentionally canvas-only for a clean whiteboard experience.
 
 This module is tested manually (webview context, not Node.js).
 
@@ -805,12 +813,12 @@ This module is tested manually (webview context, not Node.js).
 | Day | Module | Output |
 |---|---|---|
 | Mon | A11: webview protocol | Type definitions |
-| Mon–Tue | A14: diagram-tools.ts | ~45 tests, all 5 diag.1 tools |
+| Mon–Tue | A14: diagram-tools.ts | ~45 tests, all 6 diag.1 tools |
 | Wed–Thu | A15: panel.ts | ~15 tests, webview lifecycle |
-| Thu–Fri | A16: webview frontend (HTML + TS) | Manual testing, dual-pane rendering |
+| Thu–Fri | A16: webview frontend (HTML + TS) | Manual testing, Excalidraw canvas rendering |
 | Fri | A17: extension.ts | ~10 tests, activation + registration |
 
-**Gate:** Agent can create, read, patch, and render diagrams via MCP tools. Human can open a `.mmd` file in the dual-pane webview. Mermaid edits reconcile and update canvas. Canvas drags update layout.json.
+**Gate:** Agent can create, read, patch, and render diagrams via MCP tools. Human can open a `.mmd` file in the Excalidraw canvas webview. Agent or human text-editor saves to the `.mmd` file trigger canvas refresh via file watcher. Canvas drags update layout.json.
 
 ### Week D4 — Integration + Polish
 
@@ -841,8 +849,8 @@ All of these must be true before diag.1 is complete:
 4. **Aesthetics:** Roughness=1 (hand-drawn) on by default. `aesthetics` field persists per-diagram in `layout.json`. (Draw-on animation deferred to diag.2.)
 5. **MCP tools (6):** `accordo_diagram_list`, `_create`, `_get`, `_patch`, `_render`, `_style_guide` callable by agent via Hub → Bridge → accordo-diagram
 6. **style_guide:** `accordo_diagram_create` auto-injects the standard classDef color palette. `accordo_diagram_style_guide` returns the full per-type guide including palette, node sizing, conventions, and a starter template.
-7. **Webview:** Dual-pane panel (Mermaid + Excalidraw) renders correctly for spatial diagrams
-8. **Sync:** Mermaid edits → reconcile → canvas refresh (500ms debounce, invalid state handled)
+7. **Webview:** Excalidraw canvas panel renders correctly for spatial diagrams (canvas-only, no in-panel text editor)
+8. **Sync:** `.mmd` file save (agent tool or human VS Code text editor) → file watcher → reconcile → canvas refresh (500 ms debounce)
 9. **Sync:** Canvas drag/resize → layout.json patch (immediate, no Mermaid change)
 10. **Export:** Canvas export (Excalidraw API → SVG/PNG) available when webview is open. Returns actionable error if webview is closed. No fallback path.
 11. **External edits:** Agent .mmd edit on disk → webview refreshes with toast notification
@@ -909,7 +917,7 @@ All of these must be true before diag.1 is complete:
 | Canvas generation performance (100+ nodes) | Medium | Partial updates for layout-only changes. Profile in Week D4. |
 | Dagre produces poor layout for certain graph shapes | Low | Users can adjust. This is initial placement only. |
 
-| Monaco editor in webview conflicts with Excalidraw keyboard shortcuts | Medium | Keyboard shortcut scoping by pane focus. Test in Week D3. |
+| Excalidraw keyboard shortcuts conflict with VS Code global shortcuts | Low | Webview focus traps shortcuts natively. No mitigations needed. |
 
 ---
 
@@ -941,7 +949,7 @@ All modules tested in isolation with mocks. Same patterns as Hub and Bridge test
 - Layout store: test against in-memory objects (no disk I/O in unit tests)
 - Reconciler: pure function — test with input/output pairs
 - Canvas generator: snapshot tests for element arrays
-- Tools: mock `vscode.workspace.fs`, mock webview panel
+- Tools: mock Node.js `fs/promises`, mock webview panel
 
 ### Integration tests
 
@@ -952,8 +960,8 @@ Full pipeline tests that exercise the real mermaid parser (no mocks):
 
 ### Manual tests (webview)
 
-- Open .mmd in dual-pane
-- Edit Mermaid text → canvas updates
-- Drag nodes → layout.json updates
-- Agent edits file → webview refreshes with toast
-- Export canvas SVG and semantic SVG → verify both produce output
+- Open .mmd via command → Excalidraw canvas panel appears
+- Drag nodes on canvas → layout.json updates
+- Open .mmd as text in VS Code, edit and save → canvas refreshes (file watcher)
+- Agent patches .mmd via MCP tool → canvas refreshes with "Updated by agent" toast
+- Export canvas as SVG/PNG → verify file written to disk

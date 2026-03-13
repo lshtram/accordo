@@ -110,21 +110,31 @@ export interface HostRequestExportMessage {
   format: "svg" | "png";
 }
 
-/** Notify the webview that the Mermaid source has a parse error. */
-export interface HostParseErrorMessage {
-  type: "host:parse-error";
-  line: number;
+/**
+ * Show a transient toast notification inside the webview (ephemeral, auto-dismiss).
+ * Use for informational messages such as "Updated by agent".
+ */
+export interface HostToastMessage {
+  type: "host:toast";
   message: string;
 }
 
-/** Notify the webview that the Mermaid source is valid. */
-export interface HostParseOkMessage {
-  type: "host:parse-ok";
+/**
+ * Display a persistent error overlay in the webview.
+ *
+ * Sent when the extension host cannot parse the `.mmd` source after a file-watcher
+ * change. The overlay covers the canvas until the next successful `host:load-scene`
+ * is received. Unlike `host:toast`, this is not auto-dismissed — it stays visible
+ * until the parse failure is resolved.
+ */
+export interface HostErrorOverlayMessage {
+  type: "host:error-overlay";
+  message: string;
 }
 
 /** Union of all messages the extension host can send to the webview. */
 export type HostToWebviewMessage =
   | HostLoadSceneMessage
   | HostRequestExportMessage
-  | HostParseErrorMessage
-  | HostParseOkMessage;
+  | HostToastMessage
+  | HostErrorOverlayMessage;

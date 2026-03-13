@@ -42,7 +42,7 @@ These diagram types store a `*.layout.json` sidecar alongside the Mermaid source
 
 ### 2.2 Out-of-Scope Diagram Types
 
-This extension is strictly a collaborative spatial whiteboard. Diagram types where order is the layout (sequence diagrams, gantt, git graphs, timelines, quadrant charts) have no 2D canvas to collaborate on and are **not supported** by this extension. If a user opens a `.mmd` file with an unsupported type, the extension returns a clear error: the file is not opened in the dual-pane panel.
+This extension is strictly a collaborative spatial whiteboard. Diagram types where order is the layout (sequence diagrams, gantt, git graphs, timelines, quadrant charts) have no 2D canvas to collaborate on and are **not supported** by this extension. If a user opens a `.mmd` file with an unsupported type, the extension returns a clear error: the file is not opened as an Excalidraw canvas panel.
 
 Out-of-scope types may be addressed by a separate extension or tool purpose-built for text-based diagram viewing.
 
@@ -497,7 +497,7 @@ While the human types, the Mermaid source will frequently be in an invalid state
 
 2. **Last-valid-state hold**: The canvas continues displaying the last successfully reconciled state. No flash, no blank, no reset.
 
-3. **Error indicator**: The Mermaid editor pane shows inline parse errors (red squiggle on the error line, error message in the status bar). These come directly from the mermaid parser's error output.
+3. **Error overlay**: The extension host posts a `host:error-overlay` message to the webview, which displays a persistent error overlay covering the canvas. The overlay includes the parse error message and remains visible until the next successful `host:load-scene` clears it. There is no inline squiggle — the Mermaid source is edited in the normal VS Code text editor, where VS Code's own language tooling may provide diagnostics independently.
 
 4. **Debounce window**: 500ms from last keystroke before attempting reconciliation. This naturally filters out most mid-edit invalid states.
 
@@ -505,9 +505,9 @@ While the human types, the Mermaid source will frequently be in an invalid state
 
 The flow:
 ```
-Keystroke → 500ms debounce → validateMermaid()
-  ├─ valid:   reconcile → update canvas
-  └─ invalid: show error indicator, keep last canvas state
+File watcher fires → validateMermaid()
+  ├─ valid:   reconcile → update canvas (host:load-scene)
+  └─ invalid: post host:error-overlay, keep last canvas state
 ```
 
 ### 7.5 Mindmap reconciliation
@@ -672,8 +672,8 @@ The Excalidraw webview communicates with the extension host via `vscode.postMess
 ```typescript
 { type: "host:load-scene",      elements: ExcalidrawElement[], appState: AppState }
 { type: "host:request-export",  format: "svg" | "png" }
-{ type: "host:parse-error",     line: number, message: string }
-{ type: "host:parse-ok" }
+{ type: "host:toast",           message: string }          // ephemeral info notification
+{ type: "host:error-overlay",   message: string }          // persistent parse-failure overlay
 ```
 
 The extension host maintains a **mermaidId-to-excalidrawId map** for the current session. When the webview reports a canvas interaction, the extension host translates the Excalidraw element ID back to the Mermaid node ID using this map, then updates layout.json.
@@ -908,7 +908,7 @@ Requires the diagram to be open in the webview. If not open, returns an error wi
 
 ### 11.1 The problem
 
-The system has three state stores (Mermaid text, layout.json, Excalidraw scene) and two editing surfaces (Monaco editor, Excalidraw canvas). Undo must work coherently across all of them.
+The system has three state stores (Mermaid text, layout.json, Excalidraw scene) and one editing surface (Excalidraw canvas). Undo must work coherently across all of them.
 
 ### 11.2 Strategy: file-level undo via operation log
 
@@ -939,17 +939,17 @@ interface DiagramOperation {
 
 **Redo:** Maintained as a separate stack. Cleared on any new edit (standard undo/redo semantics).
 
-### 11.3 Monaco editor undo
+### 11.3 Text editor undo
 
-The Monaco text editor (Mermaid pane) has its own undo stack. We do NOT try to synchronize it with our operation log. Instead:
+The VS Code text editor (used to edit `.mmd` files directly) has its own undo stack managed by VS Code itself. We do NOT try to synchronize it with our operation log. Instead:
 
-- Monaco undo is for **text-level** undo within the editor (undo a keystroke, undo a paste).
+- Text editor undo is for **text-level** undo within the file (undo a keystroke, undo a paste) — standard VS Code Cmd+Z behaviour.
 - The diagram-level undo (Ctrl+Z when canvas is focused) uses the operation log.
-- These are separate undo contexts, determined by which pane has focus.
+- These are separate undo contexts, determined by which surface has focus.
 
 ### 11.4 Phase note
 
-The operation log is a **diag.2** feature. diag.1 ships without undo beyond Monaco's built-in text undo. This is documented in the status bar: "Diagram undo: coming soon."
+The operation log is a **diag.2** feature. diag.1 ships without canvas-level undo. This is documented in the status bar: "Diagram undo: coming soon."
 
 ---
 
@@ -1053,15 +1053,12 @@ accordo_diagram_render(path, format: "svg"|"png")
 
 ### 13.2 Human capabilities (VSCode webview)
 
-The human interacts through the dual-pane panel:
+The human interacts through the Excalidraw canvas panel (canvas-only, no in-panel text editor).
 
-**Left pane:** Mermaid text editor (Monaco, syntax highlighting)
-**Right pane:** Excalidraw canvas (interactive)
+To edit Mermaid source, the human opens the `.mmd` file as a normal VS Code text editor tab (File Explorer or Ctrl+P), edits it, and saves. The panel's file watcher triggers an automatic canvas refresh.
 
-Both panes are live — editing either one updates the other.
-
-Human topology operations (via Mermaid text pane or canvas):
-- Type in Mermaid editor → reconciler runs, canvas updates, positions preserved
+Human topology operations (via VS Code text editor):
+- Open .mmd as text → edit source → save → file watcher fires → reconciler runs → canvas refreshes
 - Right-click canvas → "Add node" → inserts Mermaid node + layout entry
 - Right-click canvas → "Delete node" → removes from Mermaid + layout
 - Right-click canvas → "Add edge" → draws edge, adds to Mermaid
@@ -1118,9 +1115,9 @@ Selection writes to `layout.json aesthetics` and triggers a canvas re-render. Th
 **Status bar** (bottom): node count, unplaced count, layout coverage %, diagram type, last reconciled indicator.
 
 **Sync behaviour:**
-- Mermaid editor change → 500ms debounce → validate → reconcile → canvas refresh
-- Mermaid editor invalid → show error indicator, keep last valid canvas
-- Canvas interaction → immediate layout.json patch → Mermaid pane unchanged
+- File watcher fires on `.mmd` save (by human text editor or agent tool) → validate → reconcile → canvas refresh
+- Parse failure → post `host:error-overlay`, keep last valid canvas
+- Canvas interaction → immediate layout.json patch → `.mmd` file unchanged
 - Any file change on disk (from agent) → webview reloads with toast notification
 
 ### 14.2 Commands
@@ -1287,7 +1284,7 @@ packages/diagram/
     webview/
       panel.ts                    # VSCode webview panel management
       webview.html                # Webview HTML shell
-      webview.ts                  # Webview-side script (Excalidraw + Monaco + messaging)
+      webview.ts                  # Webview-side script (Excalidraw canvas + messaging)
 ```
 
 **Estimated total implementation:** ~3000 lines for diag.1, ~5000 lines for diag.1+diag.2.
@@ -1309,7 +1306,7 @@ packages/diagram/
 - MCP tools: `accordo_diagram_list`, `accordo_diagram_create`, `accordo_diagram_get`, `accordo_diagram_patch`, `accordo_diagram_render`
 - **`accordo_diagram_style_guide` MCP tool — returns diagram-type-specific aesthetic guidance (§23)**
 - `accordo_diagram_create` injects standard classDef palette into generated Mermaid (§23)
-- VSCode webview: dual-pane Mermaid + Excalidraw
+- VSCode webview: Excalidraw canvas (canvas-only, no in-panel text editor)
 - Canvas → layout.json sync (drag/drop, resize)
 - Canvas export via Excalidraw API (SVG/PNG, what-you-see-is-what-you-get)
 - Agent edit notification toasts in webview
