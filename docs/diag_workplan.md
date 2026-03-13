@@ -759,8 +759,8 @@ export class DiagramPanel {
 
 The panel manages:
 - Excalidraw canvas instance — generated from parse + layout
-- File watcher for `.mmd` and `.layout.json` changes on disk (agent edits or human text-editor saves)
-- Debounced reconciliation and scene refresh on file change (500 ms)
+- File watcher for `.mmd` changes on disk with 500 ms debounce (coalesces rapid saves, implemented in A15)
+- `.layout.json` watcher deferred to diag.2 (agent layout writes go through the synchronous patch mechanism; human text edits to layout.json are not a diag.1 use case)
 - Layout.json patch on canvas interactions (drag, resize)
 
 ### A16: Webview frontend
@@ -818,7 +818,7 @@ This module is tested manually (webview context, not Node.js).
 | Thu–Fri | A16: webview frontend (HTML + TS) | Manual testing, Excalidraw canvas rendering |
 | Fri | A17: extension.ts | ~10 tests, activation + registration |
 
-**Gate:** Agent can create, read, patch, and render diagrams via MCP tools. Human can open a `.mmd` file in the Excalidraw canvas webview. Agent or human text-editor saves to the `.mmd` file trigger canvas refresh via file watcher. Canvas drags update layout.json.
+**Gate:** Agent can create, read, patch, and render diagrams via MCP tools. Human can open a `.mmd` file in the Excalidraw canvas webview. Agent or human text-editor saves trigger canvas refresh via debounced (.mmd) file watcher. Canvas drags update layout.json.
 
 ### Week D4 — Integration + Polish
 
@@ -850,7 +850,7 @@ All of these must be true before diag.1 is complete:
 5. **MCP tools (6):** `accordo_diagram_list`, `_create`, `_get`, `_patch`, `_render`, `_style_guide` callable by agent via Hub → Bridge → accordo-diagram
 6. **style_guide:** `accordo_diagram_create` auto-injects the standard classDef color palette. `accordo_diagram_style_guide` returns the full per-type guide including palette, node sizing, conventions, and a starter template.
 7. **Webview:** Excalidraw canvas panel renders correctly for spatial diagrams (canvas-only, no in-panel text editor)
-8. **Sync:** `.mmd` file save (agent tool or human VS Code text editor) → file watcher → reconcile → canvas refresh (500 ms debounce)
+8. **Sync:** `.mmd` file save (agent tool or human VS Code text editor) → file watcher (500 ms debounce) → reconcile → canvas refresh
 9. **Sync:** Canvas drag/resize → layout.json patch (immediate, no Mermaid change)
 10. **Export:** Canvas export (Excalidraw API → SVG/PNG) available when webview is open. Returns actionable error if webview is closed. No fallback path.
 11. **External edits:** Agent .mmd edit on disk → webview refreshes with toast notification

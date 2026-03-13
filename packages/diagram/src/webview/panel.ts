@@ -72,6 +72,8 @@ export class DiagramPanel {
   private _lastSource = "";
   // In-memory layout cache — kept up-to-date by _loadAndPost and canvas message handlers
   private _currentLayout: LayoutStore | null = null;
+  // Debounce timer for file-watcher triggered refresh (500 ms)
+  private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Pending export: resolve/reject callbacks + format
   private _pendingExport: {
@@ -101,7 +103,11 @@ export class DiagramPanel {
       "accordo.diagram",
       title,
       vscode.ViewColumn.One,
-      { enableScripts: true },
+      {
+        enableScripts: true,
+        // Restrict local resource loading to the extension's dist/ folder only.
+        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "dist")],
+      },
     );
 
     const instance = new DiagramPanel(mmdPath, panel);
@@ -121,13 +127,19 @@ export class DiagramPanel {
       }),
     );
 
-    // File watcher: auto-refresh when the .mmd file is saved
+    // File watcher: auto-refresh when the .mmd file is saved (500 ms debounce).
+    // The debounce coalesces rapid saves (e.g. auto-save in VS Code) into a
+    // single refresh cycle, avoiding flicker on large diagrams.
     const watcher = vscode.workspace.createFileSystemWatcher(mmdPath);
     instance._disposables.push(
       watcher.onDidChange(() => {
-        instance.refresh().catch(() => {
-          // Errors shown via host:error-overlay inside refresh()
-        });
+        if (instance._refreshTimer !== null) clearTimeout(instance._refreshTimer);
+        instance._refreshTimer = setTimeout(() => {
+          instance._refreshTimer = null;
+          instance.refresh().catch(() => {
+            // Errors shown via host:error-overlay inside refresh()
+          });
+        }, 500);
       }),
     );
     instance._disposables.push(watcher);
@@ -200,6 +212,12 @@ export class DiagramPanel {
   private _cleanupOnDispose(): void {
     if (this._disposed) return;
     this._disposed = true;
+
+    // Cancel any pending debounced refresh
+    if (this._refreshTimer !== null) {
+      clearTimeout(this._refreshTimer);
+      this._refreshTimer = null;
+    }
 
     // Reject any pending export
     if (this._pendingExport) {

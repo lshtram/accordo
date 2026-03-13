@@ -67,7 +67,8 @@ export async function writeLayout(
 
 /**
  * Return a valid empty LayoutStore for a new diagram.
- * Defaults: roughness=1 (hand-drawn), animationMode="draw-on".
+ * Defaults: roughness=1 (hand-drawn), animationMode="static".
+ * Draw-on animation is a diag.2 feature; diag.1 renders the full scene at once.
  */
 export function createEmptyLayout(diagramType: SpatialDiagramType): LayoutStore {
   return {
@@ -77,7 +78,7 @@ export function createEmptyLayout(diagramType: SpatialDiagramType): LayoutStore 
     edges: {},
     clusters: {},
     unplaced: [],
-    aesthetics: { roughness: 1, animationMode: "draw-on", theme: "hand-drawn" },
+    aesthetics: { roughness: 1, animationMode: "static", theme: "hand-drawn" },
   };
 }
 

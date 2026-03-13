@@ -676,9 +676,7 @@ The Excalidraw webview communicates with the extension host via `vscode.postMess
 { type: "host:error-overlay",   message: string }          // persistent parse-failure overlay
 ```
 
-The extension host maintains a **mermaidId-to-excalidrawId map** for the current session. When the webview reports a canvas interaction, the extension host translates the Excalidraw element ID back to the Mermaid node ID using this map, then updates layout.json.
-
-This map is ephemeral (lives only in the extension host's memory for the current session). It is rebuilt every time the canvas is regenerated.
+The webview identifies which Mermaid element was interacted with by reading `element.customData.mermaidId` directly from the Excalidraw element object supplied by the `onChange` callback. Each element produced by the canvas generator carries `customData: { mermaidId }` (set by the scene adapter — see §9.6). The webview sends the `mermaidId` value as `nodeId` in `canvas:node-moved` / `canvas:node-resized` messages. **No host-side ID map is maintained.** The protocol is already canonical-ID-based; there is nothing to translate on the host side.
 
 ### 9.5 Performance considerations
 

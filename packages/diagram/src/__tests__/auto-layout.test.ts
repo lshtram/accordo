@@ -464,7 +464,7 @@ describe("computeInitialLayout — aesthetics defaults (AL-12)", () => {
     expect(computeInitialLayout(makeAuthFlowDiagram()).aesthetics.roughness).toBe(1);
   });
 
-  it("AL-12: animationMode defaults to 'draw-on'", () => {
-    expect(computeInitialLayout(makeAuthFlowDiagram()).aesthetics.animationMode).toBe("draw-on");
+  it("AL-12: animationMode defaults to 'static' (draw-on deferred to diag.2)", () => {
+    expect(computeInitialLayout(makeAuthFlowDiagram()).aesthetics.animationMode).toBe("static");
   });
 });

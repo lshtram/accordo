@@ -170,9 +170,9 @@ describe("createEmptyLayout", () => {
     expect(createEmptyLayout("flowchart").aesthetics.roughness).toBe(1);
   });
 
-  it("LS-03: aesthetics.animationMode defaults to 'draw-on' (§22)", () => {
+  it("LS-03: aesthetics.animationMode defaults to 'static' (draw-on deferred to diag.2)", () => {
     expect(createEmptyLayout("flowchart").aesthetics.animationMode).toBe(
-      "draw-on"
+      "static"
     );
   });
 });
