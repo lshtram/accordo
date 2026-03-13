@@ -41,11 +41,11 @@ Expected output (last three lines):
 
 ```
  Test Files  13 passed (13)
-      Tests  392 passed (392)
+      Tests  393 passed (393)
 ```
 
-All 392 tests must pass. The A15-specific file is `src/__tests__/panel.test.ts`
-(15 tests, AP-01..AP-15). The prior 12 files (types, parser, layout-store,
+All 393 tests must pass. The A15-specific file is `src/__tests__/panel.test.ts`
+(16 tests, AP-01..AP-15 + AP-09b). The prior 12 files (types, parser, layout-store,
 auto-layout, edge-identity, placement, shape-map, edge-router, reconciler,
 canvas-generator, protocol, and diagram-tools) must remain untouched at 377 tests.
 
@@ -59,7 +59,7 @@ pnpm exec vitest run --reporter=verbose src/__tests__/panel.test.ts
 Expected verbose output:
 
 ```
- ✓ src/__tests__/panel.test.ts (15 tests)
+ ✓ src/__tests__/panel.test.ts (16 tests)
    ✓ DiagramPanel.create() (3)
      ✓ AP-01: returns a DiagramPanel with the correct mmdPath
      ✓ AP-02: calls vscode.window.createWebviewPanel with the correct viewType and title
@@ -70,9 +70,10 @@ Expected verbose output:
      ✓ AP-06: uses auto-layout when no layout.json exists, still produces a valid scene
    ✓ DiagramPanel.notify() (1)
      ✓ AP-07: posts { type: 'host:toast', message } to the webview
-   ✓ DiagramPanel.requestExport() (4)
+   ✓ DiagramPanel.requestExport() (5)
      ✓ AP-08: posts { type: 'host:request-export', format } to the webview
      ✓ AP-09: resolves with a Buffer when webview posts canvas:export-ready
+     ✓ AP-09b: a mismatched canvas:export-ready reply does not resolve or strand the pending export
      ✓ AP-10: rejects with ExportBusyError when a second export is requested while one is in flight
      ✓ AP-11: rejects with PanelDisposedError when panel is disposed while export is pending
    ✓ Canvas message dispatch (2)
@@ -355,7 +356,7 @@ Run before committing after any change to `panel.ts`:
 
 | Item | Command | Expected |
 |---|---|---|
-| Full test suite | `pnpm --filter accordo-diagram exec vitest run` | `Tests 392 passed (392)` |
+| Full test suite | `pnpm --filter accordo-diagram exec vitest run` | `Tests 393 passed (393)` |
 | TypeScript check | `pnpm --filter accordo-diagram exec tsc --noEmit` | no output (exit 0) |
 | No `: any` | `grep -rn ": any" packages/diagram/src/` | no output |
 | No `console.log` | `grep -rn "console\.log" packages/diagram/src/` | no output |

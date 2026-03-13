@@ -22,7 +22,7 @@
 | A10 Canvas generator | ✅ DONE | `bef728f` | 27 pass (CG-01..CG-27) |
 | A11 Protocol types | ✅ DONE | — | type-only |
 | A14 MCP tool definitions | ✅ DONE | — | 45 pass (DT-01..DT-45) |
-| A15 Webview panel | ✅ DONE | `aa7d8ec` | 15 pass (AP-01..AP-15) |
+| A15 Webview panel | ✅ DONE | `aa7d8ec` | 16 pass (AP-01..AP-15, AP-09b) |
 | A16 Webview frontend | 📋 NOT STARTED | — | manual test only |
 | A17 Extension entry | 📋 NOT STARTED | — | ~10 estimated |
 
