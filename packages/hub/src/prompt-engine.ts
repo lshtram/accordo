@@ -72,18 +72,19 @@ export function estimateTokens(text: string): number {
   return Math.floor(text.length / 4);
 }
 
-// Max tokens allocated to the ## Open Tabs section (M74-PE).
-// Groups are dropped from highest groupIndex down until the section fits.
-const OPEN_TABS_MAX_TOKENS = 150;
-
 /**
- * Render the ## Open Tabs section with token-budget-aware truncation.
- * Always includes groups with isActive=true tabs; drops highest-groupIndex
- * background groups first when the section would exceed OPEN_TABS_MAX_TOKENS.
+ * Render the ## Open Tabs section.
+ * Active groups (containing an isActive tab) are always included.
+ * Background groups (all others) are added ascending by groupIndex and
+ * dropped from the highest groupIndex when the section would exceed
+ * `maxTokens`. This matches the §2.3 requirement: truncate only when the
+ * dynamic section would exceed the 1,500-token budget.
  *
+ * @param maxTokens  Token cap for the whole rendered section (default: no
+ *                   truncation — all groups are included).
  * Returns an empty string when openTabs is empty.
  */
-function renderOpenTabs(openTabs: OpenTab[]): string {
+function renderOpenTabs(openTabs: OpenTab[], maxTokens = Infinity): string {
   if (openTabs.length === 0) return "";
 
   // Cluster tabs by groupIndex
@@ -124,7 +125,8 @@ function renderOpenTabs(openTabs: OpenTab[]): string {
   for (const gi of backgroundGroups) {
     const content = groupBody(gi);
     const addl = content.length + 2; // +2 for "\n\n" separator
-    if (Math.floor((usedChars + addl) / 4) <= OPEN_TABS_MAX_TOKENS) {
+    const projectedTokens = Math.floor((usedChars + addl) / 4);
+    if (projectedTokens <= maxTokens) {
       includedIndices.add(gi);
       usedChars += addl;
     } else {
@@ -166,42 +168,39 @@ export function renderPrompt(
   const fixed = FIXED_PREFIX;
 
   // ── Dynamic state section ───────────────────────────────────────────────
-  const stateLines: string[] = [];
+  // Pre-tab lines: always emitted before Open Tabs (§2.3 ordering).
+  const preTabLines: string[] = [];
 
   if (state.workspaceName) {
-    stateLines.push(`**Workspace:** ${state.workspaceName}`);
+    preTabLines.push(`**Workspace:** ${state.workspaceName}`);
   }
   if (state.remoteAuthority) {
-    stateLines.push(`**Remote:** ${state.remoteAuthority}`);
+    preTabLines.push(`**Remote:** ${state.remoteAuthority}`);
   }
   if (state.activeFile) {
-    stateLines.push(
+    preTabLines.push(
       `**Active file:** ${state.activeFile} (line ${state.activeFileLine}, col ${state.activeFileColumn})`,
     );
   }
   if (state.openEditors.length > 0) {
-    stateLines.push(
+    preTabLines.push(
       `**Open editors:**\n${state.openEditors.map((e) => `  - ${e}`).join("\n")}`,
     );
   }
   if (state.visibleEditors.length > 0) {
-    stateLines.push(`**Visible:** ${state.visibleEditors.join(", ")}`);
+    preTabLines.push(`**Visible:** ${state.visibleEditors.join(", ")}`);
   }
   if (state.workspaceFolders.length > 0) {
-    stateLines.push(
+    preTabLines.push(
       `**Workspace folders:**\n${state.workspaceFolders.map((f) => `  - ${f}`).join("\n")}`,
     );
   }
   if (state.activeTerminal) {
-    stateLines.push(`**Active terminal:** ${state.activeTerminal}`);
+    preTabLines.push(`**Active terminal:** ${state.activeTerminal}`);
   }
 
-  // ── Open Tabs section (M74-PE) ────────────────────────────────────────────
-  // Position: after editors, before comment threads (§2.3 dynamic section order).
-  const openTabsSection = renderOpenTabs(state.openTabs ?? []);
-  if (openTabsSection) {
-    stateLines.push(openTabsSection);
-  }
+  // ── Post-tab lines: comment threads and modalities ──────────────────────
+  const postTabLines: string[] = [];
 
   // ── Comment threads dedicated section (M42) ────────────────────────────
   // When accordo-comments publishes open threads, render a first-class section
@@ -225,7 +224,7 @@ export function renderPrompt(
       const intentSuffix = intent !== undefined ? ` (${intent})` : "";
       return `- [${id}] ${anchor} — "${preview}"${intentSuffix}`;
     });
-    stateLines.push(
+    postTabLines.push(
       `## Open Comment Threads (${openThreadCount})\n\n${entries.join("\n")}`,
     );
   }
@@ -239,13 +238,8 @@ export function renderPrompt(
     const modalLines = openModalities.map(
       ([k, v]) => `  ${k}: ${JSON.stringify(v)}`,
     );
-    stateLines.push(`**Extension state:**\n${modalLines.join("\n")}`);
+    postTabLines.push(`**Extension state:**\n${modalLines.join("\n")}`);
   }
-
-  const stateSection =
-    stateLines.length > 0
-      ? `## Current IDE State\n\n${stateLines.join("\n\n")}`
-      : `## Current IDE State\n\nNo active session.`;
 
   // ── Voice section (M51-SN) ───────────────────────────────────────────────
   // Rendered as a top-level section BEFORE the state dump so the narration
@@ -292,24 +286,46 @@ export function renderPrompt(
     voiceSection = `## Voice\n\n${voiceLines.join("\n")}`;
   }
 
-  // ── Tool section ─────────────────────────────────────────────────────────
-  // Show every registered tool — all are directly callable via MCP.
-  //
-  // Budget guard: if state + tools exceeds the effective token budget, fall
-  // back to name-only format for all tools. With 40 spec-compliant tools
-  // (≤120-char descriptions) the budget is not normally exceeded.
+  // ── Tool section with budget guard (uses state WITHOUT Open Tabs) ─────────
+  // Build stateWithoutTabs first so tool compression is decided independently
+  // of tab content — Open Tabs have their own separate budget allocation (§2.3).
+  const stateWithoutTabsLines = [...preTabLines, ...postTabLines];
+  const stateWithoutTabs =
+    stateWithoutTabsLines.length > 0
+      ? `## Current IDE State\n\n${stateWithoutTabsLines.join("\n\n")}`
+      : `## Current IDE State\n\nNo active session.`;
+
   let toolSection =
     tools.length > 0
       ? `## Registered Tools\n\n${tools.map((t) => `- **${t.name}**: ${t.description}`).join("\n")}`
       : `## Registered Tools\n\nNo tools registered.`;
 
-  // Post-render budget guard: if the dynamic section (state + tools) still exceeds
-  // the effective token budget, fall back to name-only format for all tools.
-  // This protects against extensions violating the 120-char description cap.
-  const dynamicEstimate = estimateTokens(stateSection + "\n\n" + toolSection);
-  if (dynamicEstimate > PROMPT_EFFECTIVE_TOKEN_BUDGET && tools.length > 0) {
+  // Budget guard: if stateWithoutTabs + full-format tools exceeds the effective
+  // token budget, fall back to name-only format. This protects against extensions
+  // violating the 120-char description cap.
+  if (estimateTokens(stateWithoutTabs + "\n\n" + toolSection) > PROMPT_EFFECTIVE_TOKEN_BUDGET && tools.length > 0) {
     toolSection = `## Registered Tools\n\n${tools.map((t) => `- ${t.name}`).join("\n")}`;
   }
+
+  // ── Open Tabs section with dynamic budget (M74-PE / §2.3) ────────────────
+  // Truncation fires only when the dynamic section would exceed budget.
+  // The tab budget is whatever remains after stateWithoutTabs + toolSection.
+  const tabBudget =
+    PROMPT_EFFECTIVE_TOKEN_BUDGET -
+    estimateTokens(stateWithoutTabs + "\n\n" + toolSection);
+  const openTabsSection = renderOpenTabs(state.openTabs ?? [], tabBudget);
+
+  // Assemble final state section: pre-tab → Open Tabs → post-tab
+  const stateLines = [...preTabLines];
+  if (openTabsSection) {
+    stateLines.push(openTabsSection);
+  }
+  stateLines.push(...postTabLines);
+
+  const stateSection =
+    stateLines.length > 0
+      ? `## Current IDE State\n\n${stateLines.join("\n\n")}`
+      : `## Current IDE State\n\nNo active session.`;
 
   const sections = [fixed, voiceSection, stateSection, toolSection].filter(Boolean);
   return sections.join("\n\n");

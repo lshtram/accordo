@@ -78,7 +78,7 @@ export interface TabInputWebview {
 /** Minimal Tab surface: the input may be a text tab, webview, or something else */
 export interface Tab {
   /** Display label shown in the VS Code tab bar */
-  label?: string;
+  label: string;
   /** Whether this tab is the active (focused) tab in its group */
   isActive?: boolean;
   input?: TabInputText | TabInputWebview | unknown;
@@ -483,7 +483,7 @@ export class StatePublisher {
     for (let gi = 0; gi < groups.length; gi++) {
       const group = groups[gi];
       for (const tab of group.tabs) {
-        const label = tab.label ?? "";
+        const label = tab.label;
         const isActive = tab.isActive ?? false;
         if (isTabInputText(tab.input)) {
           result.push({

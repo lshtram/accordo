@@ -85,7 +85,7 @@ function makeMockVscode() {
     visibleTextEditors: [] as TextEditor[],
     activeTerminal: undefined as Terminal | undefined,
     workspaceFolders: [] as Array<{ uri: { fsPath: string } }>,
-    tabGroups: [] as Array<{ tabs: Array<{ label?: string; isActive?: boolean; input?: unknown }> }>,
+    tabGroups: [] as Array<{ tabs: Array<{ label: string; isActive?: boolean; input?: unknown }> }>,
     workspaceName: undefined as string | undefined,
     remoteName: undefined as string | undefined,
   };
@@ -247,7 +247,7 @@ describe("StatePublisher", () => {
 
     it("§6.1: captures openEditors from initial tabGroups on start()", () => {
       mock.state.tabGroups = [
-        { tabs: [{ input: { uri: { fsPath: "/workspace/a.ts" } } }] },
+        { tabs: [{ label: "", input: { uri: { fsPath: "/workspace/a.ts" } } }] },
       ];
       publisher.start();
       expect(publisher.getState().openEditors).toEqual(["/workspace/a.ts"]);
@@ -348,7 +348,7 @@ describe("StatePublisher", () => {
 
     it("§6.1: onDidChangeTabGroups updates openEditors (re-derives from tabGroups.all)", () => {
       mock.state.tabGroups = [
-        { tabs: [{ input: { uri: { fsPath: "/a.ts" } } }, { input: { uri: { fsPath: "/b.ts" } } }] },
+        { tabs: [{ label: "", input: { uri: { fsPath: "/a.ts" } } }, { label: "", input: { uri: { fsPath: "/b.ts" } } }] },
       ];
       mock.emit.tabGroups({});
       expect(publisher.getState().openEditors).toEqual(["/a.ts", "/b.ts"]);
@@ -356,7 +356,7 @@ describe("StatePublisher", () => {
 
     it("§6.1: onDidChangeTabs updates openEditors", () => {
       mock.state.tabGroups = [
-        { tabs: [{ input: { uri: { fsPath: "/c.ts" } } }] },
+        { tabs: [{ label: "", input: { uri: { fsPath: "/c.ts" } } }] },
       ];
       mock.emit.tabs({});
       expect(publisher.getState().openEditors).toEqual(["/c.ts"]);
@@ -365,9 +365,9 @@ describe("StatePublisher", () => {
     it("§6.1: openEditors ignores tabs without a URI input (webviews etc.)", () => {
       mock.state.tabGroups = [
         { tabs: [
-          { input: { uri: { fsPath: "/real.ts" } } },
-          { input: undefined },                // unknown input
-          { },                                  // no input at all
+          { label: "", input: { uri: { fsPath: "/real.ts" } } },
+          { label: "", input: undefined },     // unknown input
+          { label: "" },                        // no input at all
         ]},
       ];
       mock.emit.tabGroups({});
@@ -403,7 +403,7 @@ describe("StatePublisher", () => {
     });
 
     it("§6.2: openEditors stored with forward slashes", () => {
-      mock.state.tabGroups = [{ tabs: [{ input: { uri: { fsPath: "C:\\proj\\main.ts" } } }] }];
+      mock.state.tabGroups = [{ tabs: [{ label: "", input: { uri: { fsPath: "C:\\proj\\main.ts" } } }] }];
       mock.emit.tabGroups({});
       expect(publisher.getState().openEditors).toEqual(["C:/proj/main.ts"]);
     });
@@ -485,27 +485,27 @@ describe("StatePublisher", () => {
     });
 
     it("§6.3: onDidChangeTabGroups does not send immediately", () => {
-      mock.state.tabGroups = [{ tabs: [{ input: { uri: { fsPath: "/a.ts" } } }] }];
+      mock.state.tabGroups = [{ tabs: [{ label: "", input: { uri: { fsPath: "/a.ts" } } }] }];
       mock.emit.tabGroups({});
       expect(s.send.sendUpdate).not.toHaveBeenCalled();
     });
 
     it("§6.3: onDidChangeTabGroups sends after 100ms", () => {
-      mock.state.tabGroups = [{ tabs: [{ input: { uri: { fsPath: "/a.ts" } } }] }];
+      mock.state.tabGroups = [{ tabs: [{ label: "", input: { uri: { fsPath: "/a.ts" } } }] }];
       mock.emit.tabGroups({});
       vi.advanceTimersByTime(TAB_DEBOUNCE_MS);
       expect(s.send.sendUpdate).toHaveBeenCalled();
     });
 
     it("§6.3: onDidChangeTabs sends after 100ms", () => {
-      mock.state.tabGroups = [{ tabs: [{ input: { uri: { fsPath: "/b.ts" } } }] }];
+      mock.state.tabGroups = [{ tabs: [{ label: "", input: { uri: { fsPath: "/b.ts" } } }] }];
       mock.emit.tabs({});
       vi.advanceTimersByTime(TAB_DEBOUNCE_MS);
       expect(s.send.sendUpdate).toHaveBeenCalled();
     });
 
     it("§6.3: tab events NOT triggered by 50ms timer (need full 100ms)", () => {
-      mock.state.tabGroups = [{ tabs: [{ input: { uri: { fsPath: "/a.ts" } } }] }];
+      mock.state.tabGroups = [{ tabs: [{ label: "", input: { uri: { fsPath: "/a.ts" } } }] }];
       mock.emit.tabGroups({});
       vi.advanceTimersByTime(EDITOR_DEBOUNCE_MS);
       expect(s.send.sendUpdate).not.toHaveBeenCalled();
@@ -561,8 +561,8 @@ describe("StatePublisher", () => {
 
     it("§6.1: same file appearing in two tab groups is listed only once", () => {
       mock.state.tabGroups = [
-        { tabs: [{ input: { uri: { fsPath: "/shared.ts" } } }] },
-        { tabs: [{ input: { uri: { fsPath: "/shared.ts" } } }] },
+        { tabs: [{ label: "", input: { uri: { fsPath: "/shared.ts" } } }] },
+        { tabs: [{ label: "", input: { uri: { fsPath: "/shared.ts" } } }] },
       ];
       mock.emit.tabGroups({});
       expect(publisher.getState().openEditors).toEqual(["/shared.ts"]);
@@ -571,8 +571,8 @@ describe("StatePublisher", () => {
 
     it("§6.1: tabs across multiple groups are all included (when unique)", () => {
       mock.state.tabGroups = [
-        { tabs: [{ input: { uri: { fsPath: "/a.ts" } } }] },
-        { tabs: [{ input: { uri: { fsPath: "/b.ts" } } }] },
+        { tabs: [{ label: "", input: { uri: { fsPath: "/a.ts" } } }] },
+        { tabs: [{ label: "", input: { uri: { fsPath: "/b.ts" } } }] },
       ];
       mock.emit.tabGroups({});
       expect(publisher.getState().openEditors).toHaveLength(2);

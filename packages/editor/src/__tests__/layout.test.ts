@@ -302,14 +302,14 @@ describe("layoutStateHandler — §4.25 M74-LS", () => {
     expect(result).toMatchObject({ ok: false, error: "bridge disconnected" });
   });
 
-  // M74-LS-06: latency < 50ms (local in-memory read — wall-clock safe for CI)
-  it("M74-LS-06: handler completes in under 50ms (local in-memory read)", async () => {
+  // M74-LS-06: latency < 5ms (local in-memory read — wall-clock safe for CI)
+  it("M74-LS-06: handler completes in under 5ms (local in-memory read)", async () => {
     const ideState = makeIDEState();
     const getState = vi.fn(() => ideState);
     const start = performance.now();
     await layoutStateHandler({}, getState);
     const elapsed = performance.now() - start;
-    expect(elapsed).toBeLessThan(50);
+    expect(elapsed).toBeLessThan(5);
   });
 });
 

@@ -765,9 +765,9 @@ describe("M74-PE: ## Open Tabs section in system prompt", () => {
     const manyTabs: OpenTab[] = [];
     // Group 0: one active text tab
     manyTabs.push(makeTab({ label: "active.ts", type: "text", path: "/active.ts", isActive: true, groupIndex: 0 }));
-    // Groups 1-9: background groups with tabs (high groupIndex = truncated first)
-    for (let g = 1; g <= 9; g++) {
-      for (let t = 0; t < 5; t++) {
+    // Groups 1-99: background groups with tabs (high groupIndex = truncated first)
+    for (let g = 1; g <= 99; g++) {
+      for (let t = 0; t < 10; t++) {
         manyTabs.push(makeTab({
           label: `bg-g${g}-t${t}.ts`,
           type: "text",
@@ -783,11 +783,13 @@ describe("M74-PE: ## Open Tabs section in system prompt", () => {
     const result = renderPrompt(state, tools);
     // The active tab in group 0 must always be present
     expect(result).toContain("active.ts");
-    // Overall prompt must stay within budget
-    expect(estimateTokens(result)).toBeLessThanOrEqual(PROMPT_TOKEN_BUDGET + 300);
-    // Truncation order: highest groupIndex (group 9) must be dropped before lower groups.
-    // With the budget deliberately overflowed, group 9 tabs MUST be absent.
-    expect(result).not.toContain("bg-g9-t0.ts");
+    // The dynamic section (state + tools) is bounded by PROMPT_EFFECTIVE_TOKEN_BUDGET = 1350.
+    // FIXED_PREFIX (~550 tokens) sits outside the dynamic budget.
+    // Total prompt = FIXED_PREFIX + dynamic ≤ ~550 + 1350 = ~1900 tokens.
+    expect(estimateTokens(result)).toBeLessThanOrEqual(PROMPT_TOKEN_BUDGET + 700);
+    // Truncation order: highest groupIndex (group 99) must be dropped before lower groups.
+    // With the budget deliberately overflowed, group 99 tabs MUST be absent.
+    expect(result).not.toContain("bg-g99-t0.ts");
     // Group 1 (lowest-index background group) must still be present —
     // it is the last background group to be dropped.
     expect(result).toContain("bg-g1-t0.ts");
