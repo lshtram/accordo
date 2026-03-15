@@ -10,6 +10,20 @@
  * Pure mutator tests (patch*, remove*, addUnplaced) need no filesystem.
  *
  * Requirements: diag_arch_v4.2.md §5, diag_workplan.md §4.3
+ *
+ * LS-ID → function mapping (canonical):
+ *   LS-01  layoutPathFor        — arch §5.1 (auxiliary file path derivation under .accordo/diagrams/)
+ *   LS-02  createEmptyLayout    — arch §5.2 (empty layout shape and defaults)
+ *   LS-03  createEmptyLayout    — arch §22  (aesthetics defaults: roughness=1, animationMode)
+ *   LS-04  readLayout           — arch §5.3 (read + parse from disk; happy path)
+ *   LS-05  readLayout           — arch §5.3 (returns null on missing / corrupt / unknown type)
+ *   LS-06  writeLayout          — arch §5.4 (write serialised layout to disk)
+ *   LS-07  patchNode            — arch §5.5 (immutable node field mutation)
+ *   LS-08  patchEdge            — arch §5.6 (immutable edge field mutation)
+ *   LS-09  patchCluster         — arch §5.7 (immutable cluster field mutation)
+ *   LS-10  removeNode           — arch §5.8 (remove node by ID, no cascade)
+ *   LS-11  removeEdge           — arch §5.9 (remove edge by key)
+ *   LS-12  addUnplaced          — arch §5.10 (append to unplaced list with dedup)
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";

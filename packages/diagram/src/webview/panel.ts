@@ -19,7 +19,7 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { writeFileSync, readFileSync, appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync } from "node:fs";
 import { basename, extname, dirname } from "node:path";
 import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
@@ -82,6 +82,8 @@ export class DiagramPanel {
   private _currentLayout: LayoutStore | null = null;
   // Debounce timer for file-watcher triggered refresh (500 ms)
   private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  // Debounce timer for async layout write coalescing (100 ms)
+  private _layoutWriteTimer: ReturnType<typeof setTimeout> | null = null;
   // Callbacks fired when the panel is disposed (used by extension.ts registry)
   private _onDisposedCallbacks: Array<() => void> = [];
 
@@ -197,7 +199,7 @@ export class DiagramPanel {
 
     const instance = new DiagramPanel(mmdPath, panel);
     instance._log = log;
-    instance._workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
+    instance._workspaceRoot = DiagramPanel._resolveWorkspaceRoot(mmdPath);
 
     // Register message listener BEFORE setting webview.html so no canvas:ready
     // message can be missed in the window between HTML assignment and subscription.
@@ -278,7 +280,7 @@ export class DiagramPanel {
 
     const instance = new DiagramPanel(mmdPath, existingPanel);
     instance._log = log;
-    instance._workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
+    instance._workspaceRoot = DiagramPanel._resolveWorkspaceRoot(mmdPath);
 
     instance._disposables.push(
       existingPanel.webview.onDidReceiveMessage((msg: unknown) => {
@@ -394,6 +396,18 @@ export class DiagramPanel {
 
   // ── Private helpers ──────────────────────────────────────────────────────────
 
+  /**
+   * Resolve the workspace root for a given .mmd file path.
+   * Uses getWorkspaceFolder() to handle multi-root workspaces correctly.
+   * Falls back to dirname(mmdPath) if the file is not in any open workspace
+   * folder (e.g. opened directly from Finder / outside an open workspace).
+   */
+  private static _resolveWorkspaceRoot(mmdPath: string): string {
+    const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(mmdPath));
+    if (folder) return folder.uri.fsPath;
+    return dirname(mmdPath);
+  }
+
   private _assertNotDisposed(): void {
     if (this._disposed) throw new PanelDisposedError();
   }
@@ -406,6 +420,12 @@ export class DiagramPanel {
     if (this._refreshTimer !== null) {
       clearTimeout(this._refreshTimer);
       this._refreshTimer = null;
+    }
+
+    // Cancel any pending debounced layout write
+    if (this._layoutWriteTimer !== null) {
+      clearTimeout(this._layoutWriteTimer);
+      this._layoutWriteTimer = null;
     }
 
     // Reject any pending export
@@ -576,46 +596,47 @@ export class DiagramPanel {
 
   private _handleNodeMoved(nodeId: string, x: number, y: number): void {
     this._debugLog(`canvas:node-moved nodeId=${nodeId} x=${x} y=${y}`);
-    this._patchLayoutSync((layout) => patchNode(layout, nodeId, { x, y }));
+    this._patchLayout((layout) => patchNode(layout, nodeId, { x, y }));
   }
 
   private _handleNodeResized(nodeId: string, w: number, h: number): void {
     this._debugLog(`canvas:node-resized nodeId=${nodeId} w=${w} h=${h}`);
-    this._patchLayoutSync((layout) => patchNode(layout, nodeId, { w, h }));
+    this._patchLayout((layout) => patchNode(layout, nodeId, { w, h }));
   }
 
   private _handleNodeStyled(nodeId: string, stylePatch: Record<string, unknown>): void {
     this._debugLog(`canvas:node-styled nodeId=${nodeId} style=${JSON.stringify(stylePatch)}`);
-    this._patchLayoutSync((layout) => {
+    this._patchLayout((layout) => {
       const existing = layout.nodes[nodeId]?.style ?? {};
       return patchNode(layout, nodeId, { style: { ...existing, ...stylePatch } as import("../types.js").NodeStyle });
     });
   }
 
   /**
-   * Synchronously patch the in-memory layout cache and write to disk.
-   * Canvas interactions (drag, resize) must be low-latency and deterministic.
+   * Apply an in-memory layout patch and schedule an async debounced disk write.
+   * Canvas interactions (drag, resize) use this to stay low-latency: the in-memory
+   * layout is updated synchronously, while disk I/O is coalesced into a single
+   * write 100 ms after the last interaction in a burst.
    */
-  private _patchLayoutSync(apply: (layout: LayoutStore) => LayoutStore): void {
+  private _patchLayout(apply: (layout: LayoutStore) => LayoutStore): void {
     const layoutPath = layoutPathFor(this.mmdPath, this._workspaceRoot);
 
-    let layout = this._currentLayout;
-    if (layout === null) {
-      try {
-        const raw = readFileSync(layoutPath, "utf-8");
-        // Boundary: reading from disk; the file was written by this panel so
-        // the structure is trusted. Full validation happens in readLayout() on
-        // the async path.
-        layout = JSON.parse(raw) as LayoutStore;
-      } catch {
-        layout = createEmptyLayout("flowchart");
-      }
-    }
+    // _currentLayout is maintained by _loadAndPost for every canvas:ready cycle.
+    // The null fallback handles the rare race where the user interacts before
+    // the first load completes.
+    const base = this._currentLayout ?? createEmptyLayout("flowchart");
+    this._currentLayout = apply(base);
 
-    const updated = apply(layout);
-    this._currentLayout = updated;
-    mkdirSync(dirname(layoutPath), { recursive: true });
-    writeFileSync(layoutPath, JSON.stringify(updated, null, 2), "utf-8");
+    // Debounce disk write: coalesce rapid drag events into a single async write.
+    if (this._layoutWriteTimer !== null) clearTimeout(this._layoutWriteTimer);
+    this._layoutWriteTimer = setTimeout(() => {
+      this._layoutWriteTimer = null;
+      const snapshot = this._currentLayout;
+      if (snapshot === null) return;
+      writeLayout(layoutPath, snapshot).catch(() => {
+        // Non-fatal: the next _loadAndPost or interaction will write again.
+      });
+    }, 100);
   }
 
   private _handleExportReady(format: string, data: string): void {

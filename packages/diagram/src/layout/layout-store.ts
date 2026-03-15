@@ -37,6 +37,11 @@ const SPATIAL_TYPES = new Set<string>([
  *   → /ws/.accordo/diagrams/design/arch.layout.json
  */
 export function layoutPathFor(mmdPath: string, workspaceRoot: string): string {
+  if (!workspaceRoot) {
+    throw new Error(
+      `layoutPathFor: workspaceRoot must not be empty (mmdPath: ${mmdPath})`,
+    );
+  }
   const rel = relative(workspaceRoot, mmdPath).replace(/\.mmd$/, ".layout.json");
   return join(workspaceRoot, ".accordo", "diagrams", rel);
 }

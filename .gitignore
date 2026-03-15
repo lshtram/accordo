@@ -10,3 +10,7 @@ coverage/
 # Accordo agent config files (contain bearer tokens — auto-written by Bridge)
 opencode.json
 .claude/mcp.json
+
+# Accordo diagram — Excalidraw snapshots (written by accordo.diagram.writeExcalidrawSnapshot — off by default)
+# Layout JSON files (.layout.json) are user/agent data and are intentionally committed.
+.accordo/diagrams/**/*.excalidraw

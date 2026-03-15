@@ -267,12 +267,16 @@ describe("Canvas message dispatch", () => {
   it("AP-12: canvas:node-moved writes updated layout.json with new position", async () => {
     await DiagramPanel.create(ctx as never, mmdPath);
 
+    vi.useFakeTimers();
     vscPanel.webview.simulateMessage({
       type: "canvas:node-moved",
       nodeId: "A",
       x: 200,
       y: 300,
     });
+    await vi.advanceTimersByTimeAsync(150); // fires the debounce, starts writeLayout
+    vi.useRealTimers();
+    await new Promise(r => setTimeout(r, 50)); // wait for file I/O to land
 
     const layoutPath = layoutPathFor(mmdPath, tmpDir);
     const raw = await (await import("node:fs/promises")).readFile(layoutPath, "utf8");
@@ -283,12 +287,16 @@ describe("Canvas message dispatch", () => {
   it("AP-13: canvas:node-resized writes updated layout.json with new dimensions", async () => {
     await DiagramPanel.create(ctx as never, mmdPath);
 
+    vi.useFakeTimers();
     vscPanel.webview.simulateMessage({
       type: "canvas:node-resized",
       nodeId: "A",
       w: 240,
       h: 80,
     });
+    await vi.advanceTimersByTimeAsync(150); // fires the debounce, starts writeLayout
+    vi.useRealTimers();
+    await new Promise(r => setTimeout(r, 50)); // wait for file I/O to land
 
     const layoutPath = layoutPathFor(mmdPath, tmpDir);
     const raw = await (await import("node:fs/promises")).readFile(layoutPath, "utf8");

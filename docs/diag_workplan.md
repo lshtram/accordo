@@ -1,12 +1,155 @@
 # Accordo — Diagram Modality Implementation Plan
 
-**Status:** IN PROGRESS
-**Date:** 2026-03-15
-**Depends on:** Session 10D complete (1837 tests green)
+**Status:** diag.2 IN PROGRESS — next target: A18 Diagram Comments Bridge
+**Date updated:** 2026-03-15 (diag.1 complete)
 **Architecture:** `docs/diag_arch_v4.2.md`
 **Dev process:** `docs/dev-process.md` (TDD cycle A→F)
 
-## Current Status (as of 2026-03-15)
+## Current Status
+
+| Milestone | State | Tests |
+|---|---|---|
+| diag.1 (A1–A17) | ✅ COMPLETE | 444 pass |
+| TD-CROSS-1 (all packages) | ✅ CLOSED | 2321 total |
+| **A18 Diagram Comments Bridge** | 🔲 **NEXT** | — |
+| Remaining diag.2 modules | 🔲 NOT STARTED | — |
+
+---
+
+## 0. Open Technical Debt
+
+| ID | Severity | Description | File(s) | Blocking |
+|---|---|---|---|---|
+| TD-DIAG-2 | ⏸️ DEFERRED | **Export to `.excalidraw` format** — implement `accordo_diagram_export_excalidraw` (or a VS Code setting `accordo.diagram.writeExcalidrawSnapshot`). Write logic is commented out in `panel.ts` `_loadAndPost()`. Preemptive `.gitignore` entry added for `.accordo/diagrams/**/*.excalidraw`. Full implementation deferred post-diag.2 topology tools. | `panel.ts`, `diagram-tools.ts` | none |
+| TD-DIAG-3 | ✅ CLOSED | `_patchLayoutSync()` replaced by `_patchLayout()` — in-memory patch is synchronous; disk write is debounced async via `writeLayout` (100 ms). Sync `readFileSync`/`writeFileSync`/`mkdirSync` imports removed from `panel.ts`. | `panel.ts` | — |
+| TD-DIAG-4 | ✅ CLOSED | `.accordo/diagrams/**/*.excalidraw` added to root `.gitignore`. Layout JSON files (`.layout.json`) intentionally not ignored — they are user/agent data. | `.gitignore` | — |
+| TD-DIAG-6 | ✅ CLOSED | `_resolveWorkspaceRoot(mmdPath)` static helper added to `DiagramPanel` — uses `vscode.workspace.getWorkspaceFolder(uri)` for multi-root correctness, falls back to `dirname(mmdPath)` for files opened outside any workspace. `layoutPathFor` now throws when `workspaceRoot === ""`. | `panel.ts`, `layout-store.ts` | — |
+| TD-DIAG-7 | ✅ CLOSED | LS-01..LS-12 canonical mapping added to `layout-store.test.ts` header comment, cross-referencing `diag_arch_v4.2.md §5` and `§22`. | `layout-store.test.ts` | — |
+
+---
+
+## diag.2 — Open Work Items
+
+### A18: Diagram Comments Bridge (NEXT)
+
+**New file:** `packages/diagram/src/comments/diagram-comments-bridge.ts`  
+**Test file:** `packages/diagram/src/__tests__/diagram-comments-bridge.test.ts`  
+**Architecture reference:** `docs/diag_arch_v4.2.md` §25  
+**Pattern:** Same three-layer pattern as `41b-PBR` (md-viewer) and `M44-CBR` (slidev) — pure consumer  
+**Dependencies changed:** none — `@accordo/comment-sdk`, `SurfaceCommentAdapter`, and `getSurfaceAdapter` command all already built
+
+#### Context
+
+The diagram webview is a commentable surface. Nodes, edges, and clusters can have pinned comment threads. Unlike markdown (DOM blocks) or slides (HTML elements), the Excalidraw canvas surface is a `<canvas>` element — `querySelector('[data-block-id]')` does not work on it. The webview performs canvas-aware bounding-box hit-testing against Excalidraw scene elements instead.
+
+#### Files modified / created
+
+| File | Change |
+|---|---|
+| `src/comments/diagram-comments-bridge.ts` | **New** — `DiagramCommentsBridge` class; wires webview postMessage channel ↔ `SurfaceCommentAdapter` |
+| `src/__tests__/diagram-comments-bridge.test.ts` | **New** — unit tests A18-T01..T12 |
+| `src/webview/protocol.ts` | Add comment message types (inbound + outbound) |
+| `src/webview/webview.ts` | Load SDK bundle, register `coordinateToScreen`, intercept Alt+click on canvas |
+| `src/webview/html.ts` | Include `comment-sdk` bundle via `<script>` tag |
+| `src/webview/panel.ts` | Instantiate `DiagramCommentsBridge` on panel creation |
+
+#### Block ID codec
+
+```
+node:{mermaidId}              → "node:auth", "node:api", "node:db"
+edge:{from}->{to}:{ordinal}   → "edge:auth->api:0", "edge:api->db:0"
+cluster:{clusterId}           → "cluster:system", "cluster:infra"
+```
+
+#### Protocol additions (`protocol.ts`)
+
+```typescript
+// Webview → host (new inbound messages)
+type CommentCreateMessage  = { type: 'comment:create';  blockId: string; surfaceUri: string };
+type CommentReplyMessage   = { type: 'comment:reply';   threadId: string; body: string };
+type CommentResolveMessage = { type: 'comment:resolve'; threadId: string };
+type CommentReopenMessage  = { type: 'comment:reopen';  threadId: string };
+type CommentDeleteMessage  = { type: 'comment:delete';  threadId: string };
+
+// Host → webview (new outbound messages)
+type CommentsLoadMessage   = { type: 'comments:load';   threads: CommentThread[] };
+type CommentsAddMessage    = { type: 'comments:add';    thread: CommentThread };
+type CommentsUpdateMessage = { type: 'comments:update'; thread: CommentThread };
+```
+
+#### Requirements
+
+| ID | Requirement |
+|---|---|
+| A18-R01 | `DiagramCommentsBridge` obtains `SurfaceCommentAdapter` via `vscode.commands.executeCommand('accordo_comments_internal_getSurfaceAdapter')` on construction |
+| A18-R02 | Bridge routes `comment:create` webview message to `adapter.createThread({ blockId, surfaceUri })` |
+| A18-R03 | Bridge routes `comment:reply` → `adapter.replyToThread(threadId, body)` |
+| A18-R04 | Bridge routes `comment:resolve` → `adapter.resolveThread(threadId)` |
+| A18-R05 | Bridge routes `comment:reopen` → `adapter.reopenThread(threadId)` |
+| A18-R06 | Bridge routes `comment:delete` → `adapter.deleteThread(threadId)` |
+| A18-R07 | Adapter `onLoad` event → bridge posts `{ type: 'comments:load', threads }` to webview |
+| A18-R08 | Adapter `onAdd` event → bridge posts `{ type: 'comments:add', thread }` to webview |
+| A18-R09 | Adapter `onUpdate` event → bridge posts `{ type: 'comments:update', thread }` to webview |
+| A18-R10 | Unknown inbound message type → no adapter call, no error thrown |
+| A18-R11 | `getSurfaceAdapter` returns `undefined` (bridge not loaded) → `DiagramCommentsBridge` is inert; all messages silently ignored, no crash |
+| A18-R12 | `dispose()` cleans up: adapter unregistered, all event listeners removed, no further messages forwarded |
+| A18-R13 | `CommentAnchorSurface` passed to adapter uses `surfaceType: "diagram"`, `coordinates: { type: "diagram-node", nodeId }` — no new bridge-types types needed (already exist) |
+| A18-R14 | Orphaned threads (node deleted from diagram) remain visible in Comments panel; no canvas pin rendered (canvas ignores unknown block IDs) |
+| A18-R15 | No changes to `@accordo/comment-sdk`, `packages/comments/`, or `packages/bridge/` |
+
+#### Webview requirements (manually tested — no unit tests for canvas context)
+
+| ID | Requirement |
+|---|---|
+| A18-W01 | `webview.ts` calls `sdk.init()` with canvas-aware `coordinateToScreen` that resolves block IDs via `IdMap` + Excalidraw `getSceneElements()` / `getAppState()` scroll+zoom+container-offset transform |
+| A18-W02 | Webview intercepts `Alt+click` on canvas; performs bounding-box hit-test against scene elements; maps hit to `blockId` via `IdMap.excalidrawToMermaid`; posts `comment:create` to extension host |
+| A18-W03 | On receiving `comments:load` from panel, webview calls `sdk.load(threads)` |
+| A18-W04 | Pin icons appear at correct canvas positions after scroll, zoom, and VS Code window resize |
+
+#### Test plan (unit — `DiagramCommentsBridge` only)
+
+Tests mock `vscode.commands.executeCommand` and `SurfaceCommentAdapter`. `webview.ts` canvas context is not unit-testable.
+
+| ID | Test description |
+|---|---|
+| A18-T01 | Constructor calls `getSurfaceAdapter`; stores adapter reference |
+| A18-T02 | `comment:create` message → `adapter.createThread()` called with correct `blockId` + `surfaceUri` |
+| A18-T03 | `comment:reply` message → `adapter.replyToThread(threadId, body)` |
+| A18-T04 | `comment:resolve` message → `adapter.resolveThread(threadId)` |
+| A18-T05 | `comment:reopen` message → `adapter.reopenThread(threadId)` |
+| A18-T06 | `comment:delete` message → `adapter.deleteThread(threadId)` |
+| A18-T07 | Adapter `onLoad` fires → `panel.webview.postMessage({ type: 'comments:load', threads })` |
+| A18-T08 | Adapter `onAdd` fires → `panel.webview.postMessage({ type: 'comments:add', thread })` |
+| A18-T09 | Adapter `onUpdate` fires → `panel.webview.postMessage({ type: 'comments:update', thread })` |
+| A18-T10 | Unknown message type received → no adapter call, no throw |
+| A18-T11 | `getSurfaceAdapter` returns `undefined` → all messages silently ignored |
+| A18-T12 | `dispose()` → no further events forwarded after disposal |
+
+---
+
+### Remaining diag.2 Modules
+
+| Module | Description |
+|---|---|
+| Fine-grained topology tools | `add_node`, `remove_node`, `add_edge`, `remove_edge`, `add_cluster` — each modifies Mermaid AST and reconciles |
+| Layout tools | `move_node`, `resize_node`, `set_node_style`, `set_edge_routing` — pure layout.json patches |
+| Additional parsers | classDiagram, stateDiagram-v2, erDiagram, mindmap |
+| Mindmap path-based identity | Derive IDs from tree path |
+| Canvas → Mermaid topology sync | Right-click "Add node" / "Delete node" from canvas |
+| Rename annotation | `%% @rename: old -> new` with auto-cleanup |
+| Undo/redo | Operation log (50-entry ring buffer), file-level undo |
+| Dirty-canvas guard | Merge human layout changes with agent topology changes |
+| Full shape fidelity | All Mermaid node shapes in canvas generator |
+| Draw-on animation | Progressive element loading at canvas render time (§22 in arch doc) |
+| Animation toggle | Draw-on / static toggle in webview toolbar dropdown |
+
+---
+
+## DONE — diag.1 Implementation Reference
+
+The following sections document the completed diag.1 implementation (A1–A17, 444 tests). For open work items and A18 spec, see the top of this document.
+
+### diag.1 Complete Status (A1–A17)
 
 | Module | State | Commit | Tests |
 |---|---|---|---|
@@ -26,41 +169,7 @@
 | A16 Webview frontend | ✅ DONE | — | manual test + html.test.ts |
 | A17 Extension entry | ✅ DONE | — | 13 pass (EX-01..EX-13) |
 
-**Additional features delivered in Session 11 (committed 2026-03-15):**
-- `accordo_diagram_patch` — added `x`/`y` per-node position fields + `clusterStyles` arg (agents no longer need to write `.layout.json` directly)
-- Aux files (`.layout.json`, `.excalidraw`) moved from `<source-dir>/` to `<workspace>/.accordo/diagrams/<rel>/` 
-- `.mmd` files registered as custom editor (`accordo.diagram` viewType) — double-clicking opens the canvas view
-
-**Total passing (packages/diagram):** 444 tests  
-**Next module:** TD-DIAG-1 + TD-DIAG-2 clean-up done (PANEL_FILE_DEBUG switch added). diag.1 complete — next is TD-CROSS-1 or diag.2.
-
-> **LS-ID note:** Requirement IDs `LS-01..LS-12` used in layout-store tests are
-> locally derived. A canonical mapping should be established in a future pass.
-
-> **† Backfill-TDD exception (A6-v2, A10-v2, A14-v2):** Three sets of tests
-> (PL-21..24, CG-28..33, DT-49..52) were written *after* implementation during
-> a TDD catch-up pass (2026-03-14). The exception was agreed by reviewer because
-> implementation had already landed untested: PL-21..24 cover the A6-v2
-> dagre-first algorithm; CG-28..33 cover A10-v2 per-node canvas styles
-> (fillStyle, strokeStyle, roughness, fontFamily); DT-49..52 cover A14-v2
-> nodeStyles width/height segregation. All 51 new tests are discriminating (not
-> tautological). Phase B2 approval on record.
-
----
-
-## 0. Technical Debt Register (diagram package)
-
-Registered 2026-03-15. Items are ordered by priority (highest first).
-
-| ID | Severity | Description | File(s) | Blocking |
-|---|---|---|---|---|
-| TD-DIAG-1 | ✅ CLOSED | `_debugLog` + `appendFileSync` — gated behind `PANEL_FILE_DEBUG = false` constant in `panel.ts`. Set to `true` to re-enable file logging. | `panel.ts` | — |
-| TD-DIAG-2 | 🟡 LOW | **Export to `.excalidraw` format** — implement `accordo_diagram_export_excalidraw` (or a VS Code setting `accordo.diagram.writeExcalidrawSnapshot`) that writes the rendered scene as a standard Excalidraw file alongside the layout. Lets users open the diagram in excalidraw.com or the Excalidraw VS Code extension without Accordo. The write logic is already commented out in `panel.ts` `_loadAndPost()` — replace `writeFileSync` with async `writeFile` and gate on the setting. | `panel.ts`, `diagram-tools.ts` | none |
-| TD-DIAG-3 | 🟠 MEDIUM | `_patchLayoutSync()` uses `readFileSync`/`writeFileSync`/`mkdirSync` — blocking sync I/O in a `onDidReceiveMessage` callback (every node drag). Should become `_patchLayoutAsync()` with debounce write coalescing. Acceptable for A16 testing but must be resolved before production hardening (post-A17). | `panel.ts` L590-610 | post-A17 |
-| TD-DIAG-4 | 🟡 LOW | `.accordo/` not in `.gitignore`. Layout JSON lives at `<workspace>/.accordo/diagrams/`. Decision: layout files should be committed (they are user/agent data); `.excalidraw` snapshots should be gitignored. Once TD-DIAG-2 is resolved (snapshots removed), no `.gitignore` entry needed. Track here until TD-DIAG-2 is closed. | `.gitignore` | none |
-| TD-DIAG-5 | ✅ CLOSED | Session 11 work committed + pushed (`4f3d29a`, 2026-03-15). | — | — |
-| TD-DIAG-6 | 🟡 LOW | `workspaceFolders[0]` assumption — `_workspaceRoot` falls back to `""` in multi-root workspaces, which corrupts the `.accordo/diagrams/` path derivation. Known single-root limitation. Document explicitly; guard `layoutPathFor` when `workspaceRoot === ""` (throw or use CWD). | `panel.ts`, `layout-store.ts` | none |
-| TD-DIAG-7 | 🟡 LOW | LS-ID note — `LS-01..LS-12` requirement IDs in layout-store tests are locally derived; never formally linked to a requirements doc. Establish canonical mapping in a future requirements pass. | `layout-store.test.ts` | none |
+**Closed technical debt:** TD-DIAG-1 (PANEL_FILE_DEBUG switch added, 2026-03-15), TD-DIAG-5 (Session 11 committed `4f3d29a`, 2026-03-15).
 
 ---
 
@@ -919,8 +1028,11 @@ All of these must be true before diag.1 is complete:
 
 ## 8. diag.2 Plan (after diag.1 gate)
 
+> **See the open work items at the top of this document.** A18 (Diagram Comments Bridge) is the first diag.2 target with a full spec. The remaining modules are below for reference.
+
 | Module | Description |
 |---|---|
+| A18 Diagram Comments Bridge | **See full spec at top of document.** Webview loads `@accordo/comment-sdk`, `DiagramCommentsBridge` wires postMessage ↔ `SurfaceCommentAdapter`, canvas-aware hit-testing (§25). |
 | Fine-grained topology tools | `add_node`, `remove_node`, `add_edge`, `remove_edge`, `add_cluster` — each modifies Mermaid AST and reconciles |
 | Layout tools | `move_node`, `resize_node`, `set_node_style`, `set_edge_routing` — pure layout.json patches |
 | Additional parsers | classDiagram, stateDiagram-v2, erDiagram, mindmap |
@@ -932,8 +1044,6 @@ All of these must be true before diag.1 is complete:
 | Full shape fidelity | All Mermaid node shapes in canvas generator |
 | Draw-on animation | Progressive element loading at canvas render time (§22 in arch doc) |
 | Animation toggle | Draw-on / static toggle in webview toolbar dropdown |
-
-| Comments integration | Diagram webview loads `@accordo/comment-sdk`, registers `SurfaceCommentAdapter`, pins threads to nodes via canvas-aware hit-testing (§25 in arch doc) |
 
 ---
 

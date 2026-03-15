@@ -145,6 +145,11 @@ export const mockWatcher = new MockFileSystemWatcher();
 export const workspace = {
   createFileSystemWatcher: vi.fn().mockReturnValue(mockWatcher),
   workspaceFolders: null as null | Array<{ uri: Uri; name: string }>,
+  getWorkspaceFolder: vi.fn().mockImplementation((uri: Uri) => {
+    const folders = workspace.workspaceFolders;
+    if (!folders) return undefined;
+    return folders.find(f => uri.fsPath.startsWith(f.uri.fsPath));
+  }),
 };
 
 // ── ExtensionContext ──────────────────────────────────────────────────────────
