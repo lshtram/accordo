@@ -7,7 +7,7 @@
  */
 
 import * as vscode from "vscode";
-import type { ExtensionToolDefinition } from "@accordo/bridge-types";
+import type { ExtensionToolDefinition, IDEState } from "@accordo/bridge-types";
 import { errorMessage, wrapHandler } from "../util.js";
 
 // ── Panel command map (§4.14) ─────────────────────────────────────────────────
@@ -172,3 +172,51 @@ export const layoutTools: ExtensionToolDefinition[] = [
     handler: wrapHandler("accordo_layout_evenGroups", layoutEvenGroupsHandler),
   },
 ];
+
+// ── §4.25 accordo_layout_state ─────────────────────────────────────────────────────
+
+/**
+ * Return a snapshot of the current IDE state from the Bridge-local cache.
+ * Reads StatePublisher.currentState directly — no Hub network call.
+ *
+ * @param _args   Ignored — tool takes no input parameters.
+ * @param getState  Injected accessor for Bridge-local IDEState.
+ */
+export async function layoutStateHandler(
+  _args: Record<string, unknown>,
+  getState: () => IDEState,
+): Promise<{ ok: true; state: IDEState } | { ok: false; error: string }> {
+  try {
+    const state = getState();
+    return { ok: true, state };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Factory that returns all layout tool definitions, including accordo_layout_state.
+ * The getState callback is injected from extension.ts so the tool can read
+ * Bridge-local IDEState without importing from accordo-bridge directly.
+ *
+ * @param getState  Returns current IDEState from StatePublisher.
+ */
+export function createLayoutTools(getState: () => IDEState): ExtensionToolDefinition[] {
+  return [
+    ...layoutTools,
+    {
+      name: "accordo_layout_state",
+      group: "layout",
+      description:
+        "Return the full current IDE state snapshot. Call this at the start of every task to orientate yourself before taking any action.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+      dangerLevel: "safe",
+      idempotent: true,
+      handler: wrapHandler("accordo_layout_state", (args) => layoutStateHandler(args, getState)),
+    },
+  ];
+}

@@ -116,6 +116,10 @@ const ACCORDO_COMMAND_IDS: Record<
     args: "{}",
     description: "Equalize editor group sizes.",
   },
+  accordo_layout_state: {
+    args: "{}",
+    description: "Return the full current IDE state snapshot. Call at the start of every task.",
+  },
 
   // ── Comment tools (accordo-comments) ─────────────────────────────────────
   accordo_comment_list: {

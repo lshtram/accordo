@@ -577,3 +577,219 @@ describe("M51-SN: Voice section + narration directive in system prompt", () => {
     expect(tokens).toBeLessThanOrEqual(PROMPT_TOKEN_BUDGET + 300);
   });
 });
+
+// ── M74-PE: Open Tabs section ────────────────────────────────────────────────
+
+/**
+ * Tests for M74-PE: renderPrompt emits `## Open Tabs` section.
+ * Requirements: requirements-hub.md §2.3 (M74-PE)
+ * Architecture: docs/layout-state-architecture.md §3.3
+ *
+ * Coverage:
+ *   M74-PE-01  section rendered when openTabs non-empty
+ *   M74-PE-02  section omitted when openTabs empty or absent
+ *   M74-PE-03  tabs grouped by groupIndex in ascending order
+ *   M74-PE-04  active tab prefixed with [active]
+ *   M74-PE-05  webview tabs annotated with (webview: viewType)
+ *   M74-PE-06  text tabs show label only (no full path)
+ *   M74-PE-07  section appears after editors, before comment threads
+ *   M74-PE-08  token budget: truncate background groups first
+ */
+
+import { OPEN_TAB_TYPES, type OpenTab } from "@accordo/bridge-types";
+
+function makeTab(overrides: Partial<OpenTab>): OpenTab {
+  return {
+    label: "untitled",
+    type: "text",
+    isActive: false,
+    groupIndex: 0,
+    ...overrides,
+  };
+}
+
+describe("M74-PE: ## Open Tabs section in system prompt", () => {
+  // M74-OT-01: bridge-types exports OPEN_TAB_TYPES as a runtime constant
+  it("M74-OT-01: @accordo/bridge-types exports OPEN_TAB_TYPES runtime constant with all tab type strings", () => {
+    expect(Array.isArray(OPEN_TAB_TYPES)).toBe(true);
+    expect(OPEN_TAB_TYPES).toContain("text");
+    expect(OPEN_TAB_TYPES).toContain("webview");
+    expect(OPEN_TAB_TYPES).toContain("other");
+  });
+
+  // M74-PE-01: section rendered when openTabs is non-empty
+  it("M74-PE-01: '## Open Tabs' section rendered when openTabs is non-empty", () => {
+    const state = makeState({
+      openTabs: [
+        makeTab({ label: "server.ts", type: "text", path: "/workspace/server.ts", isActive: true, groupIndex: 0 }),
+      ],
+    });
+    const result = renderPrompt(state, []);
+    expect(result).toContain("## Open Tabs");
+  });
+
+  // M74-PE-02: section omitted when openTabs is empty
+  it("M74-PE-02: '## Open Tabs' section omitted when openTabs is empty", () => {
+    const state = makeState({ openTabs: [] });
+    const result = renderPrompt(state, []);
+    expect(result).not.toContain("## Open Tabs");
+  });
+
+  // M74-PE-02: section omitted when openTabs absent (createEmptyState)
+  it("M74-PE-02: '## Open Tabs' section omitted when openTabs absent from state", () => {
+    const result = renderPrompt(createEmptyState(), []);
+    expect(result).not.toContain("## Open Tabs");
+  });
+
+  // M74-PE-03: tabs grouped by groupIndex ascending
+  it("M74-PE-03: tabs rendered grouped by groupIndex in ascending order", () => {
+    const state = makeState({
+      openTabs: [
+        makeTab({ label: "a.ts",   type: "text",    path: "/a.ts",   isActive: false, groupIndex: 1 }),
+        makeTab({ label: "b.mmd",  type: "webview",  viewType: "accordo.diagram", isActive: false, groupIndex: 0 }),
+        makeTab({ label: "c.ts",   type: "text",    path: "/c.ts",   isActive: false, groupIndex: 0 }),
+      ],
+    });
+    const result = renderPrompt(state, []);
+    // Group 0 must appear before Group 1
+    const group0Pos = result.indexOf("Group 0");
+    const group1Pos = result.indexOf("Group 1");
+    expect(group0Pos).toBeGreaterThanOrEqual(0);
+    expect(group1Pos).toBeGreaterThan(group0Pos);
+    // b.mmd and c.ts are in group 0, a.ts in group 1
+    const bPos = result.indexOf("b.mmd");
+    const aPos = result.indexOf("a.ts");
+    expect(bPos).toBeLessThan(aPos);
+  });
+
+  // M74-PE-04: active tab prefixed with [active]
+  it("M74-PE-04: active tab is prefixed with [active]", () => {
+    const state = makeState({
+      openTabs: [
+        makeTab({ label: "active.ts", type: "text", path: "/active.ts", isActive: true,  groupIndex: 0 }),
+        makeTab({ label: "other.ts",  type: "text", path: "/other.ts",  isActive: false, groupIndex: 0 }),
+      ],
+    });
+    const result = renderPrompt(state, []);
+    expect(result).toContain("[active] active.ts");
+    // other.ts should NOT have [active] prefix
+    const otherLine = result.split("\n").find((l) => l.includes("other.ts"));
+    expect(otherLine).toBeDefined();
+    expect(otherLine).not.toContain("[active]");
+  });
+
+  // M74-PE-05: webview tabs annotated with (webview: viewType)
+  it("M74-PE-05: webview tab shows label and (webview: viewType) annotation", () => {
+    const state = makeState({
+      openTabs: [
+        makeTab({ label: "arch.mmd", type: "webview", viewType: "accordo.diagram", isActive: false, groupIndex: 0 }),
+      ],
+    });
+    const result = renderPrompt(state, []);
+    expect(result).toContain("arch.mmd");
+    expect(result).toContain("(webview: accordo.diagram)");
+  });
+
+  it("M74-PE-05: webview tab with [active] shows both markers", () => {
+    const state = makeState({
+      openTabs: [
+        makeTab({ label: "Slide 3", type: "webview", viewType: "accordo.presentation", isActive: true, groupIndex: 0 }),
+      ],
+    });
+    const result = renderPrompt(state, []);
+    expect(result).toContain("[active]");
+    expect(result).toContain("Slide 3");
+    expect(result).toContain("(webview: accordo.presentation)");
+  });
+
+  // M74-PE-06: text tabs show label only, not full path
+  it("M74-PE-06: text tab shows label only, not full path, in Open Tabs section", () => {
+    const state = makeState({
+      openTabs: [
+        makeTab({ label: "server.ts", type: "text", path: "/workspace/packages/hub/src/server.ts", isActive: false, groupIndex: 0 }),
+      ],
+    });
+    const result = renderPrompt(state, []);
+    // The full path must NOT appear inside the Open Tabs section
+    // (it already appears in activeFile/openEditors)
+    const tabsSection = result.slice(result.indexOf("## Open Tabs"));
+    const afterTabsSection = tabsSection.indexOf("\n##");
+    const openTabsBlock = afterTabsSection > 0 ? tabsSection.slice(0, afterTabsSection) : tabsSection;
+    expect(openTabsBlock).not.toContain("/workspace/packages/hub/src/server.ts");
+    // The label must appear
+    expect(openTabsBlock).toContain("server.ts");
+  });
+
+  // M74-PE-07: section appears after editors section, before comment threads
+  it("M74-PE-07: Open Tabs section appears before comment threads section", () => {
+    const state = makeState({
+      openTabs: [
+        makeTab({ label: "file.ts", type: "text", path: "/file.ts", isActive: false, groupIndex: 0 }),
+      ],
+      modalities: {
+        "accordo-comments": {
+          isOpen: true,
+          openThreadCount: 1,
+          resolvedThreadCount: 0,
+          summary: [
+            { threadId: "t1", uri: "src/app.ts", line: 1, preview: "comment", intent: "fix" },
+          ],
+        },
+      },
+    });
+    const result = renderPrompt(state, []);
+    const openTabsPos   = result.indexOf("## Open Tabs");
+    const commentPos    = result.indexOf("## Open Comment Threads");
+    expect(openTabsPos).toBeGreaterThanOrEqual(0);
+    expect(commentPos).toBeGreaterThan(openTabsPos);
+  });
+
+  it("M74-PE-07: Open Tabs section appears after active file / open editors content", () => {
+    const state = makeState({
+      activeFile: "/workspace/main.ts",
+      openEditors: ["/workspace/main.ts"],
+      openTabs: [
+        makeTab({ label: "main.ts", type: "text", path: "/workspace/main.ts", isActive: true, groupIndex: 0 }),
+      ],
+    });
+    const result = renderPrompt(state, []);
+    const editorsPos = result.indexOf("/workspace/main.ts");
+    const openTabsPos = result.indexOf("## Open Tabs");
+    expect(editorsPos).toBeGreaterThanOrEqual(0);
+    expect(openTabsPos).toBeGreaterThan(editorsPos);
+  });
+
+  // M74-PE-08: token budget — truncate background groups (highest groupIndex) first
+  it("M74-PE-08: token budget: background groups truncated first, active tab preserved", () => {
+    // Create many groups to stress the token budget
+    const manyTabs: OpenTab[] = [];
+    // Group 0: one active text tab
+    manyTabs.push(makeTab({ label: "active.ts", type: "text", path: "/active.ts", isActive: true, groupIndex: 0 }));
+    // Groups 1-9: background groups with tabs (high groupIndex = truncated first)
+    for (let g = 1; g <= 9; g++) {
+      for (let t = 0; t < 5; t++) {
+        manyTabs.push(makeTab({
+          label: `bg-g${g}-t${t}.ts`,
+          type: "text",
+          path: `/bg/g${g}/t${t}.ts`,
+          isActive: false,
+          groupIndex: g,
+        }));
+      }
+    }
+    const state = makeState({ openTabs: manyTabs });
+    // Use enough tools to guarantee the token budget is exceeded and truncation fires
+    const tools = Array.from({ length: 50 }, (_, i) => makeTool(`tool.${i}`, "x".repeat(200)));
+    const result = renderPrompt(state, tools);
+    // The active tab in group 0 must always be present
+    expect(result).toContain("active.ts");
+    // Overall prompt must stay within budget
+    expect(estimateTokens(result)).toBeLessThanOrEqual(PROMPT_TOKEN_BUDGET + 300);
+    // Truncation order: highest groupIndex (group 9) must be dropped before lower groups.
+    // With the budget deliberately overflowed, group 9 tabs MUST be absent.
+    expect(result).not.toContain("bg-g9-t0.ts");
+    // Group 1 (lowest-index background group) must still be present —
+    // it is the last background group to be dropped.
+    expect(result).toContain("bg-g1-t0.ts");
+  });
+});

@@ -17,6 +17,7 @@
 
 import type {
   IDEState,
+  OpenTab,
   StateSnapshotMessage,
   StateUpdateMessage,
 } from "@accordo/bridge-types";
@@ -66,9 +67,21 @@ export interface TabInputText {
   uri: { fsPath: string };
 }
 
-/** Minimal Tab surface: the input may be a text tab or something else */
+/**
+ * A tab input that represents a WebView panel.
+ * Matches vscode.TabInputWebviewView — only viewType is used.
+ */
+export interface TabInputWebview {
+  viewType: string;
+}
+
+/** Minimal Tab surface: the input may be a text tab, webview, or something else */
 export interface Tab {
-  input?: TabInputText | unknown;
+  /** Display label shown in the VS Code tab bar */
+  label?: string;
+  /** Whether this tab is the active (focused) tab in its group */
+  isActive?: boolean;
+  input?: TabInputText | TabInputWebview | unknown;
 }
 
 /** Minimal TabGroup surface */
@@ -174,6 +187,19 @@ function isTabInputText(v: unknown): v is TabInputText {
     typeof (v as Record<string, unknown>)["uri"] === "object" &&
     (v as Record<string, unknown>)["uri"] !== null &&
     "fsPath" in ((v as Record<string, unknown>)["uri"] as Record<string, unknown>)
+  );
+}
+
+/**
+ * Narrows an unknown tab.input value to TabInputWebview.
+ * WebView panels have a viewType string directly on the input object.
+ */
+function isTabInputWebview(v: unknown): v is TabInputWebview {
+  return (
+    v !== null &&
+    typeof v === "object" &&
+    "viewType" in v &&
+    typeof (v as Record<string, unknown>)["viewType"] === "string"
   );
 }
 
@@ -296,10 +322,12 @@ export class StatePublisher {
       }),
       this.vscode.window.tabGroups.onDidChangeTabGroups(() => {
         this.currentState.openEditors = this.deriveOpenEditors();
+        this.currentState.openTabs = this.deriveOpenTabs();
         this.scheduleFlush("tabs", TAB_DEBOUNCE_MS);
       }),
       this.vscode.window.tabGroups.onDidChangeTabs(() => {
         this.currentState.openEditors = this.deriveOpenEditors();
+        this.currentState.openTabs = this.deriveOpenTabs();
         this.scheduleFlush("tabs", TAB_DEBOUNCE_MS);
       }),
     );
@@ -409,6 +437,7 @@ export class StatePublisher {
       activeFileLine: active ? active.selection.active.line + 1 : 1,
       activeFileColumn: active ? active.selection.active.character + 1 : 1,
       openEditors: this.deriveOpenEditors(),
+      openTabs: this.deriveOpenTabs(),
       visibleEditors: Array.from(this.vscode.window.visibleTextEditors).map(
         (e) => normalizePath(e.document.uri.fsPath),
       ),
@@ -441,6 +470,45 @@ export class StatePublisher {
     return Array.from(seen);
   }
 
+  /**
+   * Derive openTabs list from vscode.window.tabGroups.all.
+   * Captures all tabs (text, webview, other) in group order.
+   * Groups are 0-indexed; isActive comes from tab.isActive ?? false.
+   *
+   * §6.5: M74-OT openTabs capture.
+   */
+  private deriveOpenTabs(): OpenTab[] {
+    const result: OpenTab[] = [];
+    const groups = this.vscode.window.tabGroups.all;
+    for (let gi = 0; gi < groups.length; gi++) {
+      const group = groups[gi];
+      for (const tab of group.tabs) {
+        const label = tab.label ?? "";
+        const isActive = tab.isActive ?? false;
+        if (isTabInputText(tab.input)) {
+          result.push({
+            label,
+            type: "text",
+            path: normalizePath(tab.input.uri.fsPath),
+            isActive,
+            groupIndex: gi,
+          });
+        } else if (isTabInputWebview(tab.input)) {
+          result.push({
+            label,
+            type: "webview",
+            viewType: tab.input.viewType,
+            isActive,
+            groupIndex: gi,
+          });
+        } else {
+          result.push({ label, type: "other", isActive, groupIndex: gi });
+        }
+      }
+    }
+    return result;
+  }
+
   // ── Internal: diff + flush ────────────────────────────────────────────────
 
   /**
@@ -465,6 +533,8 @@ export class StatePublisher {
 
     if (JSON.stringify(cur.openEditors) !== JSON.stringify(sent.openEditors))
       patch.openEditors = cur.openEditors;
+    if (JSON.stringify(cur.openTabs) !== JSON.stringify(sent.openTabs))
+      patch.openTabs = cur.openTabs;
     if (JSON.stringify(cur.visibleEditors) !== JSON.stringify(sent.visibleEditors))
       patch.visibleEditors = cur.visibleEditors;
     if (JSON.stringify(cur.workspaceFolders) !== JSON.stringify(sent.workspaceFolders))
@@ -514,6 +584,7 @@ export class StatePublisher {
       activeFileLine: 1,
       activeFileColumn: 1,
       openEditors: [],
+      openTabs: [],
       visibleEditors: [],
       workspaceFolders: [],
       activeTerminal: null,

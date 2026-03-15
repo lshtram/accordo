@@ -127,6 +127,7 @@ describe("StateCache", () => {
         activeFileLine: 5,
         activeFileColumn: 12,
         openEditors: ["/repo/main.ts", "/repo/util.ts"],
+        openTabs: [],
         visibleEditors: ["/repo/main.ts"],
         workspaceFolders: ["/repo"],
         activeTerminal: "bash",
@@ -170,5 +171,42 @@ describe("StateCache", () => {
       expect(state.activeFile).toBe("/keep.ts");
       expect(state.modalities).toEqual({});
     });
+  });
+});
+
+// ── M74-OT-11: openTabs default in createEmptyState ──────────────────────────
+
+describe("M74-OT-11: createEmptyState includes openTabs: []", () => {
+  it("M74-OT-11: createEmptyState has openTabs field defaulting to empty array", () => {
+    const state = createEmptyState();
+    expect(state).toHaveProperty("openTabs");
+    expect(state.openTabs).toEqual([]);
+  });
+
+  it("M74-OT-11: new StateCache instance getState() has openTabs: []", () => {
+    const cache = new StateCache();
+    expect(cache.getState().openTabs).toEqual([]);
+  });
+
+  it("M74-OT-11: applyPatch with openTabs replaces the array", () => {
+    const cache = new StateCache();
+    cache.applyPatch({
+      openTabs: [
+        { label: "server.ts", type: "text", path: "/server.ts", isActive: true, groupIndex: 0 },
+      ],
+    });
+    expect(cache.getState().openTabs).toHaveLength(1);
+    expect(cache.getState().openTabs[0].label).toBe("server.ts");
+  });
+
+  it("M74-OT-11: applyPatch with empty openTabs clears the array", () => {
+    const cache = new StateCache();
+    cache.applyPatch({
+      openTabs: [
+        { label: "a.ts", type: "text", path: "/a.ts", isActive: false, groupIndex: 0 },
+      ],
+    });
+    cache.applyPatch({ openTabs: [] });
+    expect(cache.getState().openTabs).toEqual([]);
   });
 });

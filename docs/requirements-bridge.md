@@ -368,6 +368,45 @@ When an extension calls `publishState(extensionId, state)`:
 
 If the extension disposes (unregisters), remove its key from modalities and send patch.
 
+### 6.5 Open Tabs Capture (M74-OT)
+
+**Purpose:** Extend `IDEState` with `openTabs: OpenTab[]` so agents can see all open tabs — including webview panels (diagram canvas, presentations, browser) — not just text-file editors.
+
+**Architecture reference:** `docs/layout-state-architecture.md` §3
+
+**New type in `@accordo/bridge-types`:**
+
+```typescript
+export interface OpenTab {
+  label: string;                    // Display label in the VS Code tab strip
+  type: "text" | "webview" | "other";
+  path?: string;                    // Absolute path — text tabs only
+  viewType?: string;                // e.g. "accordo.diagram" — webview tabs only
+  isActive: boolean;                // true when this tab has focus in its group
+  groupIndex: number;               // 0-based editor group index
+}
+```
+
+`IDEState` gains: `openTabs: OpenTab[]` (additive — `openEditors` unchanged).
+
+**Requirements:**
+
+| ID | Requirement |
+|---|---|
+| M74-OT-01 | `OpenTab` interface is exported from `@accordo/bridge-types` |
+| M74-OT-02 | `IDEState.openTabs` field is added and defaults to `[]` in `emptyState()` |
+| M74-OT-03 | `StatePublisher` adds `TabInputWebview` interface + `isTabInputWebview()` guard (mirrors existing `TabInputText` + `isTabInputText()`) |
+| M74-OT-04 | `Tab` interface gains `label: string` and `isActive?: boolean` fields (`isActive` is optional for testability — mock tabs may omit it; `undefined` is treated as `false` in `deriveOpenTabs()`) |
+| M74-OT-05 | `deriveOpenTabs()` iterates `tabGroups.all`; text-input tabs → `type: "text", path`; webview-input tabs → `type: "webview", viewType`; all others → `type: "other"` |
+| M74-OT-06 | `isActive` in the resulting `OpenTab` is `tab.isActive ?? false` — not derived from path comparison |
+| M74-OT-07 | `groupIndex` is the 0-based index of the tab's group in `tabGroups.all` |
+| M74-OT-08 | `collectCurrentState()` includes `openTabs: this.deriveOpenTabs()` |
+| M74-OT-09 | Both `onDidChangeTabGroups` and `onDidChangeTabs` handlers update `currentState.openTabs` (same 100 ms debounce as `openEditors`) |
+| M74-OT-10 | `computePatch()` diffs `openTabs` by JSON equality and includes it in `stateUpdate` when changed |
+| M74-OT-11 | Hub `StateCache.createEmptyState()` includes `openTabs: []` |
+
+> **Cross-package lockstep:** `StatePublisher.emptyState()` (accordo-bridge) and `StateCache.createEmptyState()` (accordo-hub) must stay in sync — whenever a new `IDEState` field is added, both defaults must be updated together.
+
 ---
 
 ## 7. Extension Registry

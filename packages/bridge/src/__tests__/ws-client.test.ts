@@ -108,6 +108,7 @@ const IDLE_STATE: IDEState = {
   activeFileLine: 1,
   activeFileColumn: 1,
   openEditors: [],
+  openTabs: [],
   visibleEditors: [],
   workspaceFolders: [],
   activeTerminal: null,

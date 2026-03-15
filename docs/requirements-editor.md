@@ -851,6 +851,62 @@ interface SearchMatch {
 
 ---
 
+### 4.25 `accordo.layout.state`
+
+**Module ID:** M74-LS  
+**Purpose:** Return the current live IDE layout state on demand — all open tabs (text files and webview panels), active file and cursor, editor groups, active terminal, and per-modality extension state. Solves the agent freshness gap: the `initialize`-time snapshot may be stale; this tool always returns current Bridge-local state.
+
+**Architecture reference:** `docs/layout-state-architecture.md` §4
+
+| Property | Value |
+|---|---|
+| Danger level | safe |
+| Idempotent | yes |
+| Requires confirmation | no |
+| Timeout class | fast (5s) |
+
+**Input Schema:**
+
+```typescript
+{ type: "object", properties: {}, required: [] }
+```
+
+**Response (success):**
+
+```typescript
+{
+  ok: true;
+  state: IDEState;  // full current Bridge-local IDEState including openTabs
+}
+```
+
+**Response (error):**
+
+```typescript
+{ ok: false; error: string }
+```
+
+**Requirements:**
+
+| ID | Requirement |
+|---|---|
+| M74-LS-01 | `accordo_layout_state` is registered as an MCP tool via `BridgeAPI.registerTools()` on activation |
+| M74-LS-02 | Returns `{ ok: true, state }` where `state` is the current `IDEState` snapshot from `BridgeAPI.getState()` |
+| M74-LS-03 | `state.openTabs` is present and contains all open tabs (text + webview) as `OpenTab[]` |
+| M74-LS-04 | `state.modalities` contains the latest per-extension published state |
+| M74-LS-05 | Returns `{ ok: false, error }` if `getState()` throws |
+| M74-LS-06 | Handler latency is < 5 ms (local in-memory read — no I/O, no network) |
+| M74-LS-07 | Tool description instructs agents to call this at the start of any task involving panels, files, or visual layout |
+
+**Implementation:**
+- Add `getState(): IDEState` to the local `BridgeAPI` interface in `accordo-editor/src/extension.ts`
+- Refactor `layoutTools` static array → `createLayoutTools(getState: () => IDEState)` factory in `packages/editor/src/tools/layout.ts`
+- Add `layoutStateHandler` + tool definition inside the factory
+- Update `extension.ts` to call `createLayoutTools(() => bridge.getState())`
+- Add `accordo_layout_state` entry to `accordo_script_discover` catalog in `packages/script/src/tools/script-discover.ts`
+
+---
+
 ### 4.17 `accordo.editor.save`
 
 **Purpose:** Save a specific file, or the active editor if no path given.

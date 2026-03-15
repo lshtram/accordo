@@ -33,7 +33,7 @@ Two orthogonal pieces, independently deliverable:
 | Piece | What it does | Where it lives |
 |---|---|---|
 | **A — Structured tab capture** | Extend `IDEState` with `openTabs: OpenTab[]`. Bridge captures all tab types (text + webview) from `tabGroups` and pushes patches on every tab change. | `@accordo/bridge-types`, `accordo-bridge` |
-| **B — `accordo_layout_state` tool** | New MCP tool in `accordo-editor` / `layout.ts`. Returns the live hub state on demand — agent calls it whenever it needs a fresh view of what is open. | `accordo-editor` |
+| **B — `accordo_layout_state` tool** | New MCP tool in `accordo-editor` / `layout.ts`. Returns Bridge-local `IDEState` from `StatePublisher.currentState` on demand — agent calls it whenever it needs a fresh view of what is open. | `accordo-editor` |
 
 Together they solve both gaps: **A** guarantees the data is available and accurate in hub state; **B** gives the agent a pull mechanism to get it at any time during a session.
 
@@ -67,7 +67,7 @@ export interface OpenTab {
   /**
    * Webview view-type identifier registered by the extension.
    * Present only when type === "webview".
-   * Examples: "accordo-diagram", "accordo-slidev", "accordo-browser"
+   * Examples: "accordo.diagram", "accordo.presentation", "accordo.browser"
    */
   viewType?: string;
 
@@ -174,11 +174,11 @@ private deriveOpenTabs(): OpenTab[] {
 ## Open Tabs
 
 Group 0 (left):
-  - [active] arch.mmd  (webview: accordo-diagram)
+  - [active] arch.mmd  (webview: accordo.diagram)
   - server.ts  (text)
 
 Group 1 (right):
-  - Session 3 — Accordo Demo  (webview: accordo-slidev)
+  - Session 3 — Accordo Demo  (webview: accordo.presentation)
 ```
 
 Only rendered when `openTabs.length > 0`. Webview tabs show `viewType` in parentheses so the agent can correlate with modality state. The `isActive` marker gives the agent an immediate answer to "what is the user looking at?".
@@ -190,7 +190,12 @@ The `Tab` interface in `state-publisher.ts` needs `label` and `isActive`. Extend
 ```typescript
 export interface Tab {
   label: string;
-  isActive?: boolean;   // true for the focused tab in each group
+  /**
+   * Optional for testability — mock tabs may omit it.
+   * VS Code's real Tab API has this as a required boolean.
+   * deriveOpenTabs() uses `tab.isActive ?? false`.
+   */
+  isActive?: boolean;
   input?: TabInputText | TabInputWebview | unknown;
 }
 ```
@@ -201,7 +206,9 @@ export interface Tab {
 
 ### 4.1 Purpose
 
-A zero-argument read-only MCP tool that returns the current complete state snapshot from the hub. This is the **pull mechanism** — the agent calls it at the start of any task that involves visual surfaces, open files, or layout.
+A zero-argument read-only MCP tool that returns Bridge-local `IDEState` directly from `StatePublisher.currentState` — **not** a Hub network call. This is the **pull mechanism** the agent uses at the start of any task that involves visual surfaces, open files, or layout.
+
+> **Source of truth:** The tool reads Bridge-local state (held in `StatePublisher.currentState`), not the Hub's `GET /state` endpoint. This excludes Hub-only computed fields (e.g. comment thread injection from M43) but is more direct and lower-latency. Bridge-local state and Hub state are equivalent for all `IDEState` fields.
 
 ### 4.2 Handler location
 

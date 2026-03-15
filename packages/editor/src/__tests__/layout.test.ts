@@ -1,5 +1,5 @@
 /**
- * Tests for src/tools/layout.ts — Module 20
+ * Tests for src/tools/layout.ts — Module 20 + M74-LS
  *
  * Phase B — all tests MUST fail RED against "not implemented" stubs.
  *
@@ -9,7 +9,8 @@
  *   [x] §4.16 layout.fullscreen — toggleFullScreen command
  *   [x] §4.23 layout.joinGroups — joinAllGroups command, returns { groups: 1 }
  *   [x] §4.24 layout.evenGroups — evenEditorWidths command, returns { equalized: true }
- *   [x] Registration            — 5 tools, schemas, danger levels
+ *   [x] §4.25 layout.state      — M74-LS: createLayoutTools factory, returns IDEState
+ *   [x] Registration            — 5+1 tools, schemas, danger levels
  *
  * Exported API checklist (dev-process.md §5 Phase B Coverage Audit):
  *   ✓ panelToggleHandler        — 9 tests (§4.14-PANEL-* × 5 happy + ERR + MISSING + R01 + existing)
@@ -17,10 +18,13 @@
  *   ✓ layoutFullscreenHandler   — 2 tests (§4.16-FS-01, R01)
  *   ✓ layoutJoinGroupsHandler   — 2 tests (§4.23-JOIN-01, R01)
  *   ✓ layoutEvenGroupsHandler   — 2 tests (§4.24-EVEN-01, R01)
- *   ✓ layoutTools[]             — 7 registration tests (M20-REG-01..07)
+ *   ✓ layoutStateHandler        — 4 tests (M74-LS-02, M74-LS-05, M74-LS-06, M74-LS-03)
+ *   ✓ createLayoutTools()       — 5 tests (M74-LS-01, M74-LS-07, REG count, schemas, handlers)
+ *   ✓ layoutTools[]             — 7 registration tests (M20-REG-01..07, now counts 5+1)
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { IDEState } from "@accordo/bridge-types";
 import {
   panelToggleHandler,
   layoutZenHandler,
@@ -28,6 +32,8 @@ import {
   layoutJoinGroupsHandler,
   layoutEvenGroupsHandler,
   layoutTools,
+  createLayoutTools,
+  layoutStateHandler,
 } from "../tools/layout.js";
 
 import * as vscodeMock from "./mocks/vscode.js";
@@ -214,4 +220,143 @@ describe("layoutTools registration — Module 20", () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// §4.25 M74-LS: layoutStateHandler
+// ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Tests for M74-LS: accordo_layout_state tool.
+ * Requirements: requirements-editor.md §4.25
+ */
+
+function makeIDEState(overrides: Partial<IDEState> = {}): IDEState {
+  return {
+    activeFile: null,
+    activeFileLine: 1,
+    activeFileColumn: 1,
+    openEditors: [],
+    openTabs: [],
+    visibleEditors: [],
+    workspaceFolders: [],
+    activeTerminal: null,
+    workspaceName: null,
+    remoteAuthority: null,
+    modalities: {},
+    ...overrides,
+  };
+}
+
+describe("layoutStateHandler — §4.25 M74-LS", () => {
+  // M74-LS-02: returns { ok: true, state } from getState()
+  it("M74-LS-02: returns { ok: true, state } with full IDEState from getState()", async () => {
+    const ideState = makeIDEState({ activeFile: "/workspace/main.ts", activeFileLine: 10 });
+    const getState = vi.fn(() => ideState);
+    const result = await layoutStateHandler({}, getState);
+    expect(result).toEqual({ ok: true, state: ideState });
+    expect(getState).toHaveBeenCalledOnce();
+  });
+
+  // M74-LS-03: state.openTabs is present (populated by getState)
+  it("M74-LS-03: returned state includes openTabs field", async () => {
+    const ideState = makeIDEState({
+      openTabs: [
+        { label: "arch.mmd", type: "webview", viewType: "accordo.diagram", isActive: true, groupIndex: 0 },
+      ],
+    });
+    const getState = vi.fn(() => ideState);
+    const result = await layoutStateHandler({}, getState);
+    expect(result).toMatchObject({ ok: true });
+    const okResult = result as { ok: true; state: IDEState };
+    expect(okResult.state.openTabs).toHaveLength(1);
+    expect(okResult.state.openTabs[0].viewType).toBe("accordo.diagram");
+  });
+
+  // M74-LS-04: state.modalities reflects latest per-extension state
+  it("M74-LS-04: returned state.modalities contains latest per-extension state", async () => {
+    const modalityData = {
+      "accordo-comments": {
+        isOpen: true,
+        openThreadCount: 3,
+        resolvedThreadCount: 1,
+        summary: [],
+      },
+      "accordo-diagram": {
+        panelOpen: true,
+        diagramCount: 2,
+      },
+    };
+    const ideState = makeIDEState({ modalities: modalityData });
+    const getState = vi.fn(() => ideState);
+    const result = await layoutStateHandler({}, getState);
+    expect(result).toMatchObject({ ok: true });
+    const okResult = result as { ok: true; state: IDEState };
+    expect(okResult.state.modalities).toEqual(modalityData);
+    expect(okResult.state.modalities["accordo-comments"]).toMatchObject({ openThreadCount: 3 });
+    expect(okResult.state.modalities["accordo-diagram"]).toMatchObject({ diagramCount: 2 });
+  });
+
+  // M74-LS-05: returns { ok: false, error } when getState throws
+  it("M74-LS-05: returns { ok: false, error } when getState() throws", async () => {
+    const getState = vi.fn(() => { throw new Error("bridge disconnected"); });
+    const result = await layoutStateHandler({}, getState);
+    expect(result).toMatchObject({ ok: false, error: "bridge disconnected" });
+  });
+
+  // M74-LS-06: latency < 50ms (local in-memory read — wall-clock safe for CI)
+  it("M74-LS-06: handler completes in under 50ms (local in-memory read)", async () => {
+    const ideState = makeIDEState();
+    const getState = vi.fn(() => ideState);
+    const start = performance.now();
+    await layoutStateHandler({}, getState);
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(50);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// M74-LS: createLayoutTools() factory
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("createLayoutTools() factory — M74-LS", () => {
+  const getState = vi.fn(() => makeIDEState());
+
+  // M74-LS-01: accordo_layout_state is registered via createLayoutTools
+  it("M74-LS-01: createLayoutTools returns array containing accordo_layout_state", () => {
+    const tools = createLayoutTools(getState);
+    const names = tools.map((t) => t.name);
+    expect(names).toContain("accordo_layout_state");
+  });
+
+  it("M74-LS-01: createLayoutTools returns all 5 existing layout tools plus layoutState (6 total)", () => {
+    const tools = createLayoutTools(getState);
+    expect(tools).toHaveLength(6);
+    const names = tools.map((t) => t.name);
+    expect(names).toContain("accordo_panel_toggle");
+    expect(names).toContain("accordo_layout_zen");
+    expect(names).toContain("accordo_layout_fullscreen");
+    expect(names).toContain("accordo_layout_joinGroups");
+    expect(names).toContain("accordo_layout_evenGroups");
+    expect(names).toContain("accordo_layout_state");
+  });
+
+  it("M74-LS-01: accordo_layout_state has safe danger level and empty required schema", () => {
+    const tools = createLayoutTools(getState);
+    const stateTool = tools.find((t) => t.name === "accordo_layout_state")!;
+    expect(stateTool.dangerLevel).toBe("safe");
+    expect(stateTool.inputSchema.required).toEqual([]);
+    expect(stateTool.inputSchema.type).toBe("object");
+  });
+
+  // M74-LS-07: tool description instructs agents to call at start of task
+  it("M74-LS-07: accordo_layout_state description mentions calling at start of task", () => {
+    const tools = createLayoutTools(getState);
+    const stateTool = tools.find((t) => t.name === "accordo_layout_state")!;
+    expect(stateTool.description.toLowerCase()).toMatch(/start|beginning|before/);
+  });
+
+  it("M74-LS-01: accordo_layout_state handler is a function", () => {
+    const tools = createLayoutTools(getState);
+    const stateTool = tools.find((t) => t.name === "accordo_layout_state")!;
+    expect(typeof stateTool.handler).toBe("function");
+  });
+});

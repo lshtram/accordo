@@ -64,9 +64,15 @@ When launched with `--stdio`:
 
 ```
 [Fixed prefix: ~300 tokens — identity, behaviour guidelines]
-[Dynamic state: activeFile, openEditors, workspace, terminals, modalities]
+[Dynamic state: active file · open editors · visible editors → open tabs → comment threads → extension state]
 [Tool summary: all registered tools — grouped and ungrouped, full name + description]
 ```
+
+**Dynamic section order** (fixed, deterministic):
+1. Active file, cursor position, open/visible editors
+2. `## Open Tabs` — all tab types including webview panels (rendered only when `openTabs` is non-empty — M74-PE below)
+3. `## Open Comment Threads` — text-anchored threads (rendered only when `openThreadCount > 0` — M42 below)
+4. Extension state block — per-modality JSON; modalities with a dedicated section above are excluded from this block
 
 **Tool visibility:** All registered tools are included in the system prompt and in MCP `tools/list`, regardless of whether they carry a `group` field. The `group` field is metadata only (stripped from MCP wire output; present in Bridge → Hub payload). There is no progressive-disclosure or hidden-tools mechanism.
 
@@ -89,6 +95,26 @@ When launched with `--stdio`:
 - Intent (`(intent)`) is included only when present on the summary entry.
 - When `openThreadCount === 0` the section is omitted entirely.
 - The `accordo-comments` key is **excluded** from the generic "Extension state" block whenever this dedicated section is rendered.
+
+**Open Tabs section (M74-PE):** When `state.openTabs` is non-empty, `renderPrompt` emits a `## Open Tabs` section after the editors section and before the comment threads section (position 2 in the dynamic section order above):
+
+```
+## Open Tabs
+
+Group 0:
+  - [active] arch.mmd  (webview: accordo.diagram)
+  - server.ts
+
+Group 1:
+  - Accordo Demo  (webview: accordo.presentation)
+```
+
+- Tabs are grouped by `groupIndex`, rendered in ascending order.
+- The active tab in each group is prefixed with `[active]`.
+- Webview tabs append `(webview: <viewType>)` so agents can correlate with modality state.
+- Text tabs show filename only (not full path, which is already in `activeFile`/`openEditors`).
+- When `openTabs` is empty or absent the section is omitted entirely.
+- Token budget: if rendering all tabs would exceed the 1,500-token dynamic section budget, truncate background groups (highest `groupIndex` first), keeping at minimum the active tab.
 
 ### 2.4 Health Check — `GET /health`
 

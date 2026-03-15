@@ -85,7 +85,7 @@ function makeMockVscode() {
     visibleTextEditors: [] as TextEditor[],
     activeTerminal: undefined as Terminal | undefined,
     workspaceFolders: [] as Array<{ uri: { fsPath: string } }>,
-    tabGroups: [] as Array<{ tabs: Array<{ input?: { uri: { fsPath: string } } }> }>,
+    tabGroups: [] as Array<{ tabs: Array<{ label?: string; isActive?: boolean; input?: unknown }> }>,
     workspaceName: undefined as string | undefined,
     remoteName: undefined as string | undefined,
   };
@@ -871,6 +871,279 @@ describe("StatePublisher", () => {
 
     it("KEYFRAME_INTERVAL_MS is 600000", () => {
       expect(KEYFRAME_INTERVAL_MS).toBe(600_000);
+    });
+  });
+
+  // ── §6.5 M74-OT: openTabs capture ────────────────────────────────────────────
+
+  describe("§6.5 M74-OT: openTabs capture", () => {
+    // M74-OT-02: openTabs defaults to [] in emptyState()
+    it("M74-OT-02: StatePublisher.emptyState() includes openTabs: []", () => {
+      const state = StatePublisher.emptyState();
+      expect(state).toHaveProperty("openTabs");
+      expect(state.openTabs).toEqual([]);
+    });
+
+    // M74-OT-05: text tab → type: "text", path
+    it("M74-OT-05: text tab produces type 'text' entry with normalized path", () => {
+      mock.state.tabGroups = [
+        {
+          tabs: [
+            {
+              label: "server.ts",
+              isActive: true,
+              input: { uri: { fsPath: "/workspace/server.ts" } },
+            },
+          ],
+        },
+      ];
+      publisher.start();
+      const tabs = publisher.getState().openTabs;
+      expect(tabs).toHaveLength(1);
+      expect(tabs[0]).toMatchObject({
+        label: "server.ts",
+        type: "text",
+        path: "/workspace/server.ts",
+        isActive: true,
+        groupIndex: 0,
+      });
+    });
+
+    // M74-OT-05: webview tab → type: "webview", viewType
+    it("M74-OT-05: webview tab produces type 'webview' entry with viewType", () => {
+      mock.state.tabGroups = [
+        {
+          tabs: [
+            {
+              label: "arch.mmd",
+              isActive: false,
+              input: { viewType: "accordo.diagram" },
+            },
+          ],
+        },
+      ];
+      publisher.start();
+      const tabs = publisher.getState().openTabs;
+      expect(tabs).toHaveLength(1);
+      expect(tabs[0]).toMatchObject({
+        label: "arch.mmd",
+        type: "webview",
+        viewType: "accordo.diagram",
+        isActive: false,
+        groupIndex: 0,
+      });
+      expect(tabs[0]).not.toHaveProperty("path");
+    });
+
+    // M74-OT-05: other tab → type: "other"
+    it("M74-OT-05: unknown input type produces type 'other' entry", () => {
+      mock.state.tabGroups = [
+        {
+          tabs: [
+            {
+              label: "[Terminal 1]",
+              isActive: false,
+              input: undefined,
+            },
+          ],
+        },
+      ];
+      publisher.start();
+      const tabs = publisher.getState().openTabs;
+      expect(tabs).toHaveLength(1);
+      expect(tabs[0]).toMatchObject({
+        label: "[Terminal 1]",
+        type: "other",
+        isActive: false,
+        groupIndex: 0,
+      });
+      expect(tabs[0]).not.toHaveProperty("path");
+      expect(tabs[0]).not.toHaveProperty("viewType");
+    });
+
+    // M74-OT-06: isActive taken from tab.isActive, not path comparison
+    it("M74-OT-06: isActive comes from tab.isActive, not path comparison", () => {
+      // Two groups — same file, but isActive only on second
+      mock.state.tabGroups = [
+        {
+          tabs: [
+            {
+              label: "shared.ts",
+              isActive: false,
+              input: { uri: { fsPath: "/shared.ts" } },
+            },
+          ],
+        },
+        {
+          tabs: [
+            {
+              label: "shared.ts",
+              isActive: true,
+              input: { uri: { fsPath: "/shared.ts" } },
+            },
+          ],
+        },
+      ];
+      publisher.start();
+      const tabs = publisher.getState().openTabs;
+      expect(tabs[0].isActive).toBe(false);
+      expect(tabs[1].isActive).toBe(true);
+    });
+
+    // M74-OT-06: undefined isActive → false (not an error)
+    it("M74-OT-06: tab.isActive undefined falls back to false", () => {
+      mock.state.tabGroups = [
+        {
+          tabs: [
+            {
+              label: "noactive.ts",
+              // isActive deliberately omitted
+              input: { uri: { fsPath: "/noactive.ts" } },
+            },
+          ],
+        },
+      ];
+      publisher.start();
+      const tabs = publisher.getState().openTabs;
+      expect(tabs[0].isActive).toBe(false);
+    });
+
+    // M74-OT-07: groupIndex is 0-based index of the tab's group
+    it("M74-OT-07: groupIndex reflects position of group in tabGroups.all", () => {
+      mock.state.tabGroups = [
+        {
+          tabs: [
+            { label: "a.ts", isActive: false, input: { uri: { fsPath: "/a.ts" } } },
+          ],
+        },
+        {
+          tabs: [
+            { label: "b.ts", isActive: false, input: { uri: { viewType: "accordo.presentation" } } },
+          ],
+        },
+        {
+          tabs: [
+            { label: "c.ts", isActive: false, input: undefined },
+          ],
+        },
+      ];
+      publisher.start();
+      const tabs = publisher.getState().openTabs;
+      expect(tabs[0].groupIndex).toBe(0);
+      expect(tabs[1].groupIndex).toBe(1);
+      expect(tabs[2].groupIndex).toBe(2);
+    });
+
+    // M74-OT-08: collectCurrentState includes openTabs
+    it("M74-OT-08: getState() includes openTabs after start()", () => {
+      mock.state.tabGroups = [];
+      publisher.start();
+      expect(publisher.getState()).toHaveProperty("openTabs");
+      expect(Array.isArray(publisher.getState().openTabs)).toBe(true);
+    });
+
+    // M74-OT-09: onDidChangeTabGroups updates openTabs (same 100ms debounce)
+    it("M74-OT-09: onDidChangeTabGroups updates openTabs on tab event", () => {
+      publisher.start();
+      mock.state.tabGroups = [
+        {
+          tabs: [
+            { label: "new.ts", isActive: true, input: { uri: { fsPath: "/new.ts" } } },
+          ],
+        },
+      ];
+      mock.emit.tabGroups({});
+      expect(publisher.getState().openTabs).toHaveLength(1);
+      expect(publisher.getState().openTabs[0].label).toBe("new.ts");
+    });
+
+    it("M74-OT-09: onDidChangeTabs updates openTabs on tab event", () => {
+      publisher.start();
+      mock.state.tabGroups = [
+        {
+          tabs: [
+            { label: "diagram.mmd", isActive: false, input: { viewType: "accordo.diagram" } },
+          ],
+        },
+      ];
+      mock.emit.tabs({});
+      const tab = publisher.getState().openTabs[0];
+      expect(tab.type).toBe("webview");
+      expect(tab.viewType).toBe("accordo.diagram");
+    });
+
+    // M74-OT-10: computePatch diffs openTabs by JSON equality
+    it("M74-OT-10: stateUpdate patch includes openTabs when openTabs changes", () => {
+      publisher.start();
+      publisher.sendSnapshot();
+
+      mock.state.tabGroups = [
+        {
+          tabs: [
+            { label: "new.ts", isActive: true, input: { uri: { fsPath: "/new.ts" } } },
+          ],
+        },
+      ];
+      mock.emit.tabs({});
+      vi.advanceTimersByTime(TAB_DEBOUNCE_MS);
+
+      const calls = (s.send.sendUpdate as ReturnType<typeof vi.fn>).mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const msg = calls[calls.length - 1][0] as StateUpdateMessage;
+      expect(msg.patch).toHaveProperty("openTabs");
+      expect(msg.patch.openTabs).toHaveLength(1);
+    });
+
+    it("M74-OT-10: stateUpdate patch does NOT include openTabs when openTabs unchanged", () => {
+      mock.state.tabGroups = [
+        {
+          tabs: [
+            { label: "same.ts", isActive: false, input: { uri: { fsPath: "/same.ts" } } },
+          ],
+        },
+      ];
+      publisher.start();
+      publisher.sendSnapshot();
+
+      // Emit tab event but tabGroups state is identical
+      mock.emit.tabs({});
+      vi.advanceTimersByTime(TAB_DEBOUNCE_MS);
+
+      const calls = (s.send.sendUpdate as ReturnType<typeof vi.fn>).mock.calls;
+      for (const [msg] of calls) {
+        expect((msg as StateUpdateMessage).patch).not.toHaveProperty("openTabs");
+      }
+    });
+
+    // M74-OT-05: mixed tab types in single snapshot
+    it("M74-OT-05: mixed text + webview + other tabs all captured in one snapshot", () => {
+      mock.state.tabGroups = [
+        {
+          tabs: [
+            { label: "server.ts",  isActive: true,  input: { uri: { fsPath: "/server.ts" } } },
+            { label: "arch.mmd",   isActive: false, input: { viewType: "accordo.diagram" } },
+            { label: "[Terminal]", isActive: false, input: undefined },
+          ],
+        },
+      ];
+      publisher.start();
+      const tabs = publisher.getState().openTabs;
+      expect(tabs).toHaveLength(3);
+      expect(tabs.map((t) => t.type)).toEqual(["text", "webview", "other"]);
+    });
+
+    // M74-OT-05: path normalized (forward slashes)
+    it("M74-OT-05: text tab path is normalized to forward slashes", () => {
+      mock.state.tabGroups = [
+        {
+          tabs: [
+            { label: "file.ts", isActive: false, input: { uri: { fsPath: "C:\\Users\\user\\file.ts" } } },
+          ],
+        },
+      ];
+      publisher.start();
+      const tabs = publisher.getState().openTabs;
+      expect(tabs[0].path).toBe("C:/Users/user/file.ts");
     });
   });
 });

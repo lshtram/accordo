@@ -393,6 +393,7 @@ const FAKE_STATE: IDEState = {
     "/workspace/accordo/packages/hub/src/server.ts",
     "/workspace/accordo/packages/hub/src/mcp-handler.ts",
   ],
+  openTabs: [],
   visibleEditors: ["/workspace/accordo/packages/hub/src/server.ts"],
   workspaceFolders: ["/workspace/accordo"],
   activeTerminal: "bash",

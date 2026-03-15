@@ -7,7 +7,7 @@
  * Requirements: requirements-hub.md §2.3, §5.3
  */
 
-import type { IDEState, ToolRegistration } from "@accordo/bridge-types";
+import type { IDEState, OpenTab, ToolRegistration } from "@accordo/bridge-types";
 import {
   PROMPT_TOKEN_BUDGET,
   PROMPT_EFFECTIVE_TOKEN_BUDGET,
@@ -72,6 +72,71 @@ export function estimateTokens(text: string): number {
   return Math.floor(text.length / 4);
 }
 
+// Max tokens allocated to the ## Open Tabs section (M74-PE).
+// Groups are dropped from highest groupIndex down until the section fits.
+const OPEN_TABS_MAX_TOKENS = 150;
+
+/**
+ * Render the ## Open Tabs section with token-budget-aware truncation.
+ * Always includes groups with isActive=true tabs; drops highest-groupIndex
+ * background groups first when the section would exceed OPEN_TABS_MAX_TOKENS.
+ *
+ * Returns an empty string when openTabs is empty.
+ */
+function renderOpenTabs(openTabs: OpenTab[]): string {
+  if (openTabs.length === 0) return "";
+
+  // Cluster tabs by groupIndex
+  const groups = new Map<number, OpenTab[]>();
+  for (const tab of openTabs) {
+    const existing = groups.get(tab.groupIndex) ?? [];
+    existing.push(tab);
+    groups.set(tab.groupIndex, existing);
+  }
+  const sortedIndices = [...groups.keys()].sort((a, b) => a - b);
+
+  // Groups that contain at least one active tab are always included
+  const activeGroupIndices = new Set(
+    openTabs.filter((t) => t.isActive).map((t) => t.groupIndex),
+  );
+
+  // Build the markdown text for one group
+  const groupBody = (gi: number): string => {
+    // gi always originates from groups.keys(), so get() is guaranteed non-null
+    const tabs = groups.get(gi)!;
+    const lines = tabs.map((t) => {
+      const prefix = t.isActive ? "[active] " : "";
+      const annotation = t.type === "webview" && t.viewType ? ` (webview: ${t.viewType})` : "";
+      return `- ${prefix}${t.label}${annotation}`;
+    });
+    return `**Group ${gi}:**\n${lines.join("\n")}`;
+  };
+
+  // Separate active groups (always kept) from background groups
+  const activeGroups = sortedIndices.filter((gi) => activeGroupIndices.has(gi));
+  const backgroundGroups = sortedIndices.filter((gi) => !activeGroupIndices.has(gi));
+
+  // Compute chars consumed by active groups
+  let usedChars = activeGroups.reduce((sum, gi) => sum + groupBody(gi).length + 2, 0);
+  const includedIndices = new Set(activeGroups);
+
+  // Fill from lowest background groupIndex up until budget is exhausted
+  for (const gi of backgroundGroups) {
+    const content = groupBody(gi);
+    const addl = content.length + 2; // +2 for "\n\n" separator
+    if (Math.floor((usedChars + addl) / 4) <= OPEN_TABS_MAX_TOKENS) {
+      includedIndices.add(gi);
+      usedChars += addl;
+    } else {
+      break;
+    }
+  }
+
+  const retained = sortedIndices.filter((gi) => includedIndices.has(gi));
+  const body = retained.map(groupBody).join("\n\n");
+  return `## Open Tabs\n\n${body}`;
+}
+
 /**
  * Render the full system prompt.
  *
@@ -129,6 +194,13 @@ export function renderPrompt(
   }
   if (state.activeTerminal) {
     stateLines.push(`**Active terminal:** ${state.activeTerminal}`);
+  }
+
+  // ── Open Tabs section (M74-PE) ────────────────────────────────────────────
+  // Position: after editors, before comment threads (§2.3 dynamic section order).
+  const openTabsSection = renderOpenTabs(state.openTabs ?? []);
+  if (openTabsSection) {
+    stateLines.push(openTabsSection);
   }
 
   // ── Comment threads dedicated section (M42) ────────────────────────────

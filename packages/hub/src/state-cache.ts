@@ -18,6 +18,7 @@ export function createEmptyState(): IDEState {
     activeFileLine: 1,
     activeFileColumn: 1,
     openEditors: [],
+    openTabs: [],
     visibleEditors: [],
     workspaceFolders: [],
     activeTerminal: null,

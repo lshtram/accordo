@@ -10,10 +10,10 @@
  */
 
 import * as vscode from "vscode";
-import type { ExtensionToolDefinition } from "@accordo/bridge-types";
+import type { ExtensionToolDefinition, IDEState } from "@accordo/bridge-types";
 import { editorTools } from "./tools/editor.js";
 import { terminalTools, registerTerminalLifecycle } from "./tools/terminal.js";
-import { layoutTools } from "./tools/layout.js";
+import { createLayoutTools } from "./tools/layout.js";
 
 // ── BridgeAPI (minimal interface — full type lives in accordo-bridge) ─────────
 
@@ -23,14 +23,15 @@ interface BridgeAPI {
     extensionId: string,
     tools: ExtensionToolDefinition[],
   ): vscode.Disposable;
+  getState(): IDEState;
 }
 
-// ── All 21 tools ──────────────────────────────────────────────────────────────
+// ── All tools ────────────────────────────────────────────────────────────
 
-const allTools: ExtensionToolDefinition[] = [
+// Static tools (no Bridge state dependency)
+const staticTools: ExtensionToolDefinition[] = [
   ...editorTools,
   ...terminalTools,
-  ...layoutTools,
 ];
 
 // ── activate ──────────────────────────────────────────────────────────────────
@@ -52,6 +53,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Bridge not installed or not yet exported — extension is inert.
     return;
   }
+
+  const allTools: ExtensionToolDefinition[] = [
+    ...staticTools,
+    ...createLayoutTools(() => bridge.getState()),
+  ];
 
   const disposable = bridge.registerTools("accordo.accordo-editor", allTools);
   context.subscriptions.push(disposable);

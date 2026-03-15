@@ -14,6 +14,25 @@
 
 // ─── IDE State ──────────────────────────────────────────────────────────────
 
+/** Valid type discriminants for an OpenTab entry */
+export const OPEN_TAB_TYPES = ["text", "webview", "other"] as const;
+
+/** A single open tab entry derived from vscode.window.tabGroups.all */
+export interface OpenTab {
+  /** Display label shown in the VS Code tab bar */
+  label: string;
+  /** Tab category — text file, webview panel, or anything else */
+  type: "text" | "webview" | "other";
+  /** Normalized path to the file. Only present when type === "text" */
+  path?: string;
+  /** WebView viewType string. Only present when type === "webview" */
+  viewType?: string;
+  /** Whether this is the active (focused) tab. Uses tab.isActive ?? false */
+  isActive: boolean;
+  /** 0-based index of the tab group that contains this tab */
+  groupIndex: number;
+}
+
 /**
  * Flat snapshot of the current IDE state.
  * Pushed from Bridge to Hub over WebSocket.
@@ -29,6 +48,8 @@ export interface IDEState {
   activeFileColumn: number;
   /** Absolute paths of all open editor tabs (from tabGroups API) */
   openEditors: string[];
+  /** All open tabs across all tab groups, in group order */
+  openTabs: OpenTab[];
   /** Absolute paths of editors visible in split panes */
   visibleEditors: string[];
   /** Absolute paths of all workspace folder roots */
