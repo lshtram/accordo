@@ -23,8 +23,8 @@
 | A11 Protocol types | ✅ DONE | — | type-only |
 | A14 MCP tool definitions | ✅ DONE | — | 52 pass (DT-01..DT-52; DT-49..52 backfill†) |
 | A15 Webview panel | ✅ DONE | `aa7d8ec` | 16 pass (AP-01..AP-15, AP-09b) |
-| A16 Webview frontend | 📋 NOT STARTED | — | manual test only |
-| A17 Extension entry | 📋 NOT STARTED | — | ~10 estimated |
+| A16 Webview frontend | ✅ DONE | — | manual test + html.test.ts |
+| A17 Extension entry | ✅ DONE | — | 13 pass (EX-01..EX-13) |
 
 **Additional features delivered in Session 11 (committed 2026-03-15):**
 - `accordo_diagram_patch` — added `x`/`y` per-node position fields + `clusterStyles` arg (agents no longer need to write `.layout.json` directly)
@@ -32,7 +32,7 @@
 - `.mmd` files registered as custom editor (`accordo.diagram` viewType) — double-clicking opens the canvas view
 
 **Total passing (packages/diagram):** 444 tests  
-**Next module:** clean TD-DIAG-1 + TD-DIAG-2 → A16 (Webview frontend)
+**Next module:** TD-DIAG-1 + TD-DIAG-2 clean-up done (PANEL_FILE_DEBUG switch added). diag.1 complete — next is TD-CROSS-1 or diag.2.
 
 > **LS-ID note:** Requirement IDs `LS-01..LS-12` used in layout-store tests are
 > locally derived. A canonical mapping should be established in a future pass.
@@ -54,8 +54,8 @@ Registered 2026-03-15. Items are ordered by priority (highest first).
 
 | ID | Severity | Description | File(s) | Blocking |
 |---|---|---|---|---|
-| TD-DIAG-1 | 🔴 HIGH | `_debugLog` + `appendFileSync` to `/tmp/accordo-diagram.log` — debug instrumentation left in production code. Violates debug-skill rule (remove all instrumentation before committing). Must be cleaned before A16 adds more panel work. | `panel.ts` L94-98 | A16 |
-| TD-DIAG-2 | 🟠 MEDIUM | `.excalidraw` snapshot written on every `_loadAndPost()` — undocumented "feature" using sync `writeFileSync`/`mkdirSync`. Either add to requirements with a debug-flag gate, or remove. Currently adds blocking sync I/O to every canvas load. | `panel.ts` L505-515 | A16 |
+| TD-DIAG-1 | ✅ CLOSED | `_debugLog` + `appendFileSync` — gated behind `PANEL_FILE_DEBUG = false` constant in `panel.ts`. Set to `true` to re-enable file logging. | `panel.ts` | — |
+| TD-DIAG-2 | 🟡 LOW | **Export to `.excalidraw` format** — implement `accordo_diagram_export_excalidraw` (or a VS Code setting `accordo.diagram.writeExcalidrawSnapshot`) that writes the rendered scene as a standard Excalidraw file alongside the layout. Lets users open the diagram in excalidraw.com or the Excalidraw VS Code extension without Accordo. The write logic is already commented out in `panel.ts` `_loadAndPost()` — replace `writeFileSync` with async `writeFile` and gate on the setting. | `panel.ts`, `diagram-tools.ts` | none |
 | TD-DIAG-3 | 🟠 MEDIUM | `_patchLayoutSync()` uses `readFileSync`/`writeFileSync`/`mkdirSync` — blocking sync I/O in a `onDidReceiveMessage` callback (every node drag). Should become `_patchLayoutAsync()` with debounce write coalescing. Acceptable for A16 testing but must be resolved before production hardening (post-A17). | `panel.ts` L590-610 | post-A17 |
 | TD-DIAG-4 | 🟡 LOW | `.accordo/` not in `.gitignore`. Layout JSON lives at `<workspace>/.accordo/diagrams/`. Decision: layout files should be committed (they are user/agent data); `.excalidraw` snapshots should be gitignored. Once TD-DIAG-2 is resolved (snapshots removed), no `.gitignore` entry needed. Track here until TD-DIAG-2 is closed. | `.gitignore` | none |
 | TD-DIAG-5 | ✅ CLOSED | Session 11 work committed + pushed (`4f3d29a`, 2026-03-15). | — | — |

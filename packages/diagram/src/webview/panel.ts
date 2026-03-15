@@ -40,6 +40,11 @@ import type {
   WebviewToHostMessage,
 } from "./protocol.js";
 
+// ── Debug flag ────────────────────────────────────────────────────────────────
+// Set to true to write verbose canvas message logs to /tmp/accordo-diagram.log
+// and snapshot Excalidraw scenes to .accordo/diagrams/. Off by default.
+const PANEL_FILE_DEBUG = false;
+
 // ── Error types ───────────────────────────────────────────────────────────────
 
 export class PanelDisposedError extends Error {
@@ -91,8 +96,10 @@ export class DiagramPanel {
   private _log: (msg: string) => void = () => {};
   // Absolute path to the workspace root (used to derive the .accordo/diagrams path)
   private _workspaceRoot = "";
-  /** Log to output channel AND append a timestamped line to /tmp/accordo-diagram.log. */
+  /** Log to output channel AND append a timestamped line to /tmp/accordo-diagram.log.
+   * No-op when PANEL_FILE_DEBUG is false. */
   private _debugLog(msg: string): void {
+    if (!PANEL_FILE_DEBUG) return;
     this._log(msg);
     const line = `[${new Date().toISOString()}] ${msg}\n`;
     try { appendFileSync("/tmp/accordo-diagram.log", line, "utf-8"); } catch { /* ignore */ }
@@ -495,24 +502,29 @@ export class DiagramPanel {
     this._panel.webview.postMessage(msg);
     this._log("_loadAndPost() — host:load-scene posted with " + apiElements.length + " elements");
 
-    // Write a .excalidraw file in the .diagrams/ folder for inspection / debugging.
-    // This lets you open the rendered scene in excalidraw.com or a local viewer.
-    const excalidrawPath = layoutPath.replace(/\.layout\.json$/, ".excalidraw");
-    const excalidrawJson = JSON.stringify({
-      type: "excalidraw",
-      version: 2,
-      source: "accordo-diagram",
-      elements: apiElements,
-      appState: { gridSize: null, viewBackgroundColor: "#ffffff" },
-      files: {},
-    }, null, 2);
-    try {
-      mkdirSync(dirname(excalidrawPath), { recursive: true });
-      writeFileSync(excalidrawPath, excalidrawJson, "utf-8");
-      this._log("_loadAndPost() — .excalidraw file written: " + excalidrawPath);
-    } catch {
-      // non-fatal — debug file is best-effort
-    }
+    // TODO(diag.2): Export to .excalidraw format — write the rendered scene as a
+    // standard Excalidraw file so the user can open it in excalidraw.com or the
+    // Excalidraw VS Code extension without having Accordo installed.
+    // Trigger: VS Code setting `accordo.diagram.writeExcalidrawSnapshot` (default off).
+    // Use `await writeFile(excalidrawPath, excalidrawJson, "utf-8")` (async — not sync).
+    // Make excalidrawPath derivation a shared helper alongside layoutPathFor().
+    // See diag_workplan.md TD-DIAG-2 for full context.
+    //
+    // const excalidrawPath = layoutPath.replace(/\.layout\.json$/, ".excalidraw");
+    // const excalidrawJson = JSON.stringify({
+    //   type: "excalidraw",
+    //   version: 2,
+    //   source: "accordo-diagram",
+    //   elements: apiElements,
+    //   appState: { gridSize: null, viewBackgroundColor: "#ffffff" },
+    //   files: {},
+    // }, null, 2);
+    // try {
+    //   mkdirSync(dirname(excalidrawPath), { recursive: true });
+    //   writeFileSync(excalidrawPath, excalidrawJson, "utf-8");
+    // } catch {
+    //   // non-fatal
+    // }
   }
 
   /**
