@@ -9,7 +9,6 @@
  * Source: diag_arch_v4.2.md §6
  */
 
-import mermaid from "mermaid";
 import type {
   DiagramType,
   SpatialDiagramType,
@@ -18,10 +17,55 @@ import type {
 } from "../types.js";
 import { parseFlowchart } from "./flowchart.js";
 
-// §6.6 — parse-only mode: no SVG rendering, no DOM required.
-(mermaid as { initialize(cfg: { startOnLoad: boolean }): void }).initialize({
-  startOnLoad: false,
-});
+// Node.js compatibility: Mermaid 11 bundles DOMPurify and initialises it as a
+// module-level variable (`var yt = sr()`) when mermaid's chunks are first
+// evaluated. `sr()` (the DOMPurify factory) calls `bo()` which returns
+// `typeof window > "u" ? null : window`. When window is undefined, it returns
+// null and the factory exits EARLY — without ever defining `.sanitize`.
+//
+// Because ESM static imports are always evaluated before the module body,
+// `import mermaid from "mermaid"` would evaluate mermaid's chunks before this
+// file's body runs (and before the window shim is in place). The result: `yt`
+// (DOMPurify) is created without `.sanitize`, so any diagram with node labels
+// throws "DOMPurify.sanitize is not a function".
+//
+// FIX: The window shim runs synchronously here, then mermaid is loaded via a
+// dynamic import. Dynamic imports are deferred — they execute after this
+// module's synchronous body, so the shim is in place before mermaid evaluates.
+if (typeof (globalThis as Record<string, unknown>).window === "undefined") {
+  (globalThis as Record<string, unknown>).window = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    document: {
+      nodeType: 9,        // DOCUMENT_NODE — satisfies DOMPurify's initial guard
+      currentScript: null,
+      cookie: "",
+      implementation: {}, // no createHTMLDocument → DOMPurify.isSupported=false
+      createElement: () => ({ innerHTML: "" }),
+      createNodeIterator: () => ({ nextNode: () => null }),
+    },
+    Element: class {},    // satisfies !e.Element guard in DOMPurify factory
+  };
+}
+
+// Mermaid is loaded lazily (dynamic import) so that the window shim above is
+// always in place before mermaid's chunks set up the module-level DOMPurify
+// instance. The promise is resolved once and cached.
+let _mermaidReady: Promise<typeof import("mermaid").default> | null = null;
+function getMermaid(): Promise<typeof import("mermaid").default> {
+  if (!_mermaidReady) {
+    _mermaidReady = import("mermaid").then((mod) => {
+      const m = mod.default;
+      // §6.6 — parse-only mode: securityLevel:"loose" skips removeScript/addHook
+      (m as { initialize(cfg: Record<string, unknown>): void }).initialize({
+        startOnLoad: false,
+        securityLevel: "loose",
+      });
+      return m;
+    });
+  }
+  return _mermaidReady;
+}
 
 const SPATIAL_TYPES = new Set<string>([
   "flowchart",
@@ -128,6 +172,7 @@ export async function parseMermaid(source: string): Promise<ParseResult> {
   interface MermaidDiagram {
     parser: { yy: MermaidDb; parser?: { yy: MermaidDb } };
   }
+  const mermaid = await getMermaid();
   const mermaidApi = (mermaid as unknown as {
     mermaidAPI: { getDiagramFromText(s: string): Promise<MermaidDiagram> };
   }).mermaidAPI;

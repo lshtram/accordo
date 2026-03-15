@@ -81,6 +81,38 @@ function isSameBox(a: BoundingBox, b: BoundingBox): boolean {
 
 // ── Routing strategies ────────────────────────────────────────────────────────
 
+const ARROW_GAP = 8;
+
+/**
+ * Clip the line from `from` outward toward `toward`, stopping at the
+ * boundary of `box` and pulling back by `gap` pixels.
+ * Returns the point on (or just outside) the box border.
+ */
+function clampToBorder(
+  from: [number, number],
+  toward: [number, number],
+  box: BoundingBox,
+  gap: number
+): [number, number] {
+  const [cx, cy] = from;
+  const dx = toward[0] - cx;
+  const dy = toward[1] - cy;
+  if (dx === 0 && dy === 0) return from;
+
+  // Find smallest positive t where the ray (cx+t·dx, cy+t·dy) exits the box.
+  let tExit = Infinity;
+  if (dx > 0) tExit = Math.min(tExit, (box.x + box.w - cx) / dx);
+  else if (dx < 0) tExit = Math.min(tExit, (box.x - cx) / dx);
+  if (dy > 0) tExit = Math.min(tExit, (box.y + box.h - cy) / dy);
+  else if (dy < 0) tExit = Math.min(tExit, (box.y - cy) / dy);
+
+  const len = Math.sqrt(dx * dx + dy * dy);
+  // tExit is where the ray exits the box boundary.  Adding gap/len places
+  // the returned point gap-pixels OUTSIDE the boundary (not inside).
+  const t = tExit + gap / len;
+  return [cx + t * dx, cy + t * dy];
+}
+
 function routeAuto(
   source: BoundingBox,
   target: BoundingBox
@@ -97,16 +129,18 @@ function routeAuto(
         [x + w + off, y + h / 2],
         [cx, y + h],
       ],
-      startBinding: { focus: 0, gap: 8 },
-      endBinding:   { focus: 0, gap: 8 },
+      startBinding: { focus: 0, gap: ARROW_GAP },
+      endBinding:   { focus: 0, gap: ARROW_GAP },
     };
   }
-  const [sx, sy] = centre(source);
-  const [tx, ty] = centre(target);
+  const sc = centre(source);
+  const tc = centre(target);
+  const start = clampToBorder(sc, tc, source, ARROW_GAP);
+  const end   = clampToBorder(tc, sc, target, ARROW_GAP);
   return {
-    points: [[sx, sy], [tx, ty]],
-    startBinding: { focus: 0, gap: 8 },
-    endBinding:   { focus: 0, gap: 8 },
+    points: [start, end],
+    startBinding: { focus: 0, gap: ARROW_GAP },
+    endBinding:   { focus: 0, gap: ARROW_GAP },
   };
 }
 

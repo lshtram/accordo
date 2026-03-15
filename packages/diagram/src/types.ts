@@ -156,8 +156,18 @@ export interface NodeStyle {
   strokeColor?: string;
   /** Border width in pixels. */
   strokeWidth?: number;
-  /** Whether the stroke is dashed (true = external/contract semantic). */
+  /**
+   * Stroke line style. Supersedes strokeDash when set.
+   * Default: "solid".
+   */
+  strokeStyle?: "solid" | "dashed" | "dotted";
+  /** Whether the stroke is dashed. Kept for backward compat; prefer strokeStyle. */
   strokeDash?: boolean;
+  /**
+   * Fill pattern for the node background.
+   * Default: "hachure" (Excalidraw default hand-drawn fill).
+   */
+  fillStyle?: "hachure" | "cross-hatch" | "solid" | "zigzag" | "dots" | "dashed" | "zigzag-line";
   /** Mermaid shape hint. See NodeShape for valid values. */
   shape?: NodeShape;
   /** Font size in pixels. */
@@ -168,6 +178,16 @@ export interface NodeStyle {
   fontWeight?: "normal" | "bold";
   /** Opacity [0, 1]. Default: 1. */
   opacity?: number;
+  /**
+   * Per-node roughness (hand-drawn level). Overrides the diagram-level
+   * aesthetics.roughness. 0 = crisp, 1 = hand-drawn (default), 2–3 = very rough.
+   */
+  roughness?: number;
+  /**
+   * Font family for node text.
+   * Default: "Excalifont" (hand-drawn feel).
+   */
+  fontFamily?: "Excalifont" | "Nunito" | "Comic Shanns";
 }
 
 /** Per-edge visual style overrides. All fields optional. */
@@ -175,7 +195,9 @@ export interface EdgeStyle {
   strokeColor?: string;
   /** Line width in pixels. Default: 1.5. */
   strokeWidth?: number;
-  /** Whether line is dashed. */
+  /** Stroke line style. Supersedes strokeDash when set. Default: "solid". */
+  strokeStyle?: "solid" | "dashed" | "dotted";
+  /** Whether line is dashed. Kept for backward compat; prefer strokeStyle. */
   strokeDash?: boolean;
 }
 
@@ -184,6 +206,7 @@ export interface ClusterStyle {
   /** Background fill (usually semi-transparent). */
   backgroundColor?: string;
   strokeColor?: string;
+  strokeWidth?: number;
   /** Whether cluster border is dashed. */
   strokeDash?: boolean;
 }
@@ -381,8 +404,12 @@ export interface ExcalidrawElement {
   height: number;
   /** Rough.js hand-drawn level (0 = crisp, 1 = hand-drawn default). */
   roughness: number;
-  /** Font family.  Always "Excalifont" for all elements in diag.1. */
+  /** Font family string.  Default: "Excalifont". */
   fontFamily: string;
+  /** Fill pattern.  Default: "hachure". */
+  fillStyle?: string;
+  /** Text alignment.  Default: "center" (set by scene-adapter). */
+  textAlign?: string;
   /** Text content — for node shape elements and standalone text labels. */
   label?: string;
   /** Arrow path in absolute canvas coordinates.  Only set for type "arrow". */
@@ -398,9 +425,23 @@ export interface ExcalidrawElement {
   /** Border width in pixels. */
   strokeWidth?: number;
   /** Stroke line style. */
-  strokeStyle?: "solid" | "dashed";
+  strokeStyle?: "solid" | "dashed" | "dotted";
+  /** Opacity 0–100 (Excalidraw convention). */
+  opacity?: number;
   /** Corner rounding level.  null = crisp corners.  Only for rectangles. */
   roundness?: number | null;
+  /**
+   * For shape elements: list of bound elements (e.g. text labels).
+   * null / absent = no bindings.
+   */
+  boundElements?: Array<{ id: string; type: string }> | null;
+  /**
+   * For text elements that are bound to a shape: the containing element's
+   * Excalidraw ID.  null / absent = standalone text.
+   */
+  containerId?: string | null;
+  /** Font size in pixels.  Only for text elements.  Default: 16. */
+  fontSize?: number;
 }
 
 /**

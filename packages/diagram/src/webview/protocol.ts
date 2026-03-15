@@ -81,6 +81,25 @@ export interface CanvasExportReadyMessage {
   data: string;
 }
 
+/**
+ * Webview has finished mounting and is ready to receive a host:load-scene.
+ * The extension host waits for this before posting the initial scene so it
+ * does not race the Excalidraw React initialisation.
+ */
+export interface CanvasReadyMessage {
+  type: "canvas:ready";
+}
+
+/**
+ * A JavaScript error (or unhandled promise rejection) occurred inside the
+ * webview before or during bundle initialisation. Logged to the output channel
+ * so developers can diagnose blank-canvas issues without opening DevTools.
+ */
+export interface CanvasJsErrorMessage {
+  type: "canvas:js-error";
+  message: string;
+}
+
 /** Union of all messages the webview can send to the extension host. */
 export type WebviewToHostMessage =
   | CanvasNodeMovedMessage
@@ -91,7 +110,9 @@ export type WebviewToHostMessage =
   | CanvasNodeDeletedMessage
   | CanvasEdgeAddedMessage
   | CanvasEdgeDeletedMessage
-  | CanvasExportReadyMessage;
+  | CanvasExportReadyMessage
+  | CanvasReadyMessage
+  | CanvasJsErrorMessage;
 
 // ── Extension host → Webview ───────────────────────────────────────────────────
 

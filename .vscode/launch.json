@@ -18,7 +18,7 @@
       //   b) In any terminal: curl http://localhost:3000/health   ← expect toolCount > 0
       //   c) In Copilot chat: the Accordo MCP server appears automatically
       //   d) Status bar should show Bridge + Voice indicators (bottom-right)
-      "name": "Launch Bridge + Editor + Voice (Extension Development Host)",
+      "name": "Launch All Extensions (Extension Development Host)",
       "type": "extensionHost",
       "request": "launch",
       "args": [
@@ -35,6 +35,8 @@
         "--extensionDevelopmentPath=${workspaceFolder}/packages/voice",
         // accordo-script: scripted multi-step IDE walkthroughs via MCP
         "--extensionDevelopmentPath=${workspaceFolder}/packages/script",
+        // accordo-diagram: Mermaid + Excalidraw diagram tools
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/diagram",
         // Open this repo in the EDH so it has a real workspace to report
         "${workspaceFolder}"
       ],
@@ -45,7 +47,8 @@
         "${workspaceFolder}/packages/md-viewer/dist/**/*.js",
         "${workspaceFolder}/packages/slidev/dist/**/*.js",
         "${workspaceFolder}/packages/voice/dist/**/*.js",
-        "${workspaceFolder}/packages/script/dist/**/*.js"
+        "${workspaceFolder}/packages/script/dist/**/*.js",
+        "${workspaceFolder}/packages/diagram/dist/**/*.js"
       ],
       "preLaunchTask": "build-all",
       "sourceMaps": true

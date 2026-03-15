@@ -1,12 +1,12 @@
 # Accordo — Diagram Modality Implementation Plan
 
 **Status:** IN PROGRESS
-**Date:** 2026-03-12
+**Date:** 2026-03-15
 **Depends on:** Session 10D complete (1837 tests green)
 **Architecture:** `docs/diag_arch_v4.2.md`
 **Dev process:** `docs/dev-process.md` (TDD cycle A→F)
 
-## Current Status (as of 2026-03-12)
+## Current Status (as of 2026-03-15)
 
 | Module | State | Commit | Tests |
 |---|---|---|---|
@@ -15,22 +15,52 @@
 | A3 Layout store | ✅ DONE | `15a4369` | 54 pass |
 | A4 Auto-layout (dispatch) | ✅ DONE | `f49bb9e` + `391abf2` | 36 pass |
 | A5 Edge identity | ✅ DONE | — | 22 pass |
-| A6 Placement | ✅ DONE | — | 20 pass |
+| A6 Placement | ✅ DONE | — | 24 pass (PL-01..PL-24; PL-21..24 backfill†) |
 | A7 Reconciler | ✅ DONE | `bef728f` | 36 pass (RC-01..RC-36) |
 | A8 Shape map | ✅ DONE | — | 15 pass |
 | A9 Edge router | ✅ DONE | — | 15 pass |
-| A10 Canvas generator | ✅ DONE | `bef728f` | 27 pass (CG-01..CG-27) |
+| A10 Canvas generator | ✅ DONE | `bef728f` | 33 pass (CG-01..CG-33; CG-28..33 backfill†) |
 | A11 Protocol types | ✅ DONE | — | type-only |
-| A14 MCP tool definitions | ✅ DONE | — | 45 pass (DT-01..DT-45) |
+| A14 MCP tool definitions | ✅ DONE | — | 52 pass (DT-01..DT-52; DT-49..52 backfill†) |
 | A15 Webview panel | ✅ DONE | `aa7d8ec` | 16 pass (AP-01..AP-15, AP-09b) |
 | A16 Webview frontend | 📋 NOT STARTED | — | manual test only |
 | A17 Extension entry | 📋 NOT STARTED | — | ~10 estimated |
 
-**Total passing (packages/diagram):** 393 tests  
-**Next module:** A16 (Webview frontend) — unblocked
+**Additional features delivered in Session 11 (committed 2026-03-15):**
+- `accordo_diagram_patch` — added `x`/`y` per-node position fields + `clusterStyles` arg (agents no longer need to write `.layout.json` directly)
+- Aux files (`.layout.json`, `.excalidraw`) moved from `<source-dir>/` to `<workspace>/.accordo/diagrams/<rel>/` 
+- `.mmd` files registered as custom editor (`accordo.diagram` viewType) — double-clicking opens the canvas view
+
+**Total passing (packages/diagram):** 444 tests  
+**Next module:** clean TD-DIAG-1 + TD-DIAG-2 → A16 (Webview frontend)
 
 > **LS-ID note:** Requirement IDs `LS-01..LS-12` used in layout-store tests are
 > locally derived. A canonical mapping should be established in a future pass.
+
+> **† Backfill-TDD exception (A6-v2, A10-v2, A14-v2):** Three sets of tests
+> (PL-21..24, CG-28..33, DT-49..52) were written *after* implementation during
+> a TDD catch-up pass (2026-03-14). The exception was agreed by reviewer because
+> implementation had already landed untested: PL-21..24 cover the A6-v2
+> dagre-first algorithm; CG-28..33 cover A10-v2 per-node canvas styles
+> (fillStyle, strokeStyle, roughness, fontFamily); DT-49..52 cover A14-v2
+> nodeStyles width/height segregation. All 51 new tests are discriminating (not
+> tautological). Phase B2 approval on record.
+
+---
+
+## 0. Technical Debt Register (diagram package)
+
+Registered 2026-03-15. Items are ordered by priority (highest first).
+
+| ID | Severity | Description | File(s) | Blocking |
+|---|---|---|---|---|
+| TD-DIAG-1 | 🔴 HIGH | `_debugLog` + `appendFileSync` to `/tmp/accordo-diagram.log` — debug instrumentation left in production code. Violates debug-skill rule (remove all instrumentation before committing). Must be cleaned before A16 adds more panel work. | `panel.ts` L94-98 | A16 |
+| TD-DIAG-2 | 🟠 MEDIUM | `.excalidraw` snapshot written on every `_loadAndPost()` — undocumented "feature" using sync `writeFileSync`/`mkdirSync`. Either add to requirements with a debug-flag gate, or remove. Currently adds blocking sync I/O to every canvas load. | `panel.ts` L505-515 | A16 |
+| TD-DIAG-3 | 🟠 MEDIUM | `_patchLayoutSync()` uses `readFileSync`/`writeFileSync`/`mkdirSync` — blocking sync I/O in a `onDidReceiveMessage` callback (every node drag). Should become `_patchLayoutAsync()` with debounce write coalescing. Acceptable for A16 testing but must be resolved before production hardening (post-A17). | `panel.ts` L590-610 | post-A17 |
+| TD-DIAG-4 | 🟡 LOW | `.accordo/` not in `.gitignore`. Layout JSON lives at `<workspace>/.accordo/diagrams/`. Decision: layout files should be committed (they are user/agent data); `.excalidraw` snapshots should be gitignored. Once TD-DIAG-2 is resolved (snapshots removed), no `.gitignore` entry needed. Track here until TD-DIAG-2 is closed. | `.gitignore` | none |
+| TD-DIAG-5 | 🔴 HIGH | All Session 11 work uncommitted. 444 tests, A1-A15 + A15-era features (patch x/y, aux path, custom editor) are uncommitted and unpushed. Must be committed before starting A16. | all diagram files | A16 |
+| TD-DIAG-6 | 🟡 LOW | `workspaceFolders[0]` assumption — `_workspaceRoot` falls back to `""` in multi-root workspaces, which corrupts the `.accordo/diagrams/` path derivation. Known single-root limitation. Document explicitly; guard `layoutPathFor` when `workspaceRoot === ""` (throw or use CWD). | `panel.ts`, `layout-store.ts` | none |
+| TD-DIAG-7 | 🟡 LOW | LS-ID note — `LS-01..LS-12` requirement IDs in layout-store tests are locally derived; never formally linked to a requirements doc. Establish canonical mapping in a future requirements pass. | `layout-store.test.ts` | none |
 
 ---
 

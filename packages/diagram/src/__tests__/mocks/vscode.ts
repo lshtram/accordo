@@ -133,6 +133,7 @@ export const mockPanel = new MockWebviewPanel("accordo.diagram", "Diagram");
 
 export const window = {
   createWebviewPanel: vi.fn().mockReturnValue(mockPanel),
+  registerCustomEditorProvider: vi.fn().mockReturnValue({ dispose: vi.fn() }),
   showErrorMessage: vi.fn(),
   showInformationMessage: vi.fn(),
 };

@@ -73,12 +73,29 @@ export function generateCanvas(
   const fontFamily = "Excalifont";
   const elements: ExcalidrawElement[] = [];
 
+  // mermaidId → Excalidraw element ID for shapes (used by arrow bindings).
+  const nodeElementIds = new Map<string, string>();
+
+  // excalidrawId → element object (mutable reference for later patching).
+  const elementById = new Map<string, ExcalidrawElement>();
+
+  // mermaidNodeId → arrowIds[] — built during edge pass, used to patch
+  // shape boundElements so Excalidraw physically binds arrows to shapes.
+  const nodeArrows = new Map<string, string[]>();
+
+  function pushElement(el: ExcalidrawElement): void {
+    elements.push(el);
+    elementById.set(el.id, el);
+  }
+
   // ── 1. Cluster backgrounds (rendered first) ─────────────────────────────────
   for (const cluster of parsed.clusters) {
     const cl = resolvedLayout.clusters[cluster.id];
     if (cl === undefined) continue;
-    elements.push({
-      id: randomUUID(),
+    const elemId = randomUUID();
+    const textId = cluster.label ? randomUUID() : null;
+    pushElement({
+      id: elemId,
       mermaidId: cluster.id,
       type: "rectangle",
       x: cl.x,
@@ -87,10 +104,28 @@ export function generateCanvas(
       height: cl.h,
       roughness,
       fontFamily,
-      label: cluster.label,
       backgroundColor: cl.style?.backgroundColor,
       strokeColor: cl.style?.strokeColor,
+      strokeWidth: cl.style?.strokeWidth,
+      boundElements: textId ? [{ id: textId, type: "text" }] : null,
     });
+    if (textId && cluster.label) {
+      // Pin the label to the top of the cluster box (8px padding) rather than
+      // centering vertically — matches the conventional subgraph title position.
+      pushElement({
+        id: textId,
+        mermaidId: `${cluster.id}:text`,
+        type: "text",
+        x: cl.x,
+        y: cl.y + 8,
+        width: cl.w,
+        height: 20,
+        roughness,
+        fontFamily,
+        label: cluster.label,
+        containerId: elemId,
+      });
+    }
   }
 
   // ── 2. Node shapes ──────────────────────────────────────────────────────────
@@ -98,19 +133,47 @@ export function generateCanvas(
     const nl = resolvedLayout.nodes[nodeId];
     if (nl === undefined) continue;
     const shapeProps = getShapeProps(node.shape);
-    elements.push({
-      id: randomUUID(),
+    const elemId = randomUUID();
+    nodeElementIds.set(nodeId, elemId);
+    const textId = node.label ? randomUUID() : null;
+    pushElement({
+      id: elemId,
       mermaidId: nodeId,
       type: shapeProps.elementType,
       x: nl.x,
       y: nl.y,
       width: nl.w,
       height: nl.h,
-      roughness,
+      roughness: nl.style?.roughness ?? roughness,
       fontFamily,
-      label: node.label,
       roundness: shapeProps.roundness ?? undefined,
+      backgroundColor: nl.style?.backgroundColor,
+      strokeColor: nl.style?.strokeColor,
+      strokeWidth: nl.style?.strokeWidth,
+      // strokeStyle: prefer explicit strokeStyle; fall back to strokeDash boolean.
+      strokeStyle: nl.style?.strokeStyle ?? (nl.style?.strokeDash ? "dashed" : undefined),
+      fillStyle: nl.style?.fillStyle,
+      opacity: nl.style?.opacity,
+      boundElements: textId ? [{ id: textId, type: "text" }] : null,
     });
+    if (textId && node.label) {
+      const textFontSize = nl.style?.fontSize ?? 16;
+      pushElement({
+        id: textId,
+        mermaidId: `${nodeId}:text`,
+        type: "text",
+        x: nl.x,
+        y: nl.y + Math.floor((nl.h - textFontSize * 1.25) / 2),
+        width: nl.w,
+        height: Math.ceil(textFontSize * 1.25),
+        roughness: nl.style?.roughness ?? roughness,
+        fontFamily: nl.style?.fontFamily ?? fontFamily,
+        fontSize: textFontSize,
+        label: node.label,
+        strokeColor: nl.style?.fontColor,
+        containerId: elemId,
+      });
+    }
   }
 
   // ── 3. Edges ────────────────────────────────────────────────────────────────
@@ -129,33 +192,84 @@ export function generateCanvas(
 
     const routeResult = routeEdge(routing, waypoints, sourceBB, targetBB);
 
+    // Excalidraw arrow points must be relative to the element's x,y.
+    // Use the first absolute point as the element origin, then subtract.
+    const absPoints = routeResult.points;
+    const ox = absPoints[0]![0];
+    const oy = absPoints[0]![1];
+    const relPoints: ReadonlyArray<[number, number]> = absPoints.map(
+      ([px, py]) => [px - ox, py - oy] as [number, number],
+    );
+
+    // Pre-generate the arrow ID so we can reference it in shape boundElements.
+    const arrowId = randomUUID();
+    // If this edge has a label, pre-generate its text ID so we can cross-reference
+    // the arrow and the text element (Excalidraw requires mutual binding).
+    const labelTextId = edge.label ? randomUUID() : null;
+
+    // Track this arrow against its source and target nodes for boundElements patching.
+    for (const nid of [edge.from, edge.to]) {
+      const arr = nodeArrows.get(nid) ?? [];
+      arr.push(arrowId);
+      nodeArrows.set(nid, arr);
+    }
+
+    const fromElemId = nodeElementIds.get(edge.from);
+    const toElemId = nodeElementIds.get(edge.to);
+
     elements.push({
-      id: randomUUID(),
+      id: arrowId,
       mermaidId: key,
       type: "arrow",
-      x: sourceBB.x,
-      y: sourceBB.y,
+      x: ox,
+      y: oy,
       width: 0,
       height: 0,
       roughness,
       fontFamily,
-      points: routeResult.points as ReadonlyArray<[number, number]>,
+      points: relPoints,
+      startBinding: fromElemId && routeResult.startBinding
+        ? { elementId: fromElemId, ...routeResult.startBinding }
+        : null,
+      endBinding: toElemId && routeResult.endBinding
+        ? { elementId: toElemId, ...routeResult.endBinding }
+        : null,
+      // Bind the label text element so Excalidraw tracks and moves it with the arrow.
+      boundElements: labelTextId ? [{ id: labelTextId, type: "text" }] : null,
     });
 
-    if (edge.label) {
+    if (edge.label && labelTextId) {
+      // containerId = arrowId causes Excalidraw to auto-position the label at
+      // the arrow midpoint and keep it there when the arrow is moved.
       elements.push({
-        id: randomUUID(),
+        id: labelTextId,
         mermaidId: `${key}:label`,
         type: "text",
-        x: sourceBB.x,
-        y: sourceBB.y,
+        x: ox,
+        y: oy,
         width: 120,
-        height: 24,
+        height: 20,
         roughness,
         fontFamily,
         label: edge.label,
+        containerId: arrowId,
       });
     }
+  }
+
+  // ── 4. Patch shape boundElements with arrow IDs ──────────────────────────────
+  // Excalidraw requires arrows to be listed in the shape's boundElements for
+  // the arrow to physically connect (move with the shape when dragged).
+  for (const [nodeId, arrowIds] of nodeArrows) {
+    const elemId = nodeElementIds.get(nodeId);
+    if (!elemId) continue;
+    const elem = elementById.get(elemId);
+    if (!elem) continue;
+    const existing = elem.boundElements ?? [];
+    elem.boundElements = [
+      ...existing,
+      ...arrowIds.map((id) => ({ id, type: "arrow" as const })),
+    ];
   }
 
   return { elements, layout: resolvedLayout };

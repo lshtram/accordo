@@ -8,7 +8,8 @@
  * Source: diag_arch_v4.2.md §5, diag_workplan.md §4.3
  */
 
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { dirname, join, basename, relative } from "node:path";
 
 import type {
   LayoutStore,
@@ -29,10 +30,15 @@ const SPATIAL_TYPES = new Set<string>([
 
 /**
  * Derive the layout.json path from the corresponding .mmd path.
- * e.g. "diagrams/arch.mmd" → "diagrams/arch.layout.json"
+ * Auxiliary files are stored under `<workspaceRoot>/.accordo/diagrams/` with
+ * the source file's workspace-relative path preserved as a subdirectory tree.
+ *
+ * e.g. workspaceRoot=/ws, mmdPath=/ws/design/arch.mmd
+ *   → /ws/.accordo/diagrams/design/arch.layout.json
  */
-export function layoutPathFor(mmdPath: string): string {
-  return mmdPath.replace(/\.mmd$/, ".layout.json");
+export function layoutPathFor(mmdPath: string, workspaceRoot: string): string {
+  const rel = relative(workspaceRoot, mmdPath).replace(/\.mmd$/, ".layout.json");
+  return join(workspaceRoot, ".accordo", "diagrams", rel);
 }
 
 /**
@@ -62,6 +68,7 @@ export async function writeLayout(
   filePath: string,
   layout: LayoutStore
 ): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true });
   await writeFile(filePath, JSON.stringify(layout, null, 2), "utf-8");
 }
 

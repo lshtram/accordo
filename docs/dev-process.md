@@ -191,8 +191,31 @@ When working in TDD mode, every implementation module goes through these phases 
 │          · "What you should see in VS Code:" (if visual)        │
 │          · "What you should see in the response:" with the      │
 │            exact JSON string                                    │
-│     d. "Part 3 — Final check" with build, test, and Problems   │
+│     d. "Part 4 — Manual / End-User Tests" — human-interaction   │
+│        tests covering any feature that is visible or tangible   │
+│        inside the VS Code extension itself. Required whenever   │
+│        the module produces UI changes, canvas changes, panel    │
+│        behaviour, visual styling, or drag/drop interaction.     │
+│        Format:                                                  │
+│        - One sub-section per user-observable behaviour          │
+│        - Steps written as imperative actions ("Open the         │
+│          Command Palette, type 'Accordo: Open Diagram'…")       │
+│        - Table of observable checks per sub-section:            │
+│          | # | Action | Expected |                              │
+│          Each row is self-contained (no "see above" refs).      │
+│        - Where an MCP tool call is part of the flow, include    │
+│          the COMPLETE curl command inline (not as a footnote).  │
+│        - What to look for on the canvas / panel / sidebar.      │
+│        - If the feature has no user-visible output (pure data   │
+│          transformation), write a single "N/A — this module     │
+│          has no user-visible behaviour" line.                   │
+│                                                                 │
+│     e. "Part 5 — Final check" with build, test, and Problems   │
 │        panel steps                                              │
+│                                                                 │
+│     NOTE: Parts 1-3 cover automated test verification.          │
+│           Part 4 covers what a real user can see and touch.     │
+│           Both are required before Phase E.                     │
 │                                                                 │
 │     NO abstract JSON snippets without curl commands.            │
 │     NO "..." or "<N>" notation in expected responses.           │

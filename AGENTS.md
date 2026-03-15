@@ -56,7 +56,25 @@ For updating docs, requirements, architecture, or the workplan:
 - After any requirements change, note which modules may be affected
 - Commit with `docs(<scope>): <description>`
 
-### 2.5 Refactor Mode
+### 2.5 Debug Mode
+
+For any debugging session — a failing test, unexpected runtime behaviour, or an error
+you cannot immediately explain — load the debugging skill before touching code:
+
+```
+skills/debugging/skill.md           — entry point, quick reference, process map
+skills/debugging/knowledge/systematic-process.md    — 5-phase workflow
+skills/debugging/knowledge/instrumentation-guide.md — where/how to add logs
+```
+
+**Key rules in Debug Mode:**
+- Follow the 5-phase rule: OBSERVE → INSTRUMENT → HYPOTHESIZE → VERIFY → FIX & CONFIRM
+- Never form a hypothesis before you have the full error message (Phase 1 first)
+- Root cause over symptoms — ask "why?" at least 3 times
+- Remove all `// DEBUG:` instrumentation before committing
+- Commit with `fix(<module>): <description>`
+
+### 2.6 Refactor Mode
 
 For restructuring existing code without changing behaviour:
 - Tests must remain green before and after
@@ -78,7 +96,7 @@ context compaction. Conversation context is supplementary only and treated as un
 for anything earlier than the last ~30 turns.
 
 **When to suggest it (proactively):** After completing a TDD module (Phase F committed),
-after a non-trivial debugging session, or after any session where the agent had to correct
+after a non-trivial debugging session (Debug Mode §2.5), or after any session where the agent had to correct
 course more than once.
 
 ---
@@ -124,6 +142,7 @@ These are project-level decisions that override or extend `coding-guidelines.md 
 | [`docs/patterns.md`](docs/patterns.md) | Generic agent tool patterns (shared across projects) |
 | [`docs/accordo-patterns.md`](docs/accordo-patterns.md) | Accordo-specific patterns (VS Code, Hub, Bridge) |
 | [`.copilot/compound.md`](.copilot/compound.md) | Compound mode — instructions for session retrospective |
+| [`skills/debugging/skill.md`](skills/debugging/skill.md) | Debugging skill — 5-phase process, instrumentation guide, Accordo topology |
 
 ---
 

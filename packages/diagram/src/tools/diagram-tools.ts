@@ -17,7 +17,7 @@
 import { readFile, writeFile, readdir, access } from "node:fs/promises";
 import { resolve, relative, join, dirname, basename, extname, isAbsolute } from "node:path";
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
-import type { DiagramType, ParsedNode, ParsedEdge, ParsedCluster, LayoutStore, ReconcileResult } from "../types.js";
+import type { DiagramType, ParsedNode, ParsedEdge, ParsedCluster, LayoutStore, NodeStyle, ReconcileResult } from "../types.js";
 import { parseMermaid, detectDiagramType } from "../parser/adapter.js";
 import { computeInitialLayout } from "../layout/auto-layout.js";
 import { layoutPathFor, readLayout, writeLayout } from "../layout/layout-store.js";
@@ -112,6 +112,8 @@ export interface DiagramStyleGuideResult {
   palette: Record<string, string>;
   starterTemplate: string;
   conventions: string[];
+  /** How to apply per-node colours and fonts via accordo_diagram_patch. */
+  stylingInstructions: string[];
 }
 
 // ── Path guard ────────────────────────────────────────────────────────────────
@@ -232,7 +234,7 @@ export async function getHandler(
   }
   const { diagram } = parseResult;
 
-  const layoutPath = layoutPathFor(resolved);
+  const layoutPath = layoutPathFor(resolved, ctx.workspaceRoot);
   const layout = await readLayout(layoutPath);
 
   return ok({
@@ -282,7 +284,7 @@ export async function createHandler(
   }
 
   const layout = computeInitialLayout(diagram);
-  const lPath = layoutPathFor(resolved);
+  const lPath = layoutPathFor(resolved, ctx.workspaceRoot);
 
   await writeFile(resolved, content, "utf-8");
   await writeLayout(lPath, layout);
@@ -323,9 +325,8 @@ export async function patchHandler(
   }
 
   const newSource = args.content as string;
-  const lPath = layoutPathFor(resolved);
+  const lPath = layoutPathFor(resolved, ctx.workspaceRoot);
 
-  // Read current layout, or compute a fallback from the old source
   let currentLayout = await readLayout(lPath);
   if (currentLayout === null) {
     const oldParseResult = await parseMermaid(oldSource);
@@ -356,8 +357,70 @@ export async function patchHandler(
     throw e;
   }
 
+  // Apply any nodeStyles overrides passed by the caller.
+  // width/height are layout sizing overrides (applied to nl.w / nl.h).
+  // All other fields are visual style overrides (applied to nl.style).
+  let finalLayout = reconcileResult.layout;
+  const rawNodeStyles = args.nodeStyles as Record<string, Record<string, unknown>> | undefined;
+  if (rawNodeStyles !== undefined && typeof rawNodeStyles === "object") {
+    const updatedNodes = { ...finalLayout.nodes };
+    for (const [nodeId, overrides] of Object.entries(rawNodeStyles)) {
+      if (updatedNodes[nodeId] === undefined) continue;
+      const existing = updatedNodes[nodeId]!; // guarded by the undefined check above
+      // Extract sizing overrides — these go into NodeLayout w/h, not NodeStyle.
+      const { width, height, x, y, ...styleOverrides } = overrides;
+      // Whitelist known NodeStyle keys so unknown agent fields are silently
+      // dropped rather than blindly spread into the stored style object.
+      const NODE_STYLE_KEYS: ReadonlyArray<keyof NodeStyle> = [
+        "backgroundColor", "strokeColor", "strokeWidth", "strokeStyle",
+        "strokeDash", "fillStyle", "shape", "fontSize", "fontColor",
+        "fontWeight", "opacity", "roughness", "fontFamily",
+      ];
+      const styleFields: Record<string, unknown> = {};
+      for (const key of NODE_STYLE_KEYS) {
+        if (styleOverrides[key] !== undefined) {
+          styleFields[key] = styleOverrides[key];
+        }
+      }
+      updatedNodes[nodeId] = {
+        ...existing,
+        ...(typeof x      === "number" ? { x } : {}),
+        ...(typeof y      === "number" ? { y } : {}),
+        ...(typeof width  === "number" ? { w: width  } : {}),
+        ...(typeof height === "number" ? { h: height } : {}),
+        style: { ...existing.style, ...(styleFields as Partial<NodeStyle>) },
+      };
+    }
+    finalLayout = { ...finalLayout, nodes: updatedNodes };
+  }
+
+  // Apply clusterStyles overrides (x, y, w, h, and visual style fields).
+  const rawClusterStyles = args.clusterStyles as Record<string, Record<string, unknown>> | undefined;
+  if (rawClusterStyles !== undefined && typeof rawClusterStyles === "object") {
+    const updatedClusters = { ...finalLayout.clusters };
+    for (const [clusterId, overrides] of Object.entries(rawClusterStyles)) {
+      if (updatedClusters[clusterId] === undefined) continue;
+      const existing = updatedClusters[clusterId]!;
+      const { x, y, width, height, ...styleOverrides } = overrides;
+      const CLUSTER_STYLE_KEYS = ["backgroundColor", "strokeColor", "strokeWidth", "strokeDash"] as const;
+      const styleFields: Record<string, unknown> = {};
+      for (const key of CLUSTER_STYLE_KEYS) {
+        if (styleOverrides[key] !== undefined) styleFields[key] = styleOverrides[key];
+      }
+      updatedClusters[clusterId] = {
+        ...existing,
+        ...(typeof x      === "number" ? { x } : {}),
+        ...(typeof y      === "number" ? { y } : {}),
+        ...(typeof width  === "number" ? { w: width  } : {}),
+        ...(typeof height === "number" ? { h: height } : {}),
+        style: { ...existing.style, ...styleFields },
+      };
+    }
+    finalLayout = { ...finalLayout, clusters: updatedClusters };
+  }
+
   await writeFile(resolved, reconcileResult.mermaidCleaned ?? newSource, "utf-8");
-  await writeLayout(lPath, reconcileResult.layout);
+  await writeLayout(lPath, finalLayout);
 
   return ok({
     patched: true as const,
@@ -458,6 +521,48 @@ export function styleGuideHandler(
       "Use subgraphs to group related nodes into clusters",
       "Avoid duplicate node IDs across subgraph boundaries",
     ],
+    stylingInstructions: [
+      "IMPORTANT: Do NOT use Mermaid classDef or style directives — Accordo ignores them.",
+      "To style or resize nodes, pass the 'nodeStyles' argument to accordo_diagram_patch alongside your content.",
+      "nodeStyles is an object mapping node IDs to per-node overrides.",
+      "",
+      "VISUAL STYLE fields (stored in layout.json NodeStyle):",
+      "  backgroundColor: hex string, e.g. '#4A90D9'",
+      "  strokeColor: hex string for the border",
+      "  strokeWidth: number in px, e.g. 2",
+      "  strokeStyle: 'solid' | 'dashed' | 'dotted'",
+      "  fillStyle: 'hachure' | 'cross-hatch' | 'solid' | 'zigzag' | 'dots' | 'dashed' | 'zigzag-line'",
+      "  opacity: number 0–1, e.g. 0.8",
+      "  roughness: number 0–3 (0=crisp, 1=hand-drawn default, higher=more rough)",
+      "",
+      "FONT fields:",
+      "  fontColor: hex string for text color",
+      "  fontSize: number in px, e.g. 18",
+      "  fontFamily: 'Excalifont' | 'Nunito' | 'Comic Shanns'",
+      "  fontWeight: 'normal' | 'bold'",
+      "",
+      "SIZE / POSITION fields (applied to NodeLayout dimensions/coordinates, not NodeStyle):",
+      "  width: number in px — overrides the node width",
+      "  height: number in px — overrides the node height",
+      "  x: number in px — overrides the node X position (left edge)",
+      "  y: number in px — overrides the node Y position (top edge)",
+      "",
+      "CLUSTER OVERRIDES (use the 'clusterStyles' argument, NOT nodeStyles):",
+      "  clusterStyles: { MCP: { x: 50, y: 20, width: 600, height: 400, backgroundColor: '#f0f0f0' } }",
+      "  Cluster IDs are the subgraph IDs from the Mermaid source (e.g. 'subgraph MCP' → ID is 'MCP').",
+      "",
+      "IMPORTANT: NEVER edit .layout.json or .excalidraw files directly.",
+      "Always use accordo_diagram_patch to modify node/cluster positions, sizes, and styles.",
+      "",
+      "EXAMPLE — apply blue fill, white text, wider node:",
+      "  nodeStyles: { A: { backgroundColor: '#4A90D9', fontColor: '#ffffff', width: 220 } }",
+      "",
+      "EXAMPLE — dashed border + solid fill + Nunito font:",
+      "  nodeStyles: { B: { strokeStyle: 'dashed', fillStyle: 'solid', fontFamily: 'Nunito' } }",
+      "",
+      "nodeStyles merges into existing styles — update only what you need.",
+      "nodeStyles only applies to nodes that already exist in the diagram.",
+    ],
   });
 }
 
@@ -528,7 +633,10 @@ export function createDiagramTools(ctx: DiagramToolContext): ExtensionToolDefini
       name: "accordo_diagram_patch",
       group: "diagram",
       description:
-        "Update an existing .mmd file with new Mermaid source and reconcile the stored layout.",
+        "Update an existing .mmd file with new Mermaid source and reconcile the stored layout. " +
+        "Use the optional 'nodeStyles' argument to set per-node colours, fonts, fill patterns, " +
+        "roughness, and size overrides. This is the ONLY correct way to style nodes — " +
+        "never use Mermaid classDef directives (Accordo ignores them).",
       inputSchema: {
         type: "object",
         properties: {
@@ -537,6 +645,59 @@ export function createDiagramTools(ctx: DiagramToolContext): ExtensionToolDefini
             description: "Path to the .mmd file to update, relative to workspace root",
           },
           content: { type: "string", description: "New Mermaid diagram source" },
+          nodeStyles: {
+            type: "object",
+            description:
+              "Optional per-node style and size overrides. Keys are node IDs. " +
+              "Visual fields: backgroundColor (hex), strokeColor (hex), strokeWidth (px), " +
+              "strokeStyle ('solid'|'dashed'|'dotted'), fillStyle ('hachure'|'cross-hatch'|'solid'|'zigzag'|'dots'), " +
+              "opacity (0-1), roughness (0-3, 0=crisp 1=hand-drawn), " +
+              "fontColor (hex), fontSize (px), fontFamily ('Excalifont'|'Nunito'|'Comic Shanns'), fontWeight ('normal'|'bold'). " +
+              "Size fields: width (px), height (px) — resize the node. " +
+              "Use this instead of Mermaid classDef — Accordo renders from layout styles.",
+            additionalProperties: {
+              type: "object",
+              properties: {
+                backgroundColor: { type: "string" },
+                strokeColor:     { type: "string" },
+                strokeWidth:     { type: "number" },
+                strokeStyle:     { type: "string", enum: ["solid", "dashed", "dotted"] },
+                fillStyle:       { type: "string", enum: ["hachure", "cross-hatch", "solid", "zigzag", "dots", "dashed", "zigzag-line"] },
+                opacity:         { type: "number", minimum: 0, maximum: 1 },
+                roughness:       { type: "number", minimum: 0, maximum: 3 },
+                fontColor:       { type: "string" },
+                fontSize:        { type: "number" },
+                fontFamily:      { type: "string", enum: ["Excalifont", "Nunito", "Comic Shanns"] },
+                fontWeight:      { type: "string", enum: ["normal", "bold"] },
+                width:           { type: "number", description: "Override node width in pixels" },
+                height:          { type: "number", description: "Override node height in pixels" },
+                x:               { type: "number", description: "Override node X position in pixels" },
+                y:               { type: "number", description: "Override node Y position in pixels" },
+              },
+              additionalProperties: false,
+            },
+          },
+          clusterStyles: {
+            type: "object",
+            description:
+              "Optional per-cluster position, size, and visual overrides. Keys are cluster/subgraph IDs. " +
+              "Position fields: x, y (top-left corner in px). Size fields: width, height (in px). " +
+              "Visual fields: backgroundColor (hex), strokeColor (hex), strokeWidth (px), strokeDash (bool).",
+            additionalProperties: {
+              type: "object",
+              properties: {
+                x:               { type: "number", description: "Cluster top-left X in pixels" },
+                y:               { type: "number", description: "Cluster top-left Y in pixels" },
+                width:           { type: "number", description: "Cluster width in pixels" },
+                height:          { type: "number", description: "Cluster height in pixels" },
+                backgroundColor: { type: "string" },
+                strokeColor:     { type: "string" },
+                strokeWidth:     { type: "number" },
+                strokeDash:      { type: "boolean" },
+              },
+              additionalProperties: false,
+            },
+          },
         },
         required: ["path", "content"],
       },

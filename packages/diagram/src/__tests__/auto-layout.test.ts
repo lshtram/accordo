@@ -387,19 +387,20 @@ describe("computeInitialLayout — cluster bounding boxes (AL-08)", () => {
     expect(fe.h).toBeGreaterThan(0);
   });
 
-  it("AL-08: cluster bounding box encloses all member node centres", () => {
+  it("AL-08: cluster bounding box encloses all member node full extents", () => {
     const parsed = makeAuthFlowDiagram();
     const layout = computeInitialLayout(parsed);
 
-    // backend_zone has 5 members — verify each is within the cluster bounds
+    // backend_zone has 5 members — verify each full extent (x..x+w, y..y+h)
+    // is within the cluster bounds, not just the centre point.
     const c = layout.clusters["backend_zone"];
     const members = ["auth_svc", "user_db", "token_store", "audit_log", "session_cache"];
     for (const id of members) {
       const n = layout.nodes[id];
-      expect(n.x, `${id}.x within cluster x-range`).toBeGreaterThanOrEqual(c.x);
-      expect(n.x, `${id}.x within cluster x-range`).toBeLessThanOrEqual(c.x + c.w);
-      expect(n.y, `${id}.y within cluster y-range`).toBeGreaterThanOrEqual(c.y);
-      expect(n.y, `${id}.y within cluster y-range`).toBeLessThanOrEqual(c.y + c.h);
+      expect(n.x,       `${id} left edge within cluster`).toBeGreaterThanOrEqual(c.x);
+      expect(n.x + n.w, `${id} right edge within cluster`).toBeLessThanOrEqual(c.x + c.w);
+      expect(n.y,       `${id} top edge within cluster`).toBeGreaterThanOrEqual(c.y);
+      expect(n.y + n.h, `${id} bottom edge within cluster`).toBeLessThanOrEqual(c.y + c.h);
     }
   });
 });

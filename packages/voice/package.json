@@ -11,13 +11,7 @@
     "workspace"
   ],
   "activationEvents": [
-    "onStartupFinished",
-    "onView:accordo-voice-panel",
-    "onCommand:accordo.voice.startDictation",
-    "onCommand:accordo.voice.readAloud",
-    "onCommand:accordo.voice.testTts",
-    "onCommand:accordo.voice.testStt",
-    "onCommand:accordo.voice.stopNarration"
+    "onStartupFinished"
   ],
   "extensionDependencies": [
     "accordo.accordo-bridge"

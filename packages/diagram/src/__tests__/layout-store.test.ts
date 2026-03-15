@@ -120,21 +120,25 @@ afterEach(async () => {
 });
 
 // ── 1. layoutPathFor ──────────────────────────────────────────────────────────
-// §3 two-file model: "arch.mmd" → "arch.layout.json"
+// §3 two-file model: stores under <workspaceRoot>/.accordo/diagrams/<rel-path>
 
 describe("layoutPathFor", () => {
-  it("LS-01: replaces .mmd extension with .layout.json for relative path", () => {
-    expect(layoutPathFor("diagrams/arch.mmd")).toBe("diagrams/arch.layout.json");
-  });
-
-  it("LS-01: works for an absolute path", () => {
-    expect(layoutPathFor("/workspace/diagrams/arch.mmd")).toBe(
-      "/workspace/diagrams/arch.layout.json"
+  it("LS-01: places layout under .accordo/diagrams/ preserving relative path", () => {
+    expect(layoutPathFor("/workspace/diagrams/arch.mmd", "/workspace")).toBe(
+      "/workspace/.accordo/diagrams/diagrams/arch.layout.json"
     );
   });
 
-  it("LS-01: handles a filename with no directory component", () => {
-    expect(layoutPathFor("arch.mmd")).toBe("arch.layout.json");
+  it("LS-01: works for a file at the workspace root level", () => {
+    expect(layoutPathFor("/workspace/arch.mmd", "/workspace")).toBe(
+      "/workspace/.accordo/diagrams/arch.layout.json"
+    );
+  });
+
+  it("LS-01: handles nested subdirectory", () => {
+    expect(layoutPathFor("/ws/a/b/c.mmd", "/ws")).toBe(
+      "/ws/.accordo/diagrams/a/b/c.layout.json"
+    );
   });
 });
 

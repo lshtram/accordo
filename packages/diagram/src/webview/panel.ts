@@ -19,8 +19,9 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { writeFileSync, readFileSync } from "node:fs";
-import { basename, extname } from "node:path";
+import { writeFileSync, readFileSync, appendFileSync, mkdirSync } from "node:fs";
+import { basename, extname, dirname } from "node:path";
+import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
 
 import { parseMermaid } from "../parser/adapter.js";
@@ -28,6 +29,8 @@ import { readLayout, writeLayout, layoutPathFor, createEmptyLayout, patchNode } 
 import { reconcile } from "../reconciler/reconciler.js";
 import { generateCanvas } from "../canvas/canvas-generator.js";
 import { computeInitialLayout } from "../layout/auto-layout.js";
+import { getWebviewHtml } from "./html.js";
+import { toExcalidrawPayload } from "./scene-adapter.js";
 import type { LayoutStore, SpatialDiagramType } from "../types.js";
 import type {
   HostLoadSceneMessage,
@@ -74,6 +77,8 @@ export class DiagramPanel {
   private _currentLayout: LayoutStore | null = null;
   // Debounce timer for file-watcher triggered refresh (500 ms)
   private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  // Callbacks fired when the panel is disposed (used by extension.ts registry)
+  private _onDisposedCallbacks: Array<() => void> = [];
 
   // Pending export: resolve/reject callbacks + format
   private _pendingExport: {
@@ -82,12 +87,83 @@ export class DiagramPanel {
     format: "svg" | "png";
   } | null = null;
 
+  // Optional logger — writes to the Accordo Diagram output channel
+  private _log: (msg: string) => void = () => {};
+  // Absolute path to the workspace root (used to derive the .accordo/diagrams path)
+  private _workspaceRoot = "";
+  /** Log to output channel AND append a timestamped line to /tmp/accordo-diagram.log. */
+  private _debugLog(msg: string): void {
+    this._log(msg);
+    const line = `[${new Date().toISOString()}] ${msg}\n`;
+    try { appendFileSync("/tmp/accordo-diagram.log", line, "utf-8"); } catch { /* ignore */ }
+  }
+
   private constructor(mmdPath: string, panel: vscode.WebviewPanel) {
     this.mmdPath = mmdPath;
     this._panel = panel;
+    // Workspace root is set by the factory after construction.
   }
 
   // ── Factory ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Open an empty Excalidraw canvas not tied to any .mmd file.
+   * The canvas starts blank — the user can draw freely.
+   * No file watcher is set up. No layout is persisted.
+   */
+  static async createEmpty(
+    context: vscode.ExtensionContext,
+    log: (msg: string) => void = () => {},
+  ): Promise<DiagramPanel> {
+    log("DiagramPanel.createEmpty() — creating webview panel");
+    const panel = vscode.window.createWebviewPanel(
+      "accordo.diagram",
+      "New Canvas",
+      vscode.ViewColumn.One,
+      {
+        enableScripts: true,
+        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "dist")],
+      },
+    );
+
+    const instance = new DiagramPanel("", panel);
+    instance._log = log;
+
+    // Register message listener BEFORE setting webview.html so no canvas:ready
+    // message can be missed in the window between HTML assignment and subscription.
+    instance._disposables.push(
+      panel.webview.onDidReceiveMessage((msg: unknown) => {
+        instance._handleWebviewMessage(msg as WebviewToHostMessage);
+      }),
+    );
+
+    instance._disposables.push(
+      panel.onDidDispose(() => {
+        instance._cleanupOnDispose();
+      }),
+    );
+
+    const nonce = randomBytes(16).toString("hex");
+    const bundleUri = panel.webview
+      .asWebviewUri(
+        vscode.Uri.joinPath(context.extensionUri, "dist", "webview", "webview.bundle.js"),
+      )
+      .toString();
+    log("DiagramPanel.createEmpty() — bundle URI: " + bundleUri);
+    const virgilFontUri = panel.webview
+      .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview", "Virgil.woff2"))
+      .toString();
+    panel.webview.html = getWebviewHtml({
+      nonce,
+      cspSource: panel.webview.cspSource,
+      bundleUri,
+      virgilFontUri,
+    });
+    log("DiagramPanel.createEmpty() — HTML set, waiting for canvas:ready");
+
+    context.subscriptions.push(instance);
+    return instance;
+  }
 
   /**
    * Create and open a DiagramPanel for the given `.mmd` file.
@@ -97,7 +173,9 @@ export class DiagramPanel {
   static async create(
     context: vscode.ExtensionContext,
     mmdPath: string,
+    log: (msg: string) => void = () => {},
   ): Promise<DiagramPanel> {
+    log("DiagramPanel.create() — path: " + mmdPath);
     const title = basename(mmdPath, extname(mmdPath));
     const panel = vscode.window.createWebviewPanel(
       "accordo.diagram",
@@ -111,16 +189,17 @@ export class DiagramPanel {
     );
 
     const instance = new DiagramPanel(mmdPath, panel);
+    instance._log = log;
+    instance._workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
 
-    // Wire up incoming webview messages
+    // Register message listener BEFORE setting webview.html so no canvas:ready
+    // message can be missed in the window between HTML assignment and subscription.
     instance._disposables.push(
       panel.webview.onDidReceiveMessage((msg: unknown) => {
-        // Boundary: messages arrive as `unknown` from VS Code's postMessage API.
-      instance._handleWebviewMessage(msg as WebviewToHostMessage);
+        instance._handleWebviewMessage(msg as WebviewToHostMessage);
       }),
     );
 
-    // Dispose DiagramPanel when the VS Code panel is closed
     instance._disposables.push(
       panel.onDidDispose(() => {
         instance._cleanupOnDispose();
@@ -144,11 +223,98 @@ export class DiagramPanel {
     );
     instance._disposables.push(watcher);
 
+    // Set the webview HTML — message listener is already registered above.
+    const nonce = randomBytes(16).toString("hex");
+    const bundleUri = panel.webview
+      .asWebviewUri(
+        vscode.Uri.joinPath(context.extensionUri, "dist", "webview", "webview.bundle.js"),
+      )
+      .toString();
+    log("DiagramPanel.create() — bundle URI: " + bundleUri);
+    const virgilFontUri = panel.webview
+      .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview", "Virgil.woff2"))
+      .toString();
+    panel.webview.html = getWebviewHtml({
+      nonce,
+      cspSource: panel.webview.cspSource,
+      bundleUri,
+      virgilFontUri,
+    });
+    log("DiagramPanel.create() — HTML set, waiting for canvas:ready");
+
     context.subscriptions.push(instance);
 
-    // Initial load
-    await instance._loadAndPost();
+    // The authoritative load is triggered by canvas:ready from the webview.
+    log("DiagramPanel.create() — setup complete, waiting for canvas:ready from webview");
 
+    return instance;
+  }
+
+  /**
+   * Wire up an existing VS Code WebviewPanel (e.g. provided by a CustomEditorProvider)
+   * to serve as a DiagramPanel for the given `.mmd` file.
+   * Shares the same setup as `create()` but skips `createWebviewPanel`.
+   */
+  static async createFromExistingPanel(
+    context: vscode.ExtensionContext,
+    mmdPath: string,
+    existingPanel: vscode.WebviewPanel,
+    log: (msg: string) => void = () => {},
+  ): Promise<DiagramPanel> {
+    log("DiagramPanel.createFromExistingPanel() — path: " + mmdPath);
+
+    // Configure the webview options that the custom editor provider didn't set.
+    existingPanel.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "dist")],
+    };
+
+    const instance = new DiagramPanel(mmdPath, existingPanel);
+    instance._log = log;
+    instance._workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
+
+    instance._disposables.push(
+      existingPanel.webview.onDidReceiveMessage((msg: unknown) => {
+        instance._handleWebviewMessage(msg as WebviewToHostMessage);
+      }),
+    );
+
+    instance._disposables.push(
+      existingPanel.onDidDispose(() => {
+        instance._cleanupOnDispose();
+      }),
+    );
+
+    const watcher = vscode.workspace.createFileSystemWatcher(mmdPath);
+    instance._disposables.push(
+      watcher.onDidChange(() => {
+        if (instance._refreshTimer !== null) clearTimeout(instance._refreshTimer);
+        instance._refreshTimer = setTimeout(() => {
+          instance._refreshTimer = null;
+          instance.refresh().catch(() => {});
+        }, 500);
+      }),
+    );
+    instance._disposables.push(watcher);
+
+    const nonce = randomBytes(16).toString("hex");
+    const bundleUri = existingPanel.webview
+      .asWebviewUri(
+        vscode.Uri.joinPath(context.extensionUri, "dist", "webview", "webview.bundle.js"),
+      )
+      .toString();
+    const virgilFontUri = existingPanel.webview
+      .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview", "Virgil.woff2"))
+      .toString();
+    existingPanel.webview.html = getWebviewHtml({
+      nonce,
+      cspSource: existingPanel.webview.cspSource,
+      bundleUri,
+      virgilFontUri,
+    });
+    log("DiagramPanel.createFromExistingPanel() — setup complete");
+
+    context.subscriptions.push(instance);
     return instance;
   }
 
@@ -195,6 +361,22 @@ export class DiagramPanel {
   }
 
   /**
+   * Register a callback to be called when this panel is disposed.
+   * Used by extension.ts to remove the panel from the path-keyed registry.
+   */
+  onDisposed(cb: () => void): void {
+    this._onDisposedCallbacks.push(cb);
+  }
+
+  /**
+   * Reveal (focus) this panel in the editor. Useful when the command is
+   * invoked for a diagram that already has a panel open.
+   */
+  reveal(column?: vscode.ViewColumn): void {
+    this._panel.reveal(column);
+  }
+
+  /**
    * Dispose the underlying VS Code webview panel and clean up all resources.
    */
   dispose(): void {
@@ -229,6 +411,10 @@ export class DiagramPanel {
       d.dispose();
     }
     this._disposables.length = 0;
+
+    // Fire any registered onDisposed callbacks (e.g. extension.ts registry cleanup)
+    for (const cb of this._onDisposedCallbacks) cb();
+    this._onDisposedCallbacks.length = 0;
   }
 
   /**
@@ -236,17 +422,22 @@ export class DiagramPanel {
    * On parse failure posts host:error-overlay instead.
    */
   private async _loadAndPost(): Promise<void> {
+    this._log("_loadAndPost() start — reading: " + this.mmdPath);
     // Read source
     let source: string;
     try {
       source = await readFile(this.mmdPath, "utf8");
-    } catch {
+      this._log("_loadAndPost() — file read OK, " + source.length + " chars");
+    } catch (err) {
+      this._log("_loadAndPost() — file read FAILED: " + String(err));
       throw new PanelFileNotFoundError(this.mmdPath);
     }
 
     // Parse
+    this._log("_loadAndPost() — parsing mermaid source");
     const parseResult = await parseMermaid(source);
     if (!parseResult.valid) {
+      this._log("_loadAndPost() — parse FAILED: " + parseResult.error.message);
       const errMsg: HostErrorOverlayMessage = {
         type: "host:error-overlay",
         message: parseResult.error.message,
@@ -254,8 +445,9 @@ export class DiagramPanel {
       this._panel.webview.postMessage(errMsg);
       return;
     }
+    this._log("_loadAndPost() — parse OK, type=" + parseResult.diagram.type);
 
-    const layoutPath = layoutPathFor(this.mmdPath);
+    const layoutPath = layoutPathFor(this.mmdPath, this._workspaceRoot);
 
     // Load or compute layout
     let layout = await readLayout(layoutPath);
@@ -291,40 +483,101 @@ export class DiagramPanel {
     await writeLayout(layoutPath, scene.layout);
     this._currentLayout = scene.layout;
 
+    // Convert internal ExcalidrawElement[] → Excalidraw API payload once here.
+    // The webview receives already-resolved elements and calls api.updateScene() directly.
+    const apiElements = toExcalidrawPayload(scene.elements);
+
     const msg: HostLoadSceneMessage = {
       type: "host:load-scene",
-      elements: scene.elements,
+      elements: apiElements,
       appState: {},
     };
     this._panel.webview.postMessage(msg);
+    this._log("_loadAndPost() — host:load-scene posted with " + apiElements.length + " elements");
+
+    // Write a .excalidraw file in the .diagrams/ folder for inspection / debugging.
+    // This lets you open the rendered scene in excalidraw.com or a local viewer.
+    const excalidrawPath = layoutPath.replace(/\.layout\.json$/, ".excalidraw");
+    const excalidrawJson = JSON.stringify({
+      type: "excalidraw",
+      version: 2,
+      source: "accordo-diagram",
+      elements: apiElements,
+      appState: { gridSize: null, viewBackgroundColor: "#ffffff" },
+      files: {},
+    }, null, 2);
+    try {
+      mkdirSync(dirname(excalidrawPath), { recursive: true });
+      writeFileSync(excalidrawPath, excalidrawJson, "utf-8");
+      this._log("_loadAndPost() — .excalidraw file written: " + excalidrawPath);
+    } catch {
+      // non-fatal — debug file is best-effort
+    }
   }
 
   /**
    * Handle incoming messages from the webview.
    */
   private _handleWebviewMessage(msg: WebviewToHostMessage): void {
+    this._log("webview → host message: type=" + msg.type);
     switch (msg.type) {
+      case "canvas:ready":
+        // Webview has finished mounting — send the latest scene.
+        // This is the authoritative trigger for the initial load and for
+        // reloads after VS Code restores a backgrounded webview tab.
+        if (this.mmdPath === "") {
+          this._log("canvas:ready received (empty mode) — posting empty host:load-scene");
+          // Empty canvas mode: send an empty scene so Excalidraw renders its
+          // blank canvas. No file to read or layout to restore.
+          const emptyMsg: HostLoadSceneMessage = {
+            type: "host:load-scene",
+            elements: [],
+            appState: {},
+          };
+          this._panel.webview.postMessage(emptyMsg);
+          this._log("host:load-scene (empty) posted");
+        } else {
+          this._log("canvas:ready received — calling _loadAndPost for: " + this.mmdPath);
+          void this._loadAndPost();
+        }
+        break;
       case "canvas:node-moved":
         this._handleNodeMoved(msg.nodeId, msg.x, msg.y);
         break;
       case "canvas:node-resized":
         this._handleNodeResized(msg.nodeId, msg.w, msg.h);
         break;
+      case "canvas:node-styled":
+        this._handleNodeStyled(msg.nodeId, msg.style as Record<string, unknown>);
+        break;
       case "canvas:export-ready":
         this._handleExportReady(msg.format, msg.data);
         break;
+      case "canvas:js-error":
+        this._log("webview JS error: " + msg.message);
+        break;
       default:
-        // Other canvas messages (node-added, edge-added, etc.) are diag.2
+        this._log("webview → host: unhandled message type: " + (msg as { type: string }).type);
         break;
     }
   }
 
   private _handleNodeMoved(nodeId: string, x: number, y: number): void {
+    this._debugLog(`canvas:node-moved nodeId=${nodeId} x=${x} y=${y}`);
     this._patchLayoutSync((layout) => patchNode(layout, nodeId, { x, y }));
   }
 
   private _handleNodeResized(nodeId: string, w: number, h: number): void {
+    this._debugLog(`canvas:node-resized nodeId=${nodeId} w=${w} h=${h}`);
     this._patchLayoutSync((layout) => patchNode(layout, nodeId, { w, h }));
+  }
+
+  private _handleNodeStyled(nodeId: string, stylePatch: Record<string, unknown>): void {
+    this._debugLog(`canvas:node-styled nodeId=${nodeId} style=${JSON.stringify(stylePatch)}`);
+    this._patchLayoutSync((layout) => {
+      const existing = layout.nodes[nodeId]?.style ?? {};
+      return patchNode(layout, nodeId, { style: { ...existing, ...stylePatch } as import("../types.js").NodeStyle });
+    });
   }
 
   /**
@@ -332,9 +585,8 @@ export class DiagramPanel {
    * Canvas interactions (drag, resize) must be low-latency and deterministic.
    */
   private _patchLayoutSync(apply: (layout: LayoutStore) => LayoutStore): void {
-    const layoutPath = layoutPathFor(this.mmdPath);
+    const layoutPath = layoutPathFor(this.mmdPath, this._workspaceRoot);
 
-    // Use in-memory cache if available, otherwise read from disk synchronously
     let layout = this._currentLayout;
     if (layout === null) {
       try {
@@ -350,6 +602,7 @@ export class DiagramPanel {
 
     const updated = apply(layout);
     this._currentLayout = updated;
+    mkdirSync(dirname(layoutPath), { recursive: true });
     writeFileSync(layoutPath, JSON.stringify(updated, null, 2), "utf-8");
   }
 

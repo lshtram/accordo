@@ -11,24 +11,65 @@
   "type": "module",
   "main": "./dist/extension.js",
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && pnpm build:webview && pnpm build:fonts",
+    "build:host": "tsc -b",
+    "build:webview": "esbuild src/webview/webview.ts --bundle --outfile=dist/webview/webview.bundle.js --platform=browser --format=iife --target=es2020 --jsx=automatic --jsx-import-source=react --minify --sourcemap --define:process.env.IS_PREACT='\"false\"' --define:process.env.NODE_ENV='\"production\"'",
+    "build:fonts": "mkdir -p dist/webview && cp node_modules/@excalidraw/excalidraw/dist/excalidraw-assets-dev/Virgil.woff2 dist/webview/Virgil.woff2",
     "clean": "rm -rf dist *.tsbuildinfo",
     "package": "vsce package --no-dependencies",
     "test": "vitest run",
     "test:watch": "vitest watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.webview.json --noEmit",
+    "typecheck:webview": "tsc -p tsconfig.webview.json --noEmit",
     "lint": "echo 'no lint configured yet'"
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "0.17.6",
     "mermaid": "11.12.3",
-    "@dagrejs/dagre": "^1.1.4"
+    "@dagrejs/dagre": "^1.1.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   },
   "devDependencies": {
     "@accordo/bridge-types": "workspace:*",
     "@types/node": "^20.0.0",
+    "@types/react": "18.3.28",
+    "@types/react-dom": "18.3.7",
     "@types/vscode": "^1.100.0",
+    "esbuild": "^0.27.4",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
+  },
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "accordo-diagram.diagramEditor",
+        "displayName": "Accordo Diagram",
+        "selector": [
+          { "filenamePattern": "*.mmd" }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "accordo-diagram.open",
+        "title": "Accordo: Open Diagram"
+      },
+      {
+        "command": "accordo-diagram.newCanvas",
+        "title": "Accordo: New Blank Canvas"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "accordo-diagram.open",
+          "when": "resourceExtname == .mmd",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "engines": {
     "node": ">=20",

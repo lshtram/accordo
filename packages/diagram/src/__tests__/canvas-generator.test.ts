@@ -7,17 +7,25 @@
  * Tests are RED in Phase B (stub throws "not implemented").
  * They turn GREEN in Phase C after implementation.
  *
+ * BACKFILL NOTE (A10-v2): CG-28..CG-33 were written after per-node style
+ * overrides were implemented (implementation-before-test exception agreed by
+ * reviewer). The implementation already exists; these tests verify its contract.
+ *
+ * NOTE: edge strokeStyle (per-edge override from EdgeLayout.style) is NOT
+ * currently implemented in generateCanvas() — this is a documented requirement
+ * gap (no test coverage here; deferred to a future pass).
+ *
  * Uses real getShapeProps() (A8), routeEdge() (A9), and placeNodes() (A6) as
  * dependencies — these are pure, fully-tested functions whose correctness is
  * verified in their own test files.  The canvas-generator tests verify the
  * composition.
  *
  * Requirements: diag_arch_v4.2.md §9.2, §9.3
- * Requirement IDs: CG-01 through CG-25
+ * Requirement IDs: CG-01 through CG-33
  */
 
 // API checklist:
-// ✓ generateCanvas — 25 tests (CG-01..CG-25)
+// ✓ generateCanvas — 33 tests (CG-01..CG-33)
 //   covered paths:
 //   CG-01..CG-03  return shape (empty diagram, single node, CanvasScene structure)
 //   CG-04..CG-10  node rendering (element type, position/size, roughness, fontFamily)
@@ -27,6 +35,9 @@
 //   CG-20         skip node with no layout entry and not in unplaced
 //   CG-21         roughness 0 applied uniformly to all elements
 //   CG-22..CG-25  element count invariants and self-loop edge
+//   CG-26..CG-27  immutability + render-order invariant
+//   CG-28..CG-33  A10-v2 per-node style overrides (fillStyle, strokeStyle, roughness, fontFamily,
+//                 strokeDash backward-compat, absent fillStyle → undefined)
 
 import { describe, it, expect } from "vitest";
 import type {
@@ -476,4 +487,104 @@ describe("generateCanvas — render order", () => {
       expect(firstNodeShapeIdx).toBeLessThan(firstArrowIdx);
     },
   );
+});
+
+// ── CG-28..CG-33: A10-v2 per-node style overrides ────────────────────────────
+//
+// Backfill — implementation already exists; tests were written after the fact
+// per reviewer-approved exception.
+
+describe("generateCanvas — per-node style overrides (A10-v2)", () => {
+  // CG-28: node with style.fillStyle → shape element has matching fillStyle
+  it("CG-28: node with style.fillStyle 'cross-hatch' → shape element fillStyle is 'cross-hatch'", () => {
+    const parsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")]]),
+    });
+    const layout = makeLayout({
+      nodes: { A: makeNodeLayout({ style: { fillStyle: "cross-hatch" } }) },
+    });
+    const scene = generateCanvas(parsed, layout);
+    const shapeEl = scene.elements.find((e) => e.mermaidId === "A" && e.type !== "text");
+    expect(shapeEl).toBeDefined();
+    expect(shapeEl!.fillStyle).toBe("cross-hatch");
+  });
+
+  // CG-29: node with no style.fillStyle → shape element fillStyle is undefined
+  // (does not inject a default that would override Excalidraw's own default)
+  it("CG-29: node with no style.fillStyle → shape element fillStyle is undefined", () => {
+    const parsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")]]),
+    });
+    const layout = makeLayout({
+      nodes: { A: makeNodeLayout({ style: {} }) },
+    });
+    const scene = generateCanvas(parsed, layout);
+    const shapeEl = scene.elements.find((e) => e.mermaidId === "A" && e.type !== "text");
+    expect(shapeEl).toBeDefined();
+    expect(shapeEl!.fillStyle).toBeUndefined();
+  });
+
+  // CG-30: node with style.strokeStyle → shape element strokeStyle matches
+  it("CG-30: node with style.strokeStyle 'dotted' → shape element strokeStyle is 'dotted'", () => {
+    const parsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")]]),
+    });
+    const layout = makeLayout({
+      nodes: { A: makeNodeLayout({ style: { strokeStyle: "dotted" } }) },
+    });
+    const scene = generateCanvas(parsed, layout);
+    const shapeEl = scene.elements.find((e) => e.mermaidId === "A" && e.type !== "text");
+    expect(shapeEl).toBeDefined();
+    expect(shapeEl!.strokeStyle).toBe("dotted");
+  });
+
+  // CG-31: node with style.strokeDash:true but no strokeStyle → strokeStyle is 'dashed'
+  // (backward-compatibility: strokeDash is still honoured when strokeStyle is absent)
+  it("CG-31: node with style.strokeDash:true and no strokeStyle → strokeStyle is 'dashed'", () => {
+    const parsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")]]),
+    });
+    const layout = makeLayout({
+      nodes: { A: makeNodeLayout({ style: { strokeDash: true } }) },
+    });
+    const scene = generateCanvas(parsed, layout);
+    const shapeEl = scene.elements.find((e) => e.mermaidId === "A" && e.type !== "text");
+    expect(shapeEl).toBeDefined();
+    expect(shapeEl!.strokeStyle).toBe("dashed");
+  });
+
+  // CG-32: node with style.roughness → shape element uses per-node roughness,
+  // not the diagram-level aesthetics.roughness
+  it("CG-32: node with style.roughness 0 → shape element roughness is 0 (overrides aesthetic default)", () => {
+    const parsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")]]),
+    });
+    // aesthetics.roughness = 2 (diagram-level default), but node overrides to 0
+    const layout = makeLayout({
+      aesthetics: { roughness: 2 },
+      nodes: { A: makeNodeLayout({ style: { roughness: 0 } }) },
+    });
+    const scene = generateCanvas(parsed, layout);
+    const shapeEl = scene.elements.find((e) => e.mermaidId === "A" && e.type !== "text");
+    expect(shapeEl).toBeDefined();
+    expect(shapeEl!.roughness).toBe(0);
+  });
+
+  // CG-33: node with style.fontFamily → text element uses per-node fontFamily,
+  // not the diagram-level default 'Excalifont'
+  it("CG-33: node with style.fontFamily 'Nunito' → text element fontFamily is 'Nunito'", () => {
+    const A: ParsedNode = { id: "A", label: "Alpha", shape: "rectangle", classes: [] };
+    const parsed = makeParsed({
+      nodes: new Map([["A", A]]),
+    });
+    // diagram-level default is 'Excalifont'; per-node override is 'Nunito'
+    const layout = makeLayout({
+      nodes: { A: makeNodeLayout({ style: { fontFamily: "Nunito" } }) },
+    });
+    const scene = generateCanvas(parsed, layout);
+    // The TEXT element (node label) has mermaidId "A:text"
+    const textEl = scene.elements.find((e) => e.mermaidId === "A:text" && e.type === "text");
+    expect(textEl).toBeDefined();
+    expect(textEl!.fontFamily).toBe("Nunito");
+  });
 });

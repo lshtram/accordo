@@ -2,14 +2,14 @@
 
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
-**Date:** 2026-03-11  
-**Status:** ACTIVE — Session 10D complete (accordo-script ✅), Session 11 next (Diagrams)
+**Date:** 2026-03-15  
+**Status:** ACTIVE — Session 11 complete (accordo-diagram core ✅), Session 12 next (TD clean-up + A16/A17 or TD-CROSS-1)
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-11 — Session 10D complete. New `accordo-script` VS Code extension delivering 4 MCP tools: `accordo_script_run`, `accordo_script_stop`, `accordo_script_status`, `accordo_script_discover`. ScriptRunner executes sequential multi-step scripts (speak, subtitle, delay, highlight, clear-highlights, command steps). Bridge dual-registers every MCP tool as a VS Code command so `command` steps reach all Accordo modalities without changes to accordo-script. schema flattened for LLM-friendly generation; `accordo_script_discover` returns full reference card. OpenCode config fixed (type: remote). 1837 tests total (Hub: 360, Voice: 269, Bridge: 310, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149, Script: 133). TypeScript clean. Committed and pushed. Session 11 next: Diagrams modality (`accordo-diagram`).**
+> **As of 2026-03-15 — Session 11 complete. `accordo-diagram` delivers a fully working Mermaid → Excalidraw canvas modality: parser (flowchart), auto-layout (dagre), reconciler, canvas generator, 6 MCP tools (`accordo_diagram_list/get/create/patch/render/style_guide`), Webview panel (A15), custom editor for `.mmd` files, `x`/`y`/`clusterStyles` in `accordo_diagram_patch` so agents never write layout files directly, aux files at `<workspace>/.accordo/diagrams/`. A16 (webview frontend) and A17 (extension entry) still needed to reach a fully installable VSIX. 444 diagram tests. 2281 total (Hub: 360, Voice: 269, Bridge: 310, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149, Script: 133, Diagram: 444). TypeScript clean. Committed and pushed.**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -19,12 +19,22 @@
 | Session 9 | Custom Comments Panel (M45 — `accordo-comments` update) | ✅ DONE — 273 comments tests, 1418 total |
 | **Session 10** | **Voice modality (`accordo-voice` — 10A core+tools, 10B summary narration, 10C robustness)** | ✅ DONE — 10A: 211; 10B: +25; 10C: hardening + simplification, 261 total voice tests |
 | **Session 10D** | **Scripted walkthroughs (`accordo-script` — ScriptRunner, 4 MCP tools, Bridge dual-registration)** | ✅ DONE — 133 tests |
-| Session 11 | Diagrams modality (`accordo-diagram` — Mermaid + Excalidraw) | ⏳ Next |
+| **Session 11** | **Diagrams modality (`accordo-diagram` — Mermaid + Excalidraw, A1-A15 + custom editor + patch enhancements)** | ✅ DONE — 444 tests, A16/A17 remain |
 | Session 12+ | Browser agentation (`accordo-browser` + Chrome extension) | 📋 DEFERRED — architecture + requirements written, complex anchoring needs more design |
 
-**Baseline:** 1837 tests green (Hub: 360, Voice: 269, Bridge: 310, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149, Script: 133). v0.1.0 on `main`.  
+**Baseline:** 2281 tests green (Hub: 360, Voice: 269, Bridge: 310, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149, Script: 133, Diagram: 444). v0.1.0 on `main`.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
+
+---
+
+## Cross-Cutting Technical Debt
+
+Registered 2026-03-15. These affect more than one package.
+
+| ID | Severity | Description | Effort | Blocking |
+|---|---|---|---|---|
+| TD-CROSS-1 | 🟠 MEDIUM | **Agent IDE state coverage gap** — `IDEState.openEditors` only captures text-file tabs. Webview panels (diagram canvas, presentations, browser, script runner) are invisible to the agent mid-session. Design doc: `docs/layout-state-architecture.md`. Two pieces: (A) extend `IDEState` with `openTabs: OpenTab[]` capturing all VS Code tab types; (B) new `accordo_layout_state` MCP tool in `accordo-editor` as an on-demand pull. Together they let agents reason about what surfaces are visible without relying on `initialize`-time snapshots. | 1 session (~2 modules) | none, but limits diagram + all modality usefulness |
 
 ---
 

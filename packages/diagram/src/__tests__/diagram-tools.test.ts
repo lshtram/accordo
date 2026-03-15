@@ -7,10 +7,16 @@
  *   – listHandler                       DT-07..DT-11
  *   – getHandler                        DT-12..DT-17
  *   – createHandler                     DT-18..DT-24
- *   – patchHandler                      DT-25..DT-33
- *   – renderHandler                     DT-34..DT-39
- *   – styleGuideHandler                 DT-40..DT-43
- *   – createDiagramTools array          DT-44..DT-45
+ *   – patchHandler                      DT-25..DT-35
+ *   – renderHandler                     DT-36..DT-41
+ *   – styleGuideHandler                 DT-42..DT-46
+ *   – createDiagramTools array          DT-47..DT-48
+ *   – patchHandler nodeStyles A14-v2    DT-49..DT-52
+ *
+ * BACKFILL NOTE (A14-v2): DT-49..DT-52 were written after the width/height
+ * segregation and new style fields were implemented (implementation-before-test
+ * exception agreed by reviewer). The implementation already exists; these tests
+ * verify its contract.
  *
  * Source: diag_workplan.md §4.14
  */
@@ -19,7 +25,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { writeFile, readFile, mkdir, rm } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, extname, basename } from "node:path";
+import { join, extname, basename, dirname } from "node:path";
 
 import {
   DiagToolError,
@@ -32,6 +38,7 @@ import {
   styleGuideHandler,
   createDiagramTools,
 } from "../tools/diagram-tools.js";
+import { layoutPathFor } from "../layout/layout-store.js";
 import type {
   DiagramToolContext,
   DiagramPanelLike,
@@ -303,7 +310,9 @@ describe("getHandler", () => {
       unplaced: [],
       aesthetics: {},
     };
-    await writeFile(join(tmpDir, "arch.layout.json"), JSON.stringify(layoutData));
+    const lp17 = layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir);
+    await mkdir(dirname(lp17), { recursive: true });
+    await writeFile(lp17, JSON.stringify(layoutData));
 
     const result = await getHandler({ path: "arch.mmd" }, makeCtx());
     expect(result.ok).toBe(true);
@@ -400,7 +409,7 @@ describe("createHandler", () => {
   // DT-23: valid create → .layout.json written alongside
   it("DT-23: successful create also writes .layout.json file", async () => {
     await createHandler({ path: "new.mmd", content: SIMPLE_FLOWCHART }, makeCtx());
-    const layoutExists = await readFile(join(tmpDir, "new.layout.json"), "utf-8").then(
+    const layoutExists = await readFile(layoutPathFor(join(tmpDir, "new.mmd"), tmpDir), "utf-8").then(
       () => true,
       () => false,
     );
@@ -486,7 +495,7 @@ describe("patchHandler", () => {
 
     await patchHandler({ path: "arch.mmd", content: TWO_NODE_FLOWCHART }, makeCtx());
 
-    const layoutRaw = await readFile(join(tmpDir, "arch.layout.json"), "utf-8");
+    const layoutRaw = await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8");
     const layout = JSON.parse(layoutRaw);
     expect(layout.version).toBe("1.0");
     expect(layout.diagram_type).toBe("flowchart");
@@ -525,7 +534,7 @@ describe("patchHandler", () => {
     expect(result.ok).toBe(true);
 
     // A layout.json should now exist after the patch
-    const layoutExists = await readFile(join(tmpDir, "arch.layout.json")).then(
+    const layoutExists = await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir)).then(
       () => true,
       () => false,
     );
@@ -535,7 +544,9 @@ describe("patchHandler", () => {
   // DT-32: corrupt .layout.json → same fallback as missing
   it("DT-32: corrupt layout.json triggers the same fallback as missing", async () => {
     await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
-    await writeFile(join(tmpDir, "arch.layout.json"), "{ this is not valid json");
+    const lp32 = layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir);
+    await mkdir(dirname(lp32), { recursive: true });
+    await writeFile(lp32, "{ this is not valid json");
 
     const result = await patchHandler(
       { path: "arch.mmd", content: TWO_NODE_FLOWCHART },
@@ -544,14 +555,53 @@ describe("patchHandler", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       // Layout file should have been rewritten with valid JSON
-      const raw = await readFile(join(tmpDir, "arch.layout.json"), "utf-8");
+      const raw = await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8");
       const layout = JSON.parse(raw);
       expect(layout.version).toBe("1.0");
     }
   });
 
-  // DT-33: @rename annotation → mermaidCleaned returned
-  it("DT-33: mermaidCleaned is returned when @rename annotations are processed", async () => {
+  // DT-33: nodeStyles → written to layout.json for existing nodes
+  it("DT-33: nodeStyles param persists style overrides into .layout.json", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+
+    const result = await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        nodeStyles: { A: { backgroundColor: "#ff0000", fontColor: "#ffffff" } },
+      },
+      makeCtx(),
+    );
+    expect(result.ok).toBe(true);
+
+    const layoutRaw = await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8");
+    const layout = JSON.parse(layoutRaw);
+    expect(layout.nodes.A.style.backgroundColor).toBe("#ff0000");
+    expect(layout.nodes.A.style.fontColor).toBe("#ffffff");
+  });
+
+  // DT-34: nodeStyles for a node not in the diagram → silently ignored
+  it("DT-34: nodeStyles for an absent node ID is silently ignored", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+
+    const result = await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        nodeStyles: { GHOST: { backgroundColor: "#00ff00" } },
+      },
+      makeCtx(),
+    );
+    expect(result.ok).toBe(true);
+    // No error, layout file exists and is valid JSON
+    const layoutRaw = await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8");
+    const layout = JSON.parse(layoutRaw);
+    expect(layout.nodes.GHOST).toBeUndefined();
+  });
+
+  // DT-35: @rename annotation → mermaidCleaned returned
+  it("DT-35: mermaidCleaned is returned when @rename annotations are processed", async () => {
     // Source with a @rename annotation using the correct %% comment syntax (no leading spaces)
     const withRename =
       "flowchart TD\n%% @rename: A -> Alpha\nA-->B\n";
@@ -570,12 +620,12 @@ describe("patchHandler", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DT-34..DT-39  renderHandler
+// DT-36..DT-41  renderHandler
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("renderHandler", () => {
-  // DT-34: no panel open → PANEL_NOT_OPEN
-  it("DT-34: no open panel returns PANEL_NOT_OPEN", async () => {
+  // DT-36: no panel open → PANEL_NOT_OPEN
+  it("DT-36: no open panel returns PANEL_NOT_OPEN", async () => {
     await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
 
     const result = await renderHandler(
@@ -588,8 +638,8 @@ describe("renderHandler", () => {
     }
   });
 
-  // DT-35: panel open for a different file → PANEL_MISMATCH (message names both paths)
-  it("DT-35: panel for different file returns PANEL_MISMATCH with both paths in message", async () => {
+  // DT-37: panel open for a different file → PANEL_MISMATCH (message names both paths)
+  it("DT-37: panel for different file returns PANEL_MISMATCH with both paths in message", async () => {
     await writeFile(join(tmpDir, "a.mmd"), SIMPLE_FLOWCHART);
     await writeFile(join(tmpDir, "b.mmd"), TWO_NODE_FLOWCHART);
 
@@ -607,8 +657,8 @@ describe("renderHandler", () => {
     }
   });
 
-  // DT-36: path traversal → TRAVERSAL_DENIED
-  it("DT-36: traversal in path returns TRAVERSAL_DENIED before panel is checked", async () => {
+  // DT-38: path traversal → TRAVERSAL_DENIED
+  it("DT-38: traversal in path returns TRAVERSAL_DENIED before panel is checked", async () => {
     const result = await renderHandler(
       { path: "../../etc/passwd", format: "svg" },
       makeCtx(),
@@ -619,8 +669,8 @@ describe("renderHandler", () => {
     }
   });
 
-  // DT-37: output_path traversal → TRAVERSAL_DENIED
-  it("DT-37: traversal in output_path returns TRAVERSAL_DENIED", async () => {
+  // DT-39: output_path traversal → TRAVERSAL_DENIED
+  it("DT-39: traversal in output_path returns TRAVERSAL_DENIED", async () => {
     await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
     const panel = makePanel(join(tmpDir, "arch.mmd"));
 
@@ -634,8 +684,8 @@ describe("renderHandler", () => {
     }
   });
 
-  // DT-38: success → buffer written to disk, bytes returned
-  it("DT-38: successful render writes buffer to output_path and returns byte count", async () => {
+  // DT-40: success → buffer written to disk, bytes returned
+  it("DT-40: successful render writes buffer to output_path and returns byte count", async () => {
     await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
     const panel = makePanel(join(tmpDir, "arch.mmd"));
     const outPath = "arch.svg";
@@ -655,8 +705,8 @@ describe("renderHandler", () => {
     }
   });
 
-  // DT-39: default output_path = same dir, stem.format
-  it("DT-39: omitted output_path defaults to same-directory stem with format extension", async () => {
+  // DT-41: default output_path = same dir, stem.format
+  it("DT-41: omitted output_path defaults to same-directory stem with format extension", async () => {
     await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
     const panel = makePanel(join(tmpDir, "arch.mmd"));
 
@@ -674,18 +724,18 @@ describe("renderHandler", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DT-40..DT-43  styleGuideHandler
+// DT-42..DT-46  styleGuideHandler
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("styleGuideHandler", () => {
-  // DT-40: returns ok: true
-  it("DT-40: returns ok:true", () => {
+  // DT-42: returns ok: true
+  it("DT-42: returns ok:true", () => {
     const result = styleGuideHandler({});
     expect(result.ok).toBe(true);
   });
 
-  // DT-41: palette is defined and non-empty
-  it("DT-41: result.data.palette is a non-empty record", () => {
+  // DT-43: palette is defined and non-empty
+  it("DT-43: result.data.palette is a non-empty record", () => {
     const result = styleGuideHandler({});
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -695,8 +745,8 @@ describe("styleGuideHandler", () => {
     }
   });
 
-  // DT-42: starterTemplate is non-empty and starts with a mermaid keyword
-  it("DT-42: starterTemplate is a non-empty valid Mermaid snippet", () => {
+  // DT-44: starterTemplate is non-empty and starts with a mermaid keyword
+  it("DT-44: starterTemplate is a non-empty valid Mermaid snippet", () => {
     const result = styleGuideHandler({});
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -708,8 +758,8 @@ describe("styleGuideHandler", () => {
     }
   });
 
-  // DT-43: conventions is a non-empty string array
-  it("DT-43: conventions is a non-empty array of strings", () => {
+  // DT-45: conventions is a non-empty string array
+  it("DT-45: conventions is a non-empty array of strings", () => {
     const result = styleGuideHandler({});
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -721,10 +771,25 @@ describe("styleGuideHandler", () => {
       }
     }
   });
+
+  // DT-46: stylingInstructions is present and warns against classDef
+  it("DT-46: stylingInstructions is a non-empty array and documents the nodeStyles approach", () => {
+    const result = styleGuideHandler({});
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const { stylingInstructions } = result.data;
+      expect(Array.isArray(stylingInstructions)).toBe(true);
+      expect(stylingInstructions.length).toBeGreaterThan(0);
+      // Must explain not to use classDef and instead use nodeStyles in patch
+      const joined = stylingInstructions.join(" ");
+      expect(joined).toContain("classDef");
+      expect(joined).toContain("nodeStyles");
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DT-44..DT-45  createDiagramTools
+// DT-47..DT-48  createDiagramTools
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("createDiagramTools", () => {
@@ -735,13 +800,13 @@ describe("createDiagramTools", () => {
     tools = createDiagramTools(ctx);
   });
 
-  // DT-44: returns exactly 6 tools
-  it("DT-44: returns an array with exactly 6 tool definitions", () => {
+  // DT-47: returns exactly 6 tools
+  it("DT-47: returns an array with exactly 6 tool definitions", () => {
     expect(tools).toHaveLength(6);
   });
 
-  // DT-45: each tool has required fields + callable handler
-  it("DT-45: every tool definition has name, description, inputSchema, and a callable handler", () => {
+  // DT-48: each tool has required fields + callable handler
+  it("DT-48: every tool definition has name, description, inputSchema, and a callable handler", () => {
     for (const tool of tools) {
       expect(typeof tool.name).toBe("string");
       expect(tool.name.startsWith("accordo_diagram_")).toBe(true);
@@ -750,5 +815,94 @@ describe("createDiagramTools", () => {
       expect(tool.inputSchema.type).toBe("object");
       expect(typeof tool.handler).toBe("function");
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DT-49..DT-52  patchHandler nodeStyles — A14-v2 (width/height + new style fields)
+//
+// Backfill — implementation already exists; tests were written after the fact
+// per reviewer-approved exception.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("patchHandler nodeStyles — A14-v2 width/height and new style fields", () => {
+  // DT-49: nodeStyles.width → written to layout.json as nodes.A.w, NOT in nodes.A.style
+  it("DT-49: nodeStyles width → stored as layout.nodes.A.w, not in .style", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+
+    const result = await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        nodeStyles: { A: { width: 300 } },
+      },
+      makeCtx(),
+    );
+    expect(result.ok).toBe(true);
+
+    const layout = JSON.parse(await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"));
+    expect(layout.nodes.A.w).toBe(300);
+    // Must NOT appear inside the style sub-object
+    expect(layout.nodes.A.style?.width).toBeUndefined();
+  });
+
+  // DT-50: nodeStyles.height → written to layout.json as nodes.A.h, NOT in nodes.A.style
+  it("DT-50: nodeStyles height → stored as layout.nodes.A.h, not in .style", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+
+    const result = await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        nodeStyles: { A: { height: 120 } },
+      },
+      makeCtx(),
+    );
+    expect(result.ok).toBe(true);
+
+    const layout = JSON.parse(await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"));
+    expect(layout.nodes.A.h).toBe(120);
+    expect(layout.nodes.A.style?.height).toBeUndefined();
+  });
+
+  // DT-51: nodeStyles.fillStyle → written to nodes.A.style.fillStyle
+  it("DT-51: nodeStyles fillStyle → stored in layout.nodes.A.style.fillStyle", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+
+    const result = await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        nodeStyles: { A: { fillStyle: "cross-hatch" } },
+      },
+      makeCtx(),
+    );
+    expect(result.ok).toBe(true);
+
+    const layout = JSON.parse(await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"));
+    expect(layout.nodes.A.style.fillStyle).toBe("cross-hatch");
+  });
+
+  // DT-52: nodeStyles with strokeStyle + roughness + fontFamily → all written to nodes.A.style
+  it("DT-52: nodeStyles strokeStyle/roughness/fontFamily → all persisted in layout.nodes.A.style", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+
+    const result = await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        nodeStyles: { A: { strokeStyle: "dotted", roughness: 0, fontFamily: "Nunito" } },
+      },
+      makeCtx(),
+    );
+    expect(result.ok).toBe(true);
+
+    const layout = JSON.parse(await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"));
+    expect(layout.nodes.A.style.strokeStyle).toBe("dotted");
+    expect(layout.nodes.A.style.roughness).toBe(0);
+    expect(layout.nodes.A.style.fontFamily).toBe("Nunito");
+    // width/height must not bleed into style
+    expect(layout.nodes.A.style?.width).toBeUndefined();
+    expect(layout.nodes.A.style?.height).toBeUndefined();
   });
 });

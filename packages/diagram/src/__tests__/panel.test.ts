@@ -32,6 +32,7 @@ import {
   ExportBusyError,
   PanelFileNotFoundError,
 } from "../webview/panel.js";
+import { layoutPathFor } from "../layout/layout-store.js";
 import {
   MockWebviewPanel,
   MockExtensionContext,
@@ -57,6 +58,9 @@ beforeEach(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), "diag-panel-test-"));
   mmdPath = join(tmpDir, "arch.mmd");
   await writeFile(mmdPath, SIMPLE_FLOWCHART, "utf8");
+
+  // Point workspace root to tmpDir so _workspaceRoot resolves correctly
+  mockWorkspace.workspaceFolders = [{ uri: { fsPath: tmpDir } as never, name: "test" }];
 
   // Fresh extension context
   ctx = makeExtensionContext();
@@ -85,11 +89,23 @@ describe("DiagramPanel.create()", () => {
 
   it("AP-03: posts host:load-scene to the webview on creation", async () => {
     await DiagramPanel.create(ctx as never, mmdPath);
+    // canvas:ready is the authoritative trigger — simulate it
+    vscPanel.webview.simulateMessage({ type: "canvas:ready" });
+    // _loadAndPost is async; wait until postMessage receives host:load-scene
+    await vi.waitFor(
+      () => {
+        const calls = vi.mocked(vscPanel.webview.postMessage).mock.calls;
+        const found = calls.find(
+          ([msg]) => (msg as HostLoadSceneMessage).type === "host:load-scene",
+        );
+        expect(found).toBeDefined();
+      },
+      { timeout: 10_000 },
+    );
     const calls = vi.mocked(vscPanel.webview.postMessage).mock.calls;
     const loadSceneCall = calls.find(
       ([msg]) => (msg as HostLoadSceneMessage).type === "host:load-scene",
     );
-    expect(loadSceneCall).toBeDefined();
     const msg = loadSceneCall![0] as HostLoadSceneMessage;
     expect(Array.isArray(msg.elements)).toBe(true);
     expect(typeof msg.appState).toBe("object");
@@ -258,7 +274,7 @@ describe("Canvas message dispatch", () => {
       y: 300,
     });
 
-    const layoutPath = mmdPath.replace(/\.mmd$/, ".layout.json");
+    const layoutPath = layoutPathFor(mmdPath, tmpDir);
     const raw = await (await import("node:fs/promises")).readFile(layoutPath, "utf8");
     const layout = JSON.parse(raw);
     expect(layout.nodes["A"]).toMatchObject({ x: 200, y: 300 });
@@ -274,7 +290,7 @@ describe("Canvas message dispatch", () => {
       h: 80,
     });
 
-    const layoutPath = mmdPath.replace(/\.mmd$/, ".layout.json");
+    const layoutPath = layoutPathFor(mmdPath, tmpDir);
     const raw = await (await import("node:fs/promises")).readFile(layoutPath, "utf8");
     const layout = JSON.parse(raw);
     expect(layout.nodes["A"]).toMatchObject({ w: 240, h: 80 });

@@ -4,26 +4,20 @@
  * Implements the placement strategy from diag_arch_v4.2.md §7.3.
  * Assigns (x, y, w, h) to nodes that have no position in the layout store.
  *
- * Known limitation (deferred to diag.4): when a new node is topologically
- * inserted between two already-placed nodes that have insufficient gap, the
- * placer positions it adjacent to the nearest neighbour rather than splitting
- * the existing gap. The human can drag it to the preferred location afterward.
+ * Algorithm (dagre-first, then nearest collision-free spot):
+ *   1. Run the full mermaid → dagre layout pass on the complete diagram to get
+ *      the topologically-correct "ideal" position for every node.
+ *   2. For each unplaced node, find the nearest placed neighbour and compute the
+ *      dagre-relative offset between them.  Applying that offset to the actual
+ *      canvas position of that neighbour gives a candidate that respects the
+ *      graph structure while anchoring to the existing (user-moved) layout.
+ *   3. If no placed neighbour exists, use the dagre absolute position directly.
+ *   4. From the candidate, search for the closest collision-free cell: first try
+ *      cross-axis shifts (preserving rank → sibling placement), then the negative
+ *      cross-axis direction, then the flow direction.  Max 10 steps each pass.
  *
- * Source: diag_arch_v4.2.md §7.3, diag_workplan.md §5 A6
- */
-
-import type { ParsedDiagram, LayoutStore } from "../types.js";
-
-/**
- * Compute collision-free positions for nodes that have no layout entry yet.
- *
- * Algorithm (arch §7.3):
- *   1. For each unplaced node, find connected neighbours with positions.
- *   2. If neighbours exist → candidate = adjacent to nearest neighbour in flow
- *      direction, at 1.5× nodeSpacing.
- *   3. If no neighbours → first open grid cell scanning from top-left.
- *   4. Collision avoidance pass after all candidates are computed; max 10
- *      shift iterations per node.
+ * When dagre is unavailable (e.g. unsupported diagram type), falls back to the
+ * original neighbour-adjacent heuristic.
  *
  * Node dimensions default to shape-specific sizes:
  *   rectangle/rounded/stadium/parallelogram → 180 × 60
@@ -44,6 +38,9 @@ import type { ParsedDiagram, LayoutStore } from "../types.js";
  *          The caller is responsible for merging these into layout.nodes and
  *          clearing layout.unplaced.
  */
+import type { ParsedDiagram, LayoutStore } from "../types.js";
+import { computeInitialLayout } from "../layout/auto-layout.js";
+
 // ── Shape dimensions (independent of A8 shape-map — no cross-module import) ──
 
 /** Default node dimensions by shape. Unknown shapes fall back to FALLBACK_DIMS. */
@@ -86,13 +83,31 @@ export function placeNodes(
     nodeSpacing?: number;
   }
 ): Map<string, { x: number; y: number; w: number; h: number }> {
-  const direction = options?.direction ?? "TD";
+  if (unplacedIds.length === 0) return new Map();
+
+  const direction = options?.direction ?? (parsed.direction as "TD" | "LR" | undefined) ?? "TD";
   const nodeSpacing = options?.nodeSpacing ?? 60;
+
+  // ── Step 1: Run full dagre layout pass to get ideal positions ──────────────
+  // This gives us where dagre WOULD place every node if starting from scratch,
+  // respecting the full graph topology (rank, sibling relationships, etc.).
+  const idealPos = new Map<string, { x: number; y: number; w: number; h: number }>();
+  try {
+    const ideal = computeInitialLayout(parsed, {
+      rankdir:     direction === "LR" ? "LR" : "TB",
+      nodeSpacing,
+      rankSpacing: nodeSpacing + 20,
+    });
+    for (const [id, nl] of Object.entries(ideal.nodes)) {
+      idealPos.set(id, { x: nl.x, y: nl.y, w: nl.w, h: nl.h });
+    }
+  } catch {
+    // Unsupported diagram type — fall through to neighbour-adjacent heuristic.
+  }
 
   const result = new Map<string, { x: number; y: number; w: number; h: number }>();
 
   // Mutable view of all placed positions: existing + newly placed in this batch.
-  // We read shapes from existingLayout but do not mutate it.
   const allPlaced = new Map<string, { x: number; y: number; w: number; h: number }>();
   for (const [id, nl] of Object.entries(existingLayout.nodes)) {
     allPlaced.set(id, { x: nl.x, y: nl.y, w: nl.w, h: nl.h });
@@ -102,61 +117,123 @@ export function placeNodes(
     const parsedNode = parsed.nodes.get(nodeId);
     if (!parsedNode) continue; // silently skip absent IDs
 
-    // NodeShape is an open union (string | named literals); cast to string
-    // is safe — we're widening to the type the union already extends.
     const { w, h } = dimForShape(parsedNode.shape as string);
 
-    // Find nearest positioned neighbour (by distance of its centre from canvas origin).
-    // Known limitation (deferred to diag.4): when a new node is topologically between
-    // two placed nodes with insufficient gap, this places it adjacent to the nearest
-    // neighbour rather than splitting the existing gap.
-    let nearestNeighbour: { x: number; y: number; w: number; h: number } | null = null;
-    let nearestDist = Infinity;
-    for (const edge of parsed.edges) {
-      const nbId = edge.from === nodeId ? edge.to
-                 : edge.to   === nodeId ? edge.from
-                 : undefined;
-      if (nbId === undefined) continue;
-      const pos = allPlaced.get(nbId);
-      if (!pos) continue;
-      const dist = Math.hypot(pos.x + pos.w / 2, pos.y + pos.h / 2);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearestNeighbour = pos;
-      }
-    }
+    // ── Step 2: Compute candidate position ──────────────────────────────────
+    let candX = 0;
+    let candY = 0;
 
-    // Compute initial candidate position.
-    let candX: number;
-    let candY: number;
-    if (nearestNeighbour) {
-      if (direction === "LR") {
-        candX = nearestNeighbour.x + nearestNeighbour.w + nodeSpacing;
-        candY = nearestNeighbour.y;
-      } else {
-        candX = nearestNeighbour.x;
-        candY = nearestNeighbour.y + nearestNeighbour.h + nodeSpacing;
-      }
-    } else {
-      // Grid fallback: start at origin, shift will find the first open cell.
-      candX = 0;
-      candY = 0;
-    }
+    const myIdeal = idealPos.get(nodeId);
+    if (myIdeal) {
+      // Find the nearest PLACED neighbour (in actual layout) that also has an
+      // ideal-layout position, so we can anchor the relative offset.
+      let bestNbActual: { x: number; y: number; w: number; h: number } | null = null;
+      let bestNbIdeal:  { x: number; y: number; w: number; h: number } | null = null;
+      let bestDist = Infinity;
 
-    // Collision avoidance: shift in the flow direction until clear, max 10 iterations.
-    for (let iter = 0; iter < 10; iter++) {
-      let overlapping = false;
-      for (const placed of allPlaced.values()) {
-        if (rectsOverlap({ x: candX, y: candY, w, h }, placed)) {
-          overlapping = true;
-          break;
+      for (const edge of parsed.edges) {
+        const nbId = edge.from === nodeId ? edge.to
+                   : edge.to   === nodeId ? edge.from
+                   : undefined;
+        if (nbId === undefined) continue;
+
+        const nbActual = allPlaced.get(nbId);
+        if (!nbActual) continue; // neighbour not yet placed
+        const nbIdeal  = idealPos.get(nbId);
+        if (!nbIdeal)  continue;
+
+        // Distance in dagre-ideal space between this node and its neighbour.
+        const dist = Math.hypot(nbIdeal.x - myIdeal.x, nbIdeal.y - myIdeal.y);
+        if (dist < bestDist) {
+          bestDist     = dist;
+          bestNbActual = nbActual;
+          bestNbIdeal  = nbIdeal;
         }
       }
-      if (!overlapping) break;
-      if (direction === "LR") {
-        candX += w + nodeSpacing;
+
+      if (bestNbActual && bestNbIdeal) {
+        // Translate the dagre-ideal offset to actual canvas space.
+        // This preserves sibling rank relationships even when the user has moved nodes.
+        candX = bestNbActual.x + (myIdeal.x - bestNbIdeal.x);
+        candY = bestNbActual.y + (myIdeal.y - bestNbIdeal.y);
       } else {
-        candY += h + nodeSpacing;
+        // No placed neighbour — use the dagre absolute position directly.
+        candX = myIdeal.x;
+        candY = myIdeal.y;
+      }
+    } else {
+      // Dagre did not produce a position (unsupported type) — fall back to
+      // the original neighbour-adjacent heuristic.
+      let nearestNeighbour: { x: number; y: number; w: number; h: number } | null = null;
+      let nearestDist = Infinity;
+      for (const edge of parsed.edges) {
+        const nbId = edge.from === nodeId ? edge.to
+                   : edge.to   === nodeId ? edge.from
+                   : undefined;
+        if (nbId === undefined) continue;
+        const pos = allPlaced.get(nbId);
+        if (!pos) continue;
+        const dist = Math.hypot(pos.x + pos.w / 2, pos.y + pos.h / 2);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearestNeighbour = pos;
+        }
+      }
+      if (nearestNeighbour) {
+        candX = direction === "LR"
+          ? nearestNeighbour.x + nearestNeighbour.w + nodeSpacing
+          : nearestNeighbour.x;
+        candY = direction === "LR"
+          ? nearestNeighbour.y
+          : nearestNeighbour.y + nearestNeighbour.h + nodeSpacing;
+      }
+    }
+
+    // ── Step 3: Find closest collision-free spot from candidate ─────────────
+    // TD: cross-axis = rightward/leftward (preserves rank level)
+    // LR: cross-axis = downward/upward
+    const crossDx = direction === "TD" ? w + nodeSpacing : 0;
+    const crossDy = direction === "TD" ? 0 : h + nodeSpacing;
+    const flowDx  = direction === "LR" ? w + nodeSpacing : 0;
+    const flowDy  = direction === "LR" ? 0 : h + nodeSpacing;
+
+    function hasOverlap(cx: number, cy: number): boolean {
+      for (const placed of allPlaced.values()) {
+        if (rectsOverlap({ x: cx, y: cy, w, h }, placed)) return true;
+      }
+      return false;
+    }
+
+    let resolved = false;
+
+    // Pass A: cross-axis positive direction (sibling placement preference).
+    let cx = candX;
+    let cy = candY;
+    for (let i = 0; i < 10; i++) {
+      if (!hasOverlap(cx, cy)) { candX = cx; candY = cy; resolved = true; break; }
+      cx += crossDx;
+      cy += crossDy;
+    }
+
+    // Pass B: cross-axis negative direction.
+    if (!resolved) {
+      cx = candX - crossDx;
+      cy = candY - crossDy;
+      for (let i = 0; i < 10; i++) {
+        if (!hasOverlap(cx, cy)) { candX = cx; candY = cy; resolved = true; break; }
+        cx -= crossDx;
+        cy -= crossDy;
+      }
+    }
+
+    // Pass C: flow-axis (last resort — further down/right).
+    if (!resolved) {
+      cx = candX;
+      cy = candY;
+      for (let i = 0; i < 10; i++) {
+        if (!hasOverlap(cx, cy)) { candX = cx; candY = cy; break; }
+        cx += flowDx;
+        cy += flowDy;
       }
     }
 

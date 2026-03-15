@@ -48,8 +48,15 @@ const SHAPE_DIMS: Record<string, { w: number; h: number }> = {
 
 const FALLBACK_DIMS = { w: 180, h: 60 };
 
-/** Padding added around member-node centres when computing cluster bounds. */
+/** Padding added around member-node extents when computing cluster bounds. */
 const CLUSTER_MARGIN = 20;
+
+/**
+ * Extra top padding reserved for the cluster title label.
+ * Ensures the label text sits above the topmost member node rather than
+ * overlapping it. Font size 16 + a few pixels breathing room = 28px.
+ */
+const CLUSTER_LABEL_HEIGHT = 28;
 
 /**
  * Per-type rankdir defaults (diag_arch_v4.2.md §15.1).
@@ -101,22 +108,48 @@ function getDims(node: ParsedNode): { w: number; h: number; } {
 /**
  * Run the dagre Sugiyama algorithm over `parsed` and build a LayoutStore.
  * x/y values stored in NodeLayout are the dagre-computed CENTRE coordinates.
+ *
+ * When the diagram has clusters (subgraphs), the graph is built with
+ * `compound: true` and each cluster member's parent is set via setParent().
+ * This ensures dagre places external nodes (outside any subgraph) outside the
+ * cluster footprint rather than topologically inside it.
  */
 function layoutWithDagre(
   parsed: ParsedDiagram,
   options: Required<LayoutOptions>
 ): LayoutStore {
   const { rankdir, nodeSpacing, rankSpacing } = options;
+  const hasCompound = parsed.clusters.length > 0;
 
-  // Multigraph to support parallel edges between the same pair of nodes.
-  const g = new dagre.graphlib.Graph({ multigraph: true });
+  // Use compound mode when there are subgraphs so dagre respects containment.
+  const g = new dagre.graphlib.Graph({ multigraph: true, compound: hasCompound });
   g.setGraph({ rankdir, nodesep: nodeSpacing, ranksep: rankSpacing });
   g.setDefaultEdgeLabel(() => ({}));
 
-  // --- nodes ---
+  // --- cluster nodes (must be added before their children) ---
+  if (hasCompound) {
+    for (const cluster of parsed.clusters) {
+      // Cluster node has no intrinsic size — dagre computes it from members.
+      g.setNode(cluster.id, { label: cluster.id });
+    }
+  }
+
+  // --- regular nodes ---
   for (const [id, node] of parsed.nodes) {
     const { w, h } = getDims(node);
     g.setNode(id, { width: w, height: h });
+  }
+
+  // --- parent relationships ---
+  if (hasCompound) {
+    for (const cluster of parsed.clusters) {
+      for (const memberId of cluster.members) {
+        g.setParent(memberId, cluster.id);
+      }
+      if (cluster.parent) {
+        g.setParent(cluster.id, cluster.parent);
+      }
+    }
   }
 
   // --- edges (use EdgeKey as the multigraph edge name) ---
@@ -156,34 +189,42 @@ function layoutWithDagre(
   }
 
   // --- compute cluster bounding boxes ---
+  // NodeLayout.x/y are dagre centre coords re-used directly as Excalidraw
+  // top-left coords. The rendered node therefore occupies x … x+w, y … y+h.
+  // Use full extents (not just centres) so the cluster box actually wraps the
+  // rendered shapes on canvas rather than only enclosing their centre points.
   const clusters: Record<string, ClusterLayout> = {};
   for (const cluster of parsed.clusters) {
-    const xs: number[] = [];
-    const ys: number[] = [];
+    const lefts:   number[] = [];
+    const rights:  number[] = [];
+    const tops:    number[] = [];
+    const bottoms: number[] = [];
 
     for (const memberId of cluster.members) {
       const n = nodes[memberId];
       if (n === undefined) continue;
-      xs.push(n.x);
-      ys.push(n.y);
+      lefts.push(n.x);
+      rights.push(n.x + n.w);
+      tops.push(n.y);
+      bottoms.push(n.y + n.h);
     }
 
-    if (xs.length === 0) {
+    if (lefts.length === 0) {
       // Cluster with no placed members: zero-size at origin.
       clusters[cluster.id] = { x: 0, y: 0, w: 0, h: 0, label: cluster.label, style: {} };
       continue;
     }
 
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
+    const left   = Math.min(...lefts);
+    const right  = Math.max(...rights);
+    const top    = Math.min(...tops);
+    const bottom = Math.max(...bottoms);
 
     clusters[cluster.id] = {
-      x: minX - CLUSTER_MARGIN,
-      y: minY - CLUSTER_MARGIN,
-      w: maxX - minX + 2 * CLUSTER_MARGIN,
-      h: maxY - minY + 2 * CLUSTER_MARGIN,
+      x: left   - CLUSTER_MARGIN,
+      y: top    - CLUSTER_MARGIN - CLUSTER_LABEL_HEIGHT,
+      w: right  - left   + 2 * CLUSTER_MARGIN,
+      h: bottom - top    + 2 * CLUSTER_MARGIN + CLUSTER_LABEL_HEIGHT,
       label: cluster.label,
       style: {},
     };
