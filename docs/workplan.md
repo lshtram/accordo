@@ -3,13 +3,13 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-15  
-**Status:** ACTIVE — Session 11 complete (accordo-diagram core ✅, A16/A17 ✅), Session 12 next (TD-CROSS-1 or diag.2)
+**Status:** ACTIVE — TD-CROSS-1 complete ✅, Session 12 next (diag.2 or browser)
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-15 — Session 11 complete. `accordo-diagram` delivers a fully working Mermaid → Excalidraw canvas modality: parser (flowchart), auto-layout (dagre), reconciler, canvas generator, 6 MCP tools (`accordo_diagram_list/get/create/patch/render/style_guide`), Webview panel (A15), Excalidraw webview frontend (A16), extension entry/registry (A17), custom editor for `.mmd` files, `x`/`y`/`clusterStyles` in `accordo_diagram_patch` so agents never write layout files directly, aux files at `<workspace>/.accordo/diagrams/`. VSIX-ready — all 17 diag.1 modules done. 444 diagram tests. 2281 total (Hub: 360, Voice: 269, Bridge: 310, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149, Script: 133, Diagram: 444). TypeScript clean. Committed and pushed.**
+> **As of 2026-03-15 — TD-CROSS-1 complete. `openTabs: OpenTab[]` added to `IDEState` (bridge + bridge-types); `accordo_layout_state` MCP tool added to `accordo-editor`; `## Open Tabs` budget-aware section added to Hub system prompt. Tab truncation is budget-triggered (not a fixed cap). `Tab.label` is required. All 2321 tests green. Committed `fc0a227` + `4e9807c`. Panel visibility (Output, Debug Console, Problems) is a known gap in the VS Code API — no `onDidChangeActivePanel` event exists; to be revisited if agent panel-awareness becomes a priority.**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -20,9 +20,10 @@
 | **Session 10** | **Voice modality (`accordo-voice` — 10A core+tools, 10B summary narration, 10C robustness)** | ✅ DONE — 10A: 211; 10B: +25; 10C: hardening + simplification, 261 total voice tests |
 | **Session 10D** | **Scripted walkthroughs (`accordo-script` — ScriptRunner, 4 MCP tools, Bridge dual-registration)** | ✅ DONE — 133 tests |
 | **Session 11** | **Diagrams modality (`accordo-diagram` — Mermaid + Excalidraw, A1-A17, all diag.1 modules, custom editor + patch enhancements)** | ✅ DONE — 444 tests |
+| **TD-CROSS-1** | **`openTabs` capture + `accordo_layout_state` tool + Open Tabs prompt section** | ✅ DONE — 2321 tests (Hub: 376, Bridge: 310+) |
 | Session 12+ | Browser agentation (`accordo-browser` + Chrome extension) | 📋 DEFERRED — architecture + requirements written, complex anchoring needs more design |
 
-**Baseline:** 2281 tests green (Hub: 360, Voice: 269, Bridge: 310, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149, Script: 133, Diagram: 444). v0.1.0 on `main`.  
+**Baseline:** 2321 tests green (Hub: 376, Voice: 269, Bridge: 310+, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149, Script: 133, Diagram: 444). v0.1.0 on `main`.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -499,6 +500,8 @@ Identified in a post-session-10C code review. No blocking issues — voice is fu
 22. **[P3] Vocabulary entry length / content not bounded** — `VoiceVocabulary` persists entries in `workspaceState` with no validation on `from`/`to` length. A very long `from` string causes O(n*m) scanning on every STT transcript. Low practical risk given the feature is user-controlled and single-user.
 
 23. **[P3] `sox` availability cache is not re-checkable within a session** — `recordingAvailableCache` is set once on first dictation and never cleared. If the user installs sox mid-session, they must reload the VS Code window to pick it up. Minor UX friction; no fix required unless reported.
+
+24. **Panel visibility in `IDEState`** — `accordo_layout_state` does not know whether the Output, Debug Console, Problems, or Comments bottom-bar panels are open. VS Code does not expose an `onDidChangeActivePanel` event. Agent can infer a lot from `openTabs` (webview panels) and `activeTerminal`. Full panel visibility would require a dedicated module using VS Code context + command side-effects. Deferred — to revisit if agent panel-awareness becomes a priority.
 
 ---
 
