@@ -39,6 +39,8 @@ import type {
   HostErrorOverlayMessage,
   WebviewToHostMessage,
 } from "./protocol.js";
+import { DiagramCommentsBridge } from "../comments/diagram-comments-bridge.js";
+import type { SurfaceAdapterLike } from "../comments/diagram-comments-bridge.js";
 
 // ── Debug flag ────────────────────────────────────────────────────────────────
 // Set to true to write verbose canvas message logs to /tmp/accordo-diagram.log
@@ -98,6 +100,8 @@ export class DiagramPanel {
   private _log: (msg: string) => void = () => {};
   // Absolute path to the workspace root (used to derive the .accordo/diagrams path)
   private _workspaceRoot = "";
+  // A18 — comments bridge (null if adapter unavailable or empty-canvas mode)
+  private _commentsBridge: DiagramCommentsBridge | null = null;
   /** Log to output channel AND append a timestamped line to /tmp/accordo-diagram.log.
    * No-op when PANEL_FILE_DEBUG is false. */
   private _debugLog(msg: string): void {
@@ -162,11 +166,15 @@ export class DiagramPanel {
     const virgilFontUri = panel.webview
       .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview", "Virgil.woff2"))
       .toString();
+    const excalidrawAssetsUri = panel.webview
+      .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview"))
+      .toString();
     panel.webview.html = getWebviewHtml({
       nonce,
       cspSource: panel.webview.cspSource,
       bundleUri,
       virgilFontUri,
+      excalidrawAssetsUri,
     });
     log("DiagramPanel.createEmpty() — HTML set, waiting for canvas:ready");
 
@@ -200,6 +208,8 @@ export class DiagramPanel {
     const instance = new DiagramPanel(mmdPath, panel);
     instance._log = log;
     instance._workspaceRoot = DiagramPanel._resolveWorkspaceRoot(mmdPath);
+    // A18 — obtain surface adapter and wire up comments bridge
+    await instance._initCommentsBridge();
 
     // Register message listener BEFORE setting webview.html so no canvas:ready
     // message can be missed in the window between HTML assignment and subscription.
@@ -243,11 +253,15 @@ export class DiagramPanel {
     const virgilFontUri = panel.webview
       .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview", "Virgil.woff2"))
       .toString();
+    const excalidrawAssetsUri = panel.webview
+      .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview"))
+      .toString();
     panel.webview.html = getWebviewHtml({
       nonce,
       cspSource: panel.webview.cspSource,
       bundleUri,
       virgilFontUri,
+      excalidrawAssetsUri,
     });
     log("DiagramPanel.create() — HTML set, waiting for canvas:ready");
 
@@ -281,6 +295,8 @@ export class DiagramPanel {
     const instance = new DiagramPanel(mmdPath, existingPanel);
     instance._log = log;
     instance._workspaceRoot = DiagramPanel._resolveWorkspaceRoot(mmdPath);
+    // A18 — obtain surface adapter and wire up comments bridge
+    await instance._initCommentsBridge();
 
     instance._disposables.push(
       existingPanel.webview.onDidReceiveMessage((msg: unknown) => {
@@ -315,11 +331,15 @@ export class DiagramPanel {
     const virgilFontUri = existingPanel.webview
       .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview", "Virgil.woff2"))
       .toString();
+    const excalidrawAssetsUri = existingPanel.webview
+      .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview"))
+      .toString();
     existingPanel.webview.html = getWebviewHtml({
       nonce,
       cspSource: existingPanel.webview.cspSource,
       bundleUri,
       virgilFontUri,
+      excalidrawAssetsUri,
     });
     log("DiagramPanel.createFromExistingPanel() — setup complete");
 
@@ -402,6 +422,25 @@ export class DiagramPanel {
    * Falls back to dirname(mmdPath) if the file is not in any open workspace
    * folder (e.g. opened directly from Finder / outside an open workspace).
    */
+  /**
+   * A18-R01 — Acquire SurfaceCommentAdapter via executeCommand and create the comments bridge.
+   * Panel is responsible for the vscode-specific command call; bridge itself has no vscode import.
+   * Silently no-ops (null adapter) if accordo-comments is not installed.
+   */
+  private async _initCommentsBridge(): Promise<void> {
+    const mmdUri = vscode.Uri.file(this.mmdPath).toString();
+    try {
+      const adapter = await vscode.commands.executeCommand<SurfaceAdapterLike | undefined>(
+        "accordo_comments_internal_getSurfaceAdapter",
+        mmdUri,
+      );
+      this._commentsBridge = new DiagramCommentsBridge(adapter ?? null, this._panel.webview, mmdUri);
+    } catch {
+      // accordo-comments not active — bridge inert (null adapter = all messages no-op)
+      this._commentsBridge = new DiagramCommentsBridge(null, this._panel.webview, mmdUri);
+    }
+  }
+
   private static _resolveWorkspaceRoot(mmdPath: string): string {
     const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(mmdPath));
     if (folder) return folder.uri.fsPath;
@@ -433,6 +472,10 @@ export class DiagramPanel {
       this._pendingExport.reject(new PanelDisposedError());
       this._pendingExport = null;
     }
+
+    // A18 — dispose comments bridge before releasing other disposables
+    this._commentsBridge?.dispose();
+    this._commentsBridge = null;
 
     for (const d of this._disposables) {
       d.dispose();
@@ -570,7 +613,12 @@ export class DiagramPanel {
           this._log("host:load-scene (empty) posted");
         } else {
           this._log("canvas:ready received — calling _loadAndPost for: " + this.mmdPath);
-          void this._loadAndPost();
+          // A18 — loadThreadsForUri is chained inside .then() so comments:load is
+          // posted only after host:load-scene; avoids dropped pins on first render
+          // when coordinateToScreen returns null before the scene is ready (A18-R07)
+          void this._loadAndPost().then(() => {
+            this._commentsBridge?.loadThreadsForUri();
+          });
         }
         break;
       case "canvas:node-moved":
@@ -587,6 +635,16 @@ export class DiagramPanel {
         break;
       case "canvas:js-error":
         this._log("webview JS error: " + msg.message);
+        break;
+      // A18 — comment messages: delegate to bridge (no-op when bridge is null)
+      case "comment:create":
+      case "comment:reply":
+      case "comment:resolve":
+      case "comment:reopen":
+      case "comment:delete":
+        if (this._commentsBridge) {
+          void this._commentsBridge.handleWebviewMessage(msg);
+        }
         break;
       default:
         this._log("webview → host: unhandled message type: " + (msg as { type: string }).type);

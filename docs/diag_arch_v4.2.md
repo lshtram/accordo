@@ -1859,7 +1859,7 @@ The diagram extension follows the same three-layer pattern established by `packa
 
 1. **Webview layer** — loads `@accordo/comment-sdk` (vanilla JS, framework-agnostic). The SDK renders pin icons on diagram nodes and handles Alt+click to create new threads.
 
-2. **Extension host layer** — a `DiagramCommentsBridge` wires the webview's postMessage channel to the `SurfaceCommentAdapter` obtained via `vscode.commands.executeCommand('accordo_comments_internal_getSurfaceAdapter')`. It routes `comment:create`, `comment:reply`, `comment:resolve`, `comment:reopen`, `comment:delete` messages from the webview to the comments store, and pushes `comments:load` / `comments:add` / `comments:update` messages back to the webview.
+2. **Extension host layer** — `DiagramPanel` calls `vscode.commands.executeCommand('accordo_comments_internal_getSurfaceAdapter', mmdUri)` during panel creation and passes the resulting adapter to a `DiagramCommentsBridge` constructor. The bridge itself has no `vscode` import and is VS Code-agnostic (testable without a vscode mock). It routes `comment:create`, `comment:reply`, `comment:resolve`, `comment:reopen`, `comment:delete` messages from the webview to the comments store, and pushes `comments:load` messages back to the webview. `SurfaceCommentAdapter.onChanged` triggers a full-reload (`getThreadsForUri` → `comments:load`); there are no per-thread add/update events. When the adapter is unavailable (extension not loaded), the bridge is inert — all messages are silently ignored.
 
 3. **Comment store** — the existing `CommentStore` in `packages/comments/` stores threads. No changes to the comments package are needed.
 
@@ -1908,7 +1908,7 @@ sdk.init({
 > scaling and at VSCode editor zoom levels. Adjust the transform with `window.devicePixelRatio`
 > or CSS `transform: scale(...)` compensation as needed.
 
-**Alt+click on canvas.** The SDK's built-in Alt+click handler uses `closest('[data-block-id]')`, which does not work on a `<canvas>` surface. The diagram webview intercepts Alt+click itself, performs hit-testing against Excalidraw elements (e.g. checking element bounding boxes at the click point), maps the hit back to a block ID via `IdMap.excalidrawToMermaid`, and then posts a `comment:create` message to the extension host via `postMessage`. The host-side `DiagramCommentsBridge` handles thread creation through the `SurfaceCommentAdapter` — the SDK's `callbacks.onCreate` is never called directly because `AccordoCommentSDK` does not expose callbacks as a public property after `init()`.
+**Alt+click on canvas.** The SDK's built-in Alt+click handler uses `closest('[data-block-id]')`, which does not work on a `<canvas>` surface. The diagram webview intercepts Alt+click itself, performs hit-testing against Excalidraw elements (e.g. checking element bounding boxes at the click point), maps the hit back to a block ID via `IdMap.excalidrawToMermaid`, and then opens a **custom inline text-input overlay** positioned near the hit element. On submit, the webview posts a `comment:create { blockId, body }` message to the extension host (no `surfaceUri` — the host bridge uses its panel-owned `.mmd` file URI). On Escape or outside-click, the overlay is dismissed with no side-effect. The host-side `DiagramCommentsBridge` handles thread creation through the `SurfaceCommentAdapter` — the SDK's `callbacks.onCreate` is never called directly because `AccordoCommentSDK` does not expose callbacks as a public property after `init()`.
 
 ### 25.3 Comment anchors
 

@@ -152,6 +152,12 @@ export const workspace = {
   }),
 };
 
+// ── commands ────────────────────────────────────────────────────────────────
+
+export const commands = {
+  executeCommand: vi.fn().mockResolvedValue(undefined),
+};
+
 // ── ExtensionContext ──────────────────────────────────────────────────────────
 
 export function makeExtensionContext(

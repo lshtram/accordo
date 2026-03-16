@@ -49,6 +49,15 @@ export interface HtmlOptions {
    * Use panel.webview.asWebviewUri(Uri.joinPath(extensionUri, "dist", "webview", "Virgil.woff2"))
    */
   virgilFontUri?: string;
+  /**
+   * Optional VS Code webview URI string for the directory that *contains*
+   * the excalidraw-assets folder (i.e. dist/webview/, not dist/webview/excalidraw-assets/).
+   * When provided, window.EXCALIDRAW_ASSET_PATH is set so Excalidraw's webpack
+   * runtime loads its vendor chunk from the local extension dist folder instead
+   * of the default https://unpkg.com CDN, which is blocked by CSP.
+   * Use panel.webview.asWebviewUri(Uri.joinPath(extensionUri, "dist", "webview"))
+   */
+  excalidrawAssetsUri?: string;
 }
 
 // ── getWebviewHtml ─────────────────────────────────────────────────────────────
@@ -58,12 +67,14 @@ export interface HtmlOptions {
  * Build the full HTML document for the Excalidraw canvas webview.
  */
 export function getWebviewHtml(opts: HtmlOptions): string {
-  const { nonce, cspSource, bundleUri, virgilFontUri } = opts;
+  const { nonce, cspSource, bundleUri, virgilFontUri, excalidrawAssetsUri } = opts;
   // Make the font URI available to webview.ts module-level code via a global.
   // webview.ts injects the @font-face rule via JS AFTER Excalidraw's bundle CSS
   // has already run, so our rule wins the CSS cascade over Excalidraw's rule for
   // the same font-family name.
   const virgilGlobal = virgilFontUri ? `\n  window.__virgilFontUri = "${virgilFontUri}";` : "";
+  // Trailing slash is required — webpack public path must end with /
+  const assetPathGlobal = excalidrawAssetsUri ? `\n  window.EXCALIDRAW_ASSET_PATH = "${excalidrawAssetsUri}/";` : "";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -83,7 +94,7 @@ export function getWebviewHtml(opts: HtmlOptions): string {
     };
     window.addEventListener('unhandledrejection', function(ev) {
       window.__accordoErrors.push('UnhandledRejection: ' + String(ev.reason));
-    });${virgilGlobal}
+    });${assetPathGlobal}${virgilGlobal}
   </script>
   <script nonce="${nonce}" src="${bundleUri}"></script>
 </body>

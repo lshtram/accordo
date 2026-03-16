@@ -112,7 +112,13 @@ export type WebviewToHostMessage =
   | CanvasEdgeDeletedMessage
   | CanvasExportReadyMessage
   | CanvasReadyMessage
-  | CanvasJsErrorMessage;
+  | CanvasJsErrorMessage
+  // A18 — comment inbound messages
+  | CommentCreateMessage
+  | CommentReplyMessage
+  | CommentResolveMessage
+  | CommentReopenMessage
+  | CommentDeleteMessage;
 
 // ── Extension host → Webview ───────────────────────────────────────────────────
 
@@ -158,4 +164,47 @@ export type HostToWebviewMessage =
   | HostLoadSceneMessage
   | HostRequestExportMessage
   | HostToastMessage
-  | HostErrorOverlayMessage;
+  | HostErrorOverlayMessage
+  | CommentsLoadMessage;
+
+// ── A18 — Comment protocol messages ──────────────────────────────────────────
+
+import type { CommentThread } from "@accordo/bridge-types";
+
+// Webview → host (inbound to bridge)
+// Note: no surfaceUri — bridge uses host-owned mmdUri (A18-R02)
+
+export interface CommentCreateMessage {
+  type: "comment:create";
+  blockId: string;
+  body: string;
+  intent?: string;
+}
+
+export interface CommentReplyMessage {
+  type: "comment:reply";
+  threadId: string;
+  body: string;
+}
+
+export interface CommentResolveMessage {
+  type: "comment:resolve";
+  threadId: string;
+}
+
+export interface CommentReopenMessage {
+  type: "comment:reopen";
+  threadId: string;
+}
+
+export interface CommentDeleteMessage {
+  type: "comment:delete";
+  threadId: string;
+}
+
+// Host → webview (full-reload only — SurfaceCommentAdapter has no per-thread events)
+
+export interface CommentsLoadMessage {
+  type: "comments:load";
+  threads: CommentThread[];
+}

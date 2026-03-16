@@ -1,8 +1,9 @@
 # Accordo — Diagram Modality Implementation Plan
 
-**Status:** diag.2 IN PROGRESS — next target: A18 Diagram Comments Bridge
-**Date updated:** 2026-03-15 (diag.1 complete)
+**Status:** diag.2 IN PROGRESS — A18 host bridge + panel wiring complete; webview side (W-reqs) pending
+**Date updated:** 2026-03-16 (A18 bridge unit + panel wiring done)
 **Architecture:** `docs/diag_arch_v4.2.md`
+**Requirements:** `docs/requirements-diagram.md`
 **Dev process:** `docs/dev-process.md` (TDD cycle A→F)
 
 ## Current Status
@@ -11,7 +12,7 @@
 |---|---|---|
 | diag.1 (A1–A17) | ✅ COMPLETE | 444 pass |
 | TD-CROSS-1 (all packages) | ✅ CLOSED | 2321 total |
-| **A18 Diagram Comments Bridge** | 🔲 **NEXT** | — |
+| **A18 Diagram Comments Bridge** | 🔄 IN PROGRESS — bridge + panel done; webview pending | 460 / 460 |
 | Remaining diag.2 modules | 🔲 NOT STARTED | — |
 
 ---
@@ -42,6 +43,8 @@
 
 The diagram webview is a commentable surface. Nodes, edges, and clusters can have pinned comment threads. Unlike markdown (DOM blocks) or slides (HTML elements), the Excalidraw canvas surface is a `<canvas>` element — `querySelector('[data-block-id]')` does not work on it. The webview performs canvas-aware bounding-box hit-testing against Excalidraw scene elements instead.
 
+> **Architecture note — ID map ownership:** `docs/diag_arch_v4.2.md §9.4` says "No **host-side** ID map is maintained"; `§25.2` says the **webview** maintains an in-memory `IdMap`. These are consistent. The canonical model: webview-local `IdMap` (mermaidId ↔ excalidrawId) rebuilt on every scene generation; the extension host never holds or consults it. The `IdMap` is used only for canvas comment hit-testing inside `webview.ts`.
+
 #### Files modified / created
 
 | File | Change |
@@ -65,65 +68,83 @@ cluster:{clusterId}           → "cluster:system", "cluster:infra"
 
 ```typescript
 // Webview → host (new inbound messages)
-type CommentCreateMessage  = { type: 'comment:create';  blockId: string; surfaceUri: string };
+// Note: no surfaceUri — host bridge uses the panel-owned mmdUri (same model as Slidev M44-CBR)
+type CommentCreateMessage  = { type: 'comment:create';  blockId: string; body: string; intent?: string };
 type CommentReplyMessage   = { type: 'comment:reply';   threadId: string; body: string };
 type CommentResolveMessage = { type: 'comment:resolve'; threadId: string };
 type CommentReopenMessage  = { type: 'comment:reopen';  threadId: string };
 type CommentDeleteMessage  = { type: 'comment:delete';  threadId: string };
 
-// Host → webview (new outbound messages)
+// Host → webview (full-reload only — SurfaceCommentAdapter has no per-thread add/update events)
 type CommentsLoadMessage   = { type: 'comments:load';   threads: CommentThread[] };
-type CommentsAddMessage    = { type: 'comments:add';    thread: CommentThread };
-type CommentsUpdateMessage = { type: 'comments:update'; thread: CommentThread };
 ```
 
 #### Requirements
 
 | ID | Requirement |
 |---|---|
-| A18-R01 | `DiagramCommentsBridge` obtains `SurfaceCommentAdapter` via `vscode.commands.executeCommand('accordo_comments_internal_getSurfaceAdapter')` on construction |
-| A18-R02 | Bridge routes `comment:create` webview message to `adapter.createThread({ blockId, surfaceUri })` |
-| A18-R03 | Bridge routes `comment:reply` → `adapter.replyToThread(threadId, body)` |
-| A18-R04 | Bridge routes `comment:resolve` → `adapter.resolveThread(threadId)` |
-| A18-R05 | Bridge routes `comment:reopen` → `adapter.reopenThread(threadId)` |
-| A18-R06 | Bridge routes `comment:delete` → `adapter.deleteThread(threadId)` |
-| A18-R07 | Adapter `onLoad` event → bridge posts `{ type: 'comments:load', threads }` to webview |
-| A18-R08 | Adapter `onAdd` event → bridge posts `{ type: 'comments:add', thread }` to webview |
-| A18-R09 | Adapter `onUpdate` event → bridge posts `{ type: 'comments:update', thread }` to webview |
+| A18-R01 | `DiagramPanel` calls `vscode.commands.executeCommand('accordo_comments_internal_getSurfaceAdapter', mmdUri)` during panel creation and passes the result to the `DiagramCommentsBridge` constructor; bridge has no `vscode` import and is VS Code-agnostic (testable without a vscode mock) |
+| A18-R02 | Bridge routes `comment:create` → builds `CommentAnchorSurface` (`{ kind:'surface', uri:mmdUri, surfaceType:'diagram', coordinates:{ type:'diagram-node', nodeId:blockId } }`) and calls `adapter.createThread({ uri:mmdUri, anchor, body, intent? })`; `mmdUri` is panel-owned (not supplied by the webview) |
+| A18-R03 | Bridge routes `comment:reply` → `adapter.reply({ threadId, body })` |
+| A18-R04 | Bridge routes `comment:resolve` → `adapter.resolve({ threadId })` |
+| A18-R05 | Bridge routes `comment:reopen` → `adapter.reopen({ threadId })` |
+| A18-R06 | Bridge routes `comment:delete` → `adapter.delete({ threadId })` |
+| A18-R07 | `DiagramCommentsBridge.loadThreadsForUri(mmdUri)` calls `adapter.getThreadsForUri(mmdUri)`, posts `{ type:'comments:load', threads }` to webview, and subscribes to `adapter.onChanged` for future updates |
+| A18-R08 | `adapter.onChanged` fires → bridge calls `adapter.getThreadsForUri(mmdUri)` and re-posts `{ type:'comments:load', threads }` (full reload; `SurfaceCommentAdapter` has no per-thread add/update events) |
+| A18-R09 | `comment:create` webview message must include `body: string` (user-entered text); the webview collects the body via SDK UI before posting — bridge does not default or invent a body |
+| A18-R09b | When the webview Alt+click hit-test identifies a target element, it opens a custom inline input overlay (not the SDK's built-in input, which requires `[data-block-id]` DOM elements). On submit the overlay posts `comment:create`; on Escape or outside-click the overlay is dismissed with no side-effect. |
 | A18-R10 | Unknown inbound message type → no adapter call, no error thrown |
-| A18-R11 | `getSurfaceAdapter` returns `undefined` (bridge not loaded) → `DiagramCommentsBridge` is inert; all messages silently ignored, no crash |
-| A18-R12 | `dispose()` cleans up: adapter unregistered, all event listeners removed, no further messages forwarded |
-| A18-R13 | `CommentAnchorSurface` passed to adapter uses `surfaceType: "diagram"`, `coordinates: { type: "diagram-node", nodeId }` — no new bridge-types types needed (already exist) |
+| A18-R11 | `getSurfaceAdapter` returns `undefined` (comments extension not loaded) → `DiagramCommentsBridge` is inert; all messages silently ignored, no crash |
+| A18-R12 | `dispose()` cleans up: `onChanged` subscription disposed, no further messages forwarded |
+| A18-R13 | All diagram element types (node, edge, cluster) use `{ type:'diagram-node', nodeId:blockId }` — the full blockId string (e.g. `"edge:auth->api:0"`) is stored verbatim as `nodeId`; no new bridge-types coordinate types are needed |
 | A18-R14 | Orphaned threads (node deleted from diagram) remain visible in Comments panel; no canvas pin rendered (canvas ignores unknown block IDs) |
 | A18-R15 | No changes to `@accordo/comment-sdk`, `packages/comments/`, or `packages/bridge/` |
 
 #### Webview requirements (manually tested — no unit tests for canvas context)
 
+> These are manual acceptance requirements. A D3 checklist (see below) is mandatory before Phase F commit.
+
 | ID | Requirement |
 |---|---|
 | A18-W01 | `webview.ts` calls `sdk.init()` with canvas-aware `coordinateToScreen` that resolves block IDs via `IdMap` + Excalidraw `getSceneElements()` / `getAppState()` scroll+zoom+container-offset transform |
-| A18-W02 | Webview intercepts `Alt+click` on canvas; performs bounding-box hit-test against scene elements; maps hit to `blockId` via `IdMap.excalidrawToMermaid`; posts `comment:create` to extension host |
-| A18-W03 | On receiving `comments:load` from panel, webview calls `sdk.load(threads)` |
+| A18-W02 | Webview intercepts `Alt+click` on canvas; performs bounding-box hit-test against scene elements; maps hit to `blockId` via `IdMap.excalidrawToMermaid` |
+| A18-W03 | On receiving `comments:load` from panel, webview calls `sdk.loadThreads(threads)` |
 | A18-W04 | Pin icons appear at correct canvas positions after scroll, zoom, and VS Code window resize |
+| A18-W05 | After a successful hit-test (A18-W02), webview opens a custom inline text-input overlay positioned near the hit element. On submit: overlay closes, `comment:create { blockId, body }` is posted to host. On Escape or click-outside: overlay closes, no message sent. |
 
 #### Test plan (unit — `DiagramCommentsBridge` only)
 
-Tests mock `vscode.commands.executeCommand` and `SurfaceCommentAdapter`. `webview.ts` canvas context is not unit-testable.
+Tests mock `vscode.commands.executeCommand` and `SurfaceCommentAdapter`. `webview.ts` canvas context is not unit-testable. A18-W01–W04 are covered by the D3 manual acceptance checklist below.
 
 | ID | Test description |
 |---|---|
-| A18-T01 | Constructor calls `getSurfaceAdapter`; stores adapter reference |
-| A18-T02 | `comment:create` message → `adapter.createThread()` called with correct `blockId` + `surfaceUri` |
-| A18-T03 | `comment:reply` message → `adapter.replyToThread(threadId, body)` |
-| A18-T04 | `comment:resolve` message → `adapter.resolveThread(threadId)` |
-| A18-T05 | `comment:reopen` message → `adapter.reopenThread(threadId)` |
-| A18-T06 | `comment:delete` message → `adapter.deleteThread(threadId)` |
-| A18-T07 | Adapter `onLoad` fires → `panel.webview.postMessage({ type: 'comments:load', threads })` |
-| A18-T08 | Adapter `onAdd` fires → `panel.webview.postMessage({ type: 'comments:add', thread })` |
-| A18-T09 | Adapter `onUpdate` fires → `panel.webview.postMessage({ type: 'comments:update', thread })` |
+| A18-T01 | Construction: panel calls `getSurfaceAdapter`, passes adapter to bridge; bridge stores reference and `loadThreadsForUri` uses it |
+| A18-T02 | `comment:create` message → `adapter.createThread()` called with correct anchor (`kind:'surface'`, `surfaceType:'diagram'`, `nodeId:blockId`) and `body` |
+| A18-T03 | `comment:reply` message → `adapter.reply({ threadId, body })` |
+| A18-T04 | `comment:resolve` message → `adapter.resolve({ threadId })` |
+| A18-T05 | `comment:reopen` message → `adapter.reopen({ threadId })` |
+| A18-T06 | `comment:delete` message → `adapter.delete({ threadId })` |
+| A18-T07 | `loadThreadsForUri(mmdUri)` posts `{ type:'comments:load', threads }` immediately from `adapter.getThreadsForUri()` |
+| A18-T08 | `adapter.onChanged` fires → bridge re-posts `{ type:'comments:load', threads }` (full reload) |
+| A18-T09 | Calling `loadThreadsForUri` a second time replaces the prior `onChanged` subscription (no double-subscribe) |
 | A18-T10 | Unknown message type received → no adapter call, no throw |
 | A18-T11 | `getSurfaceAdapter` returns `undefined` → all messages silently ignored |
-| A18-T12 | `dispose()` → no further events forwarded after disposal |
+| A18-T12 | `dispose()` → `onChanged` subscription disposed; no further events forwarded |
+
+#### D3 manual acceptance checklist (A18-W01–W04)
+
+Before Phase F commit, manually verify all of the following:
+
+- [ ] A18-W01: Alt+click a node — inline input overlay appears (not the SDK default dialog)
+- [ ] A18-W01: Node pin is positioned correctly at 100 % editor zoom
+- [ ] A18-W02: Hit-test correctly identifies the target element
+- [ ] A18-W05: Submitting overlay posts `comment:create` with correct `blockId` and non-empty `body`; thread appears in Comments panel anchored to the correct `.mmd` file URI
+- [ ] A18-W05: Escape and outside-click dismiss overlay with no side-effect
+- [ ] A18-W03: Reloading Comments panel calls `sdk.loadThreads(threads)` correctly (pins re-render)
+- [ ] A18-W04: Pin position survives canvas scroll (drag the canvas)
+- [ ] A18-W04: Pin position survives Excalidraw zoom in / zoom out
+- [ ] A18-W04: Pin position survives VS Code window resize
+- [ ] A18-W04: Pin position correct at OS display scaling 125 %, 150 %, 200 % (§25.2 DPI caution)
 
 ---
 

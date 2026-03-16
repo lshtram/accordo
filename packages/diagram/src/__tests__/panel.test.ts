@@ -39,8 +39,10 @@ import {
   makeExtensionContext,
   window as mockWindow,
   workspace as mockWorkspace,
+  commands as mockCommands,
 } from "./mocks/vscode.js";
 import type { HostLoadSceneMessage, HostToastMessage, HostRequestExportMessage } from "../webview/protocol.js";
+import type { SurfaceAdapterLike } from "../comments/diagram-comments-bridge.js";
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
 
@@ -321,5 +323,73 @@ describe("DiagramPanel.dispose()", () => {
     await expect(panel.refresh()).rejects.toThrow(PanelDisposedError);
     expect(() => panel.notify("hello")).toThrow(PanelDisposedError);
     await expect(panel.requestExport("svg")).rejects.toThrow(PanelDisposedError);
+  });
+});
+
+// ── AP-16..AP-18: A18 panel wiring (comments bridge) ─────────────────────────
+
+describe("A18 panel wiring (comments bridge)", () => {
+  it("AP-16: create() calls getSurfaceAdapter with the file URI of the .mmd path", async () => {
+    await DiagramPanel.create(ctx as never, mmdPath);
+
+    const calls = vi.mocked(mockCommands.executeCommand).mock.calls;
+    const adapterCall = calls.find(
+      ([cmd]: [string]) => cmd === "accordo_comments_internal_getSurfaceAdapter",
+    );
+    expect(adapterCall).toBeDefined();
+    expect(adapterCall![1]).toBe(`file://${mmdPath}`);
+  });
+
+  it("AP-17: comment:create/reply/resolve/reopen/delete handled by bridge — not reaching default unhandled path", async () => {
+    // Inject a spy logger to confirm the "unhandled message type" branch is never hit
+    const logSpy = vi.fn();
+    await DiagramPanel.create(ctx as never, mmdPath, logSpy);
+    vi.mocked(vscPanel.webview.postMessage).mockClear();
+    logSpy.mockClear();
+
+    vscPanel.webview.simulateMessage({ type: "comment:create", blockId: "node:A", body: "test" });
+    vscPanel.webview.simulateMessage({ type: "comment:reply", threadId: "t1", body: "reply" });
+    vscPanel.webview.simulateMessage({ type: "comment:resolve", threadId: "t1" });
+    vscPanel.webview.simulateMessage({ type: "comment:reopen", threadId: "t1" });
+    vscPanel.webview.simulateMessage({ type: "comment:delete", threadId: "t1" });
+
+    // None of the comment types should reach the default "unhandled message type" log
+    const unhandledLogs = logSpy.mock.calls.filter(
+      ([msg]: [string]) => typeof msg === "string" && msg.includes("unhandled message type"),
+    );
+    expect(unhandledLogs).toHaveLength(0);
+  });
+
+  it("AP-18: comments:load is posted after host:load-scene on canvas:ready (ordering)", async () => {
+    const mockAdapter: SurfaceAdapterLike = {
+      createThread: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn().mockResolvedValue(undefined),
+      resolve: vi.fn().mockResolvedValue(undefined),
+      reopen: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+      getThreadsForUri: vi.fn().mockReturnValue([]),
+      onChanged: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+    };
+    vi.mocked(mockCommands.executeCommand).mockResolvedValueOnce(mockAdapter);
+
+    await DiagramPanel.create(ctx as never, mmdPath);
+    vscPanel.webview.simulateMessage({ type: "canvas:ready" });
+
+    // Wait for both host:load-scene and comments:load to appear
+    await vi.waitFor(
+      () => {
+        const calls = vi.mocked(vscPanel.webview.postMessage).mock.calls;
+        const hasLoadScene = calls.some(([msg]) => (msg as { type: string }).type === "host:load-scene");
+        const hasCommentsLoad = calls.some(([msg]) => (msg as { type: string }).type === "comments:load");
+        expect(hasLoadScene).toBe(true);
+        expect(hasCommentsLoad).toBe(true);
+      },
+      { timeout: 10_000 },
+    );
+
+    const calls = vi.mocked(vscPanel.webview.postMessage).mock.calls;
+    const loadSceneIdx = calls.findIndex(([msg]) => (msg as { type: string }).type === "host:load-scene");
+    const commentsLoadIdx = calls.findIndex(([msg]) => (msg as { type: string }).type === "comments:load");
+    expect(loadSceneIdx).toBeLessThan(commentsLoadIdx);
   });
 });
