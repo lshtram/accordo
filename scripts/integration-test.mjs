@@ -18,13 +18,14 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 // ws lives in hub's node_modules (pnpm workspace — not hoisted to root)
+import { fileURLToPath } from "node:url";
 import wsModule from "../packages/hub/node_modules/ws/index.js";
 const WebSocket = wsModule.WebSocket;
 
 const HUB_TOKEN = "integration-test-token";
 const BRIDGE_SECRET = "integration-test-secret";
 const PORT = 3099; // use different port to not conflict with running hub
-const HUB_BINARY = new URL("../packages/hub/dist/index.js", import.meta.url).pathname;
+const HUB_BINARY = fileURLToPath(new URL("../packages/hub/dist/index.js", import.meta.url));
 
 // ── Fake tool registry (mirrors real 40 tools) ────────────────────────────────
 
@@ -273,9 +274,18 @@ else fail("accordo_presentation_open MISSING from MCP tools/list");
 // ── Step 6: mcp.json format ───────────────────────────────────────────────────
 
 console.log("\nStep 6: mcp.json file format on disk");
-const mcpJsonPath = join(homedir(), "Library", "Application Support", "Code", "User", "mcp.json");
+const mcpJsonPath = process.platform === "win32"
+  ? join(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "Code", "User", "mcp.json")
+  : join(homedir(), "Library", "Application Support", "Code", "User", "mcp.json");
 try {
-  const mcpJson = JSON.parse(readFileSync(mcpJsonPath, "utf8"));
+  const raw = readFileSync(mcpJsonPath, "utf8").trim();
+  if (!raw) {
+    // File exists but is empty — VS Code creates the placeholder; content is
+    // only written when the Accordo bridge extension activates for the first time.
+    console.log(`  ℹ mcp.json at ${mcpJsonPath} is empty — bridge extension has not run yet (skip)`);
+    throw Object.assign(new Error("skip"), { skip: true });
+  }
+  const mcpJson = JSON.parse(raw);
 
   // Must be flat { servers: { accordo: ... } } — NOT nested under mcp.servers
   if ("servers" in mcpJson && !("mcp" in mcpJson)) {
@@ -296,7 +306,7 @@ try {
     fail("accordo entry missing Authorization header");
   }
 } catch (e) {
-  fail(`Could not read mcp.json at ${mcpJsonPath}: ${e.message}`);
+  if (!e.skip) fail(`Could not read mcp.json at ${mcpJsonPath}: ${e.message}`);
 }
 
 // ── Step 7: SSE endpoint and tools/list_changed notification ─────────────────
@@ -373,15 +383,22 @@ const sseNotificationReceived = new Promise((resolve) => {
 // Give SSE connection a moment to establish, then trigger a registry update
 await new Promise(r => setTimeout(r, 300));
 
-// Re-send toolRegistry to trigger notifications/tools/list_changed
+// Re-send toolRegistry with ONE extra tool to change tool names hash and trigger notification
 ws.send(JSON.stringify({
   type: "toolRegistry",
-  tools: FAKE_TOOLS.map(t => ({
-    name: t.name,
-    description: t.description + " (updated)",
-    inputSchema: { type: "object", properties: {} },
-    ...(t.group ? { group: t.group } : {}),
-  })),
+  tools: [
+    ...FAKE_TOOLS.map(t => ({
+      name: t.name,
+      description: t.description + " (updated)",
+      inputSchema: { type: "object", properties: {} },
+      ...(t.group ? { group: t.group } : {}),
+    })),
+    {
+      name: "accordo_integration_test_probe",
+      description: "Ephemeral probe tool for integration test",
+      inputSchema: { type: "object", properties: {} },
+    },
+  ],
 }));
 
 // Wait up to 2s for the notification

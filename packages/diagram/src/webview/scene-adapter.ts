@@ -74,8 +74,9 @@ export interface ExcalidrawAPIElement {
    * The webview identifies which Mermaid element was interacted with by reading
    * `element.customData.mermaidId` from the Excalidraw onChange element objects.
    * No host-side ID map required — mermaidId travels with the element.
+   * `kind` is used for comment hit-testing to reconstruct the full blockId prefix.
    */
-  customData: { mermaidId: string };
+  customData: { mermaidId: string; kind?: string };
 }
 
 // ── FONT_FAMILY_MAP ───────────────────────────────────────────────────────────
@@ -133,7 +134,7 @@ export function toExcalidrawPayload(
       roundness: roundness != null ? { type: 2 as const } : null,
       boundElements: boundElements ?? null,
       containerId: containerId ?? null,
-      customData: { mermaidId },
+      customData: { mermaidId, kind: el.kind },
     };
 
     // Text elements need text-specific required fields.

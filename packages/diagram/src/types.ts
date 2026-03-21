@@ -392,6 +392,12 @@ export interface ExcalidrawElement {
   id: string;
   /** Stable back-link to the Mermaid node/edge/cluster this element represents. */
   mermaidId: string;
+  /**
+   * Semantic kind of this element — used by the webview to construct blockIds for
+   * comment anchors without needing to parse the mermaidId format.
+   * "label" elements (text overlays, edge labels) are not commentable.
+   */
+  kind?: "cluster" | "node" | "edge" | "label";
   /** Excalidraw element type. */
   type: "rectangle" | "diamond" | "ellipse" | "arrow" | "text";
   /** X coordinate (pixels from canvas origin). */

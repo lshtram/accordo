@@ -1,0 +1,69 @@
+{
+  "name": "accordo-marp",
+  "displayName": "Accordo Presentations (Marp)",
+  "publisher": "accordo",
+  "version": "0.1.0",
+  "description": "Accordo Presentations (Marp) — agent-controlled Marp decks with comment SDK integration",
+  "categories": ["Other"],
+  "extensionKind": ["workspace"],
+  "activationEvents": ["onStartupFinished"],
+  "extensionDependencies": [
+    "accordo.accordo-bridge",
+    "accordo.accordo-comments"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "accordo.marp.open",
+        "title": "Accordo: Open Presentation"
+      },
+      {
+        "command": "accordo.marp.close",
+        "title": "Accordo: Close Presentation"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "accordo.marp.open",
+          "when": "resourceExtname == .md",
+          "group": "navigation@100"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Accordo Presentations",
+      "properties": {
+        "accordo.presentation.engine": {
+          "type": "string",
+          "enum": ["marp"],
+          "default": "marp",
+          "description": "Presentation engine to use. Only one engine is active at a time. Changing this setting requires a window reload."
+        }
+      }
+    }
+  },
+  "main": "./dist/extension.js",
+  "engines": { "vscode": "^1.100.0" },
+  "scripts": {
+    "build": "tsc --noEmit && esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=dist/extension.js --sourcemap --format=cjs",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "package": "vsce package --no-dependencies --allow-missing-repository --skip-license",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'no lint configured yet'"
+  },
+  "dependencies": {
+    "@marp-team/marp-core": "^4.1.0"
+  },
+  "devDependencies": {
+    "@accordo/bridge-types": "workspace:*",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.100.0",
+    "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

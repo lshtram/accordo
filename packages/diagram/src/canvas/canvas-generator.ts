@@ -97,6 +97,7 @@ export function generateCanvas(
     pushElement({
       id: elemId,
       mermaidId: cluster.id,
+      kind: "cluster",
       type: "rectangle",
       x: cl.x,
       y: cl.y,
@@ -115,6 +116,7 @@ export function generateCanvas(
       pushElement({
         id: textId,
         mermaidId: `${cluster.id}:text`,
+        kind: "label",
         type: "text",
         x: cl.x,
         y: cl.y + 8,
@@ -139,6 +141,7 @@ export function generateCanvas(
     pushElement({
       id: elemId,
       mermaidId: nodeId,
+      kind: "node",
       type: shapeProps.elementType,
       x: nl.x,
       y: nl.y,
@@ -161,6 +164,7 @@ export function generateCanvas(
       pushElement({
         id: textId,
         mermaidId: `${nodeId}:text`,
+        kind: "label",
         type: "text",
         x: nl.x,
         y: nl.y + Math.floor((nl.h - textFontSize * 1.25) / 2),
@@ -220,6 +224,7 @@ export function generateCanvas(
     elements.push({
       id: arrowId,
       mermaidId: key,
+      kind: "edge",
       type: "arrow",
       x: ox,
       y: oy,
@@ -244,6 +249,7 @@ export function generateCanvas(
       elements.push({
         id: labelTextId,
         mermaidId: `${key}:label`,
+        kind: "label",
         type: "text",
         x: ox,
         y: oy,

@@ -100,6 +100,16 @@ export interface CanvasJsErrorMessage {
   message: string;
 }
 
+/**
+ * Profiling: a timing measurement sent from the webview context to the host
+ * so timings appear in the "Accordo Diagram" output channel without DevTools.
+ */
+export interface CanvasTimingMessage {
+  type: "canvas:timing";
+  label: string;
+  ms: number;
+}
+
 /** Union of all messages the webview can send to the extension host. */
 export type WebviewToHostMessage =
   | CanvasNodeMovedMessage
@@ -113,6 +123,7 @@ export type WebviewToHostMessage =
   | CanvasExportReadyMessage
   | CanvasReadyMessage
   | CanvasJsErrorMessage
+  | CanvasTimingMessage
   // A18 — comment inbound messages
   | CommentCreateMessage
   | CommentReplyMessage
@@ -165,7 +176,8 @@ export type HostToWebviewMessage =
   | HostRequestExportMessage
   | HostToastMessage
   | HostErrorOverlayMessage
-  | CommentsLoadMessage;
+  | CommentsLoadMessage
+  | HostFocusThreadMessage;
 
 // ── A18 — Comment protocol messages ──────────────────────────────────────────
 
@@ -207,4 +219,11 @@ export interface CommentDeleteMessage {
 export interface CommentsLoadMessage {
   type: "comments:load";
   threads: CommentThread[];
+}
+
+// Host → webview — navigate to a specific thread (opens its SDK popover)
+
+export interface HostFocusThreadMessage {
+  type: "host:focus-thread";
+  threadId: string;
 }

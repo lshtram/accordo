@@ -98,6 +98,8 @@ export class DiagramPanel {
 
   // Optional logger — writes to the Accordo Diagram output channel
   private _log: (msg: string) => void = () => {};
+  // Timestamp (Date.now()) recorded at the start of create() for webview bootstrap timing
+  private _createTime = 0;
   // Absolute path to the workspace root (used to derive the .accordo/diagrams path)
   private _workspaceRoot = "";
   // A18 — comments bridge (null if adapter unavailable or empty-canvas mode)
@@ -136,6 +138,8 @@ export class DiagramPanel {
       {
         enableScripts: true,
         localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "dist")],
+        // Retain context to avoid reloading the 4+ MB bundle on tab switch.
+        retainContextWhenHidden: true,
       },
     );
 
@@ -192,6 +196,7 @@ export class DiagramPanel {
     mmdPath: string,
     log: (msg: string) => void = () => {},
   ): Promise<DiagramPanel> {
+    const createStart = Date.now();
     log("DiagramPanel.create() — path: " + mmdPath);
     const title = basename(mmdPath, extname(mmdPath));
     const panel = vscode.window.createWebviewPanel(
@@ -202,14 +207,20 @@ export class DiagramPanel {
         enableScripts: true,
         // Restrict local resource loading to the extension's dist/ folder only.
         localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "dist")],
+        // Retain the webview context when the tab is hidden so VS Code does not
+        // tear down and reload the 4+ MB JS bundle on every tab switch.
+        retainContextWhenHidden: true,
       },
     );
 
     const instance = new DiagramPanel(mmdPath, panel);
     instance._log = log;
+    instance._createTime = createStart;
     instance._workspaceRoot = DiagramPanel._resolveWorkspaceRoot(mmdPath);
     // A18 — obtain surface adapter and wire up comments bridge
+    log(`[TIMING] create: _initCommentsBridge starting (${Date.now() - createStart}ms since create start)`);
     await instance._initCommentsBridge();
+    log(`[TIMING] create: _initCommentsBridge done (${Date.now() - createStart}ms since create start)`);
 
     // Register message listener BEFORE setting webview.html so no canvas:ready
     // message can be missed in the window between HTML assignment and subscription.
@@ -256,14 +267,18 @@ export class DiagramPanel {
     const excalidrawAssetsUri = panel.webview
       .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview"))
       .toString();
+    const sdkCssUri = panel.webview
+      .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview", "sdk.css"))
+      .toString();
     panel.webview.html = getWebviewHtml({
       nonce,
       cspSource: panel.webview.cspSource,
       bundleUri,
       virgilFontUri,
       excalidrawAssetsUri,
+      sdkCssUri,
     });
-    log("DiagramPanel.create() — HTML set, waiting for canvas:ready");
+    log(`[TIMING] create: HTML set (${Date.now() - createStart}ms since create start) — waiting for canvas:ready`);
 
     context.subscriptions.push(instance);
 
@@ -334,12 +349,16 @@ export class DiagramPanel {
     const excalidrawAssetsUri = existingPanel.webview
       .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview"))
       .toString();
+    const sdkCssUri = existingPanel.webview
+      .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview", "sdk.css"))
+      .toString();
     existingPanel.webview.html = getWebviewHtml({
       nonce,
       cspSource: existingPanel.webview.cspSource,
       bundleUri,
       virgilFontUri,
       excalidrawAssetsUri,
+      sdkCssUri,
     });
     log("DiagramPanel.createFromExistingPanel() — setup complete");
 
@@ -406,6 +425,16 @@ export class DiagramPanel {
   }
 
   /**
+   * A18 — Called by the accordo_diagram_focusThread command (invoked from the
+   * Comments panel when the user clicks a diagram thread). Brings the panel
+   * into view and asks the webview to open the SDK popover for the thread.
+   */
+  focusThread(threadId: string): void {
+    this.reveal();
+    this._panel.webview.postMessage({ type: "host:focus-thread", threadId });
+  }
+
+  /**
    * Dispose the underlying VS Code webview panel and clean up all resources.
    */
   dispose(): void {
@@ -428,15 +457,18 @@ export class DiagramPanel {
    * Silently no-ops (null adapter) if accordo-comments is not installed.
    */
   private async _initCommentsBridge(): Promise<void> {
+    const t0 = Date.now();
     const mmdUri = vscode.Uri.file(this.mmdPath).toString();
     try {
       const adapter = await vscode.commands.executeCommand<SurfaceAdapterLike | undefined>(
         "accordo_comments_internal_getSurfaceAdapter",
         mmdUri,
       );
+      this._log(`[TIMING] _initCommentsBridge: getSurfaceAdapter returned ${adapter ? "adapter" : "undefined"} in ${Date.now() - t0}ms`);
       this._commentsBridge = new DiagramCommentsBridge(adapter ?? null, this._panel.webview, mmdUri);
-    } catch {
+    } catch (err) {
       // accordo-comments not active — bridge inert (null adapter = all messages no-op)
+      this._log(`[TIMING] _initCommentsBridge: getSurfaceAdapter threw in ${Date.now() - t0}ms (accordo-comments not loaded?): ${String(err)}`);
       this._commentsBridge = new DiagramCommentsBridge(null, this._panel.webview, mmdUri);
     }
   }
@@ -492,20 +524,24 @@ export class DiagramPanel {
    * On parse failure posts host:error-overlay instead.
    */
   private async _loadAndPost(): Promise<void> {
+    const t0 = Date.now();
+    let tStep = t0;
     this._log("_loadAndPost() start — reading: " + this.mmdPath);
     // Read source
     let source: string;
     try {
       source = await readFile(this.mmdPath, "utf8");
-      this._log("_loadAndPost() — file read OK, " + source.length + " chars");
+      this._log(`[TIMING] _loadAndPost: readFile ${Date.now() - tStep}ms (${source.length} chars)`);
+      tStep = Date.now();
     } catch (err) {
       this._log("_loadAndPost() — file read FAILED: " + String(err));
       throw new PanelFileNotFoundError(this.mmdPath);
     }
 
     // Parse
-    this._log("_loadAndPost() — parsing mermaid source");
     const parseResult = await parseMermaid(source);
+    this._log(`[TIMING] _loadAndPost: parseMermaid ${Date.now() - tStep}ms`);
+    tStep = Date.now();
     if (!parseResult.valid) {
       this._log("_loadAndPost() — parse FAILED: " + parseResult.error.message);
       const errMsg: HostErrorOverlayMessage = {
@@ -521,6 +557,8 @@ export class DiagramPanel {
 
     // Load or compute layout
     let layout = await readLayout(layoutPath);
+    this._log(`[TIMING] _loadAndPost: readLayout ${Date.now() - tStep}ms (${layout ? "found" : "not found — will compute"})`);
+    tStep = Date.now();
     if (layout === null) {
       // No layout file: compute a full initial layout with node positions
       try {
@@ -531,6 +569,8 @@ export class DiagramPanel {
         // show an error-overlay on the next postMessage cycle.
         layout = createEmptyLayout(parseResult.diagram.type as SpatialDiagramType);
       }
+      this._log(`[TIMING] _loadAndPost: computeInitialLayout ${Date.now() - tStep}ms`);
+      tStep = Date.now();
     }
 
     // Reconcile when source has changed since last load
@@ -542,15 +582,21 @@ export class DiagramPanel {
       } catch {
         // Reconcile errors are non-fatal; proceed with existing layout
       }
+      this._log(`[TIMING] _loadAndPost: reconcile+write ${Date.now() - tStep}ms`);
+      tStep = Date.now();
     }
 
     this._lastSource = source;
 
     // Generate canvas (resolves any unplaced[] nodes)
     const scene = generateCanvas(parseResult.diagram, layout);
+    this._log(`[TIMING] _loadAndPost: generateCanvas ${Date.now() - tStep}ms`);
+    tStep = Date.now();
 
     // Persist layout with resolved positions (unplaced[] cleared)
     await writeLayout(layoutPath, scene.layout);
+    this._log(`[TIMING] _loadAndPost: writeLayout ${Date.now() - tStep}ms`);
+    tStep = Date.now();
     this._currentLayout = scene.layout;
 
     // Convert internal ExcalidrawElement[] → Excalidraw API payload once here.
@@ -563,7 +609,7 @@ export class DiagramPanel {
       appState: {},
     };
     this._panel.webview.postMessage(msg);
-    this._log("_loadAndPost() — host:load-scene posted with " + apiElements.length + " elements");
+    this._log(`[TIMING] _loadAndPost: total ${Date.now() - t0}ms — host:load-scene posted with ${apiElements.length} elements`);
 
     // TODO(diag.2): Export to .excalidraw format — write the rendered scene as a
     // standard Excalidraw file so the user can open it in excalidraw.com or the
@@ -600,6 +646,7 @@ export class DiagramPanel {
         // Webview has finished mounting — send the latest scene.
         // This is the authoritative trigger for the initial load and for
         // reloads after VS Code restores a backgrounded webview tab.
+        this._log(`[TIMING] canvas:ready received — ${Date.now() - this._createTime}ms since create() (webview bootstrap time)`);
         if (this.mmdPath === "") {
           this._log("canvas:ready received (empty mode) — posting empty host:load-scene");
           // Empty canvas mode: send an empty scene so Excalidraw renders its
@@ -636,14 +683,22 @@ export class DiagramPanel {
       case "canvas:js-error":
         this._log("webview JS error: " + msg.message);
         break;
+      case "canvas:timing":
+        this._log(`[TIMING webview] ${(msg as { label: string; ms: number }).label}: ${(msg as { label: string; ms: number }).ms}ms`);
+        break;
       // A18 — comment messages: delegate to bridge (no-op when bridge is null)
       case "comment:create":
       case "comment:reply":
       case "comment:resolve":
       case "comment:reopen":
       case "comment:delete":
+        this._log(`webview → host: ${msg.type} received; bridge=${this._commentsBridge ? "active" : "null"}`);
         if (this._commentsBridge) {
-          void this._commentsBridge.handleWebviewMessage(msg);
+          void this._commentsBridge.handleWebviewMessage(msg).catch((err: unknown) => {
+            this._log(`bridge.handleWebviewMessage error: ${String(err)}`);
+          });
+        } else {
+          this._log("comment message dropped — bridge not initialised");
         }
         break;
       default:

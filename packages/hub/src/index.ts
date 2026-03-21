@@ -15,6 +15,7 @@ import path from "node:path";
 import os from "node:os";
 import fs from "node:fs";
 import net from "node:net";
+import { pathToFileURL } from "node:url";
 import { DEFAULT_HUB_PORT } from "@accordo/bridge-types";
 import { HubServer } from "./server.js";
 import { McpHandler } from "./mcp-handler.js";
@@ -247,7 +248,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
 }
 
 // Run when executed directly; skip when imported by tests
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Use pathToFileURL so the comparison works cross-platform (Windows backslashes).
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   // ── Orphan-prevention: close IPC channel ────────────────────────────────
   // When VS Code launches the Hub via its Electron "Code Helper (Plugin)"
   // child process, an IPC channel is implicitly opened.  If the parent

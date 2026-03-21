@@ -1,82 +1,79 @@
 ---
 id: accordo-presentations
-version: 1.0.0
+version: 2.0.0
 author: Accordo IDE
-tags: [slidev, presentations, visual, deck, slides]
+tags: [marp, presentations, visual, deck, slides, markdown]
 knowledge:
-  - knowledge/slidev-reference.md
-  - knowledge/presentation-templates.md
+  - knowledge/marp-reference.md
+  - knowledge/marp-templates.md
   - knowledge/visual-transformation-guide.md
 scripts:
   - scripts/validate-deck.mjs
   - scripts/scaffold-deck.mjs
 ---
 
-# Skill: Create Slidev Presentations
+# Skill: Create Marp Presentations
 
 ---
 
 ## Description
 
 This skill enables an AI agent to transform any topic, document, or conversation
-into a polished Slidev presentation. The agent can create decks from scratch,
-convert existing text content into visual slides, and control the presentation
-through Accordo's MCP tools.
+into a polished **Marp** presentation rendered directly inside VS Code via the
+Accordo MCP tools. The agent can create decks from scratch, convert content into
+visual slides, and control the live presentation.
+
+**Engine:** Marp (Markdown Presentation Ecosystem)  
+**Format:** `.md` files with `marp: true` frontmatter  
+**Themes available:** `accordo-dark`, `accordo-corporate`, `accordo-light`, `accordo-gradient` (plus built-ins: `default`, `gaia`, `uncover`)
 
 ---
 
 ## When to Use This Skill
 
-- The user asks you to "present", "make a deck", "create slides", "show me"
-- You want to summarize a complex topic visually for the user
-- Sprint reviews, architecture overviews, code walkthroughs, proposals
-- The user says "presentation", "slidev", "deck", or "slides"
+- User says "present", "make a deck", "create slides", "show me"
+- Summarising a topic, architecture, proposal, or walkthrough visually
+- Sprint reviews, project overviews, code walkthroughs, pitches
+- User mentions "marp", "presentation", "deck", or "slides"
+
+---
+
+## Quick Start — Create and Present a Deck
+
+```
+1. Pick or create a .md file with marp: true frontmatter
+2. Call accordo_presentation_open with the absolute path
+3. Navigate with accordo_presentation_next / prev / goto
+4. Edit the .md file — the webview auto-reloads on save
+```
 
 ---
 
 ## Available MCP Tools
 
-### Accordo Presentation Tools
 | Tool | Purpose |
 |------|---------|
-| `accordo_presentation_discover` | List available `.deck.md` files in workspace |
-| `accordo_presentation_open` | Open a deck and start Slidev session |
-| `accordo_presentation_close` | End the current presentation session |
-| `accordo_presentation_listSlides` | Get all slide metadata (index, title, notes) |
-| `accordo_presentation_getCurrent` | Get current slide index and title |
-| `accordo_presentation_goto` | Navigate to specific slide (0-based index) |
+| `accordo_presentation_discover` | List `.md` deck files in workspace |
+| `accordo_presentation_open` | Open a deck and start the Marp viewer |
+| `accordo_presentation_close` | Close the presentation |
+| `accordo_presentation_listSlides` | Get all slides (1-based index, title, notes) |
+| `accordo_presentation_getCurrent` | Get current slide number (1-based) and title |
+| `accordo_presentation_goto` | Jump to slide by **1-based** number |
 | `accordo_presentation_next` | Advance one slide |
 | `accordo_presentation_prev` | Go back one slide |
-| `accordo_presentation_generateNarration` | Generate speaker narration for slides |
+| `accordo_presentation_generateNarration` | Generate speaker notes for a slide or all |
 
-### Slidev Native Tools (if Slidev VS Code extension installed)
-| Tool | Purpose |
-|------|---------|
-| `slidev_chooseEntry` | Switch active Slidev project entry |
-| `slidev_findSlideNoByTitle` | Find slide number by title |
-| `slidev_getActiveSlide` | Get info about the currently focused slide |
-| `slidev_getAllSlideTitles` | List all slide titles |
-| `slidev_getPreviewPort` | Get the preview server port |
-| `slidev_getSlideContent` | Get content of a specific slide by number |
-
-### Editor Tools (for creating/editing deck files)
-| Tool | Purpose |
-|------|---------|
-| `accordo_editor_open` | Open the deck file for editing |
-| `accordo_editor_save` | Save after edits |
-| `accordo_editor_format` | Format the markdown |
+> **Index convention:** all slide numbers are **1-based**. Slide 1 is the first slide.
 
 ---
 
 ## Knowledge Files
 
-All knowledge is co-located inside this skill. Before creating a presentation, load:
-
 | File | Purpose | When to Read |
 |------|---------|-------------|
-| `knowledge/slidev-reference.md` | Complete Slidev syntax, layouts, components, animations | Always — this is your primary reference |
-| `knowledge/presentation-templates.md` | Copy-paste deck templates for common scenarios | When starting a new deck — pick the closest template |
-| `knowledge/visual-transformation-guide.md` | How to turn text into visuals | When converting existing content to slides |
+| `knowledge/marp-reference.md` | Complete Marp syntax, directives, themes, image tricks | Always — primary reference |
+| `knowledge/marp-templates.md` | Copy-paste deck templates for common scenarios | When starting a new deck |
+| `knowledge/visual-transformation-guide.md` | How to turn text/data into visual slides | When converting existing content |
 
 ---
 

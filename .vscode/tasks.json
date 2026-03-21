@@ -30,10 +30,29 @@
       "problemMatcher": "$tsc"
     },
     {
+      // Package accordo-marp as a .vsix and install it into VS Code.
+      "label": "install-marp-vsix",
+      "type": "shell",
+      "command": "pnpm --filter accordo-marp build ; cd packages/marp ; pnpm exec vsce package --no-dependencies --allow-missing-repository --skip-license ; & 'd:\\Users\\emisf\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd' --install-extension accordo-marp-0.1.0.vsix --force",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
       // Run hub for manual testing without the extension host.
+      // Uses options.env so the command is cross-platform (Windows + Mac + Linux).
       "label": "start-hub-dev",
       "type": "shell",
-      "command": "ACCORDO_TOKEN=demo-token ACCORDO_BRIDGE_SECRET=demo-secret node packages/hub/dist/index.js --port 3000",
+      "command": "node packages/hub/dist/index.js --port 3000",
+      "options": {
+        "env": {
+          "ACCORDO_TOKEN": "demo-token",
+          "ACCORDO_BRIDGE_SECRET": "demo-secret"
+        }
+      },
       "group": "none",
       "isBackground": true,
       "presentation": {

@@ -43,7 +43,9 @@ export function layoutPathFor(mmdPath: string, workspaceRoot: string): string {
     );
   }
   const rel = relative(workspaceRoot, mmdPath).replace(/\.mmd$/, ".layout.json");
-  return join(workspaceRoot, ".accordo", "diagrams", rel);
+  // Normalize to forward slashes so paths are consistent across all platforms.
+  // Node.js on Windows accepts both separators for file I/O.
+  return join(workspaceRoot, ".accordo", "diagrams", rel).replace(/\\/g, "/");
 }
 
 /**

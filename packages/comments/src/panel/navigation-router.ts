@@ -158,7 +158,9 @@ export async function navigateToThread(
 
       if (surfaceType === "diagram") {
         try {
-          await env.executeCommand("accordo_diagram_focusThread", thread.id);
+          // Pass the mmd file URI so the command can open the panel if it is not
+          // already showing — mirrors the slidev open-then-navigate pattern.
+          await env.executeCommand("accordo_diagram_focusThread", thread.id, uriStr);
         } catch {
           await env.showInformationMessage("Diagram extension not connected.");
         }

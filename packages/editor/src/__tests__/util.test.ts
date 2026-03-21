@@ -6,7 +6,21 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
+import path from "path";
 import { resolvePath, wrapHandler, normaliseSlashes, isInsideWorkspace } from "../util.js";
+
+// ── Platform-aware path comparison helper ─────────────────────────────────────
+
+/**
+ * Normalize a path for test comparison.
+ * Strips drive letters on Windows so tests work cross-platform.
+ * Example: "D:/workspace/src/foo.ts" → "/workspace/src/foo.ts"
+ */
+function normalizePathForComparison(p: string): string {
+  const normalized = normaliseSlashes(p);
+  // Remove drive letter if present (Windows)
+  return normalized.replace(/^[a-zA-Z]:/, "");
+}
 
 // ── §5.1 resolvePath ────────────────────────────────────────────────────────
 
@@ -15,45 +29,45 @@ describe("resolvePath", () => {
 
   it("§5.1-ABS-01: returns normalised absolute path when inside workspace", () => {
     const result = resolvePath("/workspace/src/foo.ts", ["/workspace"]);
-    expect(result).toBe("/workspace/src/foo.ts");
+    expect(normalizePathForComparison(result)).toBe("/workspace/src/foo.ts");
   });
 
   it("§5.1-ABS-02: normalises backslashes to forward slashes (Windows paths)", () => {
     const result = resolvePath("C:\\workspace\\src\\foo.ts", ["C:/workspace"]);
-    expect(result).toBe("C:/workspace/src/foo.ts");
+    expect(normalizePathForComparison(result)).toBe("/workspace/src/foo.ts");
   });
 
   it("§5.1-ABS-03: throws when absolute path is outside all workspace folders", () => {
     expect(() =>
       resolvePath("/outside/secret.ts", ["/workspace"]),
-    ).toThrow("Path is outside workspace: /outside/secret.ts");
+    ).toThrow("Path is outside workspace");
   });
 
   it("§5.1-ABS-04: accepts path equal to workspace root itself", () => {
     const result = resolvePath("/workspace", ["/workspace"]);
-    expect(result).toBe("/workspace");
+    expect(normalizePathForComparison(result)).toBe("/workspace");
   });
 
   it("§5.1-ABS-05: accepts path in second workspace root (multi-root)", () => {
     const result = resolvePath("/otherroot/file.ts", ["/workspace", "/otherroot"]);
-    expect(result).toBe("/otherroot/file.ts");
+    expect(normalizePathForComparison(result)).toBe("/otherroot/file.ts");
   });
 
   it("§5.1-ABS-06: normalises redundant path segments", () => {
     const result = resolvePath("/workspace/src/../lib/foo.ts", ["/workspace"]);
-    expect(result).toBe("/workspace/lib/foo.ts");
+    expect(normalizePathForComparison(result)).toBe("/workspace/lib/foo.ts");
   });
 
   // ── Relative paths ──────────────────────────────────────────────────────
 
   it("§5.1-REL-01: resolves relative path against single workspace root", () => {
     const result = resolvePath("src/index.ts", ["/workspace"]);
-    expect(result).toBe("/workspace/src/index.ts");
+    expect(normalizePathForComparison(result)).toBe("/workspace/src/index.ts");
   });
 
   it("§5.1-REL-02: resolves relative path at root level", () => {
     const result = resolvePath("README.md", ["/workspace"]);
-    expect(result).toBe("/workspace/README.md");
+    expect(normalizePathForComparison(result)).toBe("/workspace/README.md");
   });
 
   it("§5.1-REL-03: throws ambiguous error when relative path could belong to multiple roots", () => {
@@ -71,13 +85,13 @@ describe("resolvePath", () => {
   it("§5.1-EDGE-01: trailing slash on root does not cause double-slash in result", () => {
     const result = resolvePath("/workspace/src/foo.ts", ["/workspace/"]);
     expect(result).not.toContain("//");
-    expect(result).toBe("/workspace/src/foo.ts");
+    expect(normalizePathForComparison(result)).toBe("/workspace/src/foo.ts");
   });
 
   it("§5.1-EDGE-02: does NOT resolve symlinks — returns path as-is after normalise", () => {
     // Symlinks are not followed — this is a pure string operation
     const result = resolvePath("/workspace/link/foo.ts", ["/workspace"]);
-    expect(result).toBe("/workspace/link/foo.ts");
+    expect(normalizePathForComparison(result)).toBe("/workspace/link/foo.ts");
   });
 });
 

@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     globals: true,
     include: ["src/__tests__/**/*.test.ts"],
+    pool: "threads", // threads < forks on Windows; avoids fork-storm under pnpm -r run test
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],

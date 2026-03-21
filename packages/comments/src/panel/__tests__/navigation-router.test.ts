@@ -263,6 +263,7 @@ describe("M45-NR NavigationRouter", () => {
     expect(env.executeCommand).toHaveBeenCalledWith(
       "accordo_diagram_focusThread",
       "thread-1",
+      "file:///project/diagram.tldr",
     );
     expect(env.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining("Diagram"),

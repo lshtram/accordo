@@ -58,6 +58,13 @@ export interface HtmlOptions {
    * Use panel.webview.asWebviewUri(Uri.joinPath(extensionUri, "dist", "webview"))
    */
   excalidrawAssetsUri?: string;
+  /**
+   * Optional VS Code webview URI string for the SDK CSS (sdk.css).
+   * When provided, a <link rel="stylesheet"> tag is emitted in the HTML so
+   * comment pins render correctly. Derive with:
+   * panel.webview.asWebviewUri(Uri.joinPath(extensionUri, "dist", "webview", "sdk.css"))
+   */
+  sdkCssUri?: string;
 }
 
 // ── getWebviewHtml ─────────────────────────────────────────────────────────────
@@ -67,7 +74,7 @@ export interface HtmlOptions {
  * Build the full HTML document for the Excalidraw canvas webview.
  */
 export function getWebviewHtml(opts: HtmlOptions): string {
-  const { nonce, cspSource, bundleUri, virgilFontUri, excalidrawAssetsUri } = opts;
+  const { nonce, cspSource, bundleUri, virgilFontUri, excalidrawAssetsUri, sdkCssUri } = opts;
   // Make the font URI available to webview.ts module-level code via a global.
   // webview.ts injects the @font-face rule via JS AFTER Excalidraw's bundle CSS
   // has already run, so our rule wins the CSS cascade over Excalidraw's rule for
@@ -75,12 +82,13 @@ export function getWebviewHtml(opts: HtmlOptions): string {
   const virgilGlobal = virgilFontUri ? `\n  window.__virgilFontUri = "${virgilFontUri}";` : "";
   // Trailing slash is required — webpack public path must end with /
   const assetPathGlobal = excalidrawAssetsUri ? `\n  window.EXCALIDRAW_ASSET_PATH = "${excalidrawAssetsUri}/";` : "";
+  const sdkCssLink = sdkCssUri ? `\n  <link rel="stylesheet" href="${sdkCssUri}">` : "";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' ${cspSource}; style-src ${cspSource} 'unsafe-inline'; img-src data: blob: ${cspSource}; font-src ${cspSource} data:; connect-src ${cspSource}; worker-src blob:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' ${cspSource}; style-src ${cspSource} 'unsafe-inline'; img-src data: blob: ${cspSource}; font-src ${cspSource} data:; connect-src ${cspSource}; worker-src blob:;">${sdkCssLink}
   <style>html,body,#excalidraw-root{margin:0;padding:0;height:100%;width:100%;overflow:hidden;}</style>
 </head>
 <body>

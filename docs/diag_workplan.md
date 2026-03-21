@@ -1,7 +1,7 @@
 # Accordo — Diagram Modality Implementation Plan
 
-**Status:** diag.2 IN PROGRESS — A18 host bridge + panel wiring complete; webview side (W-reqs) pending
-**Date updated:** 2026-03-16 (A18 bridge unit + panel wiring done)
+**Status:** diag.2 A18 DONE — all A18-R and A18-W implemented; D3 manual acceptance checklist pending
+**Date updated:** 2026-03-17 (A18 webview complete: SDK init, idMap, Alt+click overlay, pin re-render on scroll/zoom)
 **Architecture:** `docs/diag_arch_v4.2.md`
 **Requirements:** `docs/requirements-diagram.md`
 **Dev process:** `docs/dev-process.md` (TDD cycle A→F)
@@ -12,7 +12,7 @@
 |---|---|---|
 | diag.1 (A1–A17) | ✅ COMPLETE | 444 pass |
 | TD-CROSS-1 (all packages) | ✅ CLOSED | 2321 total |
-| **A18 Diagram Comments Bridge** | 🔄 IN PROGRESS — bridge + panel done; webview pending | 460 / 460 |
+| **A18 Diagram Comments Bridge** | ✅ DONE — all A18-R + A18-W implemented; D3 manual checklist pending | 463 / 463 |
 | Remaining diag.2 modules | 🔲 NOT STARTED | — |
 
 ---
@@ -31,7 +31,7 @@
 
 ## diag.2 — Open Work Items
 
-### A18: Diagram Comments Bridge (NEXT)
+### A18: Diagram Comments Bridge ✅ DONE (D3 manual checklist pending)
 
 **New file:** `packages/diagram/src/comments/diagram-comments-bridge.ts`  
 **Test file:** `packages/diagram/src/__tests__/diagram-comments-bridge.test.ts`  

@@ -12,10 +12,12 @@
  *      host:load-scene / host:request-export / host:toast / host:error-overlay.
  *   4. Provide ExcalidrawExportFns by wrapping the standalone Excalidraw export
  *      utilities (exportToSvg, exportToBlob) around the imperative API state.
+ *   5. A18 — Comment SDK integration: sdk.init(), IdMap, Alt+click + overlay,
+ *      comments:load handler, pin re-render on scroll/zoom.
  *
  * No Node.js imports. No VSCode extension-host APIs. Browser globals only.
  *
- * Source: diag_arch_v4.2.md §9.4 / diag_workplan.md §4.16
+ * Source: diag_arch_v4.2.md §9.4 §25 / diag_workplan.md §4.16 (A18-W)
  */
 
 import React, { useRef, useCallback } from "react";
@@ -28,6 +30,9 @@ import {
 } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI, AppState } from "@excalidraw/excalidraw/types/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
+
+import { AccordoCommentSDK } from "@accordo/comment-sdk";
+import type { SdkThread } from "@accordo/comment-sdk";
 
 import { applyHostMessage, detectNodeMutations } from "./message-handler.js";
 import type {
@@ -63,6 +68,241 @@ const vscode = acquireVsCodeApi();
     }
     win.__accordoErrors = [];
   }
+}
+
+// ── A18 — Comment SDK module-level state ────────────────────────────────────
+//
+// idMap: mermaidId (without prefix) → Excalidraw element ID.
+// Rebuilt from customData on every host:load-scene so coordinateToScreen
+// always resolves against the latest Excalidraw element set.
+//
+// currentSdkThreads: last set of threads posted via comments:load.
+// Stored so we can call sdk.loadThreads() again on scroll/zoom to reposition pins.
+//
+// prevScrollState: tracks last known viewport state to debounce pin re-renders.
+
+const sdk = new AccordoCommentSDK();
+
+// Profiling: record script-evaluation time so we can report bundle load + React
+// mount latency via canvas:timing messages (visible in "Accordo Diagram" output).
+const _webviewT0 = performance.now();
+
+/** mermaidId (no prefix) → excalidraw element ID */
+let idMap = new Map<string, string>();
+
+/** Full blockId (with "node:"/"edge:"/"cluster:" prefix) → excalidraw element ID */
+let reverseMap = new Map<string, string>();
+
+/** Current threads rendered by the SDK. */
+let currentSdkThreads: SdkThread[] = [];
+
+/** Last known scroll/zoom state for change detection. */
+let prevScrollX = 0;
+let prevScrollY = 0;
+let prevZoom = 1;
+
+// ── A18-W03 — Convert CommentThread[] → SdkThread[] ────────────────────────
+
+type AnyCommentThread = {
+  id: string;
+  anchor: { kind: string; coordinates?: unknown; [k: string]: unknown };
+  status: "open" | "resolved";
+  comments: Array<{
+    id: string;
+    author: { kind: string; name: string };
+    body: string;
+    createdAt: string;
+  }>;
+};
+
+function toSdkThreads(threads: AnyCommentThread[]): SdkThread[] {
+  return threads
+    .filter((t) => {
+      if (t.anchor.kind !== "surface") return false;
+      const coords = t.anchor.coordinates as Record<string, unknown> | undefined;
+      return typeof coords?.["nodeId"] === "string";
+    })
+    .map((t) => {
+      const coords = t.anchor.coordinates as Record<string, string>;
+      return {
+        id: t.id,
+        blockId: coords["nodeId"],
+        status: t.status,
+        hasUnread: false,
+        comments: t.comments.map((c) => ({
+          id: c.id,
+          author: c.author,
+          body: c.body,
+          createdAt: c.createdAt,
+        })),
+      };
+    });
+}
+
+// ── A18-W01 — Rebuild idMap from host:load-scene elements ───────────────────
+
+function rebuildIdMap(
+  elements: Array<{ id: string; customData?: { mermaidId?: string; kind?: string } }>,
+): void {
+  idMap = new Map();
+  reverseMap = new Map();
+  for (const el of elements) {
+    const mermaidId = el.customData?.mermaidId;
+    if (!mermaidId) continue;
+    // Skip overlay text/label elements — they are not commentable
+    if (mermaidId.endsWith(":text") || mermaidId.endsWith(":label")) continue;
+    idMap.set(mermaidId, el.id);
+    const kind = el.customData?.kind;
+    const prefix =
+      kind === "edge" ? "edge" : kind === "cluster" ? "cluster" : mermaidId.includes("->") ? "edge" : "node";
+    reverseMap.set(el.id, `${prefix}:${mermaidId}`);
+  }
+}
+
+// ── A18-W04 — Pin size CSS scaling ───────────────────────────────────────────
+// Injects/updates a <style> tag that overrides .accordo-pin dimensions so pins
+// scale proportionally with the Excalidraw canvas zoom level.
+// Base size: 22 × 22 px at zoom 1.0.
+
+let _pinSizeStyle: HTMLStyleElement | null = null;
+
+function _updatePinSizeCss(zoom: number): void {
+  if (!_pinSizeStyle) {
+    _pinSizeStyle = document.createElement("style");
+    _pinSizeStyle.id = "accordo-pin-zoom";
+    document.head.appendChild(_pinSizeStyle);
+  }
+  const sz = Math.round(22 * zoom);
+  const fs = Math.round(11 * zoom);
+  _pinSizeStyle.textContent = `.accordo-pin{width:${sz}px;height:${sz}px;font-size:${fs}px;}`;
+}
+
+// ── A18-W05 — Custom inline input overlay ───────────────────────────────────
+
+function showCommentInputOverlay(clientX: number, clientY: number, blockId: string): void {
+  // Remove any existing overlay first
+  document.getElementById("accordo-comment-input")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "accordo-comment-input";
+  overlay.style.cssText = [
+    "position:fixed",
+    `left:${clientX}px`,
+    `top:${clientY + 10}px`,
+    "z-index:10000",
+    "background:var(--vscode-editor-background,#1e1e1e)",
+    "border:1px solid var(--vscode-input-border,#3c3c3c)",
+    "border-radius:4px",
+    "padding:8px",
+    "box-shadow:0 2px 8px rgba(0,0,0,0.45)",
+    "display:flex",
+    "flex-direction:column",
+    "gap:6px",
+    "min-width:220px",
+  ].join(";");
+
+  const textarea = document.createElement("textarea");
+  textarea.placeholder = "Add a comment…";
+  textarea.rows = 3;
+  textarea.style.cssText = [
+    "resize:none",
+    "width:220px",
+    "background:var(--vscode-input-background,#3c3c3c)",
+    "color:var(--vscode-input-foreground,#cccccc)",
+    "border:1px solid var(--vscode-input-border,#3c3c3c)",
+    "border-radius:2px",
+    "padding:4px",
+    "font-size:12px",
+    "font-family:var(--vscode-font-family,system-ui)",
+    "outline:none",
+    "box-sizing:border-box",
+  ].join(";");
+
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;justify-content:flex-end;gap:4px;";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.style.cssText = [
+    "background:transparent",
+    "color:var(--vscode-button-secondaryForeground,#cccccc)",
+    "border:1px solid var(--vscode-button-secondaryBackground,#3c3c3c)",
+    "border-radius:2px",
+    "padding:3px 10px",
+    "cursor:pointer",
+    "font-size:12px",
+  ].join(";");
+
+  const submitBtn = document.createElement("button");
+  submitBtn.textContent = "Comment";
+  submitBtn.style.cssText = [
+    "background:var(--vscode-button-background,#0e639c)",
+    "color:var(--vscode-button-foreground,#fff)",
+    "border:none",
+    "border-radius:2px",
+    "padding:3px 10px",
+    "cursor:pointer",
+    "font-size:12px",
+  ].join(";");
+
+  function dismiss(): void {
+    overlay.remove();
+    document.removeEventListener("click", outsideClick, true);
+  }
+
+  function submit(): void {
+    const body = textarea.value.trim();
+    if (!body) {
+      // Visual shake to tell the user the textarea is empty
+      textarea.style.outline = "1px solid var(--vscode-inputValidation-errorBorder,#f48771)";
+      textarea.focus();
+      return;
+    }
+    vscode.postMessage({ type: "comment:create", blockId, body });
+    dismiss();
+    showToast("Comment added");
+  }
+
+  cancelBtn.addEventListener("click", (e) => { e.stopPropagation(); dismiss(); });
+  submitBtn.addEventListener("click", (e) => { e.stopPropagation(); submit(); });
+
+  // ── Stop Excalidraw from stealing key/mouse events while the overlay is open.
+  // Excalidraw registers global window-level keydown/mousedown listeners for
+  // shortcuts (e.g. 'D', 'A', Delete). Without stopPropagation the user's
+  // keystrokes go to Excalidraw, leaving the textarea empty → submit() returns
+  // silently. Stopping all events ON the overlay prevents bubbling to window.
+  // click is intentionally NOT in this list — the outsideClick document-capture
+  // handler (registered below) relies on click events reaching the document
+  // capture phase so it can inspect e.target. Stopping click here would break
+  // outside-click detection. keydown/mousedown prevention is sufficient to
+  // stop Excalidraw from stealing input.
+  for (const evtType of ["keydown", "keyup", "keypress", "mousedown", "mouseup"] as const) {
+    overlay.addEventListener(evtType, (e) => e.stopPropagation());
+  }
+
+  textarea.addEventListener("keydown", (e) => {
+    // stopPropagation already handled by the overlay listener above, but
+    // keep explicit handler here for Escape / Ctrl+Enter semantics.
+    if (e.key === "Escape") { e.stopPropagation(); dismiss(); }
+    else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.stopPropagation(); submit(); }
+  });
+
+  row.appendChild(cancelBtn);
+  row.appendChild(submitBtn);
+  overlay.appendChild(textarea);
+  overlay.appendChild(row);
+  document.body.appendChild(overlay);
+  textarea.focus();
+
+  // Close on outside click (capture phase so it fires before other handlers)
+  function outsideClick(e: Event): void {
+    if (!overlay.contains(e.target as Node)) {
+      dismiss();
+    }
+  }
+  // Small timeout prevents the same Alt+click that opened the overlay from
+  // immediately dismissing it via the outside-click listener.
+  setTimeout(() => document.addEventListener("click", outsideClick, true), 50);
 }
 
 // ── Toast overlay ─────────────────────────────────────────────────────────────
@@ -236,26 +476,155 @@ function ExcalidrawApp() {
         clearErrorOverlay,
       };
 
+      // ── A18-W01 — Initialize Comment SDK ────────────────────────────────────
+      // The SDK renders comment pins over the Excalidraw canvas using an
+      // absolutely-positioned overlay layer. coordinateToScreen converts scene
+      // coordinates to viewport pixels using live Excalidraw state.
+      const canvasRoot = document.getElementById("excalidraw-root");
+      if (canvasRoot) {
+        sdk.init({
+          container: canvasRoot,
+          coordinateToScreen: (blockId: string) => {
+            // Strip "node:" / "edge:" / "cluster:" prefix → bare mermaid ID
+            const colonIdx = blockId.indexOf(":");
+            if (colonIdx < 0) return null;
+            const mermaidId = blockId.slice(colonIdx + 1);
+            const excalId = idMap.get(mermaidId);
+            if (!excalId) return null;
+            const elements = handle.getSceneElements();
+            const el = elements.find((e) => e.id === excalId);
+            if (!el) return null;
+            const appState = handle.getAppState() as {
+              scrollX: number;
+              scrollY: number;
+              zoom: { value: number };
+            };
+            const rect = canvasRoot.getBoundingClientRect();
+            const z = appState.zoom.value;
+            // Edge pins → visual centre of bounding box (edges have irregular bboxes;
+            // top-right corner is often far from the visual arrow).
+            // Node / cluster pins → top-right corner (conventional pin placement).
+            const isEdge = blockId.startsWith("edge:");
+            const pinSceneX = isEdge ? el.x + el.width / 2 : el.x + el.width;
+            const pinSceneY = isEdge ? el.y + el.height / 2 : el.y;
+            const x = (pinSceneX + appState.scrollX) * z + rect.left;
+            const y = (pinSceneY + appState.scrollY) * z + rect.top;
+            return { x, y };
+          },
+          callbacks: {
+            // onCreate is intentionally a no-op — diagram webview uses the
+            // custom Alt+click overlay (A18-R09b), not the SDK's built-in flow.
+            onCreate() { /* handled by Alt+click overlay */ },
+            onReply(threadId, body) {
+              vscode.postMessage({ type: "comment:reply", threadId, body });
+            },
+            onResolve(threadId) {
+              vscode.postMessage({ type: "comment:resolve", threadId });
+            },
+            onReopen(threadId) {
+              vscode.postMessage({ type: "comment:reopen", threadId });
+            },
+            onDelete(threadId, commentId) {
+              vscode.postMessage({ type: "comment:delete", threadId, commentId });
+            },
+          },
+        });
+
+        // ── A18-W02 / A18-W05 — Alt+click hit-test + custom input overlay ────
+        canvasRoot.addEventListener("click", (rawEvent: Event) => {
+          const e = rawEvent as MouseEvent;
+          if (!e.altKey) return;
+          const elements = handle.getSceneElements() as Array<
+            ExcalidrawAPIElement & { customData: { mermaidId: string; kind?: string } }
+          >;
+          const appState = handle.getAppState() as {
+            scrollX: number;
+            scrollY: number;
+            zoom: { value: number };
+          };
+          const rect = canvasRoot.getBoundingClientRect();
+          // Convert click position to scene coordinates
+          const sceneX = (e.clientX - rect.left) / appState.zoom.value - appState.scrollX;
+          const sceneY = (e.clientY - rect.top) / appState.zoom.value - appState.scrollY;
+          // Hit-test in reverse z-order (topmost element first)
+          let hitBlockId: string | null = null;
+          for (let i = elements.length - 1; i >= 0; i--) {
+            const el = elements[i]!;
+            const mermaidId = el.customData?.mermaidId;
+            if (!mermaidId) continue;
+            // Skip label/text overlay elements (not commentable)
+            if (mermaidId.endsWith(":text") || mermaidId.endsWith(":label")) continue;
+            if (
+              sceneX >= el.x &&
+              sceneX <= el.x + el.width &&
+              sceneY >= el.y &&
+              sceneY <= el.y + el.height
+            ) {
+              // Use reverseMap (built from kind field) for accurate prefix
+              hitBlockId = reverseMap.get(el.id) ?? null;
+              if (!hitBlockId) {
+                // Fallback: infer prefix from mermaidId format
+                const prefix = mermaidId.includes("->") ? "edge" : "node";
+                hitBlockId = `${prefix}:${mermaidId}`;
+              }
+              break;
+            }
+          }
+          if (!hitBlockId) return;
+          e.preventDefault();
+          e.stopPropagation();
+          showCommentInputOverlay(e.clientX, e.clientY, hitBlockId);
+        });
+      }
+
       // Wire host → webview messages.
       // host:load-scene waits for Virgil font readiness so text renders with the
       // hand-drawn font from the first frame (avoids timing race on fast reopens).
       window.addEventListener("message", (event: MessageEvent) => {
         const msg = event.data as HostToWebviewMessage;
         if (msg.type === "host:load-scene") {
-          void _fontReady.then(() => applyHostMessage(msg, handle, ui, exportFns));
+          // A18-W01 — Rebuild idMap from incoming elements before applying scene
+          rebuildIdMap(
+            msg.elements as Array<{
+              id: string;
+              customData?: { mermaidId?: string; kind?: string };
+            }>,
+          );
+          const fontWaitStart = performance.now();
+          void _fontReady.then(() => {
+            const fontWaitMs = Math.round(performance.now() - fontWaitStart);
+            if (fontWaitMs > 2) {
+              vscode.postMessage({ type: "canvas:timing", label: "font-wait-before-scene", ms: fontWaitMs });
+            }
+            applyHostMessage(msg, handle, ui, exportFns);
+          });
+        } else if (msg.type === "comments:load") {
+          // A18-W03 — Convert CommentThread[] → SdkThread[] and update pins
+          currentSdkThreads = toSdkThreads(
+            msg.threads as unknown as AnyCommentThread[],
+          );
+          sdk.loadThreads(currentSdkThreads);
+        } else if (msg.type === "host:focus-thread") {
+          // A18 — Comments panel navigated to a diagram thread: reveal panel
+          // is handled by the host; we just open the SDK popover here.
+          sdk.openPopover(msg.threadId);
         } else {
           void applyHostMessage(msg, handle, ui, exportFns);
         }
       });
 
       // Signal to the host that the webview is ready to receive scenes
+      vscode.postMessage({ type: "canvas:timing", label: "script-to-excalidraw-ready", ms: Math.round(performance.now() - _webviewT0) });
       vscode.postMessage({ type: "canvas:ready" });
     },
     [],
   );
 
   const handleChange = useCallback(
-    (elements: readonly ExcalidrawElement[]) => {
+    (
+      elements: readonly ExcalidrawElement[],
+      appStateRaw: Record<string, unknown>,
+    ) => {
       // Cast is safe for the same reason as getSceneElements above.
       const next = elements as unknown as readonly ExcalidrawAPIElement[];
       const mutations: NodeMutation[] = detectNodeMutations(
@@ -288,6 +657,26 @@ function ExcalidrawApp() {
             nodeId: mutation.nodeId,
             style: mutation.style ?? {},
           } satisfies WebviewToHostMessage);
+        }
+      }
+
+      // A18-W04 — Re-render comment pins when scroll or zoom changes so pins
+      // follow their anchored elements after canvas pan or zoom gestures.
+      {
+        const as = appStateRaw as { scrollX?: number; scrollY?: number; zoom?: { value?: number } };
+        const sX = as.scrollX ?? 0;
+        const sY = as.scrollY ?? 0;
+        const z = as.zoom?.value ?? 1;
+        if (sX !== prevScrollX || sY !== prevScrollY || z !== prevZoom) {
+          prevScrollX = sX;
+          prevScrollY = sY;
+          prevZoom = z;
+          // Scale pin size proportionally to zoom so pins appear the same
+          // physical size relative to canvas elements at every zoom level.
+          _updatePinSizeCss(z);
+          if (currentSdkThreads.length > 0) {
+            sdk.loadThreads(currentSdkThreads);
+          }
         }
       }
     },

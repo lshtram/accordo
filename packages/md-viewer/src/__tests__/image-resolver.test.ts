@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import path from "path";
 import { ImageResolver } from "../image-resolver.js";
 
 // ── Minimal mocks ─────────────────────────────────────────────────────────────
@@ -22,9 +23,16 @@ function makeWebview(resourceStr = "vscode-resource:{path}") {
   };
 }
 
+/**
+ * Platform-aware fs mock.
+ * Normalizes paths via path.resolve before comparing, so tests using Unix-style
+ * fake paths (e.g. /project/docs/image.png) also pass on Windows where
+ * path.resolve prepends a drive letter.
+ */
 function makeFs(existingPaths: string[] = []) {
+  const normalized = new Set(existingPaths.map(p => path.resolve(p).replace(/\\/g, "/")));
   return {
-    existsSync: (p: string) => existingPaths.includes(p),
+    existsSync: (p: string) => normalized.has(path.resolve(p).replace(/\\/g, "/")),
   };
 }
 
@@ -48,8 +56,9 @@ describe("ImageResolver", () => {
     });
 
     const result = resolver.resolve("./image.png");
+    // Use regex to match path suffix so test passes on Windows (where drive letters are prepended)
     expect(webview.asWebviewUri).toHaveBeenCalledWith(
-      expect.objectContaining({ fsPath: "/project/docs/image.png" })
+      expect.objectContaining({ fsPath: expect.stringMatching(/[/\\]project[/\\]docs[/\\]image\.png$/) })
     );
     expect(result).toContain("vscode-resource:");
   });
@@ -63,8 +72,9 @@ describe("ImageResolver", () => {
     });
 
     const result = resolver.resolve("../assets/logo.png");
+    // Use regex to match path suffix so test passes on Windows (where drive letters are prepended)
     expect(webview.asWebviewUri).toHaveBeenCalledWith(
-      expect.objectContaining({ fsPath: "/project/assets/logo.png" })
+      expect.objectContaining({ fsPath: expect.stringMatching(/[/\\]project[/\\]assets[/\\]logo\.png$/) })
     );
     expect(result).toContain("vscode-resource:");
   });
@@ -78,8 +88,9 @@ describe("ImageResolver", () => {
     });
 
     resolver.resolve("img/diagram.svg");
+    // Use regex to match path suffix so test passes on Windows (where drive letters are prepended)
     expect(webview.asWebviewUri).toHaveBeenCalledWith(
-      expect.objectContaining({ fsPath: "/project/docs/img/diagram.svg" })
+      expect.objectContaining({ fsPath: expect.stringMatching(/[/\\]project[/\\]docs[/\\]img[/\\]diagram\.svg$/) })
     );
   });
 

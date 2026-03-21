@@ -26,6 +26,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import path from "path";
+import { normaliseSlashes } from "../util.js";
 import {
   openHandler,
   closeHandler,
@@ -47,6 +49,15 @@ import * as vscodeMock from "./mocks/vscode.js";
 const { mockState, window, commands, workspace } = vscodeMock;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Platform-aware path comparison for test assertions.
+ * Strips drive letters on Windows for consistent assertions.
+ */
+function normalizePathForComparison(p: string): string {
+  const normalized = normaliseSlashes(p);
+  return normalized.replace(/^[a-zA-Z]:/, "");
+}
 
 function makeWorkspace(root = "/workspace"): void {
   mockState.workspaceFolders = [
@@ -109,9 +120,12 @@ describe("openHandler — §4.1", () => {
 
   it("§4.1-OPEN-02: resolves relative path against workspace root", async () => {
     makeWorkspace("/workspace");
-    await expect(
-      openHandler({ path: "src/foo.ts" }),
-    ).resolves.toEqual({ opened: true, path: "/workspace/src/foo.ts" });
+    const result = await openHandler({ path: "src/foo.ts" });
+    expect(result).toEqual({
+      opened: true,
+      path: expect.any(String),
+    });
+    expect(normalizePathForComparison((result as Record<string, unknown>).path as string)).toBe("/workspace/src/foo.ts");
   });
 
   it("§4.1-OPEN-03: default line=1 and column=1 when not specified", async () => {
@@ -641,12 +655,14 @@ describe("saveHandler — §4.17", () => {
 
   it("§4.17-SAVE-03: resolves relative path for document save", async () => {
     makeWorkspace("/workspace");
-    const doc = makeOpenDocument("/workspace/src/index.ts");
+    // Resolve the path that the handler will compute so we can set up the mock document with the correct path
+    const resolvedPath = path.resolve("/workspace", "src/index.ts");
+    const normalizedPath = normaliseSlashes(resolvedPath);
+    const doc = makeOpenDocument(normalizedPath);
     mockState.textDocuments = [doc];
-    await expect(saveHandler({ path: "src/index.ts" })).resolves.toEqual({
-      saved: true,
-      path: "/workspace/src/index.ts",
-    });
+    const result = await saveHandler({ path: "src/index.ts" });
+    expect(result).toHaveProperty("saved", true);
+    expect(normalizePathForComparison((result as Record<string, unknown>).path as string)).toBe("/workspace/src/index.ts");
   });
 
   it("§4.17-SAVE-04: returns error when no active editor and no path given", async () => {

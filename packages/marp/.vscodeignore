@@ -1,0 +1,11 @@
+# Only dist/extension.js (and .map) are needed — esbuild bundles all deps
+src/
+**/*.test.ts
+**/*.spec.ts
+tsconfig*.json
+tsconfig.tsbuildinfo
+vitest.config.ts
+.prettierrc*
+.eslintrc*
+node_modules/
+*.vsix

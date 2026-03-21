@@ -61,7 +61,8 @@
     "keybindings": [
       {
         "command": "accordo.preview.toggle",
-        "key": "shift+cmd+v",
+        "key": "shift+ctrl+v",
+        "mac": "shift+cmd+v",
         "when": "editorLangId == markdown"
       }
     ]

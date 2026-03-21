@@ -37,6 +37,7 @@ import * as vscode from "vscode";
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import { DiagramPanel } from "./webview/panel.js";
 import { createDiagramTools } from "./tools/diagram-tools.js";
+import { parseMermaid } from "./parser/adapter.js";
 import type { DiagramPanelLike } from "./tools/diagram-tools.js";
 
 interface BridgeAPI {
@@ -131,6 +132,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
+  // Called by the Comments panel when the user clicks a diagram thread.
+  // Reveals the panel and asks the webview to open the SDK popover.
+  log("Registering accordo_diagram_focusThread command");
+  context.subscriptions.push(
+    vscode.commands.registerCommand("accordo_diagram_focusThread", async (threadId: unknown, mmdUri: unknown) => {
+      const tid = String(threadId ?? "");
+      const uriStr = String(mmdUri ?? "");
+      log(`accordo_diagram_focusThread: threadId=${tid}, mmdUri=${uriStr}, open panels=${_registry.size}`);
+
+      // Fast path: at least one panel is already open — broadcast immediately.
+      if (_registry.size > 0) {
+        for (const panel of _registry.values()) {
+          panel.focusThread(tid);
+        }
+        return;
+      }
+
+      // Slow path: no panel open — open the diagram first, then focus.
+      if (!uriStr) {
+        throw new Error("No diagram panel is open and no URI was provided");
+      }
+      let mmdPath: string;
+      try {
+        mmdPath = vscode.Uri.parse(uriStr).fsPath;
+      } catch {
+        throw new Error(`Cannot parse diagram URI: ${uriStr}`);
+      }
+      log(`accordo_diagram_focusThread: opening panel for ${mmdPath}`);
+      await vscode.commands.executeCommand("accordo-diagram.open", mmdPath);
+      // Wait for canvas:ready → _loadAndPost → loadThreadsForUri → comments:load
+      // to complete before asking the webview to open the popover.
+      await new Promise<void>(resolve => setTimeout(resolve, 2000));
+      for (const panel of _registry.values()) {
+        panel.focusThread(tid);
+      }
+    }),
+  );
+
   // Register a CustomEditorProvider so .mmd files open as diagrams by default.
   // VS Code will show "Open with..." in the context menu to allow text editing.
   log("Registering accordo-diagram.diagramEditor custom editor provider");
@@ -203,6 +242,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Publish initial state (no panels open yet on activation)
   publishDiagramState();
+
+  // Warm up mermaid.js in the background so the first diagram open doesn't pay
+  // the cold-import cost (~2-3s). The dynamic import inside parseMermaid() is
+  // cached after this call, making subsequent real parses nearly instantaneous.
+  void parseMermaid("flowchart TD\nA-->B").catch(() => { /* warmup — ignore errors */ });
+  log("mermaid warm-up dispatched");
 }
 
 // ── deactivate ─────────────────────────────────────────────────────────────────

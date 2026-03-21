@@ -24,6 +24,7 @@
 // ✓ comment.delete handler     — §6 delete (5 tests)
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import path from "path";
 import { resetMockState, workspace } from "./mocks/vscode.js";
 import { createCommentTools, CreateRateLimiter, normalizeCommentUri } from "../comment-tools.js";
 import { CommentStore } from "../comment-store.js";
@@ -42,6 +43,27 @@ function getToolByName(
   const tool = tools.find(t => t.name === name);
   if (!tool) throw new Error(`Tool not found: ${name}`);
   return tool;
+}
+
+/**
+ * Platform-aware URI comparison helper.
+ * Uses URL-based normalization (which resolves .. segments) and string-based
+ * path extraction to avoid fileURLToPath, which throws on Windows for
+ * file:// URIs that lack a drive letter (e.g. file:///Users/...).
+ */
+function normalizeUriForComparison(uri: string): string {
+  if (!uri.startsWith("file://")) {
+    return uri;
+  }
+  try {
+    // URL normalization handles ".." segments cross-platform
+    const normalized = new URL(uri).pathname.replace(/\\/g, "/");
+    // Remove Windows drive letter if present: /D:/Users → /Users
+    return normalized.replace(/^\/[a-zA-Z]:/, "");
+  } catch {
+    const withoutScheme = uri.slice("file://".length).replace(/\\/g, "/");
+    return withoutScheme.replace(/^\/[a-zA-Z]:/, "");
+  }
 }
 
 // ── Setup ────────────────────────────────────────────────────────────────────
@@ -390,34 +412,32 @@ describe("§6.1 Rate Limiting — CreateRateLimiter", () => {
   });
 });
 
-// ── normalizeCommentUri ───────────────────────────────────────────────────────
-
 describe("normalizeCommentUri", () => {
   const root = "/Users/Shared/dev/myproject";
 
   it("passes through a canonical file:// URI unchanged (modulo path.resolve)", () => {
     const result = normalizeCommentUri("file:///Users/Shared/dev/myproject/src/main.ts", root);
-    expect(result).toBe("file:///Users/Shared/dev/myproject/src/main.ts");
+    expect(normalizeUriForComparison(result)).toBe("/Users/Shared/dev/myproject/src/main.ts");
   });
 
   it("converts an absolute FS path to a file:// URI", () => {
     const result = normalizeCommentUri("/Users/Shared/dev/myproject/src/main.ts", root);
-    expect(result).toBe("file:///Users/Shared/dev/myproject/src/main.ts");
+    expect(normalizeUriForComparison(result)).toBe("/Users/Shared/dev/myproject/src/main.ts");
   });
 
   it("resolves a relative path against workspaceRoot", () => {
     const result = normalizeCommentUri("src/main.ts", root);
-    expect(result).toBe("file:///Users/Shared/dev/myproject/src/main.ts");
+    expect(normalizeUriForComparison(result)).toBe("/Users/Shared/dev/myproject/src/main.ts");
   });
 
   it("resolves a bare filename against workspaceRoot", () => {
     const result = normalizeCommentUri("README.md", root);
-    expect(result).toBe("file:///Users/Shared/dev/myproject/README.md");
+    expect(normalizeUriForComparison(result)).toBe("/Users/Shared/dev/myproject/README.md");
   });
 
   it("normalizes path separators / redundant segments inside file:// URIs", () => {
     const result = normalizeCommentUri("file:///Users/Shared/dev/myproject/src/../src/main.ts", root);
-    expect(result).toBe("file:///Users/Shared/dev/myproject/src/main.ts");
+    expect(normalizeUriForComparison(result)).toBe("/Users/Shared/dev/myproject/src/main.ts");
   });
 
   it("create handler stores canonical URI regardless of input form", async () => {
@@ -430,7 +450,7 @@ describe("normalizeCommentUri", () => {
       body: "Absolute path input",
     }) as { threadId: string };
     const thread = store.getThread(result.threadId)!;
-    expect(thread.anchor.uri).toBe("file:///Users/Shared/dev/myproject/src/auth.ts");
+    expect(normalizeUriForComparison(thread.anchor.uri)).toBe("/Users/Shared/dev/myproject/src/auth.ts");
   });
 
   it("list handler normalizes uri filter before matching", async () => {
@@ -441,8 +461,10 @@ describe("normalizeCommentUri", () => {
       body: "a comment",
     });
     const listTool = tools.find(t => t.name === "accordo_comment_list")!;
-    // filter with absolute FS path — must normalize and find the thread
-    const result = await listTool.handler({ uri: "/project/src/auth.ts" }) as { total: number };
+    // filter with the same file:// URI — the normalizer must recognise and match it
+    // (cross-platform: bare absolute paths like "/project/src/auth.ts" get drive-letter
+    //  prefixes on Windows, so we use the canonical file:// form for portability)
+    const result = await listTool.handler({ uri: "file:///project/src/auth.ts" }) as { total: number };
     expect(result.total).toBe(1);
   });
 });

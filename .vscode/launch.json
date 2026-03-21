@@ -29,8 +29,8 @@
         "--extensionDevelopmentPath=${workspaceFolder}/packages/comments",
         // accordo-md-viewer: commentable markdown preview with comment SDK
         "--extensionDevelopmentPath=${workspaceFolder}/packages/md-viewer",
-        // accordo-slidev: Slidev presentation modality + 9 MCP tools
-        "--extensionDevelopmentPath=${workspaceFolder}/packages/slidev",
+        // accordo-marp: Marp presentation modality + 9 MCP tools (default engine)
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/marp",
         // accordo-voice: STT/TTS narration + dictation (requires accordo-bridge)
         "--extensionDevelopmentPath=${workspaceFolder}/packages/voice",
         // accordo-script: scripted multi-step IDE walkthroughs via MCP
@@ -45,7 +45,7 @@
         "${workspaceFolder}/packages/editor/dist/**/*.js",
         "${workspaceFolder}/packages/comments/dist/**/*.js",
         "${workspaceFolder}/packages/md-viewer/dist/**/*.js",
-        "${workspaceFolder}/packages/slidev/dist/**/*.js",
+        "${workspaceFolder}/packages/marp/dist/**/*.js",
         "${workspaceFolder}/packages/voice/dist/**/*.js",
         "${workspaceFolder}/packages/script/dist/**/*.js",
         "${workspaceFolder}/packages/diagram/dist/**/*.js"
