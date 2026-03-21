@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "Accordo Comments",
+  "version": "0.1.0",
+  "description": "Place spatial comment pins on any web page. Export to clipboard as Markdown or JSON.",
+
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage",
+    "contextMenus",
+    "scripting"
+  ],
+
+  "host_permissions": [
+    "<all_urls>"
+  ],
+
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content-script.js"],
+      "css": ["content-styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Accordo Comments"
+  },
+
+  "commands": {
+    "toggle-comments-mode": {
+      "suggested_key": {
+        "default": "Alt+Shift+C",
+        "mac": "Alt+Shift+C"
+      },
+      "description": "Toggle Comments Mode on/off for the active tab"
+    }
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["content-script.js", "content-styles.css"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ]
+}

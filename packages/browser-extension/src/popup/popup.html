@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Accordo Comments</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 320px;
+      min-height: 160px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      color: #1a1a1a;
+      background: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { color: #e0e0e0; background: #1e1e2e; }
+    }
+    #accordo-popup-root { min-height: 100px; }
+  </style>
+</head>
+<body>
+  <div id="accordo-popup-root"></div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

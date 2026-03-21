@@ -3,7 +3,7 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-15  
-**Status:** ACTIVE — TD-CROSS-1 complete ✅, Session 12 next (diag.2 or browser)
+**Status:** ACTIVE — A18 diagram comments webview complete ✅, D3 manual checklist pending; Session 12 next
 
 ---
 
@@ -20,10 +20,11 @@
 | **Session 10** | **Voice modality (`accordo-voice` — 10A core+tools, 10B summary narration, 10C robustness)** | ✅ DONE — 10A: 211; 10B: +25; 10C: hardening + simplification, 261 total voice tests |
 | **Session 10D** | **Scripted walkthroughs (`accordo-script` — ScriptRunner, 4 MCP tools, Bridge dual-registration)** | ✅ DONE — 133 tests |
 | **Session 11** | **Diagrams modality (`accordo-diagram` — Mermaid + Excalidraw, A1-A17, all diag.1 modules, custom editor + patch enhancements)** | ✅ DONE — 444 tests |
+| **Session 11b** | **A18 Diagram Comments Bridge — host bridge + panel wiring + webview (SDK init, idMap, Alt+click overlay, pin re-render on scroll/zoom)** | ✅ DONE — 463 tests; D3 manual checklist pending |
 | **TD-CROSS-1** | **`openTabs` capture + `accordo_layout_state` tool + Open Tabs prompt section** | ✅ DONE — 2321 tests (Hub: 376, Bridge: 310+) |
-| Session 12+ | Browser agentation (`accordo-browser` + Chrome extension) | 📋 DEFERRED — architecture + requirements written, complex anchoring needs more design |
+| **Session 12** | **Browser Extension v1 (`packages/browser-extension` — standalone Chrome extension, 12 modules M80-xxx)** | 🏗️ ARCHITECTURE FINALIZED — [`browser-extension-architecture.md`](browser-extension-architecture.md) + [`requirements-browser-extension.md`](requirements-browser-extension.md) approved; awaiting TDD phase |
 
-**Baseline:** 2321 tests green (Hub: 376, Voice: 269, Bridge: 310+, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149, Script: 133, Diagram: 444). v0.1.0 on `main`.  
+**Baseline:** 2340 tests green (Hub: 376, Voice: 269, Bridge: 310+, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149, Script: 133, Diagram: 463). A18 webview done, D3 pending.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -374,66 +375,45 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ---
 
-### Session 12+ — Browser Agentation (`accordo-browser` + Chrome Extension) [DEFERRED]
+### Session 12 — Browser Extension v1 (`packages/browser-extension`) [ARCHITECTURE FINALIZED]
 
-**Goal:** Human and agent co-browse the web with spatial comment threads anchored to DOM elements on any web page. A Chrome Manifest V3 extension embeds the existing `@accordo/comment-sdk` in the browser. A VSCode extension relays comments to the `CommentStore` via the generalized surface adapter. Browser automation is provided off-the-shelf by `@playwright/mcp` (no Accordo code).
+**Goal:** A standalone Chrome Manifest V3 extension for spatial commenting on web pages. No VS Code relay in v1 — extension is self-contained. Comments stored in `chrome.storage.local`, exported to clipboard, MCP API shapes stubbed for v2 relay integration.
 
-**Architecture:** [`docs/browser-architecture.md`](browser-architecture.md) v1.0
-**Requirements:** [`docs/requirements-browser.md`](requirements-browser.md)
+**Architecture:** [`docs/browser-extension-architecture.md`](browser-extension-architecture.md) v2.0 (supersedes `browser-architecture.md` v1.0)  
+**Requirements:** [`docs/requirements-browser-extension.md`](requirements-browser-extension.md) (supersedes `requirements-browser.md`)
 
-**Key design decisions:**
-- Browser automation via `@playwright/mcp` (off-the-shelf, zero Accordo code)
-- Chrome extension communicates via local WebSocket relay in the VSCode extension (Hub unchanged, Bridge unchanged)
-- DOM elements anchored via CSS selector paths + text fingerprint (new `CssSelectorCoordinates` type)
-- `@accordo/comment-sdk` reused directly in Chrome content script (callback-driven, framework-free)
-- No changes to Hub, Bridge, Comments, or Comment SDK packages
+**Key simplifications from v1 architecture (vs old 3-session plan):**
+- No `accordo-browser` VS Code extension (no relay, no Bridge integration)
+- No `@accordo/comment-sdk` dependency (inline comment UI with browser-native styling)
+- No CSS selector re-anchoring (simple `{tagName}:{siblingIndex}:{textFingerprint}` anchor keys, session-scoped)
+- No changes to any existing Accordo package (Hub, Bridge, Editor, Comments, SDK)
 
-**New packages:**
-- `packages/browser/` (`accordo-browser` — VSCode extension: relay server, comments bridge, state contribution)
-- `packages/browser-extension/` (Chrome Manifest V3 extension: DOM auto-tagger, Comment SDK overlay, service worker)
-
-**Implementation split across 3 sessions:**
-
-#### Session 12A — Types + VSCode Extension Core
-
-**Goal:** `CssSelectorCoordinates` type in bridge-types. `BrowserRelay` WebSocket server and `BrowserCommentsBridge` in the VSCode extension. End-to-end comment flow from mock Chrome messages → relay → CommentStore.
+**Single-session implementation (12 modules):**
 
 | # | Module | Requirements Source | TDD Phases |
 |---|---|---|---|
-| M60-BT | `@accordo/bridge-types` — add `CssSelectorCoordinates`, `BrowserRelayMessage`, `BrowserTabInfo` | requirements-browser.md §3 | A → F |
-| M61-REL | `browser-relay.ts` — local WebSocket server, auth, multi-client routing | requirements-browser.md §4 M61 | A → F |
-| M62-CBR | `browser-comments-bridge.ts` — message routing ↔ surface adapter, blockId codec | requirements-browser.md §4 M62 | A → F |
-| M64-SEL | `selector-utils.ts` — blockId encode/decode, pure functions | requirements-browser.md §4 M64 | A → F |
+| M80-TYP | Shared types — `BrowserComment`, `BrowserCommentThread`, `PageCommentStore`, `ScreenshotRecord`, MCP types, export types | requirements-browser-extension.md §3.1 | A → F |
+| M80-SM | Comments Mode state machine — tab-scoped OFF ↔ ON toggle, context menu lifecycle, badge, icon title | requirements-browser-extension.md §3.2 | A → F |
+| M80-STORE | Comment storage manager — CRUD, soft-delete, URL normalization, filtered queries (store-layer filtering) | requirements-browser-extension.md §3.3 | A → F |
+| M80-SW | Background service worker — message router, onInstalled, context menu handler, wire-up | requirements-browser-extension.md §3.4 | A → F |
+| M80-CS-PINS | Content script: pin rendering — inject/position pins, scroll/resize reposition, MutationObserver, off-screen detection | requirements-browser-extension.md §3.5a | A → F |
+| M80-CS-INPUT | Content script: input & popovers — comment form, thread popover, reply/resolve/delete UI | requirements-browser-extension.md §3.5b | A → F |
+| M80-CSS | Content styles — `accordo-*` prefixed, `all: initial`, `prefers-color-scheme`, high z-index | requirements-browser-extension.md §3.6 | A → F |
+| M80-EXPORT | Export layer — `Exporter` interface, `ClipboardExporter`, Markdown/JSON formatters | requirements-browser-extension.md §3.7 | A → F |
+| M80-SCREEN | Screenshot capture — `captureVisibleTab`, one `ScreenshotRecord` per URL, JPEG 0.7, quota warning | requirements-browser-extension.md §3.8 | A → F |
+| M80-MCP | MCP handler layer — real handlers reading from storage, typed `get_screenshot` + `get_comments`, stubbed transport | requirements-browser-extension.md §3.9 | A → F |
+| M80-POP | Popup UI — thread list, export buttons, mode toggle, off-screen count, user name | requirements-browser-extension.md §3.10 | A → F |
+| M80-MANIFEST | Manifest V3 + esbuild — permissions, content scripts, commands, 3 entry points | requirements-browser-extension.md §3.11 | A → F |
 
-**Session 12A gate:** BrowserRelay accepts WebSocket connections with auth. BrowserCommentsBridge routes comment messages to CommentStore. Integration test: mock client → relay → adapter → thread created with `surfaceType: "browser"` and `CssSelectorCoordinates`.
+**Estimated LOC:** ~1,550 (12 modules)
 
-#### Session 12B — VSCode Extension Completion + Chrome Extension Core
+**Session 12 gate:** Extension side-loads in Chrome. Keyboard shortcut toggles Comments Mode. Right-click adds comment with pin. Threads persist in `chrome.storage.local`. Popup shows threads + export buttons. Clipboard export works (Markdown + JSON). Screenshot captured on export. MCP stubs return stored data. All unit tests green.
 
-**Goal:** State contribution, extension entry point. Chrome extension DOM auto-tagger, selector generator, fingerprint. Content script bootstraps Comment SDK.
-
-| # | Module | Requirements Source | TDD Phases |
-|---|---|---|---|
-| M63-STATE | `browser-state.ts` — publishes connected tabs + comment counts to Hub | requirements-browser.md §4 M63 | A → F |
-| M65-EXT | `extension.ts` — activation, wiring, token generation, commands | requirements-browser.md §4 M65 | A → F |
-| M66-TAG | `dom-tagger.ts` — DOM element tagging with `data-block-id` | requirements-browser.md §5 M66 | A → F |
-| M67-CSS | `selector-generator.ts` — minimal unique CSS selector paths | requirements-browser.md §5 M67 | A → F |
-| M68-FP | `text-fingerprint.ts` — FNV-1a hash of element text | requirements-browser.md §5 M68 | A → F |
-
-**Session 12B gate:** VSCode extension activates, generates token, starts relay. DOM auto-tagger correctly assigns blockIds in jsdom. Selector generator produces unique selectors. Fingerprint is deterministic.
-
-#### Session 12C — Chrome Extension Completion + Automation Docs
-
-**Goal:** Service worker, content script SDK integration, popup UI, theme CSS. Playwright setup documentation.
-
-| # | Module | Requirements Source | TDD Phases |
-|---|---|---|---|
-| M69-SW | `service-worker.ts` — WebSocket client, message routing, reconnection | requirements-browser.md §5 M69 | A → F |
-| M70-CS | `content-script.ts` — SDK initialization, callback wiring, scroll/resize | requirements-browser.md §5 M70 | A → F |
-| M71-POP | `popup.html` + `popup.ts` — configuration UI, connection status | requirements-browser.md §5 M71 | A → F |
-| M72-THM | `browser-theme.css` — VS Code CSS variable mappings for browser | requirements-browser.md §5 M72 | A → F |
-| M73-AUTO | Browser automation setup docs + optional helper command | requirements-browser.md §6 M73 | A → F |
-
-**Session 12C gate:** Chrome extension side-loads in Chrome. Content script injects overlay and Comment SDK. Service worker connects to relay. Comments created in Chrome appear in VS Code. Playwright MCP setup documented.
+**v2 integration path (NOT built in Session 12):**
+- Add `packages/browser/` (`accordo-browser` VS Code extension) with WebSocket relay
+- MCP handlers already read real data — relay adds transport only (no handler logic changes)
+- CSS selector generator for cross-reload anchoring
+- `CssSelectorCoordinates` type added to `@accordo/bridge-types`
 
 ---
 

@@ -1,0 +1,370 @@
+/*
+ * M80-CSS — Content Script Styles
+ *
+ * All CSS for pins, popovers, input forms, and the overlay container.
+ * Uses browser-native styling with prefers-color-scheme for light/dark.
+ * No --vscode-* variables.
+ *
+ * Class naming: accordo- prefix on all selectors to avoid host-page conflicts.
+ * Root containers use `all: initial` to reset inherited styles.
+ * z-index: 2147483646 keeps UI above most page content.
+ */
+
+/* ── Reset ──────────────────────────────────────────────────── */
+
+.accordo-root {
+  all: initial;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+/* ── Pin Badge ──────────────────────────────────────────────── */
+
+/*
+ * Numbered badge anchored to a DOM element.
+ * Positioned absolutely relative to the page (top/left set by JS).
+ */
+.accordo-pin {
+  z-index: 2147483646;
+}
+
+.accordo-pin:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.accordo-pin[data-status="resolved"] {
+  opacity: 0.5;
+}
+
+/* ── Popover ────────────────────────────────────────────────── */
+
+/*
+ * Thread popover overlay shown on pin click.
+ * Floats above the page; user can read/reply/resolve.
+ */
+.accordo-popover {
+  z-index: 2147483646;
+}
+
+.accordo-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.accordo-popover-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* ── Comment Items ──────────────────────────────────────────── */
+
+.accordo-comment {
+  padding: 6px 0;
+  border-bottom: 1px solid;
+}
+
+.accordo-comment:last-of-type {
+  border-bottom: none;
+}
+
+.accordo-comment-author {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 3px;
+}
+
+.accordo-comment-time {
+  font-size: 11px;
+  opacity: 0.6;
+  margin-left: 6px;
+}
+
+.accordo-comment-body {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.accordo-comment-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-top: 4px;
+  opacity: 0.6;
+}
+
+.accordo-comment-delete:hover {
+  opacity: 1;
+}
+
+/* ── Comment Input Form ─────────────────────────────────────── */
+
+/*
+ * Inline comment creation form, shown after "Add Comment" right-click.
+ * Positioned near the target element.
+ */
+.accordo-comment-form {
+  all: initial;
+  position: absolute;
+  z-index: 2147483646;
+  width: 300px;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  box-sizing: border-box;
+}
+
+.accordo-comment-form textarea {
+  width: 100%;
+  min-height: 80px;
+  border-radius: 4px;
+  border-width: 1px;
+  border-style: solid;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.accordo-comment-form textarea:focus {
+  outline: 2px solid;
+  outline-offset: -1px;
+}
+
+.accordo-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  justify-content: flex-end;
+}
+
+.accordo-comment-form .accordo-btn {
+  border: none;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.1s;
+}
+
+.accordo-comment-form .accordo-btn:hover {
+  opacity: 0.85;
+}
+
+.accordo-comment-form .accordo-btn-cancel {
+  background: none;
+  border-width: 1px;
+  border-style: solid;
+}
+
+/* ── Reply Input (inside popover) ───────────────────────────── */
+
+.accordo-reply-area {
+  margin-top: 10px;
+}
+
+.accordo-reply-area textarea {
+  width: 100%;
+  min-height: 56px;
+  border-radius: 4px;
+  border-width: 1px;
+  border-style: solid;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.accordo-thread-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ── Context Menu ───────────────────────────────────────────── */
+
+/*
+ * Custom context menu shown when Comments Mode is active (fallback only;
+ * the primary mechanism uses chrome.contextMenus API which renders
+ * a native menu item — this CSS is for any in-page overlay menus).
+ */
+.accordo-context-menu {
+  all: initial;
+  position: fixed;
+  z-index: 2147483647;
+  border-radius: 6px;
+  padding: 4px 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  min-width: 180px;
+  box-sizing: border-box;
+}
+
+.accordo-context-menu-item {
+  display: block;
+  padding: 8px 16px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.accordo-context-menu-item:hover {
+  opacity: 0.85;
+}
+
+/* ── Mode Banner (active indicator) ─────────────────────────── */
+
+.accordo-mode-banner {
+  all: initial;
+  position: fixed;
+  z-index: 2147483645;
+  bottom: 16px;
+  right: 16px;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Light mode (default)
+   ══════════════════════════════════════════════════════════════ */
+
+@media (prefers-color-scheme: light) {
+  .accordo-comment-form {
+    background: #ffffff;
+    color: #1a1a1a;
+    border: 1px solid #d0d0d0;
+  }
+
+  .accordo-comment-form textarea {
+    background: #fafafa;
+    color: #1a1a1a;
+    border-color: #c8c8c8;
+  }
+
+  .accordo-comment-form textarea:focus {
+    outline-color: #0066cc;
+    border-color: #0066cc;
+  }
+
+  .accordo-reply-area textarea {
+    background: #fafafa;
+    color: #1a1a1a;
+    border-color: #c8c8c8;
+  }
+
+  .accordo-comment-form .accordo-btn {
+    background: #0066cc;
+    color: #ffffff;
+  }
+
+  .accordo-comment-form .accordo-btn-cancel {
+    background: transparent;
+    color: #555;
+    border-color: #c8c8c8;
+  }
+
+  .accordo-context-menu {
+    background: #ffffff;
+    color: #1a1a1a;
+    border: 1px solid #d0d0d0;
+  }
+
+  .accordo-context-menu-item:hover {
+    background: #f0f4ff;
+    color: #0066cc;
+  }
+
+  .accordo-mode-banner {
+    background: #0066cc;
+    color: #ffffff;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Dark mode
+   ══════════════════════════════════════════════════════════════ */
+
+@media (prefers-color-scheme: dark) {
+  .accordo-comment-form {
+    background: #1e1e2e;
+    color: #e0e0e0;
+    border: 1px solid #3a3a4a;
+  }
+
+  .accordo-comment-form textarea {
+    background: #141420;
+    color: #e0e0e0;
+    border-color: #3a3a4a;
+  }
+
+  .accordo-comment-form textarea:focus {
+    outline-color: #4d94ff;
+    border-color: #4d94ff;
+  }
+
+  .accordo-reply-area textarea {
+    background: #141420;
+    color: #e0e0e0;
+    border-color: #3a3a4a;
+  }
+
+  .accordo-comment-form .accordo-btn {
+    background: #4d94ff;
+    color: #0a0a0a;
+  }
+
+  .accordo-comment-form .accordo-btn-cancel {
+    background: transparent;
+    color: #aaa;
+    border-color: #3a3a4a;
+  }
+
+  .accordo-context-menu {
+    background: #1e1e2e;
+    color: #e0e0e0;
+    border: 1px solid #3a3a4a;
+  }
+
+  .accordo-context-menu-item:hover {
+    background: #252535;
+    color: #4d94ff;
+  }
+
+  .accordo-mode-banner {
+    background: #4d94ff;
+    color: #0a0a0a;
+  }
+}
