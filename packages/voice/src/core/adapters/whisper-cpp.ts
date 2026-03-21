@@ -48,16 +48,38 @@ const DEFAULT_MODEL_FILE = "ggml-base.en.bin";
  */
 function getModelSearchDirs(): string[] {
   const home = homedir();
-  return [
-    // VoiceInk ships whisper.cpp models here on macOS
-    join(home, "Library", "Application Support", "com.prakashjoshipax.VoiceInk", "WhisperModels"),
-    // Homebrew whisper-cpp test model
-    "/opt/homebrew/Cellar/whisper-cpp/1.8.3/share/whisper-cpp",
-    // Common XDG / home locations
-    join(home, ".whisper", "models"),
-    join(home, ".cache", "whisper"),
-    join(tmpdir(), "whisper-models"),
-  ];
+  const dirs: string[] = [];
+
+  if (process.platform === "win32") {
+    // Windows: common hand-installed and Scoop locations
+    const appData = process.env["APPDATA"] ?? join(home, "AppData", "Roaming");
+    const localAppData = process.env["LOCALAPPDATA"] ?? join(home, "AppData", "Local");
+    dirs.push(
+      join(home, ".whisper", "models"),           // dotfile mirror for cross-platform scripts
+      join(appData, "whisper", "models"),          // common hand-install location
+      join(localAppData, "whisper", "models"),     // alternative hand-install location
+      join(home, "scoop", "apps", "whisper-cpp", "current", "models"), // Scoop
+      join(localAppData, "Programs", "whisper-cpp", "models"),  // installer-style
+      join(tmpdir(), "whisper-models"),
+    );
+  } else {
+    // macOS / Linux
+    dirs.push(
+      // VoiceInk ships whisper.cpp models here on macOS
+      join(home, "Library", "Application Support", "com.prakashjoshipax.VoiceInk", "WhisperModels"),
+      // Homebrew whisper-cpp (stable + versioned)
+      "/opt/homebrew/share/whisper-cpp",
+      "/opt/homebrew/Cellar/whisper-cpp/1.8.3/share/whisper-cpp",
+      "/usr/local/share/whisper",
+      "/usr/share/whisper",
+      // Common XDG / home locations
+      join(home, ".whisper", "models"),
+      join(home, ".cache", "whisper"),
+      join(tmpdir(), "whisper-models"),
+    );
+  }
+
+  return dirs;
 }
 
 /** Resolve the absolute model path from config, or auto-discover from known dirs. */
@@ -174,7 +196,12 @@ export class WhisperCppAdapter implements SttProvider {
     });
 
     if (!binaryOk) {
-      this._log(`isAvailable: FAIL — whisper binary not found at "${this._binaryPath}". Install whisper.cpp (brew install whisper-cpp) or set accordo.voice.whisperPath.`);
+      const installHint = process.platform === "win32"
+      ? "scoop install whisper-cpp then set accordo.voice.whisperPath to \"whisper-cli\""
+      : process.platform === "darwin"
+        ? "brew install whisper-cpp then set accordo.voice.whisperPath to \"whisper-cpp\""
+        : "build from https://github.com/ggerganov/whisper.cpp or use your package manager";
+    this._log(`isAvailable: FAIL — whisper binary not found at "${this._binaryPath}". ${installHint}.`);
       return false;
     }
 

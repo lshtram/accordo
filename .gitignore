@@ -10,6 +10,23 @@ coverage/
 # Accordo agent config files (contain bearer tokens — auto-written by Bridge)
 opencode.json
 .claude/mcp.json
+.vscode/mcp.json
+
+# Local npm lockfiles are accidental in this pnpm workspace
+package-lock.json
+**/package-lock.json
+
+# Local extension build/package artifacts
+*.vsix
+
+# Test/debug scratch outputs
+**/test-output.txt
+**/test-result.txt
+packages/hub/off
+scripts/edge-fix-profile/
+scripts/edge-plain-profile/
+scripts/tmp-edge-profile/
+scripts/slidev-dom-output.html
 
 # Accordo diagram — Excalidraw snapshots (written by accordo.diagram.writeExcalidrawSnapshot — off by default)
 # Layout JSON files (.layout.json) are user/agent data and are intentionally committed.

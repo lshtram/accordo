@@ -292,7 +292,12 @@ export async function activate(
     if (!soxAvail) {
       dictState.active = false; // unlock — aborting
       logger.log("dictation: sox not found");
-      void vscode.window.showWarningMessage("Accordo Voice: sox not found. Install via `brew install sox`.");
+      const soxInstallHint = process.platform === "win32"
+        ? "Install via `scoop install sox` (or download from https://sourceforge.net/projects/sox/)"
+        : process.platform === "darwin"
+          ? "Install via `brew install sox`"
+          : "Install via `apt install sox` (or your distro package manager)";
+      void vscode.window.showWarningMessage(`Accordo Voice: sox not found. ${soxInstallHint}.`);
       return;
     }
 

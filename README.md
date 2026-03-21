@@ -33,6 +33,8 @@ Accordo IDE is an MCP-based AI co-pilot layer on top of VSCode. An MCP-capable A
 - pnpm >= 9
 - VSCode >= 1.100.0
 
+> **Windows users:** See [docs/setup-windows.md](docs/setup-windows.md) for a full setup guide covering Slidev, TTS, and STT installation.
+
 ### Build & Test
 
 ```bash

@@ -186,6 +186,13 @@ export class KokoroAdapter implements TtsProvider {
       return this._loadingPromise;
     }
 
+    // @huggingface/transformers (used by kokoro-js) references the browser global `self`.
+    // VS Code's extension host runs Electron's bundled Node (< 21) where it is not defined.
+    // Polyfill it before the dynamic import so the module initialises without throwing.
+    if (typeof (globalThis as Record<string, unknown>)["self"] === "undefined") {
+      (globalThis as Record<string, unknown>)["self"] = globalThis;
+    }
+
     this._loadingPromise = this._import("kokoro-js").then((mod) => {
       const kokoroMod = mod as KokoroModule;
       return kokoroMod.KokoroTTS.from_pretrained(KOKORO_MODEL_ID, { dtype: KOKORO_DTYPE });

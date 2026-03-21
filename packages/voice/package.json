@@ -117,12 +117,12 @@
         "accordo.voice.whisperPath": {
           "type": "string",
           "default": "whisper",
-          "description": "Path to whisper.cpp binary"
+          "description": "Path to whisper.cpp binary. On macOS: `brew install whisper-cpp` then set to `whisper-cpp`. On Windows: download from https://github.com/ggerganov/whisper.cpp/releases or `scoop install whisper-cpp`, then set to the full path or bare name if it's on PATH. On Linux: build from source or use your package manager."
         },
         "accordo.voice.whisperModelFolder": {
           "type": "string",
-          "default": "/usr/local/share/whisper",
-          "description": "Directory containing whisper model files"
+          "default": "",
+          "description": "Directory containing whisper.cpp model files (.bin). Leave empty to auto-discover from common locations. On Windows try %APPDATA%\\whisper\\models; on macOS/Linux try ~/.whisper/models."
         },
         "accordo.voice.whisperModel": {
           "type": "string",
