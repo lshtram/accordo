@@ -3,7 +3,7 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-15  
-**Status:** ACTIVE — A18 diagram comments webview complete ✅, D3 manual checklist pending; Session 12 next
+**Status:** ACTIVE — Browser Extension v2a implementation in progress (Session 13 C/D/D2 complete, D3 manual validation active); A18 D3 manual checklist pending
 
 ---
 
@@ -23,6 +23,7 @@
 | **Session 11b** | **A18 Diagram Comments Bridge — host bridge + panel wiring + webview (SDK init, idMap, Alt+click overlay, pin re-render on scroll/zoom)** | ✅ DONE — 463 tests; D3 manual checklist pending |
 | **TD-CROSS-1** | **`openTabs` capture + `accordo_layout_state` tool + Open Tabs prompt section** | ✅ DONE — 2321 tests (Hub: 376, Bridge: 310+) |
 | **Session 12** | **Browser Extension v1 (`packages/browser-extension` — standalone Chrome extension, 12 modules M80-xxx)** | 🏗️ ARCHITECTURE FINALIZED — [`browser-extension-architecture.md`](browser-extension-architecture.md) + [`requirements-browser-extension.md`](requirements-browser-extension.md) approved; awaiting TDD phase |
+| **Session 13** | **Browser Extension v2a (`packages/browser` relay + SDK convergence + agent list/get/create/reply/resolve/reopen/delete)** | 🚧 C/D/D2 complete, D3 manual validation active |
 
 **Baseline:** 2340 tests green (Hub: 376, Voice: 269, Bridge: 310+, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149, Script: 133, Diagram: 463). A18 webview done, D3 pending.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
@@ -414,6 +415,25 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 - MCP handlers already read real data — relay adds transport only (no handler logic changes)
 - CSS selector generator for cross-reload anchoring
 - `CssSelectorCoordinates` type added to `@accordo/bridge-types`
+
+---
+
+### Session 13 — Browser Extension v2a (`packages/browser` + `packages/browser-extension`) [TDD ACTIVE]
+
+**Goal:** Connect browser comments to Accordo so agents can list/get/create/reply/resolve/reopen/delete comments; converge browser UI on the shared SDK interaction model.
+
+**Architecture update:** [`docs/browser-extension-architecture.md`](browser-extension-architecture.md) §12.1 (Session 13 v2a wiring)  
+**Requirements update:** [`docs/requirements-browser-extension.md`](requirements-browser-extension.md) §3.12 (BR-F-117..BR-F-131)
+
+| # | Module | Requirements Source | TDD Phases |
+|---|---|---|---|
+| M81-SDK | SDK convergence adapter in browser-extension (single create/reply/resolve/reopen/delete path + live update broadcast) | requirements-browser-extension.md §3.12 (BR-F-117, BR-F-118, BR-F-119, BR-F-127, BR-F-130) | A → F |
+| M82-RELAY | `packages/browser` relay server + auth + request router | requirements-browser-extension.md §3.12 (BR-F-120, BR-F-121, BR-F-123, BR-F-125, BR-F-126, BR-F-128, BR-F-129) | A → F |
+| M83-BTOOLS | Browser relay tool registration (`accordo_browser_*`) + end-to-end mutation contract | requirements-browser-extension.md §3.12 (BR-F-122, BR-F-124, BR-F-131) | A → F |
+
+**Phase A/B artifacts:** [`docs/tdd-browser-v2a-phase-a-b.md`](tdd-browser-v2a-phase-a-b.md)
+
+**Current checkpoint:** C/D/D2 completed for v2a slice (relay connectivity + read/create/reply/resolve/reopen/delete + live UI refresh). D3 manual validation in progress.
 
 ---
 

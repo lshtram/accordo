@@ -19,6 +19,9 @@
     "test": "echo 'types-only package — no tests'",
     "test:watch": "echo 'types-only package — no tests'"
   },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  },
   "files": ["dist"],
   "license": "MIT"
 }

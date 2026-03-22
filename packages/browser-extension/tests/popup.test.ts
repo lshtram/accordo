@@ -50,6 +50,21 @@ function makeThread(id: string): BrowserCommentThread {
   };
 }
 
+function makeThreadWithReplies(id: string): BrowserCommentThread {
+  const thread = makeThread(id);
+  thread.comments.push({
+    id: `${id}-c1`,
+    threadId: id,
+    createdAt: new Date().toISOString(),
+    author: { kind: "user", name: "Bob" },
+    body: "Reply message",
+    anchorKey: `div:0:${id}`,
+    pageUrl: "https://example.com/page",
+    status: "open",
+  });
+  return thread;
+}
+
 describe("M80-POP — Popup UI", () => {
   let container: HTMLDivElement;
 
@@ -82,6 +97,18 @@ describe("M80-POP — Popup UI", () => {
       renderThreadList(container, threads);
       const item = container.querySelector('[data-thread-id="t003"]');
       expect(item).not.toBeNull();
+    });
+
+    it("BR-F-100: each thread item shows latest comment text preview", () => {
+      const threads = [makeThread("t004")];
+      renderThreadList(container, threads);
+      expect(container.textContent).toContain("First comment");
+    });
+
+    it("BR-F-100: each thread item shows reply count when replies exist", () => {
+      const threads = [makeThreadWithReplies("t005")];
+      renderThreadList(container, threads);
+      expect((container.textContent ?? "").toLowerCase()).toContain("1 reply");
     });
 
     it("BR-F-106: popup header shows Comments Mode state after init", async () => {

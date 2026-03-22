@@ -35,9 +35,16 @@ describe("M80-SW — Background Service Worker", () => {
       expect(typeof MESSAGE_TYPES.TOGGLE_COMMENTS_MODE).toBe("string");
       expect(typeof MESSAGE_TYPES.GET_THREADS).toBe("string");
       expect(typeof MESSAGE_TYPES.CREATE_THREAD).toBe("string");
+      expect(typeof MESSAGE_TYPES.ADD_COMMENT).toBe("string");
+      expect(typeof MESSAGE_TYPES.RESOLVE_THREAD).toBe("string");
+      expect(typeof MESSAGE_TYPES.REOPEN_THREAD).toBe("string");
+      expect(typeof MESSAGE_TYPES.SOFT_DELETE_COMMENT).toBe("string");
+      expect(typeof MESSAGE_TYPES.SOFT_DELETE_THREAD).toBe("string");
+      expect(typeof MESSAGE_TYPES.COMMENTS_UPDATED).toBe("string");
       expect(typeof MESSAGE_TYPES.EXPORT).toBe("string");
       expect(typeof MESSAGE_TYPES.MCP_GET_COMMENTS).toBe("string");
       expect(typeof MESSAGE_TYPES.MCP_GET_SCREENSHOT).toBe("string");
+      expect(typeof MESSAGE_TYPES.BROWSER_RELAY_ACTION).toBe("string");
     });
   });
 
@@ -86,6 +93,126 @@ describe("M80-SW — Background Service Worker", () => {
       expect(response).toHaveProperty("success", true);
       expect(response).toHaveProperty("data");
       expect(typeof (response.data as { id?: string })?.id).toBe("string");
+    });
+  });
+
+  describe("handleMessage — ADD_COMMENT", () => {
+    it("BR-F-41: routes ADD_COMMENT and appends a reply", async () => {
+      const created = await handleMessage(
+        {
+          type: MESSAGE_TYPES.CREATE_THREAD,
+          payload: {
+            url: "https://example.com",
+            anchorKey: "div:0:hello",
+            body: "First comment",
+            author: { kind: "user", name: "Alice" },
+          },
+        },
+        {} as chrome.runtime.MessageSender
+      );
+      const threadId = (created.data as { id: string }).id;
+
+      const response = await handleMessage(
+        {
+          type: MESSAGE_TYPES.ADD_COMMENT,
+          payload: {
+            threadId,
+            body: "Reply",
+            author: { kind: "user", name: "Bob" },
+          },
+        },
+        {} as chrome.runtime.MessageSender
+      );
+
+      expect(response).toHaveProperty("success", true);
+      expect((response.data as { body?: string })?.body).toBe("Reply");
+    });
+  });
+
+  describe("handleMessage — SOFT_DELETE_COMMENT", () => {
+    it("BR-F-43: routes SOFT_DELETE_COMMENT and hides deleted comment from active threads", async () => {
+      const created = await handleMessage(
+        {
+          type: MESSAGE_TYPES.CREATE_THREAD,
+          payload: {
+            url: "https://example.com",
+            anchorKey: "div:0:hello",
+            body: "First comment",
+            author: { kind: "user", name: "Alice" },
+          },
+        },
+        {} as chrome.runtime.MessageSender
+      );
+      const threadId = (created.data as { id: string }).id;
+
+      const replied = await handleMessage(
+        {
+          type: MESSAGE_TYPES.ADD_COMMENT,
+          payload: {
+            threadId,
+            body: "Reply",
+            author: { kind: "user", name: "Bob" },
+          },
+        },
+        {} as chrome.runtime.MessageSender
+      );
+      const replyId = (replied.data as { id: string }).id;
+
+      const response = await handleMessage(
+        {
+          type: MESSAGE_TYPES.SOFT_DELETE_COMMENT,
+          payload: { threadId, commentId: replyId, deletedBy: "Guest" },
+        },
+        {} as chrome.runtime.MessageSender
+      );
+
+      expect(response).toHaveProperty("success", true);
+
+      const active = await handleMessage(
+        {
+          type: MESSAGE_TYPES.GET_THREADS,
+          payload: { url: "https://example.com" },
+        },
+        {} as chrome.runtime.MessageSender
+      );
+      const thread = (active.data as Array<{ comments: Array<{ id: string }> }>)[0];
+      expect(thread.comments.some((c) => c.id === replyId)).toBe(false);
+    });
+  });
+
+  describe("handleMessage — RESOLVE_THREAD / REOPEN_THREAD", () => {
+    it("BR-F-124: resolves and reopens a thread via SW routes", async () => {
+      const created = await handleMessage(
+        {
+          type: MESSAGE_TYPES.CREATE_THREAD,
+          payload: {
+            url: "https://example.com",
+            anchorKey: "div:0:hello",
+            body: "First comment",
+            author: { kind: "user", name: "Alice" },
+          },
+        },
+        {} as chrome.runtime.MessageSender
+      );
+      const threadId = (created.data as { id: string }).id;
+
+      const resolved = await handleMessage(
+        {
+          type: MESSAGE_TYPES.RESOLVE_THREAD,
+          payload: { threadId, resolutionNote: "done" },
+        },
+        {} as chrome.runtime.MessageSender
+      );
+      expect(resolved.success).toBe(true);
+
+      const reopened = await handleMessage(
+        {
+          type: MESSAGE_TYPES.REOPEN_THREAD,
+          payload: { threadId },
+        },
+        {} as chrome.runtime.MessageSender
+      );
+      expect(reopened.success).toBe(true);
     });
   });
 
@@ -172,6 +299,39 @@ describe("M80-SW — Background Service Worker", () => {
       );
       expect(response).toHaveProperty("requestId", "req-mcp-002");
       expect(response).toHaveProperty("success");
+    });
+  });
+
+  describe("handleMessage — BROWSER_RELAY_ACTION", () => {
+    it("BR-F-119: routes relay action get_comments and returns thread payload", async () => {
+      await handleMessage(
+        {
+          type: MESSAGE_TYPES.CREATE_THREAD,
+          payload: {
+            url: "https://example.com",
+            anchorKey: "div:0:hello",
+            body: "First comment",
+            author: { kind: "user", name: "Alice" },
+          },
+        },
+        {} as chrome.runtime.MessageSender
+      );
+
+      const response = await handleMessage(
+        {
+          type: MESSAGE_TYPES.BROWSER_RELAY_ACTION,
+          payload: {
+            requestId: "req-relay-001",
+            action: "get_comments",
+            payload: { url: "https://example.com" },
+          },
+        },
+        {} as chrome.runtime.MessageSender
+      );
+
+      expect(response).toHaveProperty("requestId", "req-relay-001");
+      expect(response).toHaveProperty("success", true);
+      expect((response.data as { totalThreads?: number }).totalThreads).toBe(1);
     });
   });
 

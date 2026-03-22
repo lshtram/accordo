@@ -40,6 +40,12 @@ export interface BrowserComment {
 export interface BrowserCommentThread {
   id: string;
   anchorKey: string;
+  anchorContext?: {
+    tagName: string;
+    textSnippet?: string;
+    ariaLabel?: string;
+    pageTitle?: string;
+  };
   pageUrl: string;
   status: "open" | "resolved";
   comments: BrowserComment[];

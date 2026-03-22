@@ -13,9 +13,11 @@
  */
 
 import { toggleCommentsMode, getCommentsMode, loadCommentsModeFromStorage } from "./state-machine.js";
-import { getActiveThreads, createThread } from "./store.js";
+import { getActiveThreads, createThread, addComment, normalizeUrl, reopenThread, resolveThread, softDeleteComment, softDeleteThread } from "./store.js";
 import { captureScreenshot } from "./screenshot.js";
 import { handleGetComments, handleGetScreenshot } from "./mcp-handlers.js";
+import { handleRelayAction, type RelayActionRequest } from "./relay-actions.js";
+import { RelayBridgeClient } from "./relay-bridge.js";
 import { MESSAGE_TYPES } from "./constants.js";
 import type { McpToolRequest, GetCommentsArgs, GetScreenshotArgs } from "./types.js";
 import type { MessageType } from "./constants.js";
@@ -32,6 +34,55 @@ function dbgErr(msg: string, ...args: unknown[]): void {
   console.error(`[Accordo SW ERROR] ${msg}`, ...args);
 }
 
+function isNoReceiverError(err: unknown): boolean {
+  const msg = (err as Error | undefined)?.message ?? String(err);
+  return msg.includes("Receiving end does not exist") || msg.includes("Could not establish connection");
+}
+
+async function broadcastCommentsUpdated(url?: string): Promise<void> {
+  const tabs = await chrome.tabs.query({});
+  const normalized = url ? normalizeUrl(url) : undefined;
+  await Promise.all(
+    tabs
+      .filter((tab) => {
+        if (!tab.id || !tab.url) return false;
+        if (!tab.url.startsWith("http://") && !tab.url.startsWith("https://")) return false;
+        if (!normalized) return true;
+        return normalizeUrl(tab.url) === normalized;
+      })
+      .map(async (tab) => {
+        try {
+          await chrome.tabs.sendMessage(tab.id!, {
+            type: MESSAGE_TYPES.COMMENTS_UPDATED,
+            payload: { url: normalized },
+          });
+        } catch (err) {
+          if (!isNoReceiverError(err)) {
+            dbgErr(`broadcastCommentsUpdated: tab ${tab.id} send failed — ${(err as Error)?.message ?? err}`);
+          }
+        }
+      }),
+  );
+
+  try {
+    await chrome.runtime.sendMessage({ type: MESSAGE_TYPES.COMMENTS_UPDATED, payload: { url: normalized } });
+  } catch {
+    // Popup/content runtime listeners may not exist; safe to ignore.
+  }
+}
+
+async function handleRelayActionWithBroadcast(req: RelayActionRequest): Promise<SwResponse> {
+  const response = await handleRelayAction(req);
+  if (
+    response.success
+    && ["create_comment", "reply_comment", "delete_comment", "delete_thread", "resolve_thread", "reopen_thread"].includes(req.action)
+  ) {
+    const pageUrl = (response.data as { pageUrl?: string } | undefined)?.pageUrl;
+    await broadcastCommentsUpdated(pageUrl);
+  }
+  return response;
+}
+
 dbg("Service worker module loaded");
 
 export interface SwMessage {
@@ -44,6 +95,7 @@ export interface SwResponse {
   data?: unknown;
   error?: string;
   requestId?: string;
+  isOn?: boolean;
 }
 
 // ── Message handler ─────────────────────────────────────────────────────────────
@@ -66,7 +118,9 @@ export async function handleMessage(
         const msgType = isOn ? "comments-mode-on" : "comments-mode-off";
         dbg(`TOGGLE_COMMENTS_MODE: sending "${msgType}" to tab ${sender.tab.id}`);
         chrome.tabs.sendMessage(sender.tab.id, { type: msgType }).catch((err) => {
-          dbgErr(`TOGGLE_COMMENTS_MODE: tabs.sendMessage failed — ${err?.message ?? err}`);
+          if (!isNoReceiverError(err)) {
+            dbgErr(`TOGGLE_COMMENTS_MODE: tabs.sendMessage failed — ${err?.message ?? err}`);
+          }
         });
       } else {
         dbg(`TOGGLE_COMMENTS_MODE: sender has no tab id, skipping tabs.sendMessage`);
@@ -108,10 +162,60 @@ export async function handleMessage(
       const anchorKey = payload?.anchorKey as string;
       const body = payload?.body as string;
       const author = payload?.author as { kind: "user"; name: string };
+      const anchorContext = payload?.anchorContext as { tagName: string; textSnippet?: string; ariaLabel?: string; pageTitle?: string } | undefined;
       dbg(`CREATE_THREAD: url=${url} anchorKey=${anchorKey}`);
-      const thread = await createThread(url, anchorKey, { body, author });
+      const thread = await createThread(url, anchorKey, { body, author }, anchorContext);
       dbg(`CREATE_THREAD: created thread id=${thread.id}`);
+      await broadcastCommentsUpdated(thread.pageUrl);
       return { success: true, data: thread };
+    }
+
+    case MESSAGE_TYPES.ADD_COMMENT: {
+      const threadId = payload?.threadId as string;
+      const body = payload?.body as string;
+      const author = payload?.author as { kind: "user"; name: string };
+      dbg(`ADD_COMMENT: threadId=${threadId}`);
+      try {
+        const comment = await addComment(threadId, { body, author });
+        dbg(`ADD_COMMENT: created comment id=${comment.id}`);
+        await broadcastCommentsUpdated(comment.pageUrl);
+        return { success: true, data: comment };
+      } catch (err) {
+        dbgErr(`ADD_COMMENT: failed — ${(err as Error)?.message ?? err}`);
+        return { success: false, error: "add comment failed" };
+      }
+    }
+
+    case MESSAGE_TYPES.SOFT_DELETE_COMMENT: {
+      const threadId = payload?.threadId as string;
+      const commentId = payload?.commentId as string;
+      dbg(`SOFT_DELETE_COMMENT: threadId=${threadId} commentId=${commentId}`);
+      const url = await softDeleteComment(threadId, commentId);
+      await broadcastCommentsUpdated(url ?? undefined);
+      return { success: true };
+    }
+
+    case MESSAGE_TYPES.SOFT_DELETE_THREAD: {
+      const threadId = payload?.threadId as string;
+      dbg(`SOFT_DELETE_THREAD: threadId=${threadId}`);
+      const url = await softDeleteThread(threadId);
+      await broadcastCommentsUpdated(url ?? undefined);
+      return { success: true };
+    }
+
+    case MESSAGE_TYPES.RESOLVE_THREAD: {
+      const threadId = payload?.threadId as string;
+      const resolutionNote = payload?.resolutionNote as string | undefined;
+      const url = await resolveThread(threadId, resolutionNote);
+      await broadcastCommentsUpdated(url ?? undefined);
+      return { success: true };
+    }
+
+    case MESSAGE_TYPES.REOPEN_THREAD: {
+      const threadId = payload?.threadId as string;
+      const url = await reopenThread(threadId);
+      await broadcastCommentsUpdated(url ?? undefined);
+      return { success: true };
     }
 
     case MESSAGE_TYPES.EXPORT: {
@@ -154,6 +258,12 @@ export async function handleMessage(
       const req = message.payload as McpToolRequest<GetScreenshotArgs>;
       dbg(`MCP_GET_SCREENSHOT: requestId=${req?.requestId}`);
       return await handleGetScreenshot(req);
+    }
+
+    case MESSAGE_TYPES.BROWSER_RELAY_ACTION: {
+      const req = message.payload as RelayActionRequest;
+      dbg(`BROWSER_RELAY_ACTION: action=${req?.action} requestId=${req?.requestId}`);
+      return await handleRelayActionWithBroadcast(req);
     }
 
     default:
@@ -202,7 +312,9 @@ export function registerListeners(): void {
         await chrome.tabs.sendMessage(tabId, { type: msgType });
         dbg(`onCommand: tabs.sendMessage succeeded`);
       } catch (err) {
-        dbgErr(`onCommand: tabs.sendMessage failed — ${(err as Error)?.message ?? err}`);
+        if (!isNoReceiverError(err)) {
+          dbgErr(`onCommand: tabs.sendMessage failed — ${(err as Error)?.message ?? err}`);
+        }
       }
     }
   });
@@ -223,4 +335,6 @@ dbg("Bootstrap: calling registerListeners()");
 registerListeners();
 dbg("Bootstrap: attaching onInstalled listener");
 chrome.runtime.onInstalled.addListener(onInstalled);
+const relayBridge = new RelayBridgeClient(handleRelayActionWithBroadcast);
+relayBridge.start();
 dbg("Bootstrap: complete");

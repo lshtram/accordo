@@ -7,6 +7,14 @@
 
 import type { BrowserComment, BrowserCommentThread, PageCommentStore } from "./types.js";
 
+export interface CommentPageSummary {
+  url: string;
+  lastActivity: string;
+  totalThreads: number;
+  openThreads: number;
+  totalComments: number;
+}
+
 /**
  * Normalizes a URL to origin + pathname only (strips query params and hash).
  */
@@ -63,7 +71,8 @@ async function findThreadAndStore(
 export async function createThread(
   url: string,
   anchorKey: string,
-  firstComment: Pick<BrowserComment, "body" | "author">
+  firstComment: Pick<BrowserComment, "body" | "author">,
+  anchorContext?: BrowserCommentThread["anchorContext"]
 ): Promise<BrowserCommentThread> {
   const normalized = normalizeUrl(url);
   const id = crypto.randomUUID();
@@ -88,6 +97,7 @@ export async function createThread(
     comments: [comment],
     createdAt: now,
     lastActivity: now,
+    ...(anchorContext ? { anchorContext } : {}),
   };
 
   const existing = await getPageStore(normalized);
@@ -164,12 +174,13 @@ export async function addComment(
 /**
  * Soft-deletes a thread by setting deletedAt. Does NOT remove from storage.
  */
-export async function softDeleteThread(threadId: string): Promise<void> {
+export async function softDeleteThread(threadId: string): Promise<string | null> {
   const found = await findThreadAndStore(threadId);
-  if (!found) return;
+  if (!found) return null;
   const { store, thread } = found;
   thread.deletedAt = new Date().toISOString();
   await savePageStore(store);
+  return thread.pageUrl;
 }
 
 /**
@@ -178,15 +189,16 @@ export async function softDeleteThread(threadId: string): Promise<void> {
 export async function softDeleteComment(
   threadId: string,
   commentId: string
-): Promise<void> {
+): Promise<string | null> {
   const found = await findThreadAndStore(threadId);
-  if (!found) return;
+  if (!found) return null;
   const { store, thread } = found;
   const comment = thread.comments.find((c) => c.id === commentId);
   if (comment) {
     comment.deletedAt = new Date().toISOString();
   }
   await savePageStore(store);
+  return thread.pageUrl;
 }
 
 /**
@@ -213,24 +225,68 @@ export async function updateComment(
 export async function resolveThread(
   threadId: string,
   resolutionNote?: string
-): Promise<void> {
+): Promise<string | null> {
   const found = await findThreadAndStore(threadId);
-  if (!found) return;
+  if (!found) return null;
   const { store, thread } = found;
   thread.status = "resolved";
   if (resolutionNote !== undefined) {
     (thread as BrowserCommentThread & { resolutionNote?: string }).resolutionNote = resolutionNote;
   }
+  thread.lastActivity = new Date().toISOString();
   await savePageStore(store);
+  return thread.pageUrl;
 }
 
 /**
  * Reopens a resolved thread: sets thread.status back to "open".
  */
-export async function reopenThread(threadId: string): Promise<void> {
+export async function reopenThread(threadId: string): Promise<string | null> {
   const found = await findThreadAndStore(threadId);
-  if (!found) return;
+  if (!found) return null;
   const { store, thread } = found;
   thread.status = "open";
+  thread.lastActivity = new Date().toISOString();
   await savePageStore(store);
+  return thread.pageUrl;
+}
+
+/**
+ * Returns all pages that have comment data, sorted by most recent activity first.
+ */
+export async function getCommentPageSummaries(): Promise<CommentPageSummary[]> {
+  const all = await chrome.storage.local.get(null);
+  const summaries: CommentPageSummary[] = [];
+
+  for (const [key, value] of Object.entries(all)) {
+    if (!key.startsWith("comments:")) continue;
+    const store = value as PageCommentStore | undefined;
+    if (!store || !Array.isArray(store.threads)) continue;
+
+    const threads = store.threads;
+    if (threads.length === 0) continue;
+
+    const sortedByActivity = [...threads].sort((a, b) => {
+      return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
+    });
+    const lastActivity = sortedByActivity[0]?.lastActivity ?? new Date(0).toISOString();
+
+    const activeThreads = threads.filter((t) => !t.deletedAt);
+    const openThreads = activeThreads.filter((t) => t.status === "open").length;
+    const totalComments = activeThreads.reduce((sum, t) => {
+      const activeComments = t.comments.filter((c) => !c.deletedAt).length;
+      return sum + activeComments;
+    }, 0);
+
+    summaries.push({
+      url: store.url,
+      lastActivity,
+      totalThreads: activeThreads.length,
+      openThreads,
+      totalComments,
+    });
+  }
+
+  summaries.sort((a, b) => new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime());
+  return summaries;
 }

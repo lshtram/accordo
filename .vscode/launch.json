@@ -1,6 +1,7 @@
 {
   "version": "0.2.0",
   "configurations": [
+    
     {
       // ── Extension Development Host ──────────────────────────────────────
       // Pressing F5 with this config selected:
@@ -37,6 +38,8 @@
         "--extensionDevelopmentPath=${workspaceFolder}/packages/script",
         // accordo-diagram: Mermaid + Excalidraw diagram tools
         "--extensionDevelopmentPath=${workspaceFolder}/packages/diagram",
+        // accordo-browser: browser comments relay + browser MCP tools
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/browser",
         // Open this repo in the EDH so it has a real workspace to report
         "${workspaceFolder}"
       ],
@@ -48,7 +51,8 @@
         "${workspaceFolder}/packages/marp/dist/**/*.js",
         "${workspaceFolder}/packages/voice/dist/**/*.js",
         "${workspaceFolder}/packages/script/dist/**/*.js",
-        "${workspaceFolder}/packages/diagram/dist/**/*.js"
+        "${workspaceFolder}/packages/diagram/dist/**/*.js",
+        "${workspaceFolder}/packages/browser/dist/**/*.js"
       ],
       "preLaunchTask": "build-all",
       "sourceMaps": true

@@ -19,6 +19,9 @@
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
+  "dependencies": {
+    "@accordo/comment-sdk": "workspace:*"
+  },
   "engines": {
     "node": ">=20"
   }

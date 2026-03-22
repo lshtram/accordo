@@ -1,10 +1,15 @@
-# accordo-browser + Chrome Extension — Requirements Specification
+# accordo-browser + Chrome Extension — Requirements Specification (Archived)
 
+**Status:** ARCHIVED — superseded by `docs/requirements-browser-extension.md`  
 **Packages:** `accordo-browser` (VSCode extension) + `packages/browser-extension` (Chrome Manifest V3)  
 **Type:** VSCode extension + Chrome extension  
 **Publisher:** `accordo`  
 **Version:** 0.1.0  
 **Date:** 2026-03-06
+
+---
+
+> Archive note: kept for historical reference. Use `docs/requirements-browser-extension.md` for current requirements and status.
 
 ---
 

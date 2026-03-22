@@ -19,6 +19,11 @@ function dbgErr(msg: string, ...args: unknown[]): void {
   console.error(`[Accordo POP ERROR] ${msg}`, ...args);
 }
 
+function isNoReceiverError(err: unknown): boolean {
+  const msg = (err as Error | undefined)?.message ?? String(err);
+  return msg.includes("Receiving end does not exist") || msg.includes("Could not establish connection");
+}
+
 // ── Public API for tests ────────────────────────────────────────────────────────
 
 /** Sends the EXPORT message to the service worker. Exported for testability. */
@@ -80,14 +85,34 @@ export function renderThreadList(
 
     const threadInfo = document.createElement("div");
     threadInfo.style.cssText = "flex: 1;";
-    threadInfo.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-weight:600;font-size:13px;color:#333;">#${thread.id.slice(0, 8)}</span>
-        <span style="font-size:11px;padding:2px 7px;border-radius:10px;background:${thread.status === "resolved" ? "#e8f5e9;color:#2e7d32" : "#e3f2fd;color:#1565c0"}">${thread.status}</span>
-      </div>
-      <div style="font-size:12px;color:#555;margin-top:2px;">${thread.anchorKey}</div>
-      <div style="font-size:11px;color:#999;margin-top:2px;">${thread.comments.length} comment${thread.comments.length !== 1 ? "s" : ""}</div>
-    `;
+    const latestComment = thread.comments[thread.comments.length - 1];
+    const previewText = (latestComment?.body ?? "").trim() || "(no comment text)";
+    const replyCount = Math.max(0, thread.comments.length - 1);
+    const topRow = document.createElement("div");
+    topRow.style.cssText = "display:flex;justify-content:space-between;align-items:center;";
+
+    const authorEl = document.createElement("span");
+    authorEl.style.cssText = "font-weight:600;font-size:13px;color:#333;";
+    authorEl.textContent = latestComment?.author.name ?? "Guest";
+
+    const statusEl = document.createElement("span");
+    statusEl.style.cssText = `font-size:11px;padding:2px 7px;border-radius:10px;${thread.status === "resolved" ? "background:#e8f5e9;color:#2e7d32" : "background:#e3f2fd;color:#1565c0"}`;
+    statusEl.textContent = thread.status;
+
+    topRow.appendChild(authorEl);
+    topRow.appendChild(statusEl);
+
+    const previewEl = document.createElement("div");
+    previewEl.style.cssText = "font-size:12px;color:#222;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+    previewEl.textContent = previewText;
+
+    const metaEl = document.createElement("div");
+    metaEl.style.cssText = "font-size:11px;color:#999;margin-top:2px;";
+    metaEl.textContent = `${thread.comments.length} comment${thread.comments.length !== 1 ? "s" : ""}${replyCount > 0 ? ` • ${replyCount} repl${replyCount === 1 ? "y" : "ies"}` : ""}`;
+
+    threadInfo.appendChild(topRow);
+    threadInfo.appendChild(previewEl);
+    threadInfo.appendChild(metaEl);
 
     const deleteBtn = document.createElement("button");
     deleteBtn.textContent = "×";
@@ -173,7 +198,11 @@ async function setCommentsModeState(tabId: number, enabled: boolean): Promise<vo
     await chrome.tabs.sendMessage(tabId, { type: msgType });
     dbg(`setCommentsModeState: tabs.sendMessage succeeded`);
   } catch (err) {
-    dbgErr(`setCommentsModeState: tabs.sendMessage FAILED — ${(err as Error)?.message ?? err}`);
+    if (isNoReceiverError(err)) {
+      dbg(`setCommentsModeState: no content-script receiver yet for tab ${tabId}`);
+    } else {
+      dbgErr(`setCommentsModeState: tabs.sendMessage FAILED — ${(err as Error)?.message ?? err}`);
+    }
     dbg(`setCommentsModeState: content script may not be injected yet; storage.onChanged will trigger sync on next injection`);
   }
 }
@@ -246,11 +275,34 @@ export async function initPopup(container: HTMLElement): Promise<void> {
 
   // ── Shortcut hint ──────────────────────────────────────────────────────────
   const hint = document.createElement("div");
-  hint.style.cssText = "padding: 6px 12px; font-size: 11px; color: #888; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;";
-  hint.innerHTML = `
-    <span>Shortcut:&nbsp;<code style="background:#f0f0f0;padding:1px 5px;border-radius:3px;font-size:11px;">Alt+Shift+C</code></span>
-    <span style="color:#aaa;font-size:10px;">chrome://extensions/shortcuts</span>
-  `;
+  hint.style.cssText = "padding: 6px 12px; font-size: 11px; color: #888; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; gap: 8px;";
+  const shortcut = document.createElement("span");
+  shortcut.textContent = "Shortcut: Alt+Shift+C";
+  hint.appendChild(shortcut);
+
+  const shortcutBtn = document.createElement("button");
+  shortcutBtn.textContent = "Configure";
+  shortcutBtn.style.cssText = "background:none;border:none;color:#4a90d9;cursor:pointer;font-size:11px;padding:0;";
+  shortcutBtn.addEventListener("click", () => {
+    chrome.tabs.create({ url: "chrome://extensions/shortcuts" }).catch(() => {
+      showToast("Open chrome://extensions/shortcuts");
+    });
+  });
+  hint.appendChild(shortcutBtn);
+
+  if (chrome.commands?.getAll) {
+    chrome.commands.getAll().then((commands) => {
+      const toggleCommand = commands.find((c) => c.name === "toggle-comments-mode");
+      const assigned = toggleCommand?.shortcut?.trim();
+      if (assigned) {
+        shortcut.textContent = `Shortcut: ${assigned}`;
+      } else {
+        shortcut.textContent = "Shortcut not assigned";
+      }
+    }).catch(() => {
+      // Keep default hint text
+    });
+  }
   container.appendChild(hint);
 
   // ── Thread list ────────────────────────────────────────────────────────────
@@ -319,19 +371,30 @@ export async function initPopup(container: HTMLElement): Promise<void> {
   });
 
   // ── Load threads ────────────────────────────────────────────────────────────
-  dbg(`initPopup: loading threads for url=${pageUrl}`);
-  try {
-    const response = await chrome.runtime.sendMessage({
-      type: MESSAGE_TYPES.GET_THREADS,
-      payload: { url: pageUrl },
-    });
-    dbg(`initPopup: GET_THREADS response =`, response);
-    const threads: BrowserCommentThread[] = response?.success ? (response.data ?? []) : [];
-    renderThreadList(listContainer, threads, tabId, pageUrl);
-  } catch (err) {
-    dbgErr(`initPopup: GET_THREADS failed — ${err}`);
-    renderThreadList(listContainer, [], tabId, pageUrl);
-  }
+  const refreshThreads = async (): Promise<void> => {
+    dbg(`initPopup: loading threads for url=${pageUrl}`);
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: MESSAGE_TYPES.GET_THREADS,
+        payload: { url: pageUrl },
+      });
+      dbg(`initPopup: GET_THREADS response =`, response);
+      const threads: BrowserCommentThread[] = response?.success ? (response.data ?? []) : [];
+      renderThreadList(listContainer, threads, tabId, pageUrl);
+    } catch (err) {
+      dbgErr(`initPopup: GET_THREADS failed — ${err}`);
+      renderThreadList(listContainer, [], tabId, pageUrl);
+    }
+  };
+
+  await refreshThreads();
+
+  chrome.runtime.onMessage.addListener((message: { type?: string }) => {
+    if (message.type === MESSAGE_TYPES.COMMENTS_UPDATED) {
+      void refreshThreads();
+    }
+    return false;
+  });
 
   dbg("initPopup: complete");
 }

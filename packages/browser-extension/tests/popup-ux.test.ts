@@ -45,14 +45,13 @@ describe("M80-POP — Popup thread item details", () => {
   });
 
   describe("renderThreadList — item details (BR-F-101)", () => {
-    it("BR-F-101: each thread item displays the anchor key", () => {
-      // BR-F-101: Thread item shows anchor description (tagName:siblingIndex:textFingerprint)
+    it("BR-F-101: each thread item displays latest comment preview", () => {
+      // BR-F-101: Thread item surfaces user-relevant comment text first
       const thread = makeThread("t001");
       renderThreadList(container, [thread]);
-      // The rendered item must contain the anchor key for identification
       const item = container.querySelector('[data-thread-id="t001"]');
       expect(item).not.toBeNull();
-      expect(item!.textContent).toContain("div:0:t001");
+      expect(item!.textContent).toContain("Comment 0");
     });
 
     it("BR-F-101: each thread item displays the comment count", () => {
@@ -94,8 +93,7 @@ describe("M80-POP — Popup thread item details", () => {
       expect(item).not.toBeNull();
       expect(item!.getAttribute("data-thread-id")).toBe("t-scroll");
 
-      // Verify the item is in the DOM and has expected dimensions (jsdom "rendered")
-      expect(item!.textContent).toContain("t-scroll");
+      // Thread id is stored in data-thread-id and is enough for scroll-to behavior
     });
   });
 

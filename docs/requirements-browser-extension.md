@@ -1,17 +1,19 @@
 # Browser Extension — Requirements Specification
 
 **Package:** `packages/browser-extension` (Chrome Manifest V3 extension)  
-**Type:** Chrome browser extension (standalone, no VS Code dependency in v1)  
+**Type:** Chrome browser extension + local VS Code relay integration (v2a)  
 **Version:** 0.1.0  
 **Date:** 2026-03-19  
-**Architecture:** [`docs/browser-extension-architecture.md`](browser-extension-architecture.md) v2.0  
+**Architecture:** [`docs/browser-extension-architecture.md`](browser-extension-architecture.md) v2.1  
 **Supersedes:** [`docs/requirements-browser.md`](requirements-browser.md) (over-engineered; relay + VSCode extension removed from v1)
+
+**Current status note:** v1 baseline requirements remain documented here; Session 13 v2a relay + SDK convergence requirements are in §3.12 and are now active.
 
 ---
 
 ## 1. Purpose
 
-A standalone Chrome Manifest V3 extension that lets a user place spatial comment pins on any web page element. Comments are stored locally in `chrome.storage.local`, exported to the clipboard as structured Markdown/JSON, and retrievable by an AI agent via a stubbed MCP API shape.
+A Chrome Manifest V3 extension that lets a user place spatial comment pins on any web page element. Comments are stored locally in `chrome.storage.local`, exported to clipboard as Markdown/JSON, and exposed to Accordo agents through `accordo-browser` relay tools in v2a.
 
 The extension is **invisible by default**. A keyboard shortcut or toolbar button toggles "Comments Mode", at which point the user can right-click any element to add a comment. This avoids interfering with normal browsing.
 
@@ -27,6 +29,7 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
   "description": "Spatial comments on any web page — standalone, clipboard-first export",
   "permissions": [
     "activeTab",
+    "tabs",
     "storage",
     "contextMenus",
     "scripting"
@@ -55,8 +58,8 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
   "commands": {
     "toggle-comments-mode": {
       "suggested_key": {
-        "default": "Ctrl+Shift+A",
-        "mac": "Command+Shift+A"
+        "default": "Alt+Shift+C",
+        "mac": "Alt+Shift+C"
       },
       "description": "Toggle Comments Mode on/off"
     }
@@ -79,7 +82,7 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 |---|---|---|
 | BR-F-01 | `BrowserComment` interface defines all fields: `id`, `threadId`, `createdAt`, `author`, `body`, `anchorKey`, `pageUrl`, `status`, `resolutionNote?`, `deletedAt?`, `deletedBy?` | TypeScript compiles with `strict: true`; all fields match architecture doc §5.1 |
 | BR-F-02 | `BrowserCommentThread` interface groups comments by `threadId` with fields: `id`, `anchorKey`, `pageUrl`, `status`, `comments`, `createdAt`, `lastActivity`, `deletedAt?`, `deletedBy?` | Interface matches architecture doc §5.1 |
-| BR-F-03 | `PageCommentStore` interface wraps threads per URL with `version`, `url`, `threads[]`, `lastScreenshot?` | `version` field is literal `"1.0"` |
+| BR-F-03 | `PageCommentStore` interface wraps threads per URL with `version`, `url`, and `threads[]` only | `version` field is literal `"1.0"`; screenshots are stored separately under `screenshot:{normalizedUrl}` |
 | BR-F-04 | MCP types defined: `McpToolRequest<T>`, `McpToolResponse<T>`, `GetScreenshotArgs`, `GetScreenshotResult`, `GetCommentsArgs`, `GetCommentsResult` | All types match architecture doc §6.1 |
 | BR-F-05 | `ExportPayload`, `Exporter`, `ExportResult` interfaces defined for the export layer | Interfaces match architecture doc §7.1 |
 | BR-F-06 | All types are runtime-free (no executable code in types module) | Module has zero `function` or `class` declarations |
@@ -89,7 +92,7 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | ID | Requirement | Acceptance Criteria |
 |---|---|---|
 | BR-F-10 | Comments Mode defaults to OFF on extension install and browser launch | `chrome.storage.local` `settings.commentsMode` is `false` after `onInstalled` |
-| BR-F-11 | `Ctrl+Shift+A` (Mac: `Cmd+Shift+A`) toggles Comments Mode between OFF and ON | Toggle flips storage value and notifies content script within 100ms |
+| BR-F-11 | `Alt+Shift+C` toggles Comments Mode between OFF and ON | Toggle flips storage value and notifies content script within 100ms |
 | BR-F-12 | Toolbar button click toggles Comments Mode between OFF and ON | Same behaviour as keyboard shortcut |
 | BR-F-13 | When Comments Mode transitions to ON: context menu "Add Comment" item is created; existing pins for the current URL become visible; badge is updated | Context menu item exists (verified via `chrome.contextMenus.create` call); content script receives `comments-mode-on` message |
 | BR-F-14 | When Comments Mode transitions to OFF: context menu "Add Comment" item is removed; all pins are hidden; badge is cleared | Context menu item removed; content script receives `comments-mode-off` message; badge text is empty |
@@ -212,8 +215,28 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | BR-F-112 | Build produces 3 entry points via esbuild: `service-worker.js`, `content-script.js`, `popup.js` | All 3 files exist in `dist/` after build |
 | BR-F-113 | Build copies `manifest.json`, icons, and `popup.html` to `dist/` | All static assets present in build output |
 | BR-F-114 | Extension side-loads in Chrome via `chrome://extensions` → "Load unpacked" pointing to `dist/` | Extension appears in Chrome with correct name and icon |
-| BR-F-115 | `commands` section declares `toggle-comments-mode` with `Ctrl+Shift+A` / `Cmd+Shift+A` | Keyboard shortcut appears in `chrome://extensions/shortcuts` |
-| BR-F-116 | `packages/browser-extension/package.json` MUST NOT list `@accordo/comment-sdk` as a dependency (enforces DD-07) | Neither `dependencies` nor `devDependencies` contains `@accordo/comment-sdk` |
+| BR-F-115 | `commands` section declares `toggle-comments-mode` with `Alt+Shift+C` suggestion | Keyboard shortcut appears in `chrome://extensions/shortcuts` |
+| BR-F-116 | **v1 baseline only:** `packages/browser-extension/package.json` MUST NOT list `@accordo/comment-sdk` as a dependency (enforces DD-07 for standalone v1) | v1 branch/package state keeps SDK out of extension package dependencies |
+
+### 3.12 Session 13 v2a — SDK Convergence + Accordo Connectivity
+
+| ID | Requirement | Acceptance Criteria |
+|---|---|---|
+| BR-F-117 | Browser comment interactions use a single SDK-driven UI path for create/reply/resolve/reopen/delete (no divergent custom mutation path) | New comment and existing-thread actions are routed via SDK callbacks/adapters to the same service-worker mutation handlers |
+| BR-F-118 | Right-click comment creation opens SDK-aligned composer anchored to the clicked element context | Triggering "Add Comment" uses SDK UI flow and creates a thread at the clicked anchor |
+| BR-F-119 | Browser extension exposes relay action handlers in service-worker for `get_all_comments`, `get_comments`, `create_comment`, `reply_comment`, `resolve_thread`, `reopen_thread`, `delete_comment`, and `delete_thread` | Relay action dispatch returns typed success/error envelopes and updates storage correctly |
+| BR-F-120 | New `packages/browser` VS Code extension (`accordo-browser`) hosts a localhost WebSocket relay for Chrome extension connectivity | Relay starts on activation, accepts extension connection, and maintains client state |
+| BR-F-121 | Relay authenticates extension connections using a configured token (dev default allowed) and rejects unauthorized clients | Missing/invalid token connections are refused; valid token connects successfully |
+| BR-F-122 | `accordo-browser` registers Bridge tools for browser comments: `accordo_browser_getAllComments`, `accordo_browser_getComments`, `accordo_browser_createComment`, `accordo_browser_replyComment`, `accordo_browser_resolveThread`, `accordo_browser_reopenThread`, `accordo_browser_deleteComment`, `accordo_browser_deleteThread` | Tools appear in Hub tool list via existing Bridge registration flow |
+| BR-F-123 | Each browser comment tool call is forwarded over relay with `requestId` correlation and deterministic timeout handling | Timeouts return typed error; successful responses map to tool output without losing request correlation |
+| BR-F-124 | End-to-end: agent can read, create, reply, resolve/reopen, and delete browser comments through Hub tools and see updated state on subsequent reads | Sequential tool calls reflect storage mutations in browser extension |
+| BR-F-125 | Relay/tool response contract includes typed failure classes: `browser-not-connected`, `unauthorized`, `timeout`, `action-failed` | Errors are deterministic and asserted in tests for each failure mode |
+| BR-F-126 | Relay reconnection is automatic for browser-extension disconnect/restart and recovers without VS Code reload | After reconnect, tool calls succeed without manual extension host restart |
+| BR-F-127 | **v2a supersession of DD-07:** browser-extension converges on shared `@accordo/comment-sdk` interaction logic via adapter (workspace source or package import), avoiding duplicated mutation UI logic | Create/reply/resolve/reopen/delete are executed through SDK callback flow with no parallel custom mutation path |
+| BR-F-128 | Browser relay `get_comments` defaults to the active tab URL when `url` is omitted | Tool call without `url` returns comments for active browser tab |
+| BR-F-129 | Browser relay `get_all_comments` returns all commented page URLs sorted by `lastActivity` descending | Most recently worked-on pages appear first with thread/comment summary metadata |
+| BR-F-130 | Browser UI updates without manual page refresh when relay/agent mutations occur | Service worker broadcasts update messages and content/popup refresh automatically |
+| BR-F-131 | Browser create tool supports active-tab defaults when `url`/`anchor` are omitted | `accordo_browser_createComment` with `{ body }` creates a thread on active tab using fallback anchor when needed |
 
 ---
 
@@ -270,6 +293,8 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | BR-NF-51 | Zero `any` in source code | `grep ": any" src/` returns no results |
 | BR-NF-52 | esbuild bundles each entry point with tree-shaking and source maps | Source maps present in `dist/`; unused code eliminated |
 | BR-NF-53 | `pnpm test` runs all unit tests (Vitest) and passes | Zero failures, zero skipped |
+| BR-NF-54 | Relay security hygiene: auth token is never logged and relay binds to localhost only | Code audit + tests verify host binding and token redaction |
+| BR-NF-55 | Relay resilience: browser disconnect/reconnect does not require VS Code restart | After browser reconnect, tool calls resume successfully |
 
 ---
 
@@ -289,8 +314,11 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | M80-MCP | MCP Handler Layer | `src/mcp/mcp-types.ts` + `src/mcp/mcp-handlers.ts` | ~100 | M80-TYP, M80-STORE, M80-SCREEN |
 | M80-POP | Popup UI | `src/popup/popup.html` + `src/popup/popup.ts` | ~180 | M80-TYP, M80-EXPORT |
 | M80-MANIFEST | Manifest & Build | `manifest.json` + `esbuild.config.ts` | ~60 | None |
+| M81-SDK | SDK convergence adapter | `packages/browser-extension/src/content/*` | ~140 | M80-CS-PINS, M80-CS-INPUT, `@accordo/comment-sdk` |
+| M82-RELAY | Browser relay server | `packages/browser/src/*` | ~240 | `accordo-bridge` API, ws |
+| M83-BTOOLS | Browser bridge tools | `packages/browser/src/browser-tools.ts` | ~160 | M82-RELAY |
 
-**Total estimated LOC:** ~1,550
+**Total estimated LOC:** ~2,090 (v1 + Session 13 v2a additions)
 
 ---
 
@@ -310,6 +338,9 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | M80-MCP | BR-F-90 through BR-F-97 | BR-NF-20, BR-NF-50 |
 | M80-POP | BR-F-100 through BR-F-108 | BR-NF-01, BR-NF-30 |
 | M80-MANIFEST | BR-F-110 through BR-F-115 | BR-NF-30, BR-NF-32, BR-NF-52 |
+| M81-SDK | BR-F-117, BR-F-118, BR-F-119, BR-F-127, BR-F-130 | BR-NF-01, BR-NF-31 |
+| M82-RELAY | BR-F-120, BR-F-121, BR-F-123, BR-F-125, BR-F-126, BR-F-128, BR-F-129 | BR-NF-54, BR-NF-55 |
+| M83-BTOOLS | BR-F-122, BR-F-124, BR-F-131 | BR-NF-50, BR-NF-55 |
 
 ---
 
@@ -320,10 +351,8 @@ See architecture doc §11 for the full out-of-scope list. Key exclusions:
 - WebSocket relay to VS Code (`accordo-browser` VSCode extension)
 - CSS selector re-anchoring across page reloads
 - Cross-device sync
-- `@accordo/comment-sdk` integration
 - Firefox extension
 - Chrome Web Store publication
-- Agent-initiated comments (push to Chrome)
 - Rich text / Markdown in comments
 - Multi-workspace Chrome switcher
 
@@ -334,5 +363,5 @@ See architecture doc §11 for the full out-of-scope list. Key exclusions:
 1. **User name default:** Prompt on first install or default to "User"? (Affects M80-POP, M80-TYP)
 2. **Export format preference:** Default clipboard format — Markdown or JSON? (Affects M80-EXPORT)
 3. **Screenshot quality/size:** JPEG at 0.7 (~200KB each) — acceptable? (Affects M80-SCREEN)
-4. **Keyboard shortcut conflict:** `Ctrl+Shift+A` may conflict — alternative shortcut? (Affects M80-SM)
+4. **Keyboard shortcut conflict:** `Alt+Shift+C` may conflict on some systems — user can remap in `chrome://extensions/shortcuts`. (Affects M80-SM)
 5. **Comment character limit:** Cap body at 2000 chars? (Affects M80-STORE, M80-TYP)

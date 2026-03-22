@@ -34,7 +34,7 @@ export async function captureScreenshot(
   // Capture visible tab as JPEG at quality 0.7 (BR-F-81 / BR-NF-11)
   // Signature: captureVisibleTab(windowId?: number, options?: CaptureVisibleTabOptions)
   // The options object must be the SECOND argument, not the first.
-  const dataUrl: string = await chrome.tabs.captureVisibleTab(undefined, {
+  const dataUrl: string = await chrome.tabs.captureVisibleTab({
     format: "jpeg",
     quality: 70,
   });

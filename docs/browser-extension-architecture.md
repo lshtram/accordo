@@ -1,10 +1,19 @@
-# Accordo — Browser Extension Architecture v2.0
+# Accordo — Browser Extension Architecture v2.1
 
-**Status:** APPROVED — simplified scope, Comments Mode + clipboard export + MCP stub  
-**Date:** 2026-03-19  
-**Scope:** Chrome Manifest V3 browser extension for spatial commenting on web pages  
+**Status:** ACTIVE — v1 shipped; v2a relay + SDK convergence in progress  
+**Date:** 2026-03-21  
+**Scope:** Chrome Manifest V3 browser extension + `accordo-browser` relay for agent actions  
 **Supersedes:** `docs/browser-architecture.md` v1.0 (over-engineered; relay + VSCode extension removed from v1)  
 **Requirements:** [`docs/requirements-browser-extension.md`](requirements-browser-extension.md)
+
+---
+
+## 0. Current Status
+
+- v1 baseline is complete (standalone browser comments, local storage, export).
+- v2a work is active: browser-extension now includes relay client/actions and SDK convergence work.
+- `accordo-browser` relay package exists and registers browser comment tools through Bridge.
+- Historical v1-only statements remain in this doc for traceability and are explicitly marked as baseline/history.
 
 ---
 
@@ -12,14 +21,14 @@
 
 ### What This Is
 
-A **standalone Chrome Manifest V3 extension** that lets a user place spatial comment pins on any web page element. Comments are stored locally in `chrome.storage.local`, exported to the clipboard as structured JSON/Markdown, and retrievable by an AI agent via a stubbed MCP API shape.
+A Chrome Manifest V3 extension that lets a user place spatial comment pins on any web page element. Comments are stored locally in `chrome.storage.local`, exported to the clipboard, and (in v2a) exposed to Accordo agents via the local relay path.
 
 The extension is **invisible by default**. A keyboard shortcut or toolbar button toggles "Comments Mode", at which point the user can right-click any element to add a comment. This avoids interfering with normal browsing.
 
-### What This Is NOT in v1
+### Historical v1 baseline (for context)
 
-- **Not a VS Code relay.** No WebSocket server, no `accordo-browser` VS Code extension, no Bridge integration. The extension is self-contained.
-- **Not a full MCP client.** The MCP transport (WebSocket relay to Hub) does not exist in v1. The handler functions are real — they read from `chrome.storage.local` and return actual data. Only the transport layer (how an external agent invokes these handlers) is stubbed.
+- **No relay in v1 baseline.** Relay and Hub connectivity were deferred from initial release.
+- **No external MCP transport in v1 baseline.** Handlers existed, transport did not.
 - **Not a persistence layer across devices.** Comments live in `chrome.storage.local` — local to the browser profile. No sync, no cloud.
 - **Not a CSS-selector-based anchoring system.** v1 anchors comments to the element the user right-clicked using a simple `data-block-id` approach. Robust CSS selector re-anchoring across page reloads is deferred.
 - **Not integrated with `@accordo/comment-sdk`.** The SDK uses `--vscode-*` CSS variables that have no browser equivalent. v1 inlines its own comment UI directly.
@@ -89,9 +98,11 @@ packages/browser-extension/     Chrome Manifest V3 extension
 
 **Enforcement:** `packages/browser-extension/package.json` MUST NOT list `@accordo/comment-sdk` as a dependency (neither `dependencies` nor `devDependencies`). This is validated by code review checklist item.
 
-### DD-08: No VS Code Relay in v1
+**Session 13 v2a supersession:** DD-07 applies to v1 baseline only. In v2a, browser-extension converges on shared SDK interaction logic via an adapter boundary so browser comment UX evolves with the same SDK behavior as other Accordo modalities.
 
-**Decision:** The extension does not connect to any VS Code extension or Accordo Hub in v1. It is fully self-contained. The MCP API shapes are defined in TypeScript so the relay can be added in v2 as a clear integration point.
+### DD-08: VS Code Relay in v2a
+
+**Decision:** v1 was fully self-contained. In v2a, extension connects to `accordo-browser` relay over localhost WebSocket to support agent list/get/create/reply/resolve/reopen/delete operations.
 
 **Rationale:** The relay requires a new `accordo-browser` VS Code extension (WebSocket server, auth token flow, Bridge integration). This is significant scope. v1 validates the core UX (commenting on web pages) independently. The relay is the natural v2.
 
@@ -101,9 +112,9 @@ packages/browser-extension/     Chrome Manifest V3 extension
 
 **Rationale:** Full CSS selector generation (as specified in the old `browser-architecture.md` M67-CSS) is complex and fragile across page reloads with dynamic content. v1 anchors are session-scoped — they work as long as the page DOM hasn't changed. Cross-reload re-anchoring is deferred to v2 when the full CSS selector + fingerprint system will be implemented.
 
-### DD-10: MCP Stub Layer — Real Handlers, Stubbed Transport
+### DD-10: MCP/Relay Layer — Real Handlers, Live Transport
 
-**Decision:** The extension defines TypeScript types for `get_screenshot` and `get_comments` MCP tools. The handler functions are **fully implemented in v1** — they read real data from `chrome.storage.local` and return actual comments/screenshots in the `McpToolResponse` shape. What is "stubbed" is only the **transport layer**: there is no WebSocket relay connecting an external agent to these handlers. The handlers are invoked internally via the service worker message router (under the `mcp:` namespace) and can be called from the popup or content script for testing/preview purposes.
+**Decision:** Handler logic reads real storage data and mutation actions run through service-worker authority. In v2a, transport is active via local relay (`accordo-browser` <-> browser-extension) for agent-facing tools.
 
 **Rationale:** Implementing the handlers against real storage in v1 means the v2 relay integration is purely additive — only a transport module (`relay-client.ts`) needs to be added. No handler logic changes, no type changes, no storage format migration. The handlers are tested against real storage operations from day one.
 
@@ -701,14 +712,14 @@ M80-SM              M80-POP           M80-SW
 |---|---|---|
 | WebSocket relay to VS Code | Requires `accordo-browser` VSCode extension (new package) | v2 |
 | `accordo-bridge` changes | No Bridge integration in v1 | v2 |
-| Hub MCP tool registration for browser comments | No Hub changes in v1 | v2 |
+| Full parity for all browser mutations (agent-driven create-thread UX parity) | Deferred in v1; delivered in Session 13 v2a via relay + SDK convergence | v2a |
 | CSS selector re-anchoring across page reloads | Complex; requires full selector generator (old M67-CSS) | v2 |
 | Cross-device sync | `chrome.storage.local` is per-profile | v2+ |
-| `@accordo/comment-sdk` integration | CSS variable mismatch; inline UI is simpler | v2 |
+| `@accordo/comment-sdk` integration | Deferred from v1; delivered in Session 13 v2a via SDK adapter in content script | v2a |
 | Firefox extension | Chrome-only for v1 | Future |
 | Chrome Web Store publication | Side-load only in v1 | Post-v1 |
 | Multi-workspace Chrome switcher | No VS Code connection in v1 | v2 |
-| Agent-initiated comments (push to Chrome) | Requires relay | v2 |
+| Agent-initiated comments (push to Chrome) | Deferred in v1; delivered in v2a for create/reply/resolve/reopen/delete through browser relay tools | v2a |
 | Floating scroll-to arrows for off-screen comments | Badge only in v1 | v2 |
 | Rich text / Markdown in comments | Plain text in v1 | v2 |
 | Comment notifications | No push channel in v1 | v2 |
@@ -717,7 +728,7 @@ M80-SM              M80-POP           M80-SW
 
 ## 12. How This Fits Into Existing Accordo Architecture
 
-### v1: No Changes to Any Existing Package
+### v1 Baseline Snapshot (Historical)
 
 | Existing Package | Impact in v1 |
 |---|---|
@@ -728,10 +739,10 @@ M80-SM              M80-POP           M80-SW
 | `@accordo/comment-sdk` | **No change.** Not imported by browser extension. |
 | `@accordo/bridge-types` | **No change.** No new types added to shared package. |
 
-### v2: Integration Path (Not Built Now)
+### v2 Integration Path (Historical Plan)
 
 ```
-v2 adds:
+v2 plan added:
 1. packages/browser/ (accordo-browser VSCode extension)
    - WebSocket relay server (BrowserRelay)
    - BrowserCommentsBridge → CommentStore via getSurfaceAdapter
@@ -745,7 +756,97 @@ v2 adds:
    - Full two-way comment sync with CommentStore
 ```
 
-The v1 extension is designed so that v2 integration is **additive** — no breaking changes, no type renames, no storage format migration.
+The v1 extension was designed so that v2 integration would be **additive** — no breaking changes, no type renames, no storage format migration.
+
+### 12.0 Current v2a Impact on Existing Packages
+
+| Existing Package | Current Impact in v2a |
+|---|---|
+| `accordo-hub` | No protocol changes; browser tools now appear through existing bridge registration flow. |
+| `accordo-bridge` | No protocol changes; new provider package registers tools via existing `registerTools`. |
+| `accordo-editor` | No direct code changes required. |
+| `accordo-comments` | No direct code changes required. |
+| `@accordo/comment-sdk` | Imported by browser-extension for converged interaction behavior. |
+| `@accordo/bridge-types` | Reused as-is for tool definitions; no new wire schema required for v2a slice. |
+
+### 12.1 Session 13 (v2a) — Detailed Wiring Plan
+
+Session 13 delivers two outcomes together:
+
+1. **SDK convergence inside browser-extension** (single interaction engine)
+2. **Accordo connectivity** (agent can list/get/create/reply/resolve/reopen/delete browser comments)
+
+#### 12.1.1 Target runtime topology
+
+```
+Agent (MCP) -> accordo-hub -> accordo-bridge -> accordo-browser (new VS Code ext)
+                                                |
+                                                | local WS (token-auth)
+                                                v
+                                       browser-extension (Chrome MV3)
+                                                |
+                                                v
+                                      chrome.storage.local + SDK UI
+```
+
+#### 12.1.2 New package: `packages/browser/` (`accordo-browser`)
+
+- Runs inside VS Code extension host.
+- Opens local WebSocket relay endpoint for Chrome extension.
+- Authenticates extension client via shared token.
+- Registers Bridge tools (which become Hub MCP tools):
+  - `accordo_browser_getAllComments`
+  - `accordo_browser_getComments`
+  - `accordo_browser_createComment`
+  - `accordo_browser_replyComment`
+  - `accordo_browser_resolveThread`
+  - `accordo_browser_reopenThread`
+  - `accordo_browser_deleteComment`
+  - `accordo_browser_deleteThread`
+- Routes each tool call to extension over relay with correlation ID and timeout.
+
+#### 12.1.3 Browser-extension updates (v2a)
+
+- Add relay client module in service-worker context.
+- Keep storage and existing read handlers; add/confirm mutation action handlers for reply/delete.
+- Keep service-worker as the single mutation authority for storage.
+- Ensure content script uses SDK callbacks for create/reply/resolve/reopen/delete (no parallel custom action path).
+- Service-worker broadcasts `COMMENTS_UPDATED` to tabs so content script/popup refresh without manual page reload after agent mutations.
+
+#### 12.1.4 Stable contracts
+
+1. **Relay request envelope**
+   - `{ requestId, action, payload }`
+2. **Relay response envelope**
+   - `{ requestId, success, data?, error? }`
+3. **Action set (v2a)**
+   - `get_all_comments`
+   - `get_comments`
+   - `create_comment`
+   - `reply_comment`
+   - `resolve_thread`
+   - `reopen_thread`
+   - `delete_comment`
+   - `delete_thread`
+
+#### 12.1.5 Failure model
+
+- Browser not connected -> tool returns typed error (`browser-not-connected`).
+- Auth mismatch -> relay rejects socket (`unauthorized`).
+- Request timeout -> tool returns `timeout` with request ID.
+- Extension storage mutation failure -> error propagated as `action-failed` with context.
+
+#### 12.1.6 Security constraints
+
+- Relay binds to localhost only.
+- Token is configuration-driven (dev default token supported for local workflows) and should be persisted in VS Code secure storage/settings scope in hardened deployments; never log token values.
+- No cross-origin browser content data is pushed automatically; only explicit tool invocations fetch/mutate comments.
+
+#### 12.1.7 Why this is additive
+
+- No migration of comment schema in `chrome.storage.local`.
+- Existing extension read handlers stay valid.
+- Hub/Bridge core protocol remains unchanged; browser functionality is introduced as another extension tool provider.
 
 ---
 

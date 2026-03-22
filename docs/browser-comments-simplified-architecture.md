@@ -1,9 +1,11 @@
-# Accordo Browser Comments — Simplified Architecture v2.0
+# Accordo Browser Comments — Simplified Architecture v2.0 (Archived)
 
-**Status:** PROPOSED — awaiting approval  
+**Status:** ARCHIVED — superseded by `docs/browser-extension-architecture.md`  
 **Date:** 2026-03-19  
 **Scope:** Standalone Chrome extension for ephemeral browser-surface commenting  
 **Supersedes:** `browser-architecture.md` v1.0, `requirements-browser.md` — Session 12 plan is fully replaced
+
+> Archive note: this document describes an earlier standalone-only proposal and is kept for historical context. Current implementation and status are defined in `docs/browser-extension-architecture.md` and `docs/requirements-browser-extension.md`.
 
 ---
 

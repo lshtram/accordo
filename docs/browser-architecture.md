@@ -1,8 +1,12 @@
-# Accordo — Browser Agentation Architecture v1.0
+# Accordo — Browser Agentation Architecture v1.0 (Archived)
 
-**Status:** PROPOSED  
+**Status:** ARCHIVED — superseded by `docs/browser-extension-architecture.md`  
 **Date:** 2026-03-06  
 **Scope:** Phase 6 browser modality (`accordo-browser` + Chrome extension)
+
+---
+
+> Archive note: this was the original relay-first proposal. Current source of truth is `docs/browser-extension-architecture.md` plus `docs/requirements-browser-extension.md`.
 
 ---
 

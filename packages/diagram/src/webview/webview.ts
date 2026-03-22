@@ -129,12 +129,15 @@ function toSdkThreads(threads: AnyCommentThread[]): SdkThread[] {
         blockId: coords["nodeId"],
         status: t.status,
         hasUnread: false,
-        comments: t.comments.map((c) => ({
-          id: c.id,
-          author: c.author,
-          body: c.body,
-          createdAt: c.createdAt,
-        })),
+        comments: t.comments.map((c) => {
+          const authorKind = c.author.kind === "agent" ? "agent" : "user";
+          return {
+            id: c.id,
+            author: { kind: authorKind, name: c.author.name },
+            body: c.body,
+            createdAt: c.createdAt,
+          };
+        }),
       };
     });
 }
