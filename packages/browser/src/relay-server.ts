@@ -52,16 +52,40 @@ export class BrowserRelayServer implements BrowserRelayLike {
       }
       this.client = socket;
       this.emit("relay-client-connected", { remote: req.socket.remoteAddress ?? "unknown" });
-      socket.on("message", (raw: Buffer) => {
+      socket.on("message", async (raw: Buffer) => {
         if (this.client !== socket) return;
+        let parsed: Record<string, unknown>;
         try {
-          const parsed = JSON.parse(String(raw)) as BrowserRelayResponse;
-          const resolve = this.pending.get(parsed.requestId);
-          if (!resolve) return;
-          this.pending.delete(parsed.requestId);
-          resolve(parsed);
+          parsed = JSON.parse(String(raw)) as Record<string, unknown>;
         } catch {
-          // ignore invalid frames
+          return;
+        }
+
+        // Incoming message from Chrome has an `action` field (BrowserRelayRequest).
+        // Outgoing response from Chrome to our own pending call has a `success` field.
+        if (typeof parsed["action"] === "string" && this.options.onRelayRequest) {
+          // Chrome → VS Code: route through onRelayRequest interceptor
+          const result = await this.options.onRelayRequest(
+            parsed["action"] as Parameters<typeof this.options.onRelayRequest>[0],
+            (parsed["payload"] as Record<string, unknown>) ?? {},
+          );
+          socket.send(JSON.stringify(result));
+          return;
+        }
+
+        if (typeof parsed["success"] !== "undefined") {
+          // Chrome → VS Code: response to our own pending request
+          const requestId = parsed["requestId"] as string | undefined;
+          if (!requestId) return;
+          const resolve = this.pending.get(requestId);
+          if (!resolve) return;
+          this.pending.delete(requestId);
+          resolve({
+            requestId,
+            success: parsed["success"] as boolean,
+            data: parsed["data"],
+            error: parsed["error"] as BrowserRelayResponse["error"],
+          });
         }
       });
       socket.on("close", () => {
