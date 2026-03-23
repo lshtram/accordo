@@ -848,26 +848,6 @@ Agent (MCP) -> accordo-hub -> accordo-bridge -> accordo-browser (new VS Code ext
 - Existing extension read handlers stay valid.
 - Hub/Bridge core protocol remains unchanged; browser functionality is introduced as another extension tool provider.
 
-### 12.2 Session 14 (v2b) — Unified Comments Contract
-
-Session 14 migrates browser comments from a browser-specific public tool family to the shared comments modality contract.
-
-1. **Unified public MCP tools**
-   - Browser operations are invoked via `accordo_comment_*` with `scope.modality = "browser"`.
-   - `accordo_browser_*` tools remain temporary compatibility aliases only during migration.
-
-2. **Panel unification**
-   - Browser threads are projected into the same comments panel dataset used by text/diagram/slide/preview.
-   - Navigation remains surface-aware via `surfaceType = "browser"`.
-
-3. **Volatile browser retention + cleanup UX**
-   - Browser threads carry retention metadata (`volatile-browser`) because anchors drift faster on live pages.
-   - Comments Panel adds `Delete All Browser Comments` action with confirmation and deleted-count feedback.
-
-4. **Architecture outcome**
-   - One comment system and one public tool model across modalities.
-   - Browser relay remains transport/adaptation infrastructure, not a separate comments API surface.
-
 ---
 
 ## 13. Risk Register

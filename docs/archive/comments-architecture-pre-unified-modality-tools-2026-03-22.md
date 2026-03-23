@@ -1,7 +1,7 @@
-# Accordo — Comments Modality Architecture v1.1
+# Accordo — Comments Modality Architecture v1.0
 
 **Status:** DRAFT
-**Date:** 2026-03-22
+**Date:** 2026-03-03
 **Scope:** Spatial commenting across all Accordo surfaces — code, diagrams, images, PDFs, markdown previews, slides
 **Depends on:** Phase 1 completion (Hub + Bridge + Editor)
 
@@ -13,7 +13,7 @@ Comments are the **primary human-agent communication channel within the spatial 
 
 This is not annotation. This is task dispatch with spatial grounding.
 
-The agent is an equal participant. It can create comments ("This function has a potential null dereference on line 42"), reply to comments ("Fixed — I added a guard clause"), resolve, and reopen when needed. The human can do the same. Both parties can point at anything in the workspace and start a conversation about it.
+The agent is an equal participant. It can create comments ("This function has a potential null dereference on line 42"), reply to comments ("Fixed — I added a guard clause"), and resolve them. The human can do the same. Both parties can point at anything in the workspace and start a conversation about it.
 
 ---
 
@@ -146,8 +146,6 @@ type CommentIntent = "fix" | "explain" | "refactor" | "review" | "design" | "que
 
 type CommentStatus = "open" | "resolved";
 
-type CommentRetention = "standard" | "volatile-browser";
-
 interface CommentContext {
   viewportSnap?: {
     before: string;                              // ~20 lines above, capped at 1KB
@@ -179,7 +177,6 @@ interface CommentThread {
   anchor: CommentAnchor;
   comments: AccordoComment[];                    // ordered by createdAt
   status: CommentStatus;                         // derived: "resolved" if any comment resolves it
-  retention: CommentRetention;                   // browser pages default to volatile-browser
   createdAt: string;                             // first comment's timestamp
   lastActivity: string;                          // most recent comment's timestamp
 }
@@ -196,9 +193,9 @@ interface CommentThread {
 
 Deletion is removal, not a state. When a comment is deleted, it's removed from the store and the thread. If all comments in a thread are deleted, the thread is removed.
 
-**Why `retention: volatile-browser`?**
+**Why no `expiresAt`?**
 
-Browser pages change frequently and old anchors become less useful than file-anchored threads. Browser threads therefore carry `retention: "volatile-browser"` so the Comments Panel can filter/highlight them and provide one-click bulk cleanup.
+Premature. Add TTL-based cleanup when there's evidence it's needed. For now, comments persist until explicitly resolved or deleted.
 
 ---
 
@@ -236,7 +233,7 @@ Browser pages change frequently and old anchors become less useful than file-anc
 |---|---|---|---|
 | — | `open` | user or agent | Create comment |
 | `open` | `resolved` | user or agent | `comment.resolve` tool or UI action |
-| `resolved` | `open` | user or agent | `comment.reopen` tool or UI "Reopen" action |
+| `resolved` | `open` | user only | UI "Reopen" action (agent cannot reopen) |
 | any | (deleted) | user or agent | `comment.delete` tool or UI action |
 
 **Conflict rule:** If two agents try to resolve the same comment simultaneously, the first one wins (optimistic concurrency — check status before resolving, return error if already resolved). This is simple and correct because the Hub serializes tool calls through Bridge.
@@ -872,7 +869,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 ```
 
-### 10.3 Inter-extension communication for Comment SDK and browser relay
+### 10.3 Inter-extension communication for Comment SDK
 
 Other Accordo modality extensions (diagrams, slides, image viewer) need to interact with the comments extension to load/save surface comments. This is done via **VSCode commands** (which work across extensions regardless of host location).
 
@@ -913,30 +910,6 @@ Comments Extension (accordo-comments)
     ▼
 Hub → Agent system prompt: "3 open comments"
 ```
-
-Browser uses the same comment store contract through a host adapter path (relay transport on one side, unified comment tools on the other) so browser threads are first-class entries in the same Comments Panel dataset.
-
-### 10.4 Unified comment tool contract (all modalities)
-
-Public MCP tools are unified under one namespace:
-
-- `accordo_comment_list`
-- `accordo_comment_get`
-- `accordo_comment_create`
-- `accordo_comment_reply`
-- `accordo_comment_resolve`
-- `accordo_comment_reopen`
-- `accordo_comment_delete`
-
-Each tool accepts modality scoping in input (for example `scope.modality = "browser"`), instead of exposing modality-specific public tool families.
-
-### 10.5 Comments Panel browser cleanup action
-
-To manage volatile browser anchors, the custom Accordo Comments Panel adds an explicit action:
-
-- Command: `accordo.commentsPanel.deleteAllBrowserComments`
-- Behavior: prompt for confirmation, then delete all threads where `anchor.kind = "surface"` and `surfaceType = "browser"`
-- Backing path: unified `accordo_comment_delete` with `deleteScope: { modality: "browser", all: true }`
 
 ---
 
@@ -1053,7 +1026,7 @@ packages/comments/
 │   │   └── context-capture.test.ts
 │   │
 │   ├── tools/
-│   │   ├── comment-tools.ts         # 7 unified MCP tool definitions + handlers
+│   │   ├── comment-tools.ts         # 6 MCP tool definitions + handlers
 │   │   └── comment-tools.test.ts
 │   │
 │   └── sdk/
@@ -1076,7 +1049,7 @@ packages/comments/
 - Text adapter: native VSCode Comments API (create, reply, resolve, delete, reopen)
 - Context capture: viewport snap, diagnostics, git info
 - Diff-aware staleness with line-shift adjustment
-- 7 MCP tools: `accordo_comment_list`, `accordo_comment_get`, `accordo_comment_create`, `accordo_comment_reply`, `accordo_comment_resolve`, `accordo_comment_reopen`, `accordo_comment_delete`
+- 6 MCP tools: `comment.list`, `.get`, `.create`, `.reply`, `.resolve`, `.delete`
 - Modality state published to Hub (open thread summary in system prompt)
 - Restore persisted threads on activation
 - Menu contributions (resolve, delete, reopen actions)
@@ -1120,11 +1093,11 @@ packages/comments/
 | `SurfaceAdapterRegistry` (abstract interface) | Per-surface coordinate resolvers (concrete functions) | Premature abstraction. Each surface is different. SDK with pluggable resolvers is simpler. |
 | `diagnostics?: any[]` | Fully typed diagnostic array | Coding guidelines: never use `any` |
 | 5 states (open, acked, resolved, stale, deleted) | 2 states (open, resolved) + visual staleness indicator | `acked` adds no value. `stale` is display, not data. `deleted` is removal. |
-| No MCP tools defined | 7 unified tools fully specified with modality scope | The agent had no way to interact with comments across modalities through one contract. Now it does. |
+| No MCP tools defined | 6 tools fully specified | The agent had no way to interact with comments. Now it does. |
 | No persistence model | `.accordo/comments.json` workspace file | Comments were lost on reload. Now they survive. |
 | No modality state | Open thread summary in system prompt | Agent had no way to know comments existed without calling a tool. |
 | No scale limits | 500 threads, 50 comments/thread, 2MB cap | Prevents unbounded growth. |
-| Browser extension in scope | Included through unified comment adapter + panel integration | Browser comments appear in the same comment system and cleanup flow. |
+| Browser extension in scope | Deferred | Different product. Ship VSCode first. |
 | No conflict handling | First-write-wins with status check | Simple, correct for single-Bridge architecture. |
 | No inter-extension API | VSCode commands for modality integration | Other extensions need to load/save surface comments. |
 | Vague auto-cleanup policy | Comments persist until resolved or deleted | No magic. Explicit lifecycle. |

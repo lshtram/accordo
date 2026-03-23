@@ -238,16 +238,6 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | BR-F-130 | Browser UI updates without manual page refresh when relay/agent mutations occur | Service worker broadcasts update messages and content/popup refresh automatically |
 | BR-F-131 | Browser create tool supports active-tab defaults when `url`/`anchor` are omitted | `accordo_browser_createComment` with `{ body }` creates a thread on active tab using fallback anchor when needed |
 
-### 3.13 Session 14 — Unified Comments Tools + Panel Registration
-
-| ID | Requirement | Acceptance Criteria |
-|---|---|---|
-| BR-F-132 | Browser comment actions are exposed through unified `accordo_comment_*` tools with `scope.modality = "browser"` instead of a browser-only public tool namespace | Agent can perform list/get/create/reply/resolve/reopen/delete for browser comments via `accordo-comments` tool set |
-| BR-F-133 | Browser comments are mirrored into the shared comments store/panel projection path so they appear in the Accordo Comments Panel alongside text/diagram/slide comments | Browser-origin threads are visible in panel grouping/filtering with surfaceType `browser` |
-| BR-F-134 | Browser-origin threads are marked as volatile retention class for cleanup UX | Panel indicates volatile browser threads and can filter them quickly |
-| BR-F-135 | Comments Panel adds a bulk browser cleanup action (`Delete All Browser Comments`) with explicit confirmation | Trigger removes all browser threads and reports deleted count |
-| BR-F-136 | Browser-specific public tools remain temporary aliases only during migration and are removed after parity validation | No net functionality loss during alias period; final tool list excludes `accordo_browser_*` |
-
 ---
 
 ## 4. Non-Functional Requirements
@@ -351,7 +341,6 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | M81-SDK | BR-F-117, BR-F-118, BR-F-119, BR-F-127, BR-F-130 | BR-NF-01, BR-NF-31 |
 | M82-RELAY | BR-F-120, BR-F-121, BR-F-123, BR-F-125, BR-F-126, BR-F-128, BR-F-129 | BR-NF-54, BR-NF-55 |
 | M83-BTOOLS | BR-F-122, BR-F-124, BR-F-131 | BR-NF-50, BR-NF-55 |
-| M84-UNIFIED | BR-F-132, BR-F-133, BR-F-134, BR-F-135, BR-F-136 | BR-NF-54, BR-NF-55 |
 
 ---
 

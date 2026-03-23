@@ -10,7 +10,7 @@
 
 ## 1. Purpose
 
-Accordo Comments is the spatial commenting engine for the Accordo IDE. It provides persistent, thread-based commentary anchored to locations in any Accordo surface (source files, diagrams, images, markdown previews, PDFs, slides, browser pages). Comments are stored as JSON on disk, projected into VS Code's native comment UI / Accordo Comments Panel, and exposed to AI agents as unified MCP tools via the Bridge.
+Accordo Comments is the spatial commenting engine for the Accordo IDE. It provides persistent, thread-based commentary anchored to locations in any Accordo surface (source files, diagrams, images, markdown previews, PDFs, slides). Comments are stored as JSON on disk, projected into VS Code's native comment UI, and exposed to AI agents as MCP tools via the Bridge.
 
 ---
 
@@ -148,32 +148,25 @@ interface AccordoComment {
 
 **File:** `src/comment-tools.ts`
 
-**Purpose:** Expose cross-modality thread CRUD as unified MCP tools so agents can read, create, and manage comment threads across text and surface modalities using one API.
+**Purpose:** Expose thread CRUD as MCP tools so agents can read, create, and manage comment threads.
 
 | Requirement ID | Requirement |
 |---|---|
-| M38-CT-01 | Tool `accordo_comment_list` — list thread summaries with filters/pagination and optional modality scope |
-| M38-CT-02 | Tool `accordo_comment_get` — get one thread by `threadId` |
-| M38-CT-03 | Tool `accordo_comment_create` — create a thread with modality-specific anchor |
-| M38-CT-04 | Tool `accordo_comment_reply` — append a reply to a thread |
-| M38-CT-05 | Tool `accordo_comment_resolve` — resolve a thread with `resolutionNote` |
-| M38-CT-06 | Tool `accordo_comment_reopen` — reopen a resolved thread |
-| M38-CT-07 | Tool `accordo_comment_delete` — delete a thread, a single comment, or a scoped browser cleanup |
-| M38-CT-08 | All tools return structured JSON matching the CommentThread data model |
-| M38-CT-09 | Tools are registered via `bridge.registerTools('accordo-comments', tools)` |
-| M38-CT-10 | `accordo_comments_discover` exposes schemas/metadata for the comments tool group |
-| M38-CT-11 | Browser comments MUST be reachable through the same unified tools (no separate public `accordo_browser_*` tool family after migration) |
+| M38-CT-01 | Tool `accordo.comment.list` — list thread summaries with filters/pagination |
+| M38-CT-02 | Tool `accordo.comment.get` — get one thread by `threadId` |
+| M38-CT-03 | Tool `accordo.comment.create` — create a thread with text/file anchor |
+| M38-CT-04 | Tool `accordo.comment.reply` — append a reply to a thread |
+| M38-CT-05 | Tool `accordo.comment.resolve` — resolve a thread with `resolutionNote` |
+| M38-CT-06 | Tool `accordo.comment.delete` — delete a thread or single comment |
+| M38-CT-07 | All tools return structured JSON matching the CommentThread data model |
+| M38-CT-08 | Tools are registered via `bridge.registerTools('accordo-comments', tools)` |
+| M38-CT-09 | `accordo.comments.discover` exposes schemas/metadata for the comments tool group |
 
-#### Tool Schema: `accordo_comment_list`
+#### Tool Schema: `accordo.comment.list`
 
 ```typescript
 // Input
 {
-  scope?: {
-    modality?: "text" | "markdown-preview" | "diagram" | "slide" | "image" | "pdf" | "browser";
-    uri?: string;
-    url?: string;
-  };
   uri?: string;
   status?: "open" | "resolved";
   intent?: "fix" | "explain" | "refactor" | "review" | "design" | "question";
@@ -187,7 +180,7 @@ interface AccordoComment {
 { threads: ThreadSummary[]; total: number; hasMore: boolean }
 ```
 
-#### Tool Schema: `accordo_comment_get`
+#### Tool Schema: `accordo.comment.get`
 
 ```typescript
 // Input
@@ -198,22 +191,13 @@ interface AccordoComment {
 { thread: CommentThread }
 ```
 
-#### Tool Schema: `accordo_comment_create`
+#### Tool Schema: `accordo.comment.create`
 
 ```typescript
 // Input
 {
-  scope: {
-    modality: "text" | "markdown-preview" | "diagram" | "slide" | "image" | "pdf" | "browser";
-    uri?: string;
-    url?: string;
-  };
-  uri?: string;
-  anchor:
-    | { kind: "text"; startLine: number; endLine?: number }
-    | { kind: "file" }
-    | { kind: "surface"; surfaceType: string; coordinates: Record<string, unknown> }
-    | { kind: "browser"; anchorKey?: string };
+  uri: string;
+  anchor: { kind: "text"; startLine: number; endLine?: number } | { kind: "file" };
   body: string;
   intent?: "fix" | "explain" | "refactor" | "review" | "design" | "question";
 }
@@ -221,7 +205,7 @@ interface AccordoComment {
 { created: true; threadId: string; commentId: string }
 ```
 
-#### Tool Schema: `accordo_comment_reply`
+#### Tool Schema: `accordo.comment.reply`
 
 ```typescript
 // Input
@@ -230,7 +214,7 @@ interface AccordoComment {
 { replied: true; commentId: string }
 ```
 
-#### Tool Schema: `accordo_comment_resolve`
+#### Tool Schema: `accordo.comment.resolve`
 
 ```typescript
 // Input
@@ -239,32 +223,14 @@ interface AccordoComment {
 { resolved: true; threadId: string }
 ```
 
-#### Tool Schema: `accordo_comment_reopen`
+#### Tool Schema: `accordo.comment.delete`
 
 ```typescript
 // Input
-{ threadId: string }
+{ threadId: string; commentId?: string }
 // Output
-{ reopened: true; threadId: string }
+{ deleted: true }
 ```
-
-#### Tool Schema: `accordo_comment_delete`
-
-```typescript
-// Input
-{
-  threadId?: string;
-  commentId?: string;
-  deleteScope?: {
-    modality: "browser";
-    all: true;
-  };
-}
-// Output
-{ deleted: true; deletedCount?: number }
-```
-
-`deleteScope: { modality: "browser", all: true }` is reserved for bulk browser cleanup and is the backend path used by the Comments Panel "Delete All Browser Comments" action.
 
 ---
 
@@ -304,8 +270,6 @@ interface AccordoComment {
 | M40-EXT-09 | Exposes internal commands for inter-extension calls from `accordo-md-viewer`, including `accordo.comments.internal.getStore` |
 | M40-EXT-10 | `deactivate()` exported (empty implementation) |
 | M40-EXT-11 | Exposes `accordo.comments.internal.getSurfaceAdapter` — a generalized surface adapter command for any surface modality (slides, diagrams, browser, etc.) |
-| M40-EXT-12 | Registers panel action command `accordo.commentsPanel.deleteAllBrowserComments` that removes all browser-surface threads after confirmation |
-| M40-EXT-13 | Browser-surface threads are included in `CommentsTreeProvider` source so they appear in the shared Accordo Comments Panel |
 
 ---
 
@@ -370,9 +334,9 @@ The existing `getStore` command remains unchanged. `md-viewer` continues to use 
 |---|---|---|
 | CommentStore | `src/__tests__/comment-store.test.ts` | M36-CS-01 → M36-CS-11 |
 | NativeComments | `src/__tests__/native-comments.test.ts` | M37-NC-01 → M37-NC-09 |
-| CommentTools | `src/__tests__/comment-tools.test.ts` | M38-CT-01 → M38-CT-11 |
+| CommentTools | `src/__tests__/comment-tools.test.ts` | M38-CT-01 → M38-CT-09 |
 | StateContribution | `src/__tests__/state-contribution.test.ts` | M39-SC-01 → M39-SC-06 |
-| extension (entry) | `src/__tests__/extension.test.ts` | M40-EXT-01 → M40-EXT-13 |
+| extension (entry) | `src/__tests__/extension.test.ts` | M40-EXT-01 → M40-EXT-11 |
 
 ---
 

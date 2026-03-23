@@ -27,6 +27,14 @@ Accordo IDE is an MCP-based AI co-pilot layer on top of VSCode. It consists of:
 
 When the user says **"TDD"**, or the task is implementing a new module listed in the workplan, you MUST follow the full process in [`docs/dev-process.md`](docs/dev-process.md) without omitting any phase or checkpoint.
 
+**Project-specific tooling:**
+- Test framework: vitest
+- Test command: `pnpm test` (in the affected package)
+- Type checker: `tsc --noEmit`
+- Linter: eslint
+- Package manager: pnpm
+- Test location: `packages/<package>/src/__tests__/<module>.test.ts`
+
 **Key rules in TDD mode:**
 - Phases A → B → B2 → C → D → D2 → D3 → E → F — in order, no skipping
 - User checkpoints at A, B2, and E are **blocking** — stop and wait for explicit approval
@@ -81,7 +89,7 @@ For restructuring existing code without changing behaviour:
 - No new requirements addressed in the same commit
 - Commit with `refactor(<module>): <description>`
 
-### 2.6 Compound Mode — Session Retrospective
+### 2.7 Compound Mode — Session Retrospective
 
 Triggered when the user says **"compound"** or **"retrospective"** at the end of a session.
 Follow the instructions in [`.copilot/compound.md`](.copilot/compound.md) exactly.

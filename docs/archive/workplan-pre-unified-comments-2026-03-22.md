@@ -2,8 +2,8 @@
 
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
-**Date:** 2026-03-23  
-**Status:** ACTIVE — Session 13 browser v2a ✅ DONE (manual validation confirmed by user); Session 14 unified comments contract drafted for review; Phase F in progress
+**Date:** 2026-03-15  
+**Status:** ACTIVE — Browser Extension v2a implementation in progress (Session 13 C/D/D2 complete, D3 manual validation active); A18 D3 manual checklist pending
 
 ---
 
@@ -22,11 +22,10 @@
 | **Session 11** | **Diagrams modality (`accordo-diagram` — Mermaid + Excalidraw, A1-A17, all diag.1 modules, custom editor + patch enhancements)** | ✅ DONE — 444 tests |
 | **Session 11b** | **A18 Diagram Comments Bridge — host bridge + panel wiring + webview (SDK init, idMap, Alt+click overlay, pin re-render on scroll/zoom)** | ✅ DONE — 463 tests; D3 manual checklist pending |
 | **TD-CROSS-1** | **`openTabs` capture + `accordo_layout_state` tool + Open Tabs prompt section** | ✅ DONE — 2321 tests (Hub: 376, Bridge: 310+) |
-| **Session 12** | **Browser Extension v1 (`packages/browser-extension` — standalone Chrome extension, 12 modules M80-xxx)** | ✅ DONE — 165 tests; MVP shipped with store, pins, popover, export, screenshot |
-| **Session 13** | **Browser Extension v2a (`packages/browser` relay + SDK convergence + agent list/get/create/reply/resolve/reopen/delete)** | ✅ DONE — 176 tests (browser-ext: 165 + browser: 11); manual validation confirmed |
-| **Session 14 (proposed)** | **Unified comments contract (`accordo_comment_*` scoped by modality) + browser comments in shared panel + bulk browser cleanup action** | 📝 DRAFTED FOR REVIEW |
+| **Session 12** | **Browser Extension v1 (`packages/browser-extension` — standalone Chrome extension, 12 modules M80-xxx)** | 🏗️ ARCHITECTURE FINALIZED — [`browser-extension-architecture.md`](browser-extension-architecture.md) + [`requirements-browser-extension.md`](requirements-browser-extension.md) approved; awaiting TDD phase |
+| **Session 13** | **Browser Extension v2a (`packages/browser` relay + SDK convergence + agent list/get/create/reply/resolve/reopen/delete)** | 🚧 C/D/D2 complete, D3 manual validation active |
 
-**Baseline:** 2548 tests green (Hub: 376, Bridge: 324, Comments: 273, Voice: 269, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 165, browser: 11). Session 13 manual validation confirmed.  
+**Baseline:** 2340 tests green (Hub: 376, Voice: 269, Bridge: 310+, Editor: 172, Comments: 273, SDK: 45, md-viewer: 126, slidev: 149, Script: 133, Diagram: 463). A18 webview done, D3 pending.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -105,9 +104,9 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 **Key design points:**
 - **Two-surface strategy:** Code → VSCode native Comments API. Visual surfaces → Comment SDK.
 - **Persistence:** `.accordo/comments.json` in workspace root. Extension owns the file. Hub reads it on demand.
-- **MCP tools:** unified 7-tool contract (`accordo_comment_list`, `accordo_comment_get`, `accordo_comment_create`, `accordo_comment_reply`, `accordo_comment_resolve`, `accordo_comment_reopen`, `accordo_comment_delete`) with modality scoping.
+- **MCP tools:** 6 tools (`comment.list`, `comment.get`, `comment.create`, `comment.reply`, `comment.resolve`, `comment.delete`).
 - **System prompt:** Hub's prompt engine includes count of open threads + anchor summary.
-- **State machine:** `open` ↔ `resolved`; agent and user can create/reply/resolve/reopen/delete through the unified contract.
+- **State machine:** `open` → `resolved` → `open` (user only). Agent can create/reply/resolve/delete.
 
 ---
 
@@ -438,23 +437,6 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ---
 
-### Session 14 — Unified Comments Contract (`packages/comments` + browser integration) [PROPOSED]
-
-**Goal:** Replace modality-specific browser comment tools with unified `accordo_comment_*` tools using modality scope, and register browser comments into the shared Accordo Comments Panel with bulk browser cleanup UX.
-
-**Architecture update:** [`docs/comments-architecture.md`](comments-architecture.md) v1.1 (unified tool contract + volatile-browser retention)  
-**Requirements update:** [`docs/requirements-comments.md`](requirements-comments.md) M38/M40 updates; [`docs/requirements-browser-extension.md`](requirements-browser-extension.md) §3.13 (BR-F-132..BR-F-136)
-
-| # | Module | Requirements Source | TDD Phases |
-|---|---|---|---|
-| M84-TOOLS | Unified comment tool schemas (`scope.modality`) + add `accordo_comment_reopen` + scoped delete for browser bulk cleanup | requirements-comments.md M38-CT-01..11 | A → F |
-| M85-PANEL | Browser threads in shared comments panel + new panel command `accordo.commentsPanel.deleteAllBrowserComments` | requirements-comments.md M40-EXT-12; requirements-browser-extension.md BR-F-133..BR-F-135 | A → F |
-| M86-MIGRATE | Bridge/browser migration off public `accordo_browser_*` tools (temporary alias period, then remove) | requirements-browser-extension.md BR-F-132, BR-F-136 | A → F |
-
-**Review checkpoint requested:** requirements + architecture + workplan alignment approved before Phase B test authoring.
-
----
-
 ## 8. Phase 2 Readiness Criteria (for Phase 3)
 
 Phase 3 (Presentations) can begin only when:
@@ -524,24 +506,6 @@ Identified in a post-session-10C code review. No blocking issues — voice is fu
 ---
 
 ## DONE
-
-### Session 13 — Browser Extension v2a (completed 2026-03-23)
-
-SDK convergence adapter (M81-SDK), `packages/browser` relay server + auth + request router (M82-RELAY), browser relay tool registration `accordo_browser_*` + end-to-end mutation contract (M83-BTOOLS). All 8 relay tools wired and callable. Live UI refresh on relay/agent mutations. Manual validation confirmed. browser: 11 tests, browser-extension: 165 tests. Total: 2548 tests green. Committed `edfb6a5`.
-
----
-
-### Session 12 — Browser Extension v1 (completed 2026-03-22)
-
-Standalone Chrome Manifest V3 extension — 12 modules (M80-TYP/SM/STORE/SW/CS-PINS/CS-INPUT/CSS/EXPORT/SCREEN/MCP/POP/MANIFEST). Comments stored in `chrome.storage.local`, export to clipboard, keyboard shortcut toggle, right-click comment mode, screenshot on export. 165 tests. Committed `62b20bc`.
-
----
-
-### Marp Migration (completed 2026-03-22)
-
-Presentation engine migrated from Slidev to Marp Core (`packages/marp`). In-process rendering (no dev server, no port management). Full MCP tool surface parity with slidev: discover/open/close/listSlides/getCurrent/goto/next/prev/generateNarration. 226 tests. Committed `5d1dcfc`. See [`docs/workplan-marp.md`](workplan-marp.md).
-
----
 
 ### Session 10C — Voice Robustness + Hardening (completed 2026-03-10)
 
