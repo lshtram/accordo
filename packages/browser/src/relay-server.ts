@@ -65,11 +65,13 @@ export class BrowserRelayServer implements BrowserRelayLike {
         // Outgoing response from Chrome to our own pending call has a `success` field.
         if (typeof parsed["action"] === "string" && this.options.onRelayRequest) {
           // Chrome → VS Code: route through onRelayRequest interceptor
+          // Echo the requestId so the caller can match the response to a pending promise
+          const requestId = (parsed["requestId"] as string | undefined) ?? "";
           const result = await this.options.onRelayRequest(
             parsed["action"] as Parameters<typeof this.options.onRelayRequest>[0],
             (parsed["payload"] as Record<string, unknown>) ?? {},
           );
-          socket.send(JSON.stringify(result));
+          socket.send(JSON.stringify({ ...result, requestId }));
           return;
         }
 

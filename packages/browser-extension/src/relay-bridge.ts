@@ -69,29 +69,46 @@ export class RelayBridgeClient {
   }
 
   private async handleIncoming(raw: unknown): Promise<void> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
 
-    let request: RelayActionRequest | null = null;
+    let parsed: Record<string, unknown>;
     try {
-      request = JSON.parse(String(raw)) as RelayActionRequest;
+      parsed = JSON.parse(String(raw)) as Record<string, unknown>;
     } catch {
-      // Try parsing as a response to a pending request
-      let response: { requestId: string; success: boolean; data?: unknown; error?: string } | null = null;
-      try {
-        response = JSON.parse(String(raw)) as typeof response;
-      } catch {
-        return;
-      }
-      if (!response || typeof response.requestId !== "string") return;
-      const resolve = this.pending.get(response.requestId);
+      return;
+    }
+
+    // Check if this is a response (has `success` field) BEFORE attempting to
+    // parse as a request. A response has `success: boolean` + `requestId: string`.
+    // A request has `action: string` + `requestId: string`. Both have requestId,
+    // so we must distinguish by `success` (not by `action` which is present in
+    // both after the fix where relay-server echoes requestId back to the caller).
+    if (typeof parsed["success"] !== "undefined") {
+      // This is a response to one of our own pending calls
+      const requestId = parsed["requestId"] as string | undefined;
+      if (!requestId) return;
+      const resolve = this.pending.get(requestId);
       if (resolve) {
-        this.pending.delete(response.requestId);
-        resolve(response);
+        this.pending.delete(requestId);
+        resolve({
+          requestId,
+          success: parsed["success"] as boolean,
+          data: parsed["data"],
+          error: parsed["error"] as string | undefined,
+        });
       }
       return;
     }
-    if (!request || typeof request.requestId !== "string" || typeof request.action !== "string") return;
 
+    // Treat as a request from the server (we shouldn't receive these in the
+    // current architecture, but handle them for completeness)
+    if (typeof parsed["action"] !== "string" || typeof parsed["requestId"] !== "string") {
+      return;
+    }
+
+    const request = parsed as unknown as RelayActionRequest;
     const response = await this.handler(request);
     this.ws.send(JSON.stringify(response));
   }

@@ -158,7 +158,7 @@ export async function handleMessage(
       const url = (payload?.url as string | undefined) ?? "";
       dbg(`GET_THREADS: url=${url}`);
       const threads = await getActiveThreads(url);
-      dbg(`GET_THREADS: returning ${threads.length} threads`);
+      dbg(`GET_THREADS: url=${url} → returning ${threads.length} threads`);
       return { success: true, data: threads };
     }
 
