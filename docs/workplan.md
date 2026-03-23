@@ -3,7 +3,7 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-23  
-**Status:** ACTIVE — Session 13 browser v2a ✅ DONE (manual validation confirmed by user); Session 14 unified comments contract drafted for review; Phase F in progress
+**Status:** ACTIVE — Session 14 unified comments contract ✅ DONE (2,636 tests); Phase F committed; next: browser → VS Code comment flow validation
 
 ---
 
@@ -24,9 +24,9 @@
 | **TD-CROSS-1** | **`openTabs` capture + `accordo_layout_state` tool + Open Tabs prompt section** | ✅ DONE — 2321 tests (Hub: 376, Bridge: 310+) |
 | **Session 12** | **Browser Extension v1 (`packages/browser-extension` — standalone Chrome extension, 12 modules M80-xxx)** | ✅ DONE — 165 tests; MVP shipped with store, pins, popover, export, screenshot |
 | **Session 13** | **Browser Extension v2a (`packages/browser` relay + SDK convergence + agent list/get/create/reply/resolve/reopen/delete)** | ✅ DONE — 176 tests (browser-ext: 165 + browser: 11); manual validation confirmed |
-| **Session 14 (proposed)** | **Unified comments contract (`accordo_comment_*` scoped by modality) + browser comments in shared panel + bulk browser cleanup action** | 📝 DRAFTED FOR REVIEW |
+| **Session 14** | **Unified comments contract (`comment_*` scoped by modality) + browser comments in shared panel + bulk browser cleanup action** | ✅ DONE — Phase A→F complete; 2,636 tests |
 
-**Baseline:** 2548 tests green (Hub: 376, Bridge: 324, Comments: 273, Voice: 269, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 165, browser: 11). Session 13 manual validation confirmed.  
+**Baseline:** 2636 tests green (Hub: 376, Bridge: 324, Comments: 273, Voice: 269, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 165, browser: 11). Session 14 Phase F committed.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -438,20 +438,26 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ---
 
-### Session 14 — Unified Comments Contract (`packages/comments` + browser integration) [PROPOSED]
+### Session 14 — Unified Comments Contract (`packages/comments` + browser integration) [✅ DONE]
 
-**Goal:** Replace modality-specific browser comment tools with unified `accordo_comment_*` tools using modality scope, and register browser comments into the shared Accordo Comments Panel with bulk browser cleanup UX.
+**Goal:** Replace modality-specific browser comment tools with unified `comment_*` tools using modality scope, and register browser comments into the shared Accordo Comments Panel with bulk browser cleanup UX.
 
 **Architecture update:** [`docs/comments-architecture.md`](comments-architecture.md) v1.1 (unified tool contract + volatile-browser retention)  
-**Requirements update:** [`docs/requirements-comments.md`](requirements-comments.md) M38/M40 updates; [`docs/requirements-browser-extension.md`](requirements-browser-extension.md) §3.13 (BR-F-132..BR-F-136)
+**Requirements update:** [`docs/requirements-comments.md`](requirements-comments.md) M38/M40 updates; [`docs/requirements-browser-extension.md`](requirements-browser-extension.md) §3.13 (BR-F-132..BR-F-136)  
+**Phase A doc:** [`docs/tdd-session-14-phase-a.md`](tdd-session-14-phase-a.md)  
+**Testing guide:** [`docs/testing-guide-session-14.md`](testing-guide-session-14.md)
 
 | # | Module | Requirements Source | TDD Phases |
 |---|---|---|---|
-| M84-TOOLS | Unified comment tool schemas (`scope.modality`) + add `accordo_comment_reopen` + scoped delete for browser bulk cleanup | requirements-comments.md M38-CT-01..11 | A → F |
-| M85-PANEL | Browser threads in shared comments panel + new panel command `accordo.commentsPanel.deleteAllBrowserComments` | requirements-comments.md M40-EXT-12; requirements-browser-extension.md BR-F-133..BR-F-135 | A → F |
-| M86-MIGRATE | Bridge/browser migration off public `accordo_browser_*` tools (temporary alias period, then remove) | requirements-browser-extension.md BR-F-132, BR-F-136 | A → F |
+| M84-TOOLS | Unified comment tool schemas (`scope.modality`) + add `comment_reopen` + scoped delete for browser bulk cleanup | requirements-comments.md M38-CT-01..11 | ✅ A → F |
+| M85-PANEL | Browser threads in shared comments panel + new panel command `accordo.commentsPanel.deleteAllBrowserComments` | requirements-comments.md M40-EXT-12; requirements-browser-extension.md BR-F-133..BR-F-135 | ✅ A → F |
+| M86-MIGRATE | Bridge/browser migration off public `accordo_browser_*` tools (temporary alias period, then remove) | requirements-browser-extension.md BR-F-132, BR-F-136 | ✅ A → F |
 
-**Review checkpoint requested:** requirements + architecture + workplan alignment approved before Phase B test authoring.
+**Key changes:**
+- MCP server renamed `accordo-hub` → `accordo`; all tools shortened: `accordo_comment_*` → `comment_*`, `accordo_browser_*` → `browser_*`
+- `accordo_browser_*` tools NOT registered as MCP tools; Chrome events route through `onRelayRequest` interceptor to unified `comment_*` tools
+- `BridgeAPI.invokeTool()` enables VS Code CommentStore updates from Chrome relay events
+- Bidirectional relay: `RelayBridgeClient.send()` with pending request map for Chrome → accordo-browser → VS Code flow
 
 ---
 
@@ -528,6 +534,20 @@ Identified in a post-session-10C code review. No blocking issues — voice is fu
 ### Session 13 — Browser Extension v2a (completed 2026-03-23)
 
 SDK convergence adapter (M81-SDK), `packages/browser` relay server + auth + request router (M82-RELAY), browser relay tool registration `accordo_browser_*` + end-to-end mutation contract (M83-BTOOLS). All 8 relay tools wired and callable. Live UI refresh on relay/agent mutations. Manual validation confirmed. browser: 11 tests, browser-extension: 165 tests. Total: 2548 tests green. Committed `edfb6a5`.
+
+---
+
+### Session 14 — Unified Comments Contract (completed 2026-03-23)
+
+M84-TOOLS: 7 unified comment tools (`comment_list`, `comment_get`, `comment_create`, `comment_reply`, `comment_resolve`, `comment_reopen`, `comment_delete`) with `scope.modality` routing (editor|browser|voice). `deleteScope` on `comment_delete`. Agent reopen restriction removed.
+
+M85-PANEL: Comments Tree Provider with surface-type icons (globe for browser, file for editor), normalized browser coordinates as `(50%, 50%)`, separate browser/editor section headers, `deleteAllByModality()` for bulk cleanup.
+
+M86-MIGRATE: `accordo_browser_*` tools NOT registered as MCP tools. Chrome extension forwards all mutations through relay WebSocket to `accordo-browser` `onRelayRequest` interceptor, which routes to unified `comment_*` tools. `BridgeAPI.invokeTool()` enables VS Code CommentStore updates from Chrome events. `RelayBridgeClient.send()` with pending request map for bidirectional Chrome ↔ accordo-browser communication.
+
+Tool naming: MCP server `accordo-hub` → `accordo`; tools `accordo_comment_*` → `comment_*`; `accordo_browser_*` → `browser_*`.
+
+42 new tests. Total: 2,636 tests green. Committed `505e072`.
 
 ---
 
