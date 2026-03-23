@@ -11,14 +11,14 @@ describe("M83-BTOOLS tools", () => {
     const names = tools.map((t) => t.name);
 
     expect(names).toEqual([
-      "accordo_browser_getAllComments",
-      "accordo_browser_getComments",
-      "accordo_browser_createComment",
-      "accordo_browser_replyComment",
-      "accordo_browser_resolveThread",
-      "accordo_browser_reopenThread",
-      "accordo_browser_deleteComment",
-      "accordo_browser_deleteThread",
+      "browser_getAllComments",
+      "browser_getComments",
+      "browser_createComment",
+      "browser_replyComment",
+      "browser_resolveThread",
+      "browser_reopenThread",
+      "browser_deleteComment",
+      "browser_deleteThread",
     ]);
   });
 

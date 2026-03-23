@@ -12,6 +12,8 @@ export class RelayBridgeClient {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
   private readonly handler: RelayActionHandler;
+  /** Pending request callbacks awaiting a response from accordo-browser */
+  private pending = new Map<string, (response: { requestId: string; success: boolean; data?: unknown; error?: string }) => void>();
 
   constructor(handler: RelayActionHandler) {
     this.handler = handler;
@@ -73,6 +75,19 @@ export class RelayBridgeClient {
     try {
       request = JSON.parse(String(raw)) as RelayActionRequest;
     } catch {
+      // Try parsing as a response to a pending request
+      let response: { requestId: string; success: boolean; data?: unknown; error?: string } | null = null;
+      try {
+        response = JSON.parse(String(raw)) as typeof response;
+      } catch {
+        return;
+      }
+      if (!response || typeof response.requestId !== "string") return;
+      const resolve = this.pending.get(response.requestId);
+      if (resolve) {
+        this.pending.delete(response.requestId);
+        resolve(response);
+      }
       return;
     }
     if (!request || typeof request.requestId !== "string" || typeof request.action !== "string") return;
@@ -94,5 +109,48 @@ export class RelayBridgeClient {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+  }
+
+  /**
+   * Send a relay request to accordo-browser through the WebSocket.
+   * Used to forward Chrome events (e.g. CREATE_THREAD) so accordo-browser can
+   * persist them to VS Code's CommentStore and update the Comments Panel.
+   *
+   * @param action - The relay action name
+   * @param payload - The action payload
+   * @param timeoutMs - Timeout in ms (default: 5000)
+   * @returns The relay response, or an error response if not connected
+   */
+  async send(
+    action: string,
+    payload: Record<string, unknown>,
+    timeoutMs = 5000,
+  ): Promise<{ success: boolean; data?: unknown; error?: string }> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: "browser-not-connected" };
+    }
+
+    const requestId = crypto.randomUUID();
+    const envelope: RelayActionRequest = { requestId, action: action as RelayActionRequest["action"], payload };
+
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(requestId);
+        resolve({ success: false, error: "timeout" });
+      }, timeoutMs);
+
+      this.pending.set(requestId, (response) => {
+        clearTimeout(timer);
+        this.pending.delete(requestId);
+        resolve(response);
+      });
+
+      this.ws!.send(JSON.stringify(envelope));
+    });
+  }
+
+  /** Check if the WebSocket is connected */
+  isConnected(): boolean {
+    return !!this.ws && this.ws.readyState === WebSocket.OPEN;
   }
 }

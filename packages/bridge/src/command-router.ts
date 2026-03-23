@@ -247,6 +247,25 @@ export class CommandRouter {
   }
 
   /**
+   * Invoke a tool by name, given args.
+   * Returns the tool result or throws.
+   * Used by accordo-browser to route Chrome relay events through unified tools.
+   *
+   * @param toolName - Fully qualified tool name, e.g. "accordo_comment_create"
+   * @param args - Tool arguments
+   * @param timeout - Timeout in ms (default: 30_000)
+   */
+  async invokeTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    timeout = 30_000,
+  ): Promise<unknown> {
+    const handler = this.registry.getHandler(toolName);
+    if (!handler) throw new Error(`Unknown tool: ${toolName}`);
+    return handler(args);
+  }
+
+  /**
    * Cancel all in-flight invocations. Used during shutdown.
    */
   cancelAll(): void {

@@ -16,6 +16,7 @@
  * ✓ no-arg graceful         — M45-CMD-12
  * ✓ author = User           — M45-CMD-13
  * ✓ groupBy                 — M45-CMD-14
+ * ✓ deleteAllBrowserComments — M40-EXT-12 (5 tests)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -63,15 +64,30 @@ function makeTreeItem(thread: CommentThread): CommentTreeItem {
   return item;
 }
 
-function createMockStore(threads: CommentThread[] = []): PanelCommandStore & { _threads: Map<string, CommentThread> } {
+function createMockStore(threads: CommentThread[] = []): PanelCommandStore & { _threads: Map<string, CommentThread>; _deleteAllByModalityCounts: Map<string, number> } {
   const map = new Map(threads.map(t => [t.id, t]));
+  // Track deleteAllByModality calls
+  const deleteCounts = new Map<string, number>();
   return {
     _threads: map,
+    _deleteAllByModalityCounts: deleteCounts,
     resolve: vi.fn().mockResolvedValue(undefined),
     reopen: vi.fn().mockResolvedValue(undefined),
     reply: vi.fn().mockResolvedValue({ commentId: "c-new" }),
     delete: vi.fn().mockImplementation(async (params: { threadId: string }) => {
       map.delete(params.threadId);
+    }),
+    deleteAllByModality: vi.fn().mockImplementation(async (surfaceType: string) => {
+      // Count threads with matching surface type
+      let count = 0;
+      for (const [id, thread] of map) {
+        if (thread.anchor.kind === "surface" && (thread.anchor as { surfaceType: string }).surfaceType === surfaceType) {
+          map.delete(id);
+          count++;
+        }
+      }
+      deleteCounts.set(surfaceType, count);
+      return count;
     }),
     getThread: vi.fn().mockImplementation((id: string) => map.get(id)),
   };
@@ -413,6 +429,111 @@ describe("M45-CMD PanelCommands", () => {
     await handler();
 
     expect(groupSpy).toHaveBeenCalledWith("by-file");
+    expect(refreshSpy).toHaveBeenCalled();
+  });
+});
+
+// ── M40-EXT-12: deleteAllBrowserComments ────────────────────────────────────────
+
+describe("M40-EXT-12: deleteAllBrowserComments", () => {
+  let ctx: ReturnType<typeof createMockExtensionContext>;
+  let store: ReturnType<typeof createMockStore>;
+  let nc: ReturnType<typeof createMockNc>;
+  let navEnv: NavigationEnv;
+  let filters: PanelFilters;
+  let provider: CommentsTreeProvider;
+  let ui: ReturnType<typeof createMockUI>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ctx = createMockExtensionContext();
+    const thread1 = makeThread("t1", "open");
+    store = createMockStore([thread1]);
+    nc = createMockNc();
+    navEnv = createMockNavEnv();
+    filters = new PanelFilters(createMockMemento() as never);
+    provider = new CommentsTreeProvider(createMockTreeStore(), filters);
+    ui = createMockUI();
+  });
+
+  it("M40-EXT-12: command is registered", () => {
+    registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
+
+    const handler = (vsCommands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([id]: string[]) => id === "accordo.commentsPanel.deleteAllBrowserComments",
+    );
+
+    expect(handler).toBeDefined();
+  });
+
+  it("M40-EXT-12: shows confirmation dialog with 'Delete All' and 'Cancel' options", async () => {
+    registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
+
+    const handler = (vsCommands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([id]: string[]) => id === "accordo.commentsPanel.deleteAllBrowserComments",
+    )?.[1];
+
+    await handler();
+
+    expect(ui.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining("Delete all browser comments"),
+      "Delete All",
+      "Cancel",
+    );
+  });
+
+  it("M40-EXT-12: calls store.deleteAllByModality('browser') after confirmation", async () => {
+    registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
+
+    const handler = (vsCommands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([id]: string[]) => id === "accordo.commentsPanel.deleteAllBrowserComments",
+    )?.[1];
+
+    ui.showWarningMessage.mockResolvedValueOnce("Delete All");
+    await handler();
+
+    expect(store.deleteAllByModality).toHaveBeenCalledWith("browser");
+  });
+
+  it("M40-EXT-12: does NOT call store.deleteAllByModality when user cancels", async () => {
+    registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
+
+    const handler = (vsCommands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([id]: string[]) => id === "accordo.commentsPanel.deleteAllBrowserComments",
+    )?.[1];
+
+    ui.showWarningMessage.mockResolvedValueOnce("Cancel");
+    await handler();
+
+    expect(store.deleteAllByModality).not.toHaveBeenCalled();
+  });
+
+  it("M40-EXT-12: shows info message with deleted count after deletion", async () => {
+    registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
+
+    const handler = (vsCommands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([id]: string[]) => id === "accordo.commentsPanel.deleteAllBrowserComments",
+    )?.[1];
+
+    ui.showWarningMessage.mockResolvedValueOnce("Delete All");
+    await handler();
+
+    expect(ui.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining("browser comment thread"),
+    );
+  });
+
+  it("M40-EXT-12: calls provider.refresh() after successful deletion", async () => {
+    registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
+
+    const handler = (vsCommands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([id]: string[]) => id === "accordo.commentsPanel.deleteAllBrowserComments",
+    )?.[1];
+
+    ui.showWarningMessage.mockResolvedValueOnce("Delete All");
+    const refreshSpy = vi.spyOn(provider, "refresh");
+    await handler();
+
     expect(refreshSpy).toHaveBeenCalled();
   });
 });

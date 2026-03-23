@@ -66,6 +66,20 @@ export interface BridgeAPI {
 
   /** Fires with the new connection state whenever it changes. */
   onConnectionStatusChanged: vscode.Event<boolean>;
+
+  /**
+   * Invoke a registered tool directly, returning its result.
+   * Used by accordo-browser to route Chrome relay events through unified tools.
+   *
+   * @param toolName - Fully qualified tool name, e.g. "accordo_comment_create"
+   * @param args - Tool arguments
+   * @param timeout - Timeout in ms (default: 30_000)
+   */
+  invokeTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    timeout?: number,
+  ): Promise<unknown>;
 }
 
 // ── Module globals (created on activate, cleared on deactivate) ──────────────
@@ -492,6 +506,10 @@ export async function activate(
     },
 
     onConnectionStatusChanged: emitter.event,
+
+    invokeTool(toolName, args, timeout = 30_000) {
+      return router!.invokeTool(toolName, args, timeout);
+    },
   };
 }
 

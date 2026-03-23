@@ -74,7 +74,7 @@ export function buildCommentSummary(store: CommentStore): CommentStateSummary {
     summary,
     // Remind the agent of the available MCP tool names.
     // "Review threads" = VS Code gutter annotation panel — not inline code comments.
-    tools: "Review-thread tools: accordo_comment_list | .get | .create | .reply | .resolve | .delete",
+    tools: "Review-thread tools: comment_list | comment_get | comment_create | comment_reply | comment_resolve | comment_delete | comment_reopen",
     // Full un-truncated thread list for the /state debug endpoint (M43).
     threads: allThreads,
   };

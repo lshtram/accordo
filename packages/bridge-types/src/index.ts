@@ -591,6 +591,17 @@ export type CommentIntent =
 export type CommentStatus = "open" | "resolved";
 
 /**
+ * Retention policy for comment threads.
+ *
+ * - "standard"          — default; persists until explicitly deleted or resolved.
+ * - "volatile-browser"  — browser pages change frequently; these threads are
+ *                          marked for easy bulk cleanup via the Comments Panel.
+ *
+ * Source: comments-architecture.md §3.3
+ */
+export type CommentRetention = "standard" | "volatile-browser";
+
+/**
  * Context captured automatically when a comment is created.
  *
  * Source: comments-architecture.md §3.2
@@ -634,6 +645,14 @@ export interface CommentThread {
   comments: AccordoComment[];
   /** Derived: "resolved" if last resolve action set it */
   status: CommentStatus;
+  /**
+   * Retention policy. Browser-origin threads default to "volatile-browser";
+   * all others default to "standard". Optional for backwards compatibility
+   * with existing persisted data (missing → treated as "standard").
+   *
+   * Source: comments-architecture.md §3.3
+   */
+  retention?: CommentRetention;
   /** First comment's timestamp */
   createdAt: string;
   /** Most recent comment's timestamp */

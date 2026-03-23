@@ -164,7 +164,7 @@ export class McpHandler {
 
         const initResult = {
           protocolVersion: MCP_PROTOCOL_VERSION,
-          serverInfo: { name: "accordo-hub", version: "0.1.0" },
+          serverInfo: { name: "accordo", version: "0.1.0" },
           capabilities: { tools: { listChanged: true } },
           instructions,
         };

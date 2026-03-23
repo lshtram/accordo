@@ -440,10 +440,10 @@ describe("§4 Reopen", () => {
     expect(store.getThread(threadId)!.status).toBe("open");
   });
 
-  it("throws when agent tries to reopen", async () => {
-    await expect(
-      store.reopen(threadId, { kind: "agent", name: "Agent" }),
-    ).rejects.toThrow();
+  it("M38-CT-06: allows agent to reopen a resolved thread (no longer throws)", async () => {
+    // Agent reopen is now allowed per requirements-comments.md M38-CT-06
+    await store.reopen(threadId, { kind: "agent", name: "Agent", agentId: "agent-1" });
+    expect(store.getThread(threadId)!.status).toBe("open");
   });
 
   it("throws when reopening a thread that is already open", async () => {
@@ -956,5 +956,187 @@ describe("pruneStaleThreads", () => {
 
     expect(removed).toHaveLength(2);
     expect(store.getAllThreads()).toHaveLength(0);
+  });
+});
+
+// ── Session 14: Unified Comments Contract ─────────────────────────────────────
+// Requirements: docs/requirements-comments.md M38-CT-01,03,06,07 + M40-EXT-12
+
+describe("Session 14: Unified Comments Contract — store-level", () => {
+  beforeEach(async () => {
+    await store.load("/project");
+  });
+
+  // M38-CT-01: listThreads surfaceType filter
+  describe("M38-CT-01: listThreads surfaceType filter", () => {
+    beforeEach(async () => {
+      // Create threads with different surface types
+      await store.createThread(makeCreateParams({
+        uri: "file:///project/a.ts",
+        anchor: textAnchor("file:///project/a.ts", 1),
+        body: "text thread",
+      }));
+      await store.createThread(makeCreateParams({
+        uri: "file:///project/diagram.mmd",
+        anchor: surfaceAnchor("file:///project/diagram.mmd"),
+        body: "diagram thread",
+      }));
+      // Override surface type to browser for this test
+      const browserParams = makeCreateParams({
+        uri: "https://example.com/page",
+        anchor: { kind: "surface", uri: "https://example.com/page", surfaceType: "browser", coordinates: { type: "normalized", x: 0.5, y: 0.5 } },
+        body: "browser thread",
+      });
+      await store.createThread(browserParams);
+    });
+
+    it("filters by surfaceType=diagram", () => {
+      const result = store.listThreads({ surfaceType: "diagram" });
+      expect(result.total).toBe(1);
+      expect(result.threads[0].anchor.kind).toBe("surface");
+    });
+
+    it("filters by surfaceType=browser", () => {
+      const result = store.listThreads({ surfaceType: "browser" });
+      expect(result.total).toBe(1);
+    });
+
+    it("surfaceType filter does not match text anchors", () => {
+      const result = store.listThreads({ surfaceType: "text" });
+      expect(result.total).toBe(0);
+    });
+
+    it("surfaceType filter does not match other surface types", () => {
+      const result = store.listThreads({ surfaceType: "diagram" });
+      expect(result.threads.every(t => (t.anchor as { surfaceType?: string }).surfaceType === "diagram")).toBe(true);
+    });
+  });
+
+  // M38-CT-03: createThread with retention
+  describe("M38-CT-03: createThread retention parameter", () => {
+    it("stores retention=volatile-browser when specified", async () => {
+      const params = makeCreateParams({
+        uri: "https://example.com/page",
+        anchor: { kind: "surface", uri: "https://example.com/page", surfaceType: "browser", coordinates: { type: "normalized", x: 0.5, y: 0.5 } },
+        body: "browser thread",
+        retention: "volatile-browser",
+      });
+      const result = await store.createThread(params);
+      const thread = store.getThread(result.threadId)!;
+      expect(thread.retention).toBe("volatile-browser");
+    });
+
+    it("defaults to retention=standard when not specified", async () => {
+      const result = await store.createThread(makeCreateParams());
+      const thread = store.getThread(result.threadId)!;
+      expect(thread.retention).toBe("standard");
+    });
+
+    it("persists retention value to disk", async () => {
+      workspace.fs.writeFile.mockClear();
+      const params = makeCreateParams({
+        uri: "https://example.com/page",
+        anchor: { kind: "surface", uri: "https://example.com/page", surfaceType: "browser", coordinates: { type: "normalized", x: 0.5, y: 0.5 } },
+        body: "browser thread",
+        retention: "volatile-browser",
+      });
+      await store.createThread(params);
+      expect(workspace.fs.writeFile).toHaveBeenCalled();
+      // Verify the persisted JSON contains the retention value
+      const lastCall = workspace.fs.writeFile.mock.calls.at(-1);
+      const written = new TextDecoder().decode(lastCall![1] as Uint8Array);
+      const parsed = JSON.parse(written);
+      expect(parsed.threads[0].retention).toBe("volatile-browser");
+    });
+  });
+
+  // M38-CT-07 / M40-EXT-12: deleteAllByModality
+  describe("M38-CT-07, M40-EXT-12: deleteAllByModality", () => {
+    beforeEach(async () => {
+      // Create browser threads (surface type = browser)
+      const browserParams1 = makeCreateParams({
+        uri: "https://example.com/1",
+        anchor: { kind: "surface", uri: "https://example.com/1", surfaceType: "browser", coordinates: { type: "normalized", x: 0.5, y: 0.5 } },
+        body: "browser 1",
+      });
+      const browserParams2 = makeCreateParams({
+        uri: "https://example.com/2",
+        anchor: { kind: "surface", uri: "https://example.com/2", surfaceType: "browser", coordinates: { type: "normalized", x: 0.5, y: 0.5 } },
+        body: "browser 2",
+      });
+      await store.createThread(browserParams1);
+      await store.createThread(browserParams2);
+
+      // Create text thread
+      await store.createThread(makeCreateParams({
+        uri: "file:///project/src/a.ts",
+        anchor: textAnchor("file:///project/src/a.ts", 1),
+        body: "text comment",
+      }));
+
+      // Create diagram thread (surface type = diagram)
+      const diagramParams = makeCreateParams({
+        uri: "file:///project/diagram.mmd",
+        anchor: { kind: "surface", uri: "file:///project/diagram.mmd", surfaceType: "diagram", coordinates: { type: "diagram-node", nodeId: "n1" } },
+        body: "diagram comment",
+      });
+      await store.createThread(diagramParams);
+    });
+
+    it("deletes all threads with surfaceType=browser", async () => {
+      const count = await store.deleteAllByModality("browser");
+      expect(count).toBe(2);
+      expect(store.listThreads({ surfaceType: "browser" }).total).toBe(0);
+    });
+
+    it("returns the count of deleted threads", async () => {
+      const count = await store.deleteAllByModality("browser");
+      expect(count).toBe(2);
+    });
+
+    it("does NOT delete text-anchored threads when deleting browser", async () => {
+      await store.deleteAllByModality("browser");
+      const textThreads = store.listThreads({ anchorKind: "text" });
+      expect(textThreads.total).toBe(1);
+    });
+
+    it("does NOT delete diagram threads when deleting browser", async () => {
+      await store.deleteAllByModality("browser");
+      const diagramThreads = store.listThreads({ surfaceType: "diagram" });
+      expect(diagramThreads.total).toBe(1);
+    });
+
+    it("deletes only diagram threads when deleting by modality=diagram", async () => {
+      const count = await store.deleteAllByModality("diagram");
+      expect(count).toBe(1);
+      expect(store.listThreads({ surfaceType: "browser" }).total).toBe(2); // browser untouched
+      expect(store.listThreads({ anchorKind: "text" }).total).toBe(1); // text untouched
+    });
+
+    it("returns 0 when no threads match the modality", async () => {
+      const count = await store.deleteAllByModality("pdf");
+      expect(count).toBe(0);
+    });
+
+    it("persists to disk after bulk delete", async () => {
+      workspace.fs.writeFile.mockClear();
+      await store.deleteAllByModality("browser");
+      expect(workspace.fs.writeFile).toHaveBeenCalled();
+    });
+
+    it("emits onChanged for each affected URI after bulk delete", async () => {
+      const listener = vi.fn();
+      store.onChanged(listener);
+      await store.deleteAllByModality("browser");
+      // Should emit for each deleted browser thread's URI
+      expect(listener).toHaveBeenCalledWith("https://example.com/1");
+      expect(listener).toHaveBeenCalledWith("https://example.com/2");
+    });
+
+    it("persists correct thread count after bulk delete", async () => {
+      await store.deleteAllByModality("browser");
+      const file = store.toStoreFile();
+      expect(file.threads).toHaveLength(2); // text + diagram
+    });
   });
 });

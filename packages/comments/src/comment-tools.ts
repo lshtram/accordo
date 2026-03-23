@@ -1,7 +1,8 @@
 /**
- * CommentTools — 6 MCP tools for agent interaction with comments.
+ * CommentTools — 7 MCP tools for agent interaction with comments.
  *
- * Tools: accordo_comment_list, .get, .create, .reply, .resolve, .delete
+ * Tools: comment_list, comment_get, comment_create, comment_reply,
+ * comment_resolve, comment_reopen, comment_delete
  * Registered via BridgeAPI.registerTools('accordo-comments', tools).
  *
  * Source: comments-architecture.md §6
@@ -12,7 +13,7 @@ import { pathToFileURL, fileURLToPath } from "url";
 import type { ExtensionToolDefinition, CommentThread } from "@accordo/bridge-types";
 import { COMMENT_CREATE_RATE_LIMIT, COMMENT_CREATE_RATE_WINDOW_MS } from "@accordo/bridge-types";
 import type { CommentStore } from "./comment-store.js";
-import type { CommentAnchor, CommentIntent, SurfaceCoordinates, SurfaceType } from "@accordo/bridge-types";
+import type { CommentAnchor, CommentIntent, SurfaceCoordinates, SurfaceType, CommentRetention } from "@accordo/bridge-types";
 
 // ── URI normalizer ───────────────────────────────────────────────────────────
 
@@ -53,22 +54,36 @@ export interface CommentUINotifier {
 }
 
 /**
- * Create the array of 6 ExtensionToolDefinition for comment MCP tools.
+ * Create the array of 7 ExtensionToolDefinition for comment MCP tools.
+ *
+ * Tools: comment_list, comment_get, comment_create, comment_reply,
+ * comment_resolve, comment_reopen, comment_delete
+ *
+ * Source: comments-architecture.md §6, §10.4, requirements-comments.md M38-CT-01..11
  */
 export function createCommentTools(store: CommentStore, ui?: CommentUINotifier): ExtensionToolDefinition[] {
   const rateLimiter = new CreateRateLimiter();
 
   const tools: ExtensionToolDefinition[] = [
-    // ── accordo_comment_list ──────────────────────────────────────────────
+    // ── comment_list ──────────────────────────────────────────────────
     {
-      name: "accordo_comment_list",
+      name: "comment_list",
       group: "comments",
-      description: "List comment threads. Pass uri to scope to one file; omitting queries all files. Filters: status, intent, limit, offset.",
+      description: "List comment threads. Use scope.modality to filter by surface type (e.g. browser). Filters: status, intent.",
       dangerLevel: "safe",
       idempotent: true,
       inputSchema: {
         type: "object",
         properties: {
+          scope: {
+            type: "object",
+            description: "Optional modality scope — filters by surface type. Use scope.modality='browser' for browser comments, scope.url to filter by page URL.",
+            properties: {
+              modality: { type: "string", description: "Surface modality", enum: ["text", "markdown-preview", "diagram", "slide", "image", "pdf", "browser"] },
+              uri: { type: "string", description: "File URI for non-browser modalities" },
+              url: { type: "string", description: "Page URL for browser modality" },
+            },
+          },
           uri: { type: "string", description: "Filter by file — any form accepted: file:///abs, /abs, or repo-relative" },
           status: { type: "string", description: "Filter by status", enum: ["open", "resolved"] },
           intent: { type: "string", description: "Filter by intent", enum: ["fix", "explain", "refactor", "review", "design", "question"] },
@@ -81,13 +96,30 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
         required: [],
       },
       handler: async (args) => {
-        const rawUri = args["uri"] as string | undefined;
+        const scope = args["scope"] as Record<string, unknown> | undefined;
+        const rawUri = (scope?.["uri"] as string | undefined) ?? (args["uri"] as string | undefined);
         const uri = rawUri !== undefined ? normalizeCommentUri(rawUri, store.getWorkspaceRoot()) : undefined;
+
+        // Modality scope maps to anchorKind + surfaceType
+        let anchorKind = args["anchorKind"] as "text" | "surface" | "file" | undefined;
+        let surfaceType: string | undefined;
+
+        if (scope?.["modality"]) {
+          const modality = scope["modality"] as string;
+          if (modality === "text") {
+            anchorKind = "text";
+          } else {
+            anchorKind = "surface";
+            surfaceType = modality;
+          }
+        }
+
         return store.listThreads({
           uri,
           status: args["status"] as "open" | "resolved" | undefined,
           intent: args["intent"] as CommentIntent | undefined,
-          anchorKind: args["anchorKind"] as "text" | "surface" | "file" | undefined,
+          anchorKind,
+          surfaceType,
           updatedSince: args["updatedSince"] as string | undefined,
           lastAuthor: args["lastAuthor"] as "user" | "agent" | undefined,
           limit: args["limit"] as number | undefined,
@@ -96,11 +128,11 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
       },
     },
 
-    // ── accordo_comment_get ───────────────────────────────────────────────
+    // ── comment_get ──────────────────────────────────────────────────
     {
-      name: "accordo_comment_get",
+      name: "comment_get",
       group: "comments",
-      description: "Get a specific comment thread with all comments and context.",
+      description: "Get a specific comment thread with all comments and context. Pass threadId.",
       dangerLevel: "safe",
       idempotent: true,
       inputSchema: {
@@ -118,16 +150,25 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
       },
     },
 
-    // ── accordo_comment_create ────────────────────────────────────────────
+    // ── comment_create ────────────────────────────────────────────────
     {
-      name: "accordo_comment_create",
+      name: "comment_create",
       group: "comments",
-      description: "Create a comment thread. anchor: {kind:'text',startLine:N} or {kind:'file'}. intent: fix|explain|refactor|review|design",
+      description: "Create a comment thread on any surface. Set scope.modality + anchor.kind to target text, browser, or visual.",
       dangerLevel: "moderate",
       idempotent: false,
       inputSchema: {
         type: "object",
         properties: {
+          scope: {
+            type: "object",
+            description: "Modality scope — determines the surface type and routing.",
+            properties: {
+              modality: { type: "string", description: "Surface modality", enum: ["text", "markdown-preview", "diagram", "slide", "image", "pdf", "browser"] },
+              uri: { type: "string", description: "File URI for non-browser modalities" },
+              url: { type: "string", description: "Page URL for browser modality" },
+            },
+          },
           uri: { type: "string", description: "File path or URI — any form accepted: file:///abs, /abs, or repo-relative" },
           anchor: {
             type: "object",
@@ -135,8 +176,8 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
             properties: {
               kind: {
                 type: "string",
-                enum: ["text", "file"],
-                description: "'text' to anchor to a line range, 'file' for a whole-file comment",
+                enum: ["text", "file", "surface", "browser"],
+                description: "'text' for line range, 'file' for whole-file, 'surface' for visual surfaces, 'browser' for browser pages",
               },
               startLine: {
                 type: "number",
@@ -145,6 +186,18 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
               endLine: {
                 type: "number",
                 description: "0-based end line (inclusive) — defaults to startLine when kind='text'",
+              },
+              surfaceType: {
+                type: "string",
+                description: "Surface type — required when kind='surface'",
+              },
+              coordinates: {
+                type: "object",
+                description: "Surface coordinates — required when kind='surface'",
+              },
+              anchorKey: {
+                type: "string",
+                description: "Browser anchor key — optional when kind='browser', defaults to body:center",
               },
             },
             required: ["kind"],
@@ -156,28 +209,40 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
             enum: ["fix", "explain", "refactor", "review", "design", "question"],
           },
         },
-        required: ["uri", "anchor", "body"],
+        required: ["body"],
       },
       handler: async (args) => {
-        const rawUri = args["uri"] as string;
-        const uri = normalizeCommentUri(rawUri, store.getWorkspaceRoot());
-        const anchorInput = args["anchor"] as Record<string, unknown>;
+        const scope = args["scope"] as Record<string, unknown> | undefined;
+        const rawUri = (scope?.["uri"] as string | undefined) ?? (args["uri"] as string | undefined);
+        const uri = rawUri !== undefined ? normalizeCommentUri(rawUri, store.getWorkspaceRoot()) : undefined;
+        const anchorInput = args["anchor"] as Record<string, unknown> | undefined;
         const body = args["body"] as string;
         const intent = args["intent"] as CommentIntent | undefined;
         const agentId = (args["agentId"] as string | undefined) ?? "default";
+        const modality = scope?.["modality"] as string | undefined;
 
         if (!rateLimiter.isAllowed(agentId)) {
           throw new Error(`Rate limit exceeded: max ${COMMENT_CREATE_RATE_LIMIT} comment creates per minute`);
         }
         rateLimiter.record(agentId);
 
-        const anchor = buildAnchor(uri, anchorInput);
+        // Determine retention from modality
+        const retention: CommentRetention = modality === "browser" ? "volatile-browser" : "standard";
+
+        // Build the final URI — browser modality uses scope.url if no file URI
+        const finalUri = uri ?? (scope?.["url"] as string | undefined) ?? "";
+        if (!finalUri) {
+          throw new Error("Either uri or scope.url is required");
+        }
+
+        const anchor = buildAnchor(finalUri, anchorInput ?? { kind: modality === "text" ? "text" : "file" }, modality);
 
         const result = await store.createThread({
-          uri,
+          uri: finalUri,
           anchor,
           body,
           intent,
+          retention,
           author: { kind: "agent", name: "agent", agentId },
         });
         const newThread = store.getThread(result.threadId);
@@ -186,11 +251,11 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
       },
     },
 
-    // ── accordo_comment_reply ─────────────────────────────────────────────
+    // ── comment_reply ─────────────────────────────────────────────────
     {
-      name: "accordo_comment_reply",
+      name: "comment_reply",
       group: "comments",
-      description: "Reply to an existing comment thread. Use accordo_comment_list to find threadId values.",
+      description: "Reply to an existing comment thread. Use comment_list to find threadId values.",
       dangerLevel: "moderate",
       idempotent: false,
       inputSchema: {
@@ -216,9 +281,9 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
       },
     },
 
-    // ── accordo_comment_resolve ───────────────────────────────────────────
+    // ── comment_resolve ────────────────────────────────────────────────
     {
-      name: "accordo_comment_resolve",
+      name: "comment_resolve",
       group: "comments",
       description: "Mark a comment thread as resolved. Always include a resolutionNote summarising what was done.",
       dangerLevel: "moderate",
@@ -246,11 +311,35 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
       },
     },
 
-    // ── accordo_comment_delete ────────────────────────────────────────────
+    // ── comment_reopen ────────────────────────────────────────────────
     {
-      name: "accordo_comment_delete",
+      name: "comment_reopen",
       group: "comments",
-      description: "Delete a specific comment or an entire comment thread.",
+      description: "Reopen a resolved comment thread. Both users and agents can reopen.",
+      dangerLevel: "moderate",
+      idempotent: false,
+      inputSchema: {
+        type: "object",
+        properties: {
+          threadId: { type: "string", description: "The thread to reopen" },
+        },
+        required: ["threadId"],
+      },
+      handler: async (args) => {
+        const threadId = args["threadId"] as string;
+        const agentId = (args["agentId"] as string | undefined) ?? "default";
+        await store.reopen(threadId, { kind: "agent", name: "agent", agentId });
+        const reopenedThread = store.getThread(threadId);
+        if (reopenedThread) ui?.updateThread(reopenedThread);
+        return { reopened: true, threadId };
+      },
+    },
+
+    // ── comment_delete ──────────────────────────────────────────────────
+    {
+      name: "comment_delete",
+      group: "comments",
+      description: "Delete a specific comment or entire thread. Use deleteScope for bulk browser cleanup.",
       dangerLevel: "moderate",
       idempotent: false,
       inputSchema: {
@@ -258,11 +347,33 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
         properties: {
           threadId: { type: "string", description: "The thread to delete (or containing the comment)" },
           commentId: { type: "string", description: "If provided, delete only this comment; otherwise delete the entire thread" },
+          deleteScope: {
+            type: "object",
+            description: "Bulk delete scope — use { modality: 'browser', all: true } to delete all browser threads",
+            properties: {
+              modality: { type: "string", description: "Surface modality to delete", enum: ["browser"] },
+              all: { type: "boolean", description: "Must be true for bulk delete" },
+            },
+            required: ["modality", "all"],
+          },
         },
-        required: ["threadId"],
+        required: [],
       },
       handler: async (args) => {
+        const deleteScope = args["deleteScope"] as Record<string, unknown> | undefined;
+
+        // Bulk delete by modality (M38-CT-07)
+        if (deleteScope && deleteScope["all"] === true && deleteScope["modality"]) {
+          const modality = deleteScope["modality"] as string;
+          const count = await store.deleteAllByModality(modality);
+          return { deleted: true, deletedCount: count };
+        }
+
+        // Single thread/comment delete
         const threadId = args["threadId"] as string;
+        if (!threadId) {
+          throw new Error("Either threadId or deleteScope is required");
+        }
         const commentId = args["commentId"] as string | undefined;
         await store.delete({ threadId, commentId });
         if (commentId) {
@@ -283,8 +394,20 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
 
 // ── Anchor builder ─────────────────────────────────────────────────────────
 
-function buildAnchor(uri: string, input: Record<string, unknown>): CommentAnchor {
+/**
+ * Build a CommentAnchor from tool input.
+ *
+ * Supports all anchor kinds:
+ * - "text"    → text range anchor
+ * - "file"    → file-level anchor
+ * - "surface" → surface anchor with surfaceType + coordinates
+ * - "browser" → sugar for surface anchor with surfaceType="browser"
+ *
+ * Source: comments-architecture.md §3.1, requirements-comments.md M38-CT-03
+ */
+function buildAnchor(uri: string, input: Record<string, unknown>, modality?: string): CommentAnchor {
   const kind = input["kind"] as string;
+
   if (kind === "text") {
     const startLine = input["startLine"] as number;
     const endLine = (input["endLine"] as number | undefined) ?? startLine;
@@ -295,6 +418,49 @@ function buildAnchor(uri: string, input: Record<string, unknown>): CommentAnchor
       docVersion: 0,
     };
   }
+
+  if (kind === "surface") {
+    const surfaceType = (input["surfaceType"] as SurfaceType) ?? (modality as SurfaceType);
+    const coordinates = input["coordinates"] as SurfaceCoordinates;
+    if (!surfaceType) throw new Error("surfaceType is required for surface anchors");
+    if (!coordinates) throw new Error("coordinates are required for surface anchors");
+    return {
+      kind: "surface",
+      uri,
+      surfaceType,
+      coordinates,
+    };
+  }
+
+  if (kind === "browser") {
+    // Browser anchor is sugar for a surface anchor with surfaceType="browser"
+    // and normalized coordinates. anchorKey is stored in surfaceMetadata (context).
+    const anchorKey = input["anchorKey"] as string | undefined;
+    const coordinates: SurfaceCoordinates = {
+      type: "normalized",
+      x: 0.5,
+      y: 0.5,
+    };
+    // If anchorKey is provided, we could parse x:y from it, but the default is center
+    if (anchorKey) {
+      const parts = anchorKey.split(":");
+      if (parts.length === 2) {
+        const x = parseFloat(parts[0]);
+        const y = parseFloat(parts[1]);
+        if (!isNaN(x) && !isNaN(y)) {
+          (coordinates as { type: "normalized"; x: number; y: number }).x = x;
+          (coordinates as { type: "normalized"; x: number; y: number }).y = y;
+        }
+      }
+    }
+    return {
+      kind: "surface",
+      uri,
+      surfaceType: "browser" as SurfaceType,
+      coordinates,
+    };
+  }
+
   // file-level anchor (default)
   return { kind: "file", uri };
 }

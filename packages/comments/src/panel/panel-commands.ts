@@ -22,6 +22,7 @@ export interface PanelCommandStore {
   reopen(threadId: string, author: CommentAuthor): Promise<void>;
   reply(params: { threadId: string; body: string; author: CommentAuthor }): Promise<unknown>;
   delete(params: { threadId: string }): Promise<void>;
+  deleteAllByModality(surfaceType: string): Promise<number>;
   getThread(threadId: string): CommentThread | undefined;
 }
 
@@ -182,6 +183,17 @@ export function registerPanelCommands(
     );
     if (!picked) return;
     filters.setGroupMode(picked as import("./panel-filters.js").GroupMode);
+    provider.refresh();
+  }));
+
+  // M40-EXT-12: deleteAllBrowserComments — bulk browser comment cleanup
+  disposables.push(commands.registerCommand("accordo.commentsPanel.deleteAllBrowserComments", async () => {
+    const answer = await windowUI.showWarningMessage(
+      "Delete all browser comments? This cannot be undone.", "Delete All", "Cancel",
+    );
+    if (answer !== "Delete All") return;
+    const count = await store.deleteAllByModality("browser");
+    await windowUI.showInformationMessage(`Deleted ${count} browser comment thread(s).`);
     provider.refresh();
   }));
 

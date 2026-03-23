@@ -11,17 +11,18 @@
  */
 
 // API checklist:
-// ✓ createCommentTools()       — Tool array shape (5 tests), all handler tests
+// ✓ createCommentTools()       — Tool array shape (6 tests), all handler tests
 // ✓ CreateRateLimiter.isAllowed() — §6.1 Rate Limiting (4 tests)
 // ✓ CreateRateLimiter.record()    — §6.1 Rate Limiting (called with isAllowed)
 // ✓ CreateRateLimiter.reset()     — §6.1 Rate Limiting (2 tests)
 // ✓ normalizeCommentUri()      — URI normalization: file://, absolute, relative (7 tests)
-// ✓ comment.list handler       — §6 list (4 tests)
-// ✓ comment.get handler        — §6 get (4 tests)
-// ✓ comment.create handler     — §6 create (5 tests)
-// ✓ comment.reply handler      — §6 reply (4 tests)
-// ✓ comment.resolve handler    — §6 resolve (4 tests)
-// ✓ comment.delete handler     — §6 delete (5 tests)
+// ✓ comment.list handler       — §6 list (4 tests) + modality routing (7 tests) [M38-CT-01]
+// ✓ comment.get handler        — §6 get (4 tests) [M38-CT-02]
+// ✓ comment.create handler     — §6 create (5 tests) + browser modality (4 tests) [M38-CT-03]
+// ✓ comment.reply handler      — §6 reply (4 tests) [M38-CT-04]
+// ✓ comment.resolve handler    — §6 resolve (4 tests) [M38-CT-05]
+// ✓ comment.reopen handler     — §6 reopen (5 tests) [M38-CT-06]
+// ✓ comment.delete handler     — §6 delete (5 tests) + deleteScope bulk (3 tests) [M38-CT-07]
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import path from "path";
@@ -80,18 +81,19 @@ beforeEach(() => {
 // ── §6 Tool array shape ─────────────────────────────────────────────────────
 
 describe("§6 Tool array shape", () => {
-  it("returns exactly 6 tools", () => {
-    expect(tools).toHaveLength(6);
+  it("M38-CT-01,06: returns exactly 7 tools (including comment_reopen)", () => {
+    expect(tools).toHaveLength(7);
   });
 
-  it("includes all expected tool names", () => {
+  it("includes all expected tool names including comment_reopen", () => {
     const names = tools.map(t => t.name);
-    expect(names).toContain("accordo_comment_list");
-    expect(names).toContain("accordo_comment_get");
-    expect(names).toContain("accordo_comment_create");
-    expect(names).toContain("accordo_comment_reply");
-    expect(names).toContain("accordo_comment_resolve");
-    expect(names).toContain("accordo_comment_delete");
+    expect(names).toContain("comment_list");
+    expect(names).toContain("comment_get");
+    expect(names).toContain("comment_create");
+    expect(names).toContain("comment_reply");
+    expect(names).toContain("comment_resolve");
+    expect(names).toContain("comment_reopen");
+    expect(names).toContain("comment_delete");
   });
 
   it("all tools have descriptions ≤ 120 chars", () => {
@@ -114,21 +116,21 @@ describe("§6 Tool array shape", () => {
   });
 });
 
-// ── §6 accordo_comment_list ─────────────────────────────────────────────────
+// ── comment_list ─────────────────────────────────────────────────────
 
-describe("§6 accordo_comment_list", () => {
+describe("comment_list", () => {
   it("has dangerLevel 'safe'", () => {
-    const tool = getToolByName(tools, "accordo_comment_list");
+    const tool = getToolByName(tools, "comment_list");
     expect(tool.dangerLevel).toBe("safe");
   });
 
   it("is idempotent", () => {
-    const tool = getToolByName(tools, "accordo_comment_list");
+    const tool = getToolByName(tools, "comment_list");
     expect(tool.idempotent).toBe(true);
   });
 
   it("inputSchema has optional uri, status, intent, anchorKind, updatedSince, lastAuthor, limit, offset", () => {
-    const tool = getToolByName(tools, "accordo_comment_list");
+    const tool = getToolByName(tools, "comment_list");
     const props = tool.inputSchema.properties;
     expect(props["uri"]).toBeDefined();
     expect(props["status"]).toBeDefined();
@@ -143,7 +145,7 @@ describe("§6 accordo_comment_list", () => {
   });
 
   it("handler returns { threads, total, hasMore }", async () => {
-    const tool = getToolByName(tools, "accordo_comment_list");
+    const tool = getToolByName(tools, "comment_list");
     const result = (await tool.handler({})) as Record<string, unknown>;
     expect(result).toHaveProperty("threads");
     expect(result).toHaveProperty("total");
@@ -151,17 +153,17 @@ describe("§6 accordo_comment_list", () => {
   });
 
   it("each thread summary includes lastAuthor field", async () => {
-    const createTool = getToolByName(tools, "accordo_comment_create");
+    const createTool = getToolByName(tools, "comment_create");
     await createTool.handler({ uri: "file:///project/src/auth.ts", anchor: { kind: "file" }, body: "agent comment" });
-    const listTool = getToolByName(tools, "accordo_comment_list");
+    const listTool = getToolByName(tools, "comment_list");
     const { threads } = (await listTool.handler({})) as { threads: { lastAuthor: string }[] };
     expect(threads[0]).toHaveProperty("lastAuthor");
     expect(["user", "agent"]).toContain(threads[0].lastAuthor);
   });
 
   it("updatedSince filter returns only threads active after the timestamp", async () => {
-    const createTool = getToolByName(tools, "accordo_comment_create");
-    const listTool = getToolByName(tools, "accordo_comment_list");
+    const createTool = getToolByName(tools, "comment_create");
+    const listTool = getToolByName(tools, "comment_list");
     // Pin system time so thread timestamps are deterministic
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
@@ -176,8 +178,8 @@ describe("§6 accordo_comment_list", () => {
   });
 
   it("lastAuthor=user filter returns only threads where the last comment is from a user", async () => {
-    const createTool = getToolByName(tools, "accordo_comment_create");
-    const listTool = getToolByName(tools, "accordo_comment_list");
+    const createTool = getToolByName(tools, "comment_create");
+    const listTool = getToolByName(tools, "comment_list");
     // Agent creates thread (lastAuthor=agent)
     await createTool.handler({ uri: "file:///project/a.ts", anchor: { kind: "file" }, body: "agent note" });
     // Should return 0 threads with lastAuthor=user
@@ -189,8 +191,8 @@ describe("§6 accordo_comment_list", () => {
   });
 
   it("results are sorted by lastActivity descending (most recent first)", async () => {
-    const createTool = getToolByName(tools, "accordo_comment_create");
-    const listTool = getToolByName(tools, "accordo_comment_list");
+    const createTool = getToolByName(tools, "comment_create");
+    const listTool = getToolByName(tools, "comment_list");
     await createTool.handler({ uri: "file:///project/first.ts", anchor: { kind: "file" }, body: "first" });
     await createTool.handler({ uri: "file:///project/last.ts", anchor: { kind: "file" }, body: "last" });
     const { threads } = (await listTool.handler({})) as { threads: { anchor: { uri: string }; lastActivity: string }[] };
@@ -199,59 +201,61 @@ describe("§6 accordo_comment_list", () => {
   });
 });
 
-// ── §6 accordo_comment_get ──────────────────────────────────────────────────
+// ── comment_get ─────────────────────────────────────────────────────
 
-describe("§6 accordo_comment_get", () => {
+describe("comment_get", () => {
   it("has dangerLevel 'safe'", () => {
-    const tool = getToolByName(tools, "accordo_comment_get");
+    const tool = getToolByName(tools, "comment_get");
     expect(tool.dangerLevel).toBe("safe");
   });
 
   it("is idempotent", () => {
-    const tool = getToolByName(tools, "accordo_comment_get");
+    const tool = getToolByName(tools, "comment_get");
     expect(tool.idempotent).toBe(true);
   });
 
   it("inputSchema requires threadId", () => {
-    const tool = getToolByName(tools, "accordo_comment_get");
+    const tool = getToolByName(tools, "comment_get");
     expect(tool.inputSchema.properties["threadId"]).toBeDefined();
     expect(tool.inputSchema.required).toContain("threadId");
   });
 
   it("handler returns { thread } with full CommentThread", async () => {
-    const tool = getToolByName(tools, "accordo_comment_get");
+    const tool = getToolByName(tools, "comment_get");
     // Should throw or return error for non-existent thread
     await expect(tool.handler({ threadId: "nonexistent" })).rejects.toThrow();
   });
 });
 
-// ── §6 accordo_comment_create ────────────────────────────────────────────────
+// ── comment_create ─────────────────────────────────────────────────
 
-describe("§6 accordo_comment_create", () => {
+describe("comment_create", () => {
   it("has dangerLevel 'moderate'", () => {
-    const tool = getToolByName(tools, "accordo_comment_create");
+    const tool = getToolByName(tools, "comment_create");
     expect(tool.dangerLevel).toBe("moderate");
   });
 
   it("is not idempotent", () => {
-    const tool = getToolByName(tools, "accordo_comment_create");
+    const tool = getToolByName(tools, "comment_create");
     expect(tool.idempotent).toBe(false);
   });
 
-  it("inputSchema requires uri, anchor, body", () => {
-    const tool = getToolByName(tools, "accordo_comment_create");
-    expect(tool.inputSchema.required).toContain("uri");
-    expect(tool.inputSchema.required).toContain("anchor");
+  it("M38-CT-03: inputSchema only requires body (uri optional via scope.url for browser)", () => {
+    const tool = getToolByName(tools, "comment_create");
     expect(tool.inputSchema.required).toContain("body");
+    // uri is NOT required — can use scope.url for browser modality
+    expect(tool.inputSchema.required ?? []).not.toContain("uri");
+    // anchor.kind is required but the whole anchor object is not
+    expect(tool.inputSchema.required ?? []).not.toContain("anchor");
   });
 
   it("inputSchema has optional intent", () => {
-    const tool = getToolByName(tools, "accordo_comment_create");
+    const tool = getToolByName(tools, "comment_create");
     expect(tool.inputSchema.properties["intent"]).toBeDefined();
   });
 
   it("handler returns { created: true, threadId, commentId }", async () => {
-    const tool = getToolByName(tools, "accordo_comment_create");
+    const tool = getToolByName(tools, "comment_create");
     const result = (await tool.handler({
       uri: "file:///project/src/auth.ts",
       anchor: { kind: "text", startLine: 42 },
@@ -263,87 +267,89 @@ describe("§6 accordo_comment_create", () => {
   });
 });
 
-// ── §6 accordo_comment_reply ─────────────────────────────────────────────────
+// ── comment_reply ───────────────────────────────────────────────────
 
-describe("§6 accordo_comment_reply", () => {
+describe("comment_reply", () => {
   it("has dangerLevel 'moderate'", () => {
-    const tool = getToolByName(tools, "accordo_comment_reply");
+    const tool = getToolByName(tools, "comment_reply");
     expect(tool.dangerLevel).toBe("moderate");
   });
 
   it("is not idempotent", () => {
-    const tool = getToolByName(tools, "accordo_comment_reply");
+    const tool = getToolByName(tools, "comment_reply");
     expect(tool.idempotent).toBe(false);
   });
 
   it("inputSchema requires threadId, body", () => {
-    const tool = getToolByName(tools, "accordo_comment_reply");
+    const tool = getToolByName(tools, "comment_reply");
     expect(tool.inputSchema.required).toContain("threadId");
     expect(tool.inputSchema.required).toContain("body");
   });
 
   it("handler throws for non-existent thread", async () => {
-    const tool = getToolByName(tools, "accordo_comment_reply");
+    const tool = getToolByName(tools, "comment_reply");
     await expect(
       tool.handler({ threadId: "nonexistent", body: "reply" }),
     ).rejects.toThrow();
   });
 });
 
-// ── §6 accordo_comment_resolve ───────────────────────────────────────────────
+// ── comment_resolve ─────────────────────────────────────────────────
 
-describe("§6 accordo_comment_resolve", () => {
+describe("comment_resolve", () => {
   it("has dangerLevel 'moderate'", () => {
-    const tool = getToolByName(tools, "accordo_comment_resolve");
+    const tool = getToolByName(tools, "comment_resolve");
     expect(tool.dangerLevel).toBe("moderate");
   });
 
   it("is not idempotent", () => {
-    const tool = getToolByName(tools, "accordo_comment_resolve");
+    const tool = getToolByName(tools, "comment_resolve");
     expect(tool.idempotent).toBe(false);
   });
 
   it("inputSchema requires threadId, resolutionNote", () => {
-    const tool = getToolByName(tools, "accordo_comment_resolve");
+    const tool = getToolByName(tools, "comment_resolve");
     expect(tool.inputSchema.required).toContain("threadId");
     expect(tool.inputSchema.required).toContain("resolutionNote");
   });
 
   it("handler throws for non-existent thread", async () => {
-    const tool = getToolByName(tools, "accordo_comment_resolve");
+    const tool = getToolByName(tools, "comment_resolve");
     await expect(
       tool.handler({ threadId: "nonexistent", resolutionNote: "done" }),
     ).rejects.toThrow();
   });
 });
 
-// ── §6 accordo_comment_delete ────────────────────────────────────────────────
+// ── comment_delete ───────────────────────────────────────────────────
 
-describe("§6 accordo_comment_delete", () => {
+describe("comment_delete", () => {
   it("has dangerLevel 'moderate'", () => {
-    const tool = getToolByName(tools, "accordo_comment_delete");
+    const tool = getToolByName(tools, "comment_delete");
     expect(tool.dangerLevel).toBe("moderate");
   });
 
   it("is not idempotent", () => {
-    const tool = getToolByName(tools, "accordo_comment_delete");
+    const tool = getToolByName(tools, "comment_delete");
     expect(tool.idempotent).toBe(false);
   });
 
-  it("inputSchema requires threadId", () => {
-    const tool = getToolByName(tools, "accordo_comment_delete");
-    expect(tool.inputSchema.required).toContain("threadId");
+  it("M38-CT-07: inputSchema has no required fields (can use deleteScope for bulk delete)", () => {
+    const tool = getToolByName(tools, "comment_delete");
+    // threadId is NOT required — can use deleteScope instead
+    expect(tool.inputSchema.required ?? []).not.toContain("threadId");
+    expect(tool.inputSchema.required ?? []).toEqual([]);
   });
 
   it("inputSchema has optional commentId", () => {
-    const tool = getToolByName(tools, "accordo_comment_delete");
+    const tool = getToolByName(tools, "comment_delete");
     expect(tool.inputSchema.properties["commentId"]).toBeDefined();
     // commentId should NOT be in required
     expect(tool.inputSchema.required).not.toContain("commentId");
   });
 
   it("handler throws for non-existent thread", async () => {
-    const tool = getToolByName(tools, "accordo_comment_delete");
+    const tool = getToolByName(tools, "comment_delete");
     await expect(
       tool.handler({ threadId: "nonexistent" }),
     ).rejects.toThrow();
@@ -443,7 +449,7 @@ describe("normalizeCommentUri", () => {
   it("create handler stores canonical URI regardless of input form", async () => {
     // workspaceRoot is '' in tests (store.load() not called), so relative paths
     // resolve via process.cwd() — but absolute paths must always work correctly.
-    const createTool = tools.find(t => t.name === "accordo_comment_create")!;
+    const createTool = tools.find(t => t.name === "comment_create")!;
     const result = await createTool.handler({
       uri: "/Users/Shared/dev/myproject/src/auth.ts",
       anchor: { kind: "text", startLine: 10 },
@@ -454,17 +460,229 @@ describe("normalizeCommentUri", () => {
   });
 
   it("list handler normalizes uri filter before matching", async () => {
-    const createTool = tools.find(t => t.name === "accordo_comment_create")!;
+    const createTool = tools.find(t => t.name === "comment_create")!;
     await createTool.handler({
       uri: "file:///project/src/auth.ts",
       anchor: { kind: "file" },
       body: "a comment",
     });
-    const listTool = tools.find(t => t.name === "accordo_comment_list")!;
+    const listTool = tools.find(t => t.name === "comment_list")!;
     // filter with the same file:// URI — the normalizer must recognise and match it
     // (cross-platform: bare absolute paths like "/project/src/auth.ts" get drive-letter
     //  prefixes on Windows, so we use the canonical file:// form for portability)
     const result = await listTool.handler({ uri: "file:///project/src/auth.ts" }) as { total: number };
     expect(result.total).toBe(1);
+  });
+});
+
+// ── M38-CT-01: scope.modality routing ─────────────────────────────────────────
+
+describe("M38-CT-01: comment_list scope.modality routing", () => {
+  beforeEach(async () => {
+    const createTool = tools.find(t => t.name === "comment_create")!;
+    // Create threads for different modalities
+    // text modality (maps to anchorKind=text)
+    await createTool.handler({ uri: "file:///project/src/a.ts", anchor: { kind: "text", startLine: 1 }, body: "text comment" });
+    // markdown-preview modality (maps to surface)
+    await createTool.handler({ scope: { modality: "markdown-preview", uri: "file:///project/README.md" }, uri: "file:///project/README.md", anchor: { kind: "surface", surfaceType: "markdown-preview", coordinates: { type: "block", blockId: "b1", blockType: "paragraph" } }, body: "md preview comment" });
+    // diagram modality (maps to surface)
+    await createTool.handler({ scope: { modality: "diagram", uri: "file:///project/diagram.mmd" }, uri: "file:///project/diagram.mmd", anchor: { kind: "surface", surfaceType: "diagram", coordinates: { type: "diagram-node", nodeId: "n1" } }, body: "diagram comment" });
+    // slide modality (maps to surface)
+    await createTool.handler({ scope: { modality: "slide", uri: "file:///project/slides.pdf" }, uri: "file:///project/slides.pdf", anchor: { kind: "surface", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 1, x: 0.5, y: 0.5 } }, body: "slide comment" });
+    // image modality (maps to surface)
+    await createTool.handler({ scope: { modality: "image", uri: "file:///project/img.png" }, uri: "file:///project/img.png", anchor: { kind: "surface", surfaceType: "image", coordinates: { type: "normalized", x: 0.5, y: 0.5 } }, body: "image comment" });
+    // pdf modality (maps to surface)
+    await createTool.handler({ scope: { modality: "pdf", uri: "file:///project/doc.pdf" }, uri: "file:///project/doc.pdf", anchor: { kind: "surface", surfaceType: "pdf", coordinates: { type: "normalized", x: 0.5, y: 0.5 } }, body: "pdf comment" });
+    // browser modality (maps to surface)
+    await createTool.handler({ scope: { modality: "browser", url: "https://example.com/page1" }, anchor: { kind: "browser" }, body: "browser comment" });
+  });
+
+  it("M38-CT-01: scope.modality=text returns text-anchored threads", async () => {
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const result = (await listTool.handler({ scope: { modality: "text" } })) as { threads: unknown[]; total: number };
+    expect(result.total).toBe(1);
+    expect(result.threads[0]).toHaveProperty("anchor");
+  });
+
+  it("M38-CT-01: scope.modality=markdown-preview returns surface threads with markdown-preview type", async () => {
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const result = (await listTool.handler({ scope: { modality: "markdown-preview" } })) as { threads: unknown[]; total: number };
+    expect(result.total).toBe(1);
+  });
+
+  it("M38-CT-01: scope.modality=diagram returns surface threads with diagram type", async () => {
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const result = (await listTool.handler({ scope: { modality: "diagram" } })) as { threads: unknown[]; total: number };
+    expect(result.total).toBe(1);
+  });
+
+  it("M38-CT-01: scope.modality=slide returns surface threads with slide type", async () => {
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const result = (await listTool.handler({ scope: { modality: "slide" } })) as { threads: unknown[]; total: number };
+    expect(result.total).toBe(1);
+  });
+
+  it("M38-CT-01: scope.modality=image returns surface threads with image type", async () => {
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const result = (await listTool.handler({ scope: { modality: "image" } })) as { threads: unknown[]; total: number };
+    expect(result.total).toBe(1);
+  });
+
+  it("M38-CT-01: scope.modality=pdf returns surface threads with pdf type", async () => {
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const result = (await listTool.handler({ scope: { modality: "pdf" } })) as { threads: unknown[]; total: number };
+    expect(result.total).toBe(1);
+  });
+
+  it("M38-CT-01: scope.modality=browser returns surface threads with browser type", async () => {
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const result = (await listTool.handler({ scope: { modality: "browser" } })) as { threads: unknown[]; total: number };
+    expect(result.total).toBe(1);
+  });
+});
+
+// ── M38-CT-03: browser modality retention ─────────────────────────────────────
+
+describe("M38-CT-03: comment_create browser modality retention", () => {
+  it("M38-CT-03: creates thread with retention=volatile-browser for browser modality", async () => {
+    const createTool = tools.find(t => t.name === "comment_create")!;
+    const result = (await createTool.handler({
+      scope: { modality: "browser", url: "https://example.com/page1" },
+      anchor: { kind: "browser" },
+      body: "Browser comment",
+    })) as { threadId: string };
+    const thread = store.getThread(result.threadId)!;
+    expect(thread.retention).toBe("volatile-browser");
+  });
+
+  it("M38-CT-03: creates thread with retention=standard for non-browser modality", async () => {
+    const createTool = tools.find(t => t.name === "comment_create")!;
+    const result = (await createTool.handler({
+      scope: { modality: "diagram" },
+      uri: "file:///project/diagram.mmd",
+      anchor: { kind: "surface", surfaceType: "diagram", coordinates: { type: "diagram-node", nodeId: "n1" } },
+      body: "Diagram comment",
+    })) as { threadId: string };
+    const thread = store.getThread(result.threadId)!;
+    expect(thread.retention).toBe("standard");
+  });
+
+  it("M38-CT-03: kind=browser anchor creates surface anchor with surfaceType=browser", async () => {
+    const createTool = tools.find(t => t.name === "comment_create")!;
+    const result = (await createTool.handler({
+      scope: { modality: "browser", url: "https://example.com/page1" },
+      anchor: { kind: "browser" },
+      body: "Browser comment",
+    })) as { threadId: string };
+    const thread = store.getThread(result.threadId)!;
+    expect(thread.anchor.kind).toBe("surface");
+    expect((thread.anchor as { surfaceType: string }).surfaceType).toBe("browser");
+  });
+
+  it("M38-CT-03: kind=browser anchor with anchorKey parses coordinates correctly", async () => {
+    const createTool = tools.find(t => t.name === "comment_create")!;
+    const result = (await createTool.handler({
+      scope: { modality: "browser", url: "https://example.com/page1" },
+      anchor: { kind: "browser", anchorKey: "0.25:0.75" },
+      body: "Browser comment at 0.25:0.75",
+    })) as { threadId: string };
+    const thread = store.getThread(result.threadId)!;
+    const coords = (thread.anchor as { coordinates: { x: number; y: number } }).coordinates;
+    expect(coords.x).toBe(0.25);
+    expect(coords.y).toBe(0.75);
+  });
+});
+
+// ── M38-CT-06: comment_reopen ─────────────────────────────────────────
+
+describe("M38-CT-06: comment_reopen", () => {
+  let threadId: string;
+
+  beforeEach(async () => {
+    const createTool = tools.find(t => t.name === "comment_create")!;
+    const resolveTool = tools.find(t => t.name === "comment_resolve")!;
+    const result = (await createTool.handler({
+      uri: "file:///project/src/a.ts",
+      anchor: { kind: "file" },
+      body: "Original comment",
+    })) as { threadId: string };
+    threadId = result.threadId;
+    await resolveTool.handler({ threadId, resolutionNote: "Fixed" });
+  });
+
+  it("M38-CT-06: has dangerLevel 'moderate'", () => {
+    const tool = getToolByName(tools, "comment_reopen");
+    expect(tool.dangerLevel).toBe("moderate");
+  });
+
+  it("M38-CT-06: is not idempotent", () => {
+    const tool = getToolByName(tools, "comment_reopen");
+    expect(tool.idempotent).toBe(false);
+  });
+
+  it("M38-CT-06: inputSchema requires threadId", () => {
+    const tool = getToolByName(tools, "comment_reopen");
+    expect(tool.inputSchema.properties["threadId"]).toBeDefined();
+    expect(tool.inputSchema.required).toContain("threadId");
+  });
+
+  it("M38-CT-06: handler returns { reopened: true, threadId }", async () => {
+    const tool = getToolByName(tools, "comment_reopen");
+    const result = (await tool.handler({ threadId })) as Record<string, unknown>;
+    expect(result).toHaveProperty("reopened", true);
+    expect(result).toHaveProperty("threadId", threadId);
+  });
+
+  it("M38-CT-06: reopens a resolved thread", async () => {
+    const tool = getToolByName(tools, "comment_reopen");
+    await tool.handler({ threadId });
+    const thread = store.getThread(threadId)!;
+    expect(thread.status).toBe("open");
+  });
+
+  it("M38-CT-06: throws for non-existent thread", async () => {
+    const tool = getToolByName(tools, "comment_reopen");
+    await expect(
+      tool.handler({ threadId: "nonexistent" }),
+    ).rejects.toThrow();
+  });
+});
+
+// ── M38-CT-07: deleteScope bulk delete ────────────────────────────────────────
+
+describe("M38-CT-07: comment_delete deleteScope bulk delete", () => {
+  beforeEach(async () => {
+    const createTool = tools.find(t => t.name === "comment_create")!;
+    // Create browser threads
+    await createTool.handler({ scope: { modality: "browser", url: "https://example.com/1" }, anchor: { kind: "browser" }, body: "browser comment 1" });
+    await createTool.handler({ scope: { modality: "browser", url: "https://example.com/2" }, anchor: { kind: "browser" }, body: "browser comment 2" });
+    // Create non-browser threads
+    await createTool.handler({ uri: "file:///project/src/a.ts", anchor: { kind: "text", startLine: 1 }, body: "text comment" });
+    await createTool.handler({ scope: { modality: "diagram" }, uri: "file:///project/diagram.mmd", anchor: { kind: "surface", surfaceType: "diagram", coordinates: { type: "diagram-node", nodeId: "n1" } }, body: "diagram comment" });
+  });
+
+  it("M38-CT-07: deleteScope with modality=browser deletes all browser threads", async () => {
+    const deleteTool = tools.find(t => t.name === "comment_delete")!;
+    const result = (await deleteTool.handler({ deleteScope: { modality: "browser", all: true } })) as { deletedCount: number };
+    expect(result.deleted).toBe(true);
+    expect(result.deletedCount).toBe(2);
+    // Only non-browser threads should remain
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const remaining = (await listTool.handler({})) as { total: number };
+    expect(remaining.total).toBe(2); // text + diagram
+  });
+
+  it("M38-CT-07: deleteScope requires all=true to trigger bulk delete", async () => {
+    const deleteTool = tools.find(t => t.name === "comment_delete")!;
+    // Without all=true, it should require threadId
+    await expect(
+      deleteTool.handler({ deleteScope: { modality: "browser" } }),
+    ).rejects.toThrow();
+  });
+
+  it("M38-CT-07: returns deletedCount with bulk delete", async () => {
+    const deleteTool = tools.find(t => t.name === "comment_delete")!;
+    const result = (await deleteTool.handler({ deleteScope: { modality: "browser", all: true } })) as { deletedCount: number };
+    expect(result.deletedCount).toBe(2);
   });
 });

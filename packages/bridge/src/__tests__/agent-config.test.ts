@@ -69,19 +69,19 @@ describe("buildOpencodeConfig", () => {
     expect(cfg["mcp"]).toBeDefined();
   });
 
-  it("CFG-03: mcp.accordo-hub.type is 'remote'", () => {
+  it("CFG-03: mcp.accordo.type is 'remote'", () => {
     const cfg = buildOpencodeConfig(3000, "tok") as Record<string, Record<string, Record<string, unknown>>>;
-    expect(cfg.mcp["accordo-hub"].type).toBe("remote");
+    expect(cfg.mcp["accordo"].type).toBe("remote");
   });
 
-  it("CFG-03: mcp.accordo-hub.url uses the provided port", () => {
+  it("CFG-03: mcp.accordo.url uses the provided port", () => {
     const cfg = buildOpencodeConfig(4200, "tok") as Record<string, Record<string, Record<string, unknown>>>;
-    expect(cfg.mcp["accordo-hub"].url).toBe("http://localhost:4200/mcp");
+    expect(cfg.mcp["accordo"].url).toBe("http://localhost:4200/mcp");
   });
 
   it("CFG-03: Authorization header contains Bearer token", () => {
     const cfg = buildOpencodeConfig(3000, "my-secret-token") as Record<string, Record<string, Record<string, Record<string, string>>>>;
-    expect(cfg.mcp["accordo-hub"].headers["Authorization"]).toBe("Bearer my-secret-token");
+    expect(cfg.mcp["accordo"].headers["Authorization"]).toBe("Bearer my-secret-token");
   });
 
   it("CFG-04: does not include instructions field", () => {
@@ -104,19 +104,19 @@ describe("buildClaudeConfig", () => {
     expect(cfg["mcpServers"]).toBeDefined();
   });
 
-  it("CFG-03: mcpServers.accordo-hub.type is 'http'", () => {
+  it("CFG-03: mcpServers.accordo.type is 'http'", () => {
     const cfg = buildClaudeConfig(3000, "tok", undefined) as Record<string, Record<string, Record<string, unknown>>>;
-    expect(cfg.mcpServers["accordo-hub"].type).toBe("http");
+    expect(cfg.mcpServers["accordo"].type).toBe("http");
   });
 
-  it("CFG-03: mcpServers.accordo-hub.url uses the provided port", () => {
+  it("CFG-03: mcpServers.accordo.url uses the provided port", () => {
     const cfg = buildClaudeConfig(4200, "tok", undefined) as Record<string, Record<string, Record<string, unknown>>>;
-    expect(cfg.mcpServers["accordo-hub"].url).toBe("http://localhost:4200/mcp");
+    expect(cfg.mcpServers["accordo"].url).toBe("http://localhost:4200/mcp");
   });
 
   it("CFG-03: Authorization header contains Bearer token", () => {
     const cfg = buildClaudeConfig(3000, "my-secret", undefined) as Record<string, Record<string, Record<string, Record<string, string>>>>;
-    expect(cfg.mcpServers["accordo-hub"].headers["Authorization"]).toBe("Bearer my-secret");
+    expect(cfg.mcpServers["accordo"].headers["Authorization"]).toBe("Bearer my-secret");
   });
 
   it("CFG-05: preserves existing non-accordo entries from existingRaw", () => {
@@ -129,23 +129,23 @@ describe("buildClaudeConfig", () => {
     expect(cfg.mcpServers["other-tool"]).toBeDefined();
   });
 
-  it("CFG-05: overwrites the accordo-hub entry when updating token", () => {
+  it("CFG-05: overwrites the accordo entry when updating token", () => {
     const existing = JSON.stringify({
       mcpServers: {
-        "accordo-hub": { type: "http", url: "http://localhost:3000/mcp", headers: { Authorization: "Bearer old-token" } },
+        "accordo": { type: "http", url: "http://localhost:3000/mcp", headers: { Authorization: "Bearer old-token" } },
       },
     });
     const cfg = buildClaudeConfig(3000, "new-token", existing) as Record<string, Record<string, Record<string, Record<string, string>>>>;
-    expect(cfg.mcpServers["accordo-hub"].headers["Authorization"]).toBe("Bearer new-token");
+    expect(cfg.mcpServers["accordo"].headers["Authorization"]).toBe("Bearer new-token");
   });
 
   it("CFG-09: treats corrupt JSON existingRaw as absent (no crash)", () => {
     expect(() => buildClaudeConfig(3000, "tok", "NOT VALID JSON")).not.toThrow();
   });
 
-  it("CFG-09: still writes accordo-hub entry when existing file is corrupt", () => {
+  it("CFG-09: still writes accordo entry when existing file is corrupt", () => {
     const cfg = buildClaudeConfig(3000, "tok", "INVALID") as Record<string, Record<string, unknown>>;
-    expect(cfg.mcpServers["accordo-hub"]).toBeDefined();
+    expect(cfg.mcpServers["accordo"]).toBeDefined();
   });
 
   it("CFG-10: includes _accordo_schema field with current version", () => {
@@ -299,7 +299,7 @@ describe("writeClaudeConfig", () => {
       fs.readFileSync(path.join(claudeDir, "mcp.json"), "utf8"),
     ) as Record<string, Record<string, unknown>>;
     expect(parsed.mcpServers["other-tool"]).toBeDefined();
-    expect(parsed.mcpServers["accordo-hub"]).toBeDefined();
+    expect(parsed.mcpServers["accordo"]).toBeDefined();
   });
 
   it("CFG-09: backs up corrupt .claude/mcp.json as .bak before overwriting", () => {
@@ -418,7 +418,7 @@ describe("writeAgentConfigs — CFG-07: rewrite on token rotation", () => {
     const content = JSON.parse(
       fs.readFileSync(path.join(rotationDir, "opencode.json"), "utf8"),
     ) as Record<string, Record<string, Record<string, Record<string, string>>>>;
-    const auth = content.mcp["accordo-hub"].headers["Authorization"];
+    const auth = content.mcp["accordo"].headers["Authorization"];
     expect(auth).toBe("Bearer rotated-token");
     expect(auth).not.toContain("initial-token");
   });
@@ -431,7 +431,7 @@ describe("writeAgentConfigs — CFG-07: rewrite on token rotation", () => {
     const content = JSON.parse(
       fs.readFileSync(path.join(rotationDir, ".claude", "mcp.json"), "utf8"),
     ) as Record<string, Record<string, Record<string, Record<string, string>>>>;
-    const auth = content.mcpServers["accordo-hub"].headers["Authorization"];
+    const auth = content.mcpServers["accordo"].headers["Authorization"];
     expect(auth).toBe("Bearer rotated-token");
     expect(auth).not.toContain("initial-token");
   });
@@ -448,8 +448,8 @@ describe("writeAgentConfigs — CFG-07: rewrite on token rotation", () => {
       fs.readFileSync(path.join(rotationDir, ".claude", "mcp.json"), "utf8"),
     ) as Record<string, Record<string, Record<string, Record<string, string>>>>;
 
-    expect(opencode.mcp["accordo-hub"].headers["Authorization"]).toBe("Bearer v2");
-    expect(claude.mcpServers["accordo-hub"].headers["Authorization"]).toBe("Bearer v2");
+    expect(opencode.mcp["accordo"].headers["Authorization"]).toBe("Bearer v2");
+    expect(claude.mcpServers["accordo"].headers["Authorization"]).toBe("Bearer v2");
   });
 });
 

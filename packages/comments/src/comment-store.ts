@@ -19,6 +19,8 @@ import type {
   CommentStoreFile,
   CommentContext,
   CommentAnchorText,
+  CommentAnchorSurface,
+  CommentRetention,
 } from "@accordo/bridge-types";
 import {
   COMMENT_MAX_THREADS,
@@ -36,6 +38,8 @@ export interface ListThreadsOptions {
   status?: CommentStatus;
   intent?: CommentIntent;
   anchorKind?: "text" | "surface" | "file";
+  /** Filter by surface type (e.g. "browser", "diagram"). Only matches surface anchors. */
+  surfaceType?: string;
   /** ISO 8601 — return only threads with lastActivity after this timestamp */
   updatedSince?: string;
   /** Return only threads whose most recent comment was written by this author kind */
@@ -75,6 +79,8 @@ export interface CreateCommentParams {
   author: CommentAuthor;
   intent?: CommentIntent;
   context?: CommentContext;
+  /** Retention policy — defaults to "standard" if omitted. */
+  retention?: CommentRetention;
 }
 
 /** Result of creating a comment. */
@@ -226,6 +232,12 @@ export class CommentStore {
     if (options.anchorKind !== undefined) {
       threads = threads.filter(t => t.anchor.kind === options.anchorKind);
     }
+    if (options.surfaceType !== undefined) {
+      threads = threads.filter(t =>
+        t.anchor.kind === "surface" &&
+        (t.anchor as CommentAnchorSurface).surfaceType === options.surfaceType,
+      );
+    }
     if (options.updatedSince !== undefined) {
       threads = threads.filter(t => t.lastActivity > options.updatedSince!);
     }
@@ -302,6 +314,7 @@ export class CommentStore {
       anchor: params.anchor,
       comments: [comment],
       status: "open",
+      retention: params.retention ?? "standard",
       createdAt: now,
       lastActivity: now,
     };
@@ -378,13 +391,14 @@ export class CommentStore {
   }
 
   /**
-   * Reopen a resolved thread. Only users can reopen.
-   * Throws if thread not found, not resolved, or author is agent.
+   * Reopen a resolved thread. Both users and agents can reopen.
+   * Throws if thread not found or not resolved.
+   *
+   * Source: comments-architecture.md §4 state machine — "user or agent" can reopen.
    */
   async reopen(threadId: string, author: CommentAuthor): Promise<void> {
     const thread = this._threads.get(threadId);
     if (!thread) throw new Error(`Thread not found: ${threadId}`);
-    if (author.kind === "agent") throw new Error("Agents cannot reopen threads");
     if (thread.status !== "resolved") throw new Error("Thread is not resolved");
 
     thread.status = "open";
@@ -421,6 +435,41 @@ export class CommentStore {
 
     await this._persist();
     this._emit(affectedUri);
+  }
+
+  /**
+   * Delete all threads whose anchor is a surface with the given surfaceType.
+   * Used for bulk browser comment cleanup (M38-CT-07 deleteScope).
+   * Returns the number of deleted threads.
+   *
+   * Source: comments-architecture.md §10.5, requirements-comments.md M38-CT-07
+   */
+  async deleteAllByModality(surfaceType: string): Promise<number> {
+    const toDelete: Array<{ id: string; uri: string }> = [];
+    for (const [id, thread] of this._threads) {
+      if (
+        thread.anchor.kind === "surface" &&
+        (thread.anchor as CommentAnchorSurface).surfaceType === surfaceType
+      ) {
+        toDelete.push({ id, uri: thread.anchor.uri });
+      }
+    }
+
+    if (toDelete.length === 0) return 0;
+
+    const affectedUris = new Set<string>();
+    for (const { id, uri } of toDelete) {
+      this._threads.delete(id);
+      this._stale.delete(id);
+      affectedUris.add(uri);
+    }
+
+    await this._persist();
+    for (const uri of affectedUris) {
+      this._emit(uri);
+    }
+
+    return toDelete.length;
   }
 
   // ── Staleness ──────────────────────────────────────────────────────────────

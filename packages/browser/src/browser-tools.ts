@@ -1,10 +1,17 @@
+/**
+ * @deprecated — M86-MIGRATE: These tools are no longer registered.
+ * Chrome relay events are now routed through unified comment_* tools
+ * via the onRelayRequest interceptor in extension.ts.
+ *
+ * This file is kept for reference and testing only.
+ */
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { BrowserRelayLike } from "./types.js";
 
 export function createBrowserTools(relay: BrowserRelayLike): ExtensionToolDefinition[] {
   return [
     {
-      name: "accordo_browser_getAllComments",
+      name: "browser_getAllComments",
       description: "List all commented pages sorted by recent activity",
       inputSchema: {
         type: "object",
@@ -15,7 +22,7 @@ export function createBrowserTools(relay: BrowserRelayLike): ExtensionToolDefini
       handler: async () => relay.request("get_all_comments", {}),
     },
     {
-      name: "accordo_browser_getComments",
+      name: "browser_getComments",
       description: "Get browser comments for a URL (defaults to active tab)",
       inputSchema: {
         type: "object",
@@ -30,7 +37,7 @@ export function createBrowserTools(relay: BrowserRelayLike): ExtensionToolDefini
       }),
     },
     {
-      name: "accordo_browser_createComment",
+      name: "browser_createComment",
       description: "Create a new browser comment thread (defaults to active tab and center anchor)",
       inputSchema: {
         type: "object",
@@ -51,7 +58,7 @@ export function createBrowserTools(relay: BrowserRelayLike): ExtensionToolDefini
       }),
     },
     {
-      name: "accordo_browser_replyComment",
+      name: "browser_replyComment",
       description: "Reply to a browser comment thread",
       inputSchema: {
         type: "object",
@@ -70,7 +77,7 @@ export function createBrowserTools(relay: BrowserRelayLike): ExtensionToolDefini
       }),
     },
     {
-      name: "accordo_browser_resolveThread",
+      name: "browser_resolveThread",
       description: "Resolve a browser comment thread",
       inputSchema: {
         type: "object",
@@ -87,7 +94,7 @@ export function createBrowserTools(relay: BrowserRelayLike): ExtensionToolDefini
       }),
     },
     {
-      name: "accordo_browser_reopenThread",
+      name: "browser_reopenThread",
       description: "Reopen a resolved browser comment thread",
       inputSchema: {
         type: "object",
@@ -102,7 +109,7 @@ export function createBrowserTools(relay: BrowserRelayLike): ExtensionToolDefini
       }),
     },
     {
-      name: "accordo_browser_deleteComment",
+      name: "browser_deleteComment",
       description: "Delete one browser comment in a thread",
       inputSchema: {
         type: "object",
@@ -119,7 +126,7 @@ export function createBrowserTools(relay: BrowserRelayLike): ExtensionToolDefini
       }),
     },
     {
-      name: "accordo_browser_deleteThread",
+      name: "browser_deleteThread",
       description: "Delete a browser comment thread",
       inputSchema: {
         type: "object",

@@ -122,12 +122,12 @@ const ACCORDO_COMMAND_IDS: Record<
   },
 
   // ── Comment tools (accordo-comments) ─────────────────────────────────────
-  accordo_comment_list: {
+  comment_list: {
     args: "{}",
     description: "List all review comment threads.",
   },
-  accordo_comment_create: {
-    args: '{ "file": "src/index.ts", "line": 10, "text": "Needs review" }',
+  comment_create: {
+    args: '{ "uri": "file:///src/index.ts", "anchor": { "kind": "text", "startLine": 10 }, "body": "Needs review" }',
     description: "Create a review comment thread.",
   },
 

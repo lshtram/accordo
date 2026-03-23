@@ -186,7 +186,7 @@ describe("§10.2 Tool registration", () => {
     );
   });
 
-  it("registers exactly 6 MCP tools", async () => {
+  it("M38-CT-01,06: registers exactly 7 MCP tools (including comment_reopen)", async () => {
     const bridge = createMockBridge();
     setupBridgeExtension(bridge);
     const ctx = createMockExtensionContext();
@@ -194,7 +194,7 @@ describe("§10.2 Tool registration", () => {
     await activate(ctx);
 
     const tools = (bridge.registerTools as ReturnType<typeof vi.fn>).mock.calls[0][1];
-    expect(tools).toHaveLength(6);
+    expect(tools).toHaveLength(7);
   });
 
   it("pushes tool disposable into context.subscriptions", async () => {

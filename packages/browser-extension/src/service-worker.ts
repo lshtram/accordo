@@ -25,6 +25,11 @@ import type { MessageType } from "./constants.js";
 export { MESSAGE_TYPES };
 export type { MessageType };
 
+// ── Relay bridge to accordo-browser ───────────────────────────────────────────
+// Created early so forwardToAccordoBrowser (below) can reference it.
+// Started in the Bootstrap section after registerListeners().
+const relayBridge = new RelayBridgeClient(handleRelayActionWithBroadcast);
+
 // ── Debug logger ─────────────────────────────────────────────────────────────────
 
 function dbg(msg: string, ...args: unknown[]): void {
@@ -165,7 +170,10 @@ export async function handleMessage(
       const anchorContext = payload?.anchorContext as { tagName: string; textSnippet?: string; ariaLabel?: string; pageTitle?: string } | undefined;
       dbg(`CREATE_THREAD: url=${url} anchorKey=${anchorKey}`);
       const thread = await createThread(url, anchorKey, { body, author }, anchorContext);
-      dbg(`CREATE_THREAD: created thread id=${thread.id}`);
+      dbg(`CREATE_THREAD: created thread id=${thread.id} — forwarding to accordo-browser`);
+      // Forward to accordo-browser so it persists to VS Code's CommentStore
+      // (non-blocking: popup still works even if accordo-browser is unreachable)
+      void forwardToAccordoBrowser("create_comment", { body, url, anchorKey, authorName: author?.name });
       await broadcastCommentsUpdated(thread.pageUrl);
       return { success: true, data: thread };
     }
@@ -178,6 +186,7 @@ export async function handleMessage(
       try {
         const comment = await addComment(threadId, { body, author });
         dbg(`ADD_COMMENT: created comment id=${comment.id}`);
+        void forwardToAccordoBrowser("reply_comment", { threadId, body, authorName: author?.name });
         await broadcastCommentsUpdated(comment.pageUrl);
         return { success: true, data: comment };
       } catch (err) {
@@ -191,6 +200,7 @@ export async function handleMessage(
       const commentId = payload?.commentId as string;
       dbg(`SOFT_DELETE_COMMENT: threadId=${threadId} commentId=${commentId}`);
       const url = await softDeleteComment(threadId, commentId);
+      void forwardToAccordoBrowser("delete_comment", { threadId, commentId });
       await broadcastCommentsUpdated(url ?? undefined);
       return { success: true };
     }
@@ -199,6 +209,7 @@ export async function handleMessage(
       const threadId = payload?.threadId as string;
       dbg(`SOFT_DELETE_THREAD: threadId=${threadId}`);
       const url = await softDeleteThread(threadId);
+      void forwardToAccordoBrowser("delete_thread", { threadId });
       await broadcastCommentsUpdated(url ?? undefined);
       return { success: true };
     }
@@ -207,6 +218,7 @@ export async function handleMessage(
       const threadId = payload?.threadId as string;
       const resolutionNote = payload?.resolutionNote as string | undefined;
       const url = await resolveThread(threadId, resolutionNote);
+      void forwardToAccordoBrowser("resolve_thread", { threadId, resolutionNote });
       await broadcastCommentsUpdated(url ?? undefined);
       return { success: true };
     }
@@ -214,6 +226,7 @@ export async function handleMessage(
     case MESSAGE_TYPES.REOPEN_THREAD: {
       const threadId = payload?.threadId as string;
       const url = await reopenThread(threadId);
+      void forwardToAccordoBrowser("reopen_thread", { threadId });
       await broadcastCommentsUpdated(url ?? undefined);
       return { success: true };
     }
@@ -335,6 +348,30 @@ dbg("Bootstrap: calling registerListeners()");
 registerListeners();
 dbg("Bootstrap: attaching onInstalled listener");
 chrome.runtime.onInstalled.addListener(onInstalled);
-const relayBridge = new RelayBridgeClient(handleRelayActionWithBroadcast);
 relayBridge.start();
 dbg("Bootstrap: complete");
+
+// ── Forwarder to accordo-browser ────────────────────────────────────────────
+/**
+ * Forward a mutation action to accordo-browser through the WebSocket relay.
+ * accordo-browser will call the unified comment_* tools to persist the action
+ * to VS Code's CommentStore, which updates the Comments Panel.
+ *
+ * This is fire-and-forget for the Chrome popup — the local chrome.storage.local
+ * write is the primary store for popup rendering. If accordo-browser is
+ * unreachable, the popup still works (offline-first).
+ */
+async function forwardToAccordoBrowser(
+  action: "create_comment" | "reply_comment" | "resolve_thread" | "reopen_thread" | "delete_comment" | "delete_thread",
+  payload: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const result = await relayBridge.send(action, payload, 5000);
+    if (!result.success) {
+      dbgErr(`forwardToAccordoBrowser(${action}): accordo-browser error=${result.error}`);
+    }
+  } catch (err) {
+    // Non-fatal — Chrome local storage is primary; accordo-browser is secondary sync.
+    dbgErr(`forwardToAccordoBrowser(${action}): ${err}`);
+  }
+}

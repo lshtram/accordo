@@ -99,7 +99,7 @@ export function buildOpencodeConfig(
     $schema: "https://opencode.ai/config.json",
     mcp: {
       ...existingMcp,
-      "accordo-hub": {
+      accordo: {
         type: "remote",
         url: `http://localhost:${port}/mcp`,
         headers: {
@@ -142,7 +142,7 @@ export function buildClaudeConfig(
     _accordo_schema: ACCORDO_SCHEMA_VERSION,
     mcpServers: {
       ...existingServers,
-      "accordo-hub": {
+      accordo: {
         type: "http",
         url: `http://localhost:${port}/mcp`,
         headers: {
@@ -391,7 +391,7 @@ export function buildCopilotConfig(
     ...existing,
     servers: {
       ...existingServers,
-      "accordo-hub": {
+      accordo: {
         type: "http",
         url: `http://localhost:${port}/mcp`,
         headers: {
