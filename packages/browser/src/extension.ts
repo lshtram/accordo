@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { BrowserRelayServer } from "./relay-server.js";
+import { buildPageUnderstandingTools } from "./page-understanding-tools.js";
 import type { BrowserBridgeAPI, BrowserRelayAction } from "./types.js";
 
 const EXTENSION_ID = "accordo.accordo-browser";
@@ -202,6 +203,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     out.appendLine(`[accordo-browser] relay start failed: ${relayStartError}`);
   }
 
+  // Register page-understanding MCP tools so AI agents can inspect live browser pages.
+  // These tools forward requests through the relay to the Chrome extension content script.
+  const pageUnderstandingTools = buildPageUnderstandingTools(relay);
+  const toolsDisposable = bridge.registerTools(EXTENSION_ID, pageUnderstandingTools);
+  context.subscriptions.push(toolsDisposable);
+  out.appendLine(
+    `[accordo-browser] registered ${pageUnderstandingTools.length} page-understanding MCP tools ` +
+      `(${pageUnderstandingTools.map((t) => t.name).join(", ")})`,
+  );
+
   // Subscribe to accordo-comments mutations so agent-created comments
   // trigger a Chrome popup refresh.
   const commentsExt = vscode.extensions.getExtension("accordo.accordo-comments");
@@ -250,11 +261,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void relay.stop();
     },
   });
-
-  // Note: accordo_browser_* tools are intentionally NOT registered here.
-  // M86: Chrome relay events are routed through unified comment_* tools
-  // via the onRelayRequest interceptor above.
-  out.appendLine("[accordo-browser] no browser-specific MCP tools registered (M86: unified routing active)");
 
   bridge.publishState(EXTENSION_ID, {
     connected: relay.isConnected(),

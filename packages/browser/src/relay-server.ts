@@ -150,12 +150,6 @@ export class BrowserRelayServer implements BrowserRelayLike {
   }
 
   async request(action: BrowserRelayAction, payload: Record<string, unknown>, timeoutMs = 3000): Promise<BrowserRelayResponse> {
-    // Short-circuit: if the extension set an interceptor (used to route Chrome
-    // events through unified comment_* tools), call it directly.
-    if (this.options.onRelayRequest) {
-      return this.options.onRelayRequest(action, payload);
-    }
-
     if (!this.client || this.client.readyState !== WebSocket.OPEN) {
       this.emit("relay-request-disconnected", { action });
       return { requestId: "", success: false, error: "browser-not-connected" };
