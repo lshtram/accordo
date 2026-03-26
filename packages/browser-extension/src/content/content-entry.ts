@@ -372,9 +372,66 @@ async function syncFromStorage(): Promise<void> {
 
 dbg("Attaching chrome.runtime.onMessage listener");
 chrome.runtime.onMessage.addListener(
-  (message: { type: string; payload?: unknown }, _sender, _sendResponse) => {
+  (message: { type: string; payload?: unknown }, _sender, _sendResponse: (response: unknown) => void) => {
     dbg(`onMessage: type=${message.type}`);
     switch (message.type) {
+      case "PAGE_UNDERSTANDING_ACTION": {
+        const { action, payload } = message as { type: string; action: string; payload: Record<string, unknown> };
+        void (async () => {
+          try {
+            let data: unknown;
+            if (action === "get_page_map") {
+              const { collectPageMap } = await import("./page-map-collector.js");
+              data = collectPageMap(payload as Parameters<typeof collectPageMap>[0]);
+            } else if (action === "inspect_element") {
+              const { inspectElement } = await import("./element-inspector.js");
+              data = inspectElement(payload as Parameters<typeof inspectElement>[0]);
+            } else if (action === "get_dom_excerpt") {
+              const { getDomExcerpt } = await import("./element-inspector.js");
+              const { selector = "body", maxDepth, maxLength } = payload as { selector?: string; maxDepth?: number; maxLength?: number };
+              data = getDomExcerpt(selector, maxDepth, maxLength);
+            } else {
+              _sendResponse({ error: "unsupported-action" });
+              return;
+            }
+            _sendResponse({ data });
+          } catch {
+            _sendResponse({ error: "action-failed" });
+          }
+        })();
+        return true; // keep channel open for async sendResponse
+      }
+      case "RESOLVE_ANCHOR_BOUNDS": {
+        const { anchorKey, nodeRef, padding = 8 } = (message as { type: string; anchorKey?: string; nodeRef?: string; padding?: number });
+        void (async () => {
+          try {
+            const { resolveAnchorKey } = await import("./enhanced-anchor.js");
+            const ref = anchorKey ?? nodeRef;
+            if (!ref) {
+              _sendResponse({ error: "no-ref" });
+              return;
+            }
+            const element = resolveAnchorKey(ref);
+            if (!element) {
+              _sendResponse({ error: "not-found" });
+              return;
+            }
+            const rect = element.getBoundingClientRect();
+            const pad = typeof padding === "number" ? padding : 8;
+            _sendResponse({
+              bounds: {
+                x: Math.max(0, rect.left - pad),
+                y: Math.max(0, rect.top + window.scrollY - pad),
+                width: rect.width + pad * 2,
+                height: rect.height + pad * 2,
+              },
+            });
+          } catch {
+            _sendResponse({ error: "action-failed" });
+          }
+        })();
+        return true; // keep channel open for async sendResponse
+      }
       case "comments-mode-on":
         void activateCommentsMode();
         break;

@@ -19,7 +19,7 @@
  * - capture_region   → throws not implemented (CR-F-02..CR-F-07)
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { resetChromeMocks } from "./setup/chrome-mock.js";
 import { handleRelayAction } from "../src/relay-actions.js";
 import type { RelayAction } from "../src/relay-actions.js";
@@ -499,5 +499,113 @@ describe("PU-F-33: getDomExcerpt runtime { found: false } for missing selector",
     expect(response.data).toHaveProperty("html");
     expect(response.data).toHaveProperty("text");
     expect(response.data).toHaveProperty("nodeCount");
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// SW→CS forwarding path tests
+// Validates that when document is undefined (service worker context), the three
+// page-understanding actions forward to the active tab's content script via
+// chrome.tabs.sendMessage instead of calling DOM functions directly.
+// ════════════════════════════════════════════════════════════════════════════════
+
+describe("SW→CS forwarding via tabs.sendMessage (service worker context)", () => {
+  let originalDocument: typeof globalThis.document;
+
+  beforeEach(() => {
+    resetChromeMocks();
+    // Simulate service worker context by hiding document
+    originalDocument = globalThis.document;
+    // @ts-expect-error — simulate no document in SW
+    globalThis.document = undefined;
+  });
+
+  afterEach(() => {
+    globalThis.document = originalDocument;
+  });
+
+  it("PU-F-SW-01: get_page_map forwards to content script via tabs.sendMessage in SW context", async () => {
+    // Arrange: mock tabs.sendMessage to return fake page map data
+    const fakePageMap = {
+      pageUrl: "https://example.com/page",
+      title: "Test Page",
+      viewport: { width: 1280, height: 720 },
+      nodes: [],
+      totalElements: 0,
+      truncated: false,
+    };
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ data: fakePageMap });
+    // Also make tabs.query return a valid tab
+    (chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 1, url: "https://example.com/page", active: true }
+    ]);
+
+    const response = await handleRelayAction({
+      requestId: "test-sw-pum",
+      action: "get_page_map",
+      payload: { maxDepth: 4 },
+    });
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ type: "PAGE_UNDERSTANDING_ACTION", action: "get_page_map" }),
+    );
+    expect(response.success).toBe(true);
+    expect(response.data).toEqual(fakePageMap);
+  });
+
+  it("PU-F-SW-02: inspect_element forwards to content script via tabs.sendMessage in SW context", async () => {
+    const fakeResult = { found: true, anchorKey: "div:0:abc", anchorStrategy: "id" };
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ data: fakeResult });
+    (chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 1, url: "https://example.com/page", active: true }
+    ]);
+
+    const response = await handleRelayAction({
+      requestId: "test-sw-inspect",
+      action: "inspect_element",
+      payload: { selector: "#main" },
+    });
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ type: "PAGE_UNDERSTANDING_ACTION", action: "inspect_element" }),
+    );
+    expect(response.success).toBe(true);
+    expect(response.data).toEqual(fakeResult);
+  });
+
+  it("PU-F-SW-03: get_dom_excerpt forwards to content script via tabs.sendMessage in SW context", async () => {
+    const fakeResult = { found: true, html: "<p>Hello</p>", text: "Hello", nodeCount: 1 };
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ data: fakeResult });
+    (chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 1, url: "https://example.com/page", active: true }
+    ]);
+
+    const response = await handleRelayAction({
+      requestId: "test-sw-excerpt",
+      action: "get_dom_excerpt",
+      payload: { selector: "body" },
+    });
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ type: "PAGE_UNDERSTANDING_ACTION", action: "get_dom_excerpt" }),
+    );
+    expect(response.success).toBe(true);
+    expect(response.data).toEqual(fakeResult);
+  });
+
+  it("PU-F-SW-04: returns action-failed when no active tab is found in SW context", async () => {
+    (chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const response = await handleRelayAction({
+      requestId: "test-sw-no-tab",
+      action: "get_page_map",
+      payload: {},
+    });
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("action-failed");
   });
 });

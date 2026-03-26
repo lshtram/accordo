@@ -361,56 +361,121 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
       }
 
       // ── Page Understanding Actions (M90-ACT) ──────────────────────────
-      // In the service worker context these would forward to the content script.
-      // In test (jsdom) context the DOM functions are called directly.
+      // In test (jsdom) / content-script context `document` is defined — call
+      // DOM functions directly.  In the service worker context `document` is
+      // undefined — forward to the active tab's content script via
+      // chrome.tabs.sendMessage so the DOM work happens in the right context.
 
       case "get_page_map": {
-        const { collectPageMap } = await import("./content/page-map-collector.js");
-        const pageMapPayload = request.payload as {
-          maxDepth?: number;
-          maxNodes?: number;
-          includeBounds?: boolean;
-          viewportOnly?: boolean;
-        };
-        const pageMapResult = collectPageMap(pageMapPayload);
+        if (typeof document !== "undefined") {
+          // jsdom / content-script context — call DOM function directly
+          const { collectPageMap } = await import("./content/page-map-collector.js");
+          const pageMapPayload = request.payload as {
+            maxDepth?: number;
+            maxNodes?: number;
+            includeBounds?: boolean;
+            viewportOnly?: boolean;
+          };
+          const pageMapResult = collectPageMap(pageMapPayload);
+          return {
+            requestId: request.requestId,
+            success: true,
+            data: pageMapResult,
+          };
+        }
+        // Service worker context — forward to content script
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) {
+          return { requestId: request.requestId, success: false, error: "action-failed" };
+        }
+        const response = await chrome.tabs.sendMessage(tab.id, {
+          type: "PAGE_UNDERSTANDING_ACTION",
+          action: request.action,
+          payload: request.payload,
+        });
+        if (!response || (response as { error?: string }).error) {
+          return { requestId: request.requestId, success: false, error: "action-failed" };
+        }
         return {
           requestId: request.requestId,
           success: true,
-          data: pageMapResult,
+          data: (response as { data: unknown }).data,
         };
       }
 
       case "inspect_element": {
-        const { inspectElement } = await import("./content/element-inspector.js");
-        const inspectPayload = request.payload as {
-          ref?: string;
-          selector?: string;
-        };
-        const inspectResult = inspectElement(inspectPayload);
+        if (typeof document !== "undefined") {
+          // jsdom / content-script context — call DOM function directly
+          const { inspectElement } = await import("./content/element-inspector.js");
+          const inspectPayload = request.payload as {
+            ref?: string;
+            selector?: string;
+          };
+          const inspectResult = inspectElement(inspectPayload);
+          return {
+            requestId: request.requestId,
+            success: true,
+            data: inspectResult,
+          };
+        }
+        // Service worker context — forward to content script
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) {
+          return { requestId: request.requestId, success: false, error: "action-failed" };
+        }
+        const response = await chrome.tabs.sendMessage(tab.id, {
+          type: "PAGE_UNDERSTANDING_ACTION",
+          action: request.action,
+          payload: request.payload,
+        });
+        if (!response || (response as { error?: string }).error) {
+          return { requestId: request.requestId, success: false, error: "action-failed" };
+        }
         return {
           requestId: request.requestId,
           success: true,
-          data: inspectResult,
+          data: (response as { data: unknown }).data,
         };
       }
 
       case "get_dom_excerpt": {
-        const { getDomExcerpt } = await import("./content/element-inspector.js");
-        const excerptPayload = request.payload as {
-          selector?: string;
-          maxDepth?: number;
-          maxLength?: number;
-        };
-        const selector = excerptPayload.selector ?? "body";
-        const excerptResult = getDomExcerpt(
-          selector,
-          excerptPayload.maxDepth,
-          excerptPayload.maxLength,
-        );
+        if (typeof document !== "undefined") {
+          // jsdom / content-script context — call DOM function directly
+          const { getDomExcerpt } = await import("./content/element-inspector.js");
+          const excerptPayload = request.payload as {
+            selector?: string;
+            maxDepth?: number;
+            maxLength?: number;
+          };
+          const selector = excerptPayload.selector ?? "body";
+          const excerptResult = getDomExcerpt(
+            selector,
+            excerptPayload.maxDepth,
+            excerptPayload.maxLength,
+          );
+          return {
+            requestId: request.requestId,
+            success: true,
+            data: excerptResult,
+          };
+        }
+        // Service worker context — forward to content script
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) {
+          return { requestId: request.requestId, success: false, error: "action-failed" };
+        }
+        const response = await chrome.tabs.sendMessage(tab.id, {
+          type: "PAGE_UNDERSTANDING_ACTION",
+          action: request.action,
+          payload: request.payload,
+        });
+        if (!response || (response as { error?: string }).error) {
+          return { requestId: request.requestId, success: false, error: "action-failed" };
+        }
         return {
           requestId: request.requestId,
           success: true,
-          data: excerptResult,
+          data: (response as { data: unknown }).data,
         };
       }
 
