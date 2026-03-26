@@ -10,20 +10,176 @@
  *
  * Strategy: Store state in chrome.storage.local. Content script reads state on injection
  * and also listens for messages. Service worker sends messages but doesn't rely on it.
+ *
+ * Unified Comment Store: chrome.storage.local is the primary store for anchorKey and
+ * anchorContext (DOM-specific data that only the browser extension knows). The Hub's
+ * CommentStore (accessed via accordo-browser relay) holds authoritative comment body,
+ * author, status, and threading data. On GET_THREADS, we merge both sources to give
+ * the popup a unified view.
  */
 
 import { toggleCommentsMode, getCommentsMode, loadCommentsModeFromStorage } from "./state-machine.js";
-import { getActiveThreads, createThread, addComment, normalizeUrl, reopenThread, resolveThread, softDeleteComment, softDeleteThread } from "./store.js";
+import { getActiveThreads, getAllThreads, createThread, addComment, normalizeUrl, reopenThread, resolveThread, softDeleteComment, softDeleteThread } from "./store.js";
 import { captureScreenshot } from "./screenshot.js";
 import { handleGetComments, handleGetScreenshot } from "./mcp-handlers.js";
-import { handleRelayAction, type RelayActionRequest } from "./relay-actions.js";
+import { handleRelayAction, type RelayActionRequest, type RelayActionResponse } from "./relay-actions.js";
 import { RelayBridgeClient } from "./relay-bridge.js";
 import { MESSAGE_TYPES } from "./constants.js";
-import type { McpToolRequest, GetCommentsArgs, GetScreenshotArgs } from "./types.js";
+import type { McpToolRequest, GetCommentsArgs, GetScreenshotArgs, BrowserCommentThread, BrowserComment } from "./types.js";
 import type { MessageType } from "./constants.js";
 
 export { MESSAGE_TYPES };
 export type { MessageType };
+
+// ── Hub CommentThread → BrowserCommentThread adapter ──────────────────────────
+// The Hub's CommentStore uses CommentThread (bridge-types). The Chrome extension
+// uses BrowserCommentThread (types.ts). This adapter converts Hub threads to
+// the browser extension format so they can be displayed in the popup alongside
+// chrome.storage.local threads.
+//
+// Hub coordinates are normalized (0-1). We convert to anchorKey "body:50%x50%"
+// format for display consistency with chrome.storage.local threads.
+
+interface HubComment {
+  id: string;
+  threadId: string;
+  createdAt: string;
+  author: { kind: "user" | "agent"; name: string; agentId?: string };
+  body: string;
+  intent?: string;
+  status: "open" | "resolved";
+  resolutionNote?: string;
+  context?: {
+    surfaceMetadata?: Record<string, string>;
+  };
+}
+
+interface HubCommentThread {
+  id: string;
+  anchor: {
+    kind: "text" | "surface" | "file" | "browser";
+    uri: string;
+    range?: { startLine: number; startChar: number; endLine: number; endChar: number };
+    surfaceType?: string;
+    coordinates?: { type: "normalized"; x: number; y: number };
+  };
+  status: "open" | "resolved";
+  commentCount: number;
+  lastActivity: string;
+  lastAuthor: string;
+  firstComment: HubComment;
+  comments: HubComment[];
+  retention?: string;
+  createdAt: string;
+}
+
+/**
+ * URL-aware comparison that normalizes both sides before comparing.
+ * Handles the case where the Hub may store URLs in a slightly different form
+ * than Chrome's normalizeUrl() produces (e.g. trailing slashes, protocol).
+ * Falls back to strict string comparison for non-HTTP URIs (file:// etc.).
+ */
+function urlsMatch(hubUri: string, chromeUrl: string): boolean {
+  try {
+    const normalize = (u: string): string =>
+      new URL(u.startsWith("http") ? u : `https://${u}`).href;
+    return normalize(hubUri) === normalize(chromeUrl);
+  } catch {
+    // Fall back to string comparison for non-URLs (file URIs, etc.)
+    return hubUri === chromeUrl;
+  }
+}
+
+function coordinatesToAnchorKey(coords: { type: "normalized"; x: number; y: number } | undefined): string {
+  if (!coords) return "body:center";
+  const xPct = Math.round(coords.x * 100);
+  const yPct = Math.round(coords.y * 100);
+  return `body:${xPct}%x${yPct}%`;
+}
+
+function hubThreadToBrowserThread(hubThread: HubCommentThread): BrowserCommentThread {
+  const pageUrl = hubThread.anchor.uri;
+  const anchorKeyFromContext = hubThread.comments[0]?.context?.surfaceMetadata?.anchorKey;
+  const anchorKey = anchorKeyFromContext
+    ?? (hubThread.anchor.coordinates
+      ? coordinatesToAnchorKey(hubThread.anchor.coordinates)
+      : "body:center");
+
+  const browserComments: BrowserComment[] = hubThread.comments.map((c) => ({
+    id: c.id,
+    threadId: c.threadId,
+    createdAt: c.createdAt,
+    author: c.author.kind === "agent"
+      ? { kind: "user" as const, name: c.author.name } // agents appear as "user" in browser popup
+      : { kind: "user" as const, name: c.author.name },
+    body: c.body,
+    anchorKey,
+    pageUrl,
+    status: c.status,
+    resolutionNote: c.resolutionNote,
+  }));
+
+  return {
+    id: hubThread.id,
+    anchorKey,
+    pageUrl,
+    status: hubThread.status,
+    comments: browserComments,
+    createdAt: hubThread.createdAt,
+    lastActivity: hubThread.lastActivity,
+  };
+}
+
+/**
+ * Merge a local chrome.storage.local thread with its Hub counterpart.
+ *
+ * Contract:
+ * - Anchoring fields (anchorKey, anchorContext, pageUrl) come from local:
+ *   the browser extension holds the authoritative DOM anchor.
+ * - Content/state fields (status, comments, lastActivity, createdAt) come
+ *   from the Hub: the Hub is authoritative for agent replies, deletions, and
+ *   status transitions.
+ * - Soft-delete markers prefer local so offline deletes are not lost.
+ * - Each hub comment's anchorKey and pageUrl are rewritten to the local
+ *   values so the UI renders them consistently.
+ *
+ * Caller contract: local.id === hub.id.
+ */
+export function mergeLocalAndHubThread(
+  local: BrowserCommentThread,
+  hub: BrowserCommentThread,
+): BrowserCommentThread {
+  const anchorKey = local.anchorKey;
+  const pageUrl = local.pageUrl;
+
+  // Build set of locally soft-deleted comment IDs to suppress hub resurrection (P0-2)
+  const localDeletedCommentIds = new Set(
+    local.comments
+      .filter((c) => !!c.deletedAt)
+      .map((c) => c.id),
+  );
+
+  const mergedComments: BrowserComment[] = hub.comments
+    .filter((c) => !localDeletedCommentIds.has(c.id))
+    .map((c) => ({
+      ...c,
+      anchorKey,
+      pageUrl,
+    }));
+
+  return {
+    id: local.id,
+    anchorKey,
+    anchorContext: local.anchorContext,
+    pageUrl,
+    status: hub.status,
+    comments: mergedComments,
+    createdAt: hub.createdAt,
+    lastActivity: hub.lastActivity,
+    deletedAt: local.deletedAt ?? hub.deletedAt,
+    deletedBy: local.deletedBy ?? hub.deletedBy,
+  };
+}
 
 // ── Relay bridge to accordo-browser ───────────────────────────────────────────
 // Created early so forwardToAccordoBrowser (below) can reference it.
@@ -76,13 +232,14 @@ async function broadcastCommentsUpdated(url?: string): Promise<void> {
   }
 }
 
-async function handleRelayActionWithBroadcast(req: RelayActionRequest): Promise<SwResponse> {
+async function handleRelayActionWithBroadcast(req: RelayActionRequest): Promise<RelayActionResponse> {
   const response = await handleRelayAction(req);
   if (
     response.success
-    && ["create_comment", "reply_comment", "delete_comment", "delete_thread", "resolve_thread", "reopen_thread"].includes(req.action)
+    && ["create_comment", "reply_comment", "delete_comment", "delete_thread", "resolve_thread", "reopen_thread", "notify_comments_updated"].includes(req.action)
   ) {
-    const pageUrl = (response.data as { pageUrl?: string } | undefined)?.pageUrl;
+    const pageUrl = (response.data as { pageUrl?: string; url?: string } | undefined)?.pageUrl
+      ?? (response.data as { pageUrl?: string; url?: string } | undefined)?.url;
     await broadcastCommentsUpdated(pageUrl);
   }
   return response;
@@ -157,8 +314,57 @@ export async function handleMessage(
     case MESSAGE_TYPES.GET_THREADS: {
       const url = (payload?.url as string | undefined) ?? "";
       dbg(`GET_THREADS: url=${url}`);
-      const threads = await getActiveThreads(url);
-      dbg(`GET_THREADS: url=${url} → returning ${threads.length} threads`);
+
+      // 1. Get local threads from chrome.storage.local
+      const localThreads = await getActiveThreads(url);
+      const localAllThreads = await getAllThreads(url);
+      const deletedLocalIds = new Set(localAllThreads.filter((t) => !!t.deletedAt).map((t) => t.id));
+
+      // 2. Get Hub threads via accordo-browser relay
+      // (fire-and-forget: if accordo-browser is unreachable, still return local)
+      let hubThreads: BrowserCommentThread[] = [];
+      try {
+        const hubResult = await relayBridge.send("get_comments", { url }, 3000);
+        if (hubResult.success && hubResult.data) {
+          const raw = hubResult.data as { threads?: HubCommentThread[] };
+          if (raw.threads && Array.isArray(raw.threads)) {
+            hubThreads = raw.threads
+              .filter((t) => urlsMatch(t.anchor.uri, normalizeUrl(url)))
+              .map(hubThreadToBrowserThread);
+          }
+        }
+      } catch {
+        // Non-fatal: chrome.storage.local is the primary store
+      }
+
+      // 3. Merge: local anchoring wins; Hub content/state wins for matching IDs.
+      //    Use localAllThreads (including soft-deleted comments) for merge so
+      //    comment-level tombstones can suppress hub resurrection (P0-2).
+      const localAllMap = new Map<string, BrowserCommentThread>();
+      for (const t of localAllThreads) {
+        localAllMap.set(t.id, t);
+      }
+      const mergedMap = new Map<string, BrowserCommentThread>();
+      for (const t of localThreads) {
+        mergedMap.set(t.id, t);
+      }
+      for (const t of hubThreads) {
+        // Local tombstone wins over Hub thread to prevent deleted thread resurrection.
+        if (deletedLocalIds.has(t.id)) {
+          continue;
+        }
+        const localFull = localAllMap.get(t.id);
+        if (localFull) {
+          mergedMap.set(t.id, mergeLocalAndHubThread(localFull, t));
+        } else {
+          mergedMap.set(t.id, t);
+        }
+      }
+
+      const threads = Array.from(mergedMap.values()).sort(
+        (a, b) => new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime(),
+      );
+      dbg(`GET_THREADS: url=${url} → ${threads.length} threads (local=${localThreads.length} hub=${hubThreads.length})`);
       return { success: true, data: threads };
     }
 
@@ -173,7 +379,14 @@ export async function handleMessage(
       dbg(`CREATE_THREAD: created thread id=${thread.id} — forwarding to accordo-browser`);
       // Forward to accordo-browser so it persists to VS Code's CommentStore
       // (non-blocking: popup still works even if accordo-browser is unreachable)
-      void forwardToAccordoBrowser("create_comment", { body, url, anchorKey, authorName: author?.name });
+      void forwardToAccordoBrowser("create_comment", {
+        body,
+        url,
+        anchorKey,
+        authorName: author?.name,
+        threadId: thread.id,
+        commentId: thread.comments[0]?.id,
+      });
       await broadcastCommentsUpdated(thread.pageUrl);
       return { success: true, data: thread };
     }
@@ -182,11 +395,12 @@ export async function handleMessage(
       const threadId = payload?.threadId as string;
       const body = payload?.body as string;
       const author = payload?.author as { kind: "user"; name: string };
-      dbg(`ADD_COMMENT: threadId=${threadId}`);
+      const callerCommentId = payload?.commentId as string | undefined;
+      dbg(`ADD_COMMENT: threadId=${threadId} callerCommentId=${callerCommentId ?? "(none)"}`);
       try {
-        const comment = await addComment(threadId, { body, author });
+        const comment = await addComment(threadId, { body, author, commentId: callerCommentId });
         dbg(`ADD_COMMENT: created comment id=${comment.id}`);
-        void forwardToAccordoBrowser("reply_comment", { threadId, body, authorName: author?.name });
+        void forwardToAccordoBrowser("reply_comment", { threadId, body, authorName: author?.name, commentId: comment.id });
         await broadcastCommentsUpdated(comment.pageUrl);
         return { success: true, data: comment };
       } catch (err) {
@@ -209,6 +423,10 @@ export async function handleMessage(
       const threadId = payload?.threadId as string;
       dbg(`SOFT_DELETE_THREAD: threadId=${threadId}`);
       const url = await softDeleteThread(threadId);
+      if (!url) {
+        dbgErr(`SOFT_DELETE_THREAD: thread not found threadId=${threadId}`);
+        return { success: false, error: "thread not found" };
+      }
       void forwardToAccordoBrowser("delete_thread", { threadId });
       await broadcastCommentsUpdated(url ?? undefined);
       return { success: true };
@@ -238,7 +456,39 @@ export async function handleMessage(
       dbg(`EXPORT: tabId=${tabId} url=${url} format=${format}`);
       try {
         const screenshotRecord = await captureScreenshot(tabId);
-        const threads = await getActiveThreads(url);
+        const localThreads = await getActiveThreads(url);
+
+        // Get Hub threads via accordo-browser relay for unified export
+        let hubThreads: BrowserCommentThread[] = [];
+        try {
+          const hubResult = await relayBridge.send("get_comments", { url }, 3000);
+          if (hubResult.success && hubResult.data) {
+            const raw = hubResult.data as { threads?: HubCommentThread[] };
+            if (raw.threads && Array.isArray(raw.threads)) {
+              hubThreads = raw.threads
+                .filter((t) => urlsMatch(t.anchor.uri, normalizeUrl(url)))
+                .map(hubThreadToBrowserThread);
+            }
+          }
+        } catch {
+          // Non-fatal: include local threads only
+        }
+
+        // Merge: local anchoring wins; Hub content/state wins for matching IDs.
+        const mergedMap = new Map<string, BrowserCommentThread>();
+        for (const t of localThreads) mergedMap.set(t.id, t);
+        for (const t of hubThreads) {
+          const local = mergedMap.get(t.id);
+          if (local) {
+            mergedMap.set(t.id, mergeLocalAndHubThread(local, t));
+          } else {
+            mergedMap.set(t.id, t);
+          }
+        }
+        const threads = Array.from(mergedMap.values()).sort(
+          (a, b) => new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime(),
+        );
+
         const { formatAsMarkdown } = await import("./exporter.js");
         let text: string;
         if (format === "json") {
@@ -251,7 +501,7 @@ export async function handleMessage(
         } else {
           text = formatAsMarkdown({ url, exportedAt: new Date().toISOString(), threads, screenshot: screenshotRecord });
         }
-        dbg(`EXPORT: success, text length=${text.length}`);
+        dbg(`EXPORT: success, text length=${text.length} (local=${localThreads.length} hub=${hubThreads.length})`);
         return { success: true, data: { text } };
       } catch (err) {
         dbgErr(`EXPORT: failed — ${err}`);
@@ -343,6 +593,83 @@ export async function onInstalled(
   dbg("onInstalled: storage initialised");
 }
 
+// ── Periodic full-sync ─────────────────────────────────────────────────────────
+/**
+ * Poll VS Code's comment store version every 30 seconds.
+ * If the version changed since last sync, refresh all tab threads via GET_THREADS.
+ * This reconciles drift that can occur when notify_comments_updated is missed
+ * (e.g. extension was unloaded or WS was temporarily disconnected).
+ */
+const SYNC_INTERVAL_MS = 30_000;
+const SYNC_STORAGE_KEY = "commentsSyncState";
+
+interface SyncState {
+  version: number;
+  lastSyncedAt: string;
+}
+
+async function getStoredSyncState(): Promise<SyncState> {
+  const result = await chrome.storage.local.get(SYNC_STORAGE_KEY);
+  const stored = result[SYNC_STORAGE_KEY] as SyncState | undefined;
+  return stored ?? { version: -1, lastSyncedAt: new Date(0).toISOString() };
+}
+
+async function setStoredSyncState(state: SyncState): Promise<void> {
+  await chrome.storage.local.set({ [SYNC_STORAGE_KEY]: state });
+}
+
+export async function checkAndSync(): Promise<void> {
+  try {
+    // P1-3: Rehydrate in-memory mode map from storage before checking tabs.
+    // After SW restart, the in-memory map is empty; without this, tabs with
+    // Comments Mode ON would be silently skipped.
+    await loadCommentsModeFromStorage();
+
+    const result = await relayBridge.send("get_comments_version", {}, 5000);
+    if (!result.success || typeof result.data !== "object") return;
+
+    const { version } = result.data as { version: number };
+    const prev = await getStoredSyncState();
+    if (version !== prev.version) {
+      dbg(`Periodic sync: version changed ${prev.version} → ${version}, refreshing all tabs`);
+      await setStoredSyncState({ version, lastSyncedAt: new Date().toISOString() });
+      // Refresh all tabs that have Comments Mode on
+      const tabs = await chrome.tabs.query({});
+      for (const tab of tabs) {
+        if (!tab.id || !tab.url || (!tab.url.startsWith("http://") && !tab.url.startsWith("https://"))) continue;
+        const isOn = getCommentsMode(tab.id);
+        if (!isOn) continue;
+        try {
+          await chrome.tabs.sendMessage(tab.id, { type: "COMMENTS_UPDATED", payload: { url: tab.url } });
+        } catch {
+          // Tab may not have content script injected — non-fatal
+        }
+      }
+      dbg(`Periodic sync: refresh complete`);
+    }
+  } catch (err) {
+    dbgErr(`Periodic sync: failed — ${err}`);
+  }
+}
+
+let _syncIntervalId: ReturnType<typeof setInterval> | null = null;
+
+export function startPeriodicSync(): void {
+  if (_syncIntervalId) return;
+  // Run an immediate sync on start
+  void checkAndSync();
+  _syncIntervalId = setInterval(() => { void checkAndSync(); }, SYNC_INTERVAL_MS);
+  dbg(`startPeriodicSync: interval started (every ${SYNC_INTERVAL_MS / 1000}s)`);
+}
+
+export function stopPeriodicSync(): void {
+  if (_syncIntervalId) {
+    clearInterval(_syncIntervalId);
+    _syncIntervalId = null;
+    dbg("stopPeriodicSync: interval stopped");
+  }
+}
+
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 dbg("Bootstrap: calling registerListeners()");
 registerListeners();
@@ -350,6 +677,7 @@ dbg("Bootstrap: attaching onInstalled listener");
 chrome.runtime.onInstalled.addListener(onInstalled);
 relayBridge.start();
 dbg("Bootstrap: complete");
+startPeriodicSync();
 
 // ── Forwarder to accordo-browser ────────────────────────────────────────────
 /**

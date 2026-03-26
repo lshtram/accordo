@@ -81,6 +81,10 @@ export interface CreateCommentParams {
   context?: CommentContext;
   /** Retention policy — defaults to "standard" if omitted. */
   retention?: CommentRetention;
+  /** Optional: caller-supplied thread ID. If omitted, a UUID is generated. */
+  threadId?: string;
+  /** Optional: caller-supplied first-comment ID. If omitted, a UUID is generated. */
+  commentId?: string;
 }
 
 /** Result of creating a comment. */
@@ -94,6 +98,8 @@ export interface ReplyParams {
   threadId: string;
   body: string;
   author: CommentAuthor;
+  /** Optional caller-supplied comment ID for cross-origin ID parity. */
+  commentId?: string;
 }
 
 /** Result of replying. */
@@ -137,6 +143,7 @@ export class CommentStore {
   private readonly _stale = new Set<string>();
   private readonly _listeners: ChangeListener[] = [];
   private _workspaceRoot = "";
+  private _versionCounter = 0;
 
   /** Return the workspace root path passed to `load()`. */
   getWorkspaceRoot(): string {
@@ -202,6 +209,16 @@ export class CommentStore {
   /** Get all threads as an array. */
   getAllThreads(): CommentThread[] {
     return Array.from(this._threads.values());
+  }
+
+  /** Lightweight snapshot of store state for sync drift detection. */
+  getVersionInfo(): { version: number; threadCount: number; lastActivity: string | null } {
+    const threads = Array.from(this._threads.values());
+    let lastActivity: string | null = null;
+    for (const t of threads) {
+      if (!lastActivity || t.lastActivity > lastActivity) lastActivity = t.lastActivity;
+    }
+    return { version: this._versionCounter, threadCount: threads.length, lastActivity };
   }
 
   /** Get a single thread by ID. Returns undefined if not found. */
@@ -293,8 +310,8 @@ export class CommentStore {
       throw new Error(`Thread limit reached: max ${COMMENT_MAX_THREADS} threads`);
     }
 
-    const threadId = crypto.randomUUID();
-    const commentId = crypto.randomUUID();
+    const threadId = params.threadId ?? crypto.randomUUID();
+    const commentId = params.commentId ?? crypto.randomUUID();
     const now = new Date().toISOString();
 
     const comment: AccordoComment = {
@@ -322,6 +339,7 @@ export class CommentStore {
     this._threads.set(threadId, thread);
     await this._persist();
     this._emit(params.uri);
+    this._versionCounter++;
 
     return { threadId, commentId };
   }
@@ -337,7 +355,7 @@ export class CommentStore {
       throw new Error(`Comment limit reached: max ${COMMENT_MAX_COMMENTS_PER_THREAD} per thread`);
     }
 
-    const commentId = crypto.randomUUID();
+    const commentId = params.commentId ?? crypto.randomUUID();
     const now = new Date().toISOString();
 
     const comment: AccordoComment = {
@@ -355,6 +373,7 @@ export class CommentStore {
 
     await this._persist();
     this._emit(thread.anchor.uri);
+    this._versionCounter++;
 
     return { commentId };
   }
@@ -388,6 +407,7 @@ export class CommentStore {
 
     await this._persist();
     this._emit(thread.anchor.uri);
+    this._versionCounter++;
   }
 
   /**
@@ -406,6 +426,7 @@ export class CommentStore {
 
     await this._persist();
     this._emit(thread.anchor.uri);
+    this._versionCounter++;
   }
 
   /**
@@ -435,6 +456,7 @@ export class CommentStore {
 
     await this._persist();
     this._emit(affectedUri);
+    this._versionCounter++;
   }
 
   /**
@@ -582,6 +604,7 @@ export class CommentStore {
       for (const uri of staleUris) {
         this._emit(uri);
       }
+      this._versionCounter++;
     }
 
     return removed;

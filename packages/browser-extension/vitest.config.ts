@@ -4,7 +4,12 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
-    setupFiles: ["./tests/setup/chrome-mock.ts"],
+    environmentOptions: {
+      jsdom: {
+        url: "https://localhost/test-page",
+      },
+    },
+    setupFiles: ["./tests/setup/chrome-mock.ts", "./tests/setup/dom-setup.ts"],
     include: ["tests/**/*.test.ts"],
     coverage: {
       provider: "v8",

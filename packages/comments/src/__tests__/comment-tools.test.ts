@@ -81,8 +81,8 @@ beforeEach(() => {
 // ── §6 Tool array shape ─────────────────────────────────────────────────────
 
 describe("§6 Tool array shape", () => {
-  it("M38-CT-01,06: returns exactly 7 tools (including comment_reopen)", () => {
-    expect(tools).toHaveLength(7);
+  it("M38-CT-01,06: returns exactly 8 tools (including comment_reopen and comment_sync_version)", () => {
+    expect(tools).toHaveLength(8);
   });
 
   it("includes all expected tool names including comment_reopen", () => {
@@ -94,6 +94,7 @@ describe("§6 Tool array shape", () => {
     expect(names).toContain("comment_resolve");
     expect(names).toContain("comment_reopen");
     expect(names).toContain("comment_delete");
+    expect(names).toContain("comment_sync_version");
   });
 
   it("all tools have descriptions ≤ 120 chars", () => {
@@ -541,6 +542,56 @@ describe("M38-CT-01: comment_list scope.modality routing", () => {
   });
 });
 
+// ── M38-CT-01: comment_list detail=true for browser modality ──────────────────
+
+describe("M38-CT-01: comment_list detail=true returns full CommentThread[]", () => {
+  beforeEach(async () => {
+    const createTool = tools.find(t => t.name === "comment_create")!;
+    await createTool.handler({
+      scope: { modality: "browser", url: "https://example.com/page1" },
+      anchor: { kind: "browser" },
+      body: "browser comment with full data",
+    });
+  });
+
+  it("returns a bare array (not ListThreadsResult) when detail=true and browser modality", async () => {
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const result = await listTool.handler({ scope: { modality: "browser" }, detail: true });
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  it("returned array contains full CommentThread objects with comments array", async () => {
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const threads = await listTool.handler({ scope: { modality: "browser" }, detail: true }) as Array<Record<string, unknown>>;
+    expect(threads.length).toBe(1);
+    expect(threads[0]).toHaveProperty("id");
+    expect(threads[0]).toHaveProperty("comments");
+    expect(threads[0]).toHaveProperty("createdAt");
+    expect(Array.isArray(threads[0]["comments"])).toBe(true);
+    const comments = threads[0]["comments"] as Array<Record<string, unknown>>;
+    expect(comments[0]).toHaveProperty("body", "browser comment with full data");
+  });
+
+  it("without detail=true, browser modality still returns ListThreadsResult", async () => {
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const result = (await listTool.handler({ scope: { modality: "browser" } })) as { threads: unknown[]; total: number; hasMore: boolean };
+    expect(result).toHaveProperty("threads");
+    expect(result).toHaveProperty("total");
+    expect(result).toHaveProperty("hasMore");
+  });
+
+  it("detail=true on non-browser modality still returns ListThreadsResult", async () => {
+    const createTool = tools.find(t => t.name === "comment_create")!;
+    await createTool.handler({ uri: "file:///project/src/a.ts", anchor: { kind: "file" }, body: "text comment" });
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    // detail=true without browser modality => normal ListThreadsResult
+    const result = (await listTool.handler({ detail: true })) as { threads: unknown[]; total: number; hasMore: boolean };
+    expect(result).toHaveProperty("threads");
+    expect(result).toHaveProperty("total");
+    expect(result).toHaveProperty("hasMore");
+  });
+});
+
 // ── M38-CT-03: browser modality retention ─────────────────────────────────────
 
 describe("M38-CT-03: comment_create browser modality retention", () => {
@@ -590,6 +641,19 @@ describe("M38-CT-03: comment_create browser modality retention", () => {
     const coords = (thread.anchor as { coordinates: { x: number; y: number } }).coordinates;
     expect(coords.x).toBe(0.25);
     expect(coords.y).toBe(0.75);
+  });
+
+  it("BUG-ANCHOR-01: kind=browser preserves anchorKey in comment context surfaceMetadata", async () => {
+    const createTool = tools.find(t => t.name === "comment_create")!;
+    const result = (await createTool.handler({
+      scope: { modality: "browser", url: "https://example.com/page1" },
+      anchor: { kind: "browser", anchorKey: "div:2:hero_title@120,45" },
+      body: "Browser comment with DOM anchor",
+    })) as { threadId: string };
+
+    const thread = store.getThread(result.threadId)!;
+    const first = thread.comments[0];
+    expect(first.context?.surfaceMetadata?.anchorKey).toBe("div:2:hero_title@120,45");
   });
 });
 
@@ -684,5 +748,101 @@ describe("M38-CT-07: comment_delete deleteScope bulk delete", () => {
     const deleteTool = tools.find(t => t.name === "comment_delete")!;
     const result = (await deleteTool.handler({ deleteScope: { modality: "browser", all: true } })) as { deletedCount: number };
     expect(result.deletedCount).toBe(2);
+  });
+});
+
+// ── Author kind routing ────────────────────────────────────────────────────────
+
+describe("comment_create / comment_reply author kind routing", () => {
+  it("BR-AUTH-CT-01: comment_create with authorKind=user stores author.kind=user and author.name from authorName", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+
+    const result = (await createTool.handler({
+      scope: { modality: "browser", url: "https://example.com/page" },
+      anchor: { kind: "browser" },
+      body: "From Guest",
+      authorKind: "user",
+      authorName: "Guest",
+    })) as { threadId: string };
+
+    const thread = store.getThread(result.threadId)!;
+    expect(thread.comments[0].author.kind).toBe("user");
+    expect(thread.comments[0].author.name).toBe("Guest");
+  });
+
+  it("BR-AUTH-CT-02: comment_create without authorKind stores author.kind=agent", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+
+    const result = (await createTool.handler({
+      uri: "file:///project/src/auth.ts",
+      anchor: { kind: "file" },
+      body: "From agent",
+    })) as { threadId: string };
+
+    const thread = store.getThread(result.threadId)!;
+    expect(thread.comments[0].author.kind).toBe("agent");
+  });
+
+  it("BR-AUTH-CT-03: comment_reply with authorKind=user stores reply author.kind=user and name from authorName", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const replyTool = getToolByName(tools, "comment_reply");
+
+    // Create a thread first
+    const createResult = (await createTool.handler({
+      scope: { modality: "browser", url: "https://example.com/page" },
+      anchor: { kind: "browser" },
+      body: "Initial comment",
+    })) as { threadId: string };
+
+    const threadId = createResult.threadId;
+
+    await replyTool.handler({
+      threadId,
+      body: "Reply from Alice",
+      authorKind: "user",
+      authorName: "Alice",
+    });
+
+    const thread = store.getThread(threadId)!;
+    const reply = thread.comments[1];
+    expect(reply.author.kind).toBe("user");
+    expect(reply.author.name).toBe("Alice");
+  });
+
+  it("BR-AUTH-CT-04: comment_reply without authorKind stores reply author.kind=agent", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const replyTool = getToolByName(tools, "comment_reply");
+
+    const createResult = (await createTool.handler({
+      uri: "file:///project/src/auth.ts",
+      anchor: { kind: "file" },
+      body: "Initial comment",
+    })) as { threadId: string };
+
+    const threadId = createResult.threadId;
+
+    await replyTool.handler({
+      threadId,
+      body: "Agent reply",
+    });
+
+    const thread = store.getThread(threadId)!;
+    const reply = thread.comments[1];
+    expect(reply.author.kind).toBe("agent");
+  });
+
+  it("BR-AUTH-CT-05: comment_create with authorKind=user and no authorName defaults name to 'User'", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+
+    const result = (await createTool.handler({
+      scope: { modality: "browser", url: "https://example.com/page" },
+      anchor: { kind: "browser" },
+      body: "Anonymous browser comment",
+      authorKind: "user",
+    })) as { threadId: string };
+
+    const thread = store.getThread(result.threadId)!;
+    expect(thread.comments[0].author.kind).toBe("user");
+    expect(thread.comments[0].author.name).toBe("User");
   });
 });

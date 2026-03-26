@@ -221,14 +221,26 @@ interface AccordoComment {
 { created: true; threadId: string; commentId: string }
 ```
 
+> **Enhanced anchor keys (Page Understanding):** When `kind` is `"browser"`, `anchorKey`
+> accepts both the existing `tagName:siblingIndex:textFingerprint` format (e.g.
+> `"button:3:submit"`) and the new strategy-prefixed format (e.g. `"id:submit-btn"`,
+> `"data-testid:login-form"`, `"css:main>div>button"`). Strategy-prefixed keys are
+> produced by `browser_inspect_element` and offer higher re-anchor stability. See
+> `docs/design/page-understanding-architecture.md` §5 for the full anchor strategy
+> hierarchy.
+
 #### Tool Schema: `accordo_comment_reply`
 
 ```typescript
 // Input
-{ threadId: string; body: string }
+{ threadId: string; body: string; commentId?: string }
 // Output
 { replied: true; commentId: string }
 ```
+
+> `commentId` is optional. When provided (e.g. by browser-extension relay), the store
+> uses the caller-supplied ID instead of generating a new one, ensuring cross-origin
+> ID parity between the browser local store and the Hub/VS Code CommentStore.
 
 #### Tool Schema: `accordo_comment_resolve`
 

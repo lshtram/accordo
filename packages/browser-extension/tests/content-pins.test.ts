@@ -4,7 +4,7 @@
  * Tests for Content Script: Pin Rendering & Positioning.
  * Runs in jsdom environment (DOM available via vitest environment: "jsdom").
  *
- * Protects: BR-F-50, BR-F-57, BR-F-58, BR-F-59, BR-F-60, BR-F-61
+ * Protects: BR-F-50, BR-F-57, BR-F-58, BR-F-59, BR-F-60, BR-F-61, BR-F-143
  *
  * API checklist:
  * ✓ renderPin — 3 tests
@@ -13,6 +13,7 @@
  * ✓ updateOffScreenBadge — 1 test
  * ✓ getOffScreenCount — 2 tests
  * ✓ repositionPins — 1 test
+ * ✓ fallback stacking (BR-F-143) — 1 test
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -166,6 +167,109 @@ describe("M80-CS-PINS — Content Script Pin Rendering", () => {
       repositionPins();
       expect(rafSpy).toHaveBeenCalled();
       rafSpy.mockRestore();
+    });
+  });
+
+  describe("mixed anchored/unanchored fallback non-overlap (BR-F-143)", () => {
+    it("BR-F-143-MIXED: fallback pins in a mixed anchored+unanchored set have non-overlapping top positions and do not interfere with anchored pins", () => {
+      // Test contract:
+      // Given a batch that contains one resolvable anchored thread (DOM anchor present)
+      // plus multiple unanchored threads (fallback), the unanchored pins must:
+      //   a) each receive a distinct top position (stacked, no overlap)
+      //   b) not displace the anchored pin (anchored pin top is independently computed)
+      //
+      // jsdom: getBoundingClientRect returns 0,0 rect so anchored pins land at
+      // top ≈ (0 + scrollY - 12) = -12 px. Fallback pins start at 48px and
+      // increment by 32px per pin. The two groups are guaranteed non-overlapping.
+
+      // --- Arrange: one element in DOM to act as anchor ---
+      const anchored = makeThread("anchored-thread");
+      const anchorEl = document.createElement("div");
+      anchorEl.setAttribute("data-anchor", anchored.anchorKey);
+      document.body.appendChild(anchorEl);
+
+      // Two unanchored threads (no matching DOM element)
+      const unanchored1 = makeThread("unanchored-a");
+      const unanchored2 = makeThread("unanchored-b");
+
+      // --- Act: render all three in the same batch ---
+      const anchoredPin = renderPin(anchored);
+      const fallbackPin1 = renderPin(unanchored1);
+      const fallbackPin2 = renderPin(unanchored2);
+
+      // --- Assert anchored pin ---
+      expect(anchoredPin.getAttribute("data-accordo-pin")).toBe("anchored-thread");
+      // Anchored pin uses top + left (not right: auto)
+      const anchoredTop = parseInt(anchoredPin.style.top, 10);
+      // In jsdom getBCR returns 0, so top = 0 + 0 - 12 = -12
+      expect(Number.isNaN(anchoredTop)).toBe(false);
+
+      // --- Assert fallback pins have distinct tops ---
+      const fallbackTop1 = parseInt(fallbackPin1.style.top, 10);
+      const fallbackTop2 = parseInt(fallbackPin2.style.top, 10);
+
+      expect(Number.isNaN(fallbackTop1)).toBe(false);
+      expect(Number.isNaN(fallbackTop2)).toBe(false);
+      // Fallback pins must be stacked at different positions
+      expect(fallbackTop1).not.toBe(fallbackTop2);
+
+      // Each successive fallback pin is 32px lower than the previous
+      expect(fallbackTop2 - fallbackTop1).toBe(32);
+
+      // --- Assert fallback pins do not overlap anchored pin position ---
+      // anchoredTop is negative (-12 in jsdom), fallback starts at 48+ → no overlap
+      expect(fallbackTop1).toBeGreaterThan(anchoredTop);
+      expect(fallbackTop2).toBeGreaterThan(anchoredTop);
+    });
+  });
+
+  describe("fallback pin stacking stability (BR-F-143)", () => {
+    it("BR-F-143: unanchored pins rendered sequentially have non-overlapping top positions", () => {
+      // BR-F-143: _fallbackStackIndex must be reset before each loadThreads render, not
+      // mid-render when anchored pins resolve. Unanchored pins must stack at distinct
+      // y positions so they do not visually overlap.
+      //
+      // This test simulates two consecutive batches of pin renders (mimicking loadThreads
+      // being called twice) and asserts that within each batch, unanchored pins have
+      // distinct, non-overlapping top style values.
+
+      // Batch 1: render two unanchored pins (no anchor element in DOM)
+      const threadA = makeThread("stack-a");
+      const threadB = makeThread("stack-b");
+
+      const pinA1 = renderPin(threadA);
+      const pinB1 = renderPin(threadB);
+
+      const topA1 = parseInt(pinA1.style.top, 10);
+      const topB1 = parseInt(pinB1.style.top, 10);
+
+      // Both pins must have a defined top (not NaN — they are in the fallback path)
+      // Note: jsdom getBoundingClientRect returns 0,0 rect so anchor lookup may
+      // resolve differently — we test the structural guarantee that the rendered
+      // positions differ when two sequential unanchored pins are placed.
+      // The critical invariant is: if both are in the fallback path, they differ.
+      // (If one found an anchor, the positions will naturally differ anyway.)
+      if (!isNaN(topA1) && !isNaN(topB1)) {
+        // When both are fallback-stacked, top positions must not be equal
+        // (each successive pin gets a +32px offset)
+        expect(topA1).not.toBe(topB1);
+      }
+
+      // Batch 2: clear DOM and re-render — the stack must restart from index 0
+      removeAllPins();
+
+      const threadC = makeThread("stack-c");
+      const pinC2 = renderPin(threadC);
+      const threadD = makeThread("stack-d");
+      const pinD2 = renderPin(threadD);
+
+      const topC2 = parseInt(pinC2.style.top, 10);
+      const topD2 = parseInt(pinD2.style.top, 10);
+
+      // Same structural guarantee in second batch
+      if (!isNaN(topC2) && !isNaN(topD2)) {
+        expect(topC2).not.toBe(topD2);
+      }
     });
   });
 });

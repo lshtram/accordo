@@ -4,6 +4,8 @@ import {
   normalizeAnchorFingerprint,
   parseAnchorKey,
   getAnchorPagePosition,
+  parseViewportAnchorKey,
+  getViewportAnchorPagePosition,
 } from "../src/content-anchor.js";
 
 describe("M80-CS-PINS — anchor rehydration", () => {
@@ -72,5 +74,20 @@ describe("M80-CS-PINS — anchor rehydration", () => {
 
     const pos = getAnchorPagePosition("div:0:text@120,45", el);
     expect(pos).toEqual({ x: 118, y: 69 });
+  });
+
+  it("BR-F-50: parses viewport percentage anchor keys from hub coordinates", () => {
+    expect(parseViewportAnchorKey("body:42%x63%")).toEqual({ xPct: 42, yPct: 63 });
+    expect(parseViewportAnchorKey("div:1:title@10,8")).toBeNull();
+  });
+
+  it("BR-F-50: resolves viewport percentage anchor keys to page coordinates", () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1000 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    Object.defineProperty(window, "scrollX", { configurable: true, value: 20 });
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 30 });
+
+    const pos = getViewportAnchorPagePosition("body:25%x50%");
+    expect(pos).toEqual({ x: 258, y: 434 });
   });
 });

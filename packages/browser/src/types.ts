@@ -3,12 +3,18 @@ import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 export type BrowserRelayAction =
   | "get_all_comments"
   | "get_comments"
+  | "get_comments_version"
   | "create_comment"
   | "reply_comment"
   | "resolve_thread"
   | "reopen_thread"
   | "delete_comment"
-  | "delete_thread";
+  | "delete_thread"
+  | "notify_comments_updated"
+  | "get_page_map"
+  | "inspect_element"
+  | "get_dom_excerpt"
+  | "capture_region";
 
 export interface BrowserRelayRequest {
   requestId: string;
@@ -25,6 +31,7 @@ export interface BrowserRelayResponse {
 
 export interface BrowserRelayLike {
   request(action: BrowserRelayAction, payload: Record<string, unknown>, timeoutMs?: number): Promise<BrowserRelayResponse>;
+  push(action: BrowserRelayAction, payload: Record<string, unknown>): void;
   isConnected(): boolean;
   /**
    * Optional interceptor: if set, the relay calls this instead of forwarding

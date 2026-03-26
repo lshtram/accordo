@@ -144,10 +144,11 @@ export async function getAllThreads(
 
 /**
  * Appends a comment to an existing thread.
+ * Accepts an optional `commentId` for cross-origin ID parity.
  */
 export async function addComment(
   threadId: string,
-  comment: Pick<BrowserComment, "body" | "author">
+  comment: Pick<BrowserComment, "body" | "author"> & { commentId?: string }
 ): Promise<BrowserComment> {
   const found = await findThreadAndStore(threadId);
   if (!found) throw new Error(`Thread not found: ${threadId}`);
@@ -155,7 +156,7 @@ export async function addComment(
 
   const now = new Date().toISOString();
   const newComment: BrowserComment = {
-    id: crypto.randomUUID(),
+    id: comment.commentId ?? crypto.randomUUID(),
     threadId,
     createdAt: now,
     author: comment.author,

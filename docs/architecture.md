@@ -900,3 +900,323 @@ accordo-script/
 ├── tsconfig.json
 └── vitest.config.ts
 ```
+
+---
+
+## 14. Browser Page Understanding (Session 15+)
+
+> **Agent note [2026-03-26]:** Established during Phase A design. Gives AI agents the ability to inspect live browser pages and place comments on precisely identified DOM elements.
+
+### 14.1 Role
+
+The page understanding capability extends the existing browser relay infrastructure with read-only DOM inspection tools. Agents gain a structured view of the browser page's content and can identify specific elements for targeted comment placement.
+
+### 14.2 Architecture Placement
+
+Page understanding tools flow through the existing relay path:
+
+```
+Agent → Hub (MCP) → Bridge → accordo-browser → Chrome relay → content script → DOM
+                                                                        ↓
+Agent ← Hub (MCP) ← Bridge ← accordo-browser ← Chrome relay ← structured result
+```
+
+Four MCP tools are registered by `accordo-browser` via `bridge.registerTools()`:
+- `browser_get_page_map` — structured DOM tree summary (breadth-first, depth/node-limited)
+- `browser_inspect_element` — deep single-element inspection with anchor generation
+- `browser_get_dom_excerpt` — raw HTML fragment for a CSS selector subtree
+- `browser_capture_region` — cropped viewport screenshot of a specific element or rect
+
+These are registered as standard MCP tools (not routed through `comment_*`) because they are read-only inspection tools, not comment operations.
+
+### 14.3 Enhanced Anchor Strategy
+
+The existing anchor system (`tagName:siblingIndex:textFingerprint`) is extended with a tiered strategy hierarchy. Each anchor key is prefixed with its strategy type:
+
+| Priority | Strategy | Format | Stability |
+|---|---|---|---|
+| 1 | `id` | `id:<value>` | High — survives page reloads |
+| 2 | `data-testid` | `data-testid:<value>` | High — designed to be stable |
+| 3 | `aria` | `aria:<label>/<role>` | Medium — semantic, resilient |
+| 4 | `css-path` | `css:<selector>` | Medium — position-dependent |
+| 5 | `tag-sibling` | `tag:<tagName>:<idx>:<fingerprint>` | Low — session-scoped |
+| 6 | `viewport-pct` | `body:<x>%x<y>%` | Low — viewport-dependent |
+
+Backward compatible: existing unprefixed keys are treated as `tag-sibling` strategy.
+
+### 14.4 Portability Layer
+
+A `CommentBackendAdapter` interface abstracts comment storage so the browser extension can operate with different backends:
+- **VS Code relay adapter** (current) — routes through `RelayBridgeClient` → `onRelayRequest` → `comment_*` tools
+- **Local storage adapter** (fallback) — uses `chrome.storage.local` directly
+- **Standalone MCP adapter** (future) — connects directly to Hub without VS Code
+
+### 14.5 Region Capture (`browser_capture_region`)
+
+> **Agent note [2026-03-26]:** Added during Phase A extension. Gives agents a targeted screenshot of a specific page element or region — avoiding full-viewport screenshots that bloat agent context windows.
+
+**Design principle:** This tool is implemented as a **crop from the existing full-viewport screenshot** (`chrome.tabs.captureVisibleTab()`), not through CDP element-screenshot APIs. This avoids new browser API complexity while achieving the product goal of smaller, focused images.
+
+**Input schema:**
+
+```typescript
+interface BrowserCaptureRegionArgs {
+  /** Anchor key or node ref identifying the target element (from page map / inspect) */
+  anchorKey?: string;
+  /** Node ref from browser_get_page_map */
+  nodeRef?: string;
+  /** Explicit viewport-relative rectangle (fallback when no element target) */
+  rect?: { x: number; y: number; width: number; height: number };
+  /** Padding around the element bounding box in pixels (default: 8, max: 100) */
+  padding?: number;
+  /** JPEG quality 1–100 (default: 70) */
+  quality?: number;
+}
+```
+
+**Output schema:**
+
+```typescript
+interface BrowserCaptureRegionResult {
+  /** Whether the capture succeeded */
+  success: boolean;
+  /** Cropped image as JPEG data URL */
+  dataUrl?: string;
+  /** Actual dimensions of the cropped image */
+  width?: number;
+  height?: number;
+  /** Size of the data URL in bytes */
+  sizeBytes?: number;
+  /** Which input was used: "anchorKey" | "nodeRef" | "rect" | "fallback" */
+  source?: string;
+  /** Error message when success=false */
+  error?: string;
+}
+```
+
+**Hard limits:**
+
+| Limit | Value | Rationale |
+|---|---|---|
+| Max output width | 1200 px | Avoids oversized images that waste agent tokens |
+| Max output height | 1200 px | Same — caps area to ~1.44 Mpx |
+| Min output dimension | 10 px | Reject degenerate zero-area rects |
+| JPEG quality range | 30–85 (default 70) | Clamped — prevents bloated high-quality or unusable low-quality |
+| Max data URL size | 500 KB | Hard reject if cropped image exceeds this; agent should use `dom_excerpt` or `inspect_element` instead |
+| Max padding | 100 px | Prevents "padding the whole page" anti-pattern |
+
+**Failure modes and fallback behaviour:**
+
+| Failure | Behaviour |
+|---|---|
+| `anchorKey` or `nodeRef` cannot be resolved | Return `{ success: false, error: "element-not-found" }` |
+| Resolved bounding box is entirely off-screen | Return `{ success: false, error: "element-off-screen" }` — agent should scroll first |
+| Cropped result exceeds 500 KB byte cap | Reduce quality by 10 and retry once; if still over, return `{ success: false, error: "image-too-large" }` |
+| `captureVisibleTab` fails (e.g., restricted page) | Return `{ success: false, error: "capture-failed" }` |
+| No input provided (no anchorKey, no nodeRef, no rect) | Return `{ success: false, error: "no-target" }` |
+| `rect` partially off-screen | Clamp to visible viewport bounds; crop what's visible |
+
+**Danger level:** `safe` (read-only)  
+**Idempotent:** `true`  
+**MCP tool name:** `browser_capture_region`
+
+**Implementation approach:** The content script resolves the target element to viewport-relative bounding box coordinates, then the service worker captures `captureVisibleTab()` and crops using `OffscreenCanvas` (or `createImageBitmap` + canvas). No CDP, no new browser APIs — the only new API surface is `OffscreenCanvas` for pixel-level cropping.
+
+### 14.6 Context-Budget Guidance
+
+> **Purpose:** Help agents (and agent-system-prompt authors) choose the right page understanding tool for each situation, minimising context window consumption.
+
+**Tool selection hierarchy (cheapest first):**
+
+| Tool | Token cost | Use when |
+|---|---|---|
+| `browser_get_page_map` | ~200–800 tokens (structured JSON) | Agent needs to understand page layout, find elements, or decide where to place a comment. Start here. |
+| `browser_inspect_element` | ~50–150 tokens | Agent has a target element (from page map `ref` or CSS selector) and needs its anchor key, bounding box, or ARIA context. |
+| `browser_get_dom_excerpt` | ~100–500 tokens (bounded by `maxLength`) | Agent needs the raw structure of a specific subtree (table data, form fields, list items). |
+| `browser_capture_region` | ~1–5 KB base64 (JPEG) | Agent needs *visual* context that structured data cannot convey (styling, color, layout, rendered text, charts). Use only when DOM structure is insufficient. |
+| Full viewport screenshot | ~10–50 KB base64 | Almost never. Only when agent explicitly needs to see the entire visible page (e.g., layout review). Prefer `capture_region` for focused areas. |
+
+**Anti-patterns (AVOID):**
+
+| Anti-pattern | Why it's bad | Use instead |
+|---|---|---|
+| Calling `get_page_map` with `maxNodes: 500` on every turn | Floods context with 500+ nodes each time | Use `maxNodes: 50` or `viewportOnly: true` for orientation; drill down with `inspect_element` |
+| Repeated full-viewport screenshots | Each screenshot is 10–50 KB of base64 in the context window | Use `capture_region` targeting the specific element of interest |
+| Calling `get_dom_excerpt` with `maxLength: 10000` | Returns multi-KB HTML blobs | Keep `maxLength` at default (2000) or lower; increase only when parsing a data table |
+| Capturing a region immediately without checking the page map first | Agent doesn't know what's on the page; capture may be misaligned | Start with `get_page_map` → `inspect_element` → then `capture_region` if visual context is needed |
+| Re-fetching page map after every comment placement | Page map is stable for short periods; DOM doesn't change between agent actions unless the user navigates | Cache page map results for the duration of a single agent turn |
+
+**Recommended workflow for comment placement:**
+
+1. `browser_get_page_map({ maxDepth: 3, maxNodes: 100 })` — orientation
+2. `browser_inspect_element({ ref: "..." })` — get anchor key for target element
+3. (Optional) `browser_capture_region({ anchorKey: "..." })` — only if visual confirmation needed
+4. `comment_create({ scope: { modality: "browser" }, anchor: { anchorKey: "..." }, body: "..." })`
+
+### 14.7 Design Document
+
+Full architecture: [`docs/design/page-understanding-architecture.md`](design/page-understanding-architecture.md)  
+Requirements: [`docs/requirements-browser-extension.md`](requirements-browser-extension.md) §3.15, §3.18
+
+---
+
+## 15. Future Visual Annotation Layer (Deferred — Not MVP)
+
+> **Agent note [2026-03-26]:** Architectural reservation for a future capability where agents can visually mark page elements during conversation (lines, frames, circles, highlights, callouts), making the browser page interactive for collaborative discussion. **No implementation in current scope.** This section exists to ensure the architecture does not foreclose the capability.
+
+### 15.1 Problem Statement (Non-Technical)
+
+When an agent and a human discuss a live web page, the agent can place *comments* (sticky-note-style text threads) on elements — but it cannot *point at* or *draw on* the page. Imagine a design review where a collaborator can circle a button, draw an arrow between two components, or highlight a heading in yellow — that is what visual annotations enable. Annotations are ephemeral visual marks, not persistent data. They exist for the duration of a conversation and disappear when dismissed.
+
+### 15.2 Distinction from Comments
+
+| Aspect | Comments (existing) | Annotations (future) |
+|---|---|---|
+| Purpose | Persistent discussion thread anchored to an element | Ephemeral visual emphasis during live conversation |
+| Persistence | Stored in `.accordo/comments.json` or `chrome.storage.local` | Ephemeral by default; optional persist-to-session |
+| Visual form | Pin icon + popover with text thread | Geometric shapes: line, rectangle, circle, highlight, callout |
+| Lifecycle | Survive page reloads, VS Code restarts | Disappear on dismiss, tab close, or TTL expiry |
+| Interaction | Click to open thread, reply, resolve | Click-through (non-blocking) or click to dismiss |
+
+### 15.3 Rendering Model
+
+Annotations render in a dedicated **overlay layer** (`<div id="accordo-annotation-overlay">`) that is:
+- Separate from and independent of the comment pin layer
+- Positioned with `position: fixed; top: 0; left: 0; width: 100%; height: 100%`
+- `pointer-events: none` by default (click-through), with `pointer-events: auto` only on interactive annotation handles (dismiss button, drag handle)
+- `z-index: 2147483645` — one level below comment pins (`2147483646`) so comments always win in overlap
+- Inserted by the content script alongside (but independent from) the existing pin container
+
+The overlay uses an **SVG root** for lines, rectangles, circles, and arrows, with HTML sub-elements for callout text and highlight backgrounds. This avoids canvas rendering complexity while preserving crisp vector output at any zoom level.
+
+### 15.4 Annotation Primitives
+
+| Primitive | Description | Key Properties |
+|---|---|---|
+| `line` | Straight line between two points or elements | `from`, `to` (point or anchor ref), `strokeWidth`, `arrowHead` |
+| `rectangle` | Frame/border around a region or element | `target` (anchor ref or bounds), `padding`, `borderStyle` |
+| `circle` | Circle drawn around an element or point | `center` (anchor ref or point), `radius` |
+| `highlight` | Background color overlay on an element's bounding box | `target` (anchor ref), `color`, `opacity` |
+| `callout` | Text label with leader line pointing to an element | `target` (anchor ref), `text`, `position` (auto or cardinal) |
+
+Each primitive is typed as a discriminated union on `type` field, following the existing `ScriptStep` flat-union pattern from `accordo-script`.
+
+### 15.5 Style and State Model
+
+```typescript
+/** Future — not implemented. Architectural reservation only. */
+interface Annotation {
+  /** Unique annotation ID (UUID v4) */
+  id: string;
+  /** Discriminated union tag */
+  type: "line" | "rectangle" | "circle" | "highlight" | "callout";
+  /** Who created this annotation */
+  author: "agent" | "user";
+  /** Source agent session ID (for multi-agent disambiguation) */
+  sourceSessionId?: string;
+  /** Visual style */
+  style: AnnotationStyle;
+  /** Time-to-live in seconds. null = manual dismiss only. */
+  ttl: number | null;
+  /** Creation timestamp (ISO 8601) */
+  createdAt: string;
+  /** Tab ID scope — annotations are always tab-scoped */
+  tabId: number;
+  /** Anchoring — reuses the enhanced anchor strategy from §14.3 */
+  anchors: AnnotationAnchorRef[];
+}
+
+interface AnnotationStyle {
+  /** CSS color value */
+  color: string;
+  /** Opacity 0.0–1.0 (default 0.4 for highlights, 1.0 for lines) */
+  opacity: number;
+  /** Z-index offset within the annotation layer (default 0) */
+  zOffset: number;
+  /** Stroke width for line/rectangle/circle primitives (px) */
+  strokeWidth?: number;
+  /** Dash pattern for lines (e.g., "5,3" for dashed) */
+  dashArray?: string;
+  /** Fill color for rectangle/circle (default: transparent) */
+  fill?: string;
+}
+
+interface AnnotationAnchorRef {
+  /** Reuses the same enhanced anchor key format from §14.3 / §5 of page-understanding-architecture */
+  anchorKey?: string;
+  /** Explicit viewport coordinates (fallback when no DOM element) */
+  point?: { x: number; y: number };
+}
+```
+
+### 15.6 Interaction Model
+
+| Behaviour | Default | Configurable |
+|---|---|---|
+| Click-through | Yes — annotations do not intercept clicks on underlying page elements | Per-annotation `interactive: true` enables drag/resize |
+| Dismiss | Click the annotation's dismiss handle (small × icon at corner), or agent calls `browser_remove_annotation` | — |
+| Batch dismiss | `browser_remove_annotation` with `all: true` clears all annotations on the tab | — |
+| Persist/ephemeral | Ephemeral by default; `persist: true` saves to `chrome.storage.session` for tab lifetime | Per-annotation at creation time |
+| TTL auto-dismiss | Annotation fades out after `ttl` seconds (if set) | Per-annotation; agent can set `ttl: null` for persistent |
+| Scroll tracking | Annotations anchored to elements reposition on scroll/resize (same rAF strategy as comment pins) | Always on |
+
+### 15.7 Anchoring Model Reuse
+
+Annotations reuse the **same enhanced anchor/locator strategy** defined in §14.3 and detailed in [`docs/design/page-understanding-architecture.md`](design/page-understanding-architecture.md) §5. This means:
+
+- Agents use `browser_inspect_element` to get an `anchorKey` for a target element
+- That same `anchorKey` is passed to `browser_add_annotation` to anchor the visual mark
+- `resolveAnchorKey()` (from the enhanced anchor module M90-ANC) resolves the key to a DOM element for positioning
+- The tiered strategy hierarchy (id → data-testid → aria → css-path → tag-sibling → viewport-pct) applies identically
+- No new anchoring logic is needed — the annotation layer is a pure consumer of the existing anchor infrastructure
+
+### 15.8 Transport / Tooling Model (Future MCP Actions)
+
+Future MCP tools for annotation management, registered by `accordo-browser` via `bridge.registerTools()`:
+
+| Tool | Args | Returns | Danger | Idempotent |
+|---|---|---|---|---|
+| `browser_add_annotation` | `{ type, anchors, style?, ttl?, persist? }` | `{ annotationId }` | safe | no |
+| `browser_update_annotation` | `{ annotationId, style?, anchors? }` | `{ updated: true }` | safe | yes |
+| `browser_remove_annotation` | `{ annotationId?, all? }` | `{ removed: number }` | safe | yes |
+| `browser_list_annotations` | `{ tabId? }` | `{ annotations: Annotation[] }` | safe | yes |
+
+These tools follow the same relay path as page understanding tools:
+```
+Agent → Hub (MCP) → Bridge → accordo-browser → Chrome relay → content script → annotation overlay
+```
+
+**Standalone MCP compatibility:** The `CommentBackendAdapter` portability pattern from §14.4 extends to annotations. A future `AnnotationBackendAdapter` interface would allow annotation tools to work via:
+- VS Code relay adapter (current path, same as comments and page understanding)
+- Standalone MCP adapter (direct Hub connection, no VS Code required)
+- Local-only adapter (annotations managed purely in browser, no relay)
+
+This ensures that if the Hub is run as a standalone MCP server (without VS Code / without Bridge), annotation actions can still be served directly.
+
+### 15.9 Security and Abuse Constraints
+
+| Constraint | Value | Rationale |
+|---|---|---|
+| Max annotations per tab | 50 | Prevent visual clutter and DOM bloat |
+| Max concurrent annotation tabs | 10 | Bound total memory/DOM overhead |
+| Rate limit: `browser_add_annotation` | 20/min per session | Prevent agent annotation spam |
+| TTL upper bound | 3600 seconds (1 hour) | Prevent indefinitely stale annotations |
+| Annotation text length (callout) | 500 chars | Prevent DOM bloat from oversized callouts |
+| Tab scope enforcement | Always — annotations never cross tab boundaries | Isolation between browsing contexts |
+| Style constraints | `opacity` clamped to [0.1, 1.0]; `strokeWidth` clamped to [1, 10]; `zOffset` clamped to [0, 100] | Prevent invisible or visually overwhelming annotations |
+| `color` validation | Must be valid CSS color (hex, rgb, rgba, named) | Prevent injection via style properties |
+
+### 15.10 Explicit Non-Goal — Current MVP
+
+**Visual annotations are NOT part of the current implementation scope.** This section (§15) is an architectural reservation only. No code, no stubs, no types, no tests will be created for annotations in the current session or any MVP milestone.
+
+The annotation layer is a **future roadmap item** that depends on:
+1. Page understanding (§14) being complete and stable
+2. Enhanced anchor strategy (§14.3) being battle-tested with real comment placement
+3. User/product validation that agent visual marking is a priority
+
+The architectural reservation ensures that:
+- The enhanced anchor model is designed broadly enough to serve both comments and annotations
+- The relay transport path is extensible for new tool categories without structural changes
+- The `CommentBackendAdapter` portability pattern generalises to other browser capabilities
+- The content script overlay architecture leaves room for a second visual layer alongside pins

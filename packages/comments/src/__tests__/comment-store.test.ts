@@ -1140,3 +1140,62 @@ describe("Session 14: Unified Comments Contract — store-level", () => {
     });
   });
 });
+
+// ── getVersionInfo ────────────────────────────────────────────────────────────
+
+describe("getVersionInfo", () => {
+  beforeEach(async () => {
+    await store.load("/project");
+  });
+
+  it("PeriodicSync-CS-01: returns version=0, threadCount=0, lastActivity=null on fresh store", () => {
+    const info = store.getVersionInfo();
+
+    expect(info.version).toBe(0);
+    expect(info.threadCount).toBe(0);
+    expect(info.lastActivity).toBe(null);
+  });
+
+  it("PeriodicSync-CS-02: version increments to 1 after createThread", async () => {
+    await store.createThread(makeCreateParams());
+
+    const info = store.getVersionInfo();
+
+    expect(info.version).toBe(1);
+    expect(info.threadCount).toBe(1);
+    expect(typeof info.lastActivity).toBe("string");
+  });
+
+  it("PeriodicSync-CS-03: version increments after each mutation", async () => {
+    const { threadId } = await store.createThread(makeCreateParams());
+
+    await store.reply({ threadId, body: "Reply", author: { kind: "user", name: "Dev" } });
+
+    const info = store.getVersionInfo();
+
+    expect(info.version).toBe(2);
+    expect(info.threadCount).toBe(1);
+  });
+
+  it("PeriodicSync-CS-04: threadCount reflects number of active threads", async () => {
+    await store.createThread(makeCreateParams({ threadId: "t1" }));
+    await store.createThread(makeCreateParams({ threadId: "t2" }));
+
+    const info = store.getVersionInfo();
+
+    expect(info.threadCount).toBe(2);
+    expect(info.version).toBe(2);
+  });
+
+  it("PeriodicSync-CS-05: lastActivity is the most recent lastActivity among all threads", async () => {
+    await store.createThread(makeCreateParams({ threadId: "t1" }));
+    // Small delay to ensure second thread has a later timestamp
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    await store.createThread(makeCreateParams({ threadId: "t2" }));
+
+    const info = store.getVersionInfo();
+    const t2 = store.getThread("t2");
+
+    expect(info.lastActivity).toBe(t2!.lastActivity);
+  });
+});

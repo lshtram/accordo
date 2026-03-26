@@ -14,7 +14,8 @@
     "onStartupFinished"
   ],
   "extensionDependencies": [
-    "accordo.accordo-bridge"
+    "accordo.accordo-bridge",
+    "accordo.accordo-comments"
   ],
   "engines": {
     "node": ">=20",

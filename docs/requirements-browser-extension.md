@@ -227,7 +227,7 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | BR-F-119 | Browser extension exposes relay action handlers in service-worker for `get_all_comments`, `get_comments`, `create_comment`, `reply_comment`, `resolve_thread`, `reopen_thread`, `delete_comment`, and `delete_thread` | Relay action dispatch returns typed success/error envelopes and updates storage correctly |
 | BR-F-120 | New `packages/browser` VS Code extension (`accordo-browser`) hosts a localhost WebSocket relay for Chrome extension connectivity | Relay starts on activation, accepts extension connection, and maintains client state |
 | BR-F-121 | Relay authenticates extension connections using a configured token (dev default allowed) and rejects unauthorized clients | Missing/invalid token connections are refused; valid token connects successfully |
-| BR-F-122 | `accordo-browser` registers Bridge tools for browser comments: `accordo_browser_getAllComments`, `accordo_browser_getComments`, `accordo_browser_createComment`, `accordo_browser_replyComment`, `accordo_browser_resolveThread`, `accordo_browser_reopenThread`, `accordo_browser_deleteComment`, `accordo_browser_deleteThread` | Tools appear in Hub tool list via existing Bridge registration flow |
+    | BR-F-122 | `accordo-browser` routes browser comment actions through the unified `comment_*` tool set via `onRelayRequest` interceptor; no `accordo_browser_*` tools are registered in the Bridge tool namespace | Browser comment relay actions (`get_comments`, `create_comment`, `reply_comment`, etc.) are dispatched by `browserActionToUnifiedTool` to `comment_list`, `comment_create`, `comment_reply`, etc.; Hub tool list contains unified `comment_*` tools only |
 | BR-F-123 | Each browser comment tool call is forwarded over relay with `requestId` correlation and deterministic timeout handling | Timeouts return typed error; successful responses map to tool output without losing request correlation |
 | BR-F-124 | End-to-end: agent can read, create, reply, resolve/reopen, and delete browser comments through Hub tools and see updated state on subsequent reads | Sequential tool calls reflect storage mutations in browser extension |
 | BR-F-125 | Relay/tool response contract includes typed failure classes: `browser-not-connected`, `unauthorized`, `timeout`, `action-failed` | Errors are deterministic and asserted in tests for each failure mode |
@@ -247,6 +247,112 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | BR-F-134 | Browser-origin threads are marked as volatile retention class for cleanup UX | Panel indicates volatile browser threads and can filter them quickly |
 | BR-F-135 | Comments Panel adds a bulk browser cleanup action (`Delete All Browser Comments`) with explicit confirmation | Trigger removes all browser threads and reports deleted count |
 | BR-F-136 | Browser-specific public tools remain temporary aliases only during migration and are removed after parity validation | No net functionality loss during alias period; final tool list excludes `accordo_browser_*` |
+
+### 3.15 Page Understanding + Visual Comment Placement (M90/M91)
+
+| ID | Requirement | Acceptance Criteria |
+|---|---|---|
+| PU-F-01 | `get_page_map` relay action walks the visible DOM tree breadth-first and returns a structured `PageNode[]` array | Content script returns JSON array of `PageNode` objects with `ref`, `tag`, `role`, `name`, `text`, `attrs`, and optional `children` |
+| PU-F-02 | `get_page_map` respects `maxDepth` parameter (default 4, max 8) — stops descending at depth limit | Tree with 10-level nesting returns only 4 levels when `maxDepth` is omitted; returns up to 8 when `maxDepth: 8` |
+| PU-F-03 | `get_page_map` respects `maxNodes` parameter (default 200, max 500) — stops emitting nodes at count limit | Page with 1000 elements returns exactly 200 nodes when `maxNodes` is omitted; `truncated: true` is set |
+| PU-F-04 | `get_page_map` excludes `<script>`, `<style>`, `<noscript>`, `<template>`, and `display: none` elements | Invisible/non-content elements are absent from result |
+| PU-F-05 | `get_page_map` returns page metadata: `pageUrl`, `title`, `viewport`, `totalElements`, `truncated` | All metadata fields present and accurate |
+| PU-F-06 | `get_page_map` optionally includes bounding box coordinates (`includeBounds: true`) | When enabled, each `PageNode` has `bounds: { x, y, width, height }` relative to viewport |
+| PU-F-10 | `inspect_element` relay action accepts `ref` (from page map) or `selector` (CSS) and returns detailed element info | Element details returned when found; `{ found: false }` when not found |
+| PU-F-11 | `inspect_element` generates an anchor key using the best available strategy (id → data-testid → aria → css-path → tag-sibling → viewport) | `anchorKey` and `anchorStrategy` present in response; strategy matches hierarchy priority |
+| PU-F-12 | `inspect_element` returns element context: parent chain, sibling count/index, nearest landmark | `context` object populated with `parentChain`, `siblingCount`, `siblingIndex`, `nearestLandmark` |
+| PU-F-13 | `inspect_element` returns all element attributes, computed visibility, accessible name, and test IDs | `element` object has `attributes`, `visible`, `accessibleName`, `testIds` fields |
+| PU-F-14 | `inspect_element` returns bounding box coordinates | `element.bounds` has `x`, `y`, `width`, `height` |
+| PU-F-15 | `inspect_element` ref-based lookup uses an ephemeral index built during `get_page_map` execution | Stale refs (from a previous page map) return `{ found: false }` rather than wrong element |
+| PU-F-20 | `generateAnchorKey()` tries strategies in order: id → data-testid → aria → css-path → tag-sibling → viewport | Generated key uses the first available stable strategy |
+| PU-F-21 | Anchor key format encodes strategy: `"id:submit-btn"`, `"data-testid:login-form"`, `"aria:Submit/button"`, `"css:main>div>button"`, `"tag:button:3:submit"`, `"body:42%x63%"` | Key prefix matches strategy used |
+| PU-F-22 | `resolveAnchorKey()` dispatches resolution based on strategy prefix | Strategy-prefixed keys resolve using their specific strategy |
+| PU-F-23 | `resolveAnchorKey()` for `id` strategy uses `document.getElementById()` | Element with matching `id` is returned |
+| PU-F-24 | `resolveAnchorKey()` for `data-testid` strategy uses `document.querySelector('[data-testid="..."]')` | Element with matching `data-testid` is returned |
+| PU-F-25 | `resolveAnchorKey()` falls back through the hierarchy if primary strategy fails | `id:removed-element` falls back to tag-sibling or viewport resolution |
+| PU-F-26 | Backward compatibility: existing anchor keys without strategy prefix (e.g. `"button:3:submit"`) resolve through the existing `findAnchorElementByKey()` path | All existing comments continue to resolve correctly |
+| PU-F-30 | `get_dom_excerpt` relay action returns sanitized HTML fragment for a CSS selector | Returned HTML contains only `id`, `class`, `role`, `aria-*` attributes; all other attributes stripped |
+| PU-F-31 | `get_dom_excerpt` respects `maxDepth` (default 3) and `maxLength` (default 2000) | Excerpt truncated at limits; `truncated: true` when applicable |
+| PU-F-32 | `get_dom_excerpt` returns plain text content alongside HTML | `text` field contains `textContent` of the subtree |
+| PU-F-33 | `get_dom_excerpt` returns `{ found: false }` when selector matches no elements | No error thrown; graceful empty response |
+| PU-F-40 | `CommentBackendAdapter` interface defines `listThreads`, `createThread`, `reply`, `resolve`, `reopen`, `delete`, `isConnected` | Interface compiles with `strict: true`; all methods are async except `isConnected` |
+| PU-F-41 | `VscodeRelayAdapter` implements `CommentBackendAdapter` by delegating to `RelayBridgeClient.send()` | All operations route through relay WebSocket |
+| PU-F-42 | `LocalStorageAdapter` implements `CommentBackendAdapter` using existing `store.ts` CRUD | All operations use `chrome.storage.local` |
+| PU-F-43 | Adapter selection: prefer `VscodeRelayAdapter` when relay is connected, fall back to `LocalStorageAdapter` | When relay disconnects, operations use local storage; when relay reconnects, adapter switches back |
+| PU-F-44 | `CommentBackendAdapter` is the single import for all comment operations in content/popup code | No direct `relay.send()` or `store.createThread()` calls outside the adapter layer |
+| PU-F-45 | Future `StandaloneMcpAdapter` slot exists as a typed interface only (no implementation) | Type definition compiles; no runtime code |
+| PU-F-50 | `browser_get_page_map` MCP tool registered via `bridge.registerTools()` in `packages/browser` | Tool appears in Hub `tools/list` response |
+| PU-F-51 | `browser_inspect_element` MCP tool registered via `bridge.registerTools()` in `packages/browser` | Tool appears in Hub `tools/list` response |
+| PU-F-52 | `browser_get_dom_excerpt` MCP tool registered via `bridge.registerTools()` in `packages/browser` | Tool appears in Hub `tools/list` response |
+| PU-F-53 | MCP tool handlers forward to Chrome relay and return structured results | Agent receives typed JSON response from each tool |
+| PU-F-54 | Tools return `{ error: "browser-not-connected" }` when Chrome extension is disconnected | Graceful error response without exception |
+| PU-F-55 | Tools return `{ error: "timeout" }` when Chrome relay does not respond within deadline | Default timeout of 10s for page map, 5s for inspect/excerpt |
+| PU-F-56 | `browserActionToUnifiedTool()` updated for new relay actions | New actions dispatch correctly through interceptor |
+| PU-F-57 | Enhanced anchor keys produced by `inspect_element` are accepted by `comment_create` `anchor.anchorKey` field | Comment creation with `anchorKey: "id:submit-btn"` succeeds end-to-end |
+
+### 3.16 Session 16 — Bidirectional Sync Remediation
+
+| ID | Requirement | Acceptance Criteria |
+|---|---|---|
+| BR-F-140 | Reply `commentId` parity: when the browser creates a reply locally, the same `commentId` is forwarded to the Hub/VS Code CommentStore via the `reply_comment` relay payload and accepted by the `comment_reply` tool | After browser reply + relay forward, both local store and Hub have the same `commentId` for the reply |
+| BR-F-141 | Comment-level tombstone suppression: `mergeLocalAndHubThread` excludes hub comments whose IDs match locally soft-deleted comments (comments with `deletedAt` set) | After local comment soft-delete, GET_THREADS merge does not resurrect deleted comments from hub data |
+| BR-F-142 | Periodic sync rehydration: `checkAndSync()` loads comments-mode map from `chrome.storage.local` before iterating tabs, ensuring SW restart recovery detects tabs with Comments Mode ON | After SW restart, periodic sync refreshes tabs that have Comments Mode enabled in storage |
+| BR-F-143 | Fallback pin stacking stability: `_fallbackStackIndex` is only reset at the start of `loadThreads`, not mid-render when anchored pins resolve, preventing overlapping fallback pins in mixed anchor sets | Mixed anchored + unanchored threads render with non-overlapping fallback pin positions |
+
+### 3.18 Region Capture (`browser_capture_region`) (M92-CR / M91-CR)
+
+> **Status:** Phase A — interfaces and stubs only. Implementation in Phase C.  
+> **Architecture ref:** [`docs/architecture.md`](architecture.md) §14.5, [`docs/design/page-understanding-architecture.md`](design/page-understanding-architecture.md) §4.4  
+> **Depends on:** Page understanding (§3.15) relay + content script infrastructure; existing screenshot capture (§3.8)
+
+| ID | Requirement | Acceptance Criteria |
+|---|---|---|
+| CR-F-01 | `browser_capture_region` MCP tool registered via `bridge.registerTools()` in `packages/browser` | Tool appears in Hub `tools/list` response |
+| CR-F-02 | Tool accepts `anchorKey` input and resolves to element bounding box via content script | Element found → bounding box returned to service worker for cropping |
+| CR-F-03 | Tool accepts `nodeRef` input (from `get_page_map`) and resolves to element bounding box | Same resolution path as `anchorKey` but via ephemeral page-map index |
+| CR-F-04 | Tool accepts `rect` input (explicit viewport-relative rectangle) as fallback when no element target | `rect: { x, y, width, height }` used directly for cropping |
+| CR-F-05 | Tool accepts optional `padding` (default 8, max 100 px) added around the resolved bounding box | Padding applied before crop; clamped to 0–100 range |
+| CR-F-06 | Tool accepts optional `quality` (JPEG quality 1–100, default 70) clamped to 30–85 | Quality outside 30–85 clamped; applied to JPEG encoding |
+| CR-F-07 | Capture uses `chrome.tabs.captureVisibleTab()` + `OffscreenCanvas` crop — no CDP screenshot APIs | Implementation uses existing `captureVisibleTab` infrastructure only |
+| CR-F-08 | Cropped image returned as JPEG data URL with metadata: `width`, `height`, `sizeBytes`, `source` | Response includes all metadata fields |
+| CR-F-09 | Max output dimension enforced: 1200 × 1200 px | Images exceeding limit are downscaled before encoding |
+| CR-F-10 | Min output dimension enforced: 10 × 10 px | Degenerate rects below minimum return `{ success: false, error: "no-target" }` |
+| CR-F-11 | Max data URL size enforced: 500 KB | If over: retry once at quality −10; if still over: `{ success: false, error: "image-too-large" }` |
+| CR-F-12 | Failure modes return structured errors: `element-not-found`, `element-off-screen`, `image-too-large`, `capture-failed`, `no-target` | Each failure mode returns `{ success: false, error: "<code>" }` — no exceptions thrown |
+| CR-NF-01 | Capture completes within 2 seconds including relay round-trip | End-to-end latency under 2s for typical elements |
+| CR-NF-02 | Tool follows same security posture as existing page understanding tools (loopback + token auth) | Only accessible via authenticated relay path |
+| CR-NF-03 | Tool marked `dangerLevel: "safe"` and `idempotent: true` | Read-only operation; no side effects |
+
+---
+
+### 3.17 Future — Visual Annotation Layer (RESERVED — Not In Current Scope)
+
+> **Status:** FUTURE — Architectural reservation only. No implementation, stubs, or tests.  
+> **Architecture ref:** [`docs/architecture.md`](architecture.md) §15  
+> **Depends on:** Page understanding (§3.15) complete and stable; enhanced anchor strategy battle-tested.
+
+The following requirement IDs are **reserved** for a future Visual Annotation Layer that enables agents to visually mark page elements (lines, frames, circles, highlights, callouts) during conversation. These IDs must not be reused for other purposes.
+
+| ID | Requirement (Future) | Notes |
+|---|---|---|
+| VA-F-01 | `browser_add_annotation` MCP tool accepts annotation primitive definition and returns `{ annotationId }` | Primitives: line, rectangle, circle, highlight, callout |
+| VA-F-02 | `browser_update_annotation` MCP tool updates style or anchor of an existing annotation | Partial update; only supplied fields change |
+| VA-F-03 | `browser_remove_annotation` MCP tool removes a single annotation by ID or all annotations on a tab | `{ annotationId? }` or `{ all: true }` |
+| VA-F-04 | `browser_list_annotations` MCP tool returns all active annotations for the current or specified tab | Read-only; returns `Annotation[]` |
+| VA-F-05 | Annotation overlay layer renders independently from comment pin layer | Separate `<div>` with SVG root; does not interfere with existing pins |
+| VA-F-06 | Annotation primitives support configurable style: color, opacity, strokeWidth, dashArray, fill | `AnnotationStyle` interface |
+| VA-F-07 | Annotations support TTL-based auto-dismiss (seconds) and manual dismiss via handle | `ttl: number \| null`; dismiss × icon |
+| VA-F-08 | Annotations are click-through by default (`pointer-events: none` on overlay) | Interactive handles (dismiss, drag) opt in to `pointer-events: auto` |
+| VA-F-09 | Annotations reuse the enhanced anchor strategy from §3.15 (PU-F-20..PU-F-26) for element targeting | Same `anchorKey` format, same `resolveAnchorKey()` resolution |
+| VA-F-10 | Annotations are tab-scoped — never cross tab boundaries | Per-tab isolation |
+| VA-F-11 | Max 50 annotations per tab; cap enforced at creation time | Returns error when limit reached |
+| VA-F-12 | Rate limit: max 20 `browser_add_annotation` calls per minute per MCP session | Prevents agent annotation spam |
+| VA-F-13 | Callout text limited to 500 characters | Prevents DOM bloat |
+| VA-F-14 | Annotation tools follow the same relay transport path as page understanding tools | Agent → Hub → Bridge → accordo-browser → Chrome relay → content script |
+| VA-F-15 | Annotation tools work via standalone MCP adapter (no VS Code required) when `AnnotationBackendAdapter` is connected directly to Hub | Portability parity with `CommentBackendAdapter` (PU-F-45) |
+| VA-NF-01 | Annotation rendering latency < 50ms from tool call to visual appearance | SVG DOM insertion is fast |
+| VA-NF-02 | Scroll/resize repositioning uses same rAF batching as comment pins | No layout thrashing |
+| VA-NF-03 | Annotation layer CSS isolated with `accordo-annotation-*` prefix and `all: initial` | No host page interference |
 
 ---
 
@@ -306,6 +412,17 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | BR-NF-54 | Relay security hygiene: auth token is never logged and relay binds to localhost only | Code audit + tests verify host binding and token redaction |
 | BR-NF-55 | Relay resilience: browser disconnect/reconnect does not require VS Code restart | After browser reconnect, tool calls resume successfully |
 
+### 4.7 Page Understanding Performance
+
+| ID | Requirement | Acceptance Criteria |
+|---|---|---|
+| PU-NF-01 | `get_page_map` completes within 200ms for pages with up to 5000 DOM elements | Timed execution stays under 200ms |
+| PU-NF-02 | Page map JSON response stays under 50KB for default settings (maxDepth: 4, maxNodes: 200) | Serialized output size verified |
+| PU-NF-03 | `inspect_element` completes within 50ms | Single-element inspection is fast |
+| PU-NF-04 | Enhanced anchor resolution does not regress existing anchor resolution performance | `findAnchorElementByKey()` with strategy prefix adds <5ms overhead vs. existing path |
+| PU-NF-05 | `CommentBackendAdapter` switching (relay → local) completes within one event loop tick | No user-visible delay during adapter failover |
+| PU-NF-06 | Page understanding MCP tools have the same security posture as existing browser relay tools (loopback + token auth) | Tools only accessible via authenticated relay path |
+
 ---
 
 ## 5. Module Summary
@@ -327,8 +444,18 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | M81-SDK | SDK convergence adapter | `packages/browser-extension/src/content/*` | ~140 | M80-CS-PINS, M80-CS-INPUT, `@accordo/comment-sdk` |
 | M82-RELAY | Browser relay server | `packages/browser/src/*` | ~240 | `accordo-bridge` API, ws |
 | M83-BTOOLS | Browser bridge tools | `packages/browser/src/browser-tools.ts` | ~160 | M82-RELAY |
+| M90-MAP | Page Map Collector | `packages/browser-extension/src/content/page-map-collector.ts` | ~150 | DOM APIs |
+| M90-INS | Element Inspector | `packages/browser-extension/src/content/element-inspector.ts` | ~120 | M90-MAP, DOM APIs |
+| M90-ANC | Enhanced Anchor | `packages/browser-extension/src/content/enhanced-anchor.ts` | ~180 | content-anchor.ts |
+| M90-ACT | Relay Actions (page understanding) | `packages/browser-extension/src/relay-actions.ts` (extend) | ~80 | M90-MAP, M90-INS |
+| M90-ADP | CommentBackendAdapter | `packages/browser-extension/src/adapters/comment-backend.ts` | ~100 | relay-bridge.ts, store.ts |
+| M91-PU | Page Understanding MCP Tools | `packages/browser/src/page-understanding-tools.ts` | ~160 | relay, BridgeAPI |
+| M91-EXT | Extension Wiring (extend) | `packages/browser/src/extension.ts` (modify) | ~40 | M91-PU |
+| M92-CR | Region Capture (content script) | `packages/browser-extension/src/content/region-capture.ts` | ~120 | DOM APIs, OffscreenCanvas |
+| M91-CR | Capture Region MCP Tool | `packages/browser/src/page-understanding-tools.ts` (extend) | ~40 | relay, BridgeAPI |
+| M95-VA (**FUTURE**) | Visual Annotation Layer | TBD — `src/content/annotation-overlay.ts` + `src/content/annotation-renderer.ts` | ~400 est. | M90-ANC, M90-MAP, relay |
 
-**Total estimated LOC:** ~2,090 (v1 + Session 13 v2a additions)
+**Total estimated LOC:** ~2,250 (v1 + Session 13 v2a + capture region) + ~400 future (M95-VA)
 
 ---
 
@@ -352,6 +479,17 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | M82-RELAY | BR-F-120, BR-F-121, BR-F-123, BR-F-125, BR-F-126, BR-F-128, BR-F-129 | BR-NF-54, BR-NF-55 |
 | M83-BTOOLS | BR-F-122, BR-F-124, BR-F-131 | BR-NF-50, BR-NF-55 |
 | M84-UNIFIED | BR-F-132, BR-F-133, BR-F-134, BR-F-135, BR-F-136 | BR-NF-54, BR-NF-55 |
+| M85-SYNC-FIX | BR-F-140, BR-F-141, BR-F-142, BR-F-143 | BR-NF-05 |
+| M90-MAP | PU-F-01 through PU-F-06 | BR-NF-01, PU-NF-01, PU-NF-02 |
+| M90-INS | PU-F-10 through PU-F-15 | BR-NF-01, PU-NF-01, PU-NF-03 |
+| M90-ANC | PU-F-20 through PU-F-26 | PU-NF-04 |
+| M90-ACT | PU-F-30 through PU-F-33 | PU-NF-01 |
+| M90-ADP | PU-F-40 through PU-F-45 | PU-NF-05 |
+| M91-PU | PU-F-50 through PU-F-55 | PU-NF-01, PU-NF-06 |
+| M91-EXT | PU-F-56, PU-F-57 | PU-NF-06 |
+| M92-CR | CR-F-02, CR-F-03, CR-F-04, CR-F-05, CR-F-07, CR-F-09, CR-F-10 | CR-NF-01 |
+| M91-CR | CR-F-01, CR-F-06, CR-F-08, CR-F-11, CR-F-12 | CR-NF-01, CR-NF-02, CR-NF-03 |
+| M95-VA (**FUTURE**) | VA-F-01 through VA-F-15 | VA-NF-01, VA-NF-02, VA-NF-03 |
 
 ---
 
@@ -366,6 +504,7 @@ See architecture doc §11 for the full out-of-scope list. Key exclusions:
 - Chrome Web Store publication
 - Rich text / Markdown in comments
 - Multi-workspace Chrome switcher
+- **Visual Annotation Layer** — Agent visual marking of page elements (lines, frames, circles, highlights, callouts). Architecture reserved in §3.17 and `docs/architecture.md` §15. Depends on page understanding (§3.15) being stable. See roadmap note in `docs/workplan.md`.
 
 ---
 

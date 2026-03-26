@@ -13,7 +13,7 @@ import { pathToFileURL, fileURLToPath } from "url";
 import type { ExtensionToolDefinition, CommentThread } from "@accordo/bridge-types";
 import { COMMENT_CREATE_RATE_LIMIT, COMMENT_CREATE_RATE_WINDOW_MS } from "@accordo/bridge-types";
 import type { CommentStore } from "./comment-store.js";
-import type { CommentAnchor, CommentIntent, SurfaceCoordinates, SurfaceType, CommentRetention } from "@accordo/bridge-types";
+import type { CommentAnchor, CommentIntent, SurfaceCoordinates, SurfaceType, CommentRetention, CommentContext } from "@accordo/bridge-types";
 
 // ── URI normalizer ───────────────────────────────────────────────────────────
 
@@ -51,6 +51,41 @@ export interface CommentUINotifier {
   addThread(thread: CommentThread): void;
   updateThread(thread: CommentThread): void;
   removeThread(threadId: string): void;
+}
+
+/**
+ * Fans out CommentUINotifier calls to multiple notifiers.
+ * Used to attach secondary notifiers (e.g. browser relay push) without
+ * modifying the primary NativeComments notifier.
+ */
+export class CompositeCommentUINotifier implements CommentUINotifier {
+  private readonly _notifiers: CommentUINotifier[] = [];
+
+  constructor(primary: CommentUINotifier) {
+    this._notifiers.push(primary);
+  }
+
+  add(notifier: CommentUINotifier): { dispose(): void } {
+    this._notifiers.push(notifier);
+    return {
+      dispose: () => {
+        const i = this._notifiers.indexOf(notifier);
+        if (i >= 0) this._notifiers.splice(i, 1);
+      },
+    };
+  }
+
+  addThread(thread: CommentThread): void {
+    for (const n of this._notifiers) n.addThread(thread);
+  }
+
+  updateThread(thread: CommentThread): void {
+    for (const n of this._notifiers) n.updateThread(thread);
+  }
+
+  removeThread(threadId: string): void {
+    for (const n of this._notifiers) n.removeThread(threadId);
+  }
 }
 
 /**
@@ -92,17 +127,21 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
           lastAuthor: { type: "string", description: "Return threads whose last comment was from this author kind", enum: ["user", "agent"] },
           limit: { type: "number", description: "Max results to return (default 20 when unfiltered, 50 when uri is specified; max 200)" },
           offset: { type: "number", description: "Pagination offset (default 0)" },
+          detail: { type: "boolean", description: "When true, returns full CommentThread[] with all comments instead of summaries" },
         },
         required: [],
       },
       handler: async (args) => {
         const scope = args["scope"] as Record<string, unknown> | undefined;
         const rawUri = (scope?.["uri"] as string | undefined) ?? (args["uri"] as string | undefined);
-        const uri = rawUri !== undefined ? normalizeCommentUri(rawUri, store.getWorkspaceRoot()) : undefined;
 
         // Modality scope maps to anchorKind + surfaceType
         let anchorKind = args["anchorKind"] as "text" | "surface" | "file" | undefined;
         let surfaceType: string | undefined;
+        // For browser modality, scope.url is the page URL stored as-is in anchor.uri —
+        // bypass normalizeCommentUri (which is for file paths only) and use it directly.
+        let browserUrl: string | undefined;
+        let isBrowserModality = false;
 
         if (scope?.["modality"]) {
           const modality = scope["modality"] as string;
@@ -112,6 +151,45 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
             anchorKind = "surface";
             surfaceType = modality;
           }
+          if (modality === "browser") {
+            isBrowserModality = true;
+            if (!rawUri && scope["url"]) {
+              browserUrl = scope["url"] as string;
+            }
+          }
+        }
+
+        // Resolve the URI filter: browser page URLs are passed through as-is;
+        // file/workspace URIs go through normalizeCommentUri for canonicalization.
+        const uri = browserUrl !== undefined
+          ? browserUrl
+          : rawUri !== undefined ? normalizeCommentUri(rawUri, store.getWorkspaceRoot()) : undefined;
+
+        const detail = args["detail"] as boolean | undefined;
+
+        // When detail=true and browser modality: return full CommentThread[] (bare array)
+        // so Chrome gets complete thread data with all comments.
+        if (detail === true && isBrowserModality) {
+          const listResult = store.listThreads({
+            uri,
+            status: args["status"] as "open" | "resolved" | undefined,
+            intent: args["intent"] as CommentIntent | undefined,
+            anchorKind,
+            surfaceType,
+            updatedSince: args["updatedSince"] as string | undefined,
+            lastAuthor: args["lastAuthor"] as "user" | "agent" | undefined,
+            limit: args["limit"] as number | undefined,
+            offset: args["offset"] as number | undefined,
+          });
+          // Map each summary back to full CommentThread via store.getThread()
+          const fullThreads: CommentThread[] = [];
+          for (const summary of listResult.threads) {
+            const thread = store.getThread(summary.id);
+            if (thread !== undefined) {
+              fullThreads.push(thread);
+            }
+          }
+          return fullThreads;
         }
 
         return store.listThreads({
@@ -203,6 +281,9 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
             required: ["kind"],
           },
           body: { type: "string", description: "Comment body (Markdown supported)" },
+          threadId: { type: "string", description: "Optional caller-supplied thread ID (for cross-surface ID parity)" },
+          commentId: { type: "string", description: "Optional caller-supplied first-comment ID" },
+          context: { type: "object", description: "Optional captured context (surfaceMetadata, diagnostics, etc.)" },
           intent: {
             type: "string",
             description: "Optional intent tag",
@@ -220,6 +301,11 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
         const intent = args["intent"] as CommentIntent | undefined;
         const agentId = (args["agentId"] as string | undefined) ?? "default";
         const modality = scope?.["modality"] as string | undefined;
+        const threadId = args["threadId"] as string | undefined;
+        const commentId = args["commentId"] as string | undefined;
+        const contextArg = args["context"] as Record<string, unknown> | undefined;
+        const authorKind = args["authorKind"] as "user" | "agent" | undefined;
+        const authorName = args["authorName"] as string | undefined;
 
         if (!rateLimiter.isAllowed(agentId)) {
           throw new Error(`Rate limit exceeded: max ${COMMENT_CREATE_RATE_LIMIT} comment creates per minute`);
@@ -236,14 +322,29 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
         }
 
         const anchor = buildAnchor(finalUri, anchorInput ?? { kind: modality === "text" ? "text" : "file" }, modality);
+        const commentContext = (contextArg as CommentContext | undefined) ?? undefined;
+        const browserAnchorKey = anchorInput?.["anchorKey"] as string | undefined;
+        if (browserAnchorKey) {
+          const surfaceMetadata = { ...(commentContext?.surfaceMetadata ?? {}), anchorKey: browserAnchorKey };
+          if (commentContext) {
+            commentContext.surfaceMetadata = surfaceMetadata;
+          }
+        }
+
+        const author = authorKind === "user"
+          ? { kind: "user" as const, name: authorName ?? "User" }
+          : { kind: "agent" as const, name: "agent", agentId };
 
         const result = await store.createThread({
           uri: finalUri,
           anchor,
           body,
           intent,
+          context: commentContext ?? (browserAnchorKey ? { surfaceMetadata: { anchorKey: browserAnchorKey } } : undefined),
           retention,
-          author: { kind: "agent", name: "agent", agentId },
+          author,
+          threadId,
+          commentId,
         });
         const newThread = store.getThread(result.threadId);
         if (newThread) ui?.addThread(newThread);
@@ -263,17 +364,27 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
         properties: {
           threadId: { type: "string", description: "The thread to reply to" },
           body: { type: "string", description: "Reply body (Markdown)" },
+          commentId: { type: "string", description: "Optional caller-supplied comment ID for cross-origin ID parity" },
         },
         required: ["threadId", "body"],
       },
       handler: async (args) => {
         const threadId = args["threadId"] as string;
         const body = args["body"] as string;
+        const commentId = args["commentId"] as string | undefined;
         const agentId = (args["agentId"] as string | undefined) ?? "default";
+        const authorKind = args["authorKind"] as "user" | "agent" | undefined;
+        const authorName = args["authorName"] as string | undefined;
+
+        const author = authorKind === "user"
+          ? { kind: "user" as const, name: authorName ?? "User" }
+          : { kind: "agent" as const, name: "agent", agentId };
+
         const result = await store.reply({
           threadId,
           body,
-          author: { kind: "agent", name: "agent", agentId },
+          commentId,
+          author,
         });
         const repliedThread = store.getThread(threadId);
         if (repliedThread) ui?.updateThread(repliedThread);
@@ -385,6 +496,28 @@ export function createCommentTools(store: CommentStore, ui?: CommentUINotifier):
           ui?.removeThread(threadId);
         }
         return { deleted: true };
+      },
+    },
+
+    // ── comment_sync_version ─────────────────────────────────────────────
+    {
+      name: "comment_sync_version",
+      group: "comments",
+      description: "Returns the current comment store version and thread count for sync drift detection.",
+      dangerLevel: "safe",
+      idempotent: true,
+      inputSchema: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+      handler: async () => {
+        const info = store.getVersionInfo();
+        return {
+          version: info.version,
+          threadCount: info.threadCount,
+          lastActivity: info.lastActivity,
+        };
       },
     },
   ];

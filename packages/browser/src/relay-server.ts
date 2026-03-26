@@ -137,6 +137,18 @@ export class BrowserRelayServer implements BrowserRelayLike {
     return !!this.client && this.client.readyState === WebSocket.OPEN;
   }
 
+  /**
+   * Fire-and-forget push to the connected Chrome client.
+   * Sends a frame directly over the WebSocket without registering a pending
+   * promise — no response is expected. Safe to call from within onRelayRequest
+   * because it bypasses the interceptor entirely.
+   */
+  push(action: BrowserRelayAction, payload: Record<string, unknown>): void {
+    if (!this.client || this.client.readyState !== WebSocket.OPEN) return;
+    const requestId = randomUUID();
+    this.client.send(JSON.stringify({ requestId, action, payload }));
+  }
+
   async request(action: BrowserRelayAction, payload: Record<string, unknown>, timeoutMs = 3000): Promise<BrowserRelayResponse> {
     // Short-circuit: if the extension set an interceptor (used to route Chrome
     // events through unified comment_* tools), call it directly.

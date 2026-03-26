@@ -14,7 +14,7 @@
 import { AccordoCommentSDK } from "@accordo/comment-sdk";
 import type { SdkThread } from "@accordo/comment-sdk";
 import type { BrowserCommentThread } from "../types.js";
-import { findAnchorElementByKey, getAnchorPagePosition, normalizeAnchorFingerprint } from "../content-anchor.js";
+import { findAnchorElementByKey, getAnchorPagePosition, getViewportAnchorPagePosition, normalizeAnchorFingerprint } from "../content-anchor.js";
 import { openSdkComposerAtAnchor } from "./sdk-convergence.js";
 
 // ── Debug logger ─────────────────────────────────────────────────────────────────
@@ -38,6 +38,10 @@ dbg(`Content script injected on ${window.location.href}`);
 const STORAGE_KEY = "commentsMode";
 
 // ── SDK instance ─────────────────────────────────────────────────────────────────
+
+// Stacking counter — reset before each loadThreads call so fallback pins
+// stack consistently from top-right on every refresh.
+let _fallbackStackIndex = 0;
 
 let sdk: AccordoCommentSDK | null = null;
 const pendingAnchorContexts = new Map<string, BrowserCommentThread["anchorContext"]>();
@@ -72,9 +76,17 @@ function coordinateToScreen(blockId: string): { x: number; y: number } | null {
   if (el) {
     return getAnchorPagePosition(blockId, el);
   }
-  // No anchor element found — return null so the SDK skips it silently.
-  // We re-add it via a stacked fallback after loadThreads.
-  return null;
+  const viewportPos = getViewportAnchorPagePosition(blockId);
+  if (viewportPos) {
+    return viewportPos;
+  }
+  // No anchor element found — stack at top-right so the pin is always visible
+  // and tracked in the SDK's _pins map (gets properly cleared on next loadThreads).
+  const index = _fallbackStackIndex++;
+  return {
+    x: window.innerWidth - 48,
+    y: 48 + index * 40,
+  };
 }
 
 /**
@@ -217,42 +229,8 @@ async function loadAndRenderPins(): Promise<void> {
     if (response?.success && Array.isArray(response.data)) {
       const threads = response.data as BrowserCommentThread[];
       dbg(`loadAndRenderPins: rendering ${threads.length} threads via SDK`);
+      _fallbackStackIndex = 0; // reset before each render so stacking is consistent
       sdk.loadThreads(threads.map(toSdkThread));
-
-      // For threads whose anchor element wasn't in the DOM at the time
-      // coordinateToScreen ran (returns null → SDK skips them), we fall back
-      // to stacking them at the top-right so they're always reachable.
-      let stackOffset = 0;
-      for (const t of threads) {
-        const el = findAnchorElementByKey(t.anchorKey);
-        if (!el) {
-          // Manually inject a fallback pin via the SDK layer
-          const layer = document.querySelector(".accordo-sdk-layer") as HTMLElement | null;
-          if (layer) {
-            const existing = layer.querySelector(`[data-thread-id="${t.id}"]`);
-            if (!existing) {
-              const fallbackPin = document.createElement("div");
-              fallbackPin.className = `accordo-pin accordo-pin--${t.status === "resolved" ? "resolved" : "open"}`;
-              fallbackPin.setAttribute("data-thread-id", t.id);
-              fallbackPin.style.right = "16px";
-              fallbackPin.style.left = "auto";
-              fallbackPin.style.top = `${48 + stackOffset * 32}px`;
-              const badge = document.createElement("span");
-              badge.className = "accordo-pin__badge";
-              badge.textContent = String(t.comments.length);
-              fallbackPin.appendChild(badge);
-              fallbackPin.addEventListener("click", (e) => {
-                e.stopPropagation();
-                sdk?.openPopover(t.id);
-              });
-              layer.appendChild(fallbackPin);
-              // Also register in SDK's internal map via addThread with a dummy position
-              // so openPopover can find it
-            }
-          }
-          stackOffset++;
-        }
-      }
     }
   } catch (err) {
     dbgErr(`loadAndRenderPins: failed — ${(err as Error)?.message ?? err}`);

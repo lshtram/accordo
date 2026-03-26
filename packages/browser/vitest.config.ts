@@ -7,6 +7,13 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 export default defineConfig({
   test: {
     globals: true,
+    environment: "jsdom",
+    environmentOptions: {
+      jsdom: {
+        url: "https://localhost/test-page",
+      },
+    },
+    setupFiles: ["./src/__tests__/setup/dom-setup.ts"],
     include: ["src/__tests__/**/*.test.ts"],
   },
   resolve: {

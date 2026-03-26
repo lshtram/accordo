@@ -3,13 +3,13 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-23  
-**Status:** ACTIVE — Session 14 unified comments contract ✅ DONE (2,636 tests); Phase F committed; next: browser → VS Code comment flow validation
+**Status:** ACTIVE — Session 15 Page Understanding + Region Capture ✅ DONE (2,949 tests); next: M95-VA Visual Annotation Layer or deferred backlog
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-15 — TD-CROSS-1 complete. `openTabs: OpenTab[]` added to `IDEState` (bridge + bridge-types); `accordo_layout_state` MCP tool added to `accordo-editor`; `## Open Tabs` budget-aware section added to Hub system prompt. Tab truncation is budget-triggered (not a fixed cap). `Tab.label` is required. All 2321 tests green. Committed `fc0a227` + `4e9807c`. Panel visibility (Output, Debug Console, Problems) is a known gap in the VS Code API — no `onDidChangeActivePanel` event exists; to be revisited if agent panel-awareness becomes a priority.**
+> **As of 2026-03-26 — Session 15 complete. Page Understanding + Region Capture (M90/M91/M92) delivered: 4 MCP tools (`browser_get_page_map`, `browser_inspect_element`, `browser_get_dom_excerpt`, `browser_capture_region`), 6-tier enhanced anchor strategy, `OffscreenCanvas` region capture, full HTML sanitization in DOM excerpts. 313 new tests across browser-extension and browser packages. Full monorepo: 2,949 tests green. Phase A→B→C→D→D2→D3 complete. Testing guide: [`docs/testing-guide-session-15.md`](testing-guide-session-15.md). Next: M95-VA Visual Annotation Layer or deferred backlog (see §9, item 25).**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -25,8 +25,9 @@
 | **Session 12** | **Browser Extension v1 (`packages/browser-extension` — standalone Chrome extension, 12 modules M80-xxx)** | ✅ DONE — 165 tests; MVP shipped with store, pins, popover, export, screenshot |
 | **Session 13** | **Browser Extension v2a (`packages/browser` relay + SDK convergence + agent list/get/create/reply/resolve/reopen/delete)** | ✅ DONE — 176 tests (browser-ext: 165 + browser: 11); manual validation confirmed |
 | **Session 14** | **Unified comments contract (`comment_*` scoped by modality) + browser comments in shared panel + bulk browser cleanup action** | ✅ DONE — Phase A→F complete; 2,636 tests |
+| **Session 15** | **Page Understanding + Region Capture (M90/M91/M92 — 4 MCP tools, enhanced anchors, DOM inspection, targeted screenshots)** | ✅ DONE — Phase A→D→D2→D3 complete; 313 new tests (browser-ext: 343, browser: 115); 2,949 total |
 
-**Baseline:** 2636 tests green (Hub: 376, Bridge: 324, Comments: 273, Voice: 269, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 165, browser: 11). Session 14 Phase F committed.  
+**Baseline:** 2,949 tests green (Hub: 376, Bridge: 324, Comments: 273, Voice: 269, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 343, browser: 115). Session 15 Phase F committed.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -461,6 +462,38 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ---
 
+### Session 15 — Page Understanding + Region Capture (`packages/browser-extension` + `packages/browser`) [✅ DONE]
+
+**Goal:** Give AI agents the ability to inspect live browser pages (structured DOM summary, element inspection, HTML excerpts) and capture targeted screenshots of specific elements or regions — avoiding full-viewport screenshots that bloat agent context windows.
+
+**Architecture:** [`docs/design/page-understanding-architecture.md`](design/page-understanding-architecture.md); [`docs/architecture.md`](architecture.md) §14.2–§14.7  
+**Requirements:** [`docs/requirements-browser-extension.md`](requirements-browser-extension.md) §3.15 (PU-F-01..PU-F-57), §3.18 (CR-F-01..CR-F-12)  
+**Testing guide:** [`docs/testing-guide-session-15.md`](testing-guide-session-15.md)
+
+| # | Module | Requirements Source | TDD Phases |
+|---|---|---|---|
+| M90-MAP | Page Map Collector (content script) | requirements-browser-extension.md §3.15 (PU-F-01..PU-F-06) | ✅ A → F |
+| M90-INS | Element Inspector (content script) | requirements-browser-extension.md §3.15 (PU-F-10..PU-F-15) | ✅ A → F |
+| M90-ANC | Enhanced Anchor | requirements-browser-extension.md §3.15 (PU-F-20..PU-F-26) | ✅ A → F |
+| M90-ACT | Relay Actions (page understanding + capture) | requirements-browser-extension.md §3.15 (PU-F-30..PU-F-33) | ✅ A → F |
+| M91-PU | Page Understanding MCP Tools (3 tools) | requirements-browser-extension.md §3.15 (PU-F-50..PU-F-55) | ✅ A → F |
+| M91-CR | Capture Region MCP Tool | requirements-browser-extension.md §3.18 (CR-F-01..CR-F-12) | ✅ A → F |
+| M92-CR | Region Capture (content script + OffscreenCanvas crop) | requirements-browser-extension.md §3.18 (CR-F-02..CR-F-07) | ✅ A → F |
+
+**Key implementation decisions:**
+- Content script executes DOM queries (`collectPageMap`, `inspectElement`, etc.); service worker relays via `chrome.tabs.sendMessage`
+- `capture_region`: service worker calls `chrome.tabs.captureVisibleTab()` then crops with `OffscreenCanvas` + `createImageBitmap`
+- `isEnhancedAnchorKey`: `body:` prefix is enhanced **only** if the key contains `%` (viewport-pct format); `body:0:center` is legacy
+- `getDomExcerpt` sanitization: strips `script`/`style`/`iframe`/`object`/`embed`/`noscript`/`template`; removes `javascript:`/`data:` URLs; strips `on*` attributes
+- `isHidden()` covers: `display:none`, `visibility:hidden/collapse`, `opacity:0`, `hidden` attribute
+- 500 KB retry at lower quality if first capture exceeds limit; error codes: `element-not-found`, `element-off-screen`, `no-target`, `image-too-large`, `capture-failed`
+
+**D2 review cycles:** 5 iterations — DOM globals removed from `packages/browser`, `OffscreenCanvas` crop implemented, anchor key disambiguation fixed, sanitization completed, error propagation fixed.
+
+**Session 15 gate:** ✅ 313 new tests. All 4 MCP tools wired and callable. Agent can call `browser_get_page_map` and receive a structured DOM summary. `browser_inspect_element` returns stable anchor keys. `browser_capture_region` crops to element bounds. 2,949 total tests green.
+
+---
+
 ## 8. Phase 2 Readiness Criteria (for Phase 3)
 
 Phase 3 (Presentations) can begin only when:
@@ -529,7 +562,21 @@ Identified in a post-session-10C code review. No blocking issues — voice is fu
 
 ---
 
+### Future Roadmap — Visual Annotation Layer (M95-VA)
+
+> **Status:** FUTURE — Architectural reservation only. Not in current MVP or any active session.
+
+25. **Visual Annotation Layer** — Agent visual marking of page elements during conversation (lines, frames, circles, highlights, callouts). Enables collaborative discussion where the agent can point at, circle, or highlight specific UI elements on a live browser page. Annotations are ephemeral (not persistent like comments) and tab-scoped. **Architecture:** `docs/architecture.md` §15. **Requirements:** `docs/requirements-browser-extension.md` §3.17 (reserved IDs VA-F-01..VA-F-15, VA-NF-01..VA-NF-03). **Module ID:** M95-VA. **Prerequisites:** Page understanding (M90/M91) complete and stable; enhanced anchor strategy (M90-ANC) battle-tested in production. **Estimated effort:** 1 session (~3 modules: overlay renderer, annotation manager, MCP tool registration). **Key design note:** Reuses enhanced anchor infrastructure, relay transport path, and `CommentBackendAdapter` portability pattern — no new transport mechanisms needed. Standalone MCP server compatibility included by design.
+
+---
+
 ## DONE
+
+### Session 15 — Page Understanding + Region Capture (completed 2026-03-26)
+
+M90-MAP/INS/ANC/ACT + M91-PU/CR + M92-CR delivered. 4 MCP tools: `browser_get_page_map`, `browser_inspect_element`, `browser_get_dom_excerpt`, `browser_capture_region`. 6-tier enhanced anchor strategy (id → data-testid → aria → css-path → tag-sibling → viewport-pct). `OffscreenCanvas` region crop with 500 KB retry. Full HTML sanitization in DOM excerpts (script/style/iframe stripped, javascript:/data: URLs removed, on* attributes stripped). 313 new tests (browser-ext: 343 total, browser: 115 total). Full monorepo: 2,949 tests green. Testing guide: [`docs/testing-guide-session-15.md`](testing-guide-session-15.md).
+
+---
 
 ### Session 13 — Browser Extension v2a (completed 2026-03-23)
 

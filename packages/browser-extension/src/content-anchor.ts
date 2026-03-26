@@ -97,3 +97,31 @@ export function getAnchorPagePosition(anchorKey: string, anchorElement: Element)
     y: rect.top + window.scrollY + 4,
   };
 }
+
+/**
+ * Parse viewport-percentage anchor keys generated from Hub normalized coordinates.
+ * Format: body:<x>%x<y>% (example: body:42%x63%).
+ */
+export function parseViewportAnchorKey(anchorKey: string): { xPct: number; yPct: number } | null {
+  const m = /^body:(\d{1,3})%x(\d{1,3})%$/.exec(anchorKey);
+  if (!m) return null;
+  const xPct = Number(m[1]);
+  const yPct = Number(m[2]);
+  if (!Number.isFinite(xPct) || !Number.isFinite(yPct)) return null;
+  return {
+    xPct: Math.max(0, Math.min(100, xPct)),
+    yPct: Math.max(0, Math.min(100, yPct)),
+  };
+}
+
+/**
+ * Resolve a viewport-percentage key to page coordinates.
+ */
+export function getViewportAnchorPagePosition(anchorKey: string): { x: number; y: number } | null {
+  const parsed = parseViewportAnchorKey(anchorKey);
+  if (!parsed) return null;
+  return {
+    x: window.scrollX + Math.round((window.innerWidth * parsed.xPct) / 100) - 12,
+    y: window.scrollY + Math.round((window.innerHeight * parsed.yPct) / 100) + 4,
+  };
+}

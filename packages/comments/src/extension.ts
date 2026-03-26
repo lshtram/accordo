@@ -17,7 +17,8 @@ import * as vscode from "vscode";
 import type { ExtensionToolDefinition, CommentAnchor, CommentAnchorSurface, CommentAnchorText, BlockCoordinates, CommentIntent, CommentThread } from "@accordo/bridge-types";
 import { CommentStore } from "./comment-store.js";
 import { NativeComments } from "./native-comments.js";
-import { createCommentTools } from "./comment-tools.js";
+import { createCommentTools, CompositeCommentUINotifier } from "./comment-tools.js";
+import type { CommentUINotifier } from "./comment-tools.js";
 import { startStateContribution } from "./state-contribution.js";
 import { PanelFilters } from "./panel/panel-filters.js";
 import { CommentsTreeProvider } from "./panel/comments-tree-provider.js";
@@ -78,10 +79,15 @@ export interface SurfaceCommentAdapter {
 
 // ── activate ──────────────────────────────────────────────────────────────────
 
+/** Exports returned by activate() for inter-extension consumption. */
+export interface CommentsExtensionExports {
+  registerBrowserNotifier: (notifier: CommentUINotifier) => { dispose(): void };
+}
+
 /**
  * Called by VS Code when the extension activates (onStartupFinished).
  */
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
+export async function activate(context: vscode.ExtensionContext): Promise<CommentsExtensionExports> {
   // ── Store (always created — does not depend on Bridge) ─────────────────────
   const store = new CommentStore();
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
@@ -103,6 +109,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   nc.init(store, context);
   nc.restoreThreads(store.getAllThreads());
   nc.registerCommands(store, context);
+
+  const composite = new CompositeCommentUINotifier(nc);
 
   // ── Custom Comments Panel (M45-EXT) ──────────────────────────────────────────
   const filters = new PanelFilters(context.workspaceState);
@@ -367,7 +375,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const bridgeExt = vscode.extensions.getExtension("accordo.accordo-bridge");
   if (!bridgeExt) {
     console.warn("[accordo-comments] accordo-bridge not installed — MCP tools and state disabled");
-    return;
+    return { registerBrowserNotifier: (notifier) => composite.add(notifier) };
   }
   if (!bridgeExt.isActive) {
     try { await bridgeExt.activate(); } catch { /* bridge failed — skip tools */ }
@@ -375,17 +383,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const bridge = bridgeExt.exports as BridgeAPI | undefined;
   if (!bridge || typeof bridge.registerTools !== "function") {
     console.warn("[accordo-comments] Bridge exports unavailable — MCP tools and state disabled");
-    return;
+    return { registerBrowserNotifier: (notifier) => composite.add(notifier) };
   }
 
   // ── Tools ─────────────────────────────────────────────────────────────────
-  const tools = createCommentTools(store, nc);
+  const tools = createCommentTools(store, composite);
   const toolsDisposable = bridge.registerTools("accordo-comments", tools);
   context.subscriptions.push(toolsDisposable);
 
   // ── State contribution ────────────────────────────────────────────────────
   const stateContrib = startStateContribution(bridge, store);
   context.subscriptions.push(stateContrib);
+
+  return { registerBrowserNotifier: (notifier) => composite.add(notifier) };
 }
 
 // ── deactivate ────────────────────────────────────────────────────────────────

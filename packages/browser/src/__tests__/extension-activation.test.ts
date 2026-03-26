@@ -72,6 +72,286 @@ describe("M83-BTOOLS extension activation", () => {
     }
   });
 
+  it("BUG-DEL-01: create_comment forwards caller threadId/commentId for stable cross-surface IDs", async () => {
+    const relayServerModule = await import("../relay-server.js");
+    const MockRelayServer = relayServerModule.BrowserRelayServer as ReturnType<typeof vi.fn>;
+    const mockInstance = MockRelayServer.mock.results[0]?.value as {
+      onRelayRequest?: (...args: unknown[]) => unknown;
+    };
+
+    const bridge = {
+      registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      publishState: vi.fn(),
+      invokeTool: invokeToolMock.mockResolvedValue({ created: true, threadId: "t-local", commentId: "c-local" }),
+    };
+    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+
+    const context = createExtensionContextMock();
+    await activate(context as never);
+
+    if (mockInstance?.onRelayRequest) {
+      await mockInstance.onRelayRequest("create_comment", {
+        body: "from chrome",
+        url: "https://example.com/page",
+        anchorKey: "div:0:title@20,10",
+        threadId: "t-local",
+        commentId: "c-local",
+      });
+
+      expect(invokeToolMock).toHaveBeenCalledWith(
+        "comment_create",
+        expect.objectContaining({
+          threadId: "t-local",
+          commentId: "c-local",
+        }),
+      );
+    }
+  });
+
+  // ── BUG-4: Missing onRelayRequest action path tests ────────────────────────
+
+  /**
+   * REQ-B4-01: get_comments → comment_list with browser scope and URL filter
+   */
+  it("BUG-4: get_comments calls comment_list with browser scope and url", async () => {
+    const relayServerModule = await import("../relay-server.js");
+    const MockRelayServer = relayServerModule.BrowserRelayServer as ReturnType<typeof vi.fn>;
+    const mockInstance = MockRelayServer.mock.results[0]?.value as {
+      onRelayRequest?: (...args: unknown[]) => unknown;
+    };
+
+    const bridge = {
+      registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      publishState: vi.fn(),
+      invokeTool: invokeToolMock.mockResolvedValue({ threads: [], total: 0, hasMore: false }),
+    };
+    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+
+    const context = createExtensionContextMock();
+    await activate(context as never);
+
+    if (mockInstance?.onRelayRequest) {
+      await mockInstance.onRelayRequest("get_comments", { url: "https://example.com/page" });
+
+      expect(invokeToolMock).toHaveBeenCalledWith(
+        "comment_list",
+        expect.objectContaining({
+          scope: expect.objectContaining({ modality: "browser", url: "https://example.com/page" }),
+        }),
+      );
+    }
+  });
+
+  /**
+   * REQ-B4-02: get_all_comments → comment_list with browser scope (no URL filter)
+   */
+  it("BUG-4: get_all_comments calls comment_list with browser scope (no url)", async () => {
+    const relayServerModule = await import("../relay-server.js");
+    const MockRelayServer = relayServerModule.BrowserRelayServer as ReturnType<typeof vi.fn>;
+    const mockInstance = MockRelayServer.mock.results[0]?.value as {
+      onRelayRequest?: (...args: unknown[]) => unknown;
+    };
+
+    const bridge = {
+      registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      publishState: vi.fn(),
+      invokeTool: invokeToolMock.mockResolvedValue({ threads: [], total: 0, hasMore: false }),
+    };
+    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+
+    const context = createExtensionContextMock();
+    await activate(context as never);
+
+    if (mockInstance?.onRelayRequest) {
+      await mockInstance.onRelayRequest("get_all_comments", {});
+
+      expect(invokeToolMock).toHaveBeenCalledWith(
+        "comment_list",
+        expect.objectContaining({
+          scope: expect.objectContaining({ modality: "browser" }),
+        }),
+      );
+      // get_all_comments should NOT include url in scope
+      const callArgs = invokeToolMock.mock.calls[0][1] as { scope: Record<string, unknown> };
+      expect(callArgs.scope).not.toHaveProperty("url");
+    }
+  });
+
+  /**
+   * REQ-B4-03: reply_comment → comment_reply with threadId and body
+   */
+  it("BUG-4: reply_comment calls comment_reply with threadId and body", async () => {
+    const relayServerModule = await import("../relay-server.js");
+    const MockRelayServer = relayServerModule.BrowserRelayServer as ReturnType<typeof vi.fn>;
+    const mockInstance = MockRelayServer.mock.results[0]?.value as {
+      onRelayRequest?: (...args: unknown[]) => unknown;
+    };
+
+    const bridge = {
+      registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      publishState: vi.fn(),
+      invokeTool: invokeToolMock.mockResolvedValue({ replied: true, commentId: "c2" }),
+    };
+    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+
+    const context = createExtensionContextMock();
+    await activate(context as never);
+
+    if (mockInstance?.onRelayRequest) {
+      await mockInstance.onRelayRequest("reply_comment", {
+        threadId: "t1",
+        body: "reply text",
+      });
+
+      expect(invokeToolMock).toHaveBeenCalledWith(
+        "comment_reply",
+        expect.objectContaining({
+          threadId: "t1",
+          body: "reply text",
+        }),
+      );
+    }
+  });
+
+  /**
+   * REQ-B4-04: resolve_thread → comment_resolve with threadId and resolutionNote
+   */
+  it("BUG-4: resolve_thread calls comment_resolve with threadId and resolutionNote", async () => {
+    const relayServerModule = await import("../relay-server.js");
+    const MockRelayServer = relayServerModule.BrowserRelayServer as ReturnType<typeof vi.fn>;
+    const mockInstance = MockRelayServer.mock.results[0]?.value as {
+      onRelayRequest?: (...args: unknown[]) => unknown;
+    };
+
+    const bridge = {
+      registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      publishState: vi.fn(),
+      invokeTool: invokeToolMock.mockResolvedValue({ resolved: true, threadId: "t1" }),
+    };
+    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+
+    const context = createExtensionContextMock();
+    await activate(context as never);
+
+    if (mockInstance?.onRelayRequest) {
+      await mockInstance.onRelayRequest("resolve_thread", {
+        threadId: "t1",
+        resolutionNote: "Fixed the issue",
+      });
+
+      expect(invokeToolMock).toHaveBeenCalledWith(
+        "comment_resolve",
+        expect.objectContaining({
+          threadId: "t1",
+          resolutionNote: "Fixed the issue",
+        }),
+      );
+    }
+  });
+
+  /**
+   * REQ-B4-05: reopen_thread → comment_reopen with threadId
+   */
+  it("BUG-4: reopen_thread calls comment_reopen with threadId", async () => {
+    const relayServerModule = await import("../relay-server.js");
+    const MockRelayServer = relayServerModule.BrowserRelayServer as ReturnType<typeof vi.fn>;
+    const mockInstance = MockRelayServer.mock.results[0]?.value as {
+      onRelayRequest?: (...args: unknown[]) => unknown;
+    };
+
+    const bridge = {
+      registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      publishState: vi.fn(),
+      invokeTool: invokeToolMock.mockResolvedValue({ reopened: true, threadId: "t1" }),
+    };
+    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+
+    const context = createExtensionContextMock();
+    await activate(context as never);
+
+    if (mockInstance?.onRelayRequest) {
+      await mockInstance.onRelayRequest("reopen_thread", { threadId: "t1" });
+
+      expect(invokeToolMock).toHaveBeenCalledWith(
+        "comment_reopen",
+        expect.objectContaining({
+          threadId: "t1",
+        }),
+      );
+    }
+  });
+
+  /**
+   * REQ-B4-06: delete_comment → comment_delete with threadId and optional commentId
+   */
+  it("BUG-4: delete_comment calls comment_delete with threadId and commentId", async () => {
+    const relayServerModule = await import("../relay-server.js");
+    const MockRelayServer = relayServerModule.BrowserRelayServer as ReturnType<typeof vi.fn>;
+    const mockInstance = MockRelayServer.mock.results[0]?.value as {
+      onRelayRequest?: (...args: unknown[]) => unknown;
+    };
+
+    const bridge = {
+      registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      publishState: vi.fn(),
+      invokeTool: invokeToolMock.mockResolvedValue({ deleted: true }),
+    };
+    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+
+    const context = createExtensionContextMock();
+    await activate(context as never);
+
+    if (mockInstance?.onRelayRequest) {
+      await mockInstance.onRelayRequest("delete_comment", {
+        threadId: "t1",
+        commentId: "c1",
+      });
+
+      expect(invokeToolMock).toHaveBeenCalledWith(
+        "comment_delete",
+        expect.objectContaining({
+          threadId: "t1",
+          commentId: "c1",
+        }),
+      );
+    }
+  });
+
+  /**
+   * REQ-B4-07: delete_thread → comment_delete with threadId only (no commentId)
+   */
+  it("BUG-4: delete_thread calls comment_delete with threadId only", async () => {
+    const relayServerModule = await import("../relay-server.js");
+    const MockRelayServer = relayServerModule.BrowserRelayServer as ReturnType<typeof vi.fn>;
+    const mockInstance = MockRelayServer.mock.results[0]?.value as {
+      onRelayRequest?: (...args: unknown[]) => unknown;
+    };
+
+    const bridge = {
+      registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      publishState: vi.fn(),
+      invokeTool: invokeToolMock.mockResolvedValue({ deleted: true }),
+    };
+    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+
+    const context = createExtensionContextMock();
+    await activate(context as never);
+
+    if (mockInstance?.onRelayRequest) {
+      await mockInstance.onRelayRequest("delete_thread", { threadId: "t1" });
+
+      expect(invokeToolMock).toHaveBeenCalledWith(
+        "comment_delete",
+        expect.objectContaining({
+          threadId: "t1",
+        }),
+      );
+      // delete_thread should NOT pass commentId
+      const callArgs = invokeToolMock.mock.calls[0][1] as { commentId?: string };
+      expect(callArgs.commentId).toBeUndefined();
+    }
+  });
+
   it("BR-F-123: publishes relay state for observability", async () => {
     const bridge = {
       registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
