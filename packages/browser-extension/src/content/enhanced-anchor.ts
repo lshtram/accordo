@@ -62,7 +62,52 @@ export const STRATEGY_PREFIXES: readonly string[] = [
   "id:", "data-testid:", "aria:", "css:", "tag:", "body:",
 ];
 
+function splitAnchorOffset(anchorKey: string): { baseKey: string; offsetX?: number; offsetY?: number } {
+  const at = anchorKey.lastIndexOf("@");
+  if (at <= 0) return { baseKey: anchorKey };
+
+  const offsetRaw = anchorKey.slice(at + 1);
+  const comma = offsetRaw.indexOf(",");
+  if (comma === -1) return { baseKey: anchorKey };
+
+  const xRaw = offsetRaw.slice(0, comma);
+  const yRaw = offsetRaw.slice(comma + 1);
+  const offsetX = Number(xRaw);
+  const offsetY = Number(yRaw);
+  if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) {
+    return { baseKey: anchorKey };
+  }
+
+  return { baseKey: anchorKey.slice(0, at), offsetX, offsetY };
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+function isRenderable(element: Element): boolean {
+  if (typeof window === "undefined") return true;
+  if (element.hasAttribute("hidden")) return false;
+  const style = window.getComputedStyle(element);
+  if (style.display === "none") return false;
+  if (style.visibility === "hidden" || style.visibility === "collapse") return false;
+  if (style.opacity === "0") return false;
+  return true;
+}
+
+function chooseBestElement(candidates: Element[]): Element | null {
+  if (candidates.length === 0) return null;
+  const renderable = candidates.filter(isRenderable);
+  if (renderable.length > 0) return renderable[0];
+  return candidates[0];
+}
+
+function queryBest(selector: string): Element | null {
+  try {
+    const matches = Array.from(document.querySelectorAll(selector));
+    return chooseBestElement(matches);
+  } catch {
+    return null;
+  }
+}
 
 function getTestId(element: Element): string | null {
   return (
@@ -187,55 +232,56 @@ export function generateAnchorKey(element: Element): AnchorGenerationResult {
  * @returns The matching DOM element, or null if not found
  */
 export function resolveAnchorKey(anchorKey: string): Element | null {
+  const { baseKey } = splitAnchorOffset(anchorKey);
+
   // Enhanced keys: dispatch by prefix
-  if (anchorKey.startsWith("id:")) {
-    const id = anchorKey.slice(3);
-    return document.getElementById(id);
+  if (baseKey.startsWith("id:")) {
+    const id = baseKey.slice(3);
+    const byId = document.getElementById(id);
+    if (byId && isRenderable(byId)) return byId;
+    const bySelector = queryBest(`[id="${id.replace(/"/g, '\\"')}"]`);
+    return bySelector ?? byId;
   }
 
-  if (anchorKey.startsWith("data-testid:")) {
-    const value = anchorKey.slice(12);
-    return document.querySelector(`[data-testid="${value}"]`);
+  if (baseKey.startsWith("data-testid:")) {
+    const value = baseKey.slice(12);
+    return queryBest(`[data-testid="${value.replace(/"/g, '\\"')}"]`);
   }
 
-  if (anchorKey.startsWith("aria:")) {
-    const value = anchorKey.slice(5);
+  if (baseKey.startsWith("aria:")) {
+    const value = baseKey.slice(5);
     const slashIdx = value.lastIndexOf("/");
     if (slashIdx === -1) return null;
     const label = value.slice(0, slashIdx);
     const role = value.slice(slashIdx + 1);
     return (
-      document.querySelector(`[aria-label="${label}"][role="${role}"]`) ??
-      document.querySelector(`[aria-label="${label}"]`)
+      queryBest(`[aria-label="${label.replace(/"/g, '\\"')}"][role="${role.replace(/"/g, '\\"')}"]`) ??
+      queryBest(`[aria-label="${label.replace(/"/g, '\\"')}"]`)
     );
   }
 
-  if (anchorKey.startsWith("css:")) {
-    const selector = anchorKey.slice(4);
-    try {
-      return document.querySelector(selector);
-    } catch (error: unknown) {
-      return null;
-    }
+  if (baseKey.startsWith("css:")) {
+    const selector = baseKey.slice(4);
+    return queryBest(selector);
   }
 
-  if (anchorKey.startsWith("tag:")) {
-    const legacyKey = anchorKey.slice(4);
+  if (baseKey.startsWith("tag:")) {
+    const legacyKey = baseKey.slice(4);
     return findAnchorElementByKey(legacyKey);
   }
 
-  if (anchorKey.startsWith("body:")) {
+  if (baseKey.startsWith("body:")) {
     // viewport-pct format: body:x%xy%
-    const parsed = parseViewportAnchorKey(anchorKey);
+    const parsed = parseViewportAnchorKey(baseKey);
     if (parsed) {
       return document.body;
     }
     // Could be a legacy tag-sibling key starting with "body" tag
-    return findAnchorElementByKey(anchorKey);
+    return findAnchorElementByKey(baseKey);
   }
 
   // Legacy unprefixed keys (e.g. "button:3:submit")
-  return findAnchorElementByKey(anchorKey);
+  return findAnchorElementByKey(baseKey);
 }
 
 /**
@@ -247,36 +293,39 @@ export function resolveAnchorKey(anchorKey: string): Element | null {
  * @returns Parsed anchor components, or null if unparseable
  */
 export function parseEnhancedAnchorKey(anchorKey: string): ParsedEnhancedAnchor | null {
-  if (anchorKey.startsWith("id:")) {
-    return { strategy: "id", value: anchorKey.slice(3) };
+  const { baseKey, offsetX, offsetY } = splitAnchorOffset(anchorKey);
+  const offset = offsetX !== undefined && offsetY !== undefined ? { offsetX, offsetY } : {};
+
+  if (baseKey.startsWith("id:")) {
+    return { strategy: "id", value: baseKey.slice(3), ...offset };
   }
 
-  if (anchorKey.startsWith("data-testid:")) {
-    return { strategy: "data-testid", value: anchorKey.slice(12) };
+  if (baseKey.startsWith("data-testid:")) {
+    return { strategy: "data-testid", value: baseKey.slice(12), ...offset };
   }
 
-  if (anchorKey.startsWith("aria:")) {
-    return { strategy: "aria", value: anchorKey.slice(5) };
+  if (baseKey.startsWith("aria:")) {
+    return { strategy: "aria", value: baseKey.slice(5), ...offset };
   }
 
-  if (anchorKey.startsWith("css:")) {
-    return { strategy: "css-path", value: anchorKey.slice(4) };
+  if (baseKey.startsWith("css:")) {
+    return { strategy: "css-path", value: baseKey.slice(4), ...offset };
   }
 
-  if (anchorKey.startsWith("tag:")) {
-    return { strategy: "tag-sibling", value: anchorKey.slice(4) };
+  if (baseKey.startsWith("tag:")) {
+    return { strategy: "tag-sibling", value: baseKey.slice(4), ...offset };
   }
 
-  if (anchorKey.startsWith("body:")) {
-    const value = anchorKey.slice(5);
-    const parsed = parseViewportAnchorKey(anchorKey);
+  if (baseKey.startsWith("body:")) {
+    const value = baseKey.slice(5);
+    const parsed = parseViewportAnchorKey(baseKey);
     if (parsed) {
-      return { strategy: "viewport-pct", value };
+      return { strategy: "viewport-pct", value, ...offset };
     }
     // Legacy tag-sibling body key — treat as legacy, not parseable as enhanced
-    const legacyParsed = parseAnchorKey(anchorKey);
+    const legacyParsed = parseAnchorKey(baseKey);
     if (legacyParsed) {
-      return { strategy: "tag-sibling", value };
+      return { strategy: "tag-sibling", value, ...offset };
     }
     return null;
   }
@@ -296,11 +345,12 @@ export function parseEnhancedAnchorKey(anchorKey: string): ParsedEnhancedAnchor 
  * @returns true if the key uses enhanced format
  */
 export function isEnhancedAnchorKey(anchorKey: string): boolean {
-  if (anchorKey.startsWith("body:")) {
+  const { baseKey } = splitAnchorOffset(anchorKey);
+  if (baseKey.startsWith("body:")) {
     // Only viewport-pct body keys (e.g. body:42%x63%) are enhanced
-    return anchorKey.includes("%");
+    return baseKey.includes("%");
   }
-  return STRATEGY_PREFIXES.some((prefix) => anchorKey.startsWith(prefix));
+  return STRATEGY_PREFIXES.some((prefix) => baseKey.startsWith(prefix));
 }
 
 // Re-export existing anchor functions for backward compatibility

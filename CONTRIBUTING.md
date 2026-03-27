@@ -79,7 +79,7 @@ feat(state-cache): implement state cache with patch merging
 
 ## TDD Process
 
-All new module implementations follow the TDD cycle defined in [`docs/dev-process.md`](docs/dev-process.md):
+All new module implementations follow the global TDD cycle in `~/.config/opencode/dev-process.md`:
 
 **A** (design + stubs) → **B** (failing tests) → **B2** (user review) → **C** (implement) → **D** (green) → **D2** (code review) → **D3** (testing guide) → **E** (user approval) → **F** (commit)
 
@@ -102,7 +102,7 @@ scripts/           Build scripts, git hooks
 | Document | Purpose |
 |---|---|
 | [`docs/architecture.md`](docs/architecture.md) | System design and protocols |
-| [`docs/dev-process.md`](docs/dev-process.md) | TDD cycle (mandatory for new modules) |
+| `~/.config/opencode/dev-process.md` | TDD cycle (mandatory for new modules) |
 | [`docs/coding-guidelines.md`](docs/coding-guidelines.md) | Code style and review checklist |
 | [`docs/workplan.md`](docs/workplan.md) | Current status and weekly plan |
 | [`AGENTS.md`](AGENTS.md) | Guide for AI agents working in this repo |

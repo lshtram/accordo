@@ -213,6 +213,122 @@ describe("M80-SW — Background Service Worker", () => {
         sendSpy.mockRestore();
       }
     });
+
+    it("PIN-FIX-05: GET_THREADS derives anchorKey from browser block coordinates when comment context metadata is absent", async () => {
+      const url = "https://example.com";
+      const normalizedUrl = "https://example.com/";
+      const hubOnlyThreadId = "tid-hub-block-anchor";
+      const blockId = "id:helpkit-launcherButton--jazzskills";
+
+      const sendSpy = vi.spyOn(RelayBridgeClient.prototype, "send").mockImplementation(async (action) => {
+        if (action === "get_comments") {
+          return {
+            success: true,
+            data: {
+              threads: [
+                {
+                  id: hubOnlyThreadId,
+                  anchor: {
+                    kind: "surface",
+                    uri: normalizedUrl,
+                    surfaceType: "browser",
+                    coordinates: { type: "block", blockId, blockType: "paragraph" },
+                  },
+                  status: "open",
+                  comments: [
+                    {
+                      id: "hub-cmt-3",
+                      threadId: hubOnlyThreadId,
+                      author: { kind: "assistant", name: "Agent" },
+                      body: "hub-only thread with block anchor",
+                      createdAt: "2026-01-01T11:00:00.000Z",
+                      status: "open",
+                    },
+                  ],
+                  createdAt: "2026-01-01T11:00:00.000Z",
+                  lastActivity: "2026-01-01T11:00:00.000Z",
+                },
+              ],
+            },
+          };
+        }
+        return { success: false, error: "browser-not-connected" };
+      });
+
+      try {
+        const response = await handleMessage(
+          {
+            type: MESSAGE_TYPES.GET_THREADS,
+            payload: { url },
+          },
+          {} as chrome.runtime.MessageSender
+        );
+
+        expect(response.success).toBe(true);
+        expect(Array.isArray(response.data)).toBe(true);
+        const thread = (response.data as BrowserCommentThread[]).find((t) => t.id === hubOnlyThreadId);
+        expect(thread).toBeDefined();
+        expect(thread?.anchorKey).toBe(blockId);
+      } finally {
+        sendSpy.mockRestore();
+      }
+    });
+
+    it("PIN-FIX-06: GET_THREADS keeps hub browser thread when both request URL and hub URI include hash fragment", async () => {
+      const urlWithHash = "https://example.com/page#";
+      const threadId = "tid-hub-hash-uri";
+
+      const sendSpy = vi.spyOn(RelayBridgeClient.prototype, "send").mockImplementation(async (action) => {
+        if (action === "get_comments") {
+          return {
+            success: true,
+            data: {
+              threads: [
+                {
+                  id: threadId,
+                  anchor: {
+                    kind: "surface",
+                    uri: urlWithHash,
+                    surfaceType: "browser",
+                    coordinates: { type: "block", blockId: "css:h3:nth-of-type(4)", blockType: "paragraph" },
+                  },
+                  status: "open",
+                  comments: [
+                    {
+                      id: "hub-cmt-hash-1",
+                      threadId,
+                      author: { kind: "assistant", name: "Agent" },
+                      body: "hash variant thread",
+                      createdAt: "2026-01-01T11:00:00.000Z",
+                      status: "open",
+                    },
+                  ],
+                  createdAt: "2026-01-01T11:00:00.000Z",
+                  lastActivity: "2026-01-01T11:00:00.000Z",
+                },
+              ],
+            },
+          };
+        }
+        return { success: false, error: "browser-not-connected" };
+      });
+
+      try {
+        const response = await handleMessage(
+          {
+            type: MESSAGE_TYPES.GET_THREADS,
+            payload: { url: urlWithHash },
+          },
+          {} as chrome.runtime.MessageSender
+        );
+
+        expect(response.success).toBe(true);
+        expect(Array.isArray(response.data)).toBe(true);
+        expect((response.data as BrowserCommentThread[]).map((t) => t.id)).toContain(threadId);
+      } finally {
+        sendSpy.mockRestore();
+      }
+    });
   });
 
   describe("handleMessage — CREATE_THREAD", () => {

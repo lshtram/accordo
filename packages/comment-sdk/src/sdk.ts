@@ -72,6 +72,8 @@ export class AccordoCommentSDK {
   private _activeBlockEl: HTMLElement | undefined;
   private _clickHandler: ((e: MouseEvent) => void) | undefined;
   private _outsideClickHandler: ((e: MouseEvent) => void) | undefined;
+  private _repositionHandler: (() => void) | undefined;
+  private _scrollTargets = new Set<EventTarget>();
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -84,6 +86,7 @@ export class AccordoCommentSDK {
   init(opts: SdkInitOptions): void {
     this._opts = opts;
     this._pins = new Map();
+    this._scrollTargets = new Set();
 
     // Create the overlay layer — CSS class handles all positioning
     const layer = document.createElement("div");
@@ -113,6 +116,14 @@ export class AccordoCommentSDK {
       }
     };
     document.body.addEventListener("click", this._outsideClickHandler);
+
+    // Keep pins aligned with moving anchors (window scroll/resize + nested scroll containers).
+    this._repositionHandler = () => {
+      this._repositionPins();
+    };
+    this._registerScrollTarget(window);
+    this._registerScrollTarget(opts.container);
+    window.addEventListener("resize", this._repositionHandler);
   }
 
   /**
@@ -132,10 +143,20 @@ export class AccordoCommentSDK {
     if (this._outsideClickHandler) {
       document.body.removeEventListener("click", this._outsideClickHandler);
     }
+    if (this._repositionHandler) {
+      for (const target of this._scrollTargets) {
+        if (typeof (target as { removeEventListener?: unknown }).removeEventListener === "function") {
+          target.removeEventListener("scroll", this._repositionHandler, true);
+        }
+      }
+      window.removeEventListener("resize", this._repositionHandler);
+    }
+    this._scrollTargets.clear();
     this._pins.clear();
     this._opts = undefined;
     this._clickHandler = undefined;
     this._outsideClickHandler = undefined;
+    this._repositionHandler = undefined;
   }
 
   // ── Thread management ───────────────────────────────────────────────────────
@@ -166,7 +187,10 @@ export class AccordoCommentSDK {
       this._pins.set(thread.id, { thread, element: el });
       // Add gutter marker to the anchor block element
       const blockEl = this._opts.container.querySelector(`[data-block-id="${thread.blockId}"]`);
-      if (blockEl) blockEl.classList.add("accordo-block--has-comments");
+      if (blockEl) {
+        blockEl.classList.add("accordo-block--has-comments");
+        this._registerAncestorScrollTargets(blockEl);
+      }
     }
   }
 
@@ -181,6 +205,11 @@ export class AccordoCommentSDK {
     const el = this._createPinElement(thread, pos);
     this._layer.appendChild(el);
     this._pins.set(thread.id, { thread, element: el });
+
+    const blockEl = this._opts.container.querySelector(`[data-block-id="${thread.blockId}"]`);
+    if (blockEl) {
+      this._registerAncestorScrollTargets(blockEl);
+    }
   }
 
   /**
@@ -238,6 +267,42 @@ export class AccordoCommentSDK {
     if (thread.status === "resolved") return "resolved";
     if (thread.hasUnread) return "updated";
     return "open";
+  }
+
+  /** Recompute pin screen positions from current anchor locations. */
+  private _repositionPins(): void {
+    if (!this._opts) return;
+    for (const entry of this._pins.values()) {
+      const pos = this._opts.coordinateToScreen(entry.thread.blockId);
+      if (!pos) continue;
+      entry.element.style.left = `${pos.x}px`;
+      entry.element.style.top = `${pos.y}px`;
+    }
+  }
+
+  private _registerScrollTarget(target: EventTarget): void {
+    if (!this._repositionHandler) return;
+    if (this._scrollTargets.has(target)) return;
+    if (typeof (target as { addEventListener?: unknown }).addEventListener !== "function") return;
+
+    target.addEventListener("scroll", this._repositionHandler, true);
+    this._scrollTargets.add(target);
+  }
+
+  private _registerAncestorScrollTargets(element: Element): void {
+    let current: Element | null = element;
+    while (current) {
+      this._registerScrollTarget(current);
+      current = current.parentElement;
+    }
+
+    const root = element.getRootNode();
+    if (root && root !== document) {
+      this._registerScrollTarget(root);
+      if (root instanceof ShadowRoot && root.host) {
+        this._registerAncestorScrollTargets(root.host);
+      }
+    }
   }
 
   /** Create a pin <div> element for a thread. */

@@ -380,15 +380,7 @@ export async function handleGetPageMap(
     ) {
       return response.data;
     }
-    // Relay returned success but no usable page map data — return live page info
-    return {
-      pageUrl: "https://localhost/active-page",
-      title: "Active Page",
-      viewport: { width: 1280, height: 800 },
-      nodes: [],
-      totalElements: 0,
-      truncated: false,
-    };
+    return { success: false, error: "action-failed" };
   } catch (err: unknown) {
     return { success: false, error: classifyRelayError(err) };
   }
@@ -424,12 +416,7 @@ export async function handleInspectElement(
     ) {
       return response.data;
     }
-    // Relay returned success but no element data — resolve anchor locally
-    const anchor = resolveAnchorMetadata(args);
-    return {
-      found: true,
-      ...anchor,
-    };
+    return { success: false, error: "action-failed" };
   } catch (err: unknown) {
     return { success: false, error: classifyRelayError(err) };
   }
@@ -465,39 +452,10 @@ export async function handleGetDomExcerpt(
     ) {
       return response.data;
     }
-    // Relay returned success but no excerpt data — simulate based on selector
-    return resolveExcerptResult(args);
+    return { success: false, error: "action-failed" };
   } catch (err: unknown) {
     return { success: false, error: classifyRelayError(err) };
   }
-}
-
-/**
- * Simulate DOM excerpt result based on selector pattern.
- * Real implementation defers to the relay / content script.
- */
-function resolveExcerptResult(
-  args: GetDomExcerptArgs,
-): { found: boolean; html?: string; text?: string; nodeCount?: number; truncated?: boolean } {
-  const { selector } = args;
-
-  // Selectors that match nothing
-  if (
-    selector.includes("nonexistent") ||
-    selector.includes("xyz123") ||
-    selector.includes("xyz-456")
-  ) {
-    return { found: false };
-  }
-
-  // Known selectors that exist
-  return {
-    found: true,
-    html: `<${selector.replace(/[^a-z#.[\]='"-]/gi, "")}></${selector.split(/[^a-z]/i)[0] || "div"}>`,
-    text: "page content",
-    nodeCount: 1,
-    truncated: false,
-  };
 }
 
 /**

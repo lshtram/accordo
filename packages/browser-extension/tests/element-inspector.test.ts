@@ -135,6 +135,24 @@ describe("M90-INS type exports", () => {
 });
 
 describe("M90-INS inspectElement behavioral output", () => {
+  it("PU-F-10b: selector resolution prefers visible match when multiple elements match", () => {
+    const hidden = document.createElement("button");
+    hidden.className = "dup-target";
+    hidden.textContent = "Hidden";
+    hidden.style.display = "none";
+
+    const visible = document.createElement("button");
+    visible.className = "dup-target";
+    visible.textContent = "Visible";
+
+    document.body.appendChild(hidden);
+    document.body.appendChild(visible);
+
+    const result = inspectElement({ selector: ".dup-target" });
+    expect(result.found).toBe(true);
+    expect(result.element?.textContent).toBe("Visible");
+  });
+
   /**
    * PU-F-10: inspectElement returns InspectElementResult with found field
    * Uses a selector to find a real element in the test DOM.

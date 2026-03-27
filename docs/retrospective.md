@@ -21,7 +21,7 @@ Phase 1 delivered a complete MCP-based AI co-pilot layer on top of VSCode:
 ## What Worked Well
 
 ### 1. TDD Discipline
-The A→B→B2→C→D→D2→D3→E→F cycle caught design issues early. Writing tests before implementation forced clear thinking about module boundaries and error paths. The Phase B coverage audit (§5 in dev-process.md) was particularly valuable — it prevented the common pattern of "write tests that match the implementation" by requiring tests before any code existed.
+The A→B→B2→C→D→D2→D3→E→F cycle caught design issues early. Writing tests before implementation forced clear thinking about module boundaries and error paths. The Phase B coverage audit (§5 in `~/.config/opencode/dev-process.md`) was particularly valuable — it prevented the common pattern of "write tests that match the implementation" by requiring tests before any code existed.
 
 ### 2. Strategy A End-to-End Testing
 The `StubBridge` + `McpSession` pattern (real `ws` client + real `fetch` wrapper) enabled full HTTP+WS+JSON-RPC stack testing without VSCode. This caught integration bugs that unit tests missed, particularly around message ordering and timeout coordination.

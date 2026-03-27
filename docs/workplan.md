@@ -44,7 +44,7 @@ Registered 2026-03-15. These affect more than one package.
 
 ---
 
-> **Development process:** All module implementation in this project follows the TDD cycle defined in [`docs/dev-process.md`](dev-process.md). When a task says "TDD", that document is mandatory and normative. See also [`AGENTS.md`](../AGENTS.md) for mode-selection rules.
+> **Development process:** All module implementation in this project follows the global TDD cycle defined in `~/.config/opencode/dev-process.md`. When a task says "TDD", that document is mandatory and normative. See also [`AGENTS.md`](../AGENTS.md) for project-specific mode-selection rules.
 
 ---
 
@@ -114,7 +114,7 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 ## 6. Weekly Plan — Phase 2
 
-> Every task follows the TDD cycle in [`docs/dev-process.md`](dev-process.md).
+> Every task follows the TDD cycle in `~/.config/opencode/dev-process.md`.
 
 ### Week 6 — Comments Core (accordo-comments extension) ✅ DONE
 

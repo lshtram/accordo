@@ -25,7 +25,7 @@ Accordo IDE is an MCP-based AI co-pilot layer on top of VSCode. It consists of:
 
 ### 2.1 TDD Mode — strictly required when user says "TDD"
 
-When the user says **"TDD"**, or the task is implementing a new module listed in the workplan, you MUST follow the full process in [`docs/dev-process.md`](docs/dev-process.md) without omitting any phase or checkpoint.
+When the user says **"TDD"**, or the task is implementing a new module listed in the workplan, you MUST follow the full process in the global OpenCode process file: `~/.config/opencode/dev-process.md` (loaded by the project-manager) without omitting any phase or checkpoint.
 
 **Project-specific tooling:**
 - Test framework: vitest
@@ -40,7 +40,7 @@ When the user says **"TDD"**, or the task is implementing a new module listed in
 - User checkpoints at A, B2, and E are **blocking** — stop and wait for explicit approval
 - Never write implementation before the tests are approved by the user
 - Every requirement gets a test; tests reference requirement IDs
-- See `docs/dev-process.md` for the full cycle, batching rules, coverage audit, and commit format
+- See `~/.config/opencode/dev-process.md` for the full cycle, batching rules, coverage audit, and commit format
 
 ### 2.2 Quick Fix Mode
 
@@ -141,7 +141,7 @@ These are project-level decisions that override or extend `coding-guidelines.md 
 | Document | Purpose |
 |---|---|
 | [`docs/workplan.md`](docs/workplan.md) | Current status, active week, next module, DONE history |
-| [`docs/dev-process.md`](docs/dev-process.md) | Full TDD cycle — mandatory when user says "TDD" |
+| `~/.config/opencode/dev-process.md` | Full TDD cycle — mandatory when user says "TDD" |
 | [`docs/architecture.md`](docs/architecture.md) | System design, component boundaries, protocols |
 | [`docs/coding-guidelines.md`](docs/coding-guidelines.md) | Code style, banned patterns, D2 review checklist |
 | [`docs/requirements-hub.md`](docs/requirements-hub.md) | Hub functional requirements |

@@ -100,7 +100,7 @@ ACCORDO_TOKEN=your-token ACCORDO_BRIDGE_SECRET=your-secret \
 - [Requirements — Hub](docs/requirements-hub.md)
 - [Requirements — Bridge](docs/requirements-bridge.md)
 - [Requirements — Editor](docs/requirements-editor.md)
-- [Development Process](docs/dev-process.md) — TDD cycle, commit conventions
+- Development Process (`~/.config/opencode/dev-process.md`) — global TDD cycle, commit conventions
 - [Coding Guidelines](docs/coding-guidelines.md)
 - [Workplan](docs/workplan.md) — Phase 1 progress and status
 

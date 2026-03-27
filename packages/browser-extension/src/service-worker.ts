@@ -61,7 +61,9 @@ interface HubCommentThread {
     uri: string;
     range?: { startLine: number; startChar: number; endLine: number; endChar: number };
     surfaceType?: string;
-    coordinates?: { type: "normalized"; x: number; y: number };
+    coordinates?:
+      | { type: "normalized"; x: number; y: number }
+      | { type: "block"; blockId?: string; blockType?: string };
   };
   status: "open" | "resolved";
   commentCount: number;
@@ -81,8 +83,10 @@ interface HubCommentThread {
  */
 function urlsMatch(hubUri: string, chromeUrl: string): boolean {
   try {
-    const normalize = (u: string): string =>
-      new URL(u.startsWith("http") ? u : `https://${u}`).href;
+    const normalize = (u: string): string => {
+      const parsed = new URL(u.startsWith("http") ? u : `https://${u}`);
+      return `${parsed.origin}${parsed.pathname}`;
+    };
     return normalize(hubUri) === normalize(chromeUrl);
   } catch {
     // Fall back to string comparison for non-URLs (file URIs, etc.)
@@ -90,8 +94,18 @@ function urlsMatch(hubUri: string, chromeUrl: string): boolean {
   }
 }
 
-function coordinatesToAnchorKey(coords: { type: "normalized"; x: number; y: number } | undefined): string {
+function coordinatesToAnchorKey(
+  coords:
+    | { type: "normalized"; x: number; y: number }
+    | { type: "block"; blockId?: string; blockType?: string }
+    | undefined,
+): string {
   if (!coords) return "body:center";
+  if (coords.type === "block") {
+    return coords.blockId && coords.blockId.trim().length > 0
+      ? coords.blockId
+      : "body:center";
+  }
   const xPct = Math.round(coords.x * 100);
   const yPct = Math.round(coords.y * 100);
   return `body:${xPct}%x${yPct}%`;
@@ -99,7 +113,9 @@ function coordinatesToAnchorKey(coords: { type: "normalized"; x: number; y: numb
 
 function hubThreadToBrowserThread(hubThread: HubCommentThread): BrowserCommentThread {
   const pageUrl = hubThread.anchor.uri;
-  const anchorKeyFromContext = hubThread.comments[0]?.context?.surfaceMetadata?.anchorKey;
+  const anchorKeyFromContext = hubThread.comments.find(
+    (c) => typeof c.context?.surfaceMetadata?.anchorKey === "string" && c.context.surfaceMetadata.anchorKey.length > 0,
+  )?.context?.surfaceMetadata?.anchorKey;
   const anchorKey = anchorKeyFromContext
     ?? (hubThread.anchor.coordinates
       ? coordinatesToAnchorKey(hubThread.anchor.coordinates)

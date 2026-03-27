@@ -378,4 +378,21 @@ describe("PU-F-25: enhanced anchor resolution fallback hierarchy (behavioral)", 
     // Stub returns null - real implementation would return element via tag-sibling resolution
     expect(element).not.toBeNull();
   });
+
+  it("PU-F-25b: resolveAnchorKey prefers visible element when selector matches hidden and visible nodes", () => {
+    const hidden = document.createElement("div");
+    hidden.setAttribute("data-testid", "dup");
+    hidden.style.display = "none";
+
+    const visible = document.createElement("div");
+    visible.setAttribute("data-testid", "dup");
+    visible.setAttribute("id", "visible-dup");
+
+    document.body.appendChild(hidden);
+    document.body.appendChild(visible);
+
+    const resolved = resolveAnchorKey("data-testid:dup");
+    expect(resolved).not.toBeNull();
+    expect((resolved as Element).id).toBe("visible-dup");
+  });
 });

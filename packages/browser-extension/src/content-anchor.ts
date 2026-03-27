@@ -82,10 +82,21 @@ export function parseAnchorKey(anchorKey: string): ParsedAnchorKey | null {
 export function getAnchorPagePosition(anchorKey: string, anchorElement: Element): { x: number; y: number } {
   const rect = anchorElement.getBoundingClientRect();
   const parsed = parseAnchorKey(anchorKey);
+  const genericOffset = (() => {
+    const at = anchorKey.lastIndexOf("@");
+    if (at <= 0) return null;
+    const [xRaw, yRaw] = anchorKey.slice(at + 1).split(",");
+    const x = Number(xRaw);
+    const y = Number(yRaw);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x, y };
+  })();
 
-  if (parsed && parsed.offsetX !== undefined && parsed.offsetY !== undefined) {
-    const clampedX = Math.max(0, Math.min(parsed.offsetX, rect.width || parsed.offsetX));
-    const clampedY = Math.max(0, Math.min(parsed.offsetY, rect.height || parsed.offsetY));
+  if ((parsed && parsed.offsetX !== undefined && parsed.offsetY !== undefined) || genericOffset) {
+    const offsetX = parsed?.offsetX ?? genericOffset?.x ?? 0;
+    const offsetY = parsed?.offsetY ?? genericOffset?.y ?? 0;
+    const clampedX = Math.max(0, Math.min(offsetX, rect.width || offsetX));
+    const clampedY = Math.max(0, Math.min(offsetY, rect.height || offsetY));
     return {
       x: rect.left + window.scrollX + clampedX - 12,
       y: rect.top + window.scrollY + clampedY + 4,

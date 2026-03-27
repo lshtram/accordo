@@ -4,7 +4,7 @@
 **Date updated:** 2026-03-17 (A18 webview complete: SDK init, idMap, Alt+click overlay, pin re-render on scroll/zoom)
 **Architecture:** `docs/diag_arch_v4.2.md`
 **Requirements:** `docs/requirements-diagram.md`
-**Dev process:** `docs/dev-process.md` (TDD cycle A→F)
+**Dev process:** `~/.config/opencode/dev-process.md` (TDD cycle A→F)
 
 ## Current Status
 
@@ -587,7 +587,7 @@ types.ts                          # no dependencies — pure type definitions
 
 ### 4.2 Implementation modules — diag.1 (MVP)
 
-Each module follows the TDD cycle from `dev-process.md`.
+Each module follows the TDD cycle from `~/.config/opencode/dev-process.md`.
 
 | # | Module | Source file(s) | Estimated lines | Dependencies | Tests |
 |---|---|---|---|---|---|

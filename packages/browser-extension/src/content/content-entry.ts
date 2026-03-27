@@ -14,7 +14,8 @@
 import { AccordoCommentSDK } from "@accordo/comment-sdk";
 import type { SdkThread } from "@accordo/comment-sdk";
 import type { BrowserCommentThread } from "../types.js";
-import { findAnchorElementByKey, getAnchorPagePosition, getViewportAnchorPagePosition, normalizeAnchorFingerprint } from "../content-anchor.js";
+import { resolveAnchorPagePosition } from "./anchor-position.js";
+import { generateAnchorKey } from "./enhanced-anchor.js";
 import { openSdkComposerAtAnchor } from "./sdk-convergence.js";
 
 // ── Debug logger ─────────────────────────────────────────────────────────────────
@@ -72,13 +73,9 @@ function toSdkThread(t: BrowserCommentThread): SdkThread {
  * top-right of viewport in a column (fallback for unanchored threads).
  */
 function coordinateToScreen(blockId: string): { x: number; y: number } | null {
-  const el = findAnchorElementByKey(blockId);
-  if (el) {
-    return getAnchorPagePosition(blockId, el);
-  }
-  const viewportPos = getViewportAnchorPagePosition(blockId);
-  if (viewportPos) {
-    return viewportPos;
+  const resolved = resolveAnchorPagePosition(blockId);
+  if (resolved) {
+    return resolved;
   }
   // No anchor element found — stack at top-right so the pin is always visible
   // and tracked in the SDK's _pins map (gets properly cleared on next loadThreads).
@@ -320,21 +317,21 @@ function deactivateCommentsMode(): void {
   }
 }
 
-// ── Anchor key helper (inline, no import needed) ──────────────────────────────────
-
-function generateAnchorKeyFromElement(element: Element): string {
-  const tagName = element.tagName.toLowerCase();
-  const siblingIndex = Array.from(element.parentElement?.children ?? []).indexOf(element as Element);
-  const fingerprint = normalizeAnchorFingerprint(element.textContent ?? "");
-  return `${tagName}:${siblingIndex}:${fingerprint}`;
-}
+// ── Anchor key helper ───────────────────────────────────────────────────────────────
 
 function generateAnchorKeyFromClick(element: Element, clientX: number, clientY: number): string {
-  const base = generateAnchorKeyFromElement(element);
+  const generated = generateAnchorKey(element);
+
+  // Viewport anchors are already click-proximate and intentionally do not carry
+  // element-relative offsets (those offsets are not meaningful after rehydration).
+  if (generated.strategy === "viewport-pct") {
+    return generated.anchorKey;
+  }
+
   const rect = element.getBoundingClientRect();
   const offsetX = Math.max(0, Math.round(clientX - rect.left));
   const offsetY = Math.max(0, Math.round(clientY - rect.top));
-  return `${base}@${offsetX},${offsetY}`;
+  return `${generated.anchorKey}@${offsetX},${offsetY}`;
 }
 
 function getAnchorContext(target: Element): BrowserCommentThread["anchorContext"] {

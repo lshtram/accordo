@@ -143,6 +143,54 @@ describe("AccordoCommentSDK", () => {
       const pin = container.querySelector("[data-thread-id='thread-xyz']");
       expect(pin).not.toBeNull();
     });
+
+    it("repositions rendered pins when a scroll event occurs", () => {
+      let y = 120;
+      sdk.init({
+        container,
+        callbacks,
+        coordinateToScreen: () => ({ x: 80, y }),
+      });
+
+      sdk.loadThreads([makeThread({ id: "t-scroll" })]);
+
+      const pin = container.querySelector<HTMLElement>("[data-thread-id='t-scroll']")!;
+      expect(pin.style.top).toBe("120px");
+
+      y = 360;
+      window.dispatchEvent(new Event("scroll"));
+
+      expect(pin.style.top).toBe("360px");
+    });
+
+    it("repositions rendered pins when a nested container scrolls", () => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const shadow = host.attachShadow({ mode: "open" });
+
+      const nestedContainer = document.createElement("div");
+      nestedContainer.style.position = "relative";
+      nestedContainer.style.width = "600px";
+      nestedContainer.style.height = "400px";
+      shadow.appendChild(nestedContainer);
+
+      let y = 120;
+      sdk.init({
+        container: nestedContainer,
+        callbacks,
+        coordinateToScreen: () => ({ x: 80, y }),
+      });
+
+      sdk.loadThreads([makeThread({ id: "t-nested-scroll" })]);
+
+      const pin = nestedContainer.querySelector<HTMLElement>("[data-thread-id='t-nested-scroll']")!;
+      expect(pin.style.top).toBe("120px");
+
+      y = 360;
+      nestedContainer.dispatchEvent(new Event("scroll"));
+
+      expect(pin.style.top).toBe("360px");
+    });
   });
 
   // ── M41-SDK-03: addThread ─────────────────────────────────────────────────

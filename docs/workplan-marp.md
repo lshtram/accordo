@@ -4,7 +4,7 @@
 **Scope:** `packages/marp` — new VS Code extension  
 **Requirements:** [`docs/requirements-marp.md`](requirements-marp.md)  
 **Architecture:** [`docs/marp-architecture.md`](marp-architecture.md)  
-**Process:** TDD per [`docs/dev-process.md`](dev-process.md)
+**Process:** TDD per global process `~/.config/opencode/dev-process.md`
 
 ---
 

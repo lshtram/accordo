@@ -45,7 +45,100 @@ import {
 
 function createMockRelay() {
   return {
-    request: vi.fn().mockResolvedValue({ success: true, requestId: "test", data: {} }),
+    request: vi.fn().mockImplementation(async (action: string, payload?: Record<string, unknown>) => {
+      if (action === "get_page_map") {
+        return {
+          success: true,
+          requestId: "test",
+          data: {
+            pageUrl: "https://example.com/page",
+            title: "Example Page",
+            viewport: { width: 1280, height: 800 },
+            nodes: [],
+            totalElements: 0,
+            truncated: false,
+          },
+        };
+      }
+      if (action === "inspect_element") {
+        const selector = (payload?.selector as string | undefined) ?? "";
+        if (selector === "body") {
+          return {
+            success: true,
+            requestId: "test",
+            data: {
+              found: true,
+              anchorKey: "body:50%x50%",
+              anchorStrategy: "viewport-pct",
+              anchorConfidence: "low",
+            },
+          };
+        }
+        if (selector.includes("data-testid")) {
+          return {
+            success: true,
+            requestId: "test",
+            data: {
+              found: true,
+              anchorKey: "data-testid:test-btn",
+              anchorStrategy: "data-testid",
+              anchorConfidence: "high",
+            },
+          };
+        }
+        if (selector.includes("no-stable")) {
+          return {
+            success: true,
+            requestId: "test",
+            data: {
+              found: true,
+              anchorKey: "body:50%x50%",
+              anchorStrategy: "viewport-pct",
+              anchorConfidence: "low",
+            },
+          };
+        }
+        return {
+          success: true,
+          requestId: "test",
+          data: {
+            found: true,
+            anchorKey: "id:main",
+            anchorStrategy: "id",
+            anchorConfidence: "high",
+          },
+        };
+      }
+      if (action === "get_dom_excerpt") {
+        const selector = (payload?.selector as string | undefined) ?? "";
+        if (selector.includes("nonexistent") || selector.includes("xyz123") || selector.includes("xyz-456")) {
+          return {
+            success: true,
+            requestId: "test",
+            data: { found: false },
+          };
+        }
+        return {
+          success: true,
+          requestId: "test",
+          data: {
+            found: true,
+            html: "<body>Example</body>",
+            text: "Example",
+            nodeCount: 1,
+            truncated: false,
+          },
+        };
+      }
+      if (action === "capture_region") {
+        return {
+          success: true,
+          requestId: "test",
+          data: {},
+        };
+      }
+      return { success: false, requestId: "test", error: "action-failed" };
+    }),
     isConnected: vi.fn(() => true),
   };
 }

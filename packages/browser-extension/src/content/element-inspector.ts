@@ -202,7 +202,15 @@ function resolveElement(args: InspectElementArgs): Element | null {
   }
   if (args.selector) {
     try {
-      return document.querySelector(args.selector);
+      const matches = Array.from(document.querySelectorAll(args.selector));
+      if (matches.length === 0) return null;
+
+      const visible = matches.find((el) => {
+        if (el.hasAttribute("hidden")) return false;
+        const style = window.getComputedStyle(el);
+        return style.display !== "none" && style.visibility !== "hidden" && style.visibility !== "collapse" && style.opacity !== "0";
+      });
+      return visible ?? matches[0];
     } catch (error: unknown) {
       return null;
     }
@@ -298,12 +306,7 @@ export function getDomExcerpt(
   maxDepth = 3,
   maxLength = 2000,
 ): { found: boolean; html?: string; text?: string; nodeCount?: number; truncated?: boolean } {
-  let element: Element | null;
-  try {
-    element = document.querySelector(selector);
-  } catch (error: unknown) {
-    return { found: false };
-  }
+  const element = resolveElement({ selector });
 
   if (!element) return { found: false };
 

@@ -654,6 +654,15 @@ describe("M38-CT-03: comment_create browser modality retention", () => {
     const thread = store.getThread(result.threadId)!;
     const first = thread.comments[0];
     expect(first.context?.surfaceMetadata?.anchorKey).toBe("div:2:hero_title@120,45");
+
+    const surfaceAnchor = thread.anchor as {
+      kind: "surface";
+      surfaceType: string;
+      coordinates: { type: string; blockId?: string };
+    };
+    expect(surfaceAnchor.surfaceType).toBe("browser");
+    expect(surfaceAnchor.coordinates.type).toBe("block");
+    expect(surfaceAnchor.coordinates.blockId).toBe("div:2:hero_title@120,45");
   });
 });
 

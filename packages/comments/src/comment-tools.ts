@@ -13,7 +13,15 @@ import { pathToFileURL, fileURLToPath } from "url";
 import type { ExtensionToolDefinition, CommentThread } from "@accordo/bridge-types";
 import { COMMENT_CREATE_RATE_LIMIT, COMMENT_CREATE_RATE_WINDOW_MS } from "@accordo/bridge-types";
 import type { CommentStore } from "./comment-store.js";
-import type { CommentAnchor, CommentIntent, SurfaceCoordinates, SurfaceType, CommentRetention, CommentContext } from "@accordo/bridge-types";
+import type {
+  CommentAnchor,
+  CommentIntent,
+  SurfaceCoordinates,
+  SurfaceType,
+  CommentRetention,
+  CommentContext,
+  BlockCoordinates,
+} from "@accordo/bridge-types";
 
 // ── URI normalizer ───────────────────────────────────────────────────────────
 
@@ -566,26 +574,48 @@ function buildAnchor(uri: string, input: Record<string, unknown>, modality?: str
   }
 
   if (kind === "browser") {
-    // Browser anchor is sugar for a surface anchor with surfaceType="browser"
-    // and normalized coordinates. anchorKey is stored in surfaceMetadata (context).
+    // Browser anchor is sugar for a surface anchor with surfaceType="browser".
+    // If anchorKey is an explicit normalized pair ("x:y"), store normalized coordinates.
+    // Otherwise, persist the anchorKey as canonical blockId to preserve element identity.
     const anchorKey = input["anchorKey"] as string | undefined;
+
+    if (anchorKey) {
+      const normalizedMatch = anchorKey.match(/^(-?\d*\.?\d+):(-?\d*\.?\d+)$/);
+      if (normalizedMatch) {
+        const x = parseFloat(normalizedMatch[1]);
+        const y = parseFloat(normalizedMatch[2]);
+        if (!isNaN(x) && !isNaN(y)) {
+          return {
+            kind: "surface",
+            uri,
+            surfaceType: "browser" as SurfaceType,
+            coordinates: {
+              type: "normalized",
+              x,
+              y,
+            },
+          };
+        }
+      }
+
+      const blockCoords: BlockCoordinates = {
+        type: "block",
+        blockId: anchorKey,
+        blockType: inferBlockTypeFromAnchorKey(anchorKey),
+      };
+      return {
+        kind: "surface",
+        uri,
+        surfaceType: "browser" as SurfaceType,
+        coordinates: blockCoords,
+      };
+    }
+
     const coordinates: SurfaceCoordinates = {
       type: "normalized",
       x: 0.5,
       y: 0.5,
     };
-    // If anchorKey is provided, we could parse x:y from it, but the default is center
-    if (anchorKey) {
-      const parts = anchorKey.split(":");
-      if (parts.length === 2) {
-        const x = parseFloat(parts[0]);
-        const y = parseFloat(parts[1]);
-        if (!isNaN(x) && !isNaN(y)) {
-          (coordinates as { type: "normalized"; x: number; y: number }).x = x;
-          (coordinates as { type: "normalized"; x: number; y: number }).y = y;
-        }
-      }
-    }
     return {
       kind: "surface",
       uri,
@@ -596,6 +626,13 @@ function buildAnchor(uri: string, input: Record<string, unknown>, modality?: str
 
   // file-level anchor (default)
   return { kind: "file", uri };
+}
+
+function inferBlockTypeFromAnchorKey(anchorKey: string): BlockCoordinates["blockType"] {
+  if (anchorKey.startsWith("heading:")) return "heading";
+  if (anchorKey.startsWith("li:")) return "list-item";
+  if (anchorKey.startsWith("pre:")) return "code-block";
+  return "paragraph";
 }
 
 /**

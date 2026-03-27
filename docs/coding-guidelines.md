@@ -166,6 +166,9 @@ Run through every item. An unchecked item blocks the review.
 - [ ] No test imports the module under test's private state
 - [ ] Test file covers all code paths in the module (not just happy path)
 - [ ] Mocks are reset in `beforeEach` / `afterEach`
+- [ ] At least one end-to-end test is executed through real runtime boundaries for this feature (no boundary mocks)
+- [ ] For MCP/tooling features: verify runtime discoverability (e.g. `tools/list`) and execute one real tool call across the full stack
+- [ ] If real deployed E2E could not be executed, review includes explicit constraint + residual risk note
 
 ### 3.7 Commit Readiness
 
