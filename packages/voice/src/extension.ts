@@ -582,6 +582,9 @@ export async function activate(
   }
 
   async function doResumeNarration(): Promise<void> {
+    // Bug #19 fix: guard on FSM state 'paused', not isPlaying() which returns
+    // true even when the process is SIGSTOP-paused (flag only cleared on close).
+    if (narrationFsm.state !== "paused") return;
     if (!activeNarrationPlayback?.isPlaying()) return;
     const resumed = await activeNarrationPlayback.resume();
     if (!resumed) {

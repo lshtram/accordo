@@ -187,16 +187,6 @@
             "narrate-summary"
           ],
           "description": "Default narration mode"
-        },
-        "accordo.voice.llmEndpoint": {
-          "type": "string",
-          "default": "",
-          "description": "LLM API endpoint for summary narration mode (e.g. http://localhost:11434/v1)"
-        },
-        "accordo.voice.llmModel": {
-          "type": "string",
-          "default": "",
-          "description": "LLM model name for summary mode (e.g. llama3, gpt-4)"
         }
       }
     }
@@ -210,6 +200,6 @@
   },
   "dependencies": {
     "kokoro-js": "1.2.1",
-    "sherpa-onnx-node": "latest"
+    "sherpa-onnx-node": "1.12.28"
   }
 }
