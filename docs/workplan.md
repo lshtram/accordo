@@ -3,13 +3,13 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-27  
-**Status:** ACTIVE — Session 15b browser hardening ✅ DONE; backlog bugs #12/#13/#14/#15/#16/#17/#18/#19 ✅ ALL DONE (2026-03-27); next: M95-VA Visual Annotation Layer or Browser 2.0 P1 (M100-SNAP)
+**Status:** ACTIVE — Backlog bug #6 (comments store durability) ✅ DONE (2026-03-27); next: #8 Bridge status bar or Browser 2.0 P1 (M100-SNAP)
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-27 — Backlog bugs #12–#19 fully resolved. Bridge WS-07 reconnect state now correct (325 tests). Voice package fully hardened: session lock on readAloud (272 tests, +3), sherpa-onnx-node pinned, secure CSP nonce, correct FSM resume guard. Full monorepo: 2,970 tests green. Next: M95-VA Visual Annotation Layer or Browser 2.0 P1 (M100-SNAP).**
+> **As of 2026-03-27 — Backlog bug #6 done: `CommentStore._persist()` now uses atomic write (write to `.tmp` then `fs.rename`) — original `comments.json` is never partially overwritten on crash. 7 new tests (2 unit + 5 real-fs integration). E2E validated live via MCP: create→reply→delete cycle confirmed `.tmp` never left on disk. Comments package: 354 tests (+7). Full monorepo: 2,977 tests green. Next: #8 Bridge status bar or Browser 2.0 P1 (M100-SNAP).**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -28,7 +28,7 @@
 | **Session 15** | **Page Understanding + Region Capture (M90/M91/M92 — 4 MCP tools, enhanced anchors, DOM inspection, targeted screenshots)** | ✅ DONE — Phase A→D→D2→D3 complete; 313 new tests (browser-ext: 343, browser: 115); 2,949 total |
 | **Session 15b** | **Browser hardening pass — pin placement/rehydration stability + anchor precision + docs reconciliation** | ✅ DONE — live E2E validated; package baselines now browser-ext: 357, browser: 117, comment-sdk: 47, comments: 347 |
 
-**Baseline:** 2,970 tests green (Hub: 376, Bridge: 325, Comments: 347, Voice: 272, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 357, browser: 117, comment-sdk: 47). Backlog bugs #12–#19 done 2026-03-27.  
+**Baseline:** 2,977 tests green (Hub: 376, Bridge: 325, Comments: 354, Voice: 272, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 357, browser: 117, comment-sdk: 47). Backlog bugs #6, #12–#19 done 2026-03-27.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -516,7 +516,7 @@ Carried forward — non-blocking:
 3. **Exact token counting** — `prompt-engine.ts` uses `chars / 4`; `tiktoken` integration deferred.
 4. **Remote topology UX** — Port-forward notification for SSH/devcontainer/Codespaces.
 5. **Checkpoint/rollback** — Git-stash snapshots before destructive tool executions.
-6. **Comments store durability hardening** — Evaluate atomic persistence strategy for `.accordo/comments.json` (temp-file + rename / crash-safe write path). Deferred by product decision during Week 7 comments+SDK alignment.
+6. ~~**Comments store durability hardening**~~ — ✅ DONE (2026-03-27). `CommentStore._persist()` now writes to `comments.json.tmp` first, then uses `fs.rename()` (atomic at OS level) to replace the final file. Original `comments.json` is never partially overwritten on crash. 7 new tests: 2 unit (mock-level: write-to-tmp path, no-rename-on-throw) + 5 real-fs integration (create/reply/delete cycle, crash safety). E2E validated live via Hub MCP. Commit: see fix(comments) commit.
 7. ~~**Custom Accordo Comments TreeView panel**~~ — ✅ Delivered in Session 9. See DONE below.
 8. **Bridge status bar item (SB-01/SB-02/SB-03)** — `accordo-bridge` requirements §9 specifies a `$(plug) Accordo: Connected / Disconnected` status bar item with `accordo.bridge.showStatus` command (Hub URL, connection state, tool count, uptime). Never implemented. Add to `packages/bridge/src/extension.ts` in a quick-fix session before Session 10.
 9. **Comments panel two-line layout (M46)** — VS Code `TreeItem` supports only one physical line (label + description). Full conversation preview requires a `WebviewView` detail pane. Deferred to M46 (post Session 10).
