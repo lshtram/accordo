@@ -1,8 +1,8 @@
 # Testing Guide — Session 15: Page Understanding + Region Capture
 
 **Module:** `packages/browser-extension` (content scripts + service worker) + `packages/browser` (MCP relay tools)  
-**Date:** 2026-03-26  
-**Automated test baseline:** 458 tests passing (343 browser-extension + 115 browser); full monorepo: 2,949 tests  
+**Date:** 2026-03-27 (updated after Session 15b hardening)  
+**Automated test baseline:** 474 tests passing (357 browser-extension + 117 browser); full monorepo: 2,967 tests  
 **TDD phases completed:** A → B → C → D → D2 → D3 (all green)
 
 ---
@@ -12,13 +12,13 @@
 ### How to run
 
 ```bash
-# browser-extension package (343 tests)
+# browser-extension package (357 tests)
 cd /data/projects/accordo/packages/browser-extension && pnpm test
 
-# browser package (115 tests)
+# browser package (117 tests)
 cd /data/projects/accordo/packages/browser && pnpm test
 
-# Full monorepo (2,949 tests)
+# Full monorepo (2,967 tests)
 cd /data/projects/accordo && pnpm test
 ```
 
@@ -26,12 +26,15 @@ cd /data/projects/accordo && pnpm test
 
 | Test file | Package | Tests | What it covers |
 |---|---|---|---|
-| `page-map-collector.test.ts` | browser-extension | 25 | `collectPageMap()` DOM walking, node filtering, bounds, ref index |
-| `element-inspector.test.ts` | browser-extension | 33 | `inspectElement()`, `getDomExcerpt()`, visibility, HTML sanitization |
-| `enhanced-anchor.test.ts` | browser-extension | 33 | 6-tier anchor strategy hierarchy, `isEnhancedAnchorKey()` disambiguation |
-| `page-understanding-actions.test.ts` | browser-extension | 29 | Relay action routing for all 4 page-understanding actions |
+| `page-map-collector.test.ts` | browser-extension | 27 | `collectPageMap()` DOM walking, node filtering, bounds, ref index |
+| `element-inspector.test.ts` | browser-extension | 34 | `inspectElement()`, `getDomExcerpt()`, visibility, HTML sanitization |
+| `enhanced-anchor.test.ts` | browser-extension | 34 | 6-tier anchor strategy hierarchy, enhanced-key parsing/resolution, disambiguation |
+| `page-understanding-actions.test.ts` | browser-extension | 33 | Relay action routing for all 4 page-understanding actions |
 | `capture-region.test.ts` | browser-extension | 31 | Region capture result types, bounds/size contracts, error codes |
-| `page-understanding-tools.test.ts` | browser | 50 | MCP tool registration, handlers, relay forwarding, error propagation |
+| `anchor-position.test.ts` | browser-extension | 5 | Pin-position resolution for legacy + enhanced anchor keys and offset suffixes |
+| `content-entry-anchor-generation.test.ts` | browser-extension | 1 | Right-click comment path uses enhanced anchor generation for low-stability elements |
+| `service-worker.test.ts` | browser-extension | 35 | GET_THREADS hydration/normalization paths, relay action routing, mode sync |
+| `page-understanding-tools.test.ts` | browser | 58 | MCP tool registration, handlers, relay forwarding, strict error propagation |
 
 ### Key invariants (must stay green)
 
@@ -41,6 +44,9 @@ cd /data/projects/accordo && pnpm test
 - `getDomExcerpt()` — strips `<script>`, `<style>`, `<iframe>`; removes `javascript:` and `data:` URLs; strips `on*` attributes
 - `isEnhancedAnchorKey("body:50%x50%")` → true; `isEnhancedAnchorKey("body:0:center")` → false
 - Relay error codes: `element-not-found`, `element-off-screen`, `no-target`, `image-too-large`, `capture-failed`
+- Browser thread hydration is URL/hash-safe (same page with/without trailing hash resolves to the same thread set)
+- Newly-created right-click anchors prefer enhanced strategies (`id:`, `data-testid:`, `aria:`, `css:`) over unstable legacy fingerprints
+- Pin positions are recomputed on scroll/resize and nested scrolling contexts (no fixed viewport drift)
 
 ---
 

@@ -2,14 +2,14 @@
 
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
-**Date:** 2026-03-23  
-**Status:** ACTIVE — Session 15 Page Understanding + Region Capture ✅ DONE (2,949 tests); next: M95-VA Visual Annotation Layer or deferred backlog
+**Date:** 2026-03-27  
+**Status:** ACTIVE — Session 15b browser hardening + docs reconciliation ✅ DONE (2,967 tests); next: M95-VA Visual Annotation Layer or deferred backlog
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-26 — Session 15 complete. Page Understanding + Region Capture (M90/M91/M92) delivered: 4 MCP tools (`browser_get_page_map`, `browser_inspect_element`, `browser_get_dom_excerpt`, `browser_capture_region`), 6-tier enhanced anchor strategy, `OffscreenCanvas` region capture, full HTML sanitization in DOM excerpts. 313 new tests across browser-extension and browser packages. Full monorepo: 2,949 tests green. Phase A→B→C→D→D2→D3 complete. Testing guide: [`docs/testing-guide-session-15.md`](testing-guide-session-15.md). Next: M95-VA Visual Annotation Layer or deferred backlog (see §9, item 25).**
+> **As of 2026-03-27 — Session 15b hardening complete. Session 15 (M90/M91/M92) is now stabilized with production bug-fixes validated in live browser runs: relay/tool registration corrections, canonical browser block anchors in comments, scroll-aware pin repositioning, URL/hash-normalized thread hydration, and enhanced anchor generation for right-click comments. Full monorepo: 2,967 tests green. Testing guide: [`docs/testing-guide-session-15.md`](testing-guide-session-15.md). Next: M95-VA Visual Annotation Layer or deferred backlog (see §9, item 25).**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -26,8 +26,9 @@
 | **Session 13** | **Browser Extension v2a (`packages/browser` relay + SDK convergence + agent list/get/create/reply/resolve/reopen/delete)** | ✅ DONE — 176 tests (browser-ext: 165 + browser: 11); manual validation confirmed |
 | **Session 14** | **Unified comments contract (`comment_*` scoped by modality) + browser comments in shared panel + bulk browser cleanup action** | ✅ DONE — Phase A→F complete; 2,636 tests |
 | **Session 15** | **Page Understanding + Region Capture (M90/M91/M92 — 4 MCP tools, enhanced anchors, DOM inspection, targeted screenshots)** | ✅ DONE — Phase A→D→D2→D3 complete; 313 new tests (browser-ext: 343, browser: 115); 2,949 total |
+| **Session 15b** | **Browser hardening pass — pin placement/rehydration stability + anchor precision + docs reconciliation** | ✅ DONE — live E2E validated; package baselines now browser-ext: 357, browser: 117, comment-sdk: 47, comments: 347 |
 
-**Baseline:** 2,949 tests green (Hub: 376, Bridge: 324, Comments: 273, Voice: 269, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 343, browser: 115). Session 15 Phase F committed.  
+**Baseline:** 2,967 tests green (Hub: 376, Bridge: 324, Comments: 347, Voice: 269, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 357, browser: 117, comment-sdk: 47). Session 15b hardening committed.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -57,7 +58,7 @@ Deliver a spatial commenting system spanning all Accordo surfaces. The human and
 The agent can create, reply to, and resolve comments as first-class MCP tools. Comments are the primary human-agent task-dispatch channel.
 
 **Exit criteria:**
-- Agent can create a comment on a specific line of code with `accordo.comment.create`
+- Agent can create a comment on a specific line of code with `comment_create`
 - Agent can list, reply to, and resolve comment threads
 - Human can create comments via the VSCode gutter "+" icon (native Comments API)
 - Comment state is visible in the system prompt (open threads + anchors)
@@ -106,7 +107,7 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 **Key design points:**
 - **Two-surface strategy:** Code → VSCode native Comments API. Visual surfaces → Comment SDK.
 - **Persistence:** `.accordo/comments.json` in workspace root. Extension owns the file. Hub reads it on demand.
-- **MCP tools:** unified 7-tool contract (`accordo_comment_list`, `accordo_comment_get`, `accordo_comment_create`, `accordo_comment_reply`, `accordo_comment_resolve`, `accordo_comment_reopen`, `accordo_comment_delete`) with modality scoping.
+- **MCP tools:** unified 7-tool contract (`comment_list`, `comment_get`, `comment_create`, `comment_reply`, `comment_resolve`, `comment_reopen`, `comment_delete`) with modality scoping.
 - **System prompt:** Hub's prompt engine includes count of open threads + anchor summary.
 - **State machine:** `open` ↔ `resolved`; agent and user can create/reply/resolve/reopen/delete through the unified contract.
 
@@ -575,6 +576,21 @@ Identified in a post-session-10C code review. No blocking issues — voice is fu
 ### Session 15 — Page Understanding + Region Capture (completed 2026-03-26)
 
 M90-MAP/INS/ANC/ACT + M91-PU/CR + M92-CR delivered. 4 MCP tools: `browser_get_page_map`, `browser_inspect_element`, `browser_get_dom_excerpt`, `browser_capture_region`. 6-tier enhanced anchor strategy (id → data-testid → aria → css-path → tag-sibling → viewport-pct). `OffscreenCanvas` region crop with 500 KB retry. Full HTML sanitization in DOM excerpts (script/style/iframe stripped, javascript:/data: URLs removed, on* attributes stripped). 313 new tests (browser-ext: 343 total, browser: 115 total). Full monorepo: 2,949 tests green. Testing guide: [`docs/testing-guide-session-15.md`](testing-guide-session-15.md).
+
+---
+
+### Session 15b — Browser Hardening + Docs Reconciliation (completed 2026-03-27)
+
+Hardening follow-up after Session 15 live validation, focused on browser comment reliability:
+
+- Fixed relay/tooling integration gaps that caused missing page-understanding tool exposure and false-success fallback responses
+- Fixed browser thread hydration mismatches (URL/hash normalization) and stale pin render behavior after reload
+- Fixed anchor persistence + resolution path for browser comments (`coordinates.type="block"`, robust `anchorKey` recovery)
+- Added enhanced right-click anchor generation path for newly created comments (reduced ambiguous legacy `tag:sibling:fingerprint` keys)
+- Fixed pin reposition behavior for scroll-heavy pages and nested scroll containers
+- Re-ran live E2E user journeys (comment placement, rehydration, region capture, multi-pin behavior) and updated docs accordingly
+
+Updated package baselines: browser-extension 357 tests, browser 117 tests, comments 347 tests, comment-sdk 47 tests. Full monorepo baseline: 2,967 tests.
 
 ---
 
