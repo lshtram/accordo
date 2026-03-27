@@ -3,13 +3,13 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-27  
-**Status:** ACTIVE — Backlog bug #6 (comments store durability) ✅ DONE (2026-03-27); next: #8 Bridge status bar or Browser 2.0 P1 (M100-SNAP)
+**Status:** ACTIVE — Backlog bugs #6 ✅ DONE (2026-03-27), #8 Bridge status bar ✅ DONE (2026-03-28); next: #27 CommentStore phantom writes (example.com) or Browser 2.0 P1 (M100-SNAP)
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-27 — Backlog bug #6 done: `CommentStore._persist()` now uses atomic write (write to `.tmp` then `fs.rename`) — original `comments.json` is never partially overwritten on crash. 7 new tests (2 unit + 5 real-fs integration). E2E validated live via MCP: create→reply→delete cycle confirmed `.tmp` never left on disk. Comments package: 354 tests (+7). Full monorepo: 2,977 tests green. Next: #8 Bridge status bar or Browser 2.0 P1 (M100-SNAP).**
+> **As of 2026-03-28 — Backlog bug #8 done: `accordo-bridge` now shows a unified status bar health indicator. Single `$(check)` / `$(warning)` / `$(error) Accordo` item on the right status bar. Click opens "Accordo System Health" quick-pick showing per-module detail (Hub WS state + tool count, Browser, Comments, Voice, Script, Diagrams, Marp). Updates dynamically on every connect/disconnect event. 9 new tests (334 bridge total). Full monorepo: 2,986 tests green. Bug #27 (CommentStore phantom example.com writes) logged for next fix.**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -28,7 +28,7 @@
 | **Session 15** | **Page Understanding + Region Capture (M90/M91/M92 — 4 MCP tools, enhanced anchors, DOM inspection, targeted screenshots)** | ✅ DONE — Phase A→D→D2→D3 complete; 313 new tests (browser-ext: 343, browser: 115); 2,949 total |
 | **Session 15b** | **Browser hardening pass — pin placement/rehydration stability + anchor precision + docs reconciliation** | ✅ DONE — live E2E validated; package baselines now browser-ext: 357, browser: 117, comment-sdk: 47, comments: 347 |
 
-**Baseline:** 2,977 tests green (Hub: 376, Bridge: 325, Comments: 354, Voice: 272, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 357, browser: 117, comment-sdk: 47). Backlog bugs #6, #12–#19 done 2026-03-27.  
+**Baseline:** 2,986 tests green (Hub: 376, Bridge: 334, Comments: 354, Voice: 272, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 357, browser: 117, comment-sdk: 47). Backlog bugs #6, #8, #12–#19 done 2026-03-28.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -518,7 +518,7 @@ Carried forward — non-blocking:
 5. **Checkpoint/rollback** — Git-stash snapshots before destructive tool executions.
 6. ~~**Comments store durability hardening**~~ — ✅ DONE (2026-03-27). `CommentStore._persist()` now writes to `comments.json.tmp` first, then uses `fs.rename()` (atomic at OS level) to replace the final file. Original `comments.json` is never partially overwritten on crash. 7 new tests: 2 unit (mock-level: write-to-tmp path, no-rename-on-throw) + 5 real-fs integration (create/reply/delete cycle, crash safety). E2E validated live via Hub MCP. Commit: see fix(comments) commit.
 7. ~~**Custom Accordo Comments TreeView panel**~~ — ✅ Delivered in Session 9. See DONE below.
-8. **Bridge status bar item (SB-01/SB-02/SB-03)** — `accordo-bridge` requirements §9 specifies a `$(plug) Accordo: Connected / Disconnected` status bar item with `accordo.bridge.showStatus` command (Hub URL, connection state, tool count, uptime). Never implemented. Add to `packages/bridge/src/extension.ts` in a quick-fix session before Session 10.
+8. ~~**Bridge status bar item (SB-01/SB-02/SB-03)**~~ — ✅ DONE (2026-03-28). Single `$(check)` / `$(warning)` / `$(error) Accordo` item on right status bar. Click opens "Accordo System Health" quick-pick: Hub connection state + tool count, per-modality lines (Browser, Comments, Voice, Script, Diagrams, Marp) based on registered tool prefixes. Updates on every `connectionStatusEmitter.fire()` event. 9 new tests (SB-01..SB-06c). Bridge: 334 tests. Testing guide: `docs/testing-guide-status-bar-8.md`.
 9. **Comments panel two-line layout (M46)** — VS Code `TreeItem` supports only one physical line (label + description). Full conversation preview requires a `WebviewView` detail pane. Deferred to M46 (post Session 10).
 10. **Scripted Walkthroughs (Session 10D)** — Multi-step sequences (speech + IDE commands + delays + highlights) separated from voice extension. Works with subtitles or silent mode. See Session 10D outline in §6.
 11. **TTS inter-sentence silence (speech fluency)** — A perceptible gap exists between synthesized sentences during streaming playback. Hypothesis: Kokoro engine appends trailing silence to each audio clip. Investigate: read synthesized PCM, detect silence at end, trim in `streamingSpeak` before playback boundary. Low priority — TTS is functional, gap is cosmetic.
@@ -562,6 +562,8 @@ Identified in a post-session-10C code review. No blocking issues — voice is fu
 24. **Panel visibility in `IDEState`** — `accordo_layout_state` does not know whether the Output, Debug Console, Problems, or Comments bottom-bar panels are open. VS Code does not expose an `onDidChangeActivePanel` event. Agent can infer a lot from `openTabs` (webview panels) and `activeTerminal`. Full panel visibility would require a dedicated module using VS Code context + command side-effects. Deferred — to revisit if agent panel-awareness becomes a priority.
 
 25. **Missing pane management tools in accordo-editor** — The VS Code pane management commands (`workbench.action.closeSidebar`, `workbench.action.togglePanel`) are not exposed as MCP tools. The editor modality lacks `closeSidebar`, `toggleSidebar`, `togglePanel`, `toggleZen` equivalents. **Fix:** Add 4 new MCP tools to `accordo-editor`: `accordo_panel_closeSidebar`, `accordo_panel_toggleSidebar`, `accordo_panel_togglePanel`, `accordo_panel_isPanelOpen` (read-only query). All map to `workbench.action.*` commands. No new infrastructure needed. ~2–3 tests.
+
+27. **[BUG] CommentStore phantom writes from example.com** — VS Code periodically writes a comment entry to `.accordo/comments.json` with `example.com` as the URI / anchor (approximately once per minute). Root cause unknown — suspected: `native-comments.ts` may be creating a stub thread on a synthetic document event (onDidOpenTextDocument or similar) triggered by VS Code internals or an extension that opens an untitled/virtual document with a placeholder URI. **Fix:** Trace all `CommentStore.createThread()` call sites; add URI validation that rejects non-workspace URIs (e.g. `example.com`, `untitled:`, `vscode-*` scheme) before writing to disk; add a regression test that asserts a non-file URI never enters the store. Spotted 2026-03-28. Fix after #8 (Bridge status bar). Priority: HIGH — it silently pollutes the comment store and confuses the agent.
 
 26. **Missing markdown preview tool in accordo-editor** — No MCP tool exists to open or switch a markdown file to its rendered preview. `markdown.showPreviewToSide` is not accessible via MCP. Agents cannot request a rendered markdown view programmatically. **Fix:** Add `accordo_editor_openMarkdownPreview` and `accordo_editor_closeMarkdownPreview` tools to `accordo-editor`, mapping to `markdown.showPreview` / `markdown.showPreviewToSide` / `markdown.closePreview` VS Code commands. Also add `accordo_editor_isMarkdownPreviewOpen` query tool. ~2–3 tests.
 
