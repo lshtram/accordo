@@ -749,6 +749,35 @@ describe("WsClient", () => {
       ) as Record<string, unknown> | undefined;
       expect((msg?.["patch"] as Record<string, unknown> | undefined)?.["activeFile"]).toBe("/src/bar.ts");
     });
+
+    it("WS-07: reconnect after sendStateUpdate replays merged state, not stale initial state", async () => {
+      // Regression test for bug #12:
+      // sendStateUpdate() sends a partial patch but never merges it into lastState.
+      // On reconnect, _scheduleReconnect() calls connect(lastState, ...) with the
+      // stale pre-patch state. The fix: sendStateUpdate() must deep-merge the patch
+      // into lastState so reconnect sends the correct current state.
+      const { client } = makeClient();
+      const p1 = client.connect(IDLE_STATE, SAMPLE_TOOLS);
+      p1.catch(() => {});
+      mockWsState.instance?.triggerOpen();
+      await Promise.resolve();
+
+      // Simulate a partial state update arriving after connect
+      client.sendStateUpdate({ activeFile: "/patched-via-update.ts" });
+
+      // Disconnect + reconnect
+      mockWsState.instance?.triggerClose(1000, "normal");
+      vi.advanceTimersByTime(1_500);
+      await Promise.resolve();
+      mockWsState.instance?.triggerOpen();
+      await Promise.resolve();
+
+      // The stateSnapshot sent on reconnect must reflect the patch, not IDLE_STATE
+      const sent = (mockWsState.instance?.parseSent() ?? []) as Array<Record<string, unknown>>;
+      const lastSnapshot = [...sent].reverse().find((m) => m["type"] === "stateSnapshot");
+      const sentState = lastSnapshot?.["state"] as Record<string, unknown> | undefined;
+      expect(sentState?.["activeFile"]).toBe("/patched-via-update.ts");
+    });
   });
 
   // ── sendCancelled ─────────────────────────────────────────────────────────
