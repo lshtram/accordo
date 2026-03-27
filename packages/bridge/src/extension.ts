@@ -433,6 +433,42 @@ export async function activate(
     },
   );
 
+  // ── Status Bar Item ────────────────────────────────────────────────────────
+
+  const statusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    100,
+  );
+  statusBarItem.tooltip = "Accordo system health — click for details";
+  statusBarItem.command = "accordo.bridge.showStatus";
+  statusBarItem.text = "$(error) Accordo";
+  statusBarItem.show();
+  context.subscriptions.push(statusBarItem);
+
+  /** Update status bar text based on current connection state and tool count. */
+  function updateStatusBar(): void {
+    const connected = wsClient?.isConnected() ?? false;
+    const state = wsClient?.getState() ?? "disconnected";
+    const toolCount = registry?.getAllTools().length ?? 0;
+
+    if (connected && toolCount > 0) {
+      statusBarItem.text = "$(check) Accordo";
+    } else if (state === "connecting" || state === "reconnecting") {
+      statusBarItem.text = "$(warning) Accordo";
+    } else if (connected && toolCount === 0) {
+      statusBarItem.text = "$(warning) Accordo";
+    } else {
+      statusBarItem.text = "$(error) Accordo";
+    }
+  }
+
+  // Subscribe to connection status changes to keep the status bar current.
+  context.subscriptions.push(
+    connectionStatusEmitter.event(() => {
+      updateStatusBar();
+    }),
+  );
+
   // ── Commands ──────────────────────────────────────────────────────────────
 
   context.subscriptions.push(
@@ -451,15 +487,56 @@ export async function activate(
     vscode.commands.registerCommand("accordo.bridge.showStatus", () => {
       const connected = wsClient?.isConnected() ?? false;
       const state = wsClient?.getState() ?? "disconnected";
-      void vscode.window.showInformationMessage(
-        `Accordo Bridge: ${connected ? "Connected ✓" : `Disconnected (${state})`}`,
-      );
+      const allTools = registry?.getAllTools() ?? [];
+
+      // Build Hub connection line
+      const hubLabel = connected
+        ? `$(check) Hub          Connected · ws://localhost:${currentHubPort} · ${allTools.length} tools`
+        : state === "connecting" || state === "reconnecting"
+          ? `$(warning) Hub        ${state === "connecting" ? "Connecting..." : "Reconnecting..."}`
+          : `$(error) Hub          Disconnected`;
+
+      // Build per-module lines based on tool name prefixes
+      const modules: Array<{ prefix: string | string[]; label: string }> = [
+        { prefix: "comment_", label: "Comments" },
+        { prefix: "accordo_voice_", label: "Voice" },
+        { prefix: "browser_", label: "Browser" },
+        { prefix: "accordo_script_", label: "Script" },
+        { prefix: "accordo_diagram_", label: "Diagrams" },
+        { prefix: ["accordo_presentation_", "accordo_marp_"], label: "Marp" },
+      ];
+
+      const moduleItems: vscode.QuickPickItem[] = [];
+      for (const mod of modules) {
+        const prefixes = Array.isArray(mod.prefix) ? mod.prefix : [mod.prefix];
+        const count = allTools.filter((t) =>
+          prefixes.some((p) => t.name.startsWith(p)),
+        ).length;
+        if (count > 0) {
+          moduleItems.push({
+            label: `$(check) ${mod.label.padEnd(12)} Registered (${count} tools)`,
+          });
+        }
+      }
+
+      const items: vscode.QuickPickItem[] = [
+        { label: hubLabel },
+        ...moduleItems,
+      ];
+
+      void vscode.window.showQuickPick(items, {
+        canPickMany: false,
+        title: "Accordo System Health",
+      });
     }),
   );
 
   // ── Start Hub lifecycle ───────────────────────────────────────────────────
 
   await hubManager.activate();
+
+  // Sync status bar to actual state after all startup async work completes.
+  updateStatusBar();
 
   // ── Return BridgeAPI ──────────────────────────────────────────────────────
 
