@@ -451,11 +451,17 @@ export async function activate(
     const state = wsClient?.getState() ?? "disconnected";
     const toolCount = registry?.getAllTools().length ?? 0;
 
-    if (connected && toolCount > 0) {
+    // Check voice modality health from published state
+    const ideState = statePublisher?.getState() ?? StatePublisher.emptyState();
+    const voiceState = (ideState as unknown as Record<string, unknown>)["accordo-voice"] as Record<string, unknown> | undefined;
+    const voiceToolsPresent = (registry?.getAllTools() ?? []).some((t) => t.name.startsWith("accordo_voice_"));
+    const voiceDegraded = voiceToolsPresent && voiceState !== undefined && (voiceState["ttsAvailable"] === false || voiceState["sttAvailable"] === false);
+
+    if (connected && toolCount > 0 && !voiceDegraded) {
       statusBarItem.text = "$(check) Accordo";
     } else if (state === "connecting" || state === "reconnecting") {
       statusBarItem.text = "$(warning) Accordo";
-    } else if (connected && toolCount === 0) {
+    } else if (connected && (toolCount === 0 || voiceDegraded)) {
       statusBarItem.text = "$(warning) Accordo";
     } else {
       statusBarItem.text = "$(error) Accordo";
@@ -496,7 +502,11 @@ export async function activate(
           ? `$(warning) Hub        ${state === "connecting" ? "Connecting..." : "Reconnecting..."}`
           : `$(error) Hub          Disconnected`;
 
-      // Build per-module lines based on tool name prefixes
+      // Read published modality states for health detail
+      const ideState = statePublisher?.getState() ?? StatePublisher.emptyState();
+      const modalityStates = (ideState as unknown as Record<string, unknown>);
+
+      // Build per-module lines based on tool name prefixes + published state
       const modules: Array<{ prefix: string | string[]; label: string }> = [
         { prefix: "comment_", label: "Comments" },
         { prefix: "accordo_voice_", label: "Voice" },
@@ -512,11 +522,27 @@ export async function activate(
         const count = allTools.filter((t) =>
           prefixes.some((p) => t.name.startsWith(p)),
         ).length;
-        if (count > 0) {
-          moduleItems.push({
-            label: `$(check) ${mod.label.padEnd(12)} Registered (${count} tools)`,
-          });
+        if (count === 0) continue;
+
+        // Voice: check ttsAvailable / sttAvailable from published state
+        if (mod.label === "Voice") {
+          const vs = modalityStates["accordo-voice"] as Record<string, unknown> | undefined;
+          const ttsOk = vs?.["ttsAvailable"] === true;
+          const sttOk = vs?.["sttAvailable"] === true;
+          if (!ttsOk || !sttOk) {
+            const issues: string[] = [];
+            if (!ttsOk) issues.push("TTS unavailable");
+            if (!sttOk) issues.push("STT unavailable (whisper not found)");
+            moduleItems.push({
+              label: `$(warning) ${"Voice".padEnd(12)} ${issues.join(" · ")}`,
+            });
+            continue;
+          }
         }
+
+        moduleItems.push({
+          label: `$(check) ${mod.label.padEnd(12)} Registered (${count} tools)`,
+        });
       }
 
       const items: vscode.QuickPickItem[] = [
@@ -546,6 +572,8 @@ export async function activate(
       tools: ExtensionToolDefinition[],
     ): vscode.Disposable {
       const inner = registry!.registerTools(extensionId, tools);
+      // Refresh status bar — tool count changes when a modality registers/unregisters.
+      updateStatusBar();
 
       // Dual-register every MCP tool as a VS Code command so scripts can
       // invoke any tool via { "type": "command", "command": "<toolName>", "args": {...} }.
@@ -563,6 +591,7 @@ export async function activate(
           inner.dispose();
           statePublisher?.removeModalityState(extensionId);
           for (const d of cmdDisposables) d.dispose();
+          updateStatusBar();
         },
       };
     },
@@ -572,6 +601,8 @@ export async function activate(
       state: Record<string, unknown>,
     ): void {
       statePublisher?.publishState(extensionId, state);
+      // Refresh status bar — modality health may have changed (e.g. voice ttsAvailable).
+      updateStatusBar();
     },
 
     getState(): IDEState {
