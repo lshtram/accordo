@@ -541,7 +541,7 @@ Identified in a post-session-10C code review. No blocking issues — voice is fu
 
 15. **[P2] `sherpa-onnx-node` pinned to `latest`** — The native TTS dependency is unprefixed (`"sherpa-onnx-node": "latest"`), making installs non-reproducible across machines and time; a binary ABI change can silently break TTS without a code change. Fix: pin to the current known-good version (e.g. `"1.10.38"`). Evidence: `packages/voice/package.json`.
 
-16. **[P2] Dead config entries `llmEndpoint` / `llmModel`** — `package.json` still contributes `accordo.voice.llmEndpoint` and `accordo.voice.llmModel` to VS Code settings, but voice-architecture.md ADR-03 explicitly says there is no LLM in the voice extension (summary mode is agent-driven). These settings are never read anywhere in the code. They appear in the Settings UI and mislead debugging. Fix: remove both configuration contributions from `packages/voice/package.json`.
+16. ~~**[P2] Dead config entries `llmEndpoint` / `llmModel`**~~ — ✅ DONE (2026-03-27). Removed `accordo.voice.llmEndpoint` and `accordo.voice.llmModel` from `packages/voice/package.json`. All 269 voice tests green.
 
 17. **[P2] CSP nonce uses `Math.random()` — not cryptographically secure** — `generateNonce()` in `voice-panel.ts` uses `Math.floor(Math.random() * ...)`. CSP nonces must be unpredictable to be effective. Fix: replace with `import { randomBytes } from 'node:crypto'; randomBytes(16).toString('hex')`. Evidence: `packages/voice/src/ui/voice-panel.ts`.
 
@@ -561,13 +561,69 @@ Identified in a post-session-10C code review. No blocking issues — voice is fu
 
 24. **Panel visibility in `IDEState`** — `accordo_layout_state` does not know whether the Output, Debug Console, Problems, or Comments bottom-bar panels are open. VS Code does not expose an `onDidChangeActivePanel` event. Agent can infer a lot from `openTabs` (webview panels) and `activeTerminal`. Full panel visibility would require a dedicated module using VS Code context + command side-effects. Deferred — to revisit if agent panel-awareness becomes a priority.
 
+25. **Missing pane management tools in accordo-editor** — The VS Code pane management commands (`workbench.action.closeSidebar`, `workbench.action.togglePanel`) are not exposed as MCP tools. The editor modality lacks `closeSidebar`, `toggleSidebar`, `togglePanel`, `toggleZen` equivalents. **Fix:** Add 4 new MCP tools to `accordo-editor`: `accordo_panel_closeSidebar`, `accordo_panel_toggleSidebar`, `accordo_panel_togglePanel`, `accordo_panel_isPanelOpen` (read-only query). All map to `workbench.action.*` commands. No new infrastructure needed. ~2–3 tests.
+
+26. **Missing markdown preview tool in accordo-editor** — No MCP tool exists to open or switch a markdown file to its rendered preview. `markdown.showPreviewToSide` is not accessible via MCP. Agents cannot request a rendered markdown view programmatically. **Fix:** Add `accordo_editor_openMarkdownPreview` and `accordo_editor_closeMarkdownPreview` tools to `accordo-editor`, mapping to `markdown.showPreview` / `markdown.showPreviewToSide` / `markdown.closePreview` VS Code commands. Also add `accordo_editor_isMarkdownPreviewOpen` query tool. ~2–3 tests.
+
+26b. **Markdown Preview highlighting/annotation** — VS Code's built-in markdown preview (`CustomTextEditorProvider`) cannot receive editor decoration overlays from the agent. Agents cannot highlight specific lines or regions in a rendered markdown preview. Two implementation paths: (1) inject `<mark>` or styled `<span>` decorators into the rendered markdown HTML content itself (content-level, works without M95-VA), or (2) M95-VA overlay layer adapted for CustomTextEditorProvider surfaces. Requires new MCP tool `accordo_mdPreview_highlight` + content-script injection into the preview's DOM. Low effort if reusing existing highlight/anchor infrastructure. ~5–8 tests.
+
 ---
 
 ### Future Roadmap — Visual Annotation Layer (M95-VA)
 
 > **Status:** FUTURE — Architectural reservation only. Not in current MVP or any active session.
 
-25. **Visual Annotation Layer** — Agent visual marking of page elements during conversation (lines, frames, circles, highlights, callouts). Enables collaborative discussion where the agent can point at, circle, or highlight specific UI elements on a live browser page. Annotations are ephemeral (not persistent like comments) and tab-scoped. **Architecture:** `docs/architecture.md` §15. **Requirements:** `docs/requirements-browser-extension.md` §3.17 (reserved IDs VA-F-01..VA-F-15, VA-NF-01..VA-NF-03). **Module ID:** M95-VA. **Prerequisites:** Page understanding (M90/M91) complete and stable; enhanced anchor strategy (M90-ANC) battle-tested in production. **Estimated effort:** 1 session (~3 modules: overlay renderer, annotation manager, MCP tool registration). **Key design note:** Reuses enhanced anchor infrastructure, relay transport path, and `CommentBackendAdapter` portability pattern — no new transport mechanisms needed. Standalone MCP server compatibility included by design.
+27. **Visual Annotation Layer** — Agent visual marking of page elements during conversation (lines, frames, circles, highlights, callouts). Enables collaborative discussion where the agent can point at, circle, or highlight specific UI elements on a live browser page. Annotations are ephemeral (not persistent like comments) and tab-scoped. **Architecture:** `docs/architecture.md` §15. **Requirements:** `docs/requirements-browser-extension.md` §3.17 (reserved IDs VA-F-01..VA-F-15, VA-NF-01..VA-NF-03). **Module ID:** M95-VA. **Prerequisites:** Page understanding (M90/M91) complete and stable; enhanced anchor strategy (M90-ANC) battle-tested in production. **Estimated effort:** 1 session (~3 modules: overlay renderer, annotation manager, MCP tool registration). **Key design note:** Reuses enhanced anchor infrastructure, relay transport path, and `CommentBackendAdapter` portability pattern — no new transport mechanisms needed. Standalone MCP server compatibility included by design.
+
+---
+
+### Browser 2.0 — Page Understanding Upgrade Initiative
+
+> **Status:** DESIGN COMPLETE — Architecture and requirements written. Ready for TDD execution.  
+> **Architecture:** [`docs/browser2.0-architecture.md`](browser2.0-architecture.md)  
+> **Requirements:** [`docs/requirements-browser2.0.md`](requirements-browser2.0.md)  
+> **Evaluation framework:** [`docs/mcp-webview-agent-evaluation-checklist.md`](mcp-webview-agent-evaluation-checklist.md)
+
+**Goal:** Close visibility and efficiency gaps between Accordo's browser tools and the evaluation checklist target (scorecard ≥30/45, no category below 2). Backward-compatible incremental upgrade in three phases.
+
+**Phase P1 — Snapshot Versioning + Filtering + Diff** (next TDD session)
+
+| Module | Scope | Requirements | Est. tests |
+|---|---|---|---|
+| M100-SNAP | Snapshot version manager in content script — monotonic IDs, SnapshotEnvelope on all responses, SnapshotStore (in-memory, 5-slot retention) | B2-SV-001..007 | ~30 |
+| M101-DIFF | `browser_diff_snapshots` tool — added/removed/changed arrays, summary, implicit from/to, error codes | B2-DE-001..007 | ~25 |
+| M102-FILT | Server-side filtering on `browser_get_page_map` — visibleOnly, interactiveOnly, roles, textMatch, selector, regionFilter, AND composition | B2-FI-001..008 | ~30 |
+| M103-CANC | Comment anchor v2 — snapshotId in anchor metadata, confidence scoring, drift detection, resolvedTier | B2-CA-001..004 | ~15 |
+
+**Dependencies:** Current baseline green (2,967 tests). No Chrome extension manifest changes required.  
+**Success criteria:** All P1 requirements pass. Existing 474 browser/browser-ext tests still green. Evaluation checklist category G (Deltas/Efficiency) scores ≥3. Category H (Robustness) is deferred to P3 success criteria (includes wait primitives).
+
+**Phase P2 — Visibility Depth** (after P1 stabilizes)
+
+| Module | Scope | Requirements | Est. tests |
+|---|---|---|---|
+| M104-SHADOW | Shadow DOM piercing — open root traversal, host ID, closed root reporting, opt-in default | B2-VD-001..004 | ~20 |
+| M105-IFRAME | Iframe traversal — same-origin via all_frames, iframe metadata array, cross-origin opacity, error codes | B2-VD-005..009 | ~20 |
+| M106-OCCL | Z-order occlusion detection — center-point and corners modes, element cap, skip hidden, visibility model | B2-VD-010..013 | ~25 |
+| M107-VIRT | Virtualized list detection heuristic — container hint, rendered range, total item estimate | B2-VD-014..015 | ~10 |
+| M110-CORE | Extract `@accordo/browser-core` package — port interfaces, zero external deps, detachable from Accordo | B2-NF-001 | ~15 |
+
+**Dependencies:** P1 tools stable for ≥1 session. Chrome manifest update (`all_frames: true`) for M105-IFRAME. `@accordo/browser-core` extraction (M110-CORE) enables P2 visibility depth code to land in the detachable package from the start.  
+**Success criteria:** All P2 requirements pass. Evaluation checklist categories C (Semantic Structure) and D (Layout/Geometry) score ≥3. `@accordo/browser-core` is importable with zero VSCode/Accordo dependencies.
+
+**Phase P3 — Privacy, Wait, Annotations** (after P2 stabilizes)
+
+| Module | Scope | Requirements | Est. tests |
+|---|---|---|---|
+| M108-PRIV | Privacy/redaction — origin allow/block lists, PII redaction in text, audit trail, fail-closed semantics | B2-PS-001..007 | ~25 |
+| M109-WAIT | `browser_wait_for` tool — text, selector, stable layout, timeout, navigation/close interrupts | B2-WA-001..007 | ~20 |
+| M95-VA | Visual Annotation Layer — overlay renderer, annotation manager, MCP tool registration (existing roadmap item) | VA-F-01..VA-F-15 | ~30 |
+
+**Dependencies:** P2 tools stable. `@accordo/browser-core` (extracted in P2 M110-CORE) is prerequisite for M95-VA standalone compatibility.  
+**Success criteria:** All P3 requirements pass. Evaluation checklist categories H (Robustness) score ≥3 and total score ≥30/45, no category below 2. Standalone MCP server adapter is buildable from `@accordo/browser-core`.
+
+**Immediate next TDD module:** M100-SNAP (Snapshot Version Manager)  
+**Estimated effort per phase:** 1 TDD session each (P1: ~4 modules, P2: ~4 modules, P3: ~4 modules)
 
 ---
 
