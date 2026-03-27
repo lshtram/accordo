@@ -3,13 +3,13 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-27  
-**Status:** ACTIVE — Session 15b browser hardening + docs reconciliation ✅ DONE (2,967 tests); next: M95-VA Visual Annotation Layer or deferred backlog
+**Status:** ACTIVE — Session 15b browser hardening ✅ DONE; backlog bugs #12/#13/#14/#15/#16/#17/#18/#19 ✅ ALL DONE (2026-03-27); next: M95-VA Visual Annotation Layer or Browser 2.0 P1 (M100-SNAP)
 
 ---
 
 ## Current Status
 
-> **As of 2026-03-27 — Session 15b hardening complete. Session 15 (M90/M91/M92) is now stabilized with production bug-fixes validated in live browser runs: relay/tool registration corrections, canonical browser block anchors in comments, scroll-aware pin repositioning, URL/hash-normalized thread hydration, and enhanced anchor generation for right-click comments. Full monorepo: 2,967 tests green. Testing guide: [`docs/testing-guide-session-15.md`](testing-guide-session-15.md). Next: M95-VA Visual Annotation Layer or deferred backlog (see §9, item 25).**
+> **As of 2026-03-27 — Backlog bugs #12–#19 fully resolved. Bridge WS-07 reconnect state now correct (325 tests). Voice package fully hardened: session lock on readAloud (272 tests, +3), sherpa-onnx-node pinned, secure CSP nonce, correct FSM resume guard. Full monorepo: 2,970 tests green. Next: M95-VA Visual Annotation Layer or Browser 2.0 P1 (M100-SNAP).**
 
 | Phase | Goal | Status |
 |------|------|--------|
@@ -28,7 +28,7 @@
 | **Session 15** | **Page Understanding + Region Capture (M90/M91/M92 — 4 MCP tools, enhanced anchors, DOM inspection, targeted screenshots)** | ✅ DONE — Phase A→D→D2→D3 complete; 313 new tests (browser-ext: 343, browser: 115); 2,949 total |
 | **Session 15b** | **Browser hardening pass — pin placement/rehydration stability + anchor precision + docs reconciliation** | ✅ DONE — live E2E validated; package baselines now browser-ext: 357, browser: 117, comment-sdk: 47, comments: 347 |
 
-**Baseline:** 2,967 tests green (Hub: 376, Bridge: 324, Comments: 347, Voice: 269, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 357, browser: 117, comment-sdk: 47). Session 15b hardening committed.  
+**Baseline:** 2,970 tests green (Hub: 376, Bridge: 325, Comments: 347, Voice: 272, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 357, browser: 117, comment-sdk: 47). Backlog bugs #12–#19 done 2026-03-27.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
@@ -531,23 +531,23 @@ Identified in a post-session-10C code review. No blocking issues — voice is fu
 
 **P1 — Bugs affecting reliability:**
 
-12. **[P1] Bridge reconnect replays stale modality state** — `WsClient.sendStateUpdate()` sends incremental patches but never updates `lastState`. On reconnect, `_scheduleReconnect()` replays the stale snapshot from initial connection time. Voice prompt directives in Hub drift until the next explicit state mutation. Fix: merge each `sendStateUpdate` patch into `lastState` in `ws-client.ts`, or have `sendStateSnapshot` pull from `StatePublisher.currentState`. Evidence: `packages/bridge/src/ws-client.ts` (reconnect path) + `packages/bridge/src/state-publisher.ts` (`publishState`).
+12. ~~**[P1] Bridge reconnect replays stale modality state**~~ — ✅ DONE (2026-03-27). `sendStateUpdate()` now shallow-merges patch into `lastState` in `ws-client.ts`. Reconnect (WS-07) replays correct merged state. Regression test added. 325 bridge tests green. Commit `6aa2d54`.
 
-13. **[P1] `bridgeUsable = false` is permanent after a single transient error** — In `extension.ts`, any `publishState` or `registerTools` error sets `bridgeUsable = false` and there is no code path that ever resets it. A brief bridge restart or activation race permanently disables voice state publishing and MCP tool availability for the VS Code session lifetime. Fix: retry on next config change / state push, or implement a bridge health re-check path. Evidence: `packages/voice/src/extension.ts` (two `bridgeUsable = false` assignments in `syncUiAndState` and tool registration catch block).
+13. ~~**[P1] `bridgeUsable = false` is permanent after a single transient error**~~ — ✅ DONE (2026-03-27). Removed `bridgeUsable` guard from `syncUiAndState` in `packages/voice/src/extension.ts`. Transient `publishVoiceState` / `registerTools` errors are logged but no longer permanently disable bridge integration. Commit `9eb3bb1`. All 269 voice tests green.
 
-14. **[P1] `readAloud` tool-path is fire-and-forget with no session lock** — Two rapid `accordo_voice_readAloud` tool calls can spawn overlapping `streamSpeak` pipelines that race on `narrationFsm` transitions and produce overlapping audio. Additionally, `doStopNarration()` / `doPauseNarration()` operate on `activeNarrationPlayback` (command path) and cannot cancel tool-initiated `streamSpeak` playback, so the stop command has no effect on agent-narrated text. Fix: introduce a session-level playback lock and store a cancellation handle for the active `streamSpeak` pipeline so stop/pause/resume commands reach it. Evidence: `packages/voice/src/tools/read-aloud.ts` (fire-and-forget `void streamSpeak(...)`) + `packages/voice/src/extension.ts` (`doStopNarration` only touches `activeNarrationPlayback`).
+14. ~~**[P1] `readAloud` tool-path is fire-and-forget with no session lock**~~ — ✅ DONE (2026-03-27). Added `onSpeakActive` callback dep to `ReadAloudToolDeps`. Each `streamSpeak` invocation creates a `CancellationToken`, cancels any prior token (session lock — no overlapping pipelines), and calls `onSpeakActive(cancelFn)`. `extension.ts` stores the handle in `activeStreamCancel`; `doStopNarration` now calls it so stop/pause commands reach agent-initiated playback. Regression tests M50-RA-13/14/15 added. Commit `0b3e954`. 272 voice tests green.
 
 **P2 — Quality and correctness issues:**
 
-15. **[P2] `sherpa-onnx-node` pinned to `latest`** — The native TTS dependency is unprefixed (`"sherpa-onnx-node": "latest"`), making installs non-reproducible across machines and time; a binary ABI change can silently break TTS without a code change. Fix: pin to the current known-good version (e.g. `"1.10.38"`). Evidence: `packages/voice/package.json`.
+15. ~~**[P2] `sherpa-onnx-node` pinned to `latest`**~~ — ✅ DONE (2026-03-27). Pinned to `1.12.28` (installed known-good version). Commit `0f6a357`.
 
 16. ~~**[P2] Dead config entries `llmEndpoint` / `llmModel`**~~ — ✅ DONE (2026-03-27). Removed `accordo.voice.llmEndpoint` and `accordo.voice.llmModel` from `packages/voice/package.json`. All 269 voice tests green.
 
-17. **[P2] CSP nonce uses `Math.random()` — not cryptographically secure** — `generateNonce()` in `voice-panel.ts` uses `Math.floor(Math.random() * ...)`. CSP nonces must be unpredictable to be effective. Fix: replace with `import { randomBytes } from 'node:crypto'; randomBytes(16).toString('hex')`. Evidence: `packages/voice/src/ui/voice-panel.ts`.
+17. ~~**[P2] CSP nonce uses `Math.random()` — not cryptographically secure**~~ — ✅ DONE (2026-03-27). Replaced with `randomBytes(16).toString('hex')` from `node:crypto`. Commit `0f6a357`.
 
-18. **[P2] `doSpeakText` is a registered command that throws** — The `accordo.voice.speakText` command is registered and callable programmatically (despite `"enablement": "false"` in package.json which only hides it from the palette), but its handler `doSpeakText` contains `throw new Error("not implemented")`. Any call from `accordo-script` or another extension will throw an unhandled error. Fix: implement the handler (M52-VS) or replace the throw with a graceful no-op / warning message. Evidence: `packages/voice/src/extension.ts` line ~472.
+18. ~~**[P2] `doSpeakText` is a registered command that throws**~~ — ✅ DONE (pre-existing). M52-VS was implemented in a prior session; `doSpeakText` is fully wired and does not throw. Verified 2026-03-27.
 
-19. **[P2] `doResumeNarration` checks `isPlaying()` instead of FSM state** — The guard `if (!activeNarrationPlayback?.isPlaying()) return` is fragile: `isPlaying()` returns `true` even when paused via `SIGSTOP` (the flag is only cleared on process close). The semantically correct guard is `narrationFsm.state === 'paused'`. Works by coincidence now, but future platform changes could silently break resume. Evidence: `packages/voice/src/extension.ts` `doResumeNarration`.
+19. ~~**[P2] `doResumeNarration` checks `isPlaying()` instead of FSM state**~~ — ✅ DONE (2026-03-27). Guard changed to `narrationFsm.state !== 'paused'`. `isPlaying()` was fragile because it returns true even when SIGSTOP-paused. Commit `0f6a357`.
 
 **P3 — Informational / low risk:**
 
