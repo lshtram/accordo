@@ -9,6 +9,7 @@
  */
 
 import * as vscode from "vscode";
+import { rename as fsRename } from "node:fs/promises";
 import type {
   CommentThread,
   CommentAnchor,
@@ -193,11 +194,15 @@ export class CommentStore {
     if (!this._workspaceRoot) return;
     const dirPath = `${this._workspaceRoot}/.accordo`;
     const filePath = `${dirPath}/comments.json`;
+    const tmpPath = `${filePath}.tmp`;
     await vscode.workspace.fs.createDirectory(vscode.Uri.file(dirPath));
     const encoded = new TextEncoder().encode(
       JSON.stringify(this.toStoreFile(), null, 2),
     );
-    await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), encoded);
+    // Atomic write: write to .tmp first, then rename into place.
+    // rename(2) is atomic on POSIX — the original file is never partially written.
+    await vscode.workspace.fs.writeFile(vscode.Uri.file(tmpPath), encoded);
+    await fsRename(tmpPath, filePath);
   }
 
   private _emit(uri: string): void {
