@@ -187,6 +187,35 @@
             "narrate-summary"
           ],
           "description": "Default narration mode"
+        },
+        "accordo.voice.sttProvider": {
+          "type": "string",
+          "default": "faster-whisper-http",
+          "enum": [
+            "faster-whisper-http",
+            "whisper-cpp"
+          ],
+          "markdownEnumDescriptions": [
+            "Use the Docker faster-whisper-server REST API (recommended). Requires the `engram-whisper` container to be running.",
+            "Use a local whisper.cpp CLI binary. Requires the binary to be installed and on PATH."
+          ],
+          "description": "STT backend provider"
+        },
+        "accordo.voice.fasterWhisperUrl": {
+          "type": "string",
+          "default": "http://localhost:8280",
+          "description": "Base URL for the faster-whisper-server Docker container (used when sttProvider is faster-whisper-http)"
+        },
+        "accordo.voice.fasterWhisperModel": {
+          "type": "string",
+          "default": "Systran/faster-whisper-small",
+          "enum": [
+            "Systran/faster-whisper-small",
+            "Systran/faster-whisper-large-v3",
+            "deepdml/faster-whisper-large-v3-turbo-ct2",
+            "Systran/faster-distil-whisper-large-v3"
+          ],
+          "description": "Model name to send in transcription requests to faster-whisper-server (used when sttProvider is faster-whisper-http)"
         }
       }
     }

@@ -10,6 +10,7 @@ import type { SttProvider } from "./core/providers/stt-provider.js";
 import type { TtsProvider } from "./core/providers/tts-provider.js";
 import type { VoicePolicy } from "./core/fsm/types.js";
 import { WhisperCppAdapter } from "./core/adapters/whisper-cpp.js";
+import { FasterWhisperHttpAdapter } from "./core/adapters/faster-whisper-http.js";
 import { KokoroAdapter } from "./core/adapters/kokoro.js";
 import { SherpaSubprocessAdapter, findSystemNode } from "./core/adapters/sherpa-subprocess.js";
 import { SessionFsm } from "./core/fsm/session-fsm.js";
@@ -109,18 +110,30 @@ export async function activate(
 
   // ── M50-EXT-01: Read config ──────────────────────────────────────────
   const cfg = vscode.workspace.getConfiguration("accordo.voice");
+  const sttProvider = cfg.get<string>("sttProvider", "faster-whisper-http");
   const whisperPath = cfg.get<string>("whisperPath", "whisper");
   const whisperModelFolder = cfg.get<string>("whisperModelFolder", "");
   const whisperModel = cfg.get<string>("whisperModel", "ggml-base.en.bin");
-  logger.log(`config: whisperPath="${whisperPath}" modelFolder="${whisperModelFolder}" model="${whisperModel}"`);
+  const fasterWhisperUrl = cfg.get<string>("fasterWhisperUrl", "http://localhost:8280");
+  const fasterWhisperModel = cfg.get<string>("fasterWhisperModel", "Systran/faster-whisper-small");
+  logger.log(`config: sttProvider="${sttProvider}" whisperPath="${whisperPath}" modelFolder="${whisperModelFolder}" model="${whisperModel}"`);
+  logger.log(`config: fasterWhisperUrl="${fasterWhisperUrl}" fasterWhisperModel="${fasterWhisperModel}"`);
 
   // ── M50-EXT-02: Create providers ────────────────────────────────────────
-  const stt: SttProvider = deps?.sttProvider ?? new WhisperCppAdapter({
-    binaryPath: whisperPath,
-    modelFolder: whisperModelFolder,
-    modelFile: whisperModel,
-    log: (msg) => logger.log(`[whisper] ${msg}`),
-  });
+  const stt: SttProvider = deps?.sttProvider ?? (
+    sttProvider === "faster-whisper-http"
+      ? new FasterWhisperHttpAdapter({
+          baseUrl: fasterWhisperUrl,
+          model: fasterWhisperModel,
+          log: (msg) => logger.log(`[faster-whisper] ${msg}`),
+        })
+      : new WhisperCppAdapter({
+          binaryPath: whisperPath,
+          modelFolder: whisperModelFolder,
+          modelFile: whisperModel,
+          log: (msg) => logger.log(`[whisper] ${msg}`),
+        })
+  );
 
   // M50-SK: Try Sherpa (C++ runtime, ~3-6× faster) first; fall back to KokoroJS.
   let tts: TtsProvider;
