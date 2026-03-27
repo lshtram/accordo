@@ -174,7 +174,6 @@ export async function activate(
   context.subscriptions.push({ dispose: () => { void readyChimeSound?.dispose(); } });
 
   const bridge = vscode.extensions.getExtension<BridgeAPI>("accordo.accordo-bridge")?.exports;
-  let bridgeUsable = bridge !== undefined;
 
   function loadPolicyFromConfiguration(): void {
     const voiceCfg = vscode.workspace.getConfiguration("accordo.voice");
@@ -258,12 +257,15 @@ export async function activate(
       "accordo.voice.narrating",
       narrationFsm.state === "playing" || narrationFsm.state === "paused",
     );
-    if (bridge && bridgeUsable && availabilityKnown) {
+    // P1-FIX #13: remove bridgeUsable guard — transient failures should not permanently
+    // disable bridge integration. publishVoiceState is idempotent; retrying on the next
+    // state change will succeed once the bridge recovers. bridgeUsable is left as a
+    // simple "bridge was found at activation" flag, not a liveness gate.
+    if (bridge && availabilityKnown) {
       try {
         publishVoiceState(bridge, sessionFsm, audioFsm, narrationFsm, sttAvailable, ttsAvailable);
       } catch (err) {
-        bridgeUsable = false;
-        logger.log(`bridge: publishState failed, disabling bridge integration — ${String(err)}`);
+        logger.log(`bridge: publishVoiceState failed (transient) — ${String(err)}`);
       }
     }
   }
@@ -685,10 +687,13 @@ export async function activate(
 
       // ── M50-EXT-13: Publish initial state ─────────────────────────────────────
       // Publish with placeholders first, then real values after availability check
-      publishVoiceState(bridge, sessionFsm, audioFsm, narrationFsm, false, false);
+      try {
+        publishVoiceState(bridge, sessionFsm, audioFsm, narrationFsm, false, false);
+      } catch (err) {
+        logger.log(`bridge: initial publishVoiceState failed (transient) — ${String(err)}`);
+      }
     } catch (err) {
-      bridgeUsable = false;
-      logger.log(`bridge: registerTools failed, continuing without bridge integration — ${String(err)}`);
+      logger.log(`bridge: registerTools failed (transient) — ${String(err)}`);
       void vscode.window.showWarningMessage("Accordo Voice: bridge connection is not ready yet. Voice local controls remain available.");
     }
 
