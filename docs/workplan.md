@@ -3,7 +3,7 @@
 **Project:** accordo-ide  
 **Phase:** 2 — Modalities (Comments, Presentations, Voice, Diagrams)  
 **Date:** 2026-03-27  
-**Status:** ACTIVE — Backlog bugs #6 ✅ DONE (2026-03-27), #8 Bridge status bar ✅ DONE (2026-03-28); next: #27 CommentStore phantom writes (example.com) or Browser 2.0 P1 (M100-SNAP)
+**Status:** ACTIVE — Backlog bugs #6 ✅ DONE (2026-03-27), #8 Bridge status bar ✅ DONE (2026-03-28), Voice STT FasterWhisperHttp ✅ DONE (2026-03-28); next: #27 CommentStore phantom writes (example.com) or Browser 2.0 P1 (M100-SNAP)
 
 ---
 
@@ -28,7 +28,7 @@
 | **Session 15** | **Page Understanding + Region Capture (M90/M91/M92 — 4 MCP tools, enhanced anchors, DOM inspection, targeted screenshots)** | ✅ DONE — Phase A→D→D2→D3 complete; 313 new tests (browser-ext: 343, browser: 115); 2,949 total |
 | **Session 15b** | **Browser hardening pass — pin placement/rehydration stability + anchor precision + docs reconciliation** | ✅ DONE — live E2E validated; package baselines now browser-ext: 357, browser: 117, comment-sdk: 47, comments: 347 |
 
-**Baseline:** 2,986 tests green (Hub: 376, Bridge: 334, Comments: 354, Voice: 272, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 357, browser: 117, comment-sdk: 47). Backlog bugs #6, #8, #12–#19 done 2026-03-28.  
+**Baseline:** 3,006 tests green (Hub: 376, Bridge: 334, Comments: 354, Voice: 291, Marp: 226, Editor: 182, Script: 133, Diagram: 463, md-viewer: 126, browser-ext: 357, browser: 117, comment-sdk: 47). Backlog bugs #6, #8, #12–#19 done 2026-03-28. Voice FasterWhisperHttpAdapter + bridge health refresh done 2026-03-28.  
 **Repo:** https://github.com/lshtram/accordo (`main` branch)  
 **Phase 1 archive:** [`docs/archive/workplan-phase1.md`](archive/workplan-phase1.md)
 
