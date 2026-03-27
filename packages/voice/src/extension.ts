@@ -162,6 +162,8 @@ export async function activate(
     }),
   );
   let activeNarrationPlayback: PlaybackHandle | undefined;
+  /** Bug #14: cancel handle for the active agent-initiated streamSpeak pipeline. */
+  let activeStreamCancel: (() => void) | undefined;
   let sttAvailable = false;
   let ttsAvailable = false;
   let availabilityKnown = false;
@@ -559,6 +561,11 @@ export async function activate(
       await activeNarrationPlayback.stop();
       activeNarrationPlayback = undefined;
     }
+    // Bug #14: also cancel any active agent-initiated streamSpeak pipeline
+    if (activeStreamCancel) {
+      activeStreamCancel();
+      activeStreamCancel = undefined;
+    }
     narrationFsm.error();
     syncUiAndState();
   }
@@ -664,6 +671,8 @@ export async function activate(
           playAudio: (pcm, sampleRate) => playPcmAudio(pcm, sampleRate),
           streamSpeak: streamingSpeak,
           log: (msg) => logger.log(msg),
+          // Bug #14: store the cancel handle so doStopNarration can reach the active pipeline
+          onSpeakActive: (cancel) => { activeStreamCancel = cancel; },
         }),
         createDictationTool({
           sessionFsm,
