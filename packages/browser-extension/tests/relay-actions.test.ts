@@ -157,3 +157,275 @@ describe("M82-RELAY — browser-extension relay actions", () => {
     expect(bad.error).toBe("unsupported-action");
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════
+// B2-CTX-001: Multi-tab support — list_pages + select_page relay actions
+// Tests for handleRelayAction with new multi-tab actions.
+// ════════════════════════════════════════════════════════════════════════════════
+
+describe("B2-CTX-001: multi-tab support", () => {
+  beforeEach(() => {
+    resetChromeMocks();
+    // Seed mockTabUrls for tests that need specific URLs
+    setMockTabUrl(1, "https://example.com/page1");
+    setMockTabUrl(2, "https://example.com/page2");
+    setMockTabUrl(3, "https://example.com/page3");
+  });
+
+  // ── list_pages ──────────────────────────────────────────────────────────────
+
+  describe('"list_pages" action', () => {
+    it("B2-CTX-001: returns { pages: [{ tabId, url, title, active }] } on success", async () => {
+      // Override tabs.query to return full tab objects with title/active
+      globalThis.chrome.tabs.query = vi.fn().mockResolvedValue([
+        { id: 1, url: "https://example.com/page1", title: "Example Page 1", active: true, windowId: 1, index: 0, highlighted: false, pinned: false, incognito: false },
+        { id: 2, url: "https://example.com/page2", title: "Example Page 2", active: false, windowId: 1, index: 1, highlighted: false, pinned: false, incognito: false },
+        { id: 3, url: "https://example.com/page3", title: "Example Page 3", active: false, windowId: 1, index: 2, highlighted: false, pinned: false, incognito: false },
+      ]);
+
+      const result = await handleRelayAction({
+        requestId: "req-1",
+        action: "list_pages",
+        payload: {},
+      });
+
+      expect(result).toHaveProperty("success", true);
+      expect(result).toHaveProperty("data");
+      expect(Array.isArray((result as { data: { pages: unknown[] } }).data.pages)).toBe(true);
+
+      const pages = (result as { data: { pages: { tabId: number; url: string; title: string; active: boolean }[] } }).data.pages;
+      expect(pages).toHaveLength(3);
+      expect(pages[0]).toHaveProperty("tabId", 1);
+      expect(pages[0]).toHaveProperty("url", "https://example.com/page1");
+      expect(pages[0]).toHaveProperty("title", "Example Page 1");
+      expect(pages[0]).toHaveProperty("active", true);
+      expect(pages[1]).toHaveProperty("tabId", 2);
+      expect(pages[1]).toHaveProperty("active", false);
+    });
+
+    it("B2-CTX-001: chrome.tabs.query is called with empty object (all tabs)", async () => {
+      globalThis.chrome.tabs.query = vi.fn().mockResolvedValue([
+        { id: 1, url: "https://example.com/page1", title: "Page 1", active: true, windowId: 1, index: 0, highlighted: false, pinned: false, incognito: false },
+      ]);
+
+      await handleRelayAction({
+        requestId: "req-1",
+        action: "list_pages",
+        payload: {},
+      });
+
+      expect(globalThis.chrome.tabs.query).toHaveBeenCalledWith({});
+    });
+
+    it("B2-CTX-001: returns error when chrome.tabs.query fails", async () => {
+      globalThis.chrome.tabs.query = vi.fn().mockRejectedValue(new Error("tabs.query failed"));
+
+      const result = await handleRelayAction({
+        requestId: "req-1",
+        action: "list_pages",
+        payload: {},
+      });
+
+      expect(result).toHaveProperty("success", false);
+      expect(result).toHaveProperty("error", "action-failed");
+    });
+  });
+
+  // ── select_page ─────────────────────────────────────────────────────────────
+
+  describe('"select_page" action', () => {
+    it("B2-CTX-001: with valid tabId → calls chrome.tabs.update and returns success", async () => {
+      globalThis.chrome.tabs.update = vi.fn().mockResolvedValue({
+        id: 2, url: "https://example.com/page2", status: "complete", active: true,
+      } as chrome.tabs.Tab);
+
+      const result = await handleRelayAction({
+        requestId: "req-1",
+        action: "select_page",
+        payload: { tabId: 2 },
+      });
+
+      expect(globalThis.chrome.tabs.update).toHaveBeenCalledWith(2, { active: true });
+      expect(result).toHaveProperty("success", true);
+    });
+
+    it("B2-CTX-001: with valid tabId → forwards the exact tabId to chrome.tabs.update", async () => {
+      globalThis.chrome.tabs.update = vi.fn().mockResolvedValue({
+        id: 99, url: "https://example.com/page99", status: "complete", active: true,
+      } as chrome.tabs.Tab);
+
+      await handleRelayAction({
+        requestId: "req-1",
+        action: "select_page",
+        payload: { tabId: 99 },
+      });
+
+      expect(globalThis.chrome.tabs.update).toHaveBeenCalledWith(99, { active: true });
+    });
+
+    it("B2-CTX-001: with invalid tabId → returns error when chrome.tabs.update rejects", async () => {
+      globalThis.chrome.tabs.update = vi.fn().mockRejectedValue(new Error("tab not found"));
+
+      const result = await handleRelayAction({
+        requestId: "req-1",
+        action: "select_page",
+        payload: { tabId: 999 },
+      });
+
+      expect(result).toHaveProperty("success", false);
+      expect(result).toHaveProperty("error", "action-failed");
+    });
+
+    it("B2-CTX-001: without tabId in payload → returns invalid-request (not action-failed)", async () => {
+      globalThis.chrome.tabs.update = vi.fn();
+
+      const result = await handleRelayAction({
+        requestId: "req-1",
+        action: "select_page",
+        payload: {},
+      });
+
+      expect(result).toHaveProperty("success", false);
+      expect(result).toHaveProperty("error", "invalid-request");
+      expect(globalThis.chrome.tabs.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── tabId forwarding in existing tools ─────────────────────────────────────
+
+  describe("B2-CTX-001: get_page_map with explicit tabId → forwards to that tab", () => {
+    it("B2-CTX-001: tabId from payload is forwarded to chrome.tabs.sendMessage (not active tab query)", async () => {
+      // Simulate service worker context (document is undefined)
+      const originalDocument = globalThis.document;
+      Object.defineProperty(globalThis, "document", { value: undefined, writable: true });
+
+      try {
+        globalThis.chrome.tabs.sendMessage = vi.fn().mockResolvedValue({
+          data: { pageId: "test", pageUrl: "https://example.com/page1", title: "Test", nodes: [], totalElements: 0, depth: 0, truncated: false },
+        });
+
+        await handleRelayAction({
+          requestId: "req-1",
+          action: "get_page_map",
+          payload: { tabId: 42, maxDepth: 4 },
+        });
+
+        // Key assertion: chrome.tabs.query should NOT be called to find active tab
+        // because tabId was explicitly provided in payload
+        expect(globalThis.chrome.tabs.query).not.toHaveBeenCalled();
+
+        // Key assertion: chrome.tabs.sendMessage must be called with the explicit tabId from payload
+        expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
+          42, // the explicit tabId from payload, NOT the result of a query
+          expect.objectContaining({
+            type: "PAGE_UNDERSTANDING_ACTION",
+            action: "get_page_map",
+            payload: expect.objectContaining({ tabId: 42 }),
+          }),
+        );
+      } finally {
+        Object.defineProperty(globalThis, "document", { value: originalDocument, writable: true });
+      }
+    });
+  });
+
+  describe("B2-CTX-001: get_page_map without tabId → targets active tab (backward compat)", () => {
+    it("B2-CTX-001: when tabId is absent, queries active tab and forwards to it", async () => {
+      // Simulate service worker context (document is undefined)
+      const originalDocument = globalThis.document;
+      Object.defineProperty(globalThis, "document", { value: undefined, writable: true });
+
+      try {
+        globalThis.chrome.tabs.query = vi.fn().mockResolvedValue([
+          { id: 1, url: "https://example.com/page1", title: "Page 1", active: true, windowId: 1, index: 0, highlighted: false, pinned: false, incognito: false },
+        ]);
+        globalThis.chrome.tabs.sendMessage = vi.fn().mockResolvedValue({
+          data: { pageId: "test", pageUrl: "https://example.com/page1", title: "Test", nodes: [], totalElements: 0, depth: 0, truncated: false },
+        });
+
+        await handleRelayAction({
+          requestId: "req-1",
+          action: "get_page_map",
+          payload: { maxDepth: 4 },
+        });
+
+        // chrome.tabs.query must be called to find the active tab
+        expect(globalThis.chrome.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true });
+
+        // chrome.tabs.sendMessage is called with the tab returned by the query
+        expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
+          1, // MOCK_TABS[0].id — the active tab from the query
+          expect.objectContaining({
+            type: "PAGE_UNDERSTANDING_ACTION",
+            action: "get_page_map",
+            payload: expect.objectContaining({ maxDepth: 4 }),
+          }),
+        );
+      } finally {
+        Object.defineProperty(globalThis, "document", { value: originalDocument, writable: true });
+      }
+    });
+  });
+
+  describe("B2-CTX-001: wait_for with explicit tabId → sends to specified tab", () => {
+    it("B2-CTX-001: tabId from payload is forwarded (not active tab query)", async () => {
+      // Simulate service worker context (document is undefined)
+      const originalDocument = globalThis.document;
+      Object.defineProperty(globalThis, "document", { value: undefined, writable: true });
+
+      try {
+        globalThis.chrome.tabs.sendMessage = vi.fn().mockResolvedValue({});
+
+        await handleRelayAction({
+          requestId: "req-1",
+          action: "wait_for",
+          payload: { tabId: 77, texts: ["Done"] },
+        });
+
+        // chrome.tabs.query should NOT be called
+        expect(globalThis.chrome.tabs.query).not.toHaveBeenCalled();
+
+        // chrome.tabs.sendMessage must be called with the explicit tabId from payload
+        expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
+          77, // the explicit tabId from payload
+          expect.objectContaining({
+            type: "PAGE_UNDERSTANDING_ACTION",
+            action: "wait_for",
+            payload: expect.objectContaining({ tabId: 77, texts: ["Done"] }),
+          }),
+        );
+      } finally {
+        Object.defineProperty(globalThis, "document", { value: originalDocument, writable: true });
+      }
+    });
+  });
+
+  describe("B2-CTX-001: wait_for without tabId → targets active tab (backward compat)", () => {
+    it("B2-CTX-001: when tabId absent, queries active tab", async () => {
+      // Simulate service worker context (document is undefined)
+      const originalDocument = globalThis.document;
+      Object.defineProperty(globalThis, "document", { value: undefined, writable: true });
+
+      try {
+        globalThis.chrome.tabs.query = vi.fn().mockResolvedValue([
+          { id: 1, url: "https://example.com/page1", title: "Page 1", active: true, windowId: 1, index: 0, highlighted: false, pinned: false, incognito: false },
+        ]);
+        globalThis.chrome.tabs.sendMessage = vi.fn().mockResolvedValue({});
+
+        await handleRelayAction({
+          requestId: "req-1",
+          action: "wait_for",
+          payload: { texts: ["Done"] },
+        });
+
+        expect(globalThis.chrome.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true });
+        expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
+          1, // active tab id
+          expect.objectContaining({ action: "wait_for" }),
+        );
+      } finally {
+        Object.defineProperty(globalThis, "document", { value: originalDocument, writable: true });
+      }
+    });
+  });
+});

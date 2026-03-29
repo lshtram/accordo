@@ -32,6 +32,8 @@ export const TEXT_MAP_TIMEOUT_MS = 10_000;
  * B2-TX-008: `maxSegments` caps the number of returned text segments.
  */
 export interface GetTextMapArgs {
+  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
+  tabId?: number;
   /** Maximum number of text segments to return (default: 500, max: 2000). B2-TX-008. */
   maxSegments?: number;
 }
@@ -105,6 +107,10 @@ export function buildTextMapTool(
     inputSchema: {
       type: "object",
       properties: {
+        tabId: {
+          type: "number",
+          description: "B2-CTX-001: Optional tab ID to target; omit for active tab",
+        },
         maxSegments: {
           type: "integer",
           description:

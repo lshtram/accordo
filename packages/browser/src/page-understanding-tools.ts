@@ -1,12 +1,17 @@
 /**
  * M91-PU + M91-CR — Page Understanding MCP Tools
  *
- * Defines and registers 4 MCP tools that give AI agents the ability
+ * Defines and registers 6 MCP tools that give AI agents the ability
  * to inspect live browser pages:
  *   - browser_get_page_map — structured DOM summary
  *   - browser_inspect_element — deep element inspection
  *   - browser_get_dom_excerpt — sanitized HTML fragment
  *   - browser_capture_region — cropped viewport screenshot of a specific element or rect
+ *   - browser_wait_for — wait for conditions on a page (B2-WA)
+ *   - browser_get_text_map — extract text segments (B2-TX)
+ *   - browser_get_semantic_graph — semantic structure (B2-SG)
+ *   - browser_list_pages — enumerate open tabs (B2-CTX-001)
+ *   - browser_select_page — activate a tab (B2-CTX-001)
  *
  * Each tool forwards its request through the browser relay to the
  * Chrome extension's content script, which has live DOM access.
@@ -21,10 +26,22 @@ import type { BrowserRelayLike, SnapshotEnvelopeFields } from "./types.js";
 import { hasSnapshotEnvelope } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 
+// ── Type Guards ──────────────────────────────────────────────────────────────
+
+function isSelectPageArgs(obj: unknown): obj is SelectPageArgs {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    typeof (obj as { tabId?: unknown }).tabId === "number"
+  );
+}
+
 // ── Tool Input Types ─────────────────────────────────────────────────────────
 
 /** Input for browser_get_page_map */
 export interface GetPageMapArgs {
+  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
+  tabId?: number;
   /** Maximum DOM tree depth to walk (default: 4, max: 8) */
   maxDepth?: number;
   /** Maximum number of nodes to include (default: 200, max: 500) */
@@ -82,6 +99,8 @@ export interface GetPageMapArgs {
  * to `ref` (opaque element reference) and `selector` (CSS selector).
  */
 export interface InspectElementArgs {
+  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
+  tabId?: number;
   /** Element reference from page map (ref field) */
   ref?: string;
   /** CSS selector to find the element (alternative to ref) */
@@ -92,6 +111,8 @@ export interface InspectElementArgs {
 
 /** Input for browser_get_dom_excerpt */
 export interface GetDomExcerptArgs {
+  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
+  tabId?: number;
   /** CSS selector for the root element */
   selector: string;
   /** Maximum depth of the excerpt (default: 3) */
@@ -139,7 +160,7 @@ const CAPTURE_REGION_TIMEOUT_MS = 5_000;
 // ── Tool Definitions ─────────────────────────────────────────────────────────
 
 /**
- * Build the 4 page understanding tool definitions.
+ * Build the 6 page understanding tool definitions (4 existing + wait_for + text_map + semantic_graph + list_pages + select_page).
  *
  * Returns an array of `ExtensionToolDefinition` to be registered
  * via `bridge.registerTools('accordo-browser', tools)`.
@@ -152,9 +173,12 @@ const CAPTURE_REGION_TIMEOUT_MS = 5_000;
  * B2-SV-004: All 4 data-producing paths share the same store instance
  * with coherent 5-slot per-page FIFO retention semantics.
  *
+ * B2-CTX-001: All existing tools accept an optional `tabId` parameter.
+ * New `browser_list_pages` and `browser_select_page` tools are included.
+ *
  * @param relay — The relay connection to the Chrome extension
  * @param store — Shared snapshot retention store (5-slot FIFO per page)
- * @returns Array of 4 tool definitions
+ * @returns Array of 6 tool definitions
  */
 export function buildPageUnderstandingTools(
   relay: BrowserRelayLike,
@@ -167,6 +191,7 @@ export function buildPageUnderstandingTools(
       inputSchema: {
         type: "object",
         properties: {
+          tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
           maxDepth: { type: "number", description: "Maximum DOM tree depth (default 4, max 8)" },
           maxNodes: { type: "number", description: "Maximum number of nodes (default 200, max 500)", maximum: 500 },
           includeBounds: { type: "boolean", description: "Include bounding box coordinates" },
@@ -203,6 +228,7 @@ export function buildPageUnderstandingTools(
       inputSchema: {
         type: "object",
         properties: {
+          tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
           ref: { type: "string", description: "Element reference from page map" },
           selector: { type: "string", description: "CSS selector to find element" },
           nodeId: { type: "number", description: "B2-SV-006: Stable node ID from a page map snapshot" },
@@ -219,6 +245,7 @@ export function buildPageUnderstandingTools(
         type: "object",
         required: ["selector"],
         properties: {
+          tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
           selector: { type: "string", description: "CSS selector for the root element" },
           maxDepth: { type: "number", description: "Maximum depth (default 3)" },
           maxLength: { type: "number", description: "Maximum character length (default 2000)" },
@@ -253,6 +280,36 @@ export function buildPageUnderstandingTools(
       dangerLevel: "safe",
       idempotent: true,
       handler: (args) => handleCaptureRegion(relay, args as CaptureRegionArgs, store),
+    },
+    {
+      name: "browser_list_pages",
+      description: "List all open browser tabs/pages with their tabId, url, title, and active state.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          tabId: { type: "number", description: "Optional tab ID (unused; reserved for future filtering)" },
+        },
+      },
+      dangerLevel: "safe",
+      idempotent: true,
+      handler: (args) => handleListPages(relay, args as ListPagesArgs),
+    },
+    {
+      name: "browser_select_page",
+      description: "Select (activate) a browser tab by its tabId.",
+      inputSchema: {
+        type: "object",
+        required: ["tabId"],
+        properties: {
+          tabId: { type: "number", description: "The tab ID to activate." },
+        },
+      },
+      dangerLevel: "safe",
+      idempotent: true,
+      handler: (args) => {
+        if (!isSelectPageArgs(args)) return Promise.resolve({ success: false, error: "invalid-request", pageUrl: null });
+        return handleSelectPage(relay, args);
+      },
     },
   ];
 }
@@ -601,5 +658,186 @@ export async function handleCaptureRegion(
     return { success: false, error: "action-failed" };
   } catch (err: unknown) {
     return { success: false, error: classifyRelayError(err) };
+  }
+}
+
+// ── B2-CTX-001: New multi-tab types and handlers ─────────────────────────────
+
+/** Input for browser_wait_for (inlined from wait-tool.ts for multi-tab support) */
+export interface WaitForArgs {
+  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
+  tabId?: number;
+  texts?: string[];
+  selector?: string;
+  stableLayoutMs?: number;
+  timeout?: number;
+}
+
+/** Input for browser_get_text_map (inlined for multi-tab support) */
+export interface GetTextMapArgs {
+  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
+  tabId?: number;
+  maxSegments?: number;
+}
+
+/** Input for browser_get_semantic_graph (inlined for multi-tab support) */
+export interface GetSemanticGraphArgs {
+  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
+  tabId?: number;
+  maxDepth?: number;
+  visibleOnly?: boolean;
+}
+
+/** Input for browser_list_pages (B2-CTX-001) */
+export interface ListPagesArgs {
+  tabId?: number;
+}
+
+/** Response from browser_list_pages (B2-CTX-001) */
+export interface ListPagesResponse {
+  pages: { tabId: number; url: string; title: string; active: boolean }[];
+}
+
+/** Input for browser_select_page (B2-CTX-001) */
+export interface SelectPageArgs {
+  tabId: number;
+}
+
+/** Response from browser_select_page (B2-CTX-001) */
+export interface SelectPageResponse {
+  success: boolean;
+  error?: string;
+}
+
+/** Relay timeout for wait_for (must exceed WAIT_MAX_TIMEOUT_MS = 30000) */
+const WAIT_FOR_RELAY_TIMEOUT_MS = 35_000;
+/** Relay timeout for text map */
+const TEXT_MAP_TIMEOUT_MS = 10_000;
+/** Relay timeout for semantic graph */
+const SEMANTIC_GRAPH_TIMEOUT_MS = 15_000;
+/** Relay timeout for list_pages / select_page */
+const TAB_MGMT_TIMEOUT_MS = 5_000;
+
+/**
+ * Handler for browser_wait_for (inlined into buildPageUnderstandingTools).
+ */
+async function handleWaitForInline(
+  relay: BrowserRelayLike,
+  args: WaitForArgs,
+): Promise<unknown> {
+  if (!relay.isConnected()) {
+    return { success: false, error: "browser-not-connected" };
+  }
+  try {
+    const response = await relay.request("wait_for", args as Record<string, unknown>, WAIT_FOR_RELAY_TIMEOUT_MS);
+    if (response.success && response.data !== undefined) {
+      return response.data;
+    }
+    const errCode = response.error ?? "timeout";
+    if (errCode === "navigation-interrupted" || errCode === "page-closed") {
+      return { met: false, error: errCode, elapsedMs: 0 };
+    }
+    return response.data ?? { met: false, error: "timeout", elapsedMs: 0 };
+  } catch (err: unknown) {
+    return { success: false, error: classifyRelayError(err) };
+  }
+}
+
+/**
+ * Handler for browser_get_text_map (inlined into buildPageUnderstandingTools).
+ */
+async function handleGetTextMapInline(
+  relay: BrowserRelayLike,
+  args: GetTextMapArgs,
+  store: SnapshotRetentionStore,
+): Promise<unknown> {
+  if (!relay.isConnected()) {
+    return { success: false, error: "browser-not-connected" };
+  }
+  try {
+    const response = await relay.request("get_text_map", args as Record<string, unknown>, TEXT_MAP_TIMEOUT_MS);
+    if (!response.success || response.data === undefined) {
+      return { success: false, error: response.error ?? "action-failed" };
+    }
+    if (hasSnapshotEnvelope(response.data)) {
+      store.save(response.data.pageId, response.data);
+    }
+    return response.data;
+  } catch (err: unknown) {
+    return { success: false, error: classifyRelayError(err) };
+  }
+}
+
+/**
+ * Handler for browser_get_semantic_graph (inlined into buildPageUnderstandingTools).
+ */
+async function handleGetSemanticGraphInline(
+  relay: BrowserRelayLike,
+  args: GetSemanticGraphArgs,
+  store: SnapshotRetentionStore,
+): Promise<unknown> {
+  if (!relay.isConnected()) {
+    return { success: false, error: "browser-not-connected" };
+  }
+  try {
+    const payload: Record<string, unknown> = {};
+    if (args.tabId !== undefined) payload["tabId"] = args.tabId;
+    if (args.maxDepth !== undefined) payload["maxDepth"] = args.maxDepth;
+    if (args.visibleOnly !== undefined) payload["visibleOnly"] = args.visibleOnly;
+
+    const response = await relay.request("get_semantic_graph", payload, SEMANTIC_GRAPH_TIMEOUT_MS);
+    if (!response.success || response.data === undefined) {
+      return { success: false, error: response.error ?? "action-failed" };
+    }
+    if (hasSnapshotEnvelope(response.data)) {
+      store.save(response.data.pageId, response.data as SnapshotEnvelopeFields);
+    }
+    return response.data;
+  } catch (err: unknown) {
+    return { success: false, error: classifyRelayError(err) };
+  }
+}
+
+/**
+ * Handler for browser_list_pages (B2-CTX-001).
+ * Forwards to relay's "list_pages" action.
+ */
+export async function handleListPages(
+  relay: BrowserRelayLike,
+  args: ListPagesArgs,
+): Promise<ListPagesResponse | PageToolError> {
+  if (!relay.isConnected()) {
+    return { success: false, error: "browser-not-connected", pageUrl: null };
+  }
+  try {
+    const response = await relay.request("list_pages", args as Record<string, unknown>, TAB_MGMT_TIMEOUT_MS);
+    if (response.success && response.data && typeof response.data === "object" && "pages" in response.data) {
+      return response.data as ListPagesResponse;
+    }
+    return { success: false, error: "action-failed", pageUrl: null };
+  } catch (err: unknown) {
+    return { success: false, error: classifyRelayError(err), pageUrl: null };
+  }
+}
+
+/**
+ * Handler for browser_select_page (B2-CTX-001).
+ * Forwards to relay's "select_page" action.
+ */
+export async function handleSelectPage(
+  relay: BrowserRelayLike,
+  args: SelectPageArgs,
+): Promise<SelectPageResponse | PageToolError> {
+  if (!relay.isConnected()) {
+    return { success: false, error: "browser-not-connected", pageUrl: null };
+  }
+  try {
+    const response = await relay.request("select_page", args as unknown as Record<string, unknown>, TAB_MGMT_TIMEOUT_MS);
+    if (response.success) {
+      return { success: true };
+    }
+    return { success: false, error: response.error ?? "action-failed", pageUrl: null };
+  } catch (err: unknown) {
+    return { success: false, error: classifyRelayError(err), pageUrl: null };
   }
 }

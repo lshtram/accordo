@@ -15,17 +15,27 @@
  * - CR-F-07: captureVisibleTab + OffscreenCanvas crop flow contract
  * - CR-F-09..CR-F-12: Downscale/min-size/retry/error-code behavior contracts
  *
+ * B2-CTX-001 multi-tab support tests:
+ * - browser_list_pages → tool registered, correct schema, success/error handlers
+ * - browser_select_page → tool registered, correct schema, success/error handlers
+ * - All existing tools accept optional tabId parameter (backward compat)
+ * - All existing tool handlers forward tabId in relay payload when provided
+ *
  * API checklist (buildPageUnderstandingTools):
- * - browser_get_page_map   → registered, throws not implemented
- * - browser_inspect_element → registered, throws not implemented
- * - browser_get_dom_excerpt → registered, throws not implemented
- * - browser_capture_region  → registered, throws not implemented
+ * - browser_get_page_map    → registered, handler forwards to relay
+ * - browser_inspect_element → registered, handler forwards to relay
+ * - browser_get_dom_excerpt → registered, handler forwards to relay
+ * - browser_capture_region  → registered, handler forwards to relay
+ * - browser_list_pages     → registered (B2-CTX-001)
+ * - browser_select_page    → registered (B2-CTX-001)
  *
  * API checklist (individual handlers):
- * - handleGetPageMap        → throws not implemented (PU-F-50)
- * - handleInspectElement    → throws not implemented (PU-F-51)
- * - handleGetDomExcerpt     → throws not implemented (PU-F-52)
- * - handleCaptureRegion     → throws not implemented (CR-F-01)
+ * - handleGetPageMap        → forwards to relay.request "get_page_map"
+ * - handleInspectElement    → forwards to relay.request "inspect_element"
+ * - handleGetDomExcerpt     → forwards to relay.request "get_dom_excerpt"
+ * - handleCaptureRegion     → forwards to relay.request "capture_region"
+ * - handleListPages         → forwards to relay.request "list_pages" (B2-CTX-001)
+ * - handleSelectPage        → forwards to relay.request "select_page" (B2-CTX-001)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -40,6 +50,9 @@ import {
   GetDomExcerptArgs,
   CaptureRegionArgs,
 } from "../page-understanding-tools.js";
+import { buildWaitForTool } from "../wait-tool.js";
+import { buildTextMapTool } from "../text-map-tool.js";
+import { buildSemanticGraphTool } from "../semantic-graph-tool.js";
 import { SnapshotRetentionStore } from "../snapshot-retention.js";
 
 /** Shared no-op store used by tests that don't assert on retention behaviour. */
@@ -333,7 +346,7 @@ describe("M91-PU + M91-CR tool registration", () => {
   it("PU-F-50..PU-F-52 + CR-F-01: buildPageUnderstandingTools returns exactly 4 tools", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    expect(tools).toHaveLength(4);
+    expect(tools).toHaveLength(6);
   });
 
   /**
@@ -797,7 +810,7 @@ describe("browser_capture_region — input contract (CR-F-02..CR-F-06)", () => {
 
   /**
    * CR-NF-03: Tool marked dangerLevel: "safe" and idempotent: true
-   * (Per docs/requirements-browser-extension.md §3.18)
+    * (Per docs/20-requirements/requirements-browser-extension.md §3.18)
    */
   it("CR-NF-03: capture_region tool is marked safe and idempotent", () => {
     const relay = createMockRelay();
@@ -818,7 +831,7 @@ describe("M91-PU context-budget policy — anti-pattern guardrails", () => {
     const tools = buildPageUnderstandingTools(relay, noopStore);
     // Verify tools are registered - timeout is a performance contract
     // that would be tested in integration/E2E tests
-    expect(tools.length).toBe(4);
+    expect(tools.length).toBe(6);
   });
 
   /**
@@ -1538,5 +1551,205 @@ describe("B2-FI-007/008: filterSummary semantics and passthrough", () => {
     const fs = (result as { filterSummary?: { totalBeforeFilter: number; totalAfterFilter: number } }).filterSummary;
     expect(fs).toBeDefined();
     expect(fs!.totalBeforeFilter).toBeGreaterThanOrEqual(fs!.totalAfterFilter);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// B2-CTX-001: Multi-tab support — browser_list_pages tool
+// Tests for the new list_pages tool that enumerates all open browser tabs.
+// ════════════════════════════════════════════════════════════════════════════════
+
+describe("B2-CTX-001: browser_list_pages tool registration", () => {
+  /**
+   * B2-CTX-001: browser_list_pages tool is in the returned tool array.
+   * buildPageUnderstandingTools must return 6 tools (4 existing + 2 new).
+   */
+  it("B2-CTX-001: buildPageUnderstandingTools returns browser_list_pages in tool array", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const toolNames = tools.map((t) => t.name);
+    expect(toolNames).toContain("browser_list_pages");
+  });
+
+  /**
+   * B2-CTX-001: buildPageUnderstandingTools returns 6 tools total (4 existing + list_pages + select_page)
+   */
+  it("B2-CTX-001: buildPageUnderstandingTools returns 6 tools", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    expect(tools).toHaveLength(6);
+  });
+
+  /**
+   * B2-CTX-001: browser_list_pages tool has correct inputSchema.
+   * tabId is optional (tabId?: number) — caller can list tabs generally or for a specific tab.
+   * dangerLevel is 1 (safe — read-only tab enumeration).
+   */
+  it("B2-CTX-001: browser_list_pages has tabId?: number in inputSchema (optional)", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const listPagesTool = tools.find((t) => t.name === "browser_list_pages");
+    expect(listPagesTool?.inputSchema.properties).toHaveProperty("tabId");
+    expect(listPagesTool?.inputSchema.properties.tabId.type).toBe("number");
+    // tabId is optional — not in required array
+    expect(listPagesTool?.inputSchema.required || []).not.toContain("tabId");
+  });
+
+  /**
+   * B2-CTX-001: browser_list_pages is marked dangerLevel: "safe"
+   */
+  it("B2-CTX-001: browser_list_pages dangerLevel is safe", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const listPagesTool = tools.find((t) => t.name === "browser_list_pages");
+    expect(listPagesTool?.dangerLevel).toBe("safe");
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// B2-CTX-001: Multi-tab support — browser_select_page tool
+// ════════════════════════════════════════════════════════════════════════════════
+
+describe("B2-CTX-001: browser_select_page tool registration", () => {
+  /**
+   * B2-CTX-001: browser_select_page tool is in the returned tool array.
+   */
+  it("B2-CTX-001: buildPageUnderstandingTools returns browser_select_page in tool array", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const toolNames = tools.map((t) => t.name);
+    expect(toolNames).toContain("browser_select_page");
+  });
+
+  /**
+   * B2-CTX-001: browser_select_page tool has tabId: { type: "number", description: "..." } as required parameter.
+   */
+  it("B2-CTX-001: browser_select_page has tabId as required number parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const selectPageTool = tools.find((t) => t.name === "browser_select_page");
+    expect(selectPageTool?.inputSchema.properties).toHaveProperty("tabId");
+    expect(selectPageTool?.inputSchema.properties.tabId.type).toBe("number");
+    expect(selectPageTool?.inputSchema.required || []).toContain("tabId");
+  });
+
+  /**
+   * B2-CTX-001: browser_select_page is marked dangerLevel: "safe"
+   */
+  it("B2-CTX-001: browser_select_page dangerLevel is safe", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const selectPageTool = tools.find((t) => t.name === "browser_select_page");
+    expect(selectPageTool?.dangerLevel).toBe("safe");
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// B2-CTX-001: All existing tools accept optional tabId parameter in schema
+// Validates backward compatibility — existing callers without tabId continue to work.
+// ════════════════════════════════════════════════════════════════════════════════
+
+describe("B2-CTX-001: all existing tools accept optional tabId in inputSchema", () => {
+  // Tools from buildPageUnderstandingTools
+  const pageUnderstandingToolNames = [
+    "browser_get_page_map",
+    "browser_inspect_element",
+    "browser_get_dom_excerpt",
+  ] as const;
+
+  pageUnderstandingToolNames.forEach((toolName) => {
+    it(`B2-CTX-001: ${toolName} has tabId?: number in inputSchema properties`, () => {
+      const relay = createMockRelay();
+      const tools = buildPageUnderstandingTools(relay, noopStore);
+      const tool = tools.find((t) => t.name === toolName);
+      expect(tool?.inputSchema.properties).toHaveProperty("tabId");
+      expect(tool?.inputSchema.properties.tabId.type).toBe("number");
+    });
+  });
+
+  it("B2-CTX-001: browser_wait_for has tabId?: number in inputSchema properties", () => {
+    const relay = createMockRelay();
+    const tool = buildWaitForTool(relay);
+    expect(tool.inputSchema.properties).toHaveProperty("tabId");
+    expect(tool.inputSchema.properties.tabId.type).toBe("number");
+  });
+
+  it("B2-CTX-001: browser_get_text_map has tabId?: number in inputSchema properties", () => {
+    const relay = createMockRelay();
+    const tool = buildTextMapTool(relay, noopStore);
+    expect(tool.inputSchema.properties).toHaveProperty("tabId");
+    expect(tool.inputSchema.properties.tabId.type).toBe("number");
+  });
+
+  it("B2-CTX-001: browser_get_semantic_graph has tabId?: number in inputSchema properties", () => {
+    const relay = createMockRelay();
+    const tool = buildSemanticGraphTool(relay, noopStore);
+    expect(tool.inputSchema.properties).toHaveProperty("tabId");
+    expect(tool.inputSchema.properties.tabId.type).toBe("number");
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// B2-CTX-001: All existing tool handlers forward tabId in relay payload when provided
+// Validates that tabId from args is passed through to relay.request payload so the
+// relay can forward to the correct tab.
+// ════════════════════════════════════════════════════════════════════════════════
+
+describe("B2-CTX-001: all existing tool handlers forward tabId in relay payload when provided", () => {
+  /**
+   * B2-CTX-001: handleGetPageMap forwards tabId to relay.request payload when provided.
+   */
+  it("B2-CTX-001: handleGetPageMap forwards tabId: 42 to relay.request payload", async () => {
+    const relay = createMockRelay();
+    relay.request = vi.fn().mockResolvedValue({
+      success: true,
+      data: { pageUrl: "https://example.com", pageId: "p1", frameId: "main", snapshotId: "p1:1", capturedAt: "2025-01-01T00:00:00Z", viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 }, source: "dom", title: "Test", nodes: [], totalElements: 0, depth: 0, truncated: false },
+    });
+
+    await handleGetPageMap(relay, { tabId: 42, maxDepth: 4 }, noopStore);
+
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ tabId: 42 }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * B2-CTX-001: handleInspectElement forwards tabId to relay.request payload when provided.
+   */
+  it("B2-CTX-001: handleInspectElement forwards tabId: 42 to relay.request payload", async () => {
+    const relay = createMockRelay();
+    relay.request = vi.fn().mockResolvedValue({
+      success: true,
+      data: { found: true, pageId: "p1", frameId: "main", snapshotId: "p1:1", capturedAt: "2025-01-01T00:00:00Z", viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 }, source: "dom", anchorKey: "id:btn", anchorStrategy: "id", anchorConfidence: "high" },
+    });
+
+    await handleInspectElement(relay, { tabId: 42, ref: "btn" }, noopStore);
+
+    expect(relay.request).toHaveBeenCalledWith(
+      "inspect_element",
+      expect.objectContaining({ tabId: 42 }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * B2-CTX-001: handleGetDomExcerpt forwards tabId to relay.request payload when provided.
+   */
+  it("B2-CTX-001: handleGetDomExcerpt forwards tabId: 42 to relay.request payload", async () => {
+    const relay = createMockRelay();
+    relay.request = vi.fn().mockResolvedValue({
+      success: true,
+      data: { found: true, pageId: "p1", frameId: "main", snapshotId: "p1:1", capturedAt: "2025-01-01T00:00:00Z", viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 }, source: "dom", html: "<div>", text: "div", nodeCount: 1 },
+    });
+
+    await handleGetDomExcerpt(relay, { tabId: 42, selector: "body" }, noopStore);
+
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_dom_excerpt",
+      expect.objectContaining({ tabId: 42 }),
+      expect.any(Number),
+    );
   });
 });

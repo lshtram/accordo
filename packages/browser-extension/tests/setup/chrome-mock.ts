@@ -184,6 +184,19 @@ const tabsMock = {
     }
   ),
 
+  update: vi.fn(
+    (
+      tabId: number,
+      _updateProperties: { active?: boolean; url?: string; pinned?: boolean },
+      callback?: (tab: chrome.tabs.Tab) => void
+    ): Promise<chrome.tabs.Tab> => {
+      const url = mockTabUrls.get(tabId) ?? "https://example.com/page";
+      const tab = { id: tabId, url, active: true, index: 0, windowId: 1, highlighted: false, pinned: false, incognito: false } as chrome.tabs.Tab;
+      if (callback) callback(tab);
+      return Promise.resolve(tab);
+    }
+  ),
+
   captureVisibleTab: vi.fn(
     (
       _windowId?: number,

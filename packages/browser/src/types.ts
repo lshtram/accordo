@@ -18,7 +18,9 @@ export type BrowserRelayAction =
   | "diff_snapshots"
   | "wait_for"
   | "get_text_map"
-  | "get_semantic_graph";
+  | "get_semantic_graph"
+  | "list_pages"
+  | "select_page";
 
 // ── Snapshot Envelope (shared contract) ──────────────────────────────────────
 

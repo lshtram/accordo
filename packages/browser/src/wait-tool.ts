@@ -48,6 +48,8 @@ export const RELAY_TIMEOUT_MS = WAIT_MAX_TIMEOUT_MS + 5_000;
  * B2-WA-004: `timeout` — configurable, default 10000, max 30000.
  */
 export interface WaitForArgs {
+  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
+  tabId?: number;
   /** B2-WA-001: Wait for any of these text strings to appear on the page. */
   texts?: string[];
   /** B2-WA-002: Wait for a CSS selector to match at least one element. */
@@ -115,6 +117,10 @@ export function buildWaitForTool(
     inputSchema: {
       type: "object",
       properties: {
+        tabId: {
+          type: "number",
+          description: "B2-CTX-001: Optional tab ID to target; omit for active tab",
+        },
         texts: {
           type: "array",
           items: { type: "string" },

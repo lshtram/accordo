@@ -49,7 +49,9 @@ export type RelayAction =
   | "diff_snapshots"
   | "wait_for"
   | "get_text_map"
-  | "get_semantic_graph";
+  | "get_semantic_graph"
+  | "list_pages"
+  | "select_page";
 
 export interface RelayActionRequest {
   requestId: string;
@@ -494,11 +496,19 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
         // Service worker context — forward to content script.
         // B2-SV-003: The content script embeds the full SnapshotEnvelope in
         // response.data. The relay passes it through without minting IDs.
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab?.id) {
+        // B2-CTX-001: If tabId is provided in payload, use it directly (skip active tab query).
+        const explicitTabId = request.payload.tabId as number | undefined;
+        let pageMapTabId: number | undefined;
+        if (explicitTabId !== undefined) {
+          pageMapTabId = explicitTabId;
+        } else {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          pageMapTabId = tab?.id;
+        }
+        if (!pageMapTabId) {
           return { requestId: request.requestId, success: false, error: "action-failed" };
         }
-        const response = await chrome.tabs.sendMessage(tab.id, {
+        const response = await chrome.tabs.sendMessage(pageMapTabId, {
           type: "PAGE_UNDERSTANDING_ACTION",
           action: request.action,
           payload: request.payload,
@@ -549,11 +559,19 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
         // Service worker context — forward to content script.
         // B2-SV-003: The content script embeds the full SnapshotEnvelope in
         // response.data. The relay passes it through without minting IDs.
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab?.id) {
+        // B2-CTX-001: If tabId is provided in payload, use it directly (skip active tab query).
+        const inspectExplicitTabId = request.payload.tabId as number | undefined;
+        let inspectTabId: number | undefined;
+        if (inspectExplicitTabId !== undefined) {
+          inspectTabId = inspectExplicitTabId;
+        } else {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          inspectTabId = tab?.id;
+        }
+        if (!inspectTabId) {
           return { requestId: request.requestId, success: false, error: "action-failed" };
         }
-        const response = await chrome.tabs.sendMessage(tab.id, {
+        const response = await chrome.tabs.sendMessage(inspectTabId, {
           type: "PAGE_UNDERSTANDING_ACTION",
           action: request.action,
           payload: request.payload,
@@ -592,22 +610,30 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
         // Service worker context — forward to content script.
         // B2-SV-003: The content script embeds the full SnapshotEnvelope in
         // response.data. The relay passes it through without minting IDs.
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab?.id) {
+        // B2-CTX-001: If tabId is provided in payload, use it directly (skip active tab query).
+        const excerptExplicitTabId = request.payload.tabId as number | undefined;
+        let excerptTabId: number | undefined;
+        if (excerptExplicitTabId !== undefined) {
+          excerptTabId = excerptExplicitTabId;
+        } else {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          excerptTabId = tab?.id;
+        }
+        if (!excerptTabId) {
           return { requestId: request.requestId, success: false, error: "action-failed" };
         }
-        const response = await chrome.tabs.sendMessage(tab.id, {
+        const excerptResponse = await chrome.tabs.sendMessage(excerptTabId, {
           type: "PAGE_UNDERSTANDING_ACTION",
           action: request.action,
           payload: request.payload,
         });
-        if (!response || (response as { error?: string }).error) {
+        if (!excerptResponse || (excerptResponse as { error?: string }).error) {
           return { requestId: request.requestId, success: false, error: "action-failed" };
         }
         return {
           requestId: request.requestId,
           success: true,
-          data: (response as { data: unknown }).data,
+          data: (excerptResponse as { data: unknown }).data,
         };
       }
 
@@ -692,26 +718,34 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
           throw new Error("not implemented");
         }
         // Service worker context — forward to content script.
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab?.id) {
+        // B2-CTX-001: If tabId is provided in payload, use it directly (skip active tab query).
+        const waitExplicitTabId = request.payload.tabId as number | undefined;
+        let waitTabId: number | undefined;
+        if (waitExplicitTabId !== undefined) {
+          waitTabId = waitExplicitTabId;
+        } else {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          waitTabId = tab?.id;
+        }
+        if (!waitTabId) {
           return { requestId: request.requestId, success: false, error: "action-failed" };
         }
-        const response = await chrome.tabs.sendMessage(tab.id, {
+        const waitResponse = await chrome.tabs.sendMessage(waitTabId, {
           type: "PAGE_UNDERSTANDING_ACTION",
           action: request.action,
           payload: request.payload,
         });
-        if (!response || (response as { error?: string }).error) {
-          const errCode = (response as { error?: string })?.error;
+        if (!waitResponse || (waitResponse as { error?: string }).error) {
+          const errCode = (waitResponse as { error?: string })?.error;
           if (errCode === "navigation-interrupted" || errCode === "page-closed") {
-            return { requestId: request.requestId, success: true, data: response };
+            return { requestId: request.requestId, success: true, data: waitResponse };
           }
           return { requestId: request.requestId, success: false, error: "action-failed" };
         }
         return {
           requestId: request.requestId,
           success: true,
-          data: (response as { data: unknown }).data ?? response,
+          data: (waitResponse as { data: unknown }).data ?? waitResponse,
         };
       }
 
@@ -730,11 +764,19 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
           };
         }
         // Service worker context — forward to content script.
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab?.id) {
+        // B2-CTX-001: use explicit tabId if provided, else query active tab.
+        const tmExplicitTabId = request.payload.tabId as number | undefined;
+        let tmTargetTabId: number | undefined;
+        if (tmExplicitTabId !== undefined) {
+          tmTargetTabId = tmExplicitTabId;
+        } else {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          tmTargetTabId = tab?.id;
+        }
+        if (!tmTargetTabId) {
           return { requestId: request.requestId, success: false, error: "action-failed" };
         }
-        const response = await chrome.tabs.sendMessage(tab.id, {
+        const response = await chrome.tabs.sendMessage(tmTargetTabId, {
           type: "PAGE_UNDERSTANDING_ACTION",
           action: request.action,
           payload: request.payload,
@@ -758,11 +800,19 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
           throw new Error("not implemented");
         }
         // Service worker context — forward to content script.
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab?.id) {
+        // B2-CTX-001: use explicit tabId if provided, else query active tab.
+        const sgExplicitTabId = request.payload.tabId as number | undefined;
+        let sgTargetTabId: number | undefined;
+        if (sgExplicitTabId !== undefined) {
+          sgTargetTabId = sgExplicitTabId;
+        } else {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          sgTargetTabId = tab?.id;
+        }
+        if (!sgTargetTabId) {
           return { requestId: request.requestId, success: false, error: "action-failed" };
         }
-        const response = await chrome.tabs.sendMessage(tab.id, {
+        const response = await chrome.tabs.sendMessage(sgTargetTabId, {
           type: "PAGE_UNDERSTANDING_ACTION",
           action: request.action,
           payload: request.payload,
@@ -774,6 +824,37 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
           requestId: request.requestId,
           success: true,
           data: (response as { data: unknown }).data,
+        };
+      }
+
+      // ── Multi-tab support (B2-CTX-001) ────────────────────────────────────
+
+      case "list_pages": {
+        // B2-CTX-001: Return all open tabs as { pages: [{ tabId, url, title, active }] }
+        const allTabs = await chrome.tabs.query({});
+        const pages = allTabs.map((tab) => ({
+          tabId: tab.id,
+          url: tab.url ?? "",
+          title: tab.title ?? "",
+          active: tab.active,
+        }));
+        return {
+          requestId: request.requestId,
+          success: true,
+          data: { pages },
+        };
+      }
+
+      case "select_page": {
+        // B2-CTX-001: Activate the specified tab.
+        const selectTabId = request.payload.tabId;
+        if (typeof selectTabId !== "number" || !Number.isInteger(selectTabId)) {
+          return { requestId: request.requestId, success: false, error: "invalid-request" };
+        }
+        await chrome.tabs.update(selectTabId, { active: true });
+        return {
+          requestId: request.requestId,
+          success: true,
         };
       }
 

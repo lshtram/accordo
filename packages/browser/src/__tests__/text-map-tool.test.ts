@@ -432,8 +432,8 @@ describe("B2-TX-010: Backward compatibility", () => {
     expect(toolNames).toContain("browser_wait_for");
     // New tool is present
     expect(toolNames).toContain("browser_get_text_map");
-    // Exactly 6 tools total
-    expect(allTools.length).toBe(6);
+    // Exactly 8 tools total (6 page + 1 wait + 1 text)
+    expect(allTools.length).toBe(8);
   });
 });
 

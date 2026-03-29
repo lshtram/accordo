@@ -32,6 +32,8 @@ export const SEMANTIC_GRAPH_TOOL_TIMEOUT_MS = 15_000;
  * B2-SG-009: `visibleOnly` filters hidden elements.
  */
 export interface GetSemanticGraphArgs {
+  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
+  tabId?: number;
   /** Maximum depth for a11y tree (default: 8, max: 16). B2-SG-008. */
   maxDepth?: number;
   /** Exclude hidden elements (default: true). B2-SG-009. */
@@ -139,6 +141,9 @@ function narrowArgs(raw: unknown): GetSemanticGraphArgs {
   const obj = raw as Record<string, unknown>;
   const result: GetSemanticGraphArgs = {};
 
+  if (typeof obj["tabId"] === "number") {
+    result.tabId = obj["tabId"];
+  }
   if (typeof obj["maxDepth"] === "number") {
     result.maxDepth = obj["maxDepth"];
   }
@@ -204,6 +209,10 @@ export function buildSemanticGraphTool(
     inputSchema: {
       type: "object",
       properties: {
+        tabId: {
+          type: "number",
+          description: "B2-CTX-001: Optional tab ID to target; omit for active tab",
+        },
         maxDepth: {
           type: "integer",
           description:
@@ -269,6 +278,7 @@ async function handleGetSemanticGraph(
     const payload: Record<string, unknown> = {};
     if (args.maxDepth !== undefined) payload["maxDepth"] = args.maxDepth;
     if (args.visibleOnly !== undefined) payload["visibleOnly"] = args.visibleOnly;
+    if (args.tabId !== undefined) payload["tabId"] = args.tabId;
 
     const response = await relay.request(
       "get_semantic_graph",

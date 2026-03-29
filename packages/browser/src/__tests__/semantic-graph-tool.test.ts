@@ -478,8 +478,8 @@ describe("B2-SG-012: Backward compatibility", () => {
     expect(toolNames).toContain("browser_get_text_map");
     // New tool is present
     expect(toolNames).toContain("browser_get_semantic_graph");
-    // Total: 4 page + 1 wait + 1 text + 1 sg = 7
-    expect(allTools.length).toBe(7);
+    // Total: 6 page + 1 wait + 1 text + 1 sg = 9
+    expect(allTools.length).toBe(9);
   });
 });
 
