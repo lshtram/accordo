@@ -22,7 +22,7 @@ import { toggleCommentsMode, getCommentsMode, loadCommentsModeFromStorage } from
 import { getActiveThreads, getAllThreads, createThread, addComment, normalizeUrl, reopenThread, resolveThread, softDeleteComment, softDeleteThread } from "./store.js";
 import { captureScreenshot } from "./screenshot.js";
 import { handleGetComments, handleGetScreenshot } from "./mcp-handlers.js";
-import { handleRelayAction, type RelayActionRequest, type RelayActionResponse } from "./relay-actions.js";
+import { handleRelayAction, handleNavigationReset, type RelayActionRequest, type RelayActionResponse } from "./relay-actions.js";
 import { RelayBridgeClient } from "./relay-bridge.js";
 import { MESSAGE_TYPES } from "./constants.js";
 import type { McpToolRequest, GetCommentsArgs, GetScreenshotArgs, BrowserCommentThread, BrowserComment } from "./types.js";
@@ -202,14 +202,6 @@ export function mergeLocalAndHubThread(
 // Started in the Bootstrap section after registerListeners().
 const relayBridge = new RelayBridgeClient(handleRelayActionWithBroadcast);
 
-// ── Debug logger ─────────────────────────────────────────────────────────────────
-
-function dbg(msg: string, ...args: unknown[]): void {
-  console.log(`[Accordo SW] ${msg}`, ...args);
-}
-function dbgErr(msg: string, ...args: unknown[]): void {
-  console.error(`[Accordo SW ERROR] ${msg}`, ...args);
-}
 
 function isNoReceiverError(err: unknown): boolean {
   const msg = (err as Error | undefined)?.message ?? String(err);
@@ -235,7 +227,6 @@ async function broadcastCommentsUpdated(url?: string): Promise<void> {
           });
         } catch (err) {
           if (!isNoReceiverError(err)) {
-            dbgErr(`broadcastCommentsUpdated: tab ${tab.id} send failed — ${(err as Error)?.message ?? err}`);
           }
         }
       }),
@@ -261,7 +252,6 @@ async function handleRelayActionWithBroadcast(req: RelayActionRequest): Promise<
   return response;
 }
 
-dbg("Service worker module loaded");
 
 export interface SwMessage {
   type: MessageType;
@@ -283,42 +273,33 @@ export async function handleMessage(
   sender: chrome.runtime.MessageSender
 ): Promise<SwResponse> {
   const payload = message.payload as Record<string, unknown> | undefined;
-  dbg(`handleMessage: type=${message.type} tabId=${sender.tab?.id ?? "no-tab"} url=${sender.tab?.url ?? "no-url"}`);
 
   switch (message.type) {
     case MESSAGE_TYPES.TOGGLE_COMMENTS_MODE: {
       const tabId = (payload?.tabId as number | undefined) ?? 1;
-      dbg(`TOGGLE_COMMENTS_MODE: tabId=${tabId}`);
       await toggleCommentsMode(tabId);
       const isOn = getCommentsMode(tabId);
-      dbg(`TOGGLE_COMMENTS_MODE: new state isOn=${isOn}`);
       if (sender.tab?.id) {
         const msgType = isOn ? "comments-mode-on" : "comments-mode-off";
-        dbg(`TOGGLE_COMMENTS_MODE: sending "${msgType}" to tab ${sender.tab.id}`);
         chrome.tabs.sendMessage(sender.tab.id, { type: msgType }).catch((err) => {
           if (!isNoReceiverError(err)) {
-            dbgErr(`TOGGLE_COMMENTS_MODE: tabs.sendMessage failed — ${err?.message ?? err}`);
           }
         });
       } else {
-        dbg(`TOGGLE_COMMENTS_MODE: sender has no tab id, skipping tabs.sendMessage`);
       }
       return { success: true };
     }
 
     case MESSAGE_TYPES.GET_TAB_COMMENTS_MODE: {
       const tabId = sender.tab?.id ?? 0;
-      dbg(`GET_TAB_COMMENTS_MODE: tabId=${tabId}`);
       await loadCommentsModeFromStorage();
       const isOn = getCommentsMode(tabId);
-      dbg(`GET_TAB_COMMENTS_MODE: isOn=${isOn} (storage loaded fresh)`);
       return { success: true, isOn };
     }
 
     case MESSAGE_TYPES.SET_BADGE_TEXT: {
       const text = (payload?.text as string | undefined) ?? "";
       const tabId = sender.tab?.id;
-      dbg(`SET_BADGE_TEXT: text="${text}" tabId=${tabId}`);
       if (tabId !== undefined) {
         chrome.action.setBadgeText({ text, tabId });
       } else {
@@ -329,7 +310,6 @@ export async function handleMessage(
 
     case MESSAGE_TYPES.GET_THREADS: {
       const url = (payload?.url as string | undefined) ?? "";
-      dbg(`GET_THREADS: url=${url}`);
 
       // 1. Get local threads from chrome.storage.local
       const localThreads = await getActiveThreads(url);
@@ -380,7 +360,6 @@ export async function handleMessage(
       const threads = Array.from(mergedMap.values()).sort(
         (a, b) => new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime(),
       );
-      dbg(`GET_THREADS: url=${url} → ${threads.length} threads (local=${localThreads.length} hub=${hubThreads.length})`);
       return { success: true, data: threads };
     }
 
@@ -390,9 +369,7 @@ export async function handleMessage(
       const body = payload?.body as string;
       const author = payload?.author as { kind: "user"; name: string };
       const anchorContext = payload?.anchorContext as { tagName: string; textSnippet?: string; ariaLabel?: string; pageTitle?: string } | undefined;
-      dbg(`CREATE_THREAD: url=${url} anchorKey=${anchorKey}`);
       const thread = await createThread(url, anchorKey, { body, author }, anchorContext);
-      dbg(`CREATE_THREAD: created thread id=${thread.id} — forwarding to accordo-browser`);
       // Forward to accordo-browser so it persists to VS Code's CommentStore
       // (non-blocking: popup still works even if accordo-browser is unreachable)
       void forwardToAccordoBrowser("create_comment", {
@@ -412,15 +389,12 @@ export async function handleMessage(
       const body = payload?.body as string;
       const author = payload?.author as { kind: "user"; name: string };
       const callerCommentId = payload?.commentId as string | undefined;
-      dbg(`ADD_COMMENT: threadId=${threadId} callerCommentId=${callerCommentId ?? "(none)"}`);
       try {
         const comment = await addComment(threadId, { body, author, commentId: callerCommentId });
-        dbg(`ADD_COMMENT: created comment id=${comment.id}`);
         void forwardToAccordoBrowser("reply_comment", { threadId, body, authorName: author?.name, commentId: comment.id });
         await broadcastCommentsUpdated(comment.pageUrl);
         return { success: true, data: comment };
       } catch (err) {
-        dbgErr(`ADD_COMMENT: failed — ${(err as Error)?.message ?? err}`);
         return { success: false, error: "add comment failed" };
       }
     }
@@ -428,7 +402,6 @@ export async function handleMessage(
     case MESSAGE_TYPES.SOFT_DELETE_COMMENT: {
       const threadId = payload?.threadId as string;
       const commentId = payload?.commentId as string;
-      dbg(`SOFT_DELETE_COMMENT: threadId=${threadId} commentId=${commentId}`);
       const url = await softDeleteComment(threadId, commentId);
       void forwardToAccordoBrowser("delete_comment", { threadId, commentId });
       await broadcastCommentsUpdated(url ?? undefined);
@@ -437,10 +410,8 @@ export async function handleMessage(
 
     case MESSAGE_TYPES.SOFT_DELETE_THREAD: {
       const threadId = payload?.threadId as string;
-      dbg(`SOFT_DELETE_THREAD: threadId=${threadId}`);
       const url = await softDeleteThread(threadId);
       if (!url) {
-        dbgErr(`SOFT_DELETE_THREAD: thread not found threadId=${threadId}`);
         return { success: false, error: "thread not found" };
       }
       void forwardToAccordoBrowser("delete_thread", { threadId });
@@ -469,7 +440,6 @@ export async function handleMessage(
       const tabId = (payload?.tabId as number | undefined) ?? 1;
       const url = (payload?.url as string | undefined) ?? "";
       const format = (payload?.format as "markdown" | "json" | undefined) ?? "markdown";
-      dbg(`EXPORT: tabId=${tabId} url=${url} format=${format}`);
       try {
         const screenshotRecord = await captureScreenshot(tabId);
         const localThreads = await getActiveThreads(url);
@@ -517,10 +487,8 @@ export async function handleMessage(
         } else {
           text = formatAsMarkdown({ url, exportedAt: new Date().toISOString(), threads, screenshot: screenshotRecord });
         }
-        dbg(`EXPORT: success, text length=${text.length} (local=${localThreads.length} hub=${hubThreads.length})`);
         return { success: true, data: { text } };
       } catch (err) {
-        dbgErr(`EXPORT: failed — ${err}`);
         return { success: false, error: "export failed" };
       }
     }
@@ -528,25 +496,21 @@ export async function handleMessage(
     case MESSAGE_TYPES.MCP_GET_COMMENTS:
     case MESSAGE_TYPES["mcp:get_comments"]: {
       const req = message.payload as McpToolRequest<GetCommentsArgs>;
-      dbg(`MCP_GET_COMMENTS: requestId=${req?.requestId}`);
       return await handleGetComments(req);
     }
 
     case MESSAGE_TYPES.MCP_GET_SCREENSHOT:
     case MESSAGE_TYPES["mcp:get_screenshot"]: {
       const req = message.payload as McpToolRequest<GetScreenshotArgs>;
-      dbg(`MCP_GET_SCREENSHOT: requestId=${req?.requestId}`);
       return await handleGetScreenshot(req);
     }
 
     case MESSAGE_TYPES.BROWSER_RELAY_ACTION: {
       const req = message.payload as RelayActionRequest;
-      dbg(`BROWSER_RELAY_ACTION: action=${req?.action} requestId=${req?.requestId}`);
       return await handleRelayActionWithBroadcast(req);
     }
 
     default:
-      dbgErr(`handleMessage: unrecognised type="${message.type}"`);
       return { success: false, error: "unknown message type" };
   }
 }
@@ -554,45 +518,43 @@ export async function handleMessage(
 // ── Event listeners ─────────────────────────────────────────────────────────────
 
 export function registerListeners(): void {
-  dbg("registerListeners: attaching chrome.runtime.onMessage");
   chrome.runtime.onMessage.addListener(
     (message, sender, sendResponse) => {
-      dbg(`onMessage fired: type=${(message as SwMessage)?.type}`);
       handleMessage(message as SwMessage, sender).then((resp) => {
-        dbg(`onMessage response for type=${(message as SwMessage)?.type}:`, resp);
         sendResponse(resp);
       }).catch((err) => {
-        dbgErr(`onMessage handler threw: ${err}`);
         sendResponse({ success: false, error: String(err) });
       });
       return true; // keep channel open for async response
     }
   );
 
-  dbg("registerListeners: attaching chrome.commands.onCommand");
-  chrome.commands.onCommand.addListener(async (command) => {
-    dbg(`onCommand: "${command}"`);
+  chrome.webNavigation.onCommitted.addListener((details) => {
+    // B2-SV-005: Reset snapshot version counter on top-level frame navigations.
+    // The content script's SnapshotStore is inherently reset because Chrome
+    // destroys and re-injects the content script on navigation. The service
+    // worker's local counter must also be reset to stay in sync.
+    if (details.frameId === 0) {
+      handleNavigationReset();
+    }
+  });
+
+  chrome.commands.onCommand.addListener(async (command: string) => {
     if (command === "toggle-comments-mode") {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      dbg(`onCommand: active tab id=${tab?.id} url=${tab?.url}`);
       if (!tab?.id) {
-        dbgErr("onCommand: no active tab found — aborting");
         return;
       }
       const tabId = tab.id;
       await toggleCommentsMode(tabId);
       const isOn = getCommentsMode(tabId);
-      dbg(`onCommand: toggled tabId=${tabId} isOn=${isOn}`);
       chrome.action.setBadgeText({ text: isOn ? "ON" : "", tabId });
       chrome.action.setBadgeBackgroundColor({ color: isOn ? "#4a90d9" : "#888", tabId });
       const msgType = isOn ? "comments-mode-on" : "comments-mode-off";
-      dbg(`onCommand: sending "${msgType}" to tab ${tabId}`);
       try {
         await chrome.tabs.sendMessage(tabId, { type: msgType });
-        dbg(`onCommand: tabs.sendMessage succeeded`);
       } catch (err) {
         if (!isNoReceiverError(err)) {
-          dbgErr(`onCommand: tabs.sendMessage failed — ${(err as Error)?.message ?? err}`);
         }
       }
     }
@@ -602,11 +564,9 @@ export function registerListeners(): void {
 export async function onInstalled(
   details: chrome.runtime.InstalledDetails
 ): Promise<void> {
-  dbg(`onInstalled: reason=${details.reason}`);
   await chrome.storage.local.set({
     settings: { commentsMode: false, userName: "Guest" },
   });
-  dbg("onInstalled: storage initialised");
 }
 
 // ── Periodic full-sync ─────────────────────────────────────────────────────────
@@ -647,7 +607,6 @@ export async function checkAndSync(): Promise<void> {
     const { version } = result.data as { version: number };
     const prev = await getStoredSyncState();
     if (version !== prev.version) {
-      dbg(`Periodic sync: version changed ${prev.version} → ${version}, refreshing all tabs`);
       await setStoredSyncState({ version, lastSyncedAt: new Date().toISOString() });
       // Refresh all tabs that have Comments Mode on
       const tabs = await chrome.tabs.query({});
@@ -661,10 +620,8 @@ export async function checkAndSync(): Promise<void> {
           // Tab may not have content script injected — non-fatal
         }
       }
-      dbg(`Periodic sync: refresh complete`);
     }
   } catch (err) {
-    dbgErr(`Periodic sync: failed — ${err}`);
   }
 }
 
@@ -675,24 +632,19 @@ export function startPeriodicSync(): void {
   // Run an immediate sync on start
   void checkAndSync();
   _syncIntervalId = setInterval(() => { void checkAndSync(); }, SYNC_INTERVAL_MS);
-  dbg(`startPeriodicSync: interval started (every ${SYNC_INTERVAL_MS / 1000}s)`);
 }
 
 export function stopPeriodicSync(): void {
   if (_syncIntervalId) {
     clearInterval(_syncIntervalId);
     _syncIntervalId = null;
-    dbg("stopPeriodicSync: interval stopped");
   }
 }
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
-dbg("Bootstrap: calling registerListeners()");
 registerListeners();
-dbg("Bootstrap: attaching onInstalled listener");
 chrome.runtime.onInstalled.addListener(onInstalled);
 relayBridge.start();
-dbg("Bootstrap: complete");
 startPeriodicSync();
 
 // ── Forwarder to accordo-browser ────────────────────────────────────────────
@@ -712,10 +664,8 @@ async function forwardToAccordoBrowser(
   try {
     const result = await relayBridge.send(action, payload, 5000);
     if (!result.success) {
-      dbgErr(`forwardToAccordoBrowser(${action}): accordo-browser error=${result.error}`);
     }
   } catch (err) {
     // Non-fatal — Chrome local storage is primary; accordo-browser is secondary sync.
-    dbgErr(`forwardToAccordoBrowser(${action}): ${err}`);
   }
 }

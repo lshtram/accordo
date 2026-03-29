@@ -7,6 +7,7 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 export default defineConfig({
   test: {
     globals: true,
+    setupFiles: ["../../test-setup.ts"],
     include: ["src/__tests__/**/*.test.ts", "src/panel/__tests__/**/*.test.ts"],
     coverage: {
       provider: "v8",

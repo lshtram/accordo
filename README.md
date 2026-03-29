@@ -96,13 +96,19 @@ ACCORDO_TOKEN=your-token ACCORDO_BRIDGE_SECRET=your-secret \
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — System design, protocols, component boundaries
-- [Requirements — Hub](docs/requirements-hub.md)
-- [Requirements — Bridge](docs/requirements-bridge.md)
-- [Requirements — Editor](docs/requirements-editor.md)
-- Development Process (`~/.config/opencode/dev-process.md`) — global TDD cycle, commit conventions
-- [Coding Guidelines](docs/coding-guidelines.md)
-- [Workplan](docs/workplan.md) — Phase 1 progress and status
+📚 **[Docs Index →](docs/README.md)** — Start here for all documentation
+
+### Quick Links
+- [Workplan](docs/00-workplan/workplan.md) — Current status and upcoming work
+- [Architecture Overview](docs/10-architecture/architecture.md) — System design and protocols
+- [Coding Guidelines](docs/30-development/coding-guidelines.md) — TypeScript style and patterns
+- [Requirements](docs/20-requirements/) — Functional requirements by component
+
+### Development Resources
+- Development Process (`~/.config/opencode/dev-process.md`) — Global TDD cycle
+- [Accordo Patterns](docs/30-development/accordo-patterns.md) — Project-specific patterns
+- [Testing Guides](docs/40-testing/) — Current feature testing guides
+- [Setup Guide — Windows](docs/30-development/setup-windows.md)
 
 ## Development
 

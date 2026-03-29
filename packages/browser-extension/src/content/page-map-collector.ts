@@ -1,15 +1,21 @@
 /**
  * M90-MAP — Page Map Collector
  *
- * Walks the visible DOM tree breadth-first and returns a structured summary
- * of page elements for AI agent page understanding.
+ * Walks the visible DOM tree and returns a structured summary of page elements
+ * for AI agent page understanding. Filter pipeline is applied during traversal
+ * (B2-FI-001..008).
  *
- * Implements requirements PU-F-01 through PU-F-06.
+ * Implements requirements PU-F-01 through PU-F-06 and B2-FI-001..008.
  *
  * @module
  */
 
 import { generateAnchorKey } from "./enhanced-anchor.js";
+import { captureSnapshotEnvelope } from "../snapshot-versioning.js";
+import type { SnapshotEnvelope } from "../snapshot-versioning.js";
+import { buildFilterPipeline, buildFilterSummary } from "./page-map-filters.js";
+import { buildNode, clearRefIndex as _clearRefIndex, getElementByRef as _getElementByRef } from "./page-map-traversal.js";
+import type { TraversalOptions } from "./page-map-traversal.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,6 +25,12 @@ export interface PageNode {
   ref: string;
   /** HTML tag name (lowercase) */
   tag: string;
+  /** B2-SV-006: Stable node identifier within this snapshot (DFS traversal index) */
+  nodeId: number;
+  /** B2-SV-007: Experimental — stable across snapshots for unchanged elements */
+  persistentId?: string;
+  /** Element id attribute (shortcut for attrs.id) */
+  id?: string;
   /** ARIA role if present */
   role?: string;
   /** Accessible name (aria-label, alt, title, or derived) */
@@ -43,22 +55,76 @@ export interface PageMapOptions {
   includeBounds?: boolean;
   /** Filter to only visible elements in current viewport (default: false) */
   viewportOnly?: boolean;
+
+  // ── M102-FILT: Server-Side Filter Parameters (B2-FI-001..008) ──────────
+
+  /**
+   * B2-FI-001: When true, only elements whose bounding box intersects the
+   * current viewport are returned.
+   */
+  visibleOnly?: boolean;
+
+  /**
+   * B2-FI-002: When true, only interactive elements are returned.
+   * Interactive elements: button, a, input, select, textarea, elements with
+   * click handlers, [role="button"], [contenteditable].
+   */
+  interactiveOnly?: boolean;
+
+  /**
+   * B2-FI-003: Filter by ARIA role(s). Only elements matching any of the
+   * specified roles are returned. Implicit role mapping is applied.
+   */
+  roles?: string[];
+
+  /**
+   * B2-FI-004: Filter by text content substring (case-insensitive).
+   */
+  textMatch?: string;
+
+  /**
+   * B2-FI-005: Filter by CSS selector. Invalid selectors are silently ignored.
+   */
+  selector?: string;
+
+  /**
+   * B2-FI-006: Filter by bounding box region (viewport coordinates).
+   */
+  regionFilter?: { x: number; y: number; width: number; height: number };
 }
 
-/** Result of page map collection */
-export interface PageMapResult {
+/** Result of page map collection — includes full SnapshotEnvelope (B2-SV-003) */
+export interface PageMapResult extends SnapshotEnvelope {
   /** Page URL (normalized: origin + pathname) */
   pageUrl: string;
   /** Page title */
   title: string;
-  /** Viewport dimensions */
-  viewport: { width: number; height: number };
   /** Structured DOM tree */
   nodes: PageNode[];
   /** Total DOM element count (before truncation) */
   totalElements: number;
   /** Whether the result was truncated by maxDepth or maxNodes */
   truncated: boolean;
+
+  /**
+   * B2-FI-007/008: Summary of applied filters and their effect.
+   * Present only when at least one filter parameter was provided.
+   */
+  filterSummary?: FilterSummary;
+}
+
+/**
+ * B2-FI-008: Describes which filters were active and the reduction achieved.
+ */
+export interface FilterSummary {
+  /** Names of the filters that were active. */
+  activeFilters: string[];
+  /** Number of nodes before filtering. */
+  totalBeforeFilter: number;
+  /** Number of nodes after filtering. */
+  totalAfterFilter: number;
+  /** Reduction ratio (0.0–1.0) — e.g. 0.6 means 60% reduction. */
+  reductionRatio: number;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -90,139 +156,16 @@ export const INCLUDED_ATTRS: readonly string[] = [
   "placeholder", "value", "action", "method",
 ];
 
-// ── Ref Index ────────────────────────────────────────────────────────────────
-
-/**
- * Ephemeral index mapping ref strings to DOM elements.
- * Built during collectPageMap(), consumed by inspect_element.
- * Cleared on next collectPageMap() call.
- */
-let refIndex: Map<string, Element> = new Map();
+// ── Ref Index (delegates to traversal module) ─────────────────────────────────
 
 /** Look up an element by its ref from the most recent page map */
 export function getElementByRef(ref: string): Element | null {
-  return refIndex.get(ref) ?? null;
+  return _getElementByRef(ref);
 }
 
 /** Clear the ref index (called at the start of each collection) */
 export function clearRefIndex(): void {
-  refIndex = new Map();
-}
-
-// ── Internal helpers ─────────────────────────────────────────────────────────
-
-function isHidden(element: Element): boolean {
-  if (typeof window === "undefined") return false;
-  if (element.hasAttribute("hidden")) return true;
-  const style = window.getComputedStyle(element);
-  return (
-    style.display === "none" ||
-    style.visibility === "hidden" ||
-    style.visibility === "collapse" ||
-    style.opacity === "0"
-  );
-}
-
-function isInViewport(element: Element): boolean {
-  if (typeof window === "undefined") return true;
-  const rect = element.getBoundingClientRect();
-  return (
-    rect.width > 0 &&
-    rect.height > 0 &&
-    rect.bottom > 0 &&
-    rect.right > 0 &&
-    rect.top < (window.innerHeight || document.documentElement.clientHeight) &&
-    rect.left < (window.innerWidth || document.documentElement.clientWidth)
-  );
-}
-
-function getAccessibleName(element: Element): string | undefined {
-  const label = element.getAttribute("aria-label");
-  if (label) return label;
-  const alt = element.getAttribute("alt");
-  if (alt) return alt;
-  const title = element.getAttribute("title");
-  if (title) return title;
-  return undefined;
-}
-
-function buildAttrs(element: Element): Record<string, string> | undefined {
-  const attrs: Record<string, string> = {};
-  for (const attrName of INCLUDED_ATTRS) {
-    const val = element.getAttribute(attrName);
-    if (val !== null) attrs[attrName] = val;
-  }
-  return Object.keys(attrs).length > 0 ? attrs : undefined;
-}
-
-function buildNode(
-  element: Element,
-  refCounter: { count: number },
-  depth: number,
-  maxDepth: number,
-  maxNodes: number,
-  includeBounds: boolean,
-  truncated: { value: boolean },
-  viewportOnly: boolean,
-): PageNode | null {
-  if (refCounter.count >= maxNodes) {
-    truncated.value = true;
-    return null;
-  }
-
-  const tag = element.tagName.toLowerCase();
-  if (EXCLUDED_TAGS.has(tag)) return null;
-  if (isHidden(element)) return null;
-  if (viewportOnly && !isInViewport(element)) return null;
-
-  const ref = `ref-${refCounter.count++}`;
-  refIndex.set(ref, element);
-
-  const node: PageNode = { ref, tag };
-
-  const role = element.getAttribute("role");
-  if (role) node.role = role;
-
-  const name = getAccessibleName(element);
-  if (name) node.name = name;
-
-  // Direct text content (not including children)
-  const directText = Array.from(element.childNodes)
-    .filter((n) => n.nodeType === Node.TEXT_NODE)
-    .map((n) => n.textContent ?? "")
-    .join("")
-    .trim();
-  if (directText) {
-    node.text = directText.length > MAX_TEXT_LENGTH
-      ? directText.slice(0, MAX_TEXT_LENGTH)
-      : directText;
-  }
-
-  const attrs = buildAttrs(element);
-  if (attrs) node.attrs = attrs;
-
-  if (includeBounds) {
-    const rect = element.getBoundingClientRect();
-    node.bounds = {
-      x: Math.round(rect.x),
-      y: Math.round(rect.y),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
-    };
-  }
-
-  if (depth < maxDepth) {
-    const children: PageNode[] = [];
-    for (const child of Array.from(element.children)) {
-      const childNode = buildNode(child, refCounter, depth + 1, maxDepth, maxNodes, includeBounds, truncated, viewportOnly);
-      if (childNode) children.push(childNode);
-    }
-    if (children.length > 0) node.children = children;
-  } else if (element.children.length > 0) {
-    truncated.value = true;
-  }
-
-  return node;
+  _clearRefIndex();
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -230,11 +173,12 @@ function buildNode(
 /**
  * Collect a structured page map from the current document.
  *
- * Walks the visible DOM tree breadth-first, collecting element metadata.
- * Excludes script, style, noscript, template, and hidden elements.
+ * Walks the visible DOM tree, collecting element metadata. Excludes script,
+ * style, noscript, template, and hidden elements. Applies the filter pipeline
+ * during traversal (B2-FI-001..008).
  *
- * @param options - Collection options (depth, count, bounds, viewport filter)
- * @returns Structured page map with metadata
+ * @param options - Collection options (depth, count, bounds, viewport filter, M102 filters)
+ * @returns Structured page map with metadata and optional filterSummary
  */
 export function collectPageMap(options?: PageMapOptions): PageMapResult {
   clearRefIndex();
@@ -244,33 +188,50 @@ export function collectPageMap(options?: PageMapOptions): PageMapResult {
   const includeBounds = options?.includeBounds ?? false;
   const viewportOnly = options?.viewportOnly ?? false;
 
+  // B2-FI-007: Build filter pipeline from options
+  const filterPipeline = buildFilterPipeline(options ?? {});
+  const totalBeforeFilter = { count: 0 };
+
+  const traversalOpts: TraversalOptions = {
+    maxDepth,
+    maxNodes,
+    includeBounds,
+    viewportOnly,
+    filterPipeline,
+    totalBeforeFilter,
+  };
+
   const pageUrl = document.location?.href ?? "https://localhost/";
   const title = document.title || "Page";
-  const viewport = {
-    width: window.innerWidth || 1280,
-    height: window.innerHeight || 800,
-  };
 
   const refCounter = { count: 0 };
   const truncated = { value: false };
   const nodes: PageNode[] = [];
   const totalElements = document.querySelectorAll("*").length;
 
-  // Walk direct children of body
   for (const child of Array.from(document.body.children)) {
-    const node = buildNode(child, refCounter, 0, maxDepth, maxNodes, includeBounds, truncated, viewportOnly);
-    if (node) nodes.push(node);
+    const childNodes = buildNode(child, refCounter, 0, traversalOpts, truncated);
+    for (const cn of childNodes) nodes.push(cn);
   }
 
-  // Use the generateAnchorKey import to satisfy the import (avoids dead import lint)
+  // Use generateAnchorKey to satisfy the import (avoids dead import lint)
   void generateAnchorKey;
 
+  // B2-SV-003: Capture full SnapshotEnvelope
+  const envelope = captureSnapshotEnvelope("dom");
+
+  // B2-FI-008: Emit filter summary when filters were active
+  const filterSummary = filterPipeline.hasFilters
+    ? buildFilterSummary(filterPipeline, totalBeforeFilter.count, refCounter.count)
+    : undefined;
+
   return {
+    ...envelope,
     pageUrl,
     title,
-    viewport,
     nodes,
     totalElements,
     truncated: truncated.value,
+    ...(filterSummary ? { filterSummary } : {}),
   };
 }

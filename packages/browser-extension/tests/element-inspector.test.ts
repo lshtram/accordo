@@ -42,6 +42,17 @@ import type {
   ElementContext,
   ElementDetail,
 } from "../src/content/element-inspector.js";
+import type { SnapshotEnvelope } from "../src/snapshot-versioning.js";
+
+/** Stub envelope fields for type-compliance in tests (B2-SV-003). */
+const STUB_ENVELOPE: SnapshotEnvelope = {
+  pageId: "page",
+  frameId: "main",
+  snapshotId: "page:0",
+  capturedAt: "2025-01-01T00:00:00.000Z",
+  viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+  source: "dom",
+};
 
 describe("M90-INS type exports", () => {
   /**
@@ -62,6 +73,7 @@ describe("M90-INS type exports", () => {
    */
   it("PU-F-11: InspectElementResult includes anchorKey and anchorStrategy fields", () => {
     const result: InspectElementResult = {
+      ...STUB_ENVELOPE,
       found: true,
       anchorKey: "id:main-content",
       anchorStrategy: "id",
@@ -86,6 +98,7 @@ describe("M90-INS type exports", () => {
       attributes: { id: "submit-btn", "data-testid": "submit" },
       bounds: { x: 100, y: 200, width: 80, height: 30 },
       visible: true,
+      visibleConfidence: "high",
       accessibleName: "Submit",
       testIds: { "data-testid": "submit" },
     };
@@ -118,6 +131,7 @@ describe("M90-INS type exports", () => {
       attributes: {},
       bounds: { x: 0, y: 0, width: 100, height: 200 },
       visible: true,
+      visibleConfidence: "high",
     };
     expect(detail.bounds).toEqual({ x: 0, y: 0, width: 100, height: 200 });
   });
@@ -127,6 +141,7 @@ describe("M90-INS type exports", () => {
    */
   it("PU-F-15: InspectElementResult can represent element-not-found", () => {
     const result: InspectElementResult = {
+      ...STUB_ENVELOPE,
       found: false,
     };
     expect(result.found).toBe(false);
@@ -314,9 +329,9 @@ describe("M90-INS anchor strategy confidence levels", () => {
    * PU-F-11: Anchor confidence is high, medium, or low
    */
   it("PU-F-11: anchorConfidence can be 'high', 'medium', or 'low'", () => {
-    const highResult: InspectElementResult = { found: true, anchorConfidence: "high" };
-    const medResult: InspectElementResult = { found: true, anchorConfidence: "medium" };
-    const lowResult: InspectElementResult = { found: true, anchorConfidence: "low" };
+    const highResult: InspectElementResult = { ...STUB_ENVELOPE, found: true, anchorConfidence: "high" };
+    const medResult: InspectElementResult = { ...STUB_ENVELOPE, found: true, anchorConfidence: "medium" };
+    const lowResult: InspectElementResult = { ...STUB_ENVELOPE, found: true, anchorConfidence: "low" };
 
     expect(highResult.anchorConfidence).toBe("high");
     expect(medResult.anchorConfidence).toBe("medium");

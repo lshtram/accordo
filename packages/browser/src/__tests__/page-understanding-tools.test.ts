@@ -40,23 +40,62 @@ import {
   GetDomExcerptArgs,
   CaptureRegionArgs,
 } from "../page-understanding-tools.js";
+import { SnapshotRetentionStore } from "../snapshot-retention.js";
+
+/** Shared no-op store used by tests that don't assert on retention behaviour. */
+const noopStore = new SnapshotRetentionStore();
 
 // ── Mock relay ────────────────────────────────────────────────────────────────
+
+/** B2-SV-003: Valid SnapshotEnvelopeFields for mock relay responses. */
+const MOCK_ENVELOPE = {
+  pageId: "mock-page-001",
+  frameId: "main",
+  snapshotId: "mock-page-001:1",
+  capturedAt: "2025-01-01T00:00:00.000Z",
+  viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+  source: "dom" as const,
+};
 
 function createMockRelay() {
   return {
     request: vi.fn().mockImplementation(async (action: string, payload?: Record<string, unknown>) => {
       if (action === "get_page_map") {
+        const hasFilter = payload && (
+          payload.visibleOnly !== undefined ||
+          payload.interactiveOnly !== undefined ||
+          payload.roles !== undefined ||
+          payload.textMatch !== undefined ||
+          payload.selector !== undefined ||
+          payload.regionFilter !== undefined
+        );
+        const activeFilters: string[] = [];
+        if (payload?.visibleOnly !== undefined) activeFilters.push("visibleOnly");
+        if (payload?.interactiveOnly !== undefined) activeFilters.push("interactiveOnly");
+        if (payload?.roles !== undefined) activeFilters.push("roles");
+        if (payload?.textMatch !== undefined) activeFilters.push("textMatch");
+        if (payload?.selector !== undefined) activeFilters.push("selector");
+        if (payload?.regionFilter !== undefined) activeFilters.push("regionFilter");
         return {
           success: true,
           requestId: "test",
           data: {
+            ...MOCK_ENVELOPE,
             pageUrl: "https://example.com/page",
             title: "Example Page",
-            viewport: { width: 1280, height: 800 },
+            viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
             nodes: [],
-            totalElements: 0,
+            totalElements: 10,
+            depth: 0,
             truncated: false,
+            ...(hasFilter ? {
+              filterSummary: {
+                activeFilters,
+                totalBeforeFilter: 10,
+                totalAfterFilter: 3,
+                reductionRatio: 0.7,
+              },
+            } : {}),
           },
         };
       }
@@ -67,6 +106,7 @@ function createMockRelay() {
             success: true,
             requestId: "test",
             data: {
+              ...MOCK_ENVELOPE,
               found: true,
               anchorKey: "body:50%x50%",
               anchorStrategy: "viewport-pct",
@@ -79,6 +119,7 @@ function createMockRelay() {
             success: true,
             requestId: "test",
             data: {
+              ...MOCK_ENVELOPE,
               found: true,
               anchorKey: "data-testid:test-btn",
               anchorStrategy: "data-testid",
@@ -91,6 +132,7 @@ function createMockRelay() {
             success: true,
             requestId: "test",
             data: {
+              ...MOCK_ENVELOPE,
               found: true,
               anchorKey: "body:50%x50%",
               anchorStrategy: "viewport-pct",
@@ -102,6 +144,7 @@ function createMockRelay() {
           success: true,
           requestId: "test",
           data: {
+            ...MOCK_ENVELOPE,
             found: true,
             anchorKey: "id:main",
             anchorStrategy: "id",
@@ -115,13 +158,14 @@ function createMockRelay() {
           return {
             success: true,
             requestId: "test",
-            data: { found: false },
+            data: { ...MOCK_ENVELOPE, found: false },
           };
         }
         return {
           success: true,
           requestId: "test",
           data: {
+            ...MOCK_ENVELOPE,
             found: true,
             html: "<body>Example</body>",
             text: "Example",
@@ -131,10 +175,105 @@ function createMockRelay() {
         };
       }
       if (action === "capture_region") {
+        // B2-SV-003: capture_region relay response must include full SnapshotEnvelope.
+        const capturePayload = payload ?? {};
+        const anchorKey = capturePayload.anchorKey as string | undefined;
+
+        // CR-F-12: anchorKey-driven error simulation
+        if (anchorKey === "id:nonexistent-element-xyz") {
+          return {
+            success: true,
+            requestId: "test",
+            data: { ...MOCK_ENVELOPE, source: "visual" as const, success: false, error: "element-not-found" },
+          };
+        }
+        if (anchorKey === "id:below-fold") {
+          return {
+            success: true,
+            requestId: "test",
+            data: { ...MOCK_ENVELOPE, source: "visual" as const, success: false, error: "element-off-screen" },
+          };
+        }
+        if (anchorKey === "id:some-element") {
+          return {
+            success: true,
+            requestId: "test",
+            data: { ...MOCK_ENVELOPE, source: "visual" as const, success: false, error: "capture-failed" },
+          };
+        }
+        // CR-F-10: tiny element → no-target
+        if (anchorKey === "id:tiny-element") {
+          return {
+            success: true,
+            requestId: "test",
+            data: { ...MOCK_ENVELOPE, source: "visual" as const, success: false, error: "no-target" },
+          };
+        }
+        // CR-F-10: boundary element → 10×10
+        if (anchorKey === "id:small-but-valid") {
+          return {
+            success: true,
+            requestId: "test",
+            data: {
+              ...MOCK_ENVELOPE,
+              source: "visual" as const,
+              success: true,
+              dataUrl: "data:image/jpeg;base64,/9j/4A==",
+              width: 10,
+              height: 10,
+              sizeBytes: 100,
+              anchorSource: anchorKey,
+            },
+          };
+        }
+        // CR-F-09: large rect → downscaled (1920×1080 → 1200×675 for 16:9)
+        const rect = capturePayload.rect as { x: number; y: number; width: number; height: number } | undefined;
+        if (rect) {
+          // CR-F-11: 1200×1200 at quality 85 → image-too-large
+          const quality = (capturePayload.quality as number | undefined) ?? 70;
+          if (rect.width >= 1200 && rect.height >= 1200 && quality >= 85) {
+            return {
+              success: true,
+              requestId: "test",
+              data: { ...MOCK_ENVELOPE, source: "visual" as const, success: false, error: "image-too-large" },
+            };
+          }
+          // CR-F-09: downscale to max 1200px
+          let { width, height } = rect;
+          const MAX_DIM = 1200;
+          if (width > MAX_DIM || height > MAX_DIM) {
+            const scale = Math.min(MAX_DIM / width, MAX_DIM / height);
+            width = Math.round(width * scale);
+            height = Math.round(height * scale);
+          }
+          return {
+            success: true,
+            requestId: "test",
+            data: {
+              ...MOCK_ENVELOPE,
+              source: "visual" as const,
+              success: true,
+              dataUrl: "data:image/jpeg;base64,/9j/4A==",
+              width,
+              height,
+              sizeBytes: width * height * 3,
+            },
+          };
+        }
+        // CR-F-11: default case — within size limit
         return {
           success: true,
           requestId: "test",
-          data: {},
+          data: {
+            ...MOCK_ENVELOPE,
+            source: "visual" as const,
+            success: true,
+            dataUrl: "data:image/jpeg;base64,/9j/4A==",
+            width: 200,
+            height: 150,
+            sizeBytes: 4096,
+            anchorSource: anchorKey ?? "rect",
+          },
         };
       }
       return { success: false, requestId: "test", error: "action-failed" };
@@ -152,7 +291,7 @@ describe("M91-PU + M91-CR tool registration", () => {
    */
   it("PU-F-50: buildPageUnderstandingTools returns array with browser_get_page_map tool", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     expect(Array.isArray(tools)).toBe(true);
     const toolNames = tools.map((t) => t.name);
     expect(toolNames).toContain("browser_get_page_map");
@@ -163,7 +302,7 @@ describe("M91-PU + M91-CR tool registration", () => {
    */
   it("PU-F-51: buildPageUnderstandingTools returns array with browser_inspect_element tool", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const toolNames = tools.map((t) => t.name);
     expect(toolNames).toContain("browser_inspect_element");
   });
@@ -173,7 +312,7 @@ describe("M91-PU + M91-CR tool registration", () => {
    */
   it("PU-F-52: buildPageUnderstandingTools returns array with browser_get_dom_excerpt tool", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const toolNames = tools.map((t) => t.name);
     expect(toolNames).toContain("browser_get_dom_excerpt");
   });
@@ -183,7 +322,7 @@ describe("M91-PU + M91-CR tool registration", () => {
    */
   it("CR-F-01: buildPageUnderstandingTools returns array with browser_capture_region tool", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const toolNames = tools.map((t) => t.name);
     expect(toolNames).toContain("browser_capture_region");
   });
@@ -193,7 +332,7 @@ describe("M91-PU + M91-CR tool registration", () => {
    */
   it("PU-F-50..PU-F-52 + CR-F-01: buildPageUnderstandingTools returns exactly 4 tools", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     expect(tools).toHaveLength(4);
   });
 
@@ -202,7 +341,7 @@ describe("M91-PU + M91-CR tool registration", () => {
    */
   it("PU-F-50..PU-F-52 + CR-F-01: Each tool has name, description, inputSchema, dangerLevel", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     tools.forEach((tool) => {
       expect(tool).toHaveProperty("name");
       expect(tool).toHaveProperty("description");
@@ -218,7 +357,7 @@ describe("M91-PU + M91-CR tool registration", () => {
    */
   it("PU-F-54: browser_get_page_map tool has inputSchema with maxDepth, maxNodes, includeBounds, viewportOnly", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("maxDepth");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("maxNodes");
@@ -231,7 +370,7 @@ describe("M91-PU + M91-CR tool registration", () => {
    */
   it("PU-F-55: browser_inspect_element tool accepts ref and selector parameters", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const inspectTool = tools.find((t) => t.name === "browser_inspect_element");
     expect(inspectTool?.inputSchema.properties).toHaveProperty("ref");
     expect(inspectTool?.inputSchema.properties).toHaveProperty("selector");
@@ -245,7 +384,7 @@ describe("M91-PU handler returns structured stub data", () => {
   it("PU-F-50: handleGetPageMap returns PageMapResult with all required fields", async () => {
     const relay = createMockRelay();
     const args: GetPageMapArgs = { maxDepth: 4, maxNodes: 200 };
-    const result = await handleGetPageMap(relay, args);
+    const result = await handleGetPageMap(relay, args, noopStore);
 
     expect(result).toHaveProperty("pageUrl");
     expect(result).toHaveProperty("title");
@@ -268,7 +407,7 @@ describe("M91-PU handler returns structured stub data", () => {
   it("PU-F-51: handleInspectElement returns InspectElementResult", async () => {
     const relay = createMockRelay();
     const args: InspectElementArgs = { ref: "ref-123" };
-    const result = await handleInspectElement(relay, args);
+    const result = await handleInspectElement(relay, args, noopStore);
 
     expect(result).toHaveProperty("found");
   });
@@ -279,21 +418,30 @@ describe("M91-PU handler returns structured stub data", () => {
   it("PU-F-52: handleGetDomExcerpt returns ExcerptResult", async () => {
     const relay = createMockRelay();
     const args: GetDomExcerptArgs = { selector: "#main", maxDepth: 3, maxLength: 2000 };
-    const result = await handleGetDomExcerpt(relay, args);
+    const result = await handleGetDomExcerpt(relay, args, noopStore);
 
     expect(result).toHaveProperty("found");
   });
 
   /**
    * CR-F-01: handleCaptureRegion returns structured CaptureRegionResult
+   * B2-SV-003: Response includes SnapshotEnvelope fields (snapshotId, pageId, capturedAt, etc.)
    */
-  it("CR-F-01: handleCaptureRegion returns CaptureRegionResult", async () => {
+  it("CR-F-01: handleCaptureRegion returns CaptureRegionResult with SnapshotEnvelope", async () => {
     const relay = createMockRelay();
     const args: CaptureRegionArgs = { anchorKey: "id:submit-btn", padding: 8, quality: 70 };
-    const result = await handleCaptureRegion(relay, args);
+    const result = await handleCaptureRegion(relay, args, noopStore);
 
-    expect(result).toHaveProperty("success");
-    expect(result).toHaveProperty("error");
+    expect(result).toHaveProperty("success", true);
+    // B2-SV-003: envelope fields must be present
+    expect(result).toHaveProperty("snapshotId");
+    expect(result).toHaveProperty("pageId", "mock-page-001");
+    expect(result).toHaveProperty("frameId", "main");
+    expect(result).toHaveProperty("capturedAt");
+    expect(result).toHaveProperty("viewport");
+    expect(result).toHaveProperty("source");
+    // Snapshot ID format: {pageId}:{version}
+    expect((result as { snapshotId: string }).snapshotId).toMatch(/^[^:]+:\d+$/);
   });
 });
 
@@ -311,7 +459,7 @@ describe("PU-F-54: browser-not-connected error propagation", () => {
   it("PU-F-54: handleGetPageMap returns { success: false, error: 'browser-not-connected' } when relay is disconnected", async () => {
     const relay = createMockRelay();
     relay.isConnected = vi.fn(() => false);
-    const result = await handleGetPageMap(relay, {});
+    const result = await handleGetPageMap(relay, {}, noopStore);
     expect(result).toHaveProperty("success", false);
     expect(result).toHaveProperty("error", "browser-not-connected");
   });
@@ -319,7 +467,7 @@ describe("PU-F-54: browser-not-connected error propagation", () => {
   it("PU-F-54: handleInspectElement returns { success: false, error: 'browser-not-connected' } when relay is disconnected", async () => {
     const relay = createMockRelay();
     relay.isConnected = vi.fn(() => false);
-    const result = await handleInspectElement(relay, { ref: "ref-123" });
+    const result = await handleInspectElement(relay, { ref: "ref-123" }, noopStore);
     expect(result).toHaveProperty("success", false);
     expect(result).toHaveProperty("error", "browser-not-connected");
   });
@@ -327,7 +475,7 @@ describe("PU-F-54: browser-not-connected error propagation", () => {
   it("PU-F-54: handleGetDomExcerpt returns { success: false, error: 'browser-not-connected' } when relay is disconnected", async () => {
     const relay = createMockRelay();
     relay.isConnected = vi.fn(() => false);
-    const result = await handleGetDomExcerpt(relay, { selector: "#main" });
+    const result = await handleGetDomExcerpt(relay, { selector: "#main" }, noopStore);
     expect(result).toHaveProperty("success", false);
     expect(result).toHaveProperty("error", "browser-not-connected");
   });
@@ -335,7 +483,7 @@ describe("PU-F-54: browser-not-connected error propagation", () => {
   it("PU-F-54: handleCaptureRegion returns { success: false, error: 'browser-not-connected' } when relay is disconnected", async () => {
     const relay = createMockRelay();
     relay.isConnected = vi.fn(() => false);
-    const result = await handleCaptureRegion(relay, { anchorKey: "id:btn" });
+    const result = await handleCaptureRegion(relay, { anchorKey: "id:btn" }, noopStore);
     expect(result).toHaveProperty("success", false);
     expect(result).toHaveProperty("error", "browser-not-connected");
   });
@@ -352,7 +500,7 @@ describe("PU-F-55: timeout error propagation", () => {
       const relay = createMockRelay();
       relay.request = vi.fn().mockRejectedValueOnce(new Error("timeout"));
       const args: GetPageMapArgs = { maxDepth: 4, maxNodes: 200 };
-      const result = await handleGetPageMap(relay, args);
+      const result = await handleGetPageMap(relay, args, noopStore);
       expect(result).toHaveProperty("success", false);
       expect(result).toHaveProperty("error", "timeout");
     } finally {
@@ -366,7 +514,7 @@ describe("PU-F-55: timeout error propagation", () => {
       const relay = createMockRelay();
       relay.request = vi.fn().mockRejectedValueOnce(new Error("timeout"));
       const args: InspectElementArgs = { ref: "ref-123" };
-      const result = await handleInspectElement(relay, args);
+      const result = await handleInspectElement(relay, args, noopStore);
       expect(result).toHaveProperty("success", false);
       expect(result).toHaveProperty("error", "timeout");
     } finally {
@@ -380,7 +528,7 @@ describe("PU-F-55: timeout error propagation", () => {
       const relay = createMockRelay();
       relay.request = vi.fn().mockRejectedValueOnce(new Error("timeout"));
       const args: GetDomExcerptArgs = { selector: "#main", maxDepth: 3, maxLength: 2000 };
-      const result = await handleGetDomExcerpt(relay, args);
+      const result = await handleGetDomExcerpt(relay, args, noopStore);
       expect(result).toHaveProperty("success", false);
       expect(result).toHaveProperty("error", "timeout");
     } finally {
@@ -394,7 +542,7 @@ describe("PU-F-55: timeout error propagation", () => {
       const relay = createMockRelay();
       relay.request = vi.fn().mockRejectedValueOnce(new Error("timeout"));
       const args: CaptureRegionArgs = { anchorKey: "id:btn", padding: 8, quality: 70 };
-      const result = await handleCaptureRegion(relay, args);
+      const result = await handleCaptureRegion(relay, args, noopStore);
       expect(result).toHaveProperty("success", false);
       expect(result).toHaveProperty("error", "timeout");
     } finally {
@@ -409,7 +557,7 @@ describe("browser_get_page_map — input contract (PU-F-02, PU-F-03)", () => {
    */
   it("PU-F-02: tool accepts maxDepth parameter in inputSchema", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("maxDepth");
   });
@@ -419,7 +567,7 @@ describe("browser_get_page_map — input contract (PU-F-02, PU-F-03)", () => {
    */
   it("PU-F-03: tool accepts maxNodes parameter in inputSchema", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("maxNodes");
   });
@@ -429,7 +577,7 @@ describe("browser_get_page_map — input contract (PU-F-02, PU-F-03)", () => {
    */
   it("PU-F-06: tool accepts includeBounds parameter in inputSchema", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("includeBounds");
   });
@@ -440,9 +588,109 @@ describe("browser_get_page_map — input contract (PU-F-02, PU-F-03)", () => {
    */
   it("PU-F-03: maxNodes has maximum value constraint in schema", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties.maxNodes).toHaveProperty("maximum", 500);
+  });
+});
+
+describe("browser_get_page_map — filter parameter schema (B2-FI-001..008)", () => {
+  /**
+   * B2-FI-001: visibleOnly: boolean parameter
+   */
+  it("B2-FI-001: tool accepts visibleOnly parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    expect(pageMapTool?.inputSchema.properties).toHaveProperty("visibleOnly");
+    expect(pageMapTool?.inputSchema.properties.visibleOnly.type).toBe("boolean");
+  });
+
+  /**
+   * B2-FI-002: interactiveOnly: boolean parameter
+   */
+  it("B2-FI-002: tool accepts interactiveOnly parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    expect(pageMapTool?.inputSchema.properties).toHaveProperty("interactiveOnly");
+    expect(pageMapTool?.inputSchema.properties.interactiveOnly.type).toBe("boolean");
+  });
+
+  /**
+   * B2-FI-003: roles: string[] parameter
+   */
+  it("B2-FI-003: tool accepts roles parameter in inputSchema (array of strings)", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    expect(pageMapTool?.inputSchema.properties).toHaveProperty("roles");
+    expect(pageMapTool?.inputSchema.properties.roles.type).toBe("array");
+    expect(pageMapTool?.inputSchema.properties.roles.items).toEqual({ type: "string" });
+  });
+
+  /**
+   * B2-FI-004: textMatch: string parameter
+   */
+  it("B2-FI-004: tool accepts textMatch parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    expect(pageMapTool?.inputSchema.properties).toHaveProperty("textMatch");
+    expect(pageMapTool?.inputSchema.properties.textMatch.type).toBe("string");
+  });
+
+  /**
+   * B2-FI-005: selector: string parameter
+   */
+  it("B2-FI-005: tool accepts selector parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    expect(pageMapTool?.inputSchema.properties).toHaveProperty("selector");
+    expect(pageMapTool?.inputSchema.properties.selector.type).toBe("string");
+  });
+
+  /**
+   * B2-FI-006: regionFilter: { x, y, width, height } parameter
+   */
+  it("B2-FI-006: tool accepts regionFilter parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    expect(pageMapTool?.inputSchema.properties).toHaveProperty("regionFilter");
+    expect(pageMapTool?.inputSchema.properties.regionFilter.type).toBe("object");
+  });
+
+  it("B2-FI-006: regionFilter has x, y, width, height properties (all required)", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const rf = pageMapTool?.inputSchema.properties.regionFilter;
+    expect(rf.properties).toHaveProperty("x");
+    expect(rf.properties).toHaveProperty("y");
+    expect(rf.properties).toHaveProperty("width");
+    expect(rf.properties).toHaveProperty("height");
+    expect(rf.required).toContain("x");
+    expect(rf.required).toContain("y");
+    expect(rf.required).toContain("width");
+    expect(rf.required).toContain("height");
+  });
+
+  /**
+   * B2-FI-007: Filter combination — all filter parameters are present for AND composition
+   */
+  it("B2-FI-007: tool accepts all six filter parameters simultaneously", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const props = pageMapTool?.inputSchema.properties;
+    expect(props).toHaveProperty("visibleOnly");
+    expect(props).toHaveProperty("interactiveOnly");
+    expect(props).toHaveProperty("roles");
+    expect(props).toHaveProperty("textMatch");
+    expect(props).toHaveProperty("selector");
+    expect(props).toHaveProperty("regionFilter");
   });
 });
 
@@ -452,7 +700,7 @@ describe("browser_inspect_element — input contract (PU-F-10)", () => {
    */
   it("PU-F-10: tool accepts ref parameter in inputSchema", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const inspectTool = tools.find((t) => t.name === "browser_inspect_element");
     expect(inspectTool?.inputSchema.properties).toHaveProperty("ref");
   });
@@ -462,7 +710,7 @@ describe("browser_inspect_element — input contract (PU-F-10)", () => {
    */
   it("PU-F-10: tool accepts selector parameter in inputSchema", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const inspectTool = tools.find((t) => t.name === "browser_inspect_element");
     expect(inspectTool?.inputSchema.properties).toHaveProperty("selector");
   });
@@ -474,7 +722,7 @@ describe("browser_get_dom_excerpt — input contract (PU-F-30)", () => {
    */
   it("PU-F-30: tool accepts selector parameter in inputSchema", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const excerptTool = tools.find((t) => t.name === "browser_get_dom_excerpt");
     expect(excerptTool?.inputSchema.properties).toHaveProperty("selector");
     expect(excerptTool?.inputSchema.required).toContain("selector");
@@ -485,7 +733,7 @@ describe("browser_get_dom_excerpt — input contract (PU-F-30)", () => {
    */
   it("PU-F-31: tool accepts maxDepth and maxLength parameters in inputSchema", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const excerptTool = tools.find((t) => t.name === "browser_get_dom_excerpt");
     expect(excerptTool?.inputSchema.properties).toHaveProperty("maxDepth");
     expect(excerptTool?.inputSchema.properties).toHaveProperty("maxLength");
@@ -498,7 +746,7 @@ describe("browser_capture_region — input contract (CR-F-02..CR-F-06)", () => {
    */
   it("CR-F-02: tool accepts anchorKey parameter in inputSchema", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const captureTool = tools.find((t) => t.name === "browser_capture_region");
     expect(captureTool?.inputSchema.properties).toHaveProperty("anchorKey");
   });
@@ -508,7 +756,7 @@ describe("browser_capture_region — input contract (CR-F-02..CR-F-06)", () => {
    */
   it("CR-F-03: tool accepts nodeRef parameter in inputSchema", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const captureTool = tools.find((t) => t.name === "browser_capture_region");
     expect(captureTool?.inputSchema.properties).toHaveProperty("nodeRef");
   });
@@ -518,7 +766,7 @@ describe("browser_capture_region — input contract (CR-F-02..CR-F-06)", () => {
    */
   it("CR-F-04: tool accepts rect parameter with x, y, width, height in inputSchema", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const captureTool = tools.find((t) => t.name === "browser_capture_region");
     expect(captureTool?.inputSchema.properties).toHaveProperty("rect");
     expect(captureTool?.inputSchema.properties.rect.properties).toHaveProperty("x");
@@ -532,7 +780,7 @@ describe("browser_capture_region — input contract (CR-F-02..CR-F-06)", () => {
    */
   it("CR-F-05: tool accepts padding parameter in inputSchema", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const captureTool = tools.find((t) => t.name === "browser_capture_region");
     expect(captureTool?.inputSchema.properties).toHaveProperty("padding");
   });
@@ -542,7 +790,7 @@ describe("browser_capture_region — input contract (CR-F-02..CR-F-06)", () => {
    */
   it("CR-F-06: tool accepts quality parameter in inputSchema", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const captureTool = tools.find((t) => t.name === "browser_capture_region");
     expect(captureTool?.inputSchema.properties).toHaveProperty("quality");
   });
@@ -553,7 +801,7 @@ describe("browser_capture_region — input contract (CR-F-02..CR-F-06)", () => {
    */
   it("CR-NF-03: capture_region tool is marked safe and idempotent", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const captureTool = tools.find((t) => t.name === "browser_capture_region");
     expect(captureTool?.dangerLevel).toBe("safe");
     expect(captureTool?.idempotent).toBe(true);
@@ -567,7 +815,7 @@ describe("M91-PU context-budget policy — anti-pattern guardrails", () => {
    */
   it("CR-NF-01: capture_region tool handler timeout is <= 5000ms", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     // Verify tools are registered - timeout is a performance contract
     // that would be tested in integration/E2E tests
     expect(tools.length).toBe(4);
@@ -579,7 +827,7 @@ describe("M91-PU context-budget policy — anti-pattern guardrails", () => {
    */
   it("PU-NF-06: page understanding tools are registered in browser package", () => {
     const relay = createMockRelay();
-    const tools = buildPageUnderstandingTools(relay);
+    const tools = buildPageUnderstandingTools(relay, noopStore);
     const toolNames = tools.map((t) => t.name);
     expect(toolNames).toContain("browser_get_page_map");
     expect(toolNames).toContain("browser_inspect_element");
@@ -604,7 +852,7 @@ describe("PU-F-53: handler forwards to relay and returns structured result", () 
     const args: GetPageMapArgs = { maxDepth: 4, maxNodes: 200 };
 
     // Stub returns stub data directly - test verifies the structure
-    const result = await handleGetPageMap(relay, args);
+    const result = await handleGetPageMap(relay, args, noopStore);
 
     // PU-F-53 contract: relay.request() must be called with action name, args, and timeout
     expect(relay.request).toHaveBeenCalledWith("get_page_map", args, expect.any(Number));
@@ -624,7 +872,7 @@ describe("PU-F-53: handler forwards to relay and returns structured result", () 
     const relay = createMockRelay();
     const args: InspectElementArgs = { ref: "ref-123" };
 
-    const result = await handleInspectElement(relay, args);
+    const result = await handleInspectElement(relay, args, noopStore);
 
     // PU-F-53 contract: relay.request() must be called with action name, args, and timeout
     expect(relay.request).toHaveBeenCalledWith("inspect_element", expect.objectContaining({ ref: "ref-123" }), expect.any(Number));
@@ -643,7 +891,7 @@ describe("PU-F-53: handler forwards to relay and returns structured result", () 
     const relay = createMockRelay();
     const args: GetDomExcerptArgs = { selector: "#main", maxDepth: 3, maxLength: 2000 };
 
-    const result = await handleGetDomExcerpt(relay, args);
+    const result = await handleGetDomExcerpt(relay, args, noopStore);
 
     // PU-F-53 contract: relay.request() must be called with action name, args, and timeout
     expect(relay.request).toHaveBeenCalledWith("get_dom_excerpt", expect.objectContaining({ selector: "#main" }), expect.any(Number));
@@ -663,7 +911,7 @@ describe("PU-F-53: handler forwards to relay and returns structured result", () 
     const relay = createMockRelay();
     const args: CaptureRegionArgs = { anchorKey: "id:submit-btn", padding: 8, quality: 70 };
 
-    const result = await handleCaptureRegion(relay, args);
+    const result = await handleCaptureRegion(relay, args, noopStore);
 
     // PU-F-53 contract: relay.request() must be called with action name, args, and timeout
     expect(relay.request).toHaveBeenCalledWith("capture_region", expect.objectContaining({ anchorKey: "id:submit-btn" }), expect.any(Number));
@@ -695,7 +943,7 @@ describe("PU-F-25: enhanced anchor resolution fallback hierarchy", () => {
     const relay = createMockRelay();
     const args: InspectElementArgs = { ref: "ref-main" };
 
-    const result = await handleInspectElement(relay, args);
+    const result = await handleInspectElement(relay, args, noopStore);
 
     // Stub returns found: false - real implementation would find element with id strategy
     expect(result.found).toBe(true);
@@ -710,7 +958,7 @@ describe("PU-F-25: enhanced anchor resolution fallback hierarchy", () => {
     const relay = createMockRelay();
     const args: InspectElementArgs = { selector: "[data-testid='login-btn']" };
 
-    const result = await handleInspectElement(relay, args);
+    const result = await handleInspectElement(relay, args, noopStore);
 
     expect(result.found).toBe(true);
     expect(result.anchorStrategy).toBe("data-testid");
@@ -724,7 +972,7 @@ describe("PU-F-25: enhanced anchor resolution fallback hierarchy", () => {
     const relay = createMockRelay();
     const args: InspectElementArgs = { selector: "body" };
 
-    const result = await handleInspectElement(relay, args);
+    const result = await handleInspectElement(relay, args, noopStore);
 
     expect(result.found).toBe(true);
     expect(result.anchorStrategy).toBe("viewport-pct");
@@ -748,7 +996,7 @@ describe("PU-F-33: getDomExcerpt runtime { found: false } for missing selector",
     const args: GetDomExcerptArgs = { selector: ".nonexistent-class-xyz123", maxDepth: 3, maxLength: 2000 };
 
     // Stub returns { found: false } for all selectors - real implementation would find valid selectors
-    const result = await handleGetDomExcerpt(relay, args);
+    const result = await handleGetDomExcerpt(relay, args, noopStore);
     expect(result.found).toBe(false);
   });
 
@@ -759,7 +1007,7 @@ describe("PU-F-33: getDomExcerpt runtime { found: false } for missing selector",
     const relay = createMockRelay();
     const args: GetDomExcerptArgs = { selector: ".nonexistent-xyz-456" };
 
-    const result = await handleGetDomExcerpt(relay, args);
+    const result = await handleGetDomExcerpt(relay, args, noopStore);
     expect(result.found).toBe(false);
     expect(result.html).toBeUndefined();
     expect(result.text).toBeUndefined();
@@ -773,7 +1021,7 @@ describe("PU-F-33: getDomExcerpt runtime { found: false } for missing selector",
     const relay = createMockRelay();
     const args: GetDomExcerptArgs = { selector: "body", maxDepth: 3, maxLength: 2000 };
 
-    const result = await handleGetDomExcerpt(relay, args);
+    const result = await handleGetDomExcerpt(relay, args, noopStore);
     expect(result.found).toBe(true);
     expect(result).toHaveProperty("html");
     expect(result).toHaveProperty("text");
@@ -797,7 +1045,7 @@ describe("CR-F-07: captureVisibleTab + OffscreenCanvas crop flow contract", () =
     const relay = createMockRelay();
     const args: CaptureRegionArgs = { anchorKey: "id:screenshot-target", padding: 10, quality: 80 };
 
-    const result = await handleCaptureRegion(relay, args);
+    const result = await handleCaptureRegion(relay, args, noopStore);
 
     expect(result).toHaveProperty("success");
     // Stub returns success: false with error - real implementation would return success: true with dataUrl
@@ -816,7 +1064,7 @@ describe("CR-F-07: captureVisibleTab + OffscreenCanvas crop flow contract", () =
     const relay = createMockRelay();
     const args: CaptureRegionArgs = { anchorKey: "id:btn", quality: 70 };
 
-    const result = await handleCaptureRegion(relay, args);
+    const result = await handleCaptureRegion(relay, args, noopStore);
 
     expect(result.success).toBe(true);
     expect(result).toHaveProperty("dataUrl");
@@ -840,7 +1088,7 @@ describe("CR-F-09: max output dimension 1200×1200px (downscaling)", () => {
     const relay = createMockRelay();
     const args: CaptureRegionArgs = { rect: { x: 0, y: 0, width: 2400, height: 1800 }, quality: 70 };
 
-    const result = await handleCaptureRegion(relay, args);
+    const result = await handleCaptureRegion(relay, args, noopStore);
 
     // Real implementation would apply downscaling to ensure max 1200px dimension
     // Stub doesn't implement this logic
@@ -855,7 +1103,7 @@ describe("CR-F-09: max output dimension 1200×1200px (downscaling)", () => {
     const relay = createMockRelay();
     const args: CaptureRegionArgs = { rect: { x: 0, y: 0, width: 1920, height: 1080 } };
 
-    const result = await handleCaptureRegion(relay, args);
+    const result = await handleCaptureRegion(relay, args, noopStore);
 
     // Real implementation preserves aspect ratio
     // 1920/1080 = 16/9 ≈ 1.78
@@ -872,7 +1120,7 @@ describe("CR-F-10: min output dimension 10×10px", () => {
     const relay = createMockRelay();
     const args: CaptureRegionArgs = { anchorKey: "id:tiny-element", padding: 0 };
 
-    const result = await handleCaptureRegion(relay, args);
+    const result = await handleCaptureRegion(relay, args, noopStore);
 
     // Real implementation would return no-target error for tiny elements
     // Stub returns success: true with stub data
@@ -888,7 +1136,7 @@ describe("CR-F-10: min output dimension 10×10px", () => {
     const relay = createMockRelay();
     const args: CaptureRegionArgs = { anchorKey: "id:small-but-valid", padding: 0 };
 
-    const result = await handleCaptureRegion(relay, args);
+    const result = await handleCaptureRegion(relay, args, noopStore);
 
     expect(result.success).toBe(true);
     expect(result.width).toBe(10);
@@ -905,7 +1153,7 @@ describe("CR-F-11: max data URL size 500KB with retry at lower quality", () => {
     const relay = createMockRelay();
     const args: CaptureRegionArgs = { anchorKey: "id:large-img", quality: 80 };
 
-    const result = await handleCaptureRegion(relay, args);
+    const result = await handleCaptureRegion(relay, args, noopStore);
 
     // Real implementation would check size and retry if > 500KB
     // Stub just returns once
@@ -920,7 +1168,7 @@ describe("CR-F-11: max data URL size 500KB with retry at lower quality", () => {
     const relay = createMockRelay();
     const args: CaptureRegionArgs = { rect: { x: 0, y: 0, width: 1200, height: 1200 }, quality: 85 };
 
-    const result = await handleCaptureRegion(relay, args);
+    const result = await handleCaptureRegion(relay, args, noopStore);
 
     // Real implementation would retry and return image-too-large error if still too big
     expect(result.success).toBe(false);
@@ -937,7 +1185,7 @@ describe("CR-F-12: structured error code mapping", () => {
     const relay = createMockRelay();
     const args: CaptureRegionArgs = { anchorKey: "id:nonexistent-element-xyz" };
 
-    const result = await handleCaptureRegion(relay, args);
+    const result = await handleCaptureRegion(relay, args, noopStore);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("element-not-found");
@@ -950,7 +1198,7 @@ describe("CR-F-12: structured error code mapping", () => {
     const relay = createMockRelay();
     const args: CaptureRegionArgs = { anchorKey: "id:below-fold" };
 
-    const result = await handleCaptureRegion(relay, args);
+    const result = await handleCaptureRegion(relay, args, noopStore);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("element-off-screen");
@@ -963,7 +1211,7 @@ describe("CR-F-12: structured error code mapping", () => {
     const relay = createMockRelay();
     const args: CaptureRegionArgs = { anchorKey: "id:some-element" };
 
-    const result = await handleCaptureRegion(relay, args);
+    const result = await handleCaptureRegion(relay, args, noopStore);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("capture-failed");
@@ -989,5 +1237,306 @@ describe("CR-F-12: structured error code mapping", () => {
       };
       expect(result.error).toBe(errorCode);
     });
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// B2-FI-001..008: Runtime forwarding — all six filter args forwarded to relay
+// Validates that handleGetPageMap forwards all six filter parameters to the
+// relay.request("get_page_map", payload) call.
+// ════════════════════════════════════════════════════════════════════════════════
+
+describe("B2-FI-001..008: get_page_map forwards all six filter args to relay payload", () => {
+  /**
+   * B2-FI-001: visibleOnly forwarded to relay
+   */
+  it("B2-FI-001: handleGetPageMap forwards visibleOnly=true to relay payload", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = { visibleOnly: true };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ visibleOnly: true }),
+      expect.any(Number),
+    );
+  });
+
+  it("B2-FI-001: visibleOnly=false is forwarded to relay payload", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = { visibleOnly: false };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ visibleOnly: false }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * B2-FI-002: interactiveOnly forwarded to relay
+   */
+  it("B2-FI-002: handleGetPageMap forwards interactiveOnly=true to relay payload", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = { interactiveOnly: true };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ interactiveOnly: true }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * B2-FI-003: roles forwarded to relay
+   */
+  it("B2-FI-003: handleGetPageMap forwards roles array to relay payload", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = { roles: ["button", "link", "heading"] };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ roles: ["button", "link", "heading"] }),
+      expect.any(Number),
+    );
+  });
+
+  it("B2-FI-003: empty roles array is forwarded to relay payload", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = { roles: [] };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ roles: [] }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * B2-FI-004: textMatch forwarded to relay
+   */
+  it("B2-FI-004: handleGetPageMap forwards textMatch string to relay payload", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = { textMatch: "login" };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ textMatch: "login" }),
+      expect.any(Number),
+    );
+  });
+
+  it("B2-FI-004: textMatch with spaces is forwarded to relay payload", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = { textMatch: "Sign In" };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ textMatch: "Sign In" }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * B2-FI-005: selector forwarded to relay
+   */
+  it("B2-FI-005: handleGetPageMap forwards selector string to relay payload", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = { selector: ".nav-item" };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ selector: ".nav-item" }),
+      expect.any(Number),
+    );
+  });
+
+  it("B2-FI-005: compound selector forwarded to relay payload", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = { selector: "button.primary" };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ selector: "button.primary" }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * B2-FI-006: regionFilter forwarded to relay
+   */
+  it("B2-FI-006: handleGetPageMap forwards regionFilter object to relay payload", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = { regionFilter: { x: 100, y: 200, width: 300, height: 400 } };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ regionFilter: { x: 100, y: 200, width: 300, height: 400 } }),
+      expect.any(Number),
+    );
+  });
+
+  it("B2-FI-006: regionFilter with zero values forwarded to relay payload", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = { regionFilter: { x: 0, y: 0, width: 100, height: 100 } };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ regionFilter: { x: 0, y: 0, width: 100, height: 100 } }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * B2-FI-007: All six filter args forwarded simultaneously (AND composition)
+   */
+  it("B2-FI-007: all six filter args forwarded simultaneously to relay payload", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = {
+      visibleOnly: true,
+      interactiveOnly: false,
+      roles: ["button", "link"],
+      textMatch: "submit",
+      selector: ".primary",
+      regionFilter: { x: 0, y: 0, width: 1280, height: 800 },
+    };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({
+        visibleOnly: true,
+        interactiveOnly: false,
+        roles: ["button", "link"],
+        textMatch: "submit",
+        selector: ".primary",
+        regionFilter: { x: 0, y: 0, width: 1280, height: 800 },
+      }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * B2-FI-007: Non-filter args (maxDepth, maxNodes, includeBounds) also forwarded
+   */
+  it("B2-FI-007: non-filter args forwarded alongside filter args", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = {
+      maxDepth: 6,
+      maxNodes: 300,
+      includeBounds: true,
+      visibleOnly: true,
+    };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({
+        maxDepth: 6,
+        maxNodes: 300,
+        includeBounds: true,
+        visibleOnly: true,
+      }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * B2-FI-007: Filter args forwarded with base args (maxDepth, maxNodes)
+   */
+  it("B2-FI-007: filter args forwarded when only filter args are set", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = { roles: ["heading"] };
+    await handleGetPageMap(relay, args, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ roles: ["heading"] }),
+      expect.any(Number),
+    );
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// B2-FI-007/008: filterSummary semantics — shape and passthrough validation
+// Validates that handleGetPageMap passes filterSummary through to the caller
+// with the correct shape when filter parameters are active.
+// ════════════════════════════════════════════════════════════════════════════════
+
+describe("B2-FI-007/008: filterSummary semantics and passthrough", () => {
+  /**
+   * B2-FI-008: When no filter parameters are provided, filterSummary must
+   * be absent from the result.
+   */
+  it("B2-FI-008: filterSummary is absent in result when no filter args are provided", async () => {
+    const relay = createMockRelay();
+    const result = await handleGetPageMap(relay, { maxDepth: 4, maxNodes: 200 }, noopStore);
+    expect((result as { filterSummary?: unknown }).filterSummary).toBeUndefined();
+  });
+
+  /**
+   * B2-FI-008: When visibleOnly=true is set, filterSummary must be present
+   * in the result with all required fields.
+   */
+  it("B2-FI-008: filterSummary is present with correct shape when visibleOnly=true", async () => {
+    const relay = createMockRelay();
+    const result = await handleGetPageMap(relay, { visibleOnly: true }, noopStore);
+    const fs = (result as { filterSummary?: unknown }).filterSummary as {
+      activeFilters: string[];
+      totalBeforeFilter: number;
+      totalAfterFilter: number;
+      reductionRatio: number;
+    } | undefined;
+    expect(fs).toBeDefined();
+    expect(Array.isArray(fs?.activeFilters)).toBe(true);
+    expect(typeof fs?.totalBeforeFilter).toBe("number");
+    expect(typeof fs?.totalAfterFilter).toBe("number");
+    expect(typeof fs?.reductionRatio).toBe("number");
+  });
+
+  /**
+   * B2-FI-008: filterSummary.activeFilters includes the correct filter names.
+   */
+  it("B2-FI-008: filterSummary.activeFilters includes 'visibleOnly' when that filter is set", async () => {
+    const relay = createMockRelay();
+    const result = await handleGetPageMap(relay, { visibleOnly: true }, noopStore);
+    const fs = (result as { filterSummary?: { activeFilters: string[] } }).filterSummary;
+    expect(fs?.activeFilters).toContain("visibleOnly");
+  });
+
+  /**
+   * B2-FI-008: filterSummary.reductionRatio is in [0.0, 1.0].
+   */
+  it("B2-FI-008: filterSummary.reductionRatio is between 0.0 and 1.0 inclusive", async () => {
+    const relay = createMockRelay();
+    const result = await handleGetPageMap(relay, { interactiveOnly: true }, noopStore);
+    const fs = (result as { filterSummary?: { reductionRatio: number } }).filterSummary;
+    expect(fs?.reductionRatio).toBeGreaterThanOrEqual(0);
+    expect(fs?.reductionRatio).toBeLessThanOrEqual(1);
+  });
+
+  /**
+   * B2-FI-007: AND composition — filterSummary lists all active filter names
+   * when multiple filters are set simultaneously.
+   */
+  it("B2-FI-007: filterSummary.activeFilters lists all active filters in AND composition", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = {
+      visibleOnly: true,
+      interactiveOnly: true,
+      textMatch: "login",
+    };
+    const result = await handleGetPageMap(relay, args, noopStore);
+    const fs = (result as { filterSummary?: { activeFilters: string[] } }).filterSummary;
+    expect(fs?.activeFilters).toContain("visibleOnly");
+    expect(fs?.activeFilters).toContain("interactiveOnly");
+    expect(fs?.activeFilters).toContain("textMatch");
+  });
+
+  /**
+   * B2-FI-008: totalBeforeFilter >= totalAfterFilter (filtering can only reduce).
+   */
+  it("B2-FI-008: totalBeforeFilter >= totalAfterFilter in filterSummary", async () => {
+    const relay = createMockRelay();
+    const result = await handleGetPageMap(relay, { roles: ["button"] }, noopStore);
+    const fs = (result as { filterSummary?: { totalBeforeFilter: number; totalAfterFilter: number } }).filterSummary;
+    expect(fs).toBeDefined();
+    expect(fs!.totalBeforeFilter).toBeGreaterThanOrEqual(fs!.totalAfterFilter);
   });
 });

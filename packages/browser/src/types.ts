@@ -14,7 +14,72 @@ export type BrowserRelayAction =
   | "get_page_map"
   | "inspect_element"
   | "get_dom_excerpt"
-  | "capture_region";
+  | "capture_region"
+  | "diff_snapshots"
+  | "wait_for"
+  | "get_text_map"
+  | "get_semantic_graph";
+
+// ── Snapshot Envelope (shared contract) ──────────────────────────────────────
+
+/**
+ * Valid source types for a snapshot.
+ * Mirrors `SnapshotSource` in browser-extension/snapshot-versioning.ts.
+ */
+export type SnapshotSource = "dom" | "a11y" | "visual" | "layout" | "network";
+
+/**
+ * Viewport dimensions and scroll position at capture time.
+ */
+export interface Viewport {
+  width: number;
+  height: number;
+  scrollX: number;
+  scrollY: number;
+  devicePixelRatio: number;
+}
+
+/**
+ * B2-SV-003: Canonical metadata envelope included in all data-producing
+ * tool responses. This is the shared contract between the browser-extension
+ * (which mints envelopes) and the browser package (which consumes them).
+ *
+ * All four data-producing tools (get_page_map, inspect_element,
+ * get_dom_excerpt, capture_region) embed these fields in their response.
+ */
+export interface SnapshotEnvelopeFields {
+  /** Stable page identifier. */
+  pageId: string;
+  /** Frame identifier. Top-level frame = "main". */
+  frameId: string;
+  /** Monotonically increasing snapshot version. Format: {pageId}:{version} */
+  snapshotId: string;
+  /** ISO 8601 timestamp when snapshot was captured. */
+  capturedAt: string;
+  /** Viewport state at capture time. */
+  viewport: Viewport;
+  /** Data source type. */
+  source: SnapshotSource;
+}
+
+/**
+ * Runtime type guard for SnapshotEnvelopeFields.
+ * Validates that an unknown value contains all required envelope fields.
+ */
+export function hasSnapshotEnvelope(value: unknown): value is SnapshotEnvelopeFields {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.pageId === "string" &&
+    typeof v.frameId === "string" &&
+    typeof v.snapshotId === "string" &&
+    typeof v.capturedAt === "string" &&
+    typeof v.viewport === "object" && v.viewport !== null &&
+    typeof v.source === "string"
+  );
+}
+
+// ── Relay Request/Response ───────────────────────────────────────────────────
 
 export interface BrowserRelayRequest {
   requestId: string;
@@ -25,8 +90,18 @@ export interface BrowserRelayRequest {
 export interface BrowserRelayResponse {
   requestId: string;
   success: boolean;
+  /**
+   * B2-SV-003: Deprecated at the top level. For data-producing tool responses
+   * (get_page_map, inspect_element, get_dom_excerpt, capture_region), the full
+   * SnapshotEnvelope (pageId, frameId, snapshotId, capturedAt, viewport, source)
+   * is embedded inside `data` by the content script. The relay passes through
+   * this envelope without modification. Top-level `snapshotId` is retained only
+   * for backward compatibility on error responses; callers should prefer
+   * reading the envelope from `data` on success responses.
+   */
+  snapshotId?: string;
   data?: unknown;
-  error?: "browser-not-connected" | "unauthorized" | "timeout" | "action-failed" | "invalid-request";
+  error?: "browser-not-connected" | "unauthorized" | "timeout" | "action-failed" | "invalid-request" | "navigation-interrupted" | "page-closed";
 }
 
 export interface BrowserRelayLike {

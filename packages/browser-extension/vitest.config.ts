@@ -9,7 +9,7 @@ export default defineConfig({
         url: "https://localhost/test-page",
       },
     },
-    setupFiles: ["./tests/setup/chrome-mock.ts", "./tests/setup/dom-setup.ts"],
+    setupFiles: ["../../test-setup.ts", "./tests/setup/chrome-mock.ts", "./tests/setup/dom-setup.ts"],
     include: ["tests/**/*.test.ts"],
     coverage: {
       provider: "v8",

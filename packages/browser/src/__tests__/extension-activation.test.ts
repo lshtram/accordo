@@ -60,6 +60,22 @@ describe("M83-BTOOLS extension activation", () => {
     expect(toolNames).toContain("browser_capture_region");
   });
 
+  it("M101-DIFF-REG: registerTools includes browser_diff_snapshots in allBrowserTools", async () => {
+    const bridge = {
+      registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      publishState: vi.fn(),
+      invokeTool: invokeToolMock,
+    };
+    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+
+    const context = createExtensionContextMock();
+    await activate(context as never);
+
+    const [, tools] = bridge.registerTools.mock.calls[0] as [string, Array<{ name: string }>];
+    const toolNames = tools.map((t) => t.name);
+    expect(toolNames).toContain("browser_diff_snapshots");
+  });
+
   it("PU-REG-02: registerTools disposable is added to context.subscriptions", async () => {
     const disposeFn = vi.fn();
     const bridge = {
