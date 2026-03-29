@@ -5,6 +5,7 @@
  */
 
 import type * as vscode from "vscode";
+import { randomBytes } from "node:crypto";
 import type { SessionState, AudioState, NarrationState } from "../core/fsm/types.js";
 
 /** Callbacks from the webview UI → extension. M50-VP-10 */
@@ -17,13 +18,9 @@ export interface VoicePanelCallbacks {
 
 // ── nonce generator ────────────────────────────────────────────────────────────
 
-function generateNonce(length = 20): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let result = "";
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+/** Bug #17 fix: use crypto.randomBytes for a cryptographically secure nonce. */
+function generateNonce(): string {
+  return randomBytes(16).toString("hex");
 }
 
 // ── HTML template ─────────────────────────────────────────────────────────────

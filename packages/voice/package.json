@@ -188,15 +188,34 @@
           ],
           "description": "Default narration mode"
         },
-        "accordo.voice.llmEndpoint": {
+        "accordo.voice.sttProvider": {
           "type": "string",
-          "default": "",
-          "description": "LLM API endpoint for summary narration mode (e.g. http://localhost:11434/v1)"
+          "default": "faster-whisper-http",
+          "enum": [
+            "faster-whisper-http",
+            "whisper-cpp"
+          ],
+          "markdownEnumDescriptions": [
+            "Use the Docker faster-whisper-server REST API (recommended). Requires the `engram-whisper` container to be running.",
+            "Use a local whisper.cpp CLI binary. Requires the binary to be installed and on PATH."
+          ],
+          "description": "STT backend provider"
         },
-        "accordo.voice.llmModel": {
+        "accordo.voice.fasterWhisperUrl": {
           "type": "string",
-          "default": "",
-          "description": "LLM model name for summary mode (e.g. llama3, gpt-4)"
+          "default": "http://localhost:8280",
+          "description": "Base URL for the faster-whisper-server Docker container (used when sttProvider is faster-whisper-http)"
+        },
+        "accordo.voice.fasterWhisperModel": {
+          "type": "string",
+          "default": "Systran/faster-whisper-small",
+          "enum": [
+            "Systran/faster-whisper-small",
+            "Systran/faster-whisper-large-v3",
+            "deepdml/faster-whisper-large-v3-turbo-ct2",
+            "Systran/faster-distil-whisper-large-v3"
+          ],
+          "description": "Model name to send in transcription requests to faster-whisper-server (used when sttProvider is faster-whisper-http)"
         }
       }
     }
@@ -210,6 +229,6 @@
   },
   "dependencies": {
     "kokoro-js": "1.2.1",
-    "sherpa-onnx-node": "latest"
+    "sherpa-onnx-node": "1.12.28"
   }
 }

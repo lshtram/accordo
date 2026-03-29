@@ -274,9 +274,16 @@ export class WsClient {
   /**
    * Send a state update (partial patch) to Hub.
    *
+   * WS-07: Merges the patch into lastState so that on reconnect the most
+   * recent state is replayed rather than the stale initial connect state.
+   *
    * @param patch - Changed IDE state fields
    */
   sendStateUpdate(patch: Partial<IDEState>): void {
+    // Merge patch into lastState so reconnect (WS-07) replays current state.
+    if (this.lastState !== null) {
+      this.lastState = { ...this.lastState, ...patch };
+    }
     this.ws?.send(JSON.stringify({ type: "stateUpdate", patch }));
   }
 

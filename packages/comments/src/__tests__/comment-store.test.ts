@@ -35,6 +35,12 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { workspace, Uri, resetMockState } from "./mocks/vscode.js";
+import { rename as mockRename } from "node:fs/promises";
+
+// Mock node:fs/promises so rename is interceptable in unit tests
+vi.mock("node:fs/promises", () => ({
+  rename: vi.fn().mockResolvedValue(undefined),
+}));
 import {
   CommentStore,
   type CreateCommentParams,
@@ -1141,7 +1147,40 @@ describe("Session 14: Unified Comments Contract — store-level", () => {
   });
 });
 
-// ── getVersionInfo ────────────────────────────────────────────────────────────
+// ── §5.1 Atomic write durability ─────────────────────────────────────────────
+
+describe("§5.1 Atomic write durability", () => {
+  beforeEach(async () => {
+    await store.load("/project");
+    vi.mocked(mockRename).mockClear();
+  });
+
+  it("writes to .tmp path first, then renames to final path", async () => {
+    await store.createThread(makeCreateParams());
+
+    // writeFile should target the .tmp path
+    const writeCall = workspace.fs.writeFile.mock.calls.at(-1)!;
+    const writtenUri = writeCall[0] as Uri;
+    expect(writtenUri.fsPath).toMatch(/comments\.json\.tmp$/);
+
+    // rename should move .tmp → final path
+    expect(vi.mocked(mockRename)).toHaveBeenCalledTimes(1);
+    const [from, to] = vi.mocked(mockRename).mock.calls[0];
+    expect(from).toMatch(/comments\.json\.tmp$/);
+    expect(to).toMatch(/comments\.json$/);
+    expect(to).not.toMatch(/\.tmp$/);
+  });
+
+  it("original file is never touched if writeFile throws mid-write", async () => {
+    workspace.fs.writeFile.mockRejectedValueOnce(new Error("disk full"));
+    vi.mocked(mockRename).mockClear();
+
+    await expect(store.createThread(makeCreateParams())).rejects.toThrow("disk full");
+
+    // rename must NOT have been called — original comments.json untouched
+    expect(vi.mocked(mockRename)).not.toHaveBeenCalled();
+  });
+});
 
 describe("getVersionInfo", () => {
   beforeEach(async () => {

@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createReadAloudTool } from "../tools/read-aloud.js";
-import type { ReadAloudToolDeps, PlayAudioFn } from "../tools/read-aloud.js";
+import type { ReadAloudToolDeps, PlayAudioFn, StreamSpeakFn } from "../tools/read-aloud.js";
 import type { SessionFsm } from "../core/fsm/session-fsm.js";
 import type { NarrationFsm } from "../core/fsm/narration-fsm.js";
 import type { TtsProvider } from "../core/providers/tts-provider.js";
@@ -183,5 +183,82 @@ describe("createReadAloudTool", () => {
     await tool.handler({ text: "play this" });
 
     expect(playAudio).toHaveBeenCalledWith(pcm, 24000);
+  });
+});
+
+// ── Bug #14 regression tests — session lock + stop/pause reach streamSpeak ──
+
+describe("createReadAloudTool — session lock and cancellation (Bug #14)", () => {
+  it("M50-RA-13: onSpeakActive is called with a cancel function when streamSpeak starts", async () => {
+    // Regression: streaming path was fire-and-forget with no way to cancel from outside.
+    // Fix: tool calls onSpeakActive(cancelFn) so extension can reach the active pipeline.
+    const onSpeakActive = vi.fn();
+    let resolveSpeak!: () => void;
+    const streamSpeak: StreamSpeakFn = vi.fn().mockImplementation(
+      () => new Promise<void>((res) => { resolveSpeak = res; }),
+    );
+    const tts = makeTtsProvider();
+    const tool = createReadAloudTool(makeDeps({ ttsProvider: tts, streamSpeak, onSpeakActive }));
+
+    void tool.handler({ text: "hello world" });
+    await Promise.resolve(); // let handler reach the void streamSpeak(...)
+
+    expect(onSpeakActive).toHaveBeenCalledWith(expect.any(Function));
+    resolveSpeak(); // avoid dangling promise
+  });
+
+  it("M50-RA-14: calling the cancel fn from onSpeakActive requests cancellation on the token", async () => {
+    // Regression: the cancellation token was never created/passed, so doStopNarration
+    // had no way to abort the active streamSpeak pipeline.
+    let capturedCancel!: () => void;
+    const onSpeakActive = vi.fn((cancel: () => void) => { capturedCancel = cancel; });
+    let resolveSpeak!: () => void;
+    let passedToken: { isCancellationRequested: boolean } | undefined;
+    const streamSpeak: StreamSpeakFn = vi.fn().mockImplementation(
+      (_text, _tts, opts) => {
+        passedToken = opts.cancellationToken as { isCancellationRequested: boolean } | undefined;
+        return new Promise<void>((res) => { resolveSpeak = res; });
+      },
+    );
+    const tool = createReadAloudTool(makeDeps({ ttsProvider: makeTtsProvider(), streamSpeak, onSpeakActive }));
+
+    void tool.handler({ text: "cancel me" });
+    await Promise.resolve();
+
+    expect(passedToken?.isCancellationRequested).toBe(false);
+    capturedCancel();
+    expect(passedToken?.isCancellationRequested).toBe(true);
+    resolveSpeak();
+  });
+
+  it("M50-RA-15: a second concurrent tool call cancels the first streamSpeak", async () => {
+    // Regression: two rapid tool calls spawned overlapping pipelines.
+    // Fix: each call cancels the previous token before starting.
+    let cancelFirst!: () => void;
+    const onSpeakActive = vi.fn((cancel: () => void) => { cancelFirst = cancel; });
+    const tokens: Array<{ isCancellationRequested: boolean }> = [];
+    let firstResolve!: () => void;
+    let callCount = 0;
+    const streamSpeak: StreamSpeakFn = vi.fn().mockImplementation(
+      (_text, _tts, opts) => {
+        tokens.push(opts.cancellationToken as { isCancellationRequested: boolean });
+        callCount++;
+        if (callCount === 1) return new Promise<void>((res) => { firstResolve = res; });
+        return Promise.resolve();
+      },
+    );
+    const tool = createReadAloudTool(makeDeps({ ttsProvider: makeTtsProvider(), streamSpeak, onSpeakActive }));
+
+    // First call — starts the pipeline
+    void tool.handler({ text: "first" });
+    await Promise.resolve();
+    const savedCancelFirst = cancelFirst;
+
+    // Second call — should cancel the first
+    await tool.handler({ text: "second" });
+
+    savedCancelFirst(); // calling cancel externally shows the token is now cancelled
+    expect(tokens[0]!.isCancellationRequested).toBe(true);
+    firstResolve();
   });
 });

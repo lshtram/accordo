@@ -10,6 +10,7 @@ import type { SttProvider } from "./core/providers/stt-provider.js";
 import type { TtsProvider } from "./core/providers/tts-provider.js";
 import type { VoicePolicy } from "./core/fsm/types.js";
 import { WhisperCppAdapter } from "./core/adapters/whisper-cpp.js";
+import { FasterWhisperHttpAdapter } from "./core/adapters/faster-whisper-http.js";
 import { KokoroAdapter } from "./core/adapters/kokoro.js";
 import { SherpaSubprocessAdapter, findSystemNode } from "./core/adapters/sherpa-subprocess.js";
 import { SessionFsm } from "./core/fsm/session-fsm.js";
@@ -109,18 +110,30 @@ export async function activate(
 
   // ── M50-EXT-01: Read config ──────────────────────────────────────────
   const cfg = vscode.workspace.getConfiguration("accordo.voice");
+  const sttProvider = cfg.get<string>("sttProvider", "faster-whisper-http");
   const whisperPath = cfg.get<string>("whisperPath", "whisper");
   const whisperModelFolder = cfg.get<string>("whisperModelFolder", "");
   const whisperModel = cfg.get<string>("whisperModel", "ggml-base.en.bin");
-  logger.log(`config: whisperPath="${whisperPath}" modelFolder="${whisperModelFolder}" model="${whisperModel}"`);
+  const fasterWhisperUrl = cfg.get<string>("fasterWhisperUrl", "http://localhost:8280");
+  const fasterWhisperModel = cfg.get<string>("fasterWhisperModel", "Systran/faster-whisper-small");
+  logger.log(`config: sttProvider="${sttProvider}" whisperPath="${whisperPath}" modelFolder="${whisperModelFolder}" model="${whisperModel}"`);
+  logger.log(`config: fasterWhisperUrl="${fasterWhisperUrl}" fasterWhisperModel="${fasterWhisperModel}"`);
 
   // ── M50-EXT-02: Create providers ────────────────────────────────────────
-  const stt: SttProvider = deps?.sttProvider ?? new WhisperCppAdapter({
-    binaryPath: whisperPath,
-    modelFolder: whisperModelFolder,
-    modelFile: whisperModel,
-    log: (msg) => logger.log(`[whisper] ${msg}`),
-  });
+  const stt: SttProvider = deps?.sttProvider ?? (
+    sttProvider === "faster-whisper-http"
+      ? new FasterWhisperHttpAdapter({
+          baseUrl: fasterWhisperUrl,
+          model: fasterWhisperModel,
+          log: (msg) => logger.log(`[faster-whisper] ${msg}`),
+        })
+      : new WhisperCppAdapter({
+          binaryPath: whisperPath,
+          modelFolder: whisperModelFolder,
+          modelFile: whisperModel,
+          log: (msg) => logger.log(`[whisper] ${msg}`),
+        })
+  );
 
   // M50-SK: Try Sherpa (C++ runtime, ~3-6× faster) first; fall back to KokoroJS.
   let tts: TtsProvider;
@@ -162,6 +175,8 @@ export async function activate(
     }),
   );
   let activeNarrationPlayback: PlaybackHandle | undefined;
+  /** Bug #14: cancel handle for the active agent-initiated streamSpeak pipeline. */
+  let activeStreamCancel: (() => void) | undefined;
   let sttAvailable = false;
   let ttsAvailable = false;
   let availabilityKnown = false;
@@ -174,7 +189,6 @@ export async function activate(
   context.subscriptions.push({ dispose: () => { void readyChimeSound?.dispose(); } });
 
   const bridge = vscode.extensions.getExtension<BridgeAPI>("accordo.accordo-bridge")?.exports;
-  let bridgeUsable = bridge !== undefined;
 
   function loadPolicyFromConfiguration(): void {
     const voiceCfg = vscode.workspace.getConfiguration("accordo.voice");
@@ -258,12 +272,15 @@ export async function activate(
       "accordo.voice.narrating",
       narrationFsm.state === "playing" || narrationFsm.state === "paused",
     );
-    if (bridge && bridgeUsable && availabilityKnown) {
+    // P1-FIX #13: remove bridgeUsable guard — transient failures should not permanently
+    // disable bridge integration. publishVoiceState is idempotent; retrying on the next
+    // state change will succeed once the bridge recovers. bridgeUsable is left as a
+    // simple "bridge was found at activation" flag, not a liveness gate.
+    if (bridge && availabilityKnown) {
       try {
         publishVoiceState(bridge, sessionFsm, audioFsm, narrationFsm, sttAvailable, ttsAvailable);
       } catch (err) {
-        bridgeUsable = false;
-        logger.log(`bridge: publishState failed, disabling bridge integration — ${String(err)}`);
+        logger.log(`bridge: publishVoiceState failed (transient) — ${String(err)}`);
       }
     }
   }
@@ -557,6 +574,11 @@ export async function activate(
       await activeNarrationPlayback.stop();
       activeNarrationPlayback = undefined;
     }
+    // Bug #14: also cancel any active agent-initiated streamSpeak pipeline
+    if (activeStreamCancel) {
+      activeStreamCancel();
+      activeStreamCancel = undefined;
+    }
     narrationFsm.error();
     syncUiAndState();
   }
@@ -573,6 +595,9 @@ export async function activate(
   }
 
   async function doResumeNarration(): Promise<void> {
+    // Bug #19 fix: guard on FSM state 'paused', not isPlaying() which returns
+    // true even when the process is SIGSTOP-paused (flag only cleared on close).
+    if (narrationFsm.state !== "paused") return;
     if (!activeNarrationPlayback?.isPlaying()) return;
     const resumed = await activeNarrationPlayback.resume();
     if (!resumed) {
@@ -662,6 +687,8 @@ export async function activate(
           playAudio: (pcm, sampleRate) => playPcmAudio(pcm, sampleRate),
           streamSpeak: streamingSpeak,
           log: (msg) => logger.log(msg),
+          // Bug #14: store the cancel handle so doStopNarration can reach the active pipeline
+          onSpeakActive: (cancel) => { activeStreamCancel = cancel; },
         }),
         createDictationTool({
           sessionFsm,
@@ -685,10 +712,13 @@ export async function activate(
 
       // ── M50-EXT-13: Publish initial state ─────────────────────────────────────
       // Publish with placeholders first, then real values after availability check
-      publishVoiceState(bridge, sessionFsm, audioFsm, narrationFsm, false, false);
+      try {
+        publishVoiceState(bridge, sessionFsm, audioFsm, narrationFsm, false, false);
+      } catch (err) {
+        logger.log(`bridge: initial publishVoiceState failed (transient) — ${String(err)}`);
+      }
     } catch (err) {
-      bridgeUsable = false;
-      logger.log(`bridge: registerTools failed, continuing without bridge integration — ${String(err)}`);
+      logger.log(`bridge: registerTools failed (transient) — ${String(err)}`);
       void vscode.window.showWarningMessage("Accordo Voice: bridge connection is not ready yet. Voice local controls remain available.");
     }
 
