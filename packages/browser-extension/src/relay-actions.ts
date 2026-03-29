@@ -479,6 +479,12 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
             viewportOnly?: boolean;
           };
           const pageMapResult = collectPageMap(pageMapPayload);
+          // B2-SV-004: Save to defaultStore so diff_snapshots can retrieve the
+          // snapshot by ID. PageMapResult is structurally compatible with
+          // VersionedSnapshot (same SnapshotEnvelope fields + nodes array).
+          if (isVersionedSnapshot(pageMapResult)) {
+            await defaultStore.save(pageMapResult.pageId, pageMapResult);
+          }
           return {
             requestId: request.requestId,
             success: true,
@@ -500,10 +506,17 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
         if (!response || (response as { error?: string }).error) {
           return { requestId: request.requestId, success: false, error: "action-failed" };
         }
+        const pageMapData = (response as { data: unknown }).data;
+        // B2-SV-004: Save to defaultStore so diff_snapshots can retrieve the
+        // snapshot by ID. PageMapResult is structurally compatible with
+        // VersionedSnapshot (same SnapshotEnvelope fields + nodes array).
+        if (isVersionedSnapshot(pageMapData)) {
+          await defaultStore.save(pageMapData.pageId, pageMapData);
+        }
         return {
           requestId: request.requestId,
           success: true,
-          data: (response as { data: unknown }).data,
+          data: pageMapData,
         };
       }
 

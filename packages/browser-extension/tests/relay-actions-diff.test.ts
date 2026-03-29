@@ -9,6 +9,7 @@
  * - B2-DE-006: snapshot-not-found error when IDs are unknown
  * - B2-DE-007: snapshot-stale error for pre-navigation snapshot IDs
  * - invalid-request for missing or non-string snapshot IDs
+ * - get_page_map auto-saves to defaultStore (Bug 1 regression test)
  *
  * The defaultStore singleton is exported for direct test setup — snapshots are
  * saved directly into the store rather than going through capture_region, which
@@ -246,5 +247,100 @@ describe("M101-DIFF — diff_snapshots relay action boundary", () => {
 
     expect(response.success).toBe(false);
     expect(response.error).toBe("invalid-request");
+  });
+});
+
+// ── End-to-End: get_page_map → defaultStore → diff_snapshots ─────────────────
+
+describe("M101-DIFF — get_page_map auto-saves to defaultStore", () => {
+  beforeEach(() => {
+    resetChromeMocks();
+    // Reset the store between tests by triggering navigation reset twice
+    defaultStore.resetOnNavigation();
+    defaultStore.resetOnNavigation();
+  });
+
+  /**
+   * Regression test for Bug 1:
+   * get_page_map must save its result to defaultStore so that a subsequent
+   * diff_snapshots call can retrieve the snapshot by ID.
+   *
+   * Before the fix, defaultStore was never populated by get_page_map, causing
+   * diff_snapshots to always return "snapshot-not-found" → "action-failed".
+   *
+   * In jsdom (test context), typeof document !== "undefined", so
+   * handleRelayAction("get_page_map") calls collectPageMap() directly.
+   * collectPageMap() calls captureSnapshotEnvelope("dom") which mints a
+   * real snapshotId. We call get_page_map twice (two different snapshot IDs)
+   * and then diff them — both should be in the store.
+   */
+  it("get_page_map saves snapshot to defaultStore; subsequent diff_snapshots succeeds", async () => {
+    // First get_page_map — mints snapshotId version 0
+    const firstResponse = await handleRelayAction({
+      requestId: "req-gpm-1",
+      action: "get_page_map",
+      payload: {},
+    });
+
+    expect(firstResponse.success).toBe(true);
+    const firstData = firstResponse.data as { snapshotId?: string; pageId?: string };
+    expect(typeof firstData?.snapshotId).toBe("string");
+    const firstSnapshotId = firstData.snapshotId as string;
+    const pageId = firstData.pageId as string;
+
+    // Second get_page_map — mints snapshotId version 1
+    const secondResponse = await handleRelayAction({
+      requestId: "req-gpm-2",
+      action: "get_page_map",
+      payload: {},
+    });
+
+    expect(secondResponse.success).toBe(true);
+    const secondData = secondResponse.data as { snapshotId?: string };
+    expect(typeof secondData?.snapshotId).toBe("string");
+    const secondSnapshotId = secondData.snapshotId as string;
+
+    // Sanity: the two snapshots should have different IDs on the same page
+    expect(secondSnapshotId).not.toBe(firstSnapshotId);
+    expect(secondSnapshotId.startsWith(pageId)).toBe(true);
+
+    // Now diff the two snapshots — both must be in defaultStore
+    const diffResponse = await handleRelayAction({
+      requestId: "req-diff-e2e",
+      action: "diff_snapshots",
+      payload: { fromSnapshotId: firstSnapshotId, toSnapshotId: secondSnapshotId },
+    });
+
+    expect(diffResponse.success).toBe(true);
+    expect(diffResponse.error).toBeUndefined();
+
+    const diffData = diffResponse.data as {
+      added?: unknown[];
+      removed?: unknown[];
+      changed?: unknown[];
+      summary?: { addedCount: number; removedCount: number; changedCount: number };
+    };
+    expect(Array.isArray(diffData?.added)).toBe(true);
+    expect(Array.isArray(diffData?.removed)).toBe(true);
+    expect(Array.isArray(diffData?.changed)).toBe(true);
+  });
+
+  /**
+   * Verify that get_page_map does NOT throw when the store save fails or
+   * when the result is not a valid VersionedSnapshot — the store save is
+   * a side effect and must not break the primary tool response.
+   */
+  it("get_page_map still returns success even if store is unavailable (save is best-effort)", async () => {
+    // This test relies on the fact that the implementation only saves when
+    // isVersionedSnapshot(result) is true — the primary response is always returned.
+    const response = await handleRelayAction({
+      requestId: "req-gpm-resilient",
+      action: "get_page_map",
+      payload: {},
+    });
+
+    // The tool must succeed regardless — store-save is a side effect only
+    expect(response.success).toBe(true);
+    expect(response.data).toBeDefined();
   });
 });

@@ -106,7 +106,7 @@ export interface DiffToolError {
  * round-trip: WebSocket → service worker → diff engine → response. The
  * additional headroom accounts for relay serialization and transport latency.
  *
- * See docs/browser2.0-architecture.md §12.2 for the distinction between
+ * See docs/10-architecture/browser2.0-architecture.md §12.2 for the distinction between
  * computation budget and tool-level timeout.
  */
 const DIFF_TIMEOUT_MS = 5_000;
@@ -164,22 +164,42 @@ function classifyRelayError(err: unknown): "timeout" | "browser-not-connected" {
 }
 
 /**
- * Extract a known relay error code from a failed relay response's `data`.
+ * Extract a known relay error code from a failed relay response.
+ *
+ * Checks two locations in priority order:
+ *  1. `data.error` — used by the mock relay in tests and by some relay paths
+ *     that embed the error inside the data object.
+ *  2. `topLevelError` — the top-level `BrowserRelayResponse.error` field that
+ *     the real relay-server populates when the Chrome extension returns a
+ *     `{ success: false, error: "snapshot-not-found" }` response.
+ *     The relay-server sets `response.data = parsed["data"]` (undefined) and
+ *     `response.error = parsed["error"]` (the error string), so without this
+ *     second check the code would never be found in production.
+ *
  * Returns the code if it is a recognised string, otherwise undefined.
  */
 function extractRelayErrorCode(
   data: unknown,
+  topLevelError?: unknown,
 ): "snapshot-not-found" | "snapshot-stale" | "implicit-snapshot-resolution-required" | undefined {
+  const isKnownCode = (
+    code: unknown,
+  ): code is "snapshot-not-found" | "snapshot-stale" | "implicit-snapshot-resolution-required" =>
+    code === "snapshot-not-found" ||
+    code === "snapshot-stale" ||
+    code === "implicit-snapshot-resolution-required";
+
+  // 1. Check data.error (test mock path and some relay paths)
   if (data && typeof data === "object" && "error" in data) {
     const code = (data as { error: unknown }).error;
-    if (
-      code === "snapshot-not-found" ||
-      code === "snapshot-stale" ||
-      code === "implicit-snapshot-resolution-required"
-    ) {
-      return code;
-    }
+    if (isKnownCode(code)) return code;
   }
+
+  // 2. Check top-level response.error (real relay-server path: Chrome extension
+  //    returns { success: false, error: "snapshot-not-found" }, relay-server sets
+  //    response.data = undefined and response.error = the error string).
+  if (isKnownCode(topLevelError)) return topLevelError;
+
   return undefined;
 }
 
@@ -202,7 +222,7 @@ async function resolveFreshSnapshot(
   }
 
   if (!freshResponse.success) {
-    const code = extractRelayErrorCode(freshResponse.data);
+    const code = extractRelayErrorCode(freshResponse.data, freshResponse.error);
     if (code !== undefined) return { success: false, error: code };
     return { success: false, error: "action-failed" };
   }
@@ -242,7 +262,7 @@ async function resolveFromSnapshot(
   }
 
   if (!preflightResponse.success) {
-    const code = extractRelayErrorCode(preflightResponse.data);
+    const code = extractRelayErrorCode(preflightResponse.data, preflightResponse.error);
     if (code !== undefined) return { success: false, error: code };
     return { success: false, error: "action-failed" };
   }
@@ -338,7 +358,7 @@ export async function handleDiffSnapshots(
 
     // Check for known diff error codes (B2-DE-006, B2-DE-007 and relay-level)
     if (!response.success) {
-      const code = extractRelayErrorCode(response.data);
+      const code = extractRelayErrorCode(response.data, response.error);
       if (code !== undefined) return { success: false, error: code };
     }
 
