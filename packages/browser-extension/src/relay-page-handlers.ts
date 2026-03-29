@@ -35,6 +35,12 @@ async function handlePageUnderstandingAction(
 ): Promise<RelayActionResponse> {
   if (typeof document !== "undefined" && localHandler) {
     const result = await localHandler();
+    // Save to defaultStore in the content-script context.
+    // In jsdom tests (single module scope): this is the same SnapshotStore that
+    // diff_snapshots reads from — necessary for tests to pass.
+    // In production Chrome (separate CS/SW scopes): this save goes to CS's
+    // SnapshotStore which is never read by diff_snapshots (SW path). The SW-side
+    // save below is the authoritative one in production.
     if (saveToStore && isVersionedSnapshot(result)) {
       await defaultStore.save(result.pageId, result);
     }
@@ -50,8 +56,9 @@ async function handlePageUnderstandingAction(
   if (data === null) {
     return { requestId: request.requestId, success: false, error: "action-failed" };
   }
+  // SW is the authoritative store — save after receiving from CS.
   if (saveToStore && isVersionedSnapshot(data)) {
-    await defaultStore.save(data.pageId, data);
+    await defaultStore.save((data as { pageId: string }).pageId, data as Parameters<typeof defaultStore.save>[1]);
   }
   return { requestId: request.requestId, success: true, data };
 }
