@@ -17,7 +17,7 @@ Accordo IDE is an MCP-based AI co-pilot layer on top of VSCode. It consists of:
 | `accordo-editor` | VSCode extension — 16 editor/terminal/workspace tools |
 
 **The always-authoritative starting point for any coding task is:**
-→ [`docs/workplan.md`](docs/workplan.md) — current status, active week, next module
+→ [`docs/00-workplan/workplan.md`](docs/00-workplan/workplan.md) — current status, active week, next module
 
 ---
 
@@ -49,7 +49,7 @@ For small bug fixes, typos, or isolated corrections that are clearly scoped:
 - Make the minimal change
 - Run the affected test file to verify
 - Commit with `fix(<module>): <description>`
-- No phase checkpoints required, but still: banned patterns must be clean (see `docs/coding-guidelines.md §3`)
+- No phase checkpoints required, but still: banned patterns must be clean (see [`docs/30-development/coding-guidelines.md`](docs/30-development/coding-guidelines.md) §3)
 
 ### 2.3 Exploration / Investigation Mode
 
@@ -113,13 +113,13 @@ course more than once.
 
 These apply regardless of which mode you are in:
 
-1. **Follow `docs/coding-guidelines.md`.** Language style, banned patterns, type safety rules, and the D2 review checklist all live there. The rules are TypeScript/Node.js-specific and take precedence over any generic advice.
+1. **Follow [`docs/30-development/coding-guidelines.md`](docs/30-development/coding-guidelines.md).** Language style, banned patterns, type safety rules, and the D2 review checklist all live there. The rules are TypeScript/Node.js-specific and take precedence over any generic advice.
 2. **Run tests before committing.** `pnpm test` must be clean in the affected package.
 3. **Conventional commits.** `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 4. **One module per commit** when in TDD mode. Batch only within the same phase.
 5. **Scan pattern files before any non-trivial task.** There are two:
-   - [`docs/patterns.md`](docs/patterns.md) — generic agent tool patterns (all projects)
-   - [`docs/accordo-patterns.md`](docs/accordo-patterns.md) — Accordo-specific patterns
+   - [`docs/30-development/patterns.md`](docs/30-development/patterns.md) — generic agent tool patterns (all projects)
+   - [`docs/30-development/accordo-patterns.md`](docs/30-development/accordo-patterns.md) — Accordo-specific patterns
    Read only the YAML front matter to see what is documented — load the full section
    only if a relevant pattern ID applies. When you hit new friction, add an entry to
    the appropriate file (generic tool issue → `patterns.md`, project-specific → `accordo-patterns.md`).
@@ -128,7 +128,7 @@ These apply regardless of which mode you are in:
 
 ## 4. Architecture Constraints (Accordo-specific)
 
-These are project-level decisions that override or extend `coding-guidelines.md §3.5`:
+These are project-level decisions that override or extend [`docs/30-development/coding-guidelines.md §3.5`](docs/30-development/coding-guidelines.md):
 
 1. **No VSCode imports in Hub packages.** Hub is editor-agnostic — importing `vscode` in `accordo-hub` is a hard failure.
 2. **Security middleware comes first** on every authenticated HTTP endpoint. No request reaches a handler without passing the auth layer.
@@ -140,15 +140,15 @@ These are project-level decisions that override or extend `coding-guidelines.md 
 
 | Document | Purpose |
 |---|---|
-| [`docs/workplan.md`](docs/workplan.md) | Current status, active week, next module, DONE history |
+| [`docs/00-workplan/workplan.md`](docs/00-workplan/workplan.md) | Current status, active week, next module, DONE history |
 | `~/.config/opencode/dev-process.md` | Full TDD cycle — mandatory when user says "TDD" |
-| [`docs/architecture.md`](docs/architecture.md) | System design, component boundaries, protocols |
-| [`docs/coding-guidelines.md`](docs/coding-guidelines.md) | Code style, banned patterns, D2 review checklist |
-| [`docs/requirements-hub.md`](docs/requirements-hub.md) | Hub functional requirements |
-| [`docs/requirements-bridge.md`](docs/requirements-bridge.md) | Bridge functional requirements |
-| [`docs/requirements-editor.md`](docs/requirements-editor.md) | Editor tools requirements |
-| [`docs/patterns.md`](docs/patterns.md) | Generic agent tool patterns (shared across projects) |
-| [`docs/accordo-patterns.md`](docs/accordo-patterns.md) | Accordo-specific patterns (VS Code, Hub, Bridge) |
+| [`docs/10-architecture/architecture.md`](docs/10-architecture/architecture.md) | System design, component boundaries, protocols |
+| [`docs/30-development/coding-guidelines.md`](docs/30-development/coding-guidelines.md) | Code style, banned patterns, D2 review checklist |
+| [`docs/20-requirements/requirements-hub.md`](docs/20-requirements/requirements-hub.md) | Hub functional requirements |
+| [`docs/20-requirements/requirements-bridge.md`](docs/20-requirements/requirements-bridge.md) | Bridge functional requirements |
+| [`docs/20-requirements/requirements-editor.md`](docs/20-requirements/requirements-editor.md) | Editor tools requirements |
+| [`docs/30-development/patterns.md`](docs/30-development/patterns.md) | Generic agent tool patterns (shared across projects) |
+| [`docs/30-development/accordo-patterns.md`](docs/30-development/accordo-patterns.md) | Accordo-specific patterns (VS Code, Hub, Bridge) |
 | [`.copilot/compound.md`](.copilot/compound.md) | Compound mode — instructions for session retrospective |
 | [`skills/debugging/skill.md`](skills/debugging/skill.md) | Debugging skill — 5-phase process, instrumentation guide, Accordo topology |
 
@@ -156,7 +156,7 @@ These are project-level decisions that override or extend `coding-guidelines.md 
 
 ## 6. Picking Up Mid-Project
 
-1. Open [`docs/workplan.md`](docs/workplan.md) — read **Current Status** and **Weekly Plan §5**
+1. Open [`docs/00-workplan/workplan.md`](docs/00-workplan/workplan.md) — read **Current Status** and **Weekly Plan §5**
 2. The active module and its requirements source are listed in the week's TDD execution table
 3. Check `git log --oneline -10` to see what was last committed
 4. Run `pnpm test` in the affected package to verify the baseline is green
