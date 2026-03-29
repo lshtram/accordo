@@ -1,4 +1,36 @@
 import { addComment, createThread, getActiveThreads, getCommentPageSummaries, normalizeUrl, reopenThread, resolveThread, softDeleteComment, softDeleteThread } from "./store.js";
+import { captureSnapshotEnvelope, resetDefaultManager, SnapshotStore } from "./snapshot-versioning.js";
+import type { SnapshotEnvelope, VersionedSnapshot } from "./snapshot-versioning.js";
+import { computeDiff } from "./diff-engine.js";
+
+/**
+ * B2-SV-004: Module-level SnapshotStore singleton for runtime snapshot retention.
+ * Persists capture_region results (5-slot FIFO per page).
+ * B2-SV-005: Cleared on navigation via handleNavigationReset().
+ *
+ * Exported for direct use in tests (diff_snapshots boundary tests).
+ */
+export const defaultStore: SnapshotStore = new SnapshotStore();
+
+/**
+ * Runtime type guard for VersionedSnapshot.
+ * Replaces unsafe `as unknown as VersionedSnapshot` casts — validates all
+ * required fields are present with the correct types before narrowing.
+ */
+function isVersionedSnapshot(val: unknown): val is VersionedSnapshot {
+  if (val === null || typeof val !== "object") return false;
+  const v = val as Record<string, unknown>;
+  return (
+    typeof v.pageId === "string" &&
+    typeof v.frameId === "string" &&
+    typeof v.snapshotId === "string" &&
+    typeof v.capturedAt === "string" &&
+    typeof v.source === "string" &&
+    v.viewport !== null &&
+    typeof v.viewport === "object" &&
+    Array.isArray(v.nodes)
+  );
+}
 
 export type RelayAction =
   | "get_all_comments"
@@ -13,7 +45,11 @@ export type RelayAction =
   | "get_page_map"
   | "inspect_element"
   | "get_dom_excerpt"
-  | "capture_region";
+  | "capture_region"
+  | "diff_snapshots"
+  | "wait_for"
+  | "get_text_map"
+  | "get_semantic_graph";
 
 export interface RelayActionRequest {
   requestId: string;
@@ -24,8 +60,15 @@ export interface RelayActionRequest {
 export interface RelayActionResponse {
   requestId: string;
   success: boolean;
+  /**
+   * B2-SV-003: For data-producing tool responses, the full SnapshotEnvelope
+   * is included inside `data`. The relay forwards the envelope created by
+   * the content script without modification. This top-level `snapshotId`
+   * is retained for backward compatibility on error responses only.
+   */
+  snapshotId?: string;
   data?: unknown;
-  error?: "action-failed" | "unsupported-action" | "invalid-request";
+  error?: "action-failed" | "unsupported-action" | "invalid-request" | "no-target" | "capture-failed" | "image-too-large" | "snapshot-not-found" | "snapshot-stale" | "navigation-interrupted" | "page-closed";
 }
 
 async function getActiveTabUrl(): Promise<string | null> {
@@ -49,6 +92,29 @@ interface CapturePayload {
   rect?: { x: number; y: number; width: number; height: number };
   padding?: number;
   quality?: number;
+}
+
+/**
+ * Navigation reset lifecycle contract (B2-SV-005).
+ *
+ * **Ownership:** The service worker (relay layer) is responsible for observing
+ * navigation events via `chrome.webNavigation.onCommitted` or `chrome.tabs.onUpdated`.
+ * When a top-level navigation is detected for a tab, the service worker MUST:
+ *
+ * 1. Call `resetDefaultManager()` to reset the snapshot version counter.
+ * 2. The content script's `SnapshotStore` is inherently reset because the
+ *    content script is destroyed and re-injected on navigation.
+ *
+ * The relay layer does NOT own snapshot ID minting for data-producing tools.
+ * It forwards the SnapshotEnvelope produced by the content script's
+ * `captureSnapshotEnvelope()` function without modification.
+ *
+ * For capture_region (which runs in the service worker context), the relay
+ * uses `captureSnapshotEnvelope("visual")` from snapshot-versioning.ts.
+ */
+export function handleNavigationReset(): void {
+  resetDefaultManager();
+  defaultStore.resetOnNavigation();
 }
 
 /**
@@ -102,11 +168,40 @@ async function cropImageToBounds(
   }
 }
 
+/**
+ * Request a SnapshotEnvelope from the content script.
+ *
+ * B2-SV-002: The content script is the single authoritative owner of
+ * snapshot sequencing. The service worker MUST NOT mint envelopes directly —
+ * it delegates to the content script to maintain a single monotonic counter.
+ *
+ * Falls back to a service-worker-local envelope only when no content script
+ * is available (e.g., chrome:// pages, test environments).
+ */
+async function requestContentScriptEnvelope(source: "dom" | "visual"): Promise<SnapshotEnvelope> {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) {
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        type: "CAPTURE_SNAPSHOT_ENVELOPE",
+        source,
+      });
+      if (response && typeof response === "object" && "snapshotId" in response) {
+        return response as SnapshotEnvelope;
+      }
+    }
+  } catch {
+    // Content script not available — fall through to local fallback
+  }
+  // Fallback: service-worker-local envelope (degraded — counter may diverge)
+  return captureSnapshotEnvelope(source);
+}
+
 async function handleCaptureRegion(
   payload: CapturePayload,
 ): Promise<Record<string, unknown>> {
   const quality = Math.min(85, Math.max(30, payload.quality ?? 70));
-  const source: string = payload.anchorKey ?? payload.nodeRef ?? "rect";
+  const anchorSource: string = payload.anchorKey ?? payload.nodeRef ?? "rect";
   const padding = Math.min(100, Math.max(0, payload.padding ?? 8));
 
   // Resolve target bounds from rect first (most deterministic)
@@ -151,7 +246,8 @@ async function handleCaptureRegion(
 
   // Minimum size check (10x10)
   if (paddedBounds.width < 10 || paddedBounds.height < 10) {
-    return { success: false, error: "no-target" };
+    const envelope = await requestContentScriptEnvelope("visual");
+    return { success: false, error: "no-target", ...envelope };
   }
 
   // Capture visible tab
@@ -159,7 +255,8 @@ async function handleCaptureRegion(
   try {
     fullDataUrl = await chrome.tabs.captureVisibleTab({ format: "jpeg", quality });
   } catch {
-    return { success: false, error: "capture-failed" };
+    const envelope = await requestContentScriptEnvelope("visual");
+    return { success: false, error: "capture-failed", ...envelope };
   }
 
   // Crop to target bounds
@@ -189,8 +286,9 @@ async function handleCaptureRegion(
       const retryCropped = await cropImageToBounds(fullDataUrl, paddedBounds, reducedQuality);
       const retryBase64 = retryCropped.dataUrl.replace(/^data:image\/\w+;base64,/, "");
       const retrySize = Math.round((retryBase64.length * 3) / 4);
+      const envelope = await requestContentScriptEnvelope("visual");
       if (retrySize > 500_000) {
-        return { success: false, error: "image-too-large" };
+        return { success: false, error: "image-too-large", ...envelope };
       }
       return {
         success: true,
@@ -198,20 +296,24 @@ async function handleCaptureRegion(
         width: retryCropped.width,
         height: retryCropped.height,
         sizeBytes: retrySize,
-        source,
+        anchorSource,
+        ...envelope,
       };
     } catch {
-      return { success: false, error: "image-too-large" };
+      const envelope = await requestContentScriptEnvelope("visual");
+      return { success: false, error: "image-too-large", ...envelope };
     }
   }
 
+  const envelope = await requestContentScriptEnvelope("visual");
   return {
     success: true,
     dataUrl,
     width,
     height,
     sizeBytes,
-    source,
+    anchorSource,
+    ...envelope,
   };
 }
 
@@ -383,7 +485,9 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
             data: pageMapResult,
           };
         }
-        // Service worker context — forward to content script
+        // Service worker context — forward to content script.
+        // B2-SV-003: The content script embeds the full SnapshotEnvelope in
+        // response.data. The relay passes it through without minting IDs.
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (!tab?.id) {
           return { requestId: request.requestId, success: false, error: "action-failed" };
@@ -407,10 +511,21 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
         if (typeof document !== "undefined") {
           // jsdom / content-script context — call DOM function directly
           const { inspectElement } = await import("./content/element-inspector.js");
-          const inspectPayload = request.payload as {
+          type LocalInspectArgs = Parameters<typeof inspectElement>[0];
+          const rawPayload = request.payload as {
             ref?: string;
             selector?: string;
+            nodeId?: number;
           };
+          // B2-SV-006: Support lookup by nodeId, ref, or selector
+          let inspectPayload: LocalInspectArgs;
+          if (rawPayload.nodeId !== undefined) {
+            inspectPayload = { nodeId: rawPayload.nodeId };
+          } else if (rawPayload.ref !== undefined) {
+            inspectPayload = { ref: rawPayload.ref, selector: rawPayload.selector };
+          } else {
+            inspectPayload = { selector: rawPayload.selector ?? "" };
+          }
           const inspectResult = inspectElement(inspectPayload);
           return {
             requestId: request.requestId,
@@ -418,7 +533,9 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
             data: inspectResult,
           };
         }
-        // Service worker context — forward to content script
+        // Service worker context — forward to content script.
+        // B2-SV-003: The content script embeds the full SnapshotEnvelope in
+        // response.data. The relay passes it through without minting IDs.
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (!tab?.id) {
           return { requestId: request.requestId, success: false, error: "action-failed" };
@@ -459,7 +576,9 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
             data: excerptResult,
           };
         }
-        // Service worker context — forward to content script
+        // Service worker context — forward to content script.
+        // B2-SV-003: The content script embeds the full SnapshotEnvelope in
+        // response.data. The relay passes it through without minting IDs.
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (!tab?.id) {
           return { requestId: request.requestId, success: false, error: "action-failed" };
@@ -480,6 +599,9 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
       }
 
       case "capture_region": {
+        // capture_region runs in service worker context — handleCaptureRegion
+        // already embeds the full SnapshotEnvelope via captureSnapshotEnvelope("visual").
+        // B2-SV-003: relay passes through the envelope without minting additional IDs.
         const capturePayload = request.payload as {
           anchorKey?: string;
           nodeRef?: string;
@@ -488,6 +610,25 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
           quality?: number;
         };
         const captureResult = await handleCaptureRegion(capturePayload);
+
+        // B2-SV-004: persist successful captures in the store for retention.
+        if (captureResult.success === true && typeof captureResult.pageId === "string") {
+          if (isVersionedSnapshot(captureResult)) {
+            await defaultStore.save(captureResult.pageId, captureResult);
+          } else {
+            await defaultStore.save(captureResult.pageId as string, {
+              pageId: captureResult.pageId as string,
+              frameId: typeof captureResult.frameId === "string" ? captureResult.frameId : "main",
+              snapshotId: captureResult.snapshotId as string,
+              capturedAt: captureResult.capturedAt as string,
+              viewport: captureResult.viewport as VersionedSnapshot["viewport"],
+              source: captureResult.source as VersionedSnapshot["source"],
+              nodes: [],
+              totalElements: typeof captureResult.totalElements === "number" ? captureResult.totalElements : 0,
+            });
+          }
+        }
+
         return {
           requestId: request.requestId,
           success: true,
@@ -495,7 +636,136 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
         };
       }
 
+      // ── Diff Snapshots (M101-DIFF) ──────────────────────────────────────
+      // B2-DE-001..007: Compute structural diff between two snapshots.
+      // Runs in service worker context where the SnapshotStore holds full
+      // snapshots with NodeIdentity[] data. The diff engine (computeDiff)
+      // is a pure function operating on two VersionedSnapshot objects.
+      case "diff_snapshots": {
+        // B2-DE-001..007: Compute structural diff between two snapshots.
+        // B2-DE-003/004 implicit resolution is handled by the caller (diff-tool.ts)
+        // before reaching the relay; both IDs must be explicit here.
+        const fromSnapshotId = request.payload.fromSnapshotId as string | undefined;
+        const toSnapshotId = request.payload.toSnapshotId as string | undefined;
+
+        if (typeof fromSnapshotId !== "string" || typeof toSnapshotId !== "string") {
+          return { requestId: request.requestId, success: false, error: "invalid-request" };
+        }
+
+        const fromResult = await defaultStore.get(fromSnapshotId);
+        if ("error" in fromResult) {
+          // B2-DE-007: distinguish stale (pre-navigation) from missing/evicted
+          const errorCode = defaultStore.isStale(fromSnapshotId) ? "snapshot-stale" : "snapshot-not-found";
+          return { requestId: request.requestId, success: false, error: errorCode };
+        }
+
+        const toResult = await defaultStore.get(toSnapshotId);
+        if ("error" in toResult) {
+          const errorCode = defaultStore.isStale(toSnapshotId) ? "snapshot-stale" : "snapshot-not-found";
+          return { requestId: request.requestId, success: false, error: errorCode };
+        }
+
+        const diffResult = computeDiff(fromResult, toResult);
+        return { requestId: request.requestId, success: true, data: diffResult };
+      }
+
+      // ── Wait Primitives (M109-WAIT) ────────────────────────────────────
+      // B2-WA-001..007: Wait for conditions on the page.
+      // The content script runs a 100ms polling loop; the service worker
+      // forwards the request and returns the result.
+      case "wait_for": {
+        if (typeof document !== "undefined") {
+          // jsdom / content-script context — stub, not implemented yet
+          throw new Error("not implemented");
+        }
+        // Service worker context — forward to content script.
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) {
+          return { requestId: request.requestId, success: false, error: "action-failed" };
+        }
+        const response = await chrome.tabs.sendMessage(tab.id, {
+          type: "PAGE_UNDERSTANDING_ACTION",
+          action: request.action,
+          payload: request.payload,
+        });
+        if (!response || (response as { error?: string }).error) {
+          const errCode = (response as { error?: string })?.error;
+          if (errCode === "navigation-interrupted" || errCode === "page-closed") {
+            return { requestId: request.requestId, success: true, data: response };
+          }
+          return { requestId: request.requestId, success: false, error: "action-failed" };
+        }
+        return {
+          requestId: request.requestId,
+          success: true,
+          data: (response as { data: unknown }).data ?? response,
+        };
+      }
+
+      // ── Text Map (M112-TEXT) ───────────────────────────────────────────────
+      // B2-TX-001..010: Extract per-segment text with bbox, reading order, and
+      // visibility flags. Content script handles the actual DOM traversal.
+      case "get_text_map": {
+        if (typeof document !== "undefined") {
+          // jsdom / content-script context — call collector directly
+          const { collectTextMap } = await import("./content/text-map-collector.js");
+          const textMapResult = await collectTextMap(request.payload as Parameters<typeof collectTextMap>[0]);
+          return {
+            requestId: request.requestId,
+            success: true,
+            data: textMapResult,
+          };
+        }
+        // Service worker context — forward to content script.
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) {
+          return { requestId: request.requestId, success: false, error: "action-failed" };
+        }
+        const response = await chrome.tabs.sendMessage(tab.id, {
+          type: "PAGE_UNDERSTANDING_ACTION",
+          action: request.action,
+          payload: request.payload,
+        });
+        if (!response || (response as { error?: string }).error) {
+          return { requestId: request.requestId, success: false, error: "action-failed" };
+        }
+        return {
+          requestId: request.requestId,
+          success: true,
+          data: (response as { data: unknown }).data,
+        };
+      }
+
+      // ── Semantic Graph (M113-SEM) ──────────────────────────────────────────
+      // B2-SG-001..015: Extract unified semantic graph — a11y tree, landmarks,
+      // document outline, and form models. Content script handles DOM traversal.
+      case "get_semantic_graph": {
+        if (typeof document !== "undefined") {
+          // jsdom / content-script context — stub until Phase C
+          throw new Error("not implemented");
+        }
+        // Service worker context — forward to content script.
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) {
+          return { requestId: request.requestId, success: false, error: "action-failed" };
+        }
+        const response = await chrome.tabs.sendMessage(tab.id, {
+          type: "PAGE_UNDERSTANDING_ACTION",
+          action: request.action,
+          payload: request.payload,
+        });
+        if (!response || (response as { error?: string }).error) {
+          return { requestId: request.requestId, success: false, error: "action-failed" };
+        }
+        return {
+          requestId: request.requestId,
+          success: true,
+          data: (response as { data: unknown }).data,
+        };
+      }
+
       default:
+
         return { requestId: request.requestId, success: false, error: "unsupported-action" };
     }
   } catch (error: unknown) {

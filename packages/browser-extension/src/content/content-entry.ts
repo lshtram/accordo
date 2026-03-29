@@ -387,6 +387,15 @@ chrome.runtime.onMessage.addListener(
               const { getDomExcerpt } = await import("./element-inspector.js");
               const { selector = "body", maxDepth, maxLength } = payload as { selector?: string; maxDepth?: number; maxLength?: number };
               data = getDomExcerpt(selector, maxDepth, maxLength);
+            } else if (action === "wait_for") {
+              const { handleWaitForAction } = await import("./wait-provider.js");
+              data = await handleWaitForAction(payload);
+            } else if (action === "get_text_map") {
+              const { collectTextMap } = await import("./text-map-collector.js");
+              data = collectTextMap(payload as Parameters<typeof collectTextMap>[0]);
+            } else if (action === "get_semantic_graph") {
+              const { collectSemanticGraph } = await import("./semantic-graph-collector.js");
+              data = collectSemanticGraph(payload as Parameters<typeof collectSemanticGraph>[0]);
             } else {
               _sendResponse({ error: "unsupported-action" });
               return;
@@ -394,6 +403,22 @@ chrome.runtime.onMessage.addListener(
             _sendResponse({ data });
           } catch {
             _sendResponse({ error: "action-failed" });
+          }
+        })();
+        return true; // keep channel open for async sendResponse
+      }
+      case "CAPTURE_SNAPSHOT_ENVELOPE": {
+        // B2-SV-002: Content script is the single authoritative owner of
+        // snapshot sequencing. Service worker delegates envelope minting here
+        // to maintain a single monotonic counter across all tool responses.
+        const { source } = message as { type: string; source: "dom" | "visual" };
+        void (async () => {
+          try {
+            const { captureSnapshotEnvelope } = await import("../snapshot-versioning.js");
+            const envelope = captureSnapshotEnvelope(source ?? "dom");
+            _sendResponse(envelope);
+          } catch {
+            _sendResponse({ error: "envelope-failed" });
           }
         })();
         return true; // keep channel open for async sendResponse

@@ -144,6 +144,8 @@ export class CommentStore {
   private readonly _listeners: ChangeListener[] = [];
   private _workspaceRoot = "";
   private _versionCounter = 0;
+  /** Serializes concurrent _persist() calls to prevent file-rename races. */
+  private _writeQueue: Promise<void> = Promise.resolve();
 
   /** Return the workspace root path passed to `load()`. */
   getWorkspaceRoot(): string {
@@ -190,14 +192,20 @@ export class CommentStore {
   }
 
   private async _persist(): Promise<void> {
-    if (!this._workspaceRoot) return;
-    const dirPath = `${this._workspaceRoot}/.accordo`;
-    const filePath = `${dirPath}/comments.json`;
-    await vscode.workspace.fs.createDirectory(vscode.Uri.file(dirPath));
-    const encoded = new TextEncoder().encode(
-      JSON.stringify(this.toStoreFile(), null, 2),
-    );
-    await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), encoded);
+    // Chain onto the write queue to serialize all concurrent writes.
+    // Each call appends its work to the queue and waits for it to complete,
+    // preventing concurrent rename() calls on comments.json.tmp.
+    this._writeQueue = this._writeQueue.then(async () => {
+      if (!this._workspaceRoot) return;
+      const dirPath = `${this._workspaceRoot}/.accordo`;
+      const filePath = `${dirPath}/comments.json`;
+      await vscode.workspace.fs.createDirectory(vscode.Uri.file(dirPath));
+      const encoded = new TextEncoder().encode(
+        JSON.stringify(this.toStoreFile(), null, 2),
+      );
+      await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), encoded);
+    });
+    await this._writeQueue;
   }
 
   private _emit(uri: string): void {

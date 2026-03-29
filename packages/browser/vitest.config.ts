@@ -13,7 +13,7 @@ export default defineConfig({
         url: "https://localhost/test-page",
       },
     },
-    setupFiles: ["./src/__tests__/setup/dom-setup.ts"],
+    setupFiles: ["../../test-setup.ts", "./src/__tests__/setup/dom-setup.ts"],
     include: ["src/__tests__/**/*.test.ts"],
   },
   resolve: {

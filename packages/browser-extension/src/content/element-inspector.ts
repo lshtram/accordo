@@ -12,16 +12,36 @@
 import type { AnchorStrategy } from "./enhanced-anchor.js";
 import { generateAnchorKey } from "./enhanced-anchor.js";
 import { getElementByRef } from "./page-map-collector.js";
+import { captureSnapshotEnvelope } from "../snapshot-versioning.js";
+import type { SnapshotEnvelope } from "../snapshot-versioning.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-/** Arguments for element inspection */
-export interface InspectElementArgs {
-  /** Element reference from page map (ref field) */
-  ref?: string;
-  /** CSS selector to find the element (alternative to ref) */
-  selector?: string;
+/** Result of DOM excerpt extraction — includes full SnapshotEnvelope (B2-SV-003) */
+export interface DomExcerptResult extends SnapshotEnvelope {
+  /** Whether the element was found */
+  found: boolean;
+  /** Sanitized HTML excerpt */
+  html?: string;
+  /** Text content of the subtree */
+  text?: string;
+  /** Number of nodes in the excerpt */
+  nodeCount?: number;
+  /** Whether the HTML was truncated by maxLength */
+  truncated?: boolean;
 }
+
+/**
+ * Arguments for element inspection.
+ *
+ * Must supply at least one of: ref, selector, or nodeId.
+ * B2-SV-006: nodeId is the DFS traversal index from a page map snapshot,
+ * allowing agents to inspect elements by their stable snapshot node ID.
+ */
+export type InspectElementArgs =
+  | { ref: string; selector?: string; nodeId?: undefined }
+  | { ref?: string; selector: string; nodeId?: undefined }
+  | { ref?: undefined; selector?: undefined; nodeId: number };
 
 /** Context about the element's position in the DOM */
 export interface ElementContext {
@@ -53,16 +73,18 @@ export interface ElementDetail {
   attributes: Record<string, string>;
   /** Bounding box relative to viewport */
   bounds: { x: number; y: number; width: number; height: number };
-  /** Whether the element is visible */
+  /** Whether the element is visible (computed from CSS) */
   visible: boolean;
+  /** Visibility confidence: high = truly visible, medium = offscreen/obscured, low = hidden */
+  visibleConfidence: "high" | "medium" | "low";
   /** Computed accessible name */
   accessibleName?: string;
   /** Data-test-related attributes */
   testIds?: Record<string, string>;
 }
 
-/** Result of element inspection */
-export interface InspectElementResult {
+/** Result of element inspection — includes full SnapshotEnvelope (B2-SV-003) */
+export interface InspectElementResult extends SnapshotEnvelope {
   /** Whether the element was found */
   found: boolean;
   /** Generated anchor key using best available strategy */
@@ -75,6 +97,8 @@ export interface InspectElementResult {
   element?: ElementDetail;
   /** Surrounding context for agent reasoning */
   context?: ElementContext;
+  /** Visibility confidence — always present to help agent filter unreliable results */
+  visibilityConfidence?: "high" | "medium" | "low";
 }
 
 // ── Safe attribute list for HTML serialization ────────────────────────────────
@@ -105,6 +129,33 @@ function isSafeUrl(value: string): boolean {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const LANDMARK_TAGS = new Set(["header", "nav", "main", "footer", "aside", "section", "article", "form"]);
+
+/**
+ * Compute a real visibility confidence for an element.
+ * "high" = truly visible (has pixels, not hidden by CSS)
+ * "medium" = has bounding box but may be obscured or have zero opacity
+ * "low" = no meaningful bounding box (display:none, collapsed, hidden)
+ */
+function computeVisibilityConfidence(element: Element): "high" | "medium" | "low" {
+  const rect = element.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return "low";
+
+  const style = window.getComputedStyle(element);
+  if (
+    style.display === "none" ||
+    style.visibility === "hidden" ||
+    style.visibility === "collapse" ||
+    style.opacity === "0" ||
+    element.hasAttribute("hidden")
+  ) {
+    return "low";
+  }
+
+  // Check z-index against viewport — if element is entirely below visible area, downgrade
+  if (rect.top > window.innerHeight || rect.left > window.innerWidth) return "medium";
+
+  return "high";
+}
 
 function getNearestLandmark(element: Element): string | undefined {
   let current = element.parentElement;
@@ -179,7 +230,8 @@ function buildDetail(element: Element): ElementDetail {
     element.getAttribute("title") ??
     undefined;
 
-  const visible = bounds.width > 0 || bounds.height > 0;
+  const visibleConfidence = computeVisibilityConfidence(element);
+  const visible = visibleConfidence === "high";
 
   return {
     tag,
@@ -190,28 +242,76 @@ function buildDetail(element: Element): ElementDetail {
     textContent,
     attributes,
     bounds,
-    visible,
+    visible: visibleConfidence !== "low",
+    visibleConfidence,
     accessibleName,
     testIds: Object.keys(testIds).length > 0 ? testIds : undefined,
   };
 }
 
+function isElementVisible(element: Element): boolean {
+  if (element.hasAttribute("hidden")) return false;
+  const style = window.getComputedStyle(element);
+  return (
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    style.visibility !== "collapse" &&
+    style.opacity !== "0"
+  );
+}
+
+/**
+ * Resolve an element by nodeId (DFS traversal index) from the page map ref index.
+ *
+ * B2-SV-006: The nodeId is the DFS traversal index assigned during collectPageMap().
+ * The ref index maps `ref-{nodeId}` → Element, so we can look up by constructing
+ * the ref string from the nodeId.
+ */
+function resolveElementByNodeId(nodeId: number): Element | null {
+  return getElementByRef(`ref-${nodeId}`);
+}
+
 function resolveElement(args: InspectElementArgs): Element | null {
+  // B2-SV-006: Support lookup by nodeId from page map snapshot
+  if (args.nodeId !== undefined) {
+    const el = resolveElementByNodeId(args.nodeId);
+    if (!el) return null;
+    if (!isElementVisible(el)) {
+      const parent = el.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children);
+        const visibleSibling = siblings.find(
+          (s) => s !== el && isElementVisible(s),
+        );
+        if (visibleSibling) return visibleSibling;
+      }
+    }
+    return el;
+  }
   if (args.ref) {
-    return getElementByRef(args.ref);
+    const el = getElementByRef(args.ref);
+    if (!el) return null;
+    // If element is hidden, try to find a visible sibling or neighbour instead
+    if (!isElementVisible(el)) {
+      const parent = el.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children);
+        const visibleSibling = siblings.find(
+          (s) => s !== el && isElementVisible(s),
+        );
+        if (visibleSibling) return visibleSibling;
+      }
+    }
+    return el;
   }
   if (args.selector) {
     try {
       const matches = Array.from(document.querySelectorAll(args.selector));
       if (matches.length === 0) return null;
-
-      const visible = matches.find((el) => {
-        if (el.hasAttribute("hidden")) return false;
-        const style = window.getComputedStyle(el);
-        return style.display !== "none" && style.visibility !== "hidden" && style.visibility !== "collapse" && style.opacity !== "0";
-      });
+      // Prefer a fully visible element; fall back to first match
+      const visible = matches.find(isElementVisible);
       return visible ?? matches[0];
-    } catch (error: unknown) {
+    } catch {
       return null;
     }
   }
@@ -231,20 +331,24 @@ function resolveElement(args: InspectElementArgs): Element | null {
  * @returns Detailed element inspection result
  */
 export function inspectElement(args: InspectElementArgs): InspectElementResult {
+  // B2-SV-003: Capture full envelope from authoritative content script manager
+  const envelope = captureSnapshotEnvelope("dom");
   const element = resolveElement(args);
-  if (!element) return { found: false };
+  if (!element) return { ...envelope, found: false };
 
   const { anchorKey, strategy, confidence } = generateAnchorKey(element);
   const detail = buildDetail(element);
   const context = buildContext(element);
 
   return {
+    ...envelope,
     found: true,
     anchorKey,
     anchorStrategy: strategy,
     anchorConfidence: confidence,
     element: detail,
     context,
+    visibilityConfidence: detail.visibleConfidence,
   };
 }
 
@@ -305,10 +409,12 @@ export function getDomExcerpt(
   selector: string,
   maxDepth = 3,
   maxLength = 2000,
-): { found: boolean; html?: string; text?: string; nodeCount?: number; truncated?: boolean } {
+): DomExcerptResult {
+  // B2-SV-003: Capture full envelope from authoritative content script manager
+  const envelope = captureSnapshotEnvelope("dom");
   const element = resolveElement({ selector });
 
-  if (!element) return { found: false };
+  if (!element) return { ...envelope, found: false };
 
   const counter = { count: 0 };
   let html = serializeElement(element, 0, maxDepth, counter);
@@ -321,5 +427,5 @@ export function getDomExcerpt(
     truncated = true;
   }
 
-  return { found: true, html, text, nodeCount, truncated };
+  return { ...envelope, found: true, html, text, nodeCount, truncated };
 }

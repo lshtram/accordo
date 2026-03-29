@@ -4,6 +4,7 @@ import { buildPageUnderstandingTools } from "./page-understanding-tools.js";
 import { buildWaitForTool } from "./wait-tool.js";
 import { buildTextMapTool } from "./text-map-tool.js";
 import { buildSemanticGraphTool } from "./semantic-graph-tool.js";
+import { buildDiffSnapshotsTool } from "./diff-tool.js";
 import { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { BrowserBridgeAPI, BrowserRelayAction } from "./types.js";
 
@@ -226,7 +227,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // B2-SG-001..015: Agents can extract unified semantic structure (a11y, landmarks, outline, forms).
   const semanticGraphTool = buildSemanticGraphTool(relay, snapshotStore);
 
-  const allBrowserTools = [...pageUnderstandingTools, waitTool, textMapTool, semanticGraphTool];
+  // M101-DIFF: Register the browser_diff_snapshots tool.
+  // B2-DE-001..007: Agents can compare two page snapshots and see what changed.
+  const diffTool = buildDiffSnapshotsTool(relay, snapshotStore);
+
+  const allBrowserTools = [...pageUnderstandingTools, waitTool, textMapTool, semanticGraphTool, diffTool];
 
   const toolsDisposable = bridge.registerTools(EXTENSION_ID, allBrowserTools);
   context.subscriptions.push(toolsDisposable);

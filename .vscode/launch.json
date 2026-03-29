@@ -40,6 +40,9 @@
         "--extensionDevelopmentPath=${workspaceFolder}/packages/diagram",
         // accordo-browser: browser comments relay + browser MCP tools
         "--extensionDevelopmentPath=${workspaceFolder}/packages/browser",
+        // IMPORTANT: DO NOT add packages/browser-extension here.
+        // It is a Chrome MV3 extension (loaded via chrome://extensions from dist/),
+        // not a VS Code extension development path.
         // Open this repo in the EDH so it has a real workspace to report
         "${workspaceFolder}"
       ],

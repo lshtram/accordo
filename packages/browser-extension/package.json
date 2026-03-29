@@ -26,6 +26,7 @@
     "@accordo/comment-sdk": "workspace:*"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20",
+    "vscode": "^1.100.0"
   }
 }

@@ -10,6 +10,48 @@
 
 import { vi } from "vitest";
 
+// ── WebSocket mock ────────────────────────────────────────────────────────────
+// Prevent RelayBridgeClient.start() from connecting to the real relay server
+// (ws://127.0.0.1:40111) when service-worker.ts is imported in tests.
+// Without this, every CREATE_THREAD test that doesn't explicitly mock
+// RelayBridgeClient.prototype.send would forward real create_comment calls
+// through to the running VSCode extension, polluting .accordo/comments.json.
+
+class MockWebSocket extends EventTarget {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+
+  readonly CONNECTING = 0;
+  readonly OPEN = 1;
+  readonly CLOSING = 2;
+  readonly CLOSED = 3;
+
+  readyState: number = MockWebSocket.CLOSED;
+  url: string;
+  onopen: ((ev: Event) => void) | null = null;
+  onclose: ((ev: CloseEvent) => void) | null = null;
+  onerror: ((ev: Event) => void) | null = null;
+  onmessage: ((ev: MessageEvent) => void) | null = null;
+
+  constructor(url: string) {
+    super();
+    this.url = url;
+    // Never connect — stay CLOSED
+  }
+
+  send(_data: string | ArrayBuffer | Blob | ArrayBufferView): void {
+    // No-op — not connected
+  }
+
+  close(): void {
+    this.readyState = MockWebSocket.CLOSED;
+  }
+}
+
+(globalThis as unknown as Record<string, unknown>)["WebSocket"] = MockWebSocket;
+
 // ── In-memory storage ────────────────────────────────────────────────────────
 
 const storageMap = new Map<string, unknown>();
@@ -308,6 +350,16 @@ const commandsMock = {
   },
 };
 
+// ── WebNavigation mock ──────────────────────────────────────────────────────
+
+const webNavigationMock = {
+  onCommitted: {
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    hasListener: vi.fn(() => false),
+  },
+};
+
 // ── Assemble global chrome object ────────────────────────────────────────────
 
 const chromeMock = {
@@ -318,6 +370,7 @@ const chromeMock = {
   runtime: runtimeMock,
   scripting: scriptingMock,
   commands: commandsMock,
+  webNavigation: webNavigationMock,
 };
 
 // Mount on global for all tests
