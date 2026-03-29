@@ -5,7 +5,7 @@
     "rootDir": "./src"
   },
   "include": ["src"],
-  "exclude": ["src/__tests__", "src/webview/webview.ts"],
+  "exclude": ["src/__tests__", "src/webview/webview.ts", "src/webview/excalidraw-canvas.ts", "src/webview/comment-overlay.ts"],
   "references": [
     { "path": "../bridge-types" }
   ]

@@ -13,6 +13,6 @@
     "noEmit": true,
     "outDir": "./dist/webview"
   },
-  "include": ["src/webview/webview.ts"],
+  "include": ["src/webview/"],
   "exclude": ["src/**/*.test.ts", "src/__tests__"]
 }
