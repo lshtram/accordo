@@ -14,11 +14,20 @@
  * Existing entries in .claude/mcp.json are preserved — CFG-05.
  * A corrupt .claude/mcp.json is backed up before overwrite — CFG-09.
  *
+ * Split: I/O operations moved to agent-config-writer.ts; this module retains
+ * pure config-building functions and the writeAgentConfigs orchestrator.
+ *
  * Requirements: requirements-bridge.md §8.2–§8.5
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
+import {
+  appendGitignore,
+  writeOpencodeConfig as writerWriteOpencodeConfig,
+  writeClaudeConfig as writerWriteClaudeConfig,
+  writeCopilotConfig as writerWriteCopilotConfig,
+  writeVscodeSettings,
+  removeWorkspaceThreshold,
+} from "./agent-config-writer.js";
 
 /**
  * Current schema version. Embedded as `_accordo_schema` in every file
@@ -84,11 +93,9 @@ export function buildOpencodeConfig(
     try {
       existing = JSON.parse(existingRaw) as Record<string, unknown>;
     } catch {
-      // corrupt — treat as absent
       existing = {};
     }
   }
-  // Remove legacy keys that opencode rejects
   delete existing["_accordo_schema"];
   delete existing["instructions_url"];
   delete existing["instructions"];
@@ -132,7 +139,6 @@ export function buildClaudeConfig(
     try {
       existing = JSON.parse(existingRaw) as Record<string, unknown>;
     } catch {
-      // corrupt — treat as absent (caller backs up the file per CFG-09)
       existing = {};
     }
   }
@@ -151,215 +157,6 @@ export function buildClaudeConfig(
       },
     },
   };
-}
-
-/**
- * Append a line to .gitignore if it is not already present.
- * Creates .gitignore if absent. CFG-06
- *
- * @param gitignorePath - Absolute path to the .gitignore file
- * @param entry         - Line to append (e.g. "opencode.json")
- */
-export function appendGitignore(gitignorePath: string, entry: string): void {
-  let contents = "";
-  try {
-    contents = fs.readFileSync(gitignorePath, "utf8");
-  } catch {
-    // absent — will create it
-  }
-  // Check for exact line match
-  const lines = contents.split("\n").map((l) => l.trim());
-  if (lines.includes(entry)) return;
-
-  const separator = contents.length > 0 && !contents.endsWith("\n") ? "\n" : "";
-  fs.writeFileSync(gitignorePath, contents + separator + entry + "\n", "utf8");
-}
-
-/**
- * Write opencode.json to workspaceRoot with mode 0600, then append to .gitignore.
- * Validates the generated object has the required fields and warns via outputChannel
- * if they are missing (CFG-08). No-op when configureOpencode is false.
- *
- * @param params - AgentConfigParams controlling what to write
- */
-export function writeOpencodeConfig(params: AgentConfigParams): void {
-  if (!params.configureOpencode) return;
-
-  const filePath = path.join(params.workspaceRoot, "opencode.json");
-
-  // Read existing file for merge (preserve user-added MCP servers)
-  let existingRaw: string | undefined;
-  try {
-    existingRaw = fs.readFileSync(filePath, "utf8");
-  } catch {
-    // absent — will create fresh
-  }
-
-  const config = buildOpencodeConfig(params.port, params.token, existingRaw);
-
-  // CFG-08: warn if required fields are missing
-  if (!config["mcp"]) {
-    params.outputChannel.appendLine("[accordo] Warning: opencode.json is missing mcp field");
-  }
-  if (!config["instructions"]) {
-    params.outputChannel.appendLine("[accordo] Warning: opencode.json is missing instructions field");
-  }
-
-  fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + "\n", {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-
-  appendGitignore(path.join(params.workspaceRoot, ".gitignore"), "opencode.json");
-}
-
-/**
- * Write .claude/mcp.json to workspaceRoot with mode 0600, merge with existing
- * entries (CFG-05), back up corrupt existing file as .bak (CFG-09), then append
- * to .gitignore. No-op when configureClaude is false.
- *
- * @param params - AgentConfigParams controlling what to write
- */
-export function writeClaudeConfig(params: AgentConfigParams): void {
-  if (!params.configureClaude) return;
-
-  const claudeDir = path.join(params.workspaceRoot, ".claude");
-  const filePath = path.join(claudeDir, "mcp.json");
-
-  // CFG-09: back up corrupt existing file before reading it
-  let existingRaw: string | undefined;
-  try {
-    existingRaw = fs.readFileSync(filePath, "utf8");
-    // Verify it parses; if not, back it up then treat as absent
-    try {
-      JSON.parse(existingRaw);
-    } catch {
-      fs.writeFileSync(filePath + ".bak", existingRaw, "utf8");
-      existingRaw = undefined;
-    }
-  } catch {
-    existingRaw = undefined;
-  }
-
-  const config = buildClaudeConfig(params.port, params.token, existingRaw);
-
-  fs.mkdirSync(claudeDir, { recursive: true });
-  // Ensure the directory is owner-writable. When another tool (e.g. the
-  // opencode CLI) created .claude/ with restrictive permissions the Bridge
-  // cannot write inside it. Attempt a chmod so the write succeeds.
-  try { fs.chmodSync(claudeDir, 0o700); } catch { /* ignore — not our dir */ }
-  fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + "\n", {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-
-  appendGitignore(path.join(params.workspaceRoot, ".gitignore"), ".claude/mcp.json");
-}
-
-/**
- * Write or update .vscode/settings.json to set the VS Code virtualTools
- * threshold high enough that Accordo tools are not hidden behind activation
- * functions. CFG-11
- *
- * - Creates .vscode/ if absent.
- * - Merges with existing settings — does not overwrite unrelated keys.
- * - Skips the write if the threshold is already set to ≥ 300.
- * - Corrupt JSON is backed up as .bak before overwrite.
- *
- * @param workspaceRoot - Absolute path to the workspace root
- * @param outputChannel - For warnings
- * @returns true if the file was written (new/changed), false if skipped
- */
-export function writeVscodeSettings(
-  workspaceRoot: string,
-  outputChannel?: AgentConfigOutputChannel,
-): boolean {
-  const THRESHOLD_KEY = "github.copilot.chat.virtualTools.threshold";
-  const THRESHOLD_VALUE = 300;
-
-  const vscodeDir = path.join(workspaceRoot, ".vscode");
-  const settingsPath = path.join(vscodeDir, "settings.json");
-
-  // Read existing settings
-  let settings: Record<string, unknown> = {};
-  try {
-    const raw = fs.readFileSync(settingsPath, "utf8");
-    try {
-      settings = JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-      // Corrupt JSON — back up and overwrite
-      fs.writeFileSync(settingsPath + ".bak", raw, "utf8");
-      outputChannel?.appendLine(
-        "[accordo-bridge] .vscode/settings.json was corrupt — backed up as settings.json.bak",
-      );
-      settings = {};
-    }
-  } catch {
-    // File absent — will create it
-  }
-
-  // Skip if already set to an adequate value
-  const existing = settings[THRESHOLD_KEY];
-  if (typeof existing === "number" && existing >= THRESHOLD_VALUE) {
-    return false;
-  }
-
-  settings[THRESHOLD_KEY] = THRESHOLD_VALUE;
-
-  fs.mkdirSync(vscodeDir, { recursive: true });
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 4) + "\n", {
-    encoding: "utf8",
-  });
-  outputChannel?.appendLine(
-    `[accordo-bridge] .vscode/settings.json: set ${THRESHOLD_KEY}=${THRESHOLD_VALUE} ✓`,
-  );
-  return true;
-}
-
-/**
- * Remove the virtualTools.threshold key from the workspace .vscode/settings.json
- * if present. Call this after writing it to user-level global config, to
- * clean up any stale workspace-level entry left by an earlier approach.
- *
- * @param workspaceRoot - Absolute path to the workspace root
- * @param outputChannel - For logging
- */
-export function removeWorkspaceThreshold(
-  workspaceRoot: string,
-  outputChannel?: AgentConfigOutputChannel,
-): void {
-  const THRESHOLD_KEY = "github.copilot.chat.virtualTools.threshold";
-  const settingsPath = path.join(workspaceRoot, ".vscode", "settings.json");
-
-  let raw: string;
-  try {
-    raw = fs.readFileSync(settingsPath, "utf8");
-  } catch {
-    return; // file absent — nothing to clean
-  }
-
-  let settings: Record<string, unknown>;
-  try {
-    settings = JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return; // corrupt — leave it alone, don't make things worse
-  }
-
-  if (!(THRESHOLD_KEY in settings)) {
-    return; // key not present — nothing to do
-  }
-
-  delete settings[THRESHOLD_KEY];
-
-  // If the object is now empty, remove the file entirely to keep the workspace clean.
-  if (Object.keys(settings).length === 0) {
-    fs.unlinkSync(settingsPath);
-  } else {
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 4) + "\n", { encoding: "utf8" });
-  }
-  outputChannel?.appendLine(
-    `[accordo-bridge] Removed stale ${THRESHOLD_KEY} from workspace .vscode/settings.json ✓`,
-  );
 }
 
 /**
@@ -402,6 +199,30 @@ export function buildCopilotConfig(
   };
 }
 
+// ── Writer wrappers (delegate to agent-config-writer.ts) ─────────────────────
+
+/**
+ * Write opencode.json to workspaceRoot with mode 0600, then append to .gitignore.
+ * Validates the generated object has the required fields and warns via outputChannel
+ * if they are missing (CFG-08). No-op when configureOpencode is false.
+ *
+ * @param params - AgentConfigParams controlling what to write
+ */
+export function writeOpencodeConfig(params: AgentConfigParams): void {
+  writerWriteOpencodeConfig(buildOpencodeConfig, params);
+}
+
+/**
+ * Write .claude/mcp.json to workspaceRoot with mode 0600, merge with existing
+ * entries (CFG-05), back up corrupt existing file as .bak (CFG-09), then append
+ * to .gitignore. No-op when configureClaude is false.
+ *
+ * @param params - AgentConfigParams controlling what to write
+ */
+export function writeClaudeConfig(params: AgentConfigParams): void {
+  writerWriteClaudeConfig(buildClaudeConfig, params);
+}
+
 /**
  * Write .vscode/mcp.json to workspaceRoot for VS Code Copilot MCP discovery.
  * Merges with existing server entries. No-op when configureCopilot is false.
@@ -409,28 +230,10 @@ export function buildCopilotConfig(
  * @param params - AgentConfigParams
  */
 export function writeCopilotConfig(params: AgentConfigParams): void {
-  if (!params.configureCopilot) return;
-
-  const vscodeDir = path.join(params.workspaceRoot, ".vscode");
-  const filePath = path.join(vscodeDir, "mcp.json");
-
-  let existingRaw: string | undefined;
-  try {
-    existingRaw = fs.readFileSync(filePath, "utf8");
-  } catch {
-    // absent — will create fresh
-  }
-
-  const config = buildCopilotConfig(params.port, params.token, existingRaw);
-
-  fs.mkdirSync(vscodeDir, { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + "\n", {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-
-  appendGitignore(path.join(params.workspaceRoot, ".gitignore"), ".vscode/mcp.json");
+  writerWriteCopilotConfig(buildCopilotConfig, params);
 }
+
+// ── Orchestrator ─────────────────────────────────────────────────────────────
 
 /**
  * Write all enabled agent config files (opencode + Claude + Copilot) for the
@@ -466,3 +269,6 @@ export function writeAgentConfigs(params: AgentConfigParams): void {
     );
   }
 }
+
+// Re-export I/O helpers for convenience
+export { appendGitignore, writeVscodeSettings, removeWorkspaceThreshold };
