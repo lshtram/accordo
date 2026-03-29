@@ -1,0 +1,304 @@
+/**
+ * M91-PU + M91-CR — Page Tool Definitions
+ *
+ * Defines and registers 6 MCP tools that give AI agents the ability
+ * to inspect live browser pages:
+ *   - browser_get_page_map — structured DOM summary
+ *   - browser_inspect_element — deep element inspection
+ *   - browser_get_dom_excerpt — sanitized HTML fragment
+ *   - browser_capture_region — cropped viewport screenshot of a specific element or rect
+ *   - browser_list_pages — enumerate open tabs (B2-CTX-001)
+ *   - browser_select_page — activate a tab (B2-CTX-001)
+ *
+ * @module
+ */
+
+import type { ExtensionToolDefinition } from "@accordo/bridge-types";
+import type { BrowserRelayLike, SnapshotEnvelopeFields } from "./types.js";
+import { hasSnapshotEnvelope } from "./types.js";
+import type { SnapshotRetentionStore } from "./snapshot-retention.js";
+
+import {
+  type CaptureRegionArgs,
+  type CaptureRegionResponse,
+  type DomExcerptResponse,
+  type GetDomExcerptArgs,
+  type GetPageMapArgs,
+  handleCaptureRegion,
+  handleGetDomExcerpt,
+  handleGetPageMap,
+  handleInspectElement,
+  handleListPages,
+  handleSelectPage,
+  type InspectElementArgs,
+  type InspectElementResponse,
+  type ListPagesArgs,
+  type ListPagesResponse,
+  type PageMapResponse,
+  type PageToolError,
+  type SelectPageArgs,
+  type SelectPageResponse,
+} from "./page-tool-handlers.js";
+
+export type {
+  CaptureRegionArgs,
+  DomExcerptResponse,
+  GetDomExcerptArgs,
+  GetPageMapArgs,
+  InspectElementArgs,
+  InspectElementResponse,
+  ListPagesArgs,
+  ListPagesResponse,
+  PageMapResponse,
+  PageToolError,
+  SelectPageArgs,
+  SelectPageResponse,
+};
+
+// ── Type Guards ──────────────────────────────────────────────────────────────
+
+function isSelectPageArgs(obj: unknown): obj is SelectPageArgs {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    typeof (obj as { tabId?: unknown }).tabId === "number"
+  );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Determine anchor strategy and confidence from inspect_element args.
+ * Used when relay returns raw data that lacks anchor metadata.
+ */
+export function resolveAnchorMetadata(args: InspectElementArgs): {
+  anchorStrategy: string;
+  anchorConfidence: string;
+  anchorKey: string;
+} {
+  const { ref, selector, nodeId } = args;
+
+  // B2-SV-006: nodeId-based lookup
+  if (nodeId !== undefined) {
+    return {
+      anchorKey: `nodeId:${nodeId}`,
+      anchorStrategy: "nodeId",
+      anchorConfidence: "high",
+    };
+  }
+
+  // Use selector if available
+  const target = selector ?? ref ?? "";
+
+  // id-based: selector is "#something" or ref targets an id element
+  if (selector?.startsWith("#")) {
+    const id = selector.slice(1);
+    return {
+      anchorKey: `id:${id}`,
+      anchorStrategy: "id",
+      anchorConfidence: "high",
+    };
+  }
+
+  // data-testid based
+  if (selector?.includes("data-testid")) {
+    const match = /data-testid=['"]([^'"]+)['"]/.exec(selector);
+    const testid = match ? match[1] : selector;
+    return {
+      anchorKey: `data-testid:${testid}`,
+      anchorStrategy: "data-testid",
+      anchorConfidence: "high",
+    };
+  }
+
+  // aria-label based
+  if (selector?.includes("aria-label")) {
+    return {
+      anchorKey: `aria:${selector}`,
+      anchorStrategy: "aria",
+      anchorConfidence: "high",
+    };
+  }
+
+  // body element — use viewport-pct (lowest confidence, last fallback)
+  if (selector === "body" || target === "body") {
+    return {
+      anchorKey: "viewport-pct:50x50",
+      anchorStrategy: "viewport-pct",
+      anchorConfidence: "low",
+    };
+  }
+
+  // ref-based: use id strategy (ref implies element was found via page map with id)
+  if (ref) {
+    return {
+      anchorKey: `id:${ref}`,
+      anchorStrategy: "id",
+      anchorConfidence: "high",
+    };
+  }
+
+  // css-path fallback
+  return {
+    anchorKey: `css:${target}`,
+    anchorStrategy: "css-path",
+    anchorConfidence: "medium",
+  };
+}
+
+// ── Tool Definitions ─────────────────────────────────────────────────────────
+
+/**
+ * Build the 6 page understanding tool definitions (4 existing + list_pages + select_page).
+ *
+ * Returns an array of `ExtensionToolDefinition` to be registered
+ * via `bridge.registerTools('accordo-browser', tools)`.
+ *
+ * Each tool's handler forwards the request to the Chrome relay
+ * using the provided relay instance. On success, the SnapshotEnvelope
+ * embedded in the response is persisted into the retention store so
+ * agents can retrieve recent snapshots without re-requesting.
+ *
+ * B2-SV-004: All 4 data-producing paths share the same store instance
+ * with coherent 5-slot per-page FIFO retention semantics.
+ *
+ * B2-CTX-001: All existing tools accept an optional `tabId` parameter.
+ * New `browser_list_pages` and `browser_select_page` tools are included.
+ *
+ * @param relay — The relay connection to the Chrome extension
+ * @param store — Shared snapshot retention store (5-slot FIFO per page)
+ * @returns Array of 6 tool definitions
+ */
+export function buildPageUnderstandingTools(
+  relay: BrowserRelayLike,
+  store: SnapshotRetentionStore,
+): ExtensionToolDefinition[] {
+  return [
+    {
+      name: "browser_get_page_map",
+      description: "Collect a structured page map from the current document",
+      inputSchema: {
+        type: "object",
+        properties: {
+          tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
+          maxDepth: { type: "number", description: "Maximum DOM tree depth (default 4, max 8)" },
+          maxNodes: { type: "number", description: "Maximum number of nodes (default 200, max 500)", maximum: 500 },
+          includeBounds: { type: "boolean", description: "Include bounding box coordinates" },
+          viewportOnly: { type: "boolean", description: "Only visible elements in viewport" },
+          visibleOnly: { type: "boolean", description: "B2-FI-001: Only elements visible in current viewport" },
+          interactiveOnly: { type: "boolean", description: "B2-FI-002: Only interactive elements (buttons, links, inputs, etc.)" },
+          roles: {
+            type: "array",
+            items: { type: "string" },
+            description: "B2-FI-003: Filter by ARIA role(s) — implicit mapping included (e.g. h1–h6 → heading)",
+          },
+          textMatch: { type: "string", description: "B2-FI-004: Filter by text content substring (case-insensitive)" },
+          selector: { type: "string", description: "B2-FI-005: Filter by CSS selector" },
+          regionFilter: {
+            type: "object",
+            description: "B2-FI-006: Filter by bounding box region (viewport coordinates)",
+            properties: {
+              x: { type: "number" },
+              y: { type: "number" },
+              width: { type: "number" },
+              height: { type: "number" },
+            },
+            required: ["x", "y", "width", "height"],
+          },
+        },
+      },
+      dangerLevel: "safe",
+      idempotent: true,
+      handler: (args) => handleGetPageMap(relay, args as GetPageMapArgs, store),
+    },
+    {
+      name: "browser_inspect_element",
+      description: "Deep inspection of a specific DOM element",
+      inputSchema: {
+        type: "object",
+        properties: {
+          tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
+          ref: { type: "string", description: "Element reference from page map" },
+          selector: { type: "string", description: "CSS selector to find element" },
+          nodeId: { type: "number", description: "B2-SV-006: Stable node ID from a page map snapshot" },
+        },
+      },
+      dangerLevel: "safe",
+      idempotent: true,
+      handler: (args) => handleInspectElement(relay, args as InspectElementArgs, store),
+    },
+    {
+      name: "browser_get_dom_excerpt",
+      description: "Get a sanitized HTML excerpt for a DOM subtree",
+      inputSchema: {
+        type: "object",
+        required: ["selector"],
+        properties: {
+          tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
+          selector: { type: "string", description: "CSS selector for the root element" },
+          maxDepth: { type: "number", description: "Maximum depth (default 3)" },
+          maxLength: { type: "number", description: "Maximum character length (default 2000)" },
+        },
+      },
+      dangerLevel: "safe",
+      idempotent: true,
+      handler: (args) => handleGetDomExcerpt(relay, args as unknown as GetDomExcerptArgs, store),
+    },
+    {
+      name: "browser_capture_region",
+      description: "Capture a cropped screenshot of a specific element or region",
+      inputSchema: {
+        type: "object",
+        properties: {
+          anchorKey: { type: "string", description: "Anchor key identifying target element" },
+          nodeRef: { type: "string", description: "Node ref from page map" },
+          rect: {
+            type: "object",
+            description: "Explicit viewport-relative rectangle",
+            properties: {
+              x: { type: "number" },
+              y: { type: "number" },
+              width: { type: "number" },
+              height: { type: "number" },
+            },
+          },
+          padding: { type: "number", description: "Padding around element (default 8)" },
+          quality: { type: "number", description: "JPEG quality 1-100 (default 70)" },
+        },
+      },
+      dangerLevel: "safe",
+      idempotent: true,
+      handler: (args) => handleCaptureRegion(relay, args as CaptureRegionArgs, store),
+    },
+    {
+      name: "browser_list_pages",
+      description: "List all open browser tabs/pages with their tabId, url, title, and active state.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          tabId: { type: "number", description: "Optional tab ID (unused; reserved for future filtering)" },
+        },
+      },
+      dangerLevel: "safe",
+      idempotent: true,
+      handler: (args) => handleListPages(relay, args as ListPagesArgs),
+    },
+    {
+      name: "browser_select_page",
+      description: "Select (activate) a browser tab by its tabId.",
+      inputSchema: {
+        type: "object",
+        required: ["tabId"],
+        properties: {
+          tabId: { type: "number", description: "The tab ID to activate." },
+        },
+      },
+      dangerLevel: "safe",
+      idempotent: true,
+      handler: (args) => {
+        if (!isSelectPageArgs(args)) return Promise.resolve({ success: false, error: "invalid-request", pageUrl: null });
+        return handleSelectPage(relay, args);
+      },
+    },
+  ];
+}
