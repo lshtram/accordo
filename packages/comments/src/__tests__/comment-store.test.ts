@@ -966,7 +966,7 @@ describe("pruneStaleThreads", () => {
 });
 
 // ── Session 14: Unified Comments Contract ─────────────────────────────────────
-// Requirements: docs/requirements-comments.md M38-CT-01,03,06,07 + M40-EXT-12
+// Requirements: docs/20-requirements/requirements-comments.md M38-CT-01,03,06,07 + M40-EXT-12
 
 describe("Session 14: Unified Comments Contract — store-level", () => {
   beforeEach(async () => {

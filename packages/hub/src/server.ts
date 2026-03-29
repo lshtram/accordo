@@ -1,12 +1,12 @@
 /**
- * Hub Server — Thin Orchestration Shell
+ * Hub Server — Main HTTP server wiring (thin delegation shell)
  *
- * Creates the HTTP server, wires the 4 sub-modules together, and manages
- * the start/stop lifecycle. All endpoint logic lives in the dedicated modules:
- *   - server-routing.ts  — URL dispatch + auth middleware chain
- *   - server-sse.ts      — SSE connection management + notifications
- *   - server-mcp.ts      — MCP JSON-RPC POST handling
- *   - server-reauth.ts   — credential rotation flow
+ * Creates the HTTP server, wires the four sub-modules for routing, SSE
+ * management, MCP request handling, and credential reauth, then starts
+ * the Bridge WebSocket server.
+ *
+ * Security middleware (Origin validation + Bearer auth) is enforced inside
+ * server-routing.ts — the exact middleware order from the original is preserved.
  *
  * Requirements: requirements-hub.md §2.1–§2.6, §3.3, §5.6, §8
  */
@@ -22,10 +22,10 @@ import { StateCache } from "./state-cache.js";
 import { renderPrompt } from "./prompt-engine.js";
 import { McpDebugLogger } from "./debug-log.js";
 import { createRouter } from "./server-routing.js";
-import type { Router } from "./server-routing.js";
 import { createSseManager } from "./server-sse.js";
-import type { SseManager } from "./server-sse.js";import { createMcpRequestHandler, extractAgentHint } from "./server-mcp.js";
+import { createMcpRequestHandler, extractAgentHint } from "./server-mcp.js";
 import { createReauthHandler } from "./server-reauth.js";
+import type { Router } from "./server-routing.js";
 
 export interface HubServerOptions {
   /** Port to listen on. Default: 3000 */
@@ -71,16 +71,12 @@ export class HubServer {
   private startedAt: number | null = null;
   private token: string;
   private debugLogger: McpDebugLogger | undefined;
+  private router: Router;
   /**
    * Fingerprint of the last tool registry snapshot that triggered a
-   * notifications/tools/list_changed push. Deduplicates redundant pushes.
+   * notifications/tools/list_changed push. Prevents duplicate notifications.
    */
   private lastNotifiedToolHash = "";
-
-  /** SSE connection manager — owns the connection map and keep-alive timers. */
-  private sseManager: SseManager;
-  /** HTTP request router — owns the auth middleware chain and URL dispatch. */
-  private router: Router;
 
   constructor(private options: HubServerOptions) {
     this.token = options.token;
@@ -108,23 +104,13 @@ export class HubServer {
       debugLogger: this.debugLogger,
     });
 
-    // Wire Bridge callbacks to state cache, tool registry, and SSE notifications
-    this.bridgeServer.onStateUpdate((patch) => { this.stateCache.applyPatch(patch); });
-    this.bridgeServer.onRegistryUpdate((tools) => {
-      this.toolRegistry.register(tools);
-      // Only notify SSE clients if the effective tool set actually changed (dedup).
-      const newHash = this.toolRegistry.list().map(t => t.name).sort().join(",");
-      if (newHash === this.lastNotifiedToolHash) return;
-      this.lastNotifiedToolHash = newHash;
-      this.sseManager.pushSseNotification({
-        jsonrpc: "2.0" as const,
-        method: "notifications/tools/list_changed",
-        params: {},
-      });
+    // Wire Bridge callbacks to state cache and tool registry
+    this.bridgeServer.onStateUpdate((patch) => {
+      this.stateCache.applyPatch(patch);
     });
 
-    // Wire sub-modules
-    this.sseManager = createSseManager({
+    // Create sub-module instances
+    const sseManager = createSseManager({
       debugLogger: this.debugLogger,
       extractAgentHint,
     });
@@ -140,23 +126,44 @@ export class HubServer {
       updateOptionsBridgeSecret: (newSecret) => { this.options.bridgeSecret = newSecret; },
     });
 
+    this.bridgeServer.onRegistryUpdate((tools) => {
+      this.toolRegistry.register(tools);
+      // Only notify SSE clients if the effective tool set actually changed.
+      const newHash = this.toolRegistry.list().map(t => t.name).sort().join(",");
+      if (newHash === this.lastNotifiedToolHash) return;
+      this.lastNotifiedToolHash = newHash;
+      // MCP spec: notifications/tools/list_changed
+      sseManager.pushSseNotification({
+        jsonrpc: "2.0" as const,
+        method: "notifications/tools/list_changed",
+        params: {},
+      });
+    });
+
     this.router = createRouter({
       getToken: () => this.token,
       getBridgeSecret: () => this.options.bridgeSecret,
-      handleMcp: (req, res) => { mcpRequestHandler.handleMcp(req, res); },
-      handleMcpSse: (req, res) => { this.sseManager.handleMcpSse(req, res); },
-      handleReauth: (req, res) => { reauthHandler.handleReauth(req, res); },
+      handleMcp: (req, res) => mcpRequestHandler.handleMcp(req, res),
+      handleMcpSse: (req, res) => sseManager.handleMcpSse(req, res),
+      handleReauth: (req, res) => reauthHandler.handleReauth(req, res),
       getHealth: () => this.getHealth(),
       getState: () => this.stateCache.getState(),
       getTools: () => this.toolRegistry.list(),
       renderPrompt,
     });
+
+    // Store sseManager for shutdown cleanup
+    this.sseManager = sseManager;
   }
+
+  /** SSE manager — stored for closeAll() on stop() */
+  private sseManager: ReturnType<typeof createSseManager>;
 
   /**
    * Start the HTTP server and WebSocket bridge server.
    * Binds to options.host:options.port.
-   * requirements-hub.md §2.1, §5.6, §8
+   *
+   * @returns Promise that resolves when the server is listening
    */
   async start(): Promise<void> {
     this.startedAt = Date.now();
@@ -184,8 +191,11 @@ export class HubServer {
   }
 
   /**
-   * Route an incoming HTTP request to the correct endpoint handler.
-   * Delegates to the router which enforces the auth middleware chain.
+   * Handle an incoming HTTP request by routing to the right endpoint.
+   * Delegates to the router which enforces security middleware first.
+   *
+   * @param req - Incoming HTTP request
+   * @param res - HTTP response object
    */
   handleHttpRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     this.router.handleHttpRequest(req, res);
@@ -193,7 +203,6 @@ export class HubServer {
 
   /**
    * Build a HealthResponse from current state.
-   * requirements-hub.md §2.4
    */
   getHealth(): HealthResponse {
     const uptime =
@@ -221,13 +230,17 @@ export class HubServer {
   }
 
   /**
-   * Graceful shutdown. Closes SSE connections before the HTTP server.
+   * Graceful shutdown.
+   * Closes HTTP server, WS connections, SSE connections.
    */
   async stop(): Promise<void> {
+    // Clean up SSE connections and keep-alive timers
     this.sseManager.closeAll();
+
     if (this.httpServer) {
       await new Promise<void>((resolve, reject) => {
-        // Non-null assertion is safe: checked above; stop() is not re-entrant.
+        // Non-null assertion is safe: we checked `this.httpServer` immediately above
+        // and `stop()` is not re-entrant (callers must await before calling again).
         this.httpServer!.close((err) => (err ? reject(err) : resolve()));
       });
       this.httpServer = null;

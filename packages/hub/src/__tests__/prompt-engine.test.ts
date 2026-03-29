@@ -583,7 +583,7 @@ describe("M51-SN: Voice section + narration directive in system prompt", () => {
 /**
  * Tests for M74-PE: renderPrompt emits `## Open Tabs` section.
  * Requirements: requirements-hub.md §2.3 (M74-PE)
- * Architecture: docs/layout-state-architecture.md §3.3
+ * Architecture: docs/10-architecture/layout-state-architecture.md §3.3
  *
  * Coverage:
  *   M74-PE-01  section rendered when openTabs non-empty

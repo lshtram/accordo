@@ -1,32 +1,39 @@
 /**
- * Accordo Bridge — VSCode Extension Entry Point (thin shell)
+ * Accordo Bridge — VSCode Extension Entry Point
  *
- * Orchestrates activation by delegating to three focused modules:
- *   - extension-bootstrap.ts   — output channel, config, status bar setup
- *   - extension-service-factory.ts — service instantiation
- *   - extension-composition.ts — hub/ws event wiring, cleanup, status handler
+ * Thin bootstrap shell that delegates to focused modules:
+ *   1. extension-bootstrap.ts  — VSCode activation ceremony
+ *   2. extension-service-factory.ts — Service instantiation
+ *   3. extension-composition.ts — BridgeAPI wiring, WsClient lifecycle
  *
- * This file owns: BridgeAPI interface, activate(), deactivate(),
- * VS Code command registration, BridgeAPI object construction.
+ * This file owns:
+ *   - The public BridgeAPI interface definition
+ *   - ExtensionToolDefinition re-export
+ *   - activate() → bootstrap → factory → compose → return BridgeAPI
+ *   - deactivate() → cleanup
+ *
+ * Activation order:
+ *   1. bootstrap — output channel, config, status bar, copilot threshold
+ *   2. factory — create registry, router, state-publisher, hub-manager
+ *   3. compose — wire BridgeAPI, register commands, start hub lifecycle
  *
  * Requirements: requirements-bridge.md §2, §3, §4
  */
 
 import * as vscode from "vscode";
-import * as path from "node:path";
-import * as os from "node:os";
-import { bootstrapExtension, buildStatusBarUpdater } from "./extension-bootstrap.js";
+import type { IDEState } from "@accordo/bridge-types";
+import type { ExtensionToolDefinition } from "./extension-registry.js";
+import { bootstrapExtension } from "./extension-bootstrap.js";
+import type { BootstrapResult } from "./extension-bootstrap.js";
+import { createServices } from "./extension-service-factory.js";
+import type { Services } from "./extension-service-factory.js";
+import { WsClient } from "./ws-client.js";
 import {
+  composeExtension,
   buildHubManagerEvents,
-  buildShowStatusHandler,
   cleanupExtension,
 } from "./extension-composition.js";
-import type { ExtensionState } from "./extension-composition.js";
-import { createServices } from "./extension-service-factory.js";
-import { ExtensionRegistry } from "./extension-registry.js";
-import type { ExtensionToolDefinition } from "./extension-registry.js";
-import { StatePublisher } from "./state-publisher.js";
-import type { IDEState } from "@accordo/bridge-types";
+import type { ExtensionState, ComposedBridgeAPI } from "./extension-composition.js";
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -70,6 +77,10 @@ export interface BridgeAPI {
   /**
    * Invoke a registered tool directly, returning its result.
    * Used by accordo-browser to route Chrome relay events through unified tools.
+   *
+   * @param toolName - Fully qualified tool name, e.g. "accordo_comment_create"
+   * @param args - Tool arguments
+   * @param timeout - Timeout in ms (default: 30_000)
    */
   invokeTool(
     toolName: string,
@@ -78,11 +89,11 @@ export interface BridgeAPI {
   ): Promise<unknown>;
 }
 
-// ── Module-level state (created on activate, cleared on deactivate) ───────────
+// ── Module state (centralized, cleaned up on deactivate) ─────────────────────
 
-let _state: ExtensionState | null = null;
-let _services: ReturnType<typeof createServices> | null = null;
-let _connectionStatusEmitter: vscode.EventEmitter<boolean> | null = null;
+let extensionState: ExtensionState | null = null;
+let services: Services | null = null;
+let bootstrap: BootstrapResult | null = null;
 
 // ── activate ─────────────────────────────────────────────────────────────────
 
@@ -94,134 +105,134 @@ let _connectionStatusEmitter: vscode.EventEmitter<boolean> | null = null;
 export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<BridgeAPI> {
-  // ── Step 1: Bootstrap ────────────────────────────────────────────────────
-  const bootstrap = await bootstrapExtension(context);
-  const { outputChannel, config, hubManagerConfig, secretStorage } = bootstrap;
-  bootstrap.pushDisposable(outputChannel);
+  // 1. Bootstrap — VSCode ceremony, status bar, config
+  bootstrap = await bootstrapExtension(context);
 
-  // ── Step 2: Connection status emitter ────────────────────────────────────
-  _connectionStatusEmitter = bootstrap.connectionStatusEmitter;
-  const emitter = _connectionStatusEmitter;
-
-  // ── Step 3: Shared mutable state ─────────────────────────────────────────
-  _state = { wsClient: null, currentHubToken: "", currentHubPort: 0 };
-  const state = _state;
-
-  // ── Step 4: Full Hub config (add pid/port file paths) ─────────────────────
-  const fullHubConfig = {
-    ...hubManagerConfig,
-    pidFilePath: path.join(os.homedir(), ".accordo", "hub.pid"),
-    portFilePath: path.join(os.homedir(), ".accordo", "hub.port"),
+  // 2. Create module state
+  extensionState = {
+    wsClient: null,
+    currentHubToken: "",
+    currentHubPort: 0,
   };
 
-  // ── Step 5: Hub manager events ────────────────────────────────────────────
-  // buildHubManagerEvents captures deps.services via lazy getter — _services
-  // is null here and will be populated in Step 7 before any event fires.
-  const compositionDeps = {
+  // 3. Build composition deps (needed before factory so hubManagerEvents can
+  //    reference state/services via closure)
+  // We need a forward reference: state is ready but services aren't yet.
+  // We create a temporary CompositionDeps-like shell with a placeholder for services,
+  // then build the real deps once services are created.
+
+  // Build a mutable deps container so the events closures always see the live services
+  const depsContainer: {
+    bootstrap: BootstrapResult;
+    services: ReturnType<typeof createServices> | null;
+    state: ExtensionState;
+  } = {
     bootstrap,
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    get services() { return _services!; },
-    state,
-    showQuickPick: (
-      items: Array<{ label: string }>,
-      opts: { canPickMany: boolean; title: string },
-    ) => Promise.resolve(vscode.window.showQuickPick(items, opts)),
+    services: null,
+    state: extensionState,
   };
-  const hubManagerEvents = buildHubManagerEvents(compositionDeps);
 
-  // ── Step 6: Confirmation dialog ────────────────────────────────────────────
+  // Build hubManagerEvents using a lazy deps proxy
+  const lazyDeps: import("./extension-composition.js").CompositionDeps = {
+    get bootstrap() { return depsContainer.bootstrap; },
+    get services() {
+      if (depsContainer.services === null) throw new Error("services not yet created");
+      return depsContainer.services;
+    },
+    get state() { return depsContainer.state; },
+    showQuickPick: (items, options) =>
+      vscode.window.showQuickPick(
+        items as vscode.QuickPickItem[],
+        options,
+      ) as Promise<unknown>,
+  };
+
+  const hubManagerEvents = buildHubManagerEvents(lazyDeps);
+
+  // 4. Build VscodeApi for StatePublisher
+  const vscodeApi: import("./state-publisher.js").VscodeApi = {
+    window: {
+      get activeTextEditor() { return vscode.window.activeTextEditor as import("./state-publisher.js").TextEditor | undefined; },
+      get visibleTextEditors() { return vscode.window.visibleTextEditors as readonly import("./state-publisher.js").TextEditor[]; },
+      get activeTerminal() { return vscode.window.activeTerminal as import("./state-publisher.js").Terminal | undefined; },
+      onDidChangeActiveTextEditor: (l) => vscode.window.onDidChangeActiveTextEditor(l as (e: vscode.TextEditor | undefined) => void),
+      onDidChangeVisibleTextEditors: (l) => vscode.window.onDidChangeVisibleTextEditors(l as (e: readonly vscode.TextEditor[]) => void),
+      onDidChangeTextEditorSelection: (l) => vscode.window.onDidChangeTextEditorSelection(l as (e: vscode.TextEditorSelectionChangeEvent) => void),
+      onDidChangeActiveTerminal: (l) => vscode.window.onDidChangeActiveTerminal(l as (e: vscode.Terminal | undefined) => void),
+      tabGroups: {
+        get all() { return vscode.window.tabGroups.all as readonly import("./state-publisher.js").TabGroup[]; },
+        onDidChangeTabGroups: (l) => vscode.window.tabGroups.onDidChangeTabGroups(l as (e: vscode.TabGroupChangeEvent) => void),
+        onDidChangeTabs: (l) => vscode.window.tabGroups.onDidChangeTabs(l as (e: vscode.TabChangeEvent) => void),
+      },
+    },
+    workspace: {
+      get workspaceFolders() {
+        return vscode.workspace.workspaceFolders as readonly import("./state-publisher.js").WorkspaceFolder[] | undefined;
+      },
+      get name() { return vscode.workspace.name; },
+      onDidChangeWorkspaceFolders: (l) =>
+        vscode.workspace.onDidChangeWorkspaceFolders(
+          l as (e: vscode.WorkspaceFoldersChangeEvent) => void,
+        ),
+    },
+    env: {
+      get remoteName() { return vscode.env.remoteName; },
+    },
+  };
+
+  // 5. Build confirmation dialog
   const confirmationFn = async (toolName: string, args: Record<string, unknown>): Promise<boolean> => {
-    const detail = JSON.stringify(args, null, 2);
-    const choice = await vscode.window.showWarningMessage(
-      `Accordo: allow tool "${toolName}"?`,
-      { modal: true, detail },
+    const answer = await vscode.window.showWarningMessage(
+      `Allow tool "${toolName}" to run?`,
+      { modal: true, detail: JSON.stringify(args, null, 2) },
       "Allow",
     );
-    return choice === "Allow";
+    return answer === "Allow";
   };
 
-  // ── Step 7: Create services ────────────────────────────────────────────────
-  _services = createServices({
-    hubManagerConfig: fullHubConfig,
+  // 6. Create services
+  services = createServices({
+    hubManagerConfig: bootstrap.hubManagerConfig,
     hubManagerEvents,
-    secretStorage,
-    outputChannel,
-    vscodeApi: vscode as unknown as Parameters<typeof createServices>[0]["vscodeApi"],
+    secretStorage: bootstrap.secretStorage,
+    outputChannel: bootstrap.outputChannel,
+    vscodeApi,
     confirmationFn,
   });
-  const services = _services;
+  depsContainer.services = services;
 
-  // ── Step 8: Status bar updater ─────────────────────────────────────────────
-  const updateStatusBar = buildStatusBarUpdater(
-    bootstrap.statusBarItem,
-    () => state.wsClient as { isConnected(): boolean; getState(): string } | null,
-    () => _services as unknown as import("./extension-bootstrap.js").StatusBarServices | null,
+  // 6b. Wire a dynamic status bar updater now that services are available.
+  //     The fn is called from inside the bootstrap closure which owns
+  //     statusBarItem; we receive a setText callback to update the text.
+  bootstrap.setStatusBarUpdater((): void => {
+    const wsClient = extensionState?.wsClient ?? null;
+    const isConnected = wsClient?.isConnected() ?? false;
+    const tools = depsContainer.services?.registry.getAllTools() ?? [];
+    const wsAny = wsClient as (WsClient & { getState?: () => string }) | null;
+    const connState = wsAny?.getState?.() ?? (isConnected ? "connected" : "disconnected");
+
+    let text: string;
+    if (isConnected && tools.length > 0) {
+      text = "$(check) Accordo";
+    } else if (
+      connState === "connecting" ||
+      connState === "reconnecting" ||
+      (isConnected && tools.length === 0)
+    ) {
+      text = "$(warning) Accordo";
+    } else {
+      text = "$(error) Accordo";
+    }
+    bootstrap.statusBarItem.text = text;
+  });
+
+  // 7. Compose and return BridgeAPI
+  const api = composeExtension(
+    lazyDeps,
+    (command, callback) => vscode.commands.registerCommand(command, callback),
   );
-  bootstrap.setStatusBarUpdater(updateStatusBar);
-  bootstrap.pushDisposable(emitter.event(() => { updateStatusBar(); }));
 
-  // ── Step 9: Register VS Code commands ────────────────────────────────────
-  bootstrap.pushDisposable(
-    vscode.commands.registerCommand("accordo.hub.restart", () => {
-      services.hubManager.restart().catch((err: Error) => {
-        void vscode.window.showErrorMessage(`Accordo: restart failed — ${err.message}`);
-      });
-    }),
-  );
-  bootstrap.pushDisposable(
-    vscode.commands.registerCommand("accordo.hub.showLog", () => { outputChannel.show(true); }),
-  );
-  bootstrap.pushDisposable(
-    vscode.commands.registerCommand(
-      "accordo.bridge.showStatus",
-      buildShowStatusHandler(compositionDeps),
-    ),
-  );
-
-  // ── Step 10: Activate Hub ─────────────────────────────────────────────────
-  await services.hubManager.activate();
-  updateStatusBar();
-
-  // ── Step 11: Return BridgeAPI ─────────────────────────────────────────────
-  return {
-    registerTools(extensionId: string, tools: ExtensionToolDefinition[]): vscode.Disposable {
-      const inner = services.registry.registerTools(extensionId, tools);
-      updateStatusBar();
-      const cmdDisposables = tools.map((tool) =>
-        vscode.commands.registerCommand(
-          tool.name,
-          (args?: unknown) => tool.handler((args as Record<string, unknown>) ?? {}),
-        ),
-      );
-      return {
-        dispose() {
-          inner.dispose();
-          services.statePublisher.removeModalityState(extensionId);
-          for (const d of cmdDisposables) d.dispose();
-          updateStatusBar();
-        },
-      };
-    },
-
-    publishState(extensionId: string, stateData: Record<string, unknown>): void {
-      services.statePublisher.publishState(extensionId, stateData);
-      updateStatusBar();
-    },
-
-    getState(): IDEState {
-      return services.statePublisher.getState() ?? StatePublisher.emptyState();
-    },
-
-    isConnected(): boolean {
-      return state.wsClient?.isConnected() ?? false;
-    },
-
-    onConnectionStatusChanged: emitter.event,
-
-    invokeTool(toolName: string, args: Record<string, unknown>, timeout = 30_000): Promise<unknown> {
-      return services.router.invokeTool(toolName, args, timeout);
-    },
-  };
+  return api as BridgeAPI;
 }
 
 // ── deactivate ────────────────────────────────────────────────────────────────
@@ -231,14 +242,10 @@ export async function activate(
  * LCM-11: Close WS but do NOT kill the Hub process.
  */
 export async function deactivate(): Promise<void> {
-  if (_state !== null && _services !== null) {
-    await cleanupExtension(_state, _services);
+  if (extensionState !== null && services !== null) {
+    await cleanupExtension(extensionState, services);
   }
-  // LCM-11: do NOT kill Hub — it serves CLI agents independently.
-  await _services?.hubManager.deactivate();
-
-  _services = null;
-  _state = null;
-  _connectionStatusEmitter?.dispose();
-  _connectionStatusEmitter = null;
+  extensionState = null;
+  services = null;
+  bootstrap = null;
 }

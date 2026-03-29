@@ -1,15 +1,12 @@
 /**
- * relay-actions.ts — Thin barrel: dispatch map + re-exports.
+ * relay-actions.ts — Thin barrel: dispatch switch + re-exports.
  *
  * This is the public API surface for the relay layer. All consumers
  * (service-worker.ts, relay-bridge.ts, tests) import from this file.
  * The actual logic lives in:
- *   - relay-definitions.ts       — types, defaultStore, isVersionedSnapshot
- *   - relay-comment-handlers.ts  — comment CRUD handler implementations
- *   - relay-page-handlers.ts     — page understanding handler implementations
- *   - relay-capture-handler.ts   — capture_region + diff_snapshots implementations
- *   - relay-tab-handlers.ts      — list_pages + select_page implementations
- *   - relay-forwarder.ts         — cross-context messaging utilities
+ *   - relay-definitions.ts  — types, defaultStore, isVersionedSnapshot
+ *   - relay-handlers.ts     — handler implementations per action
+ *   - relay-forwarder.ts    — cross-context messaging utilities
  *
  * Split from 868-line monolith (B5a modularity).
  *
@@ -18,7 +15,7 @@
 
 import { resetDefaultManager } from "./snapshot-versioning.js";
 import { defaultStore } from "./relay-definitions.js";
-import type { RelayAction, RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
+import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
 import {
   handleGetAllComments,
   handleGetComments,
@@ -29,63 +26,22 @@ import {
   handleReopenThread,
   handleDeleteThread,
   handleNotifyCommentsUpdated,
-} from "./relay-comment-handlers.js";
-import {
   handleGetPageMap,
   handleInspectElement,
   handleGetDomExcerpt,
-  handleGetTextMap,
-  handleGetSemanticGraph,
-  handleWaitFor,
-} from "./relay-page-handlers.js";
-import {
   handleCaptureRegion,
   handleDiffSnapshots,
-} from "./relay-capture-handler.js";
-import {
+  handleWaitFor,
+  handleGetTextMap,
+  handleGetSemanticGraph,
   handleListPages,
   handleSelectPage,
-} from "./relay-tab-handlers.js";
+} from "./relay-handlers.js";
 
 // ── Re-exports (preserve public API surface) ─────────────────────────────────
 
 export { defaultStore };
 export type { RelayAction, RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
-
-// ── Action → Handler map ─────────────────────────────────────────────────────
-
-type ActionHandler = (request: RelayActionRequest) => Promise<RelayActionResponse>;
-
-const ACTION_HANDLERS: Record<RelayAction, ActionHandler> = {
-  // Comment actions
-  get_all_comments: handleGetAllComments,
-  get_comments: handleGetComments,
-  create_comment: handleCreateComment,
-  reply_comment: handleReplyComment,
-  delete_comment: handleDeleteComment,
-  resolve_thread: handleResolveThread,
-  reopen_thread: handleReopenThread,
-  delete_thread: handleDeleteThread,
-  notify_comments_updated: handleNotifyCommentsUpdated,
-
-  // Page understanding actions
-  get_page_map: handleGetPageMap,
-  inspect_element: handleInspectElement,
-  get_dom_excerpt: handleGetDomExcerpt,
-  get_text_map: handleGetTextMap,
-  get_semantic_graph: handleGetSemanticGraph,
-
-  // Capture and diff
-  capture_region: handleCaptureRegion,
-  diff_snapshots: handleDiffSnapshots,
-
-  // Wait
-  wait_for: handleWaitFor,
-
-  // Multi-tab
-  list_pages: handleListPages,
-  select_page: handleSelectPage,
-};
 
 // ── Navigation Reset ─────────────────────────────────────────────────────────
 
@@ -115,21 +71,66 @@ export function handleNavigationReset(): void {
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
 /**
- * Main dispatch — routes each RelayAction to its handler via the action map.
+ * Main dispatch switch — routes each RelayAction to its handler.
  *
  * This function is the single entry point for all relay actions. It delegates
- * to focused handler functions via ACTION_HANDLERS.
+ * to focused handler functions in relay-handlers.ts.
  */
-export async function handleRelayAction(
-  request: RelayActionRequest,
-): Promise<RelayActionResponse> {
+export async function handleRelayAction(request: RelayActionRequest): Promise<RelayActionResponse> {
   try {
-    const handler = ACTION_HANDLERS[request.action];
-    if (!handler) {
-      return { requestId: request.requestId, success: false, error: "unsupported-action" };
+    switch (request.action) {
+      // ── Comment actions ──
+      case "get_all_comments":
+        return await handleGetAllComments(request);
+      case "get_comments":
+        return await handleGetComments(request);
+      case "create_comment":
+        return await handleCreateComment(request);
+      case "reply_comment":
+        return await handleReplyComment(request);
+      case "delete_comment":
+        return await handleDeleteComment(request);
+      case "resolve_thread":
+        return await handleResolveThread(request);
+      case "reopen_thread":
+        return await handleReopenThread(request);
+      case "delete_thread":
+        return await handleDeleteThread(request);
+      case "notify_comments_updated":
+        return await handleNotifyCommentsUpdated(request);
+
+      // ── Page understanding actions ──
+      case "get_page_map":
+        return await handleGetPageMap(request);
+      case "inspect_element":
+        return await handleInspectElement(request);
+      case "get_dom_excerpt":
+        return await handleGetDomExcerpt(request);
+      case "get_text_map":
+        return await handleGetTextMap(request);
+      case "get_semantic_graph":
+        return await handleGetSemanticGraph(request);
+
+      // ── Capture and diff ──
+      case "capture_region":
+        return await handleCaptureRegion(request);
+      case "diff_snapshots":
+        return await handleDiffSnapshots(request);
+
+      // ── Wait ──
+      case "wait_for":
+        return await handleWaitFor(request);
+
+      // ── Multi-tab ──
+      case "list_pages":
+        return await handleListPages(request);
+      case "select_page":
+        return await handleSelectPage(request);
+
+      default:
+        return { requestId: request.requestId, success: false, error: "unsupported-action" };
     }
-    return await handler(request);
-  } catch {
+  } catch (error: unknown) {
     return { requestId: request.requestId, success: false, error: "action-failed" };
   }
 }

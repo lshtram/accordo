@@ -204,7 +204,11 @@ Updated via `stateUpdate` WebSocket messages from Bridge. Merges patches (partia
 accordo-hub/
 ├── src/
 │   ├── index.ts             — CLI entry, arg parsing, process signals
-│   ├── server.ts            — HTTP server, route setup, Streamable HTTP MCP
+│   ├── server.ts            — HubServer class (thin delegation shell), HubServerOptions
+│   ├── server-routing.ts    — createRouter(): URL switch, auth middleware, /health, /state, /instructions
+│   ├── server-sse.ts        — createSseManager(): SSE connections, keep-alive, tool-list-changed push
+│   ├── server-mcp.ts        — createMcpRequestHandler(): POST /mcp body read + session + dispatch; extractAgentHint()
+│   ├── server-reauth.ts     — createReauthHandler(): POST /bridge/reauth credential rotation
 │   ├── mcp-handler.ts       — JSON-RPC dispatch, session management
 │   ├── bridge-server.ts     — WebSocket server for Bridge connections
 │   ├── tool-registry.ts     — Tool registration, lookup, validation
@@ -217,6 +221,13 @@ accordo-hub/
 ├── tsconfig.json
 └── README.md
 ```
+
+**server.ts modular split (MOD-P2-B1):** The original 615-line `server.ts` was decomposed
+into a thin delegation shell (`server.ts` < 250 LOC) plus four focused modules. Each module
+exports a factory function that receives a typed `Deps` interface — no direct class references
+leak across module boundaries. HubServer's constructor wires all factories together. The
+`HubServer` class and `HubServerOptions` interface remain the only public exports from
+`server.ts`; `index.ts` continues to `import { HubServer } from "./server.js"` unchanged.
 
 ---
 
@@ -766,6 +777,13 @@ accordo-hub/                  npm package — "accordo-hub"
 @accordo/bridge-types/        npm package — TypeScript type definitions only
   Published: npmjs.com
   Used by: all extension authors for typed BridgeAPI
+  Internal structure (barrel re-export, no subpath imports):
+    src/index.ts          — barrel: re-exports all public symbols
+    src/ide-types.ts      — IDEState, OpenTab, OPEN_TAB_TYPES
+    src/tool-types.ts     — ExtensionToolDefinition, ToolRegistration, McpTool, schemas
+    src/ws-types.ts       — Hub↔Bridge WebSocket message types
+    src/comment-types.ts  — comment anchors, threads, storage, scale constants
+    src/constants.ts      — protocol constants, AuditEntry, HealthResponse, etc.
 
 accordo-bridge/               VSCode extension — "accordo.accordo-bridge"
   Published: VSCode Marketplace
