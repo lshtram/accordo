@@ -8,7 +8,7 @@
 - Core requirement coverage exists for **B2-EV-001..012** in `packages/browser/src/__tests__/eval-harness.test.ts` (scorecard, thresholds, scoring functions, evidence table, emitters, multi-surface, gate checks, determinism, metadata, browser-free testability)
 - No debug logs / TODO / FIXME found in scoped implementation files (`eval-harness.ts`, `eval-emitter.ts`, `eval-types.ts`)
 - Previous D2 blockers are fixed:
-  - Default output dir fallback now implemented (`docs/reviews/`) with optional `EmitOptions.outputDir`
+  - Default output dir fallback now implemented (`docs/50-reviews/`) with optional `EmitOptions.outputDir`
   - Weak assertions in eval tests replaced by explicit contract assertions
   - Real lint command is now wired for scoped eval files
   - Harness/browser-independence tests now verify meaningful runtime contracts

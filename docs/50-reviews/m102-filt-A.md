@@ -4,7 +4,7 @@
 **PASS**
 
 ### Scope Reviewed
-- `docs/reviews/m102-filt-A.md` (prior findings)
+- `docs/50-reviews/m102-filt-A.md` (prior findings)
 - `docs/architecture.md`
 - `packages/browser/src/page-understanding-tools.ts`
 - `packages/browser-extension/src/content/page-map-collector.ts`

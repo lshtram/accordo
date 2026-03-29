@@ -1,6 +1,6 @@
 # MCP Webview Evaluation Checklist — Live Run (2026-03-29)
 
-Reference checklist: `docs/mcp-webview-agent-evaluation-checklist.md`
+Reference checklist: `docs/30-development/mcp-webview-agent-evaluation-checklist.md`
 
 ## Method
 

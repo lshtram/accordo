@@ -526,7 +526,7 @@ The harness MUST produce an evidence table matching checklist §7.1 — one row 
 
 **B2-EV-006: JSON evidence emitter**  
 The harness MUST emit machine-readable evidence as JSON to a configurable output location. The JSON document includes the scorecard, evidence table, timestamp, and surface identifier (e.g. `"accordo-mcp"`, `"playwright-mcp"`, `"chrome-devtools"`). Output configuration uses `EmitOptions` (`{ outputDir: string; filenamePrefix?: string }`) to support multi-surface file separation (B2-EV-008).  
-**Acceptance:** `emitJsonEvidence(result, options)` writes valid JSON that round-trips through `JSON.parse()`. File is written to the configured `outputDir` (default: `docs/reviews/`).
+**Acceptance:** `emitJsonEvidence(result, options)` writes valid JSON that round-trips through `JSON.parse()`. File is written to the configured `outputDir` (default: `docs/50-reviews/`).
 
 **B2-EV-007: Markdown evidence emitter**  
 The harness MUST emit human-readable evidence as a Markdown report containing the scorecard table (§7 format) and evidence table (§7.1 format). Output configuration uses the same `EmitOptions` as B2-EV-006.  
@@ -534,7 +534,7 @@ The harness MUST emit human-readable evidence as a Markdown report containing th
 
 **B2-EV-008: Multi-surface comparison**  
 The harness MUST support scoring multiple surfaces in a single evaluation run and storing results side-by-side. The `EvaluationResult` type includes a `surface` field.  
-**Acceptance:** Two `EvaluationResult` objects with different `surface` values can coexist in `docs/reviews/`.
+**Acceptance:** Two `EvaluationResult` objects with different `surface` values can coexist in `docs/50-reviews/`.
 
 **B2-EV-009: Gate checking**  
 The harness MUST implement the 3-tier gate check (G1: 36+/no category below 3; G2: 40+/A–H ≥4, I ≥3; G3: 45/45) from the Browser 2.1 program.  

@@ -4,7 +4,7 @@
 
 Scope reviewed:
 - `packages/browser/src/__tests__/wait-tool.test.ts`
-- `docs/reviews/m109-wait-B.md`
+- `docs/50-reviews/m109-wait-B.md`
 
 ---
 

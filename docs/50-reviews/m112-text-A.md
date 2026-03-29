@@ -4,7 +4,7 @@
 - `docs/architecture.md` §14.10
 - `docs/requirements-browser2.0.md` — B2-TX-002, B2-TX-008
 - `packages/browser/src/text-map-tool.ts` — `maxSegments` schema + `nodeId` contract docs
-- Prior review record: `docs/reviews/m112-text-A.md`
+- Prior review record: `docs/50-reviews/m112-text-A.md`
 
 ## Decision
 

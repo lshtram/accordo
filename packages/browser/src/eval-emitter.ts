@@ -109,7 +109,7 @@ export function formatEvaluationMarkdown(result: EvaluationResult): string {
 }
 
 /** Default output directory used when `EmitOptions.outputDir` is omitted. */
-const DEFAULT_OUTPUT_DIR = "docs/reviews/";
+const DEFAULT_OUTPUT_DIR = "docs/50-reviews/";
 
 // ── Filename Generation ──────────────────────────────────────────────────────
 

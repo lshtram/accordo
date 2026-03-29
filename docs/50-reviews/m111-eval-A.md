@@ -3,7 +3,7 @@
 **Decision: PASS**
 
 ### Inputs re-checked
-- `docs/reviews/m111-eval-A.md`
+- `docs/50-reviews/m111-eval-A.md`
 - `docs/requirements-browser2.0.md` §3.15 (B2-EV-001..012)
 - `packages/browser/src/eval-types.ts`
 - `packages/browser/src/eval-emitter.ts`

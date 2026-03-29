@@ -229,7 +229,7 @@ export interface EvaluationResult {
  * B2-EV-006/007: Options for evidence emission.
  */
 export interface EmitOptions {
-  /** Output directory path. Defaults to "docs/reviews/" when omitted. */
+  /** Output directory path. Defaults to "docs/50-reviews/" when omitted. */
   readonly outputDir?: string;
   /** Optional filename prefix (default: surface name). */
   readonly filenamePrefix?: string;

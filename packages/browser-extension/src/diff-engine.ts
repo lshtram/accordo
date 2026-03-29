@@ -22,7 +22,7 @@ import type { NodeIdentity, VersionedSnapshot, SnapshotEnvelope } from "./snapsh
 /**
  * A node that was added or removed between two snapshots.
  *
- * Matches the `DiffNode` contract in `docs/browser2.0-architecture.md` §5.2.
+ * Matches the `DiffNode` contract in `docs/10-architecture/browser2.0-architecture.md` §5.2.
  */
 export interface DiffNode {
   /** Node ID from the snapshot where this node appears. */
@@ -40,7 +40,7 @@ export interface DiffNode {
 /**
  * A single field-level change detected on a matched node.
  *
- * Matches the `DiffChange` contract in `docs/browser2.0-architecture.md` §5.2.
+ * Matches the `DiffChange` contract in `docs/10-architecture/browser2.0-architecture.md` §5.2.
  */
 export interface DiffChange {
   /** Node ID in the `to` snapshot. */
@@ -73,7 +73,7 @@ export interface DiffSummary {
  * Complete diff result returned by `computeDiff()`.
  *
  * Extends `SnapshotEnvelope` with the envelope from the `to` snapshot,
- * matching the `DiffResult` contract in `docs/browser2.0-architecture.md` §5.2.
+ * matching the `DiffResult` contract in `docs/10-architecture/browser2.0-architecture.md` §5.2.
  */
 export interface DiffResult extends SnapshotEnvelope {
   /** Snapshot ID of the `from` snapshot. */

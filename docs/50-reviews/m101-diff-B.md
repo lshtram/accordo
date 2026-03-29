@@ -6,7 +6,7 @@
 ### Scope Reviewed
 - `packages/browser/src/__tests__/diff-tool.test.ts`
 - `packages/browser-extension/tests/diff-engine.test.ts`
-- `docs/reviews/m101-diff-B.md`
+- `docs/50-reviews/m101-diff-B.md`
 - Requirements cross-check: `docs/requirements-browser2.0.md` (B2-DE-001..B2-DE-007)
 
 ### Re-run Evidence

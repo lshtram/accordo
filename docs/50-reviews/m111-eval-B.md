@@ -4,7 +4,7 @@
 
 ### Scope reviewed
 - `packages/browser/src/__tests__/eval-harness.test.ts`
-- `docs/reviews/m111-eval-B.md`
+- `docs/50-reviews/m111-eval-B.md`
 
 ### Verification summary
 - ✅ Prior arithmetic mismatch is corrected.

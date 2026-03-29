@@ -6,7 +6,7 @@
 - Reviewed files:
   - `packages/browser/src/__tests__/text-map-tool.test.ts`
   - `packages/browser-extension/tests/text-map-collector.test.ts`
-  - Prior reviews: `docs/reviews/m112-text-B.md`, `docs/reviews/m112-text-B2.md`
+  - Prior reviews: `docs/50-reviews/m112-text-B.md`, `docs/50-reviews/m112-text-B2.md`
 
 ### Evidence executed
 1. `packages/browser`: `pnpm test`

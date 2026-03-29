@@ -4,7 +4,7 @@
 **PASS**
 
 ### Scope Reviewed
-- `docs/reviews/m101-diff-A.md` (previous blockers)
+- `docs/50-reviews/m101-diff-A.md` (previous blockers)
 - `docs/browser2.0-architecture.md`
 - `docs/architecture.md`
 - `docs/requirements-browser2.0.md`

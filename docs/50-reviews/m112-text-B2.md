@@ -6,7 +6,7 @@
 - Files reviewed:
   - `packages/browser-extension/tests/text-map-collector.test.ts`
   - `packages/browser/src/__tests__/text-map-tool.test.ts`
-- Baseline reference: `docs/reviews/m112-text-B.md`
+- Baseline reference: `docs/50-reviews/m112-text-B.md`
 
 ### Evidence executed
 1. Ran browser-side suite:

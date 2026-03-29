@@ -31,7 +31,7 @@ pnpm exec vitest run src/__tests__/eval-harness.test.ts
 | **B2-EV-003** Category scoring functions | All 9 `score*` function tests | Each returns valid CategoryScoreResult |
 | **B2-EV-004** Evidence item model | `isChecklistItemId` + `buildEvidenceTable` tests | Valid IDs match `/^[A-I]\d+$/` |
 | **B2-EV-005** Evidence table | `buildEvidenceTable` tests | Renders correct markdown rows |
-| **B2-EV-006** JSON evidence emitter | `emitJsonEvidence` + `formatScorecardJson` tests | Writes valid JSON to `docs/reviews/` |
+| **B2-EV-006** JSON evidence emitter | `emitJsonEvidence` + `formatScorecardJson` tests | Writes valid JSON to `docs/50-reviews/` |
 | **B2-EV-007** Markdown emitter | `formatScorecardMarkdown`, `formatEvidenceTableMarkdown`, `formatEvaluationMarkdown` tests | Correctly formatted output |
 | **B2-EV-008** Multi-surface comparison | `EvalSurface` type + `compareSurfaces` tests | Scores for Accordo vs Playwright vs DevTools |
 | **B2-EV-009** Gate checking | `checkGate` tests across G1/G2/G3 boundaries | Correct gate assignment |
@@ -76,8 +76,8 @@ const comparison = compareSurfaces(surfaces);
 
 ### Output locations
 
-- JSON evidence: `docs/reviews/<surface>-<date>.json`
-- Markdown evidence: `docs/reviews/<surface>-<date>.md`
+- JSON evidence: `docs/50-reviews/<surface>-<date>.json`
+- Markdown evidence: `docs/50-reviews/<surface>-<date>.md`
 
 ---
 
@@ -105,4 +105,4 @@ const comparison = compareSurfaces(surfaces);
 1. Run `pnpm exec vitest run src/__tests__/eval-harness.test.ts` — all 68 tests pass.
 2. Run `pnpm lint` — zero errors on `src/eval-*.ts`.
 3. Import and call `buildScorecard` with sample evidence to verify JSON/MD output format.
-4. Confirm output files land in `docs/reviews/`.
+4. Confirm output files land in `docs/50-reviews/`.
