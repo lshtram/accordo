@@ -138,7 +138,7 @@ interface SnapshotStore {
 interface WaitProvider {
   waitForText(texts: string[], options: WaitOptions): Promise<WaitResult>;
   waitForSelector(selector: string, options: WaitOptions): Promise<WaitResult>;
-  waitForStableLayout(options: WaitOptions): Promise<WaitResult>;
+  waitForStableLayout(stableMs: number, options: WaitOptions): Promise<WaitResult>;
 }
 
 /** Receives audit log entries for tool invocations. */
@@ -248,10 +248,14 @@ The content script maintains a per-page monotonic counter. Every data-producing 
 
 New tool: `browser_diff_snapshots`
 
+**Active-page inference:** The tool does not accept a `pageId` input. Page identity
+is encoded in the `snapshotId` format (`{pageId}:{version}`), and when both
+`fromSnapshotId` and `toSnapshotId` are omitted the relay targets the currently
+active tab. The `DiffResult` response carries `pageId` via `SnapshotEnvelope`
+fields, so callers always know which page was diffed.
+
 ```typescript
 interface DiffRequest {
-  /** Page to diff. */
-  pageId: string;
   /** Earlier snapshot. If omitted, uses the snapshot before `toSnapshotId`. */
   fromSnapshotId?: string;
   /** Later snapshot. If omitted, captures a fresh snapshot and uses it. */
@@ -409,8 +413,6 @@ interface BrowserWaitOptions {
   stableLayoutMs?: number;
   /** Maximum wait time in ms. Default: 10000. Max: 30000. */
   timeout?: number;
-  /** Page to wait on. Default: active page. */
-  pageId?: string;
 }
 
 interface BrowserWaitResult {
@@ -568,7 +570,8 @@ Existing error codes are preserved. New codes for Browser 2.0:
 |---|---|---|
 | Page map (medium page, ~1k nodes) | ≤2.5s | P1 |
 | Region capture (default quality) | ≤3.0s | — (existing) |
-| Diff computation | ≤1.0s | P1 |
+| Diff computation (pure diff engine in service worker) | ≤1.0s | P1 |
+| Diff tool relay round-trip (MCP tool-level timeout) | ≤5.0s | P1 |
 | Occlusion check (200 elements) | ≤500ms | P2 |
 | Shadow DOM traversal overhead | ≤30% over non-shadow | P2 |
 | Wait poll interval | 100ms | P3 |

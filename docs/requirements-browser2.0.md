@@ -35,6 +35,7 @@ All requirement IDs follow the pattern `B2-{category}-{number}`:
 | Error handling | B2-ER | New error codes, error semantics |
 | Performance | B2-PF | Latency, token budget, resource limits |
 | Testability | B2-TE | Testability requirements for each capability |
+| Text extraction | B2-TX | `browser_get_text_map` tool — visible text, reading order, visibility |
 
 ---
 
@@ -107,8 +108,17 @@ If a requested snapshot is from a previous navigation session, the tool MUST ret
 **Acceptance:** On a page with 500 nodes, 200 in viewport, `visibleOnly: true` returns ≤200 nodes.
 
 **B2-FI-002: interactiveOnly filter**  
-`browser_get_page_map` MUST accept an `interactiveOnly: boolean` parameter. When `true`, only interactive elements (buttons, links, inputs, selects, textareas, elements with click handlers, `[role="button"]`, `[contenteditable]`) are returned.  
-**Acceptance:** On a page with 500 nodes, 50 interactive, `interactiveOnly: true` returns ≤50 nodes.
+`browser_get_page_map` MUST accept an `interactiveOnly: boolean` parameter. When `true`, only interactive elements are returned. An element is classified as interactive if it satisfies **any** of:
+- Intrinsic interactive tag: `button`, `a`, `input`, `select`, `textarea`
+- Explicit ARIA role from the interactive-role set (e.g. `role="button"`, `role="link"`, `role="textbox"`, etc.)
+- `[contenteditable]` attribute present and not `"false"`
+- Inline event-handler attribute present (e.g. `onclick="..."`, `onkeydown="..."`)
+- Property-assigned `onclick` handler (i.e. `element.onclick` is a `function`)
+
+**Platform limitation — `addEventListener` listeners (accepted, not a future TODO):**  
+Listeners registered via `element.addEventListener('click', ...)` are **not detectable** in a content-script context. The browser provides no synchronous DOM API to enumerate registered listeners; `getEventListeners()` is a DevTools-only API unavailable to content scripts. This is a hard browser platform constraint, not an implementation gap. Elements whose only interactivity signal is an `addEventListener`-registered listener will be omitted by this filter. Agents that need comprehensive interactive-element detection should combine this filter with CSS-selector or ARIA-role hints.
+
+**Acceptance:** On a page with 500 nodes, 50 interactive, `interactiveOnly: true` returns ≤50 nodes. Elements with property-assigned `onclick` handlers are included. Elements whose only handler was registered via `addEventListener` are not included (platform limitation — accepted behavior).
 
 **B2-FI-003: roles filter**  
 `browser_get_page_map` MUST accept a `roles: string[]` parameter. Only elements matching any of the specified ARIA roles are returned.  
@@ -340,9 +350,9 @@ Returned when the redaction engine encounters an error. Data is NOT returned (fa
 `browser_get_page_map` MUST return within 2.5s on a medium-complexity page (~1,000 nodes).  
 **Acceptance:** Measured on 3 benchmark pages, P95 latency ≤2.5s.
 
-**B2-PF-002: Diff latency**  
-`browser_diff_snapshots` MUST complete within 1.0s.  
-**Acceptance:** Measured with 5-snapshot history on a medium page, P95 ≤1.0s.
+**B2-PF-002: Diff computation latency**  
+`browser_diff_snapshots` diff engine computation (pure diff in the service worker) MUST complete within 1.0s. The MCP tool-level relay round-trip timeout (covering WebSocket transport, serialization, and diff computation) is 5.0s.  
+**Acceptance:** Measured with 5-snapshot history on a medium page, P95 diff computation ≤1.0s; P95 tool-level round-trip ≤5.0s.
 
 **B2-PF-003: Occlusion check latency**  
 Occlusion detection for 200 elements MUST complete within 500ms.  
@@ -382,6 +392,166 @@ Redaction and origin policy MUST have test cases for: allow, block, redact email
 A dedicated test suite MUST verify that all existing tool response shapes are preserved after Browser 2.0 changes.  
 **Acceptance:** Test suite runs against both pre- and post-upgrade response shapes.
 
+### 3.15 Text Extraction (M112-TEXT)
+
+> **Evaluation category:** B (Text Extraction Quality) — see [`mcp-webview-agent-evaluation-checklist.md`](mcp-webview-agent-evaluation-checklist.md) §B and §3.4.
+
+**B2-TX-001: Visible text extraction**  
+A new MCP tool `browser_get_text_map` MUST return the visible text content of the current page — the text the user can see — as an ordered array of `TextSegment` objects. Each segment corresponds to a contiguous run of text within a single DOM element.  
+**Acceptance:** On a page with a heading "Hello" and a paragraph "World", the response contains at least two segments with `textNormalized` values `"Hello"` and `"World"`.
+
+**B2-TX-002: Per-segment source mapping**  
+Each `TextSegment` MUST include `nodeId` (integer, per-call scoped — assigned by the text-map traversal's own counter, reset to 0 on each invocation; not shared with page-map ref indices) and `bbox` (bounding box in viewport coordinates: `{ x, y, width, height }`), enabling agents to correlate text with specific elements and their positions on the page. Cross-tool element correlation (e.g. from text-map to `browser_inspect_element`) uses `bbox` intersection or CSS-selector re-lookup, not `nodeId`.  
+**Acceptance:** Every segment's `nodeId` is a stable, non-negative integer unique within the response. Every segment's `bbox` has non-negative `width` and `height`. Two calls to `browser_get_text_map` on an unchanged DOM produce the same `nodeId` for the same text node.
+
+**B2-TX-003: Whitespace-normalized and raw text modes**  
+Each `TextSegment` MUST include both `textRaw` (original whitespace, line breaks, and Unicode preserved) and `textNormalized` (collapsed whitespace: runs of whitespace → single space, leading/trailing trimmed). Agents can choose the appropriate mode for their task (exact match vs. semantic comparison).  
+**Acceptance:** For text content `"  Hello   World  \n"`, `textRaw` preserves original whitespace; `textNormalized` equals `"Hello World"`.
+
+**B2-TX-004: Reading order**  
+Segments MUST be assigned a `readingOrderIndex` (0-based integer) reflecting visual reading order: top-to-bottom, left-to-right within the same vertical band. Two segments are in the same vertical band when their vertical midpoints are within 5px. Within a band, segments sort by horizontal position (ascending `bbox.x`). For RTL content, the ordering within a band is reversed (descending `bbox.x`).  
+**Acceptance:** On an LTR page with a two-column layout (sidebar left, main right), sidebar headings at the same vertical position as main headings have *lower* `readingOrderIndex`. On an RTL page, the ordering within a horizontal band is reversed.
+
+**B2-TX-005: Visibility flags**  
+Each `TextSegment` MUST include a `visibility` field with value `"visible"`, `"hidden"`, or `"offscreen"`. Definitions:
+- `"visible"`: element is not hidden (via CSS) and its bounding box intersects the current viewport.
+- `"hidden"`: element has `display: none`, `visibility: hidden/collapse`, `opacity: 0`, or the `hidden` attribute.
+- `"offscreen"`: element is not hidden but its bounding box does not intersect the viewport.
+Agents can filter segments by visibility to focus on what the user can currently see.  
+**Acceptance:** An element with `display: none` has `visibility: "hidden"`. An element scrolled below the viewport has `visibility: "offscreen"`. An element in the visible viewport has `visibility: "visible"`.
+
+**B2-TX-006: Semantic context per segment**  
+Each `TextSegment` MUST include `role` (ARIA role or implicit HTML role if available, e.g. `"heading"` for `<h1>`) and `accessibleName` (from `aria-label`, `alt`, `title`, or derived — same logic as `getAccessibleName()` in `page-map-traversal.ts`). Both fields are optional strings (omitted when no role or accessible name applies).  
+**Acceptance:** An `<h2 aria-label="Section Title">Foo</h2>` produces a segment with `role: "heading"` and `accessibleName: "Section Title"`.
+
+**B2-TX-007: Snapshot envelope compliance**  
+The `browser_get_text_map` response MUST include the full `SnapshotEnvelope` (B2-SV-003: `pageId`, `frameId`, `snapshotId`, `capturedAt`, `viewport`, `source`). The snapshot is retained by the `SnapshotRetentionStore` for future diff operations.  
+**Acceptance:** Response passes `hasSnapshotEnvelope()` validation. Snapshot is retrievable from the retention store.
+
+**B2-TX-008: Maximum segment limit**  
+The tool MUST accept an optional `maxSegments` parameter (default: 500, max: 2000) to cap the number of returned segments. When truncated, the response includes `truncated: true`.  
+**Acceptance:** On a page with 1000 text nodes, `maxSegments: 100` returns exactly 100 segments with `truncated: true`.
+
+**B2-TX-009: Tool registration**  
+`browser_get_text_map` MUST be registered as a separate MCP tool with `dangerLevel: "safe"` and `idempotent: true`. It MUST NOT modify the existing `browser_get_page_map` tool interface.  
+**Acceptance:** Tool appears in the MCP registry alongside existing tools. Existing tools continue to work unchanged.
+
+**B2-TX-010: Backward compatibility**  
+The `browser_get_text_map` tool is purely additive — it MUST NOT change the behavior or response schema of any existing tool. The `BrowserRelayAction` union type gains `"get_text_map"` as a new member.  
+**Acceptance:** All existing integration tests pass unchanged.
+
+### 3.17 Semantic Graph (M113-SEM)
+
+**B2-SG-001: Unified semantic graph response**  
+The `browser_get_semantic_graph` tool MUST return a single `SemanticGraphResult` containing four sub-trees: `a11yTree` (accessibility tree snapshot), `landmarks` (landmark region extraction), `outline` (document heading outline H1–H6), and `forms` (form model extraction). All four sub-trees are collected in a single relay round-trip.  
+**Acceptance:** Response contains all four sub-tree arrays. A single relay request produces all four.
+
+**B2-SG-002: Accessibility tree snapshot**  
+The `a11yTree` field MUST be an array of `SemanticA11yNode` objects representing the accessible hierarchy of the page. Each node includes `role` (ARIA role or implicit HTML role), `name` (computed accessible name), `level` (heading level if applicable), `nodeId` (0-based per-call scoped integer), and `children` (nested child nodes). Nodes with no accessible role are excluded.  
+**Acceptance:** An `<h2 aria-label="About">` produces a node with `role: "heading"`, `name: "About"`, `level: 2`.
+
+**B2-SG-003: Landmark extraction**  
+The `landmarks` field MUST be an array of `Landmark` objects, one per ARIA landmark region on the page. Each landmark includes `role` (e.g. `"navigation"`, `"main"`, `"banner"`, `"contentinfo"`, `"complementary"`, `"search"`, `"form"`, `"region"`), `label` (from `aria-label` or `aria-labelledby`, if present), `nodeId` (per-call scoped integer matching the a11y tree node), and `tag` (the HTML tag name). Only elements with landmark roles (explicit via `role` attribute or implicit via HTML5 semantic elements) are included.  
+**Acceptance:** A `<nav aria-label="Main Menu">` produces a landmark with `role: "navigation"`, `label: "Main Menu"`, `tag: "nav"`.
+
+**B2-SG-004: Document outline**  
+The `outline` field MUST be an array of `OutlineHeading` objects, one per heading element (H1–H6) in document order. Each heading includes `level` (1–6), `text` (trimmed text content), `nodeId` (per-call scoped integer), and `id` (the element's `id` attribute, if present). Only `<h1>` through `<h6>` elements are included.  
+**Acceptance:** An `<h3 id="faq">FAQ</h3>` produces `{ level: 3, text: "FAQ", nodeId: <n>, id: "faq" }`.
+
+**B2-SG-005: Form model extraction**  
+The `forms` field MUST be an array of `FormModel` objects, one per `<form>` element on the page. Each form includes `formId` (the `id` attribute if present), `name` (the `name` attribute if present), `action` (the form action URL), `method` (GET/POST), `nodeId` (per-call scoped integer), and `fields` (array of `FormField`). Each `FormField` includes `tag` (input/select/textarea/button), `type` (the `type` attribute, e.g. `"text"`, `"email"`, `"submit"`), `name` (field name attribute), `label` (associated label text or `aria-label`), `required` (boolean), `value` (current value, redacted for password fields), and `nodeId`.  
+**Acceptance:** A `<form id="login"><input type="email" name="user" required><input type="password" name="pass"></form>` produces a form with two fields, the password field having `value: "[REDACTED]"`.
+
+**B2-SG-006: Node ID scope**  
+All `nodeId` values across the four sub-trees MUST share a single per-call counter, starting at 0. The same DOM element appearing in multiple sub-trees (e.g. a heading that is also in the a11y tree) MUST have the same `nodeId` value. Node IDs are per-call scoped and do NOT share identity with page-map ref indices or text-map node IDs.  
+**Acceptance:** A `<h2>` element that appears in both `a11yTree` and `outline` has the same `nodeId` value in both.
+
+**B2-SG-007: Snapshot envelope compliance**  
+The `browser_get_semantic_graph` response MUST include the full `SnapshotEnvelope` (B2-SV-003: `pageId`, `frameId`, `snapshotId`, `capturedAt`, `viewport`, `source`). The snapshot is retained by the `SnapshotRetentionStore` for future diff operations.  
+**Acceptance:** Response passes `hasSnapshotEnvelope()` validation. Snapshot is retrievable from the retention store.
+
+**B2-SG-008: Maximum depth limit**  
+The tool MUST accept an optional `maxDepth` parameter (default: 8, max: 16) that limits the nesting depth of the `a11yTree`. Nodes beyond the depth limit are excluded. The `landmarks`, `outline`, and `forms` sub-trees are not affected by depth limiting.  
+**Acceptance:** On a page with 20-level nesting, `maxDepth: 4` produces an a11y tree with no node deeper than 4 levels.
+
+**B2-SG-009: Visibility filtering**  
+The tool MUST accept an optional `visibleOnly` parameter (default: `true`). When `true`, hidden elements (display:none, visibility:hidden/collapse, opacity:0, [hidden]) are excluded from all four sub-trees. When `false`, all elements are included regardless of visibility.  
+**Acceptance:** With `visibleOnly: true`, an `<h2 style="display:none">` does not appear in the outline.
+
+**B2-SG-010: Performance budget**  
+Semantic graph collection MUST complete within 15 seconds on a complex page (~5,000 nodes). The tool-level relay timeout is 15 seconds.  
+**Acceptance:** Collection on a test page with 5,000 nodes completes within 15 seconds.
+
+**B2-SG-011: Tool registration**  
+`browser_get_semantic_graph` MUST be registered as a separate MCP tool with `dangerLevel: "safe"` and `idempotent: true`. It MUST NOT modify any existing tool interface.  
+**Acceptance:** Tool appears in the MCP registry alongside existing tools. Existing tools continue to work unchanged.
+
+**B2-SG-012: Backward compatibility**  
+The `browser_get_semantic_graph` tool is purely additive — it MUST NOT change the behavior or response schema of any existing tool. The `BrowserRelayAction` union type gains `"get_semantic_graph"` as a new member.  
+**Acceptance:** All existing tests pass unchanged.
+
+**B2-SG-013: Password redaction**  
+Password field values MUST be replaced with `"[REDACTED]"` in the form model. No actual password content is ever returned to the agent.  
+**Acceptance:** An `<input type="password" value="secret123">` produces `value: "[REDACTED]"`.
+
+**B2-SG-014: Implicit ARIA role mapping**  
+The collector MUST map HTML5 semantic elements to their implicit ARIA roles per the WAI-ARIA spec: `<nav>` → `"navigation"`, `<main>` → `"main"`, `<header>` → `"banner"`, `<footer>` → `"contentinfo"`, `<aside>` → `"complementary"`, `<section>` → `"region"` (when labelled), `<form>` → `"form"`, `<search>` → `"search"`.  
+**Acceptance:** A `<main>` element with no explicit role attribute produces `role: "main"`.
+
+**B2-SG-015: Empty sub-trees**  
+When a sub-tree has no elements (e.g. a page with no forms), the corresponding array MUST be empty (`[]`), not absent.  
+**Acceptance:** Response always contains all four sub-tree fields, even when empty.
+
+### 3.16 Evaluation Harness (M111-EVAL)
+
+**B2-EV-001: Scorecard structure**  
+The evaluation harness MUST define a scorecard with 9 categories (A–I) matching the evaluation checklist (`docs/mcp-webview-agent-evaluation-checklist.md` §7). Each category score is an integer 0–5.  
+**Acceptance:** A `Scorecard` type has exactly 9 required category fields, each constrained to 0–5.
+
+**B2-EV-002: Passing threshold**  
+The harness MUST implement the passing criteria: total score ≥ 30/45 AND no individual category score below 2.  
+**Acceptance:** `isPassingScore(scorecard)` returns `false` for a scorecard totalling 29 or one with any category at 1.
+
+**B2-EV-003: Category score function**  
+Each category (A–I) MUST have a dedicated scoring function that accepts evidence items and returns a score 0–5 with a rationale string.  
+**Acceptance:** 9 scoring functions exist, each returning `{ score: number; rationale: string }`.
+
+**B2-EV-004: Evidence item model**  
+The harness MUST define an `EvidenceItem` type that captures: `itemId` (matching checklist §7.1 item IDs like `"A1"`, `"B2"` — typed as `ChecklistItemId`, a template literal `${ChecklistCategoryLetter}${number}` where `ChecklistCategoryLetter` is `"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"`), `status` (`"pass"` | `"partial"` | `"fail"` | `"skip"`), `toolCalls` (array of tool names used), and `summary` (human-readable description). `buildEvidenceTable` MUST validate each `itemId` at runtime (regex `/^[A-I]\d+$/`) and throw on malformed IDs.  
+**Acceptance:** `EvidenceItem` type is defined with `ChecklistItemId` and enforced by TypeScript. Runtime validation rejects non-conforming IDs.
+
+**B2-EV-005: Evidence table**  
+The harness MUST produce an evidence table matching checklist §7.1 — one row per checklist item with `itemId`, `status`, `toolCalls`, and `summary`.  
+**Acceptance:** `buildEvidenceTable(items)` returns a `readonly EvidenceItem[]`.
+
+**B2-EV-006: JSON evidence emitter**  
+The harness MUST emit machine-readable evidence as JSON to a configurable output location. The JSON document includes the scorecard, evidence table, timestamp, and surface identifier (e.g. `"accordo-mcp"`, `"playwright-mcp"`, `"chrome-devtools"`). Output configuration uses `EmitOptions` (`{ outputDir: string; filenamePrefix?: string }`) to support multi-surface file separation (B2-EV-008).  
+**Acceptance:** `emitJsonEvidence(result, options)` writes valid JSON that round-trips through `JSON.parse()`. File is written to the configured `outputDir` (default: `docs/reviews/`).
+
+**B2-EV-007: Markdown evidence emitter**  
+The harness MUST emit human-readable evidence as a Markdown report containing the scorecard table (§7 format) and evidence table (§7.1 format). Output configuration uses the same `EmitOptions` as B2-EV-006.  
+**Acceptance:** `emitMarkdownEvidence(result, options)` writes a `.md` file with the scorecard and evidence table rendered as Markdown tables.
+
+**B2-EV-008: Multi-surface comparison**  
+The harness MUST support scoring multiple surfaces in a single evaluation run and storing results side-by-side. The `EvaluationResult` type includes a `surface` field.  
+**Acceptance:** Two `EvaluationResult` objects with different `surface` values can coexist in `docs/reviews/`.
+
+**B2-EV-009: Gate checking**  
+The harness MUST implement the 3-tier gate check (G1: 36+/no category below 3; G2: 40+/A–H ≥4, I ≥3; G3: 45/45) from the Browser 2.1 program.  
+**Acceptance:** `checkGate(scorecard)` returns the highest gate passed (`"G1"` | `"G2"` | `"G3"` | `"none"`).
+
+**B2-EV-010: Deterministic scoring**  
+Category scoring functions MUST be pure functions (no side effects, no network calls). They receive evidence items and return a deterministic score.  
+**Acceptance:** Calling the same scoring function with the same evidence twice returns the same result.
+
+**B2-EV-011: Evaluation run metadata**  
+Each `EvaluationResult` MUST include: `runId` (unique identifier), `timestamp` (ISO 8601), `surface`, `scorecard`, `evidenceTable`, and `gateResult`.  
+**Acceptance:** All fields are present and correctly typed.
+
+**B2-EV-012: Harness is testable without browser**  
+The evaluation harness MUST be unit-testable with mock evidence — no browser, relay, or Chrome extension required.  
+**Acceptance:** All harness tests run in vitest without any browser dependencies.
+
 ---
 
 ## 4. Non-Functional Requirements
@@ -409,8 +579,10 @@ All commits follow existing project convention: `feat(browser): ...`, `fix(brows
 | Phase | Requirements |
 |---|---|
 | P1 | B2-SV-001..007, B2-DE-001..007, B2-FI-001..008, B2-CA-001..004, B2-CO-001..004, B2-ER-001..002, B2-PF-001..002, B2-PF-005..006, B2-TE-001..003, B2-TE-005, B2-NF-002..004 |
+| P1+ | B2-TX-001..010 (M112-TEXT text extraction — evaluation category B) |
 | P2 | B2-VD-001..015, B2-ER-003..004, B2-PF-003..004, B2-TE-002, B2-NF-001 |
 | P3 | B2-WA-001..007, B2-PS-001..007, B2-ER-005..008, B2-TE-004 |
+| Cross-cutting | B2-EV-001..012 (M111-EVAL evaluation harness — applies across all categories A..I) |
 
 ---
 
@@ -419,7 +591,7 @@ All commits follow existing project convention: `feat(browser): ...`, `fix(brows
 | Checklist Category | Key Items | Browser 2.0 Requirements |
 |---|---|---|
 | A. Session & Context | Page metadata, load state, tabs, iframes | B2-SV-003 (metadata), B2-VD-005..009 (iframes) |
-| B. Text Extraction | Visible text, source mapping, visibility flags | B2-FI-001 (visibleOnly), B2-VD-010 (visibility) |
+| B. Text Extraction | Visible text, source mapping, visibility flags | B2-TX-001..010 (M112-TEXT: text map, source mapping, normalized/raw, reading order, visibility) |
 | C. Semantic Structure | DOM snapshot, a11y, landmarks, forms | B2-SV-006 (stable nodeId), B2-VD-001..003 (shadow DOM) |
 | D. Spatial/Layout | Bounding boxes, z-order, viewport intersection | B2-VD-010..013 (occlusion), B2-FI-006 (regionFilter) |
 | E. Visual Capture | Screenshots, region capture, format | Existing tools — no new requirements |
@@ -427,3 +599,4 @@ All commits follow existing project convention: `feat(browser): ...`, `fix(brows
 | G. Change Tracking | Snapshot versioning, deltas, filtering | B2-SV-001..007, B2-DE-001..007, B2-FI-001..008 |
 | H. Robustness | Wait primitives, timeouts, error taxonomy | B2-WA-001..007, B2-ER-001..008 |
 | I. Security/Privacy | Redaction, origin policies, audit | B2-PS-001..007 |
+| Cross-cutting | Evaluation scoring, evidence emission, gate checking | B2-EV-001..012 |

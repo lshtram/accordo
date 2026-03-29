@@ -921,13 +921,14 @@ Agent → Hub (MCP) → Bridge → accordo-browser → Chrome relay → content 
 Agent ← Hub (MCP) ← Bridge ← accordo-browser ← Chrome relay ← structured result
 ```
 
-Four MCP tools are registered by `accordo-browser` via `bridge.registerTools()`:
+Four page-understanding MCP tools plus one wait tool are registered by `accordo-browser` via `bridge.registerTools()`:
 - `browser_get_page_map` — structured DOM tree summary (breadth-first, depth/node-limited)
 - `browser_inspect_element` — deep single-element inspection with anchor generation
 - `browser_get_dom_excerpt` — raw HTML fragment for a CSS selector subtree
 - `browser_capture_region` — cropped viewport screenshot of a specific element or rect
+- `browser_wait_for` — wait for a condition on the active page (text appearance, CSS selector match, or layout stability) with configurable timeout and clear error semantics (B2-WA-001..007)
 
-These are registered as standard MCP tools (not routed through `comment_*`) because they are read-only inspection tools, not comment operations.
+These are registered as standard MCP tools (not routed through `comment_*`) because they are read-only inspection/synchronisation tools, not comment operations. `browser_wait_for` follows the same relay → content-script dispatch path as the page-understanding tools.
 
 ### 14.3 Enhanced Anchor Strategy
 
@@ -1053,10 +1054,361 @@ interface BrowserCaptureRegionResult {
 3. (Optional) `browser_capture_region({ anchorKey: "..." })` — only if visual confirmation needed
 4. `comment_create({ scope: { modality: "browser" }, anchor: { anchorKey: "..." }, body: "..." })`
 
-### 14.7 Design Document
+### 14.7 Server-Side Filtering (`browser_get_page_map` — M102-FILT)
+
+**Module:** M102-FILT  
+**Requirements:** [`docs/requirements-browser2.0.md`](requirements-browser2.0.md) — B2-FI-001..008  
+**Architecture:** [`docs/browser2.0-architecture.md`](browser2.0-architecture.md) §7
+
+#### Purpose
+
+Agents frequently need only a subset of the page map — interactive elements, nodes matching a role, or elements within a region. Without server-side filtering, agents must receive the entire page map and discard irrelevant nodes client-side, wasting context tokens. M102-FILT adds six composable filter parameters to `browser_get_page_map` that reduce the returned node set before it leaves the content script.
+
+#### Filter Parameters
+
+All parameters are optional. When omitted, no filtering is applied (backwards-compatible).
+
+| Parameter | Type | Requirement | Description |
+|---|---|---|---|
+| `visibleOnly` | `boolean` | B2-FI-001 | Only elements whose bounding box intersects the current viewport |
+| `interactiveOnly` | `boolean` | B2-FI-002 | Only interactive elements (button, a, input, select, textarea, `[role="button"]`, `[contenteditable]`, click handlers) |
+| `roles` | `string[]` | B2-FI-003 | Filter by ARIA role(s); implicit role mapping applied (e.g., `h1`–`h6` → `heading`) |
+| `textMatch` | `string` | B2-FI-004 | Substring match on visible text content (case-insensitive) |
+| `selector` | `string` | B2-FI-005 | CSS selector match; invalid selectors silently ignored (returns all elements) |
+| `regionFilter` | `{ x, y, width, height }` | B2-FI-006 | Bounding box region filter (viewport coordinates); all four fields required |
+
+#### AND-Composition Semantics (B2-FI-007)
+
+When multiple filters are provided, they compose with **AND semantics**: a node must pass **all** active filters to be included in the result. The filter pipeline is built once per request and each element is tested against every active predicate during DOM traversal.
+
+Example: `{ interactiveOnly: true, roles: ["button"], textMatch: "submit" }` returns only interactive elements that have role `button` AND contain the text "submit".
+
+#### `filterSummary` Output (B2-FI-008)
+
+When at least one filter parameter is provided, the response includes a `filterSummary` object:
+
+```typescript
+interface FilterSummary {
+  /** Names of the filters that were active. */
+  activeFilters: string[];
+  /** Number of nodes before filtering. */
+  totalBeforeFilter: number;
+  /** Number of nodes after filtering. */
+  totalAfterFilter: number;
+  /** Reduction ratio (0.0–1.0) — e.g. 0.6 means 60% reduction. */
+  reductionRatio: number;
+}
+```
+
+The reduction ratio links to the ≥40% reduction target defined in [`browser2.0-architecture.md` §7.2](browser2.0-architecture.md): filtered requests on a medium-complexity page (~1,000 nodes) should achieve at least 40% node reduction.
+
+#### Ownership Boundaries
+
+| Layer | Responsibility |
+|---|---|
+| Hub (`browser` package) | Exposes filter parameters in tool schema; passes them through relay |
+| Content script (`page-map-collector.ts`) | Calls filter pipeline during DOM traversal; emits `filterSummary` |
+| Content script (`page-map-filters.ts`) | Pure filter predicates + pipeline builder + summary builder |
+
+### 14.8 Design Document
 
 Full architecture: [`docs/design/page-understanding-architecture.md`](design/page-understanding-architecture.md)  
 Requirements: [`docs/requirements-browser-extension.md`](requirements-browser-extension.md) §3.15, §3.18
+
+### 14.9 Snapshot Diffing (`browser_diff_snapshots`)
+
+**Module:** M101-DIFF  
+**Requirements:** [`docs/requirements-browser2.0.md`](requirements-browser2.0.md) — B2-DE-001..007, B2-PF-002  
+**Architecture:** [`docs/browser2.0-architecture.md`](browser2.0-architecture.md) §5
+
+#### Purpose
+
+Agents need to detect what changed on a page between observations. `browser_diff_snapshots` compares two page-map snapshots and returns structural additions, removals, and changes — enabling change-driven workflows (form fill verification, SPA transition tracking, polling-until-ready) without re-transferring the entire page map.
+
+#### Tool Flow
+
+```
+Agent                 Hub (browser pkg)           Extension (relay)         Service Worker
+  │                        │                            │                        │
+  ├─ browser_diff_snapshots ─►                          │                        │
+  │  (fromSnapshotId?,      │                           │                        │
+  │   toSnapshotId?)        │                           │                        │
+  │                        ├─ relay "diff_snapshots" ───►                        │
+  │                        │                            ├─ dispatch to SW ───────►
+  │                        │                            │                        ├─ computeDiff()
+  │                        │                            │                        │  (pure function,
+  │                        │                            │                        │   ≤1.0s budget)
+  │                        │                            ◄── DiffResult ──────────┤
+  │                        ◄── relay response ──────────┤                        │
+  │  ◄── DiffToolResult ───┤                            │                        │
+```
+
+#### Ownership Boundaries
+
+| Layer | Package | Responsibility |
+|---|---|---|
+| MCP tool definition | `packages/browser` | `buildDiffSnapshotsTool()` — args validation, relay dispatch, timeout, response shaping |
+| Relay action | `packages/browser-extension` | `relay-actions.ts` — routes `diff_snapshots` to the diff engine |
+| Diff engine | `packages/browser-extension` | `diff-engine.ts` — pure functions: `computeDiff`, `flattenNodes`, `buildNodeIndex`, `formatTextDelta` |
+| Snapshot storage | `packages/browser-extension` | `SnapshotRetentionStore` — holds last N snapshots per page for diffing |
+
+#### Active-Page Inference
+
+The tool does **not** accept a `pageId` input. Page identity is encoded in the `snapshotId` format (`{pageId}:{version}`). When both `fromSnapshotId` and `toSnapshotId` are omitted, the relay targets the currently active tab. The `DiffResult` response carries `pageId` via `SnapshotEnvelope` fields.
+
+#### Performance Budget
+
+- **Diff computation** (B2-PF-002): ≤1.0s — pure diff engine time in service worker
+- **Tool-level timeout**: 5.0s — covers full relay round-trip (WebSocket transport + serialization + computation)
+
+#### Error Codes (B2-DE-006, B2-DE-007)
+
+| Error | Condition |
+|---|---|
+| `snapshot-not-found` | Referenced snapshot ID does not exist in the retention store |
+| `snapshot-stale` | Snapshot is from a previous navigation (URL/page changed) |
+| `browser-not-connected` | No active relay connection to the Chrome extension |
+| `timeout` | Relay round-trip exceeded 5.0s |
+| `action-failed` | Unclassified relay or engine failure |
+
+### 14.10 Text Map (`browser_get_text_map` — M112-TEXT)
+
+**Module:** M112-TEXT  
+**Requirements:** [`docs/requirements-browser2.0.md`](requirements-browser2.0.md) — B2-TX-001..010  
+**Evaluation category:** B (Text Extraction Quality) — [`mcp-webview-agent-evaluation-checklist.md`](mcp-webview-agent-evaluation-checklist.md) §B, §3.4
+
+#### Purpose
+
+Agents need to read and reason about the text content of a page — not just the DOM structure. Existing tools (`browser_get_page_map`, `browser_inspect_element`) provide structural information with truncated text per element, but they do not offer: (a) all visible text in reading order, (b) raw vs. normalized text modes, (c) per-text-node bounding boxes, or (d) visibility flags. `browser_get_text_map` closes evaluation checklist Category B by providing a flat, ordered array of `TextSegment` objects representing every text run on the page.
+
+#### Tool Flow
+
+```
+Agent                  Hub (browser pkg)            Extension (relay)          Content Script
+  │                         │                             │                         │
+  ├─ browser_get_text_map ──►                             │                         │
+  │  (maxSegments?)         │                             │                         │
+  │                         ├─ relay "get_text_map" ──────►                         │
+  │                         │                             ├─ dispatch to CS ────────►
+  │                         │                             │                         ├─ collectTextMap()
+  │                         │                             │                         │  - walk DOM text nodes
+  │                         │                             │                         │  - compute bbox per node
+  │                         │                             │                         │  - classify visibility
+  │                         │                             │                         │  - assign reading order
+  │                         │                             ◄── TextMapResult ────────┤
+  │                         ◄── relay response ───────────┤                         │
+  │  ◄── TextMapResponse ───┤                             │                         │
+```
+
+#### TextSegment Shape (§3.4 compliance)
+
+Each text segment carries all fields from the evaluation checklist §3.4:
+
+```typescript
+interface TextSegment {
+  textRaw: string;          // Original whitespace preserved
+  textNormalized: string;   // Collapsed whitespace, trimmed
+  nodeId: number;           // Per-call scoped ID (see Node ID Scope below)
+  role?: string;            // ARIA/implicit HTML role (e.g. "heading")
+  accessibleName?: string;  // aria-label / alt / title
+  bbox: { x: number; y: number; width: number; height: number };
+  visibility: "visible" | "hidden" | "offscreen";
+  readingOrderIndex: number; // 0-based, top-to-bottom LTR
+}
+```
+
+#### Reading Order Algorithm (B2-TX-004)
+
+1. Collect all text segments with their bounding boxes.
+2. Sort segments by vertical midpoint (`bbox.y + bbox.height / 2`).
+3. Group into vertical bands: two segments are in the same band when their vertical midpoints differ by ≤5px.
+4. Within each band, sort by `bbox.x` (ascending for LTR, descending for RTL content).
+5. Assign `readingOrderIndex` 0, 1, 2, ... across all bands in order.
+
+RTL detection: check `document.documentElement.dir` or `getComputedStyle(document.documentElement).direction`.
+
+#### Visibility Classification (B2-TX-005)
+
+Reuses existing helpers from `page-map-traversal.ts`:
+
+| State | Condition |
+|---|---|
+| `"hidden"` | `isHidden(element)` returns `true` (display:none, visibility:hidden/collapse, opacity:0, [hidden]) |
+| `"offscreen"` | Not hidden, but `isInViewport(element)` returns `false` |
+| `"visible"` | Not hidden and in viewport |
+
+#### Reuse of Existing Infrastructure
+
+| Existing module | What M112 reuses |
+|---|---|
+| `page-map-traversal.ts` | `isHidden()`, `isInViewport()`, `getAccessibleName()` — imported directly |
+| `snapshot-versioning.ts` | `captureSnapshotEnvelope("dom")` — identical to page map |
+| `page-map-collector.ts` | `EXCLUDED_TAGS` set, ref index pattern (M112 maintains its own independent node ID counter — see Node ID Scope below) |
+| `types.ts` | `BrowserRelayAction` (gains `"get_text_map"`), `SnapshotEnvelopeFields`, `hasSnapshotEnvelope()` |
+| `snapshot-retention.ts` | `SnapshotRetentionStore` — shared 5-slot FIFO store |
+
+#### Node ID Scope
+
+Text-map `nodeId` values are **per-call scoped** — they are assigned by M112's own counter during each `collectTextMap()` invocation and reset to 0 on every call. They do **not** share identity with page-map ref indices. An agent cannot pass a text-map `nodeId` to `browser_inspect_element` and expect a match; cross-tool element correlation uses `bbox` intersection or CSS-selector re-lookup instead.
+
+This is intentional: text-map traversal visits text nodes (DOM `Text` type), while page-map traversal visits element nodes. A shared counter would produce misleading identities — the same integer would reference different DOM objects across the two tools. Keeping the ID spaces independent avoids correctness bugs and simplifies both collectors.
+
+#### Ownership Boundaries
+
+| Layer | Package | File | Responsibility |
+|---|---|---|---|
+| MCP tool definition | `packages/browser` | `text-map-tool.ts` | `buildTextMapTool()` — args validation, relay dispatch, envelope validation, store persistence |
+| Relay action type | `packages/browser` | `types.ts` | `BrowserRelayAction` union includes `"get_text_map"` |
+| Relay dispatch | `packages/browser-extension` | `content-entry.ts` | Routes `"get_text_map"` action to `collectTextMap()` |
+| Text extraction | `packages/browser-extension` | `text-map-collector.ts` | `collectTextMap()` — DOM traversal, bbox, visibility, reading order, truncation |
+| Tool registration | `packages/browser` | `extension.ts` | Wires `buildTextMapTool()` into the `allBrowserTools` array |
+
+#### Performance Budget
+
+- **Text map collection**: ≤2.5s on a medium-complexity page (~1,000 nodes) — same as page map (B2-PF-001).
+- **Tool-level relay timeout**: 10s — covers full relay round-trip.
+
+#### Token Cost Estimate
+
+With `maxSegments: 500` (default), a typical response produces ~800–1,500 tokens of structured JSON. With `maxSegments: 50`, ~100–200 tokens.
+
+### 14.11 Semantic Graph (`browser_get_semantic_graph` — M113-SEM)
+
+**Module:** M113-SEM  
+**Requirements:** [`docs/requirements-browser2.0.md`](requirements-browser2.0.md) — B2-SG-001..015  
+**Evaluation category:** C (Semantic Structure) — [`mcp-webview-agent-evaluation-checklist.md`](mcp-webview-agent-evaluation-checklist.md) §C, §3.5
+
+#### Problem Statement (Non-Technical)
+
+When an AI agent looks at a web page, it needs to understand the page's *meaning*, not just its text or visual layout. The semantic graph answers questions like: "What sections does this page have?", "Where is the navigation?", "What forms can the user fill out?", and "What is the heading structure?" This is the accessibility-aware structural understanding layer — the same information that screen readers use to help visually impaired users navigate a page.
+
+#### Design Rationale
+
+A single tool provides four complementary sub-trees in one relay round-trip (B2-SG-001):
+
+1. **Accessibility tree** — the full ARIA-aware hierarchy that assistive technologies see
+2. **Landmarks** — navigational regions (nav, main, banner, etc.)
+3. **Document outline** — heading hierarchy (H1–H6) for table-of-contents style navigation
+4. **Form models** — structured extraction of forms and their fields
+
+Returning all four in one call eliminates the latency of four separate relay round-trips and gives the agent a coherent snapshot where all `nodeId` values are consistent (B2-SG-006).
+
+#### Data Flow
+
+```
+Agent                        Hub (MCP)    Bridge       Browser Extension
+  │                             │            │            │
+  │ ── get_semantic_graph ──►   │            │            │
+  │                             │ ── relay ──►            │
+  │                             │            │ ── WS ──►  │
+  │                             │            │            │── content script:
+  │                             │            │            │   collectSemanticGraph()
+  │                             │            │            │   ├─ a11yTree walk
+  │                             │            │            │   ├─ landmark scan
+  │                             │            │            │   ├─ outline scan
+  │                             │            │            │   └─ form scan
+  │                             │            │            │   (single shared nodeId counter)
+  │                             │            │  ◄── data ─┤
+  │                             │ ◄── resp ──┤            │
+  │  ◄── SemanticGraphResponse ─┤            │            │
+```
+
+#### Key Types (Content Script)
+
+```typescript
+interface SemanticA11yNode {
+  role: string;            // ARIA role (explicit or implicit)
+  name?: string;           // Computed accessible name
+  level?: number;          // Heading level (1-6), only for role="heading"
+  nodeId: number;          // Per-call scoped, shared across sub-trees
+  children: SemanticA11yNode[];
+}
+
+interface Landmark {
+  role: string;            // Landmark role (navigation, main, etc.)
+  label?: string;          // aria-label or aria-labelledby text
+  nodeId: number;
+  tag: string;             // HTML tag name
+}
+
+interface OutlineHeading {
+  level: number;           // 1-6
+  text: string;            // Trimmed text content
+  nodeId: number;
+  id?: string;             // Element id attribute if present
+}
+
+interface FormField {
+  tag: string;             // input, select, textarea, button
+  type?: string;           // type attribute (text, email, submit, etc.)
+  name?: string;           // name attribute
+  label?: string;          // Associated label text or aria-label
+  required: boolean;
+  value?: string;          // Current value (REDACTED for passwords)
+  nodeId: number;
+}
+
+interface FormModel {
+  formId?: string;         // id attribute
+  name?: string;           // name attribute
+  action?: string;         // form action URL
+  method: string;          // GET or POST
+  nodeId: number;
+  fields: FormField[];
+}
+```
+
+#### Node ID Scope (B2-SG-006)
+
+All four sub-trees share a **single per-call node ID counter**, starting at 0. When the same DOM element appears in multiple sub-trees (e.g. a `<nav>` appears as both an a11y tree node and a landmark), it gets the same `nodeId` in both. This is achieved by assigning node IDs during a single DOM walk, then distributing the results to the four sub-tree builders.
+
+Semantic graph `nodeId` values do **not** share identity with page-map ref indices or text-map node IDs. Cross-tool element correlation uses `bbox` intersection or CSS-selector re-lookup.
+
+#### Implicit ARIA Role Mapping (B2-SG-014)
+
+| HTML Element | Implicit Role | Condition |
+|---|---|---|
+| `<nav>` | `navigation` | Always |
+| `<main>` | `main` | Always |
+| `<header>` | `banner` | When scoped to `<body>` (not nested in sectioning content) |
+| `<footer>` | `contentinfo` | When scoped to `<body>` (not nested in sectioning content) |
+| `<aside>` | `complementary` | Always |
+| `<section>` | `region` | When labelled (has `aria-label` or `aria-labelledby`) |
+| `<form>` | `form` | When labelled |
+| `<search>` | `search` | Always |
+| `<h1>`–`<h6>` | `heading` | Always, with `level` = 1–6 |
+| `<button>` | `button` | Always |
+| `<a href>` | `link` | When `href` is present |
+| `<input>` | `textbox`/`checkbox`/etc. | Based on `type` attribute |
+| `<select>` | `listbox` | Always |
+| `<textarea>` | `textbox` | Always |
+| `<img>` | `img` | Always |
+| `<ul>` / `<ol>` | `list` | Always |
+| `<li>` | `listitem` | Always |
+| `<table>` | `table` | Always |
+
+#### Password Redaction (B2-SG-013)
+
+Form fields with `type="password"` have their `value` replaced with `"[REDACTED]"`. This is enforced in the content-script collector to ensure password content never reaches the relay layer.
+
+#### Ownership Boundaries
+
+| Layer | Package | File | Responsibility |
+|---|---|---|---|
+| MCP tool definition | `packages/browser` | `semantic-graph-tool.ts` | `buildSemanticGraphTool()` — args validation, relay dispatch, envelope validation, store persistence |
+| Relay action type | `packages/browser` | `types.ts` | `BrowserRelayAction` union includes `"get_semantic_graph"` |
+| Relay dispatch | `packages/browser-extension` | `content-entry.ts` | Routes `"get_semantic_graph"` action to `collectSemanticGraph()` |
+| Semantic extraction | `packages/browser-extension` | `semantic-graph-collector.ts` | `collectSemanticGraph()` — DOM traversal, a11y tree, landmarks, outline, forms |
+| Tool registration | `packages/browser` | `extension.ts` | Wires `buildSemanticGraphTool()` into the `allBrowserTools` array |
+
+#### Performance Budget
+
+- **Semantic graph collection** (B2-SG-010): ≤15s on a complex page (~5,000 nodes).
+- **Tool-level relay timeout**: 15s — covers full relay round-trip.
+
+#### Token Cost Estimate
+
+With default settings, a typical response produces ~1,000–3,000 tokens of structured JSON. Pages with many forms or deep a11y trees may produce up to ~5,000 tokens.
 
 ---
 

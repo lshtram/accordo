@@ -467,7 +467,7 @@ The full architecture for the Comments modality is in [`docs/comments-architectu
 
 **Goal:** Give AI agents the ability to inspect live browser pages (structured DOM summary, element inspection, HTML excerpts) and capture targeted screenshots of specific elements or regions — avoiding full-viewport screenshots that bloat agent context windows.
 
-**Architecture:** [`docs/design/page-understanding-architecture.md`](design/page-understanding-architecture.md); [`docs/architecture.md`](architecture.md) §14.2–§14.7  
+**Architecture:** [`docs/design/page-understanding-architecture.md`](design/page-understanding-architecture.md); [`docs/architecture.md`](architecture.md) §14.2–§14.9  
 **Requirements:** [`docs/requirements-browser-extension.md`](requirements-browser-extension.md) §3.15 (PU-F-01..PU-F-57), §3.18 (CR-F-01..CR-F-12)  
 **Testing guide:** [`docs/testing-guide-session-15.md`](testing-guide-session-15.md)
 
@@ -627,7 +627,108 @@ Identified in a post-session-10C code review. No blocking issues — voice is fu
 
 ---
 
+### Browser 2.1 — Category Leadership Program (target: **5/5 in A–I**)
+
+> **Status:** PLANNED — requested 2026-03-28.  
+> **Objective:** make Accordo MCP the top-scoring solution in each checklist category (A..I), not just pass threshold.
+
+#### Program score gates
+
+| Gate | Target | Exit condition |
+|---|---|---|
+| G1 | 36+/45 | no category below 3 |
+| G2 | 40+/45 | A..H >=4, I >=3 |
+| G3 | **45/45** | **all categories 5/5** with reproducible evidence |
+
+#### Benchmarking and evidence rule (required each session)
+
+- Run live evaluation against: [`docs/mcp-webview-agent-evaluation-checklist.md`](mcp-webview-agent-evaluation-checklist.md)
+- Compare three surfaces each cycle: **Accordo MCP vs Playwright MCP vs chrome-devtools**
+- Store machine-readable evidence (tool-call traces + scorecard) in `docs/reviews/`
+
+---
+
+#### Wave W1 — Foundation, determinism, and operability (A/G/H)
+
+| Module | Scope | Checklist impact | Est. tests |
+|---|---|---|---|
+| M100-SNAP | Snapshot envelope + monotonic IDs on all responses | A, G | ~30 |
+| M101-DIFF | `browser_diff_snapshots` API | G | ~25 |
+| M102-FILT | server-side filtering/paging for `get_page_map` | G, H | ~30 |
+| M109-WAIT | wait primitives (`text/selector/stable-layout`) | H, A | ~20 |
+| M111-EVAL | live scoring harness + evidence emitter (json+md) | A..I quality gate | ~20 |
+
+**Learn from best:** Playwright auto-wait/retry model, CDP explicit page/session context.
+
+---
+
+#### Wave W2 — Understanding depth for agent reasoning (B/C/D/F)
+
+| Module | Scope | Checklist impact | Est. tests |
+|---|---|---|---|
+| M112-TEXT | `browser_get_text_map` (raw+normalized, bbox, reading order, visibility flags) | B | ~30 |
+| M113-SEM | ✅ unified semantic graph (DOM+a11y landmarks, outline, forms) | C | 118 |
+| M114-LAYOUT | layout intelligence (`bbox`, occlusion, viewport intersection, geometry helpers) | D | ~30 |
+| M115-INT | interactive inventory + actionability + semantic handles | F | ~25 |
+
+**Learn from best:** Playwright locators/actionability checks, CDP DOMSnapshot/Accessibility structure.
+
+---
+
+#### Wave W3 — Visual and multimodal fidelity (E)
+
+| Module | Scope | Checklist impact | Est. tests |
+|---|---|---|---|
+| M116-VIS | `browser_capture_screenshot` (viewport/full-page), improved region capture, visual-linkage (`snapshotId/nodeId`) | E | ~20 |
+
+**Learn from best:** CDP screenshot controls and capture completeness.
+
+---
+
+#### Wave W4 — Security/privacy + portability hardening (I + cross-cutting)
+
+| Module | Scope | Checklist impact | Est. tests |
+|---|---|---|---|
+| M108-PRIV | redaction hooks, origin allow/deny, retention controls | I | ~25 |
+| M110-CORE | extract `@accordo/browser-core` (detachable/standalone) | A..I portability | ~15 |
+| M117-AUDIT | full MCP call audit trail + artifact retention policy reporting | I, H | ~15 |
+
+**Learn from best:** stronger than both competitors by shipping privacy/audit as first-class APIs.
+
+---
+
+#### Category winners strategy (what “better than best” means)
+
+- **A:** Every response carries canonical context envelope (`pageId/frameId/snapshotId/capturedAt/viewport/source`)
+- **B:** Visible-text map with element-linked bboxes + deterministic reading order
+- **C:** Unified DOM+a11y semantic model in one API surface
+- **D:** Spatial reasoning helpers without requiring custom script evaluation
+- **E:** Viewport/full-page/region capture with explicit linkage and compact transport options
+- **F:** Actionability-aware interactive inventory (role/name/text/css handles + confidence)
+- **G:** First-class snapshot diff workflow + efficient incremental retrieval
+- **H:** Wait primitives + strict timeout/error taxonomy + retry hints
+- **I:** Built-in privacy controls + auditable retention semantics
+
+#### Immediate execution order (start now)
+
+1. Finish W1 in strict TDD sequence: **M100 → M101 → M102 → M109 → M111**
+2. Re-score after W1; if any of A/G/H <4, do hardening loop before W2
+3. Move to W2 and re-score each module completion (no category regression allowed)
+
+---
+
 ## DONE
+
+### Browser 2.1 — W2 M113-SEM (completed 2026-03-29)
+
+Delivered `browser_get_semantic_graph` end-to-end (collector + relay + MCP tool + retention envelope), including landmark/outline/forms extraction, visibility filtering across all subtrees, role-mapping fixes (`<search>`, labelled `<section>`), and runtime-safe payload guards in the tool handler.  
+Automated coverage: **118 tests** (browser-extension: 87, browser: 31), all passing in module suites.
+
+Artifacts:
+- Testing guide: [`docs/testing-guide-m113-sem.md`](testing-guide-m113-sem.md)
+- D2 review: [`docs/reviews/m113-sem-D2.md`](reviews/m113-sem-D2.md)
+
+Next planned module: **M114-LAYOUT**.
 
 ### Session 15 — Page Understanding + Region Capture (completed 2026-03-26)
 
