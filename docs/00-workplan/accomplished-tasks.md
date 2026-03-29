@@ -76,3 +76,8 @@
 - Active planning now lives in `docs/00-workplan/workplan.md` and should include only open work.
 - Historical detailed plans and old workplans remain under `docs/90-archive/`.
 - New completions should be appended here immediately after Phase F.
+
+## Infrastructure & Maintenance
+| Task | Status | Evidence |
+|---|---|---|
+| Merge `browser2.0` into `main` | ✅ | Full monorepo test suite green on `main`. Worktree deleted. |
