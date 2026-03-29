@@ -15,13 +15,20 @@
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'no lint configured yet'",
-    "test": "echo 'types-only package — no tests'",
-    "test:watch": "echo 'types-only package — no tests'"
+    "lint": "eslint src/ide-types.ts src/tool-types.ts src/ws-types.ts src/comment-types.ts src/constants.ts src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest watch"
   },
   "devDependencies": {
-    "typescript": "^5.8.0"
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "eslint": "^10.1.0",
+    "tsd": "^0.33.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "license": "MIT"
 }
