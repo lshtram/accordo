@@ -1,31 +1,23 @@
 /**
- * Hub Bridge Server (WebSocket)
+ * Hub Bridge Server (WebSocket) — composition root / facade
  *
- * Manages the single WebSocket connection from Bridge to Hub.
- * Routes tool invocations, state updates, and heartbeats.
+ * Imports BridgeConnection (connection lifecycle) and BridgeDispatch
+ * (message routing + concurrency) and exposes the same BridgeServer
+ * class as before. All callers continue to import from this file.
  *
  * Requirements: requirements-hub.md §2.5, §5.4, §9 (concurrency)
  */
 
-import { randomUUID } from "node:crypto";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as os from "node:os";
 import type http from "node:http";
-import { WebSocketServer } from "ws";
-import type { WebSocket as WsSocket } from "ws";
 import type {
   IDEState,
   ToolRegistration,
   ResultMessage,
   ConcurrencyStats,
 } from "@accordo/bridge-types";
-import {
-  ACCORDO_PROTOCOL_VERSION,
-  DEFAULT_MAX_CONCURRENT_INVOCATIONS,
-  DEFAULT_MAX_QUEUE_DEPTH,
-} from "@accordo/bridge-types";
 import { JsonRpcError } from "./errors.js";
+import { BridgeConnection, createBridgeLogger } from "./bridge-connection.js";
+import { BridgeDispatch } from "./bridge-dispatch.js";
 
 export interface BridgeServerOptions {
   /** Expected ACCORDO_BRIDGE_SECRET. Can be updated via reauth. */
@@ -44,90 +36,71 @@ export interface BridgeServerOptions {
   onGraceExpired?: () => void;
 }
 
-/** In-flight invoke awaiting a ResultMessage from Bridge */
-interface PendingInvoke {
-  resolve: (r: ResultMessage) => void;
-  reject: (e: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
-}
-
-/**
- * An invocation queued because the in-flight limit was reached.
- * CONC-03: Queued until an in-flight slot becomes available.
- */
-interface QueuedInvoke {
-  tool: string;
-  args: Record<string, unknown>;
-  timeout: number;
-  resolve: (r: ResultMessage) => void;
-  reject: (e: Error) => void;
-}
-
-/** In-flight requestState awaiting a StateSnapshotMessage from Bridge */
-interface PendingStateRequest {
-  resolve: (s: IDEState) => void;
-  reject: (e: Error) => void;
-}
-
-/** Incoming Bridge → Hub message (discriminated union for type-narrowing) */
-type BridgeMessage =
-  | { type: "stateSnapshot"; protocolVersion: string; state: IDEState }
-  | { type: "stateUpdate"; patch: Partial<IDEState> }
-  | { type: "toolRegistry"; tools: ToolRegistration[] }
-  | { type: "result"; id: string; success: boolean; data?: unknown; error?: string }
-  | { type: "pong"; ts: number }
-  | { type: "cancelled"; id: string; late: boolean };
-
-const PING_INTERVAL_MS = 30_000;
-const REQUEST_STATE_TIMEOUT_MS = 10_000;
-
 export class BridgeServer {
   private secret: string;
-  private maxConcurrent: number;
-  private maxQueueDepth: number;
-  private inflight = 0;
-  private queued = 0;
-  /** CONC-03: FIFO queue for invocations waiting for an in-flight slot */
-  private invokeQueue: QueuedInvoke[] = [];
-  private connected = false;
-  private ws: WsSocket | null = null;
-  private pingInterval: ReturnType<typeof setInterval> | null = null;
-  private pendingInvokes = new Map<string, PendingInvoke>();
-  private pendingStateRequest: PendingStateRequest | null = null;
-  private registryUpdateCb: ((tools: ToolRegistration[]) => void) | null = null;
-  private stateUpdateCb: ((patch: Partial<IDEState>) => void) | null = null;
-  // M34: max WS payload size
-  private maxPayload: number = 1_048_576;
-  // M33: inbound rate limiting
-  private maxMessagesPerSecond: number = 100;
-  private messageCount = 0;
-  private messageWindowStart = 0;
-  // M31: grace window
-  private graceWindowMs: number = 15_000;
-  private onGraceExpired: (() => void) | undefined;
-  private graceTimer: ReturnType<typeof setTimeout> | null = null;
-  /** File path for bridge-server diagnostic logging. */
-  private logFile: string;
+  private readonly conn: BridgeConnection;
+  private readonly dispatch: BridgeDispatch;
+
+  /**
+   * Stored so tests can read `server.maxMessagesPerSecond` via internal cast.
+   * Also used to pass the value to BridgeConnection.
+   */
+  private readonly maxMessagesPerSecond: number;
+  /**
+   * Stored so tests can read `server.graceWindowMs` via internal cast.
+   * Also used to pass the value to BridgeConnection.
+   */
+  private readonly graceWindowMs: number;
+
+  // ── Test-facing proxy setters (tests inject mock ws/connected via cast) ──
+  /** Proxy setter — writes through to the shared connection state. */
+  private set ws(value: unknown) {
+    (this.conn.state as unknown as Record<string, unknown>)["ws"] = value;
+  }
+  /** Proxy setter — writes through to the shared connection state. */
+  private set connected(value: boolean) {
+    this.conn.state.connected = value;
+  }
 
   constructor(options: BridgeServerOptions) {
     this.secret = options.secret;
-    this.maxConcurrent = options.maxConcurrent ?? DEFAULT_MAX_CONCURRENT_INVOCATIONS;
-    this.maxQueueDepth = options.maxQueueDepth ?? DEFAULT_MAX_QUEUE_DEPTH;
-    this.maxPayload = options.maxPayload ?? 1_048_576;
     this.maxMessagesPerSecond = options.maxMessagesPerSecond ?? 100;
     this.graceWindowMs = options.graceWindowMs ?? 15_000;
-    this.onGraceExpired = options.onGraceExpired;
+    const log = createBridgeLogger();
 
-    const dir = path.join(os.homedir(), ".accordo");
-    try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch { /* ignore */ }
-    this.logFile = path.join(dir, "bridge-server.log");
-  }
+    this.dispatch = new BridgeDispatch(
+      // state reference is created inside BridgeConnection — we pass a getter
+      // but dispatch needs the state; we break the circular init by wiring after.
+      // We use a lazy initialisation pattern: dispatch is created with a
+      // temporary placeholder state, then the real state is set once conn exists.
+      // Instead, we create conn first, then pass its state to dispatch.
+      // To do that we need to build conn first — but conn needs onMessage and
+      // onDisconnect callbacks that reference dispatch. We use arrow functions
+      // that capture `this` to break the cycle at runtime.
+      null as never, // placeholder — reassigned below
+      {
+        maxConcurrent: options.maxConcurrent,
+        maxQueueDepth: options.maxQueueDepth,
+        log,
+        send: (msg) => { this.conn.send(msg); },
+      },
+    );
 
-  /** Append a timestamped line to the diagnostic log file (never stderr). */
-  private log(msg: string): void {
-    try {
-      fs.appendFileSync(this.logFile, `${new Date().toISOString()} ${msg}\n`);
-    } catch { /* swallow */ }
+    this.conn = new BridgeConnection({
+      getSecret: () => this.secret,
+      maxPayload: options.maxPayload ?? 1_048_576,
+      maxMessagesPerSecond: this.maxMessagesPerSecond,
+      graceWindowMs: this.graceWindowMs,
+      onGraceExpired: options.onGraceExpired,
+      log,
+      onMessage: (raw) => { this.dispatch.routeMessage(raw); },
+      onDisconnect: () => {
+        this.dispatch.rejectAllPending(new JsonRpcError("Bridge disconnected", -32603));
+      },
+    });
+
+    // Wire the real connection state into dispatch now that conn exists
+    this.dispatch.setConnectionState(this.conn.state);
   }
 
   /**
@@ -136,64 +109,7 @@ export class BridgeServer {
    * Requirements: requirements-hub.md §2.5
    */
   start(server: http.Server): void {
-    const wss = new WebSocketServer({ noServer: true, maxPayload: this.maxPayload });
-
-    server.on("upgrade", (req, socket, head) => {
-      // Only handle /bridge path
-      if (req.url !== "/bridge") return;
-
-      const remoteAddr = (socket as unknown as { remoteAddress?: string }).remoteAddress ?? "unknown";
-      this.log(`[hub:bridge] WS upgrade request from ${remoteAddr}`);
-
-      // §2.5: Validate secret on upgrade — 401 if wrong
-      const providedSecret = req.headers["x-accordo-secret"];
-      if (providedSecret !== this.secret) {
-        this.log(`[hub:bridge] WS upgrade REJECTED — bad secret from ${remoteAddr}`);
-        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-        socket.destroy();
-        return;
-      }
-
-      // §2.5: Max 1 connection — evict any stale connection before accepting
-      // the new one.  When VS Code kills the Extension Development Host with
-      // SIGKILL, `deactivate()` is never called, so the bridge never sends a
-      // clean close frame.  The hub would otherwise keep `this.connected = true`
-      // and reject the new session's connection with HTTP 409, which the WS
-      // library surfaces as close code 1006 on the client side.
-      if (this.connected && this.ws) {
-        this.log("[hub:bridge] evicting stale Bridge socket");
-        const stale = this.ws;
-        // Strip event listeners BEFORE terminate() so that the async `close`
-        // event the ws library emits after socket destruction does not fire
-        // handleDisconnect() a second time — which would arrive after
-        // handleConnect() has already registered the new socket, nulling out
-        // this.ws and this.connected and orphaning the new connection.
-        stale.removeAllListeners();
-        stale.on("error", () => {}); // prevent unhandled-error throw on RST
-        try { stale.terminate(); } catch { /* already gone */ }
-        this.handleDisconnect();
-      }
-
-      try {
-        wss.handleUpgrade(req, socket, head, (ws) => {
-          wss.emit("connection", ws, req);
-        });
-      } catch (err) {
-        this.log(`[hub:bridge] handleUpgrade error: ${(err as Error).message ?? err}`);
-        socket.destroy();
-      }
-    });
-
-    wss.on("connection", (ws: WsSocket) => {
-      this.handleConnect(ws);
-    });
-
-    // Prevent unhandled 'error' on the WebSocketServer from crashing the
-    // Node.js process.  Errors here are typically OS-level socket issues
-    // (e.g. ECONNRESET from a stale Bridge) — log and continue.
-    wss.on("error", (err) => {
-      this.log(`[hub:bridge] WebSocketServer error: ${(err as Error).message ?? err}`);
-    });
+    this.conn.attach(server);
   }
 
   /**
@@ -205,59 +121,15 @@ export class BridgeServer {
     args: Record<string, unknown>,
     timeout: number,
   ): Promise<ResultMessage> {
-    // Queue-full check runs BEFORE connection check so it is testable without a
-    // live Bridge connection (degenerate configs: maxConcurrent=0, maxQueueDepth=0).
-    if (this.inflight >= this.maxConcurrent && this.queued >= this.maxQueueDepth) {
-      this.log(`[hub:bridge] invoke(${tool}) REJECTED — queue full (inflight=${this.inflight}, queued=${this.queued})`);
-      throw new JsonRpcError("Server busy — invocation queue full", -32004);
-    }
-    if (!this.connected || !this.ws) {
-      if (this.graceTimer !== null) {
-        this.log(`[hub:bridge] invoke(${tool}) REJECTED — Bridge reconnecting (grace window active)`);
-        throw new JsonRpcError("Bridge reconnecting", -32603);
-      }
-      this.log(`[hub:bridge] invoke(${tool}) REJECTED — Bridge not connected`);
-      throw new JsonRpcError("Bridge not connected", -32603);
-    }
-
-    // CONC-03: queue when at concurrency limit (but queue not full)
-    if (this.inflight >= this.maxConcurrent) {
-      this.queued++;
-      this.log(`[hub:bridge] invoke(${tool}) QUEUED (inflight=${this.inflight}, queued=${this.queued})`);
-      return new Promise<ResultMessage>((resolve, reject) => {
-        this.invokeQueue.push({ tool, args, timeout, resolve, reject });
-      });
-    }
-
-    const id = randomUUID();
-    this.log(`[hub:bridge] invoke(${tool}) → Bridge [id=${id.slice(0,8)}, timeout=${timeout}ms, inflight=${this.inflight + 1}]`);
-
-    return new Promise<ResultMessage>((resolve, reject) => {
-      this.inflight++;
-
-      const timer = setTimeout(() => {
-        this.pendingInvokes.delete(id);
-        this.inflight--;
-        this.send({ type: "cancel", id });
-        this.dequeueAndDispatch();
-        this.log(`[hub:bridge] invoke(${tool}) TIMED OUT after ${timeout}ms [id=${id.slice(0,8)}]`);
-        reject(new JsonRpcError(`Tool invocation timed out after ${timeout}ms`, -32000));
-      }, timeout);
-
-      this.pendingInvokes.set(id, { resolve, reject, timer });
-
-      this.send({ type: "invoke", id, tool, args, timeout });
-    });
+    return this.dispatch.invoke(tool, args, timeout);
   }
 
   /**
    * Send a cancel message for an in-flight invocation.
-   * Silent no-op if the id is unknown or the connection is closed.
    * Requirements: requirements-hub.md §3.1
    */
   cancel(id: string): void {
-    if (!this.connected || !this.ws || !this.pendingInvokes.has(id)) return;
-    this.send({ type: "cancel", id });
+    this.dispatch.cancel(id);
   }
 
   /**
@@ -265,81 +137,27 @@ export class BridgeServer {
    * Requirements: requirements-hub.md §3.1
    */
   async requestState(): Promise<IDEState> {
-    if (!this.connected || !this.ws) {
-      throw new JsonRpcError("Bridge not connected", -32603);
-    }
-
-    const id = randomUUID();
-
-    return new Promise<IDEState>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        if (this.pendingStateRequest?.resolve === resolve) {
-          this.pendingStateRequest = null;
-        }
-        reject(new JsonRpcError("getState timed out", -32000));
-      }, REQUEST_STATE_TIMEOUT_MS);
-
-      // Wrap to clear timer on resolution
-      this.pendingStateRequest = {
-        resolve: (state) => { clearTimeout(timer); resolve(state); },
-        reject: (err) => { clearTimeout(timer); reject(err); },
-      };
-
-      this.send({ type: "getState", id });
-    });
+    return this.dispatch.requestState();
   }
 
   isConnected(): boolean {
-    return this.connected;
+    return this.conn.state.connected;
   }
 
   onRegistryUpdate(cb: (tools: ToolRegistration[]) => void): void {
-    this.registryUpdateCb = cb;
+    this.conn.state.registryUpdateCb = cb;
   }
 
-  onStateUpdate(
-    cb: (patch: Partial<IDEState>) => void,
-  ): void {
-    this.stateUpdateCb = cb;
+  onStateUpdate(cb: (patch: Partial<IDEState>) => void): void {
+    this.conn.state.stateUpdateCb = cb;
   }
 
   validateProtocolVersion(received: string): boolean {
-    return received === ACCORDO_PROTOCOL_VERSION;
+    return this.dispatch.validateProtocolVersion(received);
   }
 
   getConcurrencyStats(): ConcurrencyStats {
-    return {
-      inflight: this.inflight,
-      queued: this.queued,
-      limit: this.maxConcurrent,
-    };
-  }
-
-  /**
-   * CONC-05: Dequeue the next waiting invocation and dispatch it.
-   * Called after each in-flight slot becomes free (result/timeout/cancel).
-   * No-op when queue is empty.
-   */
-  private dequeueAndDispatch(): void {
-    if (this.invokeQueue.length === 0) return;
-    const next = this.invokeQueue.shift()!;
-    this.queued--;
-
-    const id = randomUUID();
-    const { tool, args, timeout, resolve, reject } = next;
-
-    this.inflight++;
-
-    const timer = setTimeout(() => {
-      this.pendingInvokes.delete(id);
-      this.inflight--;
-      this.send({ type: "cancel", id });
-      this.dequeueAndDispatch();
-      reject(new JsonRpcError(`Tool invocation timed out after ${timeout}ms`, -32000));
-    }, timeout);
-
-    this.pendingInvokes.set(id, { resolve, reject, timer });
-    this.send({ type: "invoke", id, tool, args, timeout });
+    return this.dispatch.getConcurrencyStats();
   }
 
   updateSecret(newSecret: string): void {
@@ -350,234 +168,41 @@ export class BridgeServer {
    * Gracefully terminate the Bridge WebSocket connection.
    */
   async close(): Promise<void> {
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
-    if (this.graceTimer !== null) {
-      clearTimeout(this.graceTimer);
-      this.graceTimer = null;
-    }
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-    this.connected = false;
-    this.rejectAllPending(new JsonRpcError("Bridge server closed", -32603));
+    this.conn.close();
+    this.dispatch.rejectAllPending(new JsonRpcError("Bridge server closed", -32603));
   }
 
-  // ─── Private helpers ────────────────────────────────────────────────────────
+  // ── Test-facing forwarding methods ──────────────────────────────────────────
+  // These proxy internal lifecycle/routing calls so tests written against the
+  // original monolithic BridgeServer still work after the class was split into
+  // BridgeConnection + BridgeDispatch.
 
   /**
-   * M31: Wire up a new WebSocket connection.
-   * Handles both initial connect and reconnect-within-grace-window
-   * (cancels the grace timer in the latter case).
+   * Forward an inbound raw message through the rate-limiter and then to the
+   * dispatch layer. Mirrors the private handleMessage() that existed before the
+   * split. Tests use this to simulate Bridge → Hub frames.
    */
-  private handleConnect(ws: WsSocket): void {
-    try {
-      this.log("[hub:bridge] Bridge connected");
-      // Cancel any running grace timer — Bridge reconnected within the window.
-      if (this.graceTimer !== null) {
-        clearTimeout(this.graceTimer);
-        this.graceTimer = null;
-      }
-
-      this.ws = ws;
-      this.connected = true;
-
-      // §9.2: Heartbeat — send ping every 30 s
-      this.pingInterval = setInterval(() => {
-        if (ws.readyState === ws.OPEN) {
-          this.send({ type: "ping", ts: Date.now() });
-        }
-      }, PING_INTERVAL_MS);
-
-      ws.on("message", (data) => {
-        this.handleMessage(data.toString());
-      });
-
-      ws.on("close", () => {
-        this.handleDisconnect();
-      });
-
-      // Capture the error for logging.  The ws library always emits 'close'
-      // after 'error', so handleDisconnect() will run from the close handler;
-      // calling it here as well would double-fire.  Just log the error.
-      ws.on("error", (err) => {
-        this.log(`[hub:bridge] socket error: ${(err as Error).message ?? err}`);
-      });
-    } catch (err) {
-      this.log(`[hub:bridge] handleConnect error: ${(err as Error).message ?? err}`);
-      // Best effort: close the socket so Bridge gets a clean close event
-      // and schedules reconnection.  Don't let the error propagate.
-      try { ws.terminate(); } catch { /* already gone */ }
-    }
+  handleMessage(raw: string): void {
+    this.conn.dispatchInbound(raw);
   }
 
-  private send(msg: Record<string, unknown>): void {
-    if (this.ws && this.ws.readyState === this.ws.OPEN) {
-      this.ws.send(JSON.stringify(msg));
-    }
+  /**
+   * Trigger a Bridge disconnect (stop heartbeat, clear socket, start grace
+   * timer). Tests use this to simulate Bridge dropping the connection.
+   */
+  handleDisconnect(): void {
+    this.conn.handleDisconnect();
   }
 
-  private handleMessage(raw: string): void {
-    // M33: inbound rate limiting — drop messages that exceed maxMessagesPerSecond.
-    const now = Date.now();
-    if (now - this.messageWindowStart >= 1000) {
-      this.messageWindowStart = now;
-      this.messageCount = 0;
-    }
-    this.messageCount++;
-    if (this.messageCount > this.maxMessagesPerSecond) {
-      this.log(`[hub:bridge] rate-limited — dropped message (>${this.maxMessagesPerSecond} msg/s)`);
-      return; // drop — do not close the connection
-    }
-
-    let msg: BridgeMessage;
-    try {
-      msg = JSON.parse(raw) as BridgeMessage;
-    } catch {
-      this.log(`[hub:bridge] dropped malformed frame (${raw.length} bytes)`);
-      return; // Ignore malformed frames
-    }
-
-    // Log every inbound message type (except pong, which is noisy)
-    if (msg.type !== "pong") {
-      const extra = msg.type === "result" ? ` id=${(msg as ResultMessage).id?.slice(0,8)} success=${(msg as ResultMessage).success}`
-        : msg.type === "toolRegistry" ? ` tools=${((msg as { tools?: unknown[] }).tools ?? []).length}`
-        : msg.type === "stateUpdate" ? ` keys=${Object.keys((msg as { patch?: Record<string, unknown> }).patch ?? {}).join(",")}`
-        : msg.type === "stateSnapshot" ? ` proto=${(msg as { protocolVersion?: string }).protocolVersion}`
-        : "";
-      this.log(`[hub:bridge] ← ${msg.type}${extra}`);
-    }
-
-    switch (msg.type) {
-      case "stateSnapshot": {
-        // §3.2: Validate protocol version — close 4002 if mismatch
-        if (!this.validateProtocolVersion(msg.protocolVersion)) {
-          this.ws?.close(
-            4002,
-            `Protocol version mismatch: expected ${ACCORDO_PROTOCOL_VERSION}, got ${msg.protocolVersion}`,
-          );
-          return;
-        }
-        // Update state cache (full replacement via callback).
-        // Guard with try-catch so a bad payload doesn't crash the Hub
-        // and tear down the WebSocket (which surfaces as close 1006).
-        try { this.stateUpdateCb?.(msg.state); } catch (e) {
-          this.log(`[hub:bridge] stateUpdateCb threw: ${(e as Error).message ?? e}`);
-        }
-        // Resolve any waiting requestState() call
-        if (this.pendingStateRequest) {
-          const pending = this.pendingStateRequest;
-          this.pendingStateRequest = null;
-          pending.resolve(msg.state);
-        }
-        break;
-      }
-
-      case "stateUpdate": {
-        try { this.stateUpdateCb?.(msg.patch); } catch (e) {
-          this.log(`[hub:bridge] stateUpdateCb threw: ${(e as Error).message ?? e}`);
-        }
-        break;
-      }
-
-      case "toolRegistry": {
-        try { this.registryUpdateCb?.(msg.tools); } catch (e) {
-          this.log(`[hub:bridge] registryUpdateCb threw: ${(e as Error).message ?? e}`);
-        }
-        break;
-      }
-
-      case "result": {
-        const pending = this.pendingInvokes.get(msg.id);
-        if (pending) {
-          clearTimeout(pending.timer);
-          this.pendingInvokes.delete(msg.id);
-          this.inflight--;
-          this.dequeueAndDispatch();
-          this.log(`[hub:bridge] ← result [id=${msg.id.slice(0,8)}, success=${(msg as ResultMessage).success}, inflight=${this.inflight}]`);
-          pending.resolve(msg as ResultMessage);
-        } else {
-          this.log(`[hub:bridge] ← result [id=${msg.id.slice(0,8)}] — no pending invoke (orphan)`);
-        }
-        break;
-      }
-
-      case "cancelled": {
-        // Bridge confirmed cancel.
-        // late:false → Bridge successfully cancelled before producing a result;
-        //              free the slot and reject the caller now.
-        // late:true  → Result frame is already in-flight; the slot will be freed
-        //              when that "result" frame arrives. Treat as informational.
-        if (msg.late) break;
-        const pending = this.pendingInvokes.get(msg.id);
-        if (pending) {
-          clearTimeout(pending.timer);
-          this.pendingInvokes.delete(msg.id);
-          this.inflight--;
-          this.dequeueAndDispatch();
-          pending.reject(new JsonRpcError("Invocation cancelled", -32000));
-        }
-        break;
-      }
-
-      case "pong": {
-        // Heartbeat response — no action needed
-        break;
-      }
-    }
-  }
-
-  private handleDisconnect(): void {
-    // Idempotency guard: ws emits both 'error' and 'close' on failures,
-    // and stale-eviction calls this explicitly.  Without the guard we
-    // would create duplicate grace timers and double-reject pending calls.
-    if (!this.connected) return;
-
-    const pendingCount = this.pendingInvokes.size;
-    const queuedCount = this.invokeQueue.length;
-    this.log(`[hub:bridge] Bridge disconnected (pending=${pendingCount}, queued=${queuedCount}, graceMs=${this.graceWindowMs})`);
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
-    this.ws = null;
-    this.connected = false;
-    this.rejectAllPending(new JsonRpcError("Bridge disconnected", -32603));
-    // M31: start grace window — hold state until reconnect or expiry.
-    if (this.graceWindowMs === 0) {
-      // Zero-ms grace: fire synchronously — no deferred timer.
-      this.onGraceExpired?.();
-    } else {
-      this.graceTimer = setTimeout(() => {
-        this.graceTimer = null;
-        this.onGraceExpired?.();
-      }, this.graceWindowMs);
-    }
-  }
-
-  private rejectAllPending(err: Error): void {
-    for (const [, pending] of this.pendingInvokes) {
-      clearTimeout(pending.timer);
-      pending.reject(err);
-    }
-    this.pendingInvokes.clear();
-    this.inflight = 0;
-
-    // Drain the FIFO queue — these were never dispatched, so reject them now
-    // to avoid hung promises on the callers' side.
-    for (const queued of this.invokeQueue) {
-      queued.reject(err);
-    }
-    this.invokeQueue = [];
-    this.queued = 0;
-
-    if (this.pendingStateRequest) {
-      const pending = this.pendingStateRequest;
-      this.pendingStateRequest = null;
-      pending.reject(err);
-    }
+  /**
+   * Simulate a Bridge reconnect (wire a new WebSocket). Tests use this to
+   * verify that reconnecting within the grace window cancels the expiry timer.
+   */
+  handleConnect(ws: unknown): void {
+    // BridgeConnection.handleConnect is public; the ws type is widened to
+    // unknown here so test code can pass a plain mock object without importing
+    // the WsSocket type.
+    type WsLike = Parameters<BridgeConnection["handleConnect"]>[0];
+    this.conn.handleConnect(ws as WsLike);
   }
 }
