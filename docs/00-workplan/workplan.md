@@ -56,7 +56,7 @@ for a simple DOM change scenario.
 Reference: `docs/50-reviews/browser-stack-readability-modularity-review-2026-03-29.md`,
 `docs/50-reviews/full-project-modularity-plugin-review-2026-03-29.md`
 
-**Execution model:** Phase 1 (sequential foundation) → Phase 2 (parallel, 5 agents)
+**Execution model:** Phase 1 ✅ COMPLETE → Phase 2 (parallel, 5 agents) — ready to launch
 
 ---
 
@@ -198,7 +198,7 @@ These items were pending in prior plans and remain in scope. They are not browse
 5. **B2-CTX-005** — E2E continuity tests under tab switching (Playwright or similar).
 
 **Phase 1 — bridge-types split (1 agent, unblocks everything)**
-6. **MOD-P1-01** — `bridge-types` domain split + barrel export + consumer import updates.
+6. **~~MOD-P1-01~~** — `bridge-types` domain split + barrel export + consumer import updates. ✅ **DONE** (`b789aa9`, 10 tests, 2026-03-29)
 
 **Phase 2 — fully parallel (5 agents, after Phase 1 gate)**
 7. **MOD-P2-B1** — `hub/server.ts` decomposition.

@@ -26,6 +26,7 @@
 | M111-EVAL | ✅ Completed |
 | M112-TEXT | ✅ Completed |
 | M113-SEM | ✅ Completed |
+| Phase 1 modularity — bridge-types split | ✅ Completed (`b789aa9`, 10 tests, 2026-03-29) |
 
 ---
 
@@ -43,6 +44,7 @@
 | Session 15 / 15b | Page understanding + region capture + hardening completed |
 | Browser 2.x W1/W2 | M100, M101, M102, M109, M111, M112, M113 completed |
 | B2-CTX-001 | Multi-tab support: browser_list_pages, browser_select_page, tabId on 5 understanding tools |
+| MOD-P1-01 | Phase 1: bridge-types split into 5 domain files + barrel export + ESLint + downstream typecheck ✅ |
 
 ---
 
