@@ -769,6 +769,8 @@ describe("HubManager — activate() §8 stale-PID detection (M29)", () => {
   });
 
   it("M29: when pid file is absent, readPidFile is called and isProcessAlive is NOT called", async () => {
+    // Ensure the pid file does not exist from a prior test run (idempotency)
+    try { fs.unlinkSync("/tmp/nonexistent-accordo-m29.pid"); } catch { /* ignore */ }
     // RED: current activate() calls neither
     const { manager } = makeManager({
       secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },

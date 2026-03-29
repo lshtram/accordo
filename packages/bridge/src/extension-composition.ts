@@ -310,9 +310,9 @@ export function registerCommands(
     const moduleItems: Array<{ label: string }> = [];
     const moduleMap: Record<string, string> = {
       browser_: "Browser",
-      comment: "Comments",
-      voice: "Voice",
-      diagram: "Diagrams",
+      comment_: "Comments",
+      accordo_voice_: "Voice",
+      accordo_diagram_: "Diagrams",
     };
     const detectedModules = new Set<string>();
     for (const tool of tools) {
