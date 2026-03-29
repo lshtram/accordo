@@ -126,6 +126,59 @@ export interface SemanticGraphToolError {
   error: "browser-not-connected" | "timeout" | "action-failed";
 }
 
+// ── Runtime type guards ──────────────────────────────────────────────────────
+
+/**
+ * Narrow an unknown value to GetSemanticGraphArgs.
+ * Accepts any object (or empty args) and extracts only the typed fields.
+ * This prevents trusting unknown relay payloads without narrowing.
+ */
+function narrowArgs(raw: unknown): GetSemanticGraphArgs {
+  if (typeof raw !== "object" || raw === null) return {};
+
+  const obj = raw as Record<string, unknown>;
+  const result: GetSemanticGraphArgs = {};
+
+  if (typeof obj["maxDepth"] === "number") {
+    result.maxDepth = obj["maxDepth"];
+  }
+  if (typeof obj["visibleOnly"] === "boolean") {
+    result.visibleOnly = obj["visibleOnly"];
+  }
+
+  return result;
+}
+
+/**
+ * Narrow an unknown relay data payload to SemanticGraphResponse.
+ * Returns undefined when the payload is not a valid SemanticGraphResponse.
+ */
+function narrowSemanticGraphResponse(data: unknown): SemanticGraphResponse | undefined {
+  if (typeof data !== "object" || data === null) return undefined;
+
+  const obj = data as Record<string, unknown>;
+
+  // Required sub-tree arrays must be present
+  if (
+    !Array.isArray(obj["a11yTree"]) ||
+    !Array.isArray(obj["landmarks"]) ||
+    !Array.isArray(obj["outline"]) ||
+    !Array.isArray(obj["forms"])
+  ) {
+    return undefined;
+  }
+
+  // pageUrl and title must be strings
+  if (typeof obj["pageUrl"] !== "string" || typeof obj["title"] !== "string") {
+    return undefined;
+  }
+
+  // Must carry a valid snapshot envelope
+  if (!hasSnapshotEnvelope(data)) return undefined;
+
+  return data as SemanticGraphResponse;
+}
+
 // ── Tool Definition ──────────────────────────────────────────────────────────
 
 /**
@@ -167,7 +220,7 @@ export function buildSemanticGraphTool(
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args) => handleGetSemanticGraph(relay, args as GetSemanticGraphArgs, store),
+    handler: (rawArgs) => handleGetSemanticGraph(relay, narrowArgs(rawArgs), store),
   };
 }
 
@@ -199,7 +252,7 @@ function classifyRelayError(err: unknown): "timeout" | "browser-not-connected" {
  * B2-SG-012: No effect on existing tools.
  *
  * @param relay — The relay connection to the Chrome extension
- * @param args — Tool input arguments
+ * @param args — Narrowed tool input arguments
  * @param store — Shared snapshot retention store
  * @returns Semantic graph response or error
  */
@@ -213,9 +266,13 @@ async function handleGetSemanticGraph(
   }
 
   try {
+    const payload: Record<string, unknown> = {};
+    if (args.maxDepth !== undefined) payload["maxDepth"] = args.maxDepth;
+    if (args.visibleOnly !== undefined) payload["visibleOnly"] = args.visibleOnly;
+
     const response = await relay.request(
       "get_semantic_graph",
-      args as Record<string, unknown>,
+      payload,
       SEMANTIC_GRAPH_TOOL_TIMEOUT_MS,
     );
 
@@ -228,14 +285,18 @@ async function handleGetSemanticGraph(
       return { success: false, error: mappedError };
     }
 
-    const data = response.data;
-
     // B2-SG-007: Validate SnapshotEnvelope and persist
-    if (hasSnapshotEnvelope(data)) {
-      store.save(data.pageId, data as SnapshotEnvelopeFields);
+    if (hasSnapshotEnvelope(response.data)) {
+      store.save(response.data.pageId, response.data as SnapshotEnvelopeFields);
     }
 
-    return data as SemanticGraphResponse;
+    // Narrow the payload to SemanticGraphResponse with a runtime guard
+    const narrowed = narrowSemanticGraphResponse(response.data);
+    if (narrowed === undefined) {
+      return { success: false, error: "action-failed" };
+    }
+
+    return narrowed;
   } catch (err: unknown) {
     return { success: false, error: classifyRelayError(err) };
   }

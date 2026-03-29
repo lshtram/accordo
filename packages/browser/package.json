@@ -29,12 +29,15 @@
     "test": "vitest run",
     "test:watch": "vitest watch",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'no lint configured yet'"
+    "lint": "eslint src/eval-*.ts src/semantic-graph-tool.ts"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.100.0",
     "@types/ws": "^8.18.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "eslint": "^10.1.0",
     "typescript": "^5.8.0",
     "vitest": "^3.0.0"
   },

@@ -844,6 +844,73 @@ describe("B2-SG-009: visibleOnly parameter", () => {
     // Both should produce the same landmarks count (hidden elements don't appear in landmarks anyway)
     expect(resultExplicit!.landmarks.length).toBe(resultDefault!.landmarks.length);
   });
+
+  it("B2-SG-009: visibleOnly: true excludes hidden landmarks (display:none)", async () => {
+    // Add a hidden nav element — should not appear in landmarks when visibleOnly: true
+    document.body.innerHTML += `<nav id="hidden-nav" style="display:none;" aria-label="Hidden nav">hidden</nav>`;
+    const resultVisible = await collectGraph({ visibleOnly: true });
+    const resultAll = await collectGraph({ visibleOnly: false });
+    expect(resultVisible).toBeDefined();
+    expect(resultAll).toBeDefined();
+    // The hidden nav must not appear in the visible-only landmark list
+    const hiddenNavVisible = resultVisible!.landmarks.find((l) => l.tag === "nav" && l.label === "Hidden nav");
+    expect(hiddenNavVisible).toBeUndefined();
+    // But it should appear when visibleOnly: false
+    const hiddenNavAll = resultAll!.landmarks.find((l) => l.tag === "nav" && l.label === "Hidden nav");
+    expect(hiddenNavAll).toBeDefined();
+  });
+
+  it("B2-SG-009: visibleOnly: true excludes hidden headings from outline", async () => {
+    // Add a hidden heading — should not appear in outline when visibleOnly: true
+    document.body.innerHTML += `<h2 id="hidden-heading" style="display:none;">Hidden Heading</h2>`;
+    const resultVisible = await collectGraph({ visibleOnly: true });
+    const resultAll = await collectGraph({ visibleOnly: false });
+    expect(resultVisible).toBeDefined();
+    expect(resultAll).toBeDefined();
+    // The hidden heading must not appear in the outline when visibleOnly: true
+    const hiddenOutlineVisible = resultVisible!.outline.find((h) => h.text === "Hidden Heading");
+    expect(hiddenOutlineVisible).toBeUndefined();
+    // But it should appear when visibleOnly: false
+    const hiddenOutlineAll = resultAll!.outline.find((h) => h.text === "Hidden Heading");
+    expect(hiddenOutlineAll).toBeDefined();
+  });
+
+  it("B2-SG-009: visibleOnly: true excludes hidden forms", async () => {
+    // Add a hidden form — should not appear in forms when visibleOnly: true
+    document.body.innerHTML += `<form id="hidden-form" style="display:none;"><input type="text" id="hf-field" name="hf-field"></form>`;
+    const resultVisible = await collectGraph({ visibleOnly: true });
+    const resultAll = await collectGraph({ visibleOnly: false });
+    expect(resultVisible).toBeDefined();
+    expect(resultAll).toBeDefined();
+    // The hidden form must not appear when visibleOnly: true
+    const hiddenFormVisible = resultVisible!.forms.find((f) => f.formId === "hidden-form");
+    expect(hiddenFormVisible).toBeUndefined();
+    // But it should appear when visibleOnly: false
+    const hiddenFormAll = resultAll!.forms.find((f) => f.formId === "hidden-form");
+    expect(hiddenFormAll).toBeDefined();
+  });
+
+  it("B2-SG-009: visibleOnly: true excludes hidden fields within a visible form", async () => {
+    // Add a hidden field inside the existing visible login form
+    const loginForm = document.getElementById("login-form");
+    if (loginForm !== null) {
+      loginForm.insertAdjacentHTML("beforeend", `<input type="text" id="hidden-field" name="hidden-field" style="display:none;">`);
+    }
+    const resultVisible = await collectGraph({ visibleOnly: true });
+    const resultAll = await collectGraph({ visibleOnly: false });
+    expect(resultVisible).toBeDefined();
+    expect(resultAll).toBeDefined();
+    const loginFormVisible = resultVisible!.forms.find((f) => f.formId === "login-form");
+    const loginFormAll = resultAll!.forms.find((f) => f.formId === "login-form");
+    expect(loginFormVisible).toBeDefined();
+    expect(loginFormAll).toBeDefined();
+    // Hidden field should not be in visibleOnly result
+    const hiddenFieldVisible = loginFormVisible!.fields.find((f) => f.name === "hidden-field");
+    expect(hiddenFieldVisible).toBeUndefined();
+    // But present in the include-all result
+    const hiddenFieldAll = loginFormAll!.fields.find((f) => f.name === "hidden-field");
+    expect(hiddenFieldAll).toBeDefined();
+  });
 });
 
 function countAllNodes(result: SemanticGraphResult): number {
@@ -926,6 +993,88 @@ describe("B2-SG-014: Implicit ARIA role mapping", () => {
     const asideLandmark = result!.landmarks.find((l) => l.tag === "aside");
     expect(asideLandmark).toBeDefined();
     expect(asideLandmark!.role).toBe("complementary");
+  });
+
+  it("B2-SG-014: search element maps to role 'search'", async () => {
+    document.body.innerHTML = `<search id="site-search" aria-label="Site search"><input type="search"></search>`;
+    const result = await collectGraph();
+    expect(result).toBeDefined();
+    const searchLandmark = result!.landmarks.find((l) => l.tag === "search");
+    expect(searchLandmark).toBeDefined();
+    expect(searchLandmark!.role).toBe("search");
+  });
+
+  it("B2-SG-014: labelled section element maps to role 'region'", async () => {
+    document.body.innerHTML = `<section id="labelled-section" aria-label="About us"><p>Content</p></section>`;
+    const result = await collectGraph();
+    expect(result).toBeDefined();
+    const sectionLandmark = result!.landmarks.find((l) => l.tag === "section");
+    expect(sectionLandmark).toBeDefined();
+    expect(sectionLandmark!.role).toBe("region");
+  });
+
+  it("B2-SG-014: unlabelled section element does NOT map to role 'region'", async () => {
+    document.body.innerHTML = `<section id="unlabelled-section"><p>Content without label</p></section>`;
+    const result = await collectGraph();
+    expect(result).toBeDefined();
+    // Unlabelled <section> must NOT appear as a landmark
+    const sectionLandmark = result!.landmarks.find((l) => l.tag === "section");
+    expect(sectionLandmark).toBeUndefined();
+  });
+
+  it("B2-SG-014: section with title attribute maps to role 'region'", async () => {
+    document.body.innerHTML = `<section id="titled-section" title="Products"><p>Products content</p></section>`;
+    const result = await collectGraph();
+    expect(result).toBeDefined();
+    const sectionLandmark = result!.landmarks.find((l) => l.tag === "section");
+    expect(sectionLandmark).toBeDefined();
+    expect(sectionLandmark!.role).toBe("region");
+  });
+});
+
+// ── B2-SG-003 (negative): Landmark role whitelist ─────────────────────────────
+
+describe("B2-SG-003: Landmark role whitelist (negative cases)", () => {
+  it("B2-SG-003: role='button' explicit attribute is NOT admitted as a landmark", async () => {
+    document.body.innerHTML = `<div id="fake-landmark" role="button">Click me</div>`;
+    const result = await collectGraph();
+    expect(result).toBeDefined();
+    // role="button" is not a landmark role — must not appear in landmarks
+    const buttonLandmark = result!.landmarks.find((l) => l.role === "button");
+    expect(buttonLandmark).toBeUndefined();
+  });
+
+  it("B2-SG-003: role='dialog' explicit attribute is NOT admitted as a landmark", async () => {
+    document.body.innerHTML = `<div id="modal" role="dialog">Modal content</div>`;
+    const result = await collectGraph();
+    expect(result).toBeDefined();
+    const dialogLandmark = result!.landmarks.find((l) => l.role === "dialog");
+    expect(dialogLandmark).toBeUndefined();
+  });
+
+  it("B2-SG-003: role='alert' explicit attribute is NOT admitted as a landmark", async () => {
+    document.body.innerHTML = `<div id="alert-box" role="alert">Alert!</div>`;
+    const result = await collectGraph();
+    expect(result).toBeDefined();
+    const alertLandmark = result!.landmarks.find((l) => l.role === "alert");
+    expect(alertLandmark).toBeUndefined();
+  });
+
+  it("B2-SG-003: role='navigation' (landmark role) IS admitted as a landmark", async () => {
+    document.body.innerHTML = `<div id="nav-div" role="navigation" aria-label="Explicit nav">nav content</div>`;
+    const result = await collectGraph();
+    expect(result).toBeDefined();
+    // role="navigation" IS a landmark role — must appear
+    const navLandmark = result!.landmarks.find((l) => l.role === "navigation" && l.label === "Explicit nav");
+    expect(navLandmark).toBeDefined();
+  });
+
+  it("B2-SG-003: role='region' with aria-label IS admitted as a landmark", async () => {
+    document.body.innerHTML = `<div id="region-div" role="region" aria-label="Special region">content</div>`;
+    const result = await collectGraph();
+    expect(result).toBeDefined();
+    const regionLandmark = result!.landmarks.find((l) => l.role === "region");
+    expect(regionLandmark).toBeDefined();
   });
 });
 
