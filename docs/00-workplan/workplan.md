@@ -20,10 +20,11 @@ that the Hub runtime correctly registers tools or that CDP commands succeed
 end-to-end.
 
 **Planned deliverables:**
-1. Fix `browser_diff_snapshots` — CDP `DOM.compareDeep` equivalent or reimplementation.
+1. Fix `browser_diff_snapshots` — CDP `DOM.compareDeep` equivalent or reimplementation. Live E2E confirmed: returns `action-failed` for ALL calls.
 2. Fix tool registration for `browser_get_text_map` and `browser_get_semantic_graph`
    in Hub runtime (M113-SEM is blocked at runtime despite passing D2).
 3. Add smoke test to D2 checklist: "requires live E2E" flag for CDP/DOM-dependent tools.
+   *(Reference: `docs/50-reviews/review-closeout-2026-03-29.md` §6)*.
 
 **Success criteria:** `diff_snapshots` returns valid diff output (not `action-failed`)
 for a simple DOM change scenario.
@@ -36,10 +37,13 @@ for a simple DOM change scenario.
 **Requirement:** if a tab is open, agent must be able to keep reading/inspecting it without forcing user focus.
 
 **Planned deliverables:**
-1. ~~Add `browser_list_pages` + `browser_select_page` (prerequisite for all tab targeting)~~ ✅ **DONE** (`2a1cf9b`)
-2. Add tab-scoped targeting contract across `browser_*` tools (e.g., `tabId`/`pageId`) — **IN PROGRESS**
-3. Ensure wait/text/semantic/diff workflows work on non-active tabs.
-4. Add E2E tests for context continuity under tab switching.
+1. ~~Add `browser_list_pages` + `browser_select_page` (prerequisite for all tab targeting)~~ ✅ **DONE** (`2a1cf9b`, `9c3fa9f`)
+2. Add tab-scoped targeting contract: `tabId` on remaining understanding tools:
+   - `browser_capture_region` — add `tabId` param
+   - `browser_diff_snapshots` — add `tabId` param
+   (7 tools already done in B2-CTX-001: `browser_wait_for`, `browser_get_text_map`, `browser_get_semantic_graph`, `browser_list_pages`, `browser_select_page`, `browser_inspect_element`, `browser_capture_region` has `pageId` only — needs `tabId`)
+3. Verify non-active tab workflows: Chrome CDP routing for background tabs, Hub registration for `browser_get_text_map` + `browser_get_semantic_graph`, `diff_snapshots` internal state for background tabs.
+4. Add E2E smoke tests for context continuity under tab switching.
 
 **Success criteria:**
 - Agent can keep operating on a previously selected tab while user works elsewhere.
@@ -127,7 +131,7 @@ Each agent's success criteria (measurable):
 
 Reference: `docs/50-reviews/mcp-webview-evaluation-e2e-2026-03-29.md`
 
-Current score: **28/45**.
+Current score: **26/45** (revised down after live E2E run found `diff_snapshots` completely broken).
 
 Targeted upgrades:
 1. Multi-tab targeting support (Priority A) — largest productivity impact.
@@ -180,30 +184,41 @@ These items were pending in prior plans and remain in scope. They are not browse
 ## 2) Next Execution Queue (in order)
 
 **Priority 0 (must fix before any new work)**
-0. **B2-CTX-000** — fix `browser_diff_snapshots` (Priority 0, CDP investigation required).
-1. **B2-CTX-000b** — fix `browser_get_text_map` / `browser_get_semantic_graph` tool registration in Hub runtime.
+0. **B2-CTX-000** — fix `browser_diff_snapshots` (returns `action-failed` for ALL calls; CDP investigation required).
+1. **B2-CTX-000b** — fix `browser_get_text_map` + `browser_get_semantic_graph` Hub registration (M113-SEM blocked despite D2 PASS).
+
+**Priority A Item 2 — Tab-scoped targeting contract (only 2 tools missing)**
+2. **B2-CTX-002** — add `tabId` param to `browser_capture_region`.
+3. **B2-CTX-003** — add `tabId` param to `browser_diff_snapshots`.
+
+**Priority A Item 3 — Non-active tab workflows**
+4. **B2-CTX-004** — verify CDP routing for background tabs, Hub registration for text_map + semantic_graph, `diff_snapshots` internal state for non-active tabs.
+
+**Priority A Item 4 — E2E smoke tests**
+5. **B2-CTX-005** — E2E continuity tests under tab switching (Playwright or similar).
 
 **Phase 1 — bridge-types split (1 agent, unblocks everything)**
-2. **MOD-P1-01** — `bridge-types` domain split + barrel export + consumer import updates.
+6. **MOD-P1-01** — `bridge-types` domain split + barrel export + consumer import updates.
 
 **Phase 2 — fully parallel (5 agents, after Phase 1 gate)**
-3. **MOD-P2-B1** — `hub/server.ts` decomposition.
-4. **MOD-P2-B2** — `bridge/extension.ts` decomposition.
-5. **MOD-P2-B3** — `voice` + `diagram` + `editor` leaf splits (3 packages, 1 agent).
-6. **MOD-P2-B4** — `comments` comment-store extraction + comment-tools split (sequential B4a→B4b).
-7. **MOD-P2-B5** — `browser-extension` relay-actions + service-worker split (sequential B5a→B5b→cleanup).
+7. **MOD-P2-B1** — `hub/server.ts` decomposition.
+8. **MOD-P2-B2** — `bridge/extension.ts` decomposition.
+9. **MOD-P2-B3** — `voice` + `diagram` + `editor` leaf splits (3 packages, 1 agent).
+10. **MOD-P2-B4** — `comments` comment-store extraction + comment-tools split (sequential B4a→B4b).
+11. **MOD-P2-B5** — `browser-extension` relay-actions + service-worker split (sequential B5a→B5b→cleanup).
 
 **After Phase 2 (P2 items)**
-8. **MOD-P2-11** — remove repeated forwarding/error boilerplate in browser-extension.
-9. **MOD-P2-12** — consolidate repeated merge/sync pathways in service worker.
-10. **MOD-P2-13** — normalize comments tool response shapes.
-11. **MOD-P2-14** — extract `bridge-core` with `HostEnvironment` interface (needs B2).
-12. **MOD-P2-15** — extract `comments-node-service` adapter (needs B4a).
-13. **MOD-P2-16** — align docs/examples with real exported Bridge API surface.
+12. **MOD-P2-11** — remove repeated forwarding/error boilerplate in browser-extension.
+13. **MOD-P2-12** — consolidate repeated merge/sync pathways in service worker.
+14. **MOD-P2-13** — normalize comments tool response shapes.
+15. **MOD-P2-14** — extract `bridge-core` with `HostEnvironment` interface (needs B2).
+16. **MOD-P2-15** — extract `comments-node-service` adapter (needs B4a).
+17. **MOD-P2-16** — align docs/examples with real exported Bridge API surface.
 
 **Later (not in current wave)**
-14. **TD-CROSS-2** — uniform logging migration.
-15. **M95-VA** — visual annotation layer planning kickoff.
+18. **D2-001** — add "requires live E2E" flag to D2 checklist for CDP/DOM tools.
+19. **TD-CROSS-2** — uniform logging migration.
+20. **M95-VA** — visual annotation layer planning kickoff.
 
 ---
 
