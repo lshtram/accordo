@@ -231,7 +231,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
 
     // Keep alive until signal
     await new Promise<void>((resolve) => {
-      const shutdown = () => {
+      const shutdown = (): void => {
         server.stop().catch(() => {}).finally(() => {
           // Remove PID and port files on clean shutdown
           const pidFile = path.join(os.homedir(), ".accordo", "hub.pid");
@@ -247,9 +247,18 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   }
 }
 
-// Run when executed directly; skip when imported by tests
+// Run when executed directly; skip when imported by tests.
 // Use pathToFileURL so the comparison works cross-platform (Windows backslashes).
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+// Resolve argv[1] through fs.realpathSync so symlinks (e.g. pnpm workspace
+// links from packages/bridge/node_modules/accordo-hub → packages/hub) match
+// the real path that Node.js uses for import.meta.url.
+const _argv1 = process.argv[1] ?? "";
+let _resolvedArgv1Href = pathToFileURL(_argv1).href;
+try {
+  _resolvedArgv1Href = pathToFileURL(fs.realpathSync(_argv1)).href;
+} catch { /* file may not exist when running from a non-file context */ }
+
+if (import.meta.url === _resolvedArgv1Href) {
   // ── Orphan-prevention: close IPC channel ────────────────────────────────
   // When VS Code launches the Hub via its Electron "Code Helper (Plugin)"
   // child process, an IPC channel is implicitly opened.  If the parent

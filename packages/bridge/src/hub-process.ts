@@ -12,7 +12,9 @@
 
 import type { ChildProcess } from "node:child_process";
 import { execFile } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 // Re-exported types used by hub-manager.ts
@@ -58,6 +60,73 @@ export interface SpawnArgs {
 }
 
 /**
+ * Resolve the Node.js executable used to spawn accordo-hub.
+ *
+ * In VS Code extension host, process.execPath points to Electron ("code"),
+ * not a plain Node binary. Spawning Hub with Electron can fail to start the
+ * server loop (process appears alive, high CPU, no listening port).
+ *
+ * Resolution strategy:
+ * 1) Respect explicit user config (`accordo.hub.executablePath`)
+ * 2) In extension-host/Electron contexts, prefer a real system `node`
+ * 3) Fallback to process.execPath
+ */
+export function resolveHubExecPath(configuredPath: string): string {
+  if (configuredPath) {
+    return configuredPath;
+  }
+
+  const procType = process.env["VSCODE_CRASH_REPORTER_PROCESS_TYPE"];
+  const execBase = path.basename(process.execPath).toLowerCase();
+  const looksLikeCodeBinary =
+    execBase === "code"
+    || execBase === "code-insiders"
+    || execBase.startsWith("code-");
+  const likelyElectronContext = Boolean(process.versions.electron) || procType === "extensionHost" || looksLikeCodeBinary;
+
+  if (!likelyElectronContext) {
+    return process.execPath;
+  }
+
+  const fromPath = findSystemNode();
+  if (fromPath !== null) {
+    return fromPath;
+  }
+
+  return process.execPath;
+}
+
+function findSystemNode(): string | null {
+  try {
+    const result = execFileSync("which", ["node"], {
+      encoding: "utf8",
+      timeout: 3000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (result && fs.existsSync(result)) {
+      return result;
+    }
+  } catch { /* not found or timed out */ }
+
+  const candidates = [
+    "/opt/homebrew/bin/node",
+    "/usr/local/bin/node",
+    path.join(os.homedir(), ".nvm/current/bin/node"),
+    path.join(os.homedir(), ".local/share/fnm/aliases/default/bin/node"),
+    path.join(os.homedir(), ".volta/bin/node"),
+    "/usr/bin/node",
+  ];
+
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      return c;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Create a HubProcess that manages the child process lifecycle.
  *
  * @param config   - Hub manager configuration (subset needed for process management)
@@ -91,13 +160,14 @@ export class HubProcess {
     this.state.restartAttempted = false;
     this.state.killRequested = false;
 
-    const execPath = this.config.executablePath || process.execPath;
+    const execPath = resolveHubExecPath(this.config.executablePath);
     const proc = execFile(
       execPath,
       [this.config.hubEntryPoint, "--port", String(port)],
       {
         env: {
           ...process.env,
+          ELECTRON_RUN_AS_NODE: "1",
           ACCORDO_BRIDGE_SECRET: secret,
           ACCORDO_TOKEN: token,
           ACCORDO_HUB_PORT: String(port),

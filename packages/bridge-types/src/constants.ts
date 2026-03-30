@@ -95,10 +95,10 @@ export interface HealthResponse {
  * Source: requirements-hub.md §2.6
  */
 export interface ReauthRequest {
-  /** New Bridge→Hub shared secret */
-  secret: string;
   /** New bearer token for MCP/instructions auth */
-  token: string;
+  newToken: string;
+  /** New Bridge→Hub shared secret */
+  newSecret: string;
 }
 
 // ─── Concurrency Stats ──────────────────────────────────────────────────────

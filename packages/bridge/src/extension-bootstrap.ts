@@ -58,6 +58,8 @@ export interface BridgeConfig {
   readonly wantOpencode: boolean;
   /** Whether to auto-generate .claude/mcp.json */
   readonly wantClaude: boolean;
+  /** Absolute path to the first workspace folder root, or empty string if none */
+  readonly workspaceRoot: string;
 }
 
 /**
@@ -123,6 +125,10 @@ export async function bootstrapExtension(
 
   // Step 3: Read configuration
   const cfg = vscode.workspace.getConfiguration("accordo");
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  const workspaceRoot = workspaceFolders && workspaceFolders.length > 0
+    ? workspaceFolders[0].uri.fsPath
+    : "";
   const config: BridgeConfig = {
     port: cfg.get<number>("hub.port") ?? 3000,
     autoStart: cfg.get<boolean>("hub.autoStart") ?? true,
@@ -130,10 +136,10 @@ export async function bootstrapExtension(
     wantCopilot: cfg.get<boolean>("agent.configureCopilot") ?? true,
     wantOpencode: cfg.get<boolean>("agent.configureOpencode") ?? true,
     wantClaude: cfg.get<boolean>("agent.configureClaude") ?? true,
+    workspaceRoot,
   };
 
   // Step 4: Enforce Copilot virtualTools threshold (CFG-11) — remove stale workspace setting
-  const workspaceFolders = vscode.workspace.workspaceFolders;
   if (workspaceFolders && workspaceFolders.length > 0) {
     removeWorkspaceThreshold(workspaceFolders[0].uri.fsPath, outputChannel);
   }
@@ -146,11 +152,14 @@ export async function bootstrapExtension(
     "dist",
     "index.js",
   );
+  const accordoDir = path.join(os.homedir(), ".accordo");
   const hubManagerConfig = {
     port: config.port,
     autoStart: config.autoStart,
     executablePath: config.executablePath,
     hubEntryPoint,
+    portFilePath: path.join(accordoDir, "hub.port"),
+    pidFilePath: path.join(accordoDir, "hub.pid"),
   };
 
   // Step 6: Create SecretStorageAdapter wrapping context.secrets

@@ -76,7 +76,7 @@ export class HubHealth {
   async pollHealth(maxWaitMs = 10000, intervalMs = 500): Promise<boolean> {
     const deadline = Date.now() + maxWaitMs;
     return new Promise((resolve) => {
-      const attempt = () => {
+      const attempt = (): void => {
         if (Date.now() >= deadline) {
           resolve(false);
           return;

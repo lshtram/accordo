@@ -116,7 +116,7 @@ The Hub is the **central control plane**. It has zero VSCode dependency.
 | `/instructions` | GET | Returns rendered system prompt (markdown). |
 | `/health` | GET | Returns `{ ok: true, uptime: <seconds>, bridge: "connected"\|"disconnected", toolCount: <number>, protocolVersion: <string> }` |
 | `/bridge` | WebSocket | Bridge connection point. Authenticated via `x-accordo-secret` header. |
-| `/bridge/reauth` | POST | Credential rotation without Hub respawn. Auth: `x-accordo-secret: <current-secret>`. Body: `{ "secret": "<new-secret>", "token": "<new-token>" }`. Hub atomically replaces `ACCORDO_BRIDGE_SECRET` and `ACCORDO_TOKEN` then returns 200. Allows Bridge to rotate credentials without terminating active CLI agent sessions (e.g. on `accordo.hub.restart`). Returns 401 if the current secret is wrong. |
+| `/bridge/reauth` | POST | Credential rotation without Hub respawn. Auth: `x-accordo-secret: <current-secret>`. Body: `{ "newToken": "<new-token>", "newSecret": "<new-secret>" }`. Hub atomically replaces `ACCORDO_BRIDGE_SECRET` and `ACCORDO_TOKEN` then returns 200. Allows Bridge to rotate credentials without terminating active CLI agent sessions (e.g. on `accordo.hub.restart`). Returns 401 if the current secret is wrong. |
 
 ### 3.4 MCP Transport — Streamable HTTP
 

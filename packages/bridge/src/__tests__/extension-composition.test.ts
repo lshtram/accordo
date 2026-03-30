@@ -278,6 +278,7 @@ function makeMockBootstrapResult(overrides: Partial<{
       wantCopilot: true,
       wantOpencode: true,
       wantClaude: true,
+      workspaceRoot: "",
     },
     secretStorage: overrides.secretStorage ?? {
       get: vi.fn().mockResolvedValue(undefined),

@@ -140,7 +140,7 @@ Group 1:
 |---|---|
 | Method | `POST` |
 | Authentication | `x-accordo-secret: <current-secret>` header. 401 if wrong. |
-| Request body | `{ "secret": "<new-secret>", "token": "<new-token>" }`. Both fields required. |
+| Request body | `{ "newSecret": "<new-secret>", "newToken": "<new-token>" }`. Both fields required. |
 | Response | `200 OK` with empty body on success. |
 | Behaviour | Hub atomically updates `ACCORDO_BRIDGE_SECRET` and `ACCORDO_TOKEN` in memory and rewrites `~/.accordo/token`. The WebSocket server immediately begins accepting the new secret. Active CLI agent MCP sessions are **not disrupted**. |
 | Use case | Bridge calls this before reconnecting with a new secret, avoiding a Hub kill-and-respawn that would disrupt in-flight CLI agent sessions. |

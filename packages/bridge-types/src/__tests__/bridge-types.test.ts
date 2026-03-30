@@ -146,20 +146,20 @@ describe("BRIDGE-TYPES-REQ-4: ReauthRequest shape", () => {
   // Type-level assertion: if ReauthRequest is typed as { newSecret, newToken }
   // instead of { secret, token }, TypeScript will error here and this file won't compile.
   // The test object construction forces TypeScript to check the field names match.
-  it("RE4: ReauthRequest must have secret and token (not newSecret/newToken)", () => {
+  it("RE4: ReauthRequest must have newSecret and newToken", () => {
     // This object literal must match ReauthRequest exactly.
-    // If the interface uses newSecret/newToken instead of secret/token,
+    // If the interface uses secret/token instead of newSecret/newToken,
     // TypeScript will error here (excess property check).
     const _compliant: ReauthRequest = {
-      secret: "s",
-      token: "t",
+      newSecret: "s",
+      newToken: "t",
     };
 
-    // Also verify the interface does NOT accept newSecret/newToken
+    // Also verify the interface does NOT accept secret/token
     // @ts-expect-error — should not be valid if interface is correct
-    const _invalidNewSecret: ReauthRequest = { newSecret: "s", token: "t" };
+    const _invalidSecret: ReauthRequest = { secret: "s", token: "t" };
     // @ts-expect-error — should not be valid if interface is correct
-    const _invalidNewToken: ReauthRequest = { secret: "s", newToken: "t" };
+    const _invalidToken: ReauthRequest = { newSecret: "s", token: "t" };
   });
 });
 

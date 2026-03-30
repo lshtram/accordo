@@ -138,7 +138,7 @@ export class HubManager {
         pidFilePath: config.pidFilePath,
       },
       outputChannel,
-      { onUnexpectedExit: (code) => this._onProcessExit(code) },
+      { onUnexpectedExit: (code): void => { this._onProcessExit(code); } },
       this.processState,
     );
 
@@ -240,7 +240,7 @@ export class HubManager {
     this.pollCancelled = false;
     const deadline = Date.now() + maxWaitMs;
     return new Promise((resolve) => {
-      const attempt = () => {
+      const attempt = (): void => {
         if (this.pollCancelled || Date.now() >= deadline) {
           resolve(false);
           return;

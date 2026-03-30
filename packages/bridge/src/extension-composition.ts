@@ -24,6 +24,7 @@ import type { Services } from "./extension-service-factory.js";
 import { writeAgentConfigs } from "./agent-config.js";
 import { StatePublisher } from "./state-publisher.js";
 import type { IDEState } from "@accordo/bridge-types";
+import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -128,6 +129,17 @@ export function buildHubManagerEvents(
       deps.state.currentHubPort = port;
       deps.state.currentHubToken = token ?? "";
 
+      // Write agent config files so opencode/claude/copilot MCP clients get the right token
+      writeAgentConfigs({
+        workspaceRoot: deps.bootstrap.config.workspaceRoot ?? "",
+        port,
+        token,
+        configureOpencode: deps.bootstrap.config.wantOpencode,
+        configureClaude: deps.bootstrap.config.wantClaude,
+        configureCopilot: deps.bootstrap.config.wantCopilot,
+        outputChannel: deps.bootstrap.outputChannel,
+      });
+
       // Get bridge secret asynchronously then create WsClient
       deps.bootstrap.secretStorage.get("accordo.bridgeSecret").then((secret) => {
         const wsClientEvents = makeWsClientEvents(deps);
@@ -141,8 +153,8 @@ export function buildHubManagerEvents(
         deps.state.wsClient = wsClient;
 
         // Wire the send-bridge closures so StatePublisher reaches the live socket
-        deps.services.sendBridge.sendSnapshot = (msg) => wsClient.sendStateSnapshot(msg.state);
-        deps.services.sendBridge.sendUpdate = (msg) => wsClient.sendStateUpdate(msg.patch);
+        deps.services.sendBridge.sendSnapshot = (msg): void => { wsClient.sendStateSnapshot(msg.state); };
+        deps.services.sendBridge.sendUpdate = (msg): void => { wsClient.sendStateUpdate(msg.patch); };
 
         // Wire router send callbacks
         deps.services.router.setSendResultFn((result) => wsClient.sendResult(result));
@@ -286,7 +298,7 @@ export function registerCommands(
 ): Disposable[] {
   const { bootstrap, services, state } = deps;
 
-  const restart = registerFn("accordo.bridge.restart", () => {
+  const restart = registerFn("accordo.hub.restart", () => {
     services.hubManager.restart().catch((err: unknown) => {
       bootstrap.outputChannel.appendLine(
         `[accordo-bridge] restart error: ${err instanceof Error ? err.message : String(err)}`,
@@ -294,7 +306,7 @@ export function registerCommands(
     });
   });
 
-  const showLog = registerFn("accordo.bridge.showLog", () => {
+  const showLog = registerFn("accordo.hub.showLog", () => {
     bootstrap.outputChannel.show(true);
   });
 
@@ -384,11 +396,11 @@ export function composeExtension(
   });
 
   return {
-    registerTools: (extensionId, tools) => {
-      return services.registry.registerTools(extensionId, tools as unknown as import("@accordo/bridge-types").ExtensionToolDefinition[]);
+    registerTools: (extensionId, tools): Disposable => {
+      return services.registry.registerTools(extensionId, tools as unknown as ExtensionToolDefinition[]);
     },
 
-    publishState: (extensionId, stateData) => {
+    publishState: (extensionId, stateData): void => {
       services.statePublisher.publishState(extensionId, stateData);
     },
 
