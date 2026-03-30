@@ -117,11 +117,11 @@ Primary hotspots:
 ### B3. Comments extension decomposition
 - **From:** `packages/comments/src/extension.ts`
 - **Extract to:**
-  - `comments-bootstrap.ts`
-  - `panel-bootstrap.ts`
-  - `internal-command-registry.ts`
-  - `bridge-integration.ts`
-- **Outcome:** clearer app wiring and better onboarding.
+  - `comments-bootstrap.ts` → ✅ DONE
+  - `panel-bootstrap.ts` → ✅ DONE
+  - `bridge-integration.ts` → ✅ DONE — this IS the internal command registry (5/6 commands)
+  - `internal-command-registry.ts` → ⚠️ NOT EXTRACTED — `expandThread` correctly remains in `native-comment-controller.ts` because it operates on the VSCode widget map; extracting it would create a bad dependency on controller internals
+- **Outcome:** ✅ COMPLETE — all commands properly located by concern; data commands in `bridge-integration.ts`, UI command in `native-comment-controller.ts`
 
 ---
 
@@ -170,10 +170,11 @@ Primary hotspots:
 ### C6. Diagram panel split
 - **From:** `diagram/src/webview/panel.ts`
 - **Extract to:**
-  - `panel-lifecycle.ts`
-  - `panel-message-router.ts`
-  - `panel-export-service.ts`
-  - `panel-comments-adapter.ts`
+  - `panel-lifecycle.ts` → ✅ DONE: `panel-state.ts` (122 LOC)
+  - `panel-message-router.ts` → ✅ DONE: `panel-core.ts` (277 LOC)
+  - `panel-export-service.ts` → ✅ DONE: in `panel-core.ts` (export request is thin public method)
+  - `panel-comments-adapter.ts` → ✅ DONE: `../comments/diagram-comments-bridge.js`
+- **Status:** ✅ COMPLETE — split achieved; naming differs from plan but responsibilities correctly decomposed
 
 ---
 
@@ -181,41 +182,43 @@ Primary hotspots:
 
 ### D1. Introduce per-package module maps (`docs/module-map-<package>.md`)
 - Explain composition root, key modules, and extension points.
+- 🔲 IN PROGRESS — maps for 7 packages: bridge, comments, browser-extension, browser, diagram, voice, hub
 
-### D2. Add “public interface” files per package
+### D2. Add "public interface" files per package
 - `src/public-api.ts` (or equivalent) to document what is stable/internal.
+- ✅ DECIDED: Do NOT create separate `public-api.ts` files — use existing barrel `index.ts` with header comments documenting public/internal boundary. Follow `comments/src/index.ts` pattern.
 
 ### D3. Reduce implicit inter-extension command coupling where possible
 - Keep internal commands, but route through typed adapter boundaries.
+- ✅ DONE — `@accordo/capabilities` typed `CAPABILITY_COMMANDS` replaces all raw string commands
 
 ### D4. Cleanup incomplete abstraction surfaces
-- Either fully implement or explicitly quarantine stubs (no ambiguous “half-live” modules).
+- Either fully implement or explicitly quarantine stubs (no ambiguous "half-live" modules).
+- 🔲 IN PROGRESS — 13 stubs in `comment-backend.ts` to be quarantined with `@stub`/`@planned` JSDoc
 
 ---
 
 ## W1-E. Work packaging / execution order
 
-### Sprint 1 (foundation)
-1. A1 `bridge-types` split
-2. A2 browser relay contract centralization
-3. B1 bridge extension decomposition (first slice)
+### Sprint 1 (foundation) — ✅ COMPLETE
+1. A1 `bridge-types` split ✅
+2. A2 browser relay contract centralization ✅
+3. B1 bridge extension decomposition (first slice) ✅
 
-### Sprint 2 (runtime orchestrators)
-4. B2 hub server decomposition
-5. B3 comments extension decomposition
-6. C3 comments tools split
+### Sprint 2 (runtime orchestrators) — ✅ COMPLETE
+4. B2 hub server decomposition ✅
+5. B3 comments extension decomposition ✅
+6. C3 comments tools split ✅
 
-### Sprint 3 (browser complexity)
-7. C1 service-worker split
-8. C2 relay-actions split
-9. D4 stub cleanup/quarantine
+### Sprint 3 (browser complexity) — ✅ COMPLETE
+7. C1 service-worker split ✅
+8. C2 relay-actions split ✅
+9. D4 stub cleanup/quarantine 🔲 IN PROGRESS
 
-### Sprint 4 (modality hotspots)
-10. C5 voice split
-11. C6 diagram panel split
-12. D1 module maps + D2 public interface docs
-
-Wave 1 completion gate: all items above merged, with unchanged behavior and improved ownership boundaries.
+### Sprint 4 (modularity hotspots) — 🔲 IN PROGRESS
+10. C5 voice split ✅
+11. C6 diagram panel split ✅ (achieved via panel-state.ts, panel-core.ts, panel-commands.ts)
+12. D1 module maps + D2 public interface docs 🔲 IN PROGRESS
 
 ---
 

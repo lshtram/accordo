@@ -86,6 +86,10 @@ export interface CommentBackendAdapter {
 // ── VscodeRelayAdapter ───────────────────────────────────────────────────────
 
 /**
+ * @stub Not yet implemented — planned for Wave 2 (W2-A).
+ * Provides comment CRUD operations via a VS Code relay tunnel.
+ * See: docs/00-workplan/workplan-modularity-waves.md §W2-A
+ *
  * Routes comment operations through the VS Code relay WebSocket.
  * Used when the browser extension is connected to accordo-browser.
  *
@@ -94,28 +98,34 @@ export interface CommentBackendAdapter {
 export class VscodeRelayAdapter implements CommentBackendAdapter {
   constructor(private readonly _relay: RelayBridgeClient) {}
 
+  /** @stub */
   async listThreads(_url: string): Promise<CommentThreadSummary[]> {
-    throw new Error("not implemented");
+    throw new Error("not implemented — stub for Wave 2 W2-A");
   }
 
+  /** @stub */
   async createThread(_params: CreateThreadParams): Promise<{ threadId: string; commentId: string }> {
-    throw new Error("not implemented");
+    throw new Error("not implemented — stub for Wave 2 W2-A");
   }
 
+  /** @stub */
   async reply(_params: ReplyParams): Promise<{ commentId: string }> {
-    throw new Error("not implemented");
+    throw new Error("not implemented — stub for Wave 2 W2-A");
   }
 
+  /** @stub */
   async resolve(_threadId: string, _resolutionNote?: string): Promise<void> {
-    throw new Error("not implemented");
+    throw new Error("not implemented — stub for Wave 2 W2-A");
   }
 
+  /** @stub */
   async reopen(_threadId: string): Promise<void> {
-    throw new Error("not implemented");
+    throw new Error("not implemented — stub for Wave 2 W2-A");
   }
 
+  /** @stub */
   async delete(_threadId: string, _commentId?: string): Promise<void> {
-    throw new Error("not implemented");
+    throw new Error("not implemented — stub for Wave 2 W2-A");
   }
 
   isConnected(): boolean {
@@ -126,34 +136,44 @@ export class VscodeRelayAdapter implements CommentBackendAdapter {
 // ── LocalStorageAdapter ──────────────────────────────────────────────────────
 
 /**
+ * @stub Not yet implemented — planned for Wave 2 (W2-A).
+ * Provides local comment storage via chrome.storage.local.
+ * See: docs/00-workplan/workplan-modularity-waves.md §W2-A
+ *
  * Fallback: stores comments in chrome.storage.local only.
  * Used when no backend is connected (offline mode).
  *
  * @see PU-F-42
  */
 export class LocalStorageAdapter implements CommentBackendAdapter {
+  /** @stub */
   async listThreads(_url: string): Promise<CommentThreadSummary[]> {
-    throw new Error("not implemented");
+    throw new Error("not implemented — stub for Wave 2 W2-A");
   }
 
+  /** @stub */
   async createThread(_params: CreateThreadParams): Promise<{ threadId: string; commentId: string }> {
-    throw new Error("not implemented");
+    throw new Error("not implemented — stub for Wave 2 W2-A");
   }
 
+  /** @stub */
   async reply(_params: ReplyParams): Promise<{ commentId: string }> {
-    throw new Error("not implemented");
+    throw new Error("not implemented — stub for Wave 2 W2-A");
   }
 
+  /** @stub */
   async resolve(_threadId: string, _resolutionNote?: string): Promise<void> {
-    throw new Error("not implemented");
+    throw new Error("not implemented — stub for Wave 2 W2-A");
   }
 
+  /** @stub */
   async reopen(_threadId: string): Promise<void> {
-    throw new Error("not implemented");
+    throw new Error("not implemented — stub for Wave 2 W2-A");
   }
 
+  /** @stub */
   async delete(_threadId: string, _commentId?: string): Promise<void> {
-    throw new Error("not implemented");
+    throw new Error("not implemented — stub for Wave 2 W2-A");
   }
 
   isConnected(): boolean {
@@ -182,6 +202,10 @@ export interface StandaloneMcpAdapterConfig {
 // ── Adapter Factory ──────────────────────────────────────────────────────────
 
 /**
+ * @stub Not yet implemented — planned for Wave 2 (W2-A).
+ * Factory to select the appropriate CommentBackendAdapter at runtime.
+ * See: docs/00-workplan/workplan-modularity-waves.md §W2-A
+ *
  * Select the best available adapter based on connectivity.
  *
  * Priority:
@@ -193,5 +217,5 @@ export interface StandaloneMcpAdapterConfig {
  * @see PU-F-43
  */
 export function selectAdapter(relay: RelayBridgeClient): CommentBackendAdapter {
-  throw new Error("not implemented");
+  throw new Error("not implemented — stub for Wave 2 W2-A");
 }

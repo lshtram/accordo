@@ -1,11 +1,30 @@
 /**
- * Public barrel for @accordo/comments.
+ * @accordo/comments — Public API
  *
- * Re-exports the public API that is safe for external consumption:
- * pure types, interfaces, and VSCode-free classes only.
+ * Public (stable — safe to import from other packages):
+ *   CommentRepository,
+ *   ListThreadsOptions, ListThreadsResult, ThreadSummary,
+ *   CreateCommentParams, CreateCommentResult,
+ *   ReplyParams, ReplyResult,
+ *   ResolveParams, DeleteParams,
+ *   DocumentChangeInfo, ChangeListener,
+ *   ToolSchema, commentToolSchemas,
+ *   buildCommentToolHandlers(), normalizeCommentUri(),
+ *   CommentUINotifier, CompositeCommentUINotifier, CreateRateLimiter,
+ *   all types from @accordo/bridge-types that are used as parameters.
  *
- * CommentStore is intentionally excluded — it imports vscode and is an
- * internal VSCode-adapter concern.
+ * Internal (for package use only — may change without notice):
+ *   comment-store-ops.ts, comment-query-ops.ts, comment-mutation-ops.ts,
+ *   comment-tools/handlers.ts (use buildCommentToolHandlers() instead),
+ *   comment-tools/notifier.ts, comment-tools/rate-limiter.ts,
+ *   native-comment-controller.ts, native-comment-sync.ts, native-comments.ts,
+ *   comment-store.ts, comment-store-io.ts,
+ *   panel-*.ts, panel/, bridge-integration.ts,
+ *   state-contribution.ts, comments-bootstrap.ts,
+ *   anchor.ts, comment-tools.ts, extension.ts
+ *
+ * Not exported (dead ends — internal utilities):
+ *   index.ts (this file)
  */
 
 // ── Domain types (no vscode) ──────────────────────────────────────────────────
