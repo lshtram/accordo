@@ -29,6 +29,7 @@ import { VoiceLogger } from "./ui/logger.js";
 import { createSttProvider, createTtsProvider } from "./voice-adapters.js";
 import { loadPolicyFromConfiguration, syncUiAndState, publishVoiceState } from "./voice-bootstrap.js";
 import { reconcileSessionState, doToggleDictation, buildInsertTextCallback, type VoiceRuntimeState } from "./voice-runtime.js";
+import { createVsCodeUiAdapter, type VoiceUiAdapter } from "./voice-ui-adapter.js";
 import {
   doReadAloud, doTestTts, doTestStt, doSpeakText, doStopNarration, doPauseNarration, doResumeNarration,
   type NarrationDeps,
@@ -127,6 +128,8 @@ export async function activate(
     );
   };
 
+  const uiAdapter: VoiceUiAdapter = createVsCodeUiAdapter();
+
   const runtimeDeps = {
     sessionFsm, audioFsm,
     sttProvider: stt,
@@ -134,8 +137,9 @@ export async function activate(
     startRecording: (sampleRate: number) => startRecording(sampleRate, (msg) => logger.log(`[rec] ${msg}`)),
     isRecordingAvailable,
     syncUiAndState: doSyncUiAndState,
-    insertText: buildInsertTextCallback((msg) => logger.log(msg)),
+    insertText: buildInsertTextCallback(uiAdapter, (msg) => logger.log(msg)),
     log: (msg: string) => logger.log(msg),
+    uiAdapter,
   };
 
   function doLocalLoadPolicy(): void {

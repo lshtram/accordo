@@ -7,7 +7,7 @@
  * M50-EXT (runtime split)
  */
 
-import * as vscode from "vscode";
+import type { VoiceUiAdapter } from "./voice-ui-adapter.js";
 import type { SessionFsm } from "./core/fsm/session-fsm.js";
 import type { AudioFsm } from "./core/fsm/audio-fsm.js";
 import type { SttProvider } from "./core/providers/stt-provider.js";
@@ -53,6 +53,8 @@ export interface VoiceRuntimeDeps {
   syncUiAndState: () => void;
   insertText: (text: string) => Promise<boolean>;
   log: (msg: string) => void;
+  /** Injected UI adapter (required in production; optional for test compatibility). */
+  uiAdapter?: VoiceUiAdapter;
 }
 
 // ── reconcileSessionState ─────────────────────────────────────────────────────
@@ -100,7 +102,7 @@ export async function insertDictationText(
 
   if (state.voiceInputTarget === "agent-conversation") {
     try {
-      await vscode.commands.executeCommand("workbench.action.chat.open", {
+      await deps.uiAdapter?.executeCommand("workbench.action.chat.open", {
         query: text,
         autoSend: true,
         isPartialQuery: false,
@@ -111,7 +113,7 @@ export async function insertDictationText(
       return true;
     } catch (err) {
       log(`dictation: insert failed (mode=${state.voiceInputTarget}) — ${String(err)}`);
-      void vscode.window.showWarningMessage(
+      void deps.uiAdapter?.showWarningMessage(
         "Accordo Voice: couldn't send directly to chat conversation. Focus chat input manually or switch input target to focused text input.",
       );
       return false;
@@ -136,11 +138,11 @@ export async function doStartDictation(
 
   if (sessionFsm.state !== "active") {
     if (!sessionFsm.policy.enabled) {
-      void vscode.window.showWarningMessage(
+      void deps.uiAdapter?.showWarningMessage(
         "Accordo Voice: session inactive. Enable `accordo.voice.enabled` in settings.",
       );
     } else {
-      void vscode.window.showWarningMessage(
+      void deps.uiAdapter?.showWarningMessage(
         "Accordo Voice: session inactive. Check STT provider availability.",
       );
     }
@@ -162,7 +164,7 @@ export async function doStartDictation(
         : process.platform === "darwin"
           ? "Install via `brew install sox`"
           : "Install via `apt install sox` (or your distro package manager)";
-    void vscode.window.showWarningMessage(`Accordo Voice: sox not found. ${soxInstallHint}.`);
+    void deps.uiAdapter?.showWarningMessage(`Accordo Voice: sox not found. ${soxInstallHint}.`);
     return;
   }
 
@@ -187,7 +189,7 @@ export async function doStartDictation(
     state.dictState.active = false;
     deps.syncUiAndState();
     log(`dictation: failed to start recorder — ${String(err)}`);
-    void vscode.window.showErrorMessage(
+    void deps.uiAdapter?.showErrorMessage(
       `Accordo Voice: failed to start recording — ${String(err)}`,
     );
     return;
@@ -223,7 +225,7 @@ export async function doStartDictation(
       audioFsm.error();
       audioFsm.reset();
       sessionFsm.pushToTalkEnd();
-      void vscode.window.showErrorMessage(
+      void deps.uiAdapter?.showErrorMessage(
         `Accordo Voice: transcription failed — ${String(err)}`,
       );
     } finally {
@@ -271,24 +273,25 @@ export async function doToggleDictation(
  * Builds the `insertText` callback used by runtimeDeps.
  * Tries the VSCode "type" command first; falls back to editor cursor insertion.
  */
-export function buildInsertTextCallback(log: (msg: string) => void): (text: string) => Promise<boolean> {
+export function buildInsertTextCallback(
+  uiAdapter: VoiceUiAdapter,
+  log: (msg: string) => void,
+): (text: string) => Promise<boolean> {
   return async (text: string): Promise<boolean> => {
     try {
-      await vscode.commands.executeCommand("type", { text });
+      await uiAdapter.executeCommand("type", { text });
       log("dictation: inserted via focused input");
       return true;
     } catch (err) {
       log(`dictation: insert via type command failed — ${String(err)}`);
-      const editor = vscode.window.activeTextEditor;
+      const editor = uiAdapter.activeTextEditor();
       if (!editor) {
-        void vscode.window.showWarningMessage(
+        void uiAdapter.showWarningMessage(
           "Accordo Voice: no target input found. Focus an input field or editor and try again.",
         );
         return false;
       }
-      await editor.edit((b) => b.insert(editor.selection.active, text));
-      log("dictation: inserted at editor cursor (fallback)");
-      return true;
+      return uiAdapter.insertAtEditor(editor, text);
     }
   };
 }
