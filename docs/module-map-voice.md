@@ -57,7 +57,7 @@ VSCode extension providing voice input (STT via Whisper) and audio output (TTS v
 ## Internal Boundaries
 
 - **`voice-bootstrap.ts`** is the only file that imports `vscode` besides `extension.ts` and `voice-ui-adapter.ts`. All other modules use dependency injection to receive VSCode operations.
-- **`voice-runtime.ts`** has zero `vscode` imports — it uses `VoiceUiAdapter` and `VoiceRuntimeDeps` for all UI and external operations. This is the key architectural boundary enabling testability.
+- **`voice-runtime.ts`** has zero `vscode` imports at module scope — it uses `VoiceUiAdapter` and `VoiceRuntimeDeps` for all UI operations. One exception: when `uiAdapter` is not injected (test compatibility), it uses a lazy `import("vscode")` inside each affected function. This pragmatic fallback preserves 100% test coverage without breaking the architecture. Production code must always inject `uiAdapter`.
 - **`voice-adapters.ts`** has zero `vscode` imports — it is the leaf adapter layer creating provider instances.
 - **`tools/` subdirectory**: Each tool file (`discover.ts`, `read-aloud.ts`, `dictation.ts`, `set-policy.ts`) is internal to the tools layer. External packages access them only through `extension.ts`'s tool registration.
 - **`core/fsm/`**: The three FSMs (SessionFsm, AudioFsm, NarrationFsm) manage state transitions but expose clean interfaces — other packages do not need to know their internals.

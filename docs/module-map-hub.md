@@ -22,7 +22,7 @@ Standalone MCP server that acts as the intelligence hub: accepts MCP connections
 | `mcp-session.ts` | Manages MCP session lifecycle (create, get, track); each `initialize` request gets a new session | `McpSessionRegistry` class, `Session` type |
 | `mcp-dispatch.ts` | JSON-RPC method routing for MCP (initialize, tools/list, tools/call, ping); validates protocol, enforces concurrency limits | `McpDispatch` class, `JsonRpcRequest/Response` types |
 | `mcp-call-executor.ts` | Executes a tools/call invocation: validates input, checks concurrency, sends to BridgeServer, handles result/error/timeout/cancel | `McpCallExecutor` class |
-| `mcp-error-mapper.ts` | Maps tool invocation errors to JSON-RPC error codes | `mapToolError()` |
+| `mcp-error-mapper.ts` | Maps tool invocation errors to JSON-RPC error codes | `isInvokeTimeout()`, `classifyError()`, `buildToolErrorResponse()`, `buildSoftErrorResponse()`, `buildBridgeFailureResponse()`, `buildInvalidParamsResponse()`, `buildUnknownToolResponse()` |
 | `bridge-server.ts` | WebSocket server accepting Bridge connections; dispatches to BridgeConnection per connection | `BridgeServer` class |
 | `bridge-connection.ts` | Per-Bridge WebSocket connection; manages invoke/cancel message pump, heartbeat, graceful shutdown | `BridgeConnection` class, `BridgeConnectionState` interface |
 | `bridge-dispatch.ts` | Per-connection message routing for Bridge→Hub messages; manages in-flight invocations, concurrency queue, state snapshots, tool registry updates | `BridgeDispatch` class |

@@ -25,6 +25,19 @@ import {
   isInvokeTimeout,
 } from "./mcp-error-mapper.js";
 
+/**
+ * Extract a soft-error message from a tool result data object.
+ * Soft errors are editor-tool exceptions returned as successful data
+ * `{ error: "..." }` rather than thrown — requirements-hub.md §7.
+ * Returns undefined if no soft error is present.
+ */
+function extractSoftError(data: unknown): string | undefined {
+  if (typeof data !== "object" || data === null) return undefined;
+  const d = data as Record<string, unknown>;
+  if (!("error" in d)) return undefined;
+  return typeof d.error === "string" ? d.error : undefined;
+}
+
 export interface McpCallExecutorDeps {
   toolRegistry: ToolRegistry;
   bridgeServer: BridgeServer;
@@ -108,22 +121,14 @@ export class McpCallExecutor {
       // { error: "..." } as successful data rather than throwing.
       // requirements-hub.md §7 — these must be classified as "error" in the
       // audit log and surfaced with isError:true so agents can adapt.
-      const data = result.data ?? {};
-      const softErrorMsg: string | undefined =
-        typeof data === "object" &&
-        data !== null &&
-        "error" in data &&
-        typeof (data as Record<string, unknown>)["error"] === "string"
-          ? ((data as Record<string, unknown>)["error"] as string)
-          : undefined;
-
+      const softErrorMsg = extractSoftError(result.data);
       if (softErrorMsg !== undefined) {
         audit("error", softErrorMsg);
         return buildSoftErrorResponse(id, softErrorMsg);
       }
 
       audit("success");
-      return buildToolSuccessResponse(id, data);
+      return buildToolSuccessResponse(id, result.data);
     } catch (err: unknown) {
       // M32: idempotent timeout retry — attempt once for tools marked idempotent: true.
       if (isInvokeTimeout(err) && tool.idempotent === true) {
@@ -136,14 +141,7 @@ export class McpCallExecutor {
             return buildBridgeFailureResponse(id, retryResult.error ?? "Tool execution failed");
           }
           // Soft-error check on retry result
-          const retryData = retryResult.data ?? {};
-          const retrySoftErr: string | undefined =
-            typeof retryData === "object" &&
-            retryData !== null &&
-            "error" in retryData &&
-            typeof (retryData as Record<string, unknown>)["error"] === "string"
-              ? ((retryData as Record<string, unknown>)["error"] as string)
-              : undefined;
+          const retrySoftErr = extractSoftError(retryResult.data);
           if (retrySoftErr !== undefined) {
             audit("error", retrySoftErr);
             return buildSoftErrorResponse(id, retrySoftErr);

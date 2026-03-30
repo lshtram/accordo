@@ -10,8 +10,8 @@ The central VSCode extension that bootstraps the Hub process, mediates WebSocket
 
 | File | Responsibility | Public API |
 |------|---------------|------------|
-| `extension.ts` | VSCode entry point; owns BridgeAPI interface, activate/deactivate orchestration | Exports `BridgeAPI` interface and `ExtensionToolDefinition` |
-| `extension-bootstrap.ts` | VSCode ceremony (only file that imports `vscode`); creates output channel, config, status bar, SecretStorage adapter | `bootstrapExtension()`, `syncMcpSettings()`, `BridgeConfig` type |
+| `extension.ts` | VSCode entry point; owns BridgeAPI interface, activate/deactivate orchestration; imports `vscode` for ExtensionContext and Disposable types | Exports `BridgeAPI` interface and `ExtensionToolDefinition` |
+| `extension-bootstrap.ts` | VSCode ceremony; creates output channel, config, status bar, SecretStorage adapter | `bootstrapExtension()`, `syncMcpSettings()`, `BridgeConfig` type |
 | `extension-service-factory.ts` | Creates all service instances (HubManager, ExtensionRegistry, CommandRouter, StatePublisher) | `createServices()`, `Services` interface |
 | `extension-composition.ts` | Wires BridgeAPI, registers VS Code commands, manages WsClient lifecycle, cleanup on deactivate | `buildHubManagerEvents()`, `composeExtension()`, `cleanupExtension()` |
 | `hub-manager.ts` | Manages Hub child process lifecycle: health-check, spawn/kill, secret storage, reauth restart | `HubManager` class, `HubManagerEvents` interface |
@@ -37,7 +37,7 @@ The central VSCode extension that bootstraps the Hub process, mediates WebSocket
 
 ## Internal Boundaries
 
-- **`extension-bootstrap.ts`** is the only file that imports `vscode` directly. All other modules receive VSCode dependencies via injection through typed interfaces. This boundary is architectural — breaking it would make the non-bootstrap modules untestable without a full VSCode host.
+- **`extension.ts`**, **`extension-bootstrap.ts`**, and **`extension-vscode-adapter.ts`** all import `vscode` directly. The architectural intent is that these three files are the only VSCode-touching layer; all other modules receive VSCode dependencies via injection through typed interfaces. This boundary is critical — breaking it would make the non-adapter modules untestable without a full VSCode host.
 - **`CommentStore`** (from `@accordo/comments`) must NOT be imported here — it is a VSCode adapter that belongs in the comments package.
 - **`hub-process.ts`** and **`hub-health.ts`** are internal helpers of HubManager and should not be imported directly by other modules.
 - **`state-collector.ts`** and **`state-diff.ts`** are internal to StatePublisher — they are not re-exported from any public barrel.

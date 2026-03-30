@@ -131,7 +131,7 @@ export class CommentQueryOps {
       );
     }
     if (options.updatedSince !== undefined) {
-      result = result.filter(t => t.lastActivity > options.updatedSince!);
+      result = result.filter(t => t.lastActivity > (options.updatedSince as string));
     }
     if (options.lastAuthor !== undefined) {
       result = result.filter(t => {

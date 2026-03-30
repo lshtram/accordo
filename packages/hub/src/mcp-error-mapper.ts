@@ -38,10 +38,11 @@ export function isInvokeTimeout(e: unknown): boolean {
  * Classify an uncaught error from the bridge or tool handler into a bucket.
  *
  * Timeout errors receive different user-facing messages and audit results.
+ * Uses the same code (-32000) as isInvokeTimeout for consistency.
  */
 export function classifyError(err: unknown): ErrorKind {
   if (err instanceof JsonRpcError) {
-    return err.code === -32001 || err.message.toLowerCase().includes("timed out")
+    return err.code === -32000 || err.message.toLowerCase().includes("timed out")
       ? "timeout"
       : "error";
   }

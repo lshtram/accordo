@@ -182,7 +182,7 @@ Primary hotspots:
 
 ### D1. Introduce per-package module maps (`docs/module-map-<package>.md`)
 - Explain composition root, key modules, and extension points.
-- 🔲 IN PROGRESS — maps for 7 packages: bridge, comments, browser-extension, browser, diagram, voice, hub
+- ✅ DONE — 7 maps created: bridge, comments, browser-extension, browser, diagram, voice, hub
 
 ### D2. Add "public interface" files per package
 - `src/public-api.ts` (or equivalent) to document what is stable/internal.
@@ -194,7 +194,7 @@ Primary hotspots:
 
 ### D4. Cleanup incomplete abstraction surfaces
 - Either fully implement or explicitly quarantine stubs (no ambiguous "half-live" modules).
-- 🔲 IN PROGRESS — 13 stubs in `comment-backend.ts` to be quarantined with `@stub`/`@planned` JSDoc
+- ✅ DONE (`8b8476f`) — 13 stubs in `comment-backend.ts` quarantined with `/** @stub */` + `/** @planned for Wave 2 (W2-A) */` JSDoc
 
 ---
 
@@ -213,12 +213,12 @@ Primary hotspots:
 ### Sprint 3 (browser complexity) — ✅ COMPLETE
 7. C1 service-worker split ✅
 8. C2 relay-actions split ✅
-9. D4 stub cleanup/quarantine 🔲 IN PROGRESS
+9. D4 stub cleanup/quarantine ✅
 
-### Sprint 4 (modularity hotspots) — 🔲 IN PROGRESS
+### Sprint 4 (modularity hotspots) — ✅ COMPLETE
 10. C5 voice split ✅
 11. C6 diagram panel split ✅ (achieved via panel-state.ts, panel-core.ts, panel-commands.ts)
-12. D1 module maps + D2 public interface docs 🔲 IN PROGRESS
+12. D1 module maps + D2 public interface docs ✅
 
 ---
 

@@ -31,7 +31,7 @@ VSCode extension that hosts a local WebSocket relay server (127.0.0.1:40111), wh
 
 - **`BrowserBridgeAPI`**: Local interface mirroring BridgeAPI but scoped to the browser package's needs (registerTools, publishState, invokeTool).
 - **`browserActionToUnifiedTool()`**: The dispatch function that maps each BrowserRelayAction to a unified `comment_*` tool call. New Chrome→VSCode routing is added here.
-- **`SnapshotRetentionStore`**: Shared across all 4 data-producing page-understanding tools. Provides coherent 5-slot FIFO per page — new tool implementations should call `snapshotStore.put()` rather than managing their own retention.
+- **`SnapshotRetentionStore`**: Shared across all 4 data-producing page-understanding tools. Provides coherent 5-slot FIFO per page — new tool implementations should call `snapshotStore.save()` rather than managing their own retention.
 - **`BrowserRelayLike` interface**: The relay interface consumed by tool handlers. Allows injecting a mock relay in tests.
 
 ## Internal Boundaries
@@ -39,5 +39,5 @@ VSCode extension that hosts a local WebSocket relay server (127.0.0.1:40111), wh
 - **`eval-harness.ts`**, **`eval-emitter.ts`**, and **`eval-types.ts`** are internal to the eval subsystem — they are not imported by tool handlers or relay components.
 - **`relay-router.ts`** is internal to the relay server — it is not used by tool handlers.
 - **`page-tool-handlers-impl.ts`** should not be imported directly by external packages — use the barrel `page-tool-handlers.ts` instead.
-- **`SnapshotRetentionStore`** uses a `WeakMap<BrowserPage, SnapshotEntry[]>` internally — external callers should use `put()`, `get()`, and `evict()` and not depend on the internal map structure.
+- **`SnapshotRetentionStore`** uses a `WeakMap<BrowserPage, SnapshotEntry[]>` internally — external callers should use `save()`, `get()`, and `evict()` and not depend on the internal map structure.
 - The **`BrowserRelayAction`** discriminated union in `types.ts` defines all Chrome→VSCode relay actions. Adding a new relay action requires adding it to this union and routing it in `browserActionToUnifiedTool()` in `extension.ts`.
