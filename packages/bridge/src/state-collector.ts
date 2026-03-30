@@ -86,11 +86,15 @@ export interface VsDisposable {
 export type VsEvent<T> = (listener: (e: T) => void) => VsDisposable;
 
 /**
- * VSCode API surface required by StatePublisher.
+ * Host environment surface required by StatePublisher.
  * Injected from the real `vscode` module in extension.ts.
  * Mocked in tests.
+ *
+ * Named `HostEnvironment` (not `VscodeApi`) to reflect that this interface
+ * is editor-agnostic: the contract is defined here, the only place that
+ * satisfies it with real VSCode objects is `extension-bootstrap.ts`.
  */
-export interface VscodeApi {
+export interface HostEnvironment {
   window: {
     activeTextEditor: TextEditor | undefined;
     visibleTextEditors: readonly TextEditor[];
@@ -248,7 +252,7 @@ export function deriveOpenTabs(tabGroups: readonly TabGroup[]): OpenTab[] {
  * @param modalities  Existing modality state to preserve
  */
 export function collectCurrentState(
-  vscode: VscodeApi,
+  vscode: HostEnvironment,
   modalities: Record<string, Record<string, unknown>>,
 ): IDEState {
   const active = vscode.window.activeTextEditor;

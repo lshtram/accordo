@@ -85,6 +85,20 @@ export interface CapturePayload {
  */
 export const defaultStore: SnapshotStore = new SnapshotStore();
 
+// ── Shared Response Helpers ──────────────────────────────────────────────────
+
+/**
+ * Build a standardized action-failed response.
+ * Use this instead of inline `{ success: false, error: "action-failed" }` spread
+ * across individual handlers.
+ */
+export function actionFailed(
+  request: { requestId: string },
+  code: RelayActionResponse["error"] = "action-failed",
+): RelayActionResponse {
+  return { requestId: request.requestId, success: false, error: code };
+}
+
 // ── Type Guard ───────────────────────────────────────────────────────────────
 
 /**

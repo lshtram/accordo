@@ -11,7 +11,7 @@
  */
 
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
-import { defaultStore, isVersionedSnapshot } from "./relay-definitions.js";
+import { defaultStore, isVersionedSnapshot, actionFailed } from "./relay-definitions.js";
 import {
   resolveTargetTabId,
   forwardToContentScript,
@@ -50,11 +50,11 @@ async function handlePageUnderstandingAction(
   // Service worker context — forward to content script
   const tabId = await resolveTargetTabId(request.payload);
   if (!tabId) {
-    return { requestId: request.requestId, success: false, error: "action-failed" };
+    return actionFailed(request);
   }
   const data = await forwardToContentScript(tabId, request.action, request.payload);
   if (data === null) {
-    return { requestId: request.requestId, success: false, error: "action-failed" };
+    return actionFailed(request);
   }
   // SW is the authoritative store — save after receiving from CS.
   if (saveToStore && isVersionedSnapshot(data)) {
@@ -183,7 +183,7 @@ export async function handleWaitFor(
 
   const tabId = await resolveTargetTabId(request.payload);
   if (!tabId) {
-    return { requestId: request.requestId, success: false, error: "action-failed" };
+    return actionFailed(request);
   }
 
   const waitResponse = await chrome.tabs.sendMessage(tabId, {
@@ -197,7 +197,7 @@ export async function handleWaitFor(
     if (errCode === "navigation-interrupted" || errCode === "page-closed") {
       return { requestId: request.requestId, success: true, data: waitResponse };
     }
-    return { requestId: request.requestId, success: false, error: "action-failed" };
+    return actionFailed(request);
   }
 
   const data = hasDataField(waitResponse) ? waitResponse.data : waitResponse;

@@ -46,8 +46,10 @@ export type {
   TabGroup,
   VsDisposable,
   VsEvent,
-  VscodeApi,
+  HostEnvironment,
 } from "./state-collector.js";
+/** @deprecated Use HostEnvironment instead */
+export type { HostEnvironment as VscodeApi } from "./state-collector.js";
 export { normalizePath, EDITOR_DEBOUNCE_MS, TAB_DEBOUNCE_MS, KEYFRAME_INTERVAL_MS } from "./state-collector.js";
 
 // ── Send callback types ───────────────────────────────────────────────────────
@@ -78,7 +80,7 @@ export interface StatePublisherSend {
  *        immediately (extension-driven, infrequent).
  */
 export class StatePublisher {
-  private vscode: import("./state-collector.js").VscodeApi;
+  private vscode: import("./state-collector.js").HostEnvironment;
   private send: StatePublisherSend;
 
   /** Current local snapshot of all IDE state fields — always up to date */
@@ -101,7 +103,7 @@ export class StatePublisher {
    * @param sendFns    Callbacks to WsClient for outbound WS messages
    */
   constructor(
-    vscodeApi: import("./state-collector.js").VscodeApi,
+    vscodeApi: import("./state-collector.js").HostEnvironment,
     sendFns: StatePublisherSend,
   ) {
     this.vscode = vscodeApi;

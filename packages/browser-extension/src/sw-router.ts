@@ -12,11 +12,10 @@ import { captureScreenshot } from "./screenshot.js";
 import { handleGetComments, handleGetScreenshot } from "./mcp-handlers.js";
 import type { RelayActionRequest, RelayActionResponse } from "./relay-actions.js";
 import { MESSAGE_TYPES } from "./constants.js";
-import type { McpToolRequest, GetCommentsArgs, GetScreenshotArgs, BrowserCommentThread } from "./types.js";
+import type { McpToolRequest, GetCommentsArgs, GetScreenshotArgs } from "./types.js";
 import type { MessageType } from "./constants.js";
-import { getMergedThreads, mergeLocalAndHubThread, fetchHubThreads } from "./sw-comment-sync.js";
+import { getMergedThreads } from "./sw-comment-sync.js";
 import type { RelayBridgeClient } from "./relay-bridge.js";
-import { getActiveThreads } from "./store.js";
 
 export interface SwMessage {
   type: MessageType;
@@ -124,7 +123,7 @@ export function createHandleMessage(
           await broadcastCommentsUpdated(comment.pageUrl);
           return { success: true, data: comment };
         } catch {
-          return { success: false, error: "add comment failed" };
+          return { success: false, error: "action-failed" };
         }
       }
 
@@ -169,17 +168,7 @@ export function createHandleMessage(
         const format = (payload?.format as "markdown" | "json" | undefined) ?? "markdown";
         try {
           const screenshotRecord = await captureScreenshot(tabId);
-          const localThreads = await getActiveThreads(url);
-          const hubThreads = await fetchHubThreads(relayBridge, url);
-          const mergedMap = new Map<string, BrowserCommentThread>();
-          for (const t of localThreads) mergedMap.set(t.id, t);
-          for (const t of hubThreads) {
-            const local = mergedMap.get(t.id);
-            mergedMap.set(t.id, local ? mergeLocalAndHubThread(local, t) : t);
-          }
-          const threads = Array.from(mergedMap.values()).sort(
-            (a, b) => new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime(),
-          );
+          const threads = await getMergedThreads(relayBridge, url);
           const { formatAsMarkdown } = await import("./exporter.js");
           let text: string;
           if (format === "json") {

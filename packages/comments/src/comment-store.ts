@@ -12,6 +12,65 @@ import { rename as fsRename } from "node:fs/promises";
 import type { CommentAuthor, CommentStoreFile } from "@accordo/bridge-types";
 import { CommentRepository } from "./comment-repository.js";
 
+// ── StorageAdapter ────────────────────────────────────────────────────────────
+
+/**
+ * Abstraction over the persistence layer for comments.
+ * Allows CommentStore to work with VSCode's workspace.fs or a plain file system.
+ */
+export interface StorageAdapter {
+  read(): Promise<CommentStoreFile | null>;
+  write(file: CommentStoreFile): Promise<void>;
+}
+
+/**
+ * Default StorageAdapter backed by VSCode's workspace.fs.
+ * Uses an atomic write pattern: write to .tmp then rename(2) into place.
+ */
+export function vscodeWorkspaceFsAdapter(workspaceRoot: string): StorageAdapter {
+  const dirPath = `${workspaceRoot}/.accordo`;
+  const filePath = `${dirPath}/comments.json`;
+  const tmpPath = `${filePath}.tmp`;
+
+  return {
+    async read(): Promise<CommentStoreFile | null> {
+      const uri = vscode.Uri.file(filePath);
+      let raw: Uint8Array;
+      try {
+        raw = await vscode.workspace.fs.readFile(uri);
+      } catch {
+        // File missing — caller treats null as "start fresh"
+        return null;
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(new TextDecoder().decode(raw));
+      } catch {
+        console.error("[accordo-comments] Failed to parse comments.json — starting fresh");
+        return null;
+      }
+
+      const file = parsed as CommentStoreFile;
+      if (!file || file.version !== "1.0") {
+        console.error("[accordo-comments] Unknown comments.json version — starting fresh");
+        return null;
+      }
+
+      return file;
+    },
+
+    async write(file: CommentStoreFile): Promise<void> {
+      await vscode.workspace.fs.createDirectory(vscode.Uri.file(dirPath));
+      const encoded = new TextEncoder().encode(JSON.stringify(file, null, 2));
+      // Atomic write: write to .tmp first, then rename into place.
+      // rename(2) is atomic on POSIX — the original file is never partially written.
+      await vscode.workspace.fs.writeFile(vscode.Uri.file(tmpPath), encoded);
+      await fsRename(tmpPath, filePath);
+    },
+  };
+}
+
 // ── Re-export all domain types ───────────────────────────────────────────────
 // Preserves backward-compat: `import { type CreateCommentParams } from "./comment-store.js"`
 export type {
@@ -52,6 +111,16 @@ export class CommentStore {
   private _workspaceRoot = "";
   /** Serializes concurrent _persist() calls to prevent file-rename races. */
   private _writeQueue: Promise<void> = Promise.resolve();
+  /** Persistence adapter — defaults to vscodeWorkspaceFsAdapter when load() is called. */
+  private _adapter: StorageAdapter | null;
+
+  /**
+   * @param adapter  Optional StorageAdapter. When omitted, the VSCode workspace.fs
+   *                 adapter is created automatically by `load()` from the workspace root.
+   */
+  constructor(adapter?: StorageAdapter) {
+    this._adapter = adapter ?? null;
+  }
 
   /** Return the workspace root path passed to `load()`. */
   getWorkspaceRoot(): string {
@@ -67,32 +136,17 @@ export class CommentStore {
    */
   async load(workspaceRoot: string): Promise<void> {
     this._workspaceRoot = workspaceRoot;
-    const filePath = `${workspaceRoot}/.accordo/comments.json`;
-    const uri = vscode.Uri.file(filePath);
 
-    let raw: Uint8Array;
-    try {
-      raw = await vscode.workspace.fs.readFile(uri);
-    } catch {
-      // File missing — start fresh
-      return;
+    // If no adapter was injected, create the default vscode adapter now that
+    // we have the workspace root.
+    if (!this._adapter) {
+      this._adapter = vscodeWorkspaceFsAdapter(workspaceRoot);
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(new TextDecoder().decode(raw));
-    } catch {
-      console.error("[accordo-comments] Failed to parse comments.json — starting fresh");
-      return;
+    const file = await this._adapter.read();
+    if (file !== null) {
+      this._repo.loadFromStoreFile(file);
     }
-
-    const file = parsed as CommentStoreFile;
-    if (!file || file.version !== "1.0") {
-      console.error("[accordo-comments] Unknown comments.json version — starting fresh");
-      return;
-    }
-
-    this._repo.loadFromStoreFile(file);
   }
 
   private async _persist(): Promise<void> {
@@ -100,18 +154,8 @@ export class CommentStore {
     // Each call appends its work to the queue and waits for it to complete,
     // preventing concurrent rename() calls on comments.json.tmp.
     this._writeQueue = this._writeQueue.then(async () => {
-      if (!this._workspaceRoot) return;
-      const dirPath = `${this._workspaceRoot}/.accordo`;
-      const filePath = `${dirPath}/comments.json`;
-      const tmpPath = `${filePath}.tmp`;
-      await vscode.workspace.fs.createDirectory(vscode.Uri.file(dirPath));
-      const encoded = new TextEncoder().encode(
-        JSON.stringify(this._repo.toStoreFile(), null, 2),
-      );
-      // Atomic write: write to .tmp first, then rename into place.
-      // rename(2) is atomic on POSIX — the original file is never partially written.
-      await vscode.workspace.fs.writeFile(vscode.Uri.file(tmpPath), encoded);
-      await fsRename(tmpPath, filePath);
+      if (!this._workspaceRoot || !this._adapter) return;
+      await this._adapter.write(this._repo.toStoreFile());
     });
     await this._writeQueue;
   }

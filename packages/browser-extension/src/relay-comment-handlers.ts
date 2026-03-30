@@ -19,6 +19,7 @@ import {
   softDeleteThread,
 } from "./store.js";
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
+import { actionFailed } from "./relay-definitions.js";
 import {
   readString,
   readOptionalString,
@@ -122,7 +123,7 @@ export async function handleDeleteComment(
   const commentId = readString(request.payload, "commentId");
   const pageUrl = await softDeleteComment(threadId, commentId);
   if (!pageUrl) {
-    return { requestId: request.requestId, success: false, error: "action-failed" };
+    return actionFailed(request);
   }
   return { requestId: request.requestId, success: true, data: { pageUrl } };
 }
@@ -134,7 +135,7 @@ export async function handleResolveThread(
   const resolutionNote = readOptionalString(request.payload, "resolutionNote");
   const pageUrl = await resolveThread(threadId, resolutionNote);
   if (!pageUrl) {
-    return { requestId: request.requestId, success: false, error: "action-failed" };
+    return actionFailed(request);
   }
   return { requestId: request.requestId, success: true, data: { pageUrl } };
 }
@@ -145,7 +146,7 @@ export async function handleReopenThread(
   const threadId = readString(request.payload, "threadId");
   const pageUrl = await reopenThread(threadId);
   if (!pageUrl) {
-    return { requestId: request.requestId, success: false, error: "action-failed" };
+    return actionFailed(request);
   }
   return { requestId: request.requestId, success: true, data: { pageUrl } };
 }
@@ -156,7 +157,7 @@ export async function handleDeleteThread(
   const threadId = readString(request.payload, "threadId");
   const pageUrl = await softDeleteThread(threadId);
   if (!pageUrl) {
-    return { requestId: request.requestId, success: false, error: "action-failed" };
+    return actionFailed(request);
   }
   return { requestId: request.requestId, success: true, data: { pageUrl } };
 }

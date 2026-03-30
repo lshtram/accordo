@@ -70,7 +70,7 @@ const bridge = vscode.extensions.getExtension("accordo.accordo-bridge")?.exports
 bridge.registerTools("my-extension", myToolDefinitions);
 
 // Update modality state
-bridge.updateModality("my-extension", { customData: "..." });
+bridge.publishState("my-extension", { customData: "..." });
 ```
 
 ## Development

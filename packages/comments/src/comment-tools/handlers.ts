@@ -95,7 +95,7 @@ export function buildCommentToolHandlers(
       const threadId = args["threadId"] as string;
       const thread = store.getThread(threadId);
       if (!thread) throw new Error(`Thread not found: ${threadId}`);
-      return { thread };
+      return { success: true, thread };
     },
 
     comment_create: async (args) => {
@@ -156,7 +156,7 @@ export function buildCommentToolHandlers(
       });
       const newThread = store.getThread(result.threadId);
       if (newThread) ui?.addThread(newThread);
-      return { created: true, threadId: result.threadId, commentId: result.commentId };
+      return { success: true, created: true, threadId: result.threadId, commentId: result.commentId };
     },
 
     comment_reply: async (args) => {
@@ -173,7 +173,7 @@ export function buildCommentToolHandlers(
       const result = await store.reply({ threadId, body, commentId, author });
       const repliedThread = store.getThread(threadId);
       if (repliedThread) ui?.updateThread(repliedThread);
-      return { replied: true, commentId: result.commentId };
+      return { success: true, replied: true, commentId: result.commentId };
     },
 
     comment_resolve: async (args) => {
@@ -187,7 +187,7 @@ export function buildCommentToolHandlers(
       });
       const resolvedThread = store.getThread(threadId);
       if (resolvedThread) ui?.updateThread(resolvedThread);
-      return { resolved: true, threadId };
+      return { success: true, resolved: true, threadId };
     },
 
     comment_reopen: async (args) => {
@@ -196,7 +196,7 @@ export function buildCommentToolHandlers(
       await store.reopen(threadId, { kind: "agent", name: "agent", agentId });
       const reopenedThread = store.getThread(threadId);
       if (reopenedThread) ui?.updateThread(reopenedThread);
-      return { reopened: true, threadId };
+      return { success: true, reopened: true, threadId };
     },
 
     comment_delete: async (args) => {
@@ -206,7 +206,7 @@ export function buildCommentToolHandlers(
       if (deleteScope && deleteScope["all"] === true && deleteScope["modality"]) {
         const modality = deleteScope["modality"] as string;
         const count = await store.deleteAllByModality(modality);
-        return { deleted: true, deletedCount: count };
+        return { success: true, deleted: true, deletedCount: count };
       }
 
       const threadId = args["threadId"] as string;
@@ -219,12 +219,13 @@ export function buildCommentToolHandlers(
       } else {
         ui?.removeThread(threadId);
       }
-      return { deleted: true };
+      return { success: true, deleted: true };
     },
 
     comment_sync_version: async () => {
       const info = store.getVersionInfo();
       return {
+        success: true,
         version: info.version,
         threadCount: info.threadCount,
         lastActivity: info.lastActivity,

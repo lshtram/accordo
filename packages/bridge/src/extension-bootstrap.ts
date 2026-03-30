@@ -9,6 +9,13 @@
  * - Status bar item creation and update logic
  * - syncMcpSettings() for user-level mcp.json
  *
+ * ┌─────────────────────────────────────────────────────────────────────┐
+ * │  BOUNDARY: this is the ONLY file in the bridge package that         │
+ * │  imports 'vscode' directly.  All other modules receive the VSCode   │
+ * │  surface via the HostEnvironment interface (state-collector.ts)     │
+ * │  injected at runtime from extension.ts.                             │
+ * └─────────────────────────────────────────────────────────────────────┘
+ *
  * This module is the ONLY new module that imports 'vscode' directly.
  * The factory and composition modules receive VSCode deps via injection.
  *

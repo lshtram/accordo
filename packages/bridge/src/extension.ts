@@ -149,8 +149,8 @@ export async function activate(
 
   const hubManagerEvents = buildHubManagerEvents(lazyDeps);
 
-  // 4. Build VscodeApi for StatePublisher
-  const vscodeApi: import("./state-publisher.js").VscodeApi = {
+  // 4. Build HostEnvironment for StatePublisher
+  const vscodeApi: import("./state-publisher.js").HostEnvironment = {
     window: {
       get activeTextEditor() { return vscode.window.activeTextEditor as import("./state-publisher.js").TextEditor | undefined; },
       get visibleTextEditors() { return vscode.window.visibleTextEditors as readonly import("./state-publisher.js").TextEditor[]; },

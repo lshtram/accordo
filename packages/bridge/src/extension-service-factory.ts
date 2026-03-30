@@ -21,7 +21,7 @@ import type { SecretStorageAdapter } from "./extension-bootstrap.js";
 import { ExtensionRegistry } from "./extension-registry.js";
 import { CommandRouter } from "./command-router.js";
 import { StatePublisher } from "./state-publisher.js";
-import type { VscodeApi, StatePublisherSend } from "./state-publisher.js";
+import type { HostEnvironment, StatePublisherSend } from "./state-publisher.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -80,7 +80,7 @@ export interface ServiceFactoryDeps {
   /** Output channel for Hub logging */
   readonly outputChannel: OutputChannel;
   /** VSCode API surface needed by StatePublisher (injected, not imported) */
-  readonly vscodeApi: VscodeApi;
+  readonly vscodeApi: HostEnvironment;
   /** Confirmation dialog function for destructive tool invocations */
   readonly confirmationFn: ConfirmationDialogFn;
 }
