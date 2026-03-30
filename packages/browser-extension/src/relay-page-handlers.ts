@@ -164,11 +164,17 @@ export async function handleGetTextMap(
 export async function handleGetSemanticGraph(
   request: RelayActionRequest,
 ): Promise<RelayActionResponse> {
-  if (typeof document !== "undefined") {
-    // jsdom / content-script context — stub until Phase C
-    throw new Error("not implemented");
-  }
-  return handlePageUnderstandingAction(request, null, /* saveToStore */ false);
+  const localHandler = typeof document !== "undefined"
+    ? async (): Promise<unknown> => {
+        const { collectSemanticGraph } = await import("./content/semantic-graph-collector.js");
+        const p = request.payload;
+        return collectSemanticGraph({
+          maxDepth: typeof p.maxDepth === "number" ? p.maxDepth : undefined,
+          visibleOnly: typeof p.visibleOnly === "boolean" ? p.visibleOnly : undefined,
+        });
+      }
+    : null;
+  return handlePageUnderstandingAction(request, localHandler, /* saveToStore */ false);
 }
 
 // ── Wait Handler ─────────────────────────────────────────────────────────────
@@ -177,7 +183,8 @@ export async function handleWaitFor(
   request: RelayActionRequest,
 ): Promise<RelayActionResponse> {
   if (typeof document !== "undefined") {
-    // jsdom / content-script context — stub, not implemented yet
+    // jsdom / content-script context — stub, not implemented yet.
+    // In production, wait_for is handled by the SW path (document is undefined there).
     throw new Error("not implemented");
   }
 

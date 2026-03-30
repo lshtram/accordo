@@ -11,12 +11,10 @@ import { MCP_PROTOCOL_VERSION } from "@accordo/bridge-types";
 import type { IDEState } from "@accordo/bridge-types";
 import type { ToolRegistry } from "./tool-registry.js";
 import type { BridgeServer } from "./bridge-server.js";
-import { JsonRpcError } from "./errors.js";
-import { hashArgs, writeAuditEntry } from "./audit-log.js";
-import type { AuditEntry } from "./audit-log.js";
 import type { McpDebugLogger } from "./debug-log.js";
 import { renderPrompt } from "./prompt-engine.js";
 import type { Session, McpSessionRegistry } from "./mcp-session.js";
+import { McpCallExecutor } from "./mcp-call-executor.js";
 
 /** JSON-RPC 2.0 request */
 export interface JsonRpcRequest {
@@ -76,21 +74,24 @@ export interface McpDispatchDeps {
  */
 export class McpDispatch {
   private readonly toolRegistry: ToolRegistry;
-  private readonly bridgeServer: BridgeServer;
   private readonly sessionRegistry: McpSessionRegistry;
   private readonly toolCallTimeout: number;
-  private readonly auditFile: string | undefined;
   private readonly debugLogger: McpDebugLogger | undefined;
   private readonly getState: (() => IDEState) | undefined;
+  private readonly executor: McpCallExecutor;
 
   constructor(deps: McpDispatchDeps) {
     this.toolRegistry = deps.toolRegistry;
-    this.bridgeServer = deps.bridgeServer;
     this.sessionRegistry = deps.sessionRegistry;
     this.getState = deps.getState;
     this.toolCallTimeout = deps.toolCallTimeout ?? 30_000;
-    this.auditFile = deps.auditFile;
     this.debugLogger = deps.debugLogger;
+    this.executor = new McpCallExecutor({
+      toolRegistry: deps.toolRegistry,
+      bridgeServer: deps.bridgeServer,
+      toolCallTimeout: this.toolCallTimeout,
+      auditFile: deps.auditFile,
+    });
   }
 
   /**
@@ -211,7 +212,10 @@ export class McpDispatch {
       }
 
       case "tools/call": {
-        const callResp = await this.handleToolsCall(request, session, id);
+        const params = request.params ?? {};
+        const toolName = params["name"] as string | undefined;
+        const toolArgs = (params["arguments"] ?? {}) as Record<string, unknown>;
+        const callResp = await this.executor.executeToolCall(toolName, toolArgs, session, id);
         this.debugLogger?.logRpcResponded({
           sessionId: session.id,
           rpcMethod: "tools/call",
@@ -247,222 +251,6 @@ export class McpDispatch {
         });
         return unknownResp;
       }
-    }
-  }
-
-  /**
-   * Handle tools/call — route invocation to Bridge via BridgeServer.
-   *
-   * Error codes (requirements-hub.md §6):
-   *   -32601 "Unknown tool: <name>" — tool not in registry
-   *   -32603 "Bridge not connected" — no Bridge WS connection
-   *   -32004 "Server busy — invocation queue full" — queue full
-   *   -32001 "Tool invocation timed out" — handler timed out
-   *   -32603 internal error — handler failure
-   *
-   * @param request - The tools/call JSON-RPC request
-   * @param session - Associated MCP session
-   * @param id - Request ID for the response
-   * @returns JSON-RPC response with tool result or error
-   */
-  private async handleToolsCall(
-    request: JsonRpcRequest,
-    session: Session,
-    id: string | number | null,
-  ): Promise<JsonRpcResponse> {
-    const params = request.params ?? {};
-    const toolName = params["name"] as string | undefined;
-    const toolArgs = (params["arguments"] ?? {}) as Record<string, unknown>;
-
-    // Validate params
-    if (!toolName) {
-      return {
-        jsonrpc: "2.0",
-        id,
-        error: { code: -32602, message: "Invalid params: missing name" },
-      };
-    }
-
-    // Check tool exists in registry
-    const tool = this.toolRegistry.get(toolName);
-    if (!tool) {
-      return {
-        jsonrpc: "2.0",
-        id,
-        error: { code: -32601, message: `Unknown tool: ${toolName}` },
-      };
-    }
-
-    const startMs = Date.now();
-
-    /** Write one audit entry when auditFile is configured. */
-    const audit = (result: AuditEntry["result"], errorMessage?: string): void => {
-      if (!this.auditFile) return;
-      const entry: AuditEntry = {
-        ts: new Date().toISOString(),
-        tool: toolName,
-        argsHash: hashArgs(toolArgs),
-        sessionId: session.id,
-        result,
-        durationMs: Date.now() - startMs,
-      };
-      if (errorMessage !== undefined) entry.errorMessage = errorMessage;
-      writeAuditEntry(this.auditFile, entry);
-    };
-
-    // Invoke via bridge server (handles connection + concurrency checks)
-    try {
-      const result = await this.bridgeServer.invoke(toolName, toolArgs, this.toolCallTimeout);
-      if (!result.success) {
-        // Tool handler returned an error — surface as MCP tool error so agents
-        // can read the message and adapt. isError:true signals the LLM that the
-        // tool itself failed (not a protocol error).
-        audit("error", result.error ?? "Tool execution failed");
-        return {
-          jsonrpc: "2.0",
-          id,
-          result: {
-            content: [
-              {
-                type: "text",
-                text: result.error ?? "Tool execution failed",
-              },
-            ],
-            isError: true,
-          },
-        };
-      }
-
-      // Detect soft errors: editor tools catch exceptions and return
-      // { error: "..." } as successful data rather than throwing.
-      // requirements-hub.md §7 — these must be classified as "error" in the
-      // audit log and surfaced with isError:true so agents can adapt.
-      const data = result.data ?? {};
-      const softErrorMsg: string | undefined =
-        typeof data === "object" &&
-        data !== null &&
-        "error" in data &&
-        typeof (data as Record<string, unknown>)["error"] === "string"
-          ? ((data as Record<string, unknown>)["error"] as string)
-          : undefined;
-
-      if (softErrorMsg !== undefined) {
-        audit("error", softErrorMsg);
-        return {
-          jsonrpc: "2.0",
-          id,
-          result: {
-            content: [{ type: "text", text: softErrorMsg }],
-            isError: true,
-          },
-        };
-      }
-
-      audit("success");
-      return {
-        jsonrpc: "2.0",
-        id,
-        result: {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(data),
-            },
-          ],
-        },
-      };
-    } catch (err: unknown) {
-      // M32: idempotent timeout retry — attempt once for tools marked idempotent: true.
-      const isInvokeTimeout = (e: unknown): boolean => {
-        if (e instanceof JsonRpcError) {
-          return e.code === -32000 || e.message.toLowerCase().includes("timed out");
-        }
-        if (e instanceof Error) {
-          return (
-            e.message.toLowerCase().includes("timed out") ||
-            e.message.toLowerCase().includes("timeout")
-          );
-        }
-        return false;
-      };
-
-      if (isInvokeTimeout(err) && tool.idempotent === true) {
-        const firstMsg = err instanceof Error ? err.message : String(err);
-        audit("timeout", firstMsg);
-        try {
-          const retryResult = await this.bridgeServer.invoke(toolName, toolArgs, this.toolCallTimeout);
-          if (!retryResult.success) {
-            audit("error", retryResult.error ?? "Tool execution failed");
-            return {
-              jsonrpc: "2.0",
-              id,
-              result: {
-                content: [{ type: "text", text: retryResult.error ?? "Tool execution failed" }],
-                isError: true,
-              },
-            };
-          }
-          audit("success");
-          return {
-            jsonrpc: "2.0",
-            id,
-            result: {
-              content: [{ type: "text", text: JSON.stringify(retryResult.data ?? {}) }],
-            },
-          };
-        } catch (retryErr: unknown) {
-          const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-          audit(isInvokeTimeout(retryErr) ? "timeout" : "error", retryMsg);
-          return {
-            jsonrpc: "2.0",
-            id,
-            result: {
-              content: [{ type: "text", text: "Tool invocation timed out" }],
-              isError: true,
-            },
-          };
-        }
-      }
-
-      if (err instanceof JsonRpcError) {
-        const isTimeout = err.code === -32001 || err.message.toLowerCase().includes("timed out");
-        audit(isTimeout ? "timeout" : "error", err.message);
-        // Return a tool-level error (isError:true) rather than a JSON-RPC
-        // error.  MCP spec says tools/call should always return a result —
-        // only genuine protocol failures (malformed JSON-RPC, unknown method)
-        // belong in the top-level error field.  Returning a JSON-RPC error
-        // for "Bridge not connected" causes some MCP clients (e.g. VS Code
-        // Copilot) to crash internally because they expect a .result object.
-        return {
-          jsonrpc: "2.0",
-          id,
-          result: {
-            content: [{ type: "text", text: err.message }],
-            isError: true,
-          },
-        };
-      }
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.toLowerCase().includes("timed out") || msg.toLowerCase().includes("timeout")) {
-        audit("timeout");
-        return {
-          jsonrpc: "2.0",
-          id,
-          result: {
-            content: [{ type: "text", text: "Tool invocation timed out" }],
-            isError: true,
-          },
-        };
-      }
-      audit("error", msg);
-      return {
-        jsonrpc: "2.0",
-        id,
-        result: {
-          content: [{ type: "text", text: msg }],
-          isError: true,
-        },
-      };
     }
   }
 }
