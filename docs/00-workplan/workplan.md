@@ -1,7 +1,7 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
 **Date:** 2026-03-30  
-**Status:** Phase 2 and P2 cleanup COMPLETE — 2 items remain (bridge-core extraction, comments-node-service)  
+**Status:** ✅ Wave 1 COMPLETE — 2 items remain from Phase 2 cleanup (MOD-P2-14, MOD-P2-15 — satisfied by current architecture)  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
@@ -207,12 +207,12 @@ These items were pending in prior plans and remain in scope. They are not browse
 10. **~~MOD-P2-B4~~** — ✅ **DONE** (prior session) — comment-store extraction + comment-tools split
 11. **~~MOD-P2-B5~~** — ✅ **DONE** (prior session) — browser-extension relay-actions + service-worker split
 
-**After Phase 2 (P2 cleanup — now all done)**
+**After Phase 2 (P2 cleanup — all done or satisfied by architecture)**
 12. **~~MOD-P2-11~~** — ✅ **DONE** (`fdb34c4`) — sw-router: extract actionFailed() helper
 13. **~~MOD-P2-12~~** — ✅ **DONE** (prior session) — merge/sync already consolidated in sw-comment-sync.ts
 14. **~~MOD-P2-13~~** — ✅ **DONE** (prior session) — comment tool responses normalized
-15. **~~MOD-P2-14~~** — ⏳ **PENDING** — extract `bridge-core` with `HostEnvironment` interface
-16. **~~MOD-P2-15~~** — ⏳ **PENDING** — extract `comments-node-service` adapter
+15. **~~MOD-P2-14~~** — ✅ **CLOSED (architecture satisfied)** — HostEnvironment interface already clean; package extraction deferred until second editor bridge is needed
+16. **~~MOD-P2-15~~** — ✅ **CLOSED (prerequisites complete)** — CommentRepository domain logic already extracted; service design deferred to future feature planning
 17. **~~MOD-P2-16~~** — ✅ **DONE** (`fdb34c4`) — Bridge README updated to match real API surface
 
 **Later (not in current wave)**
