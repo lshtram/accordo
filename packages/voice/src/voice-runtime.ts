@@ -102,20 +102,37 @@ export async function insertDictationText(
 
   if (state.voiceInputTarget === "agent-conversation") {
     try {
-      await deps.uiAdapter?.executeCommand("workbench.action.chat.open", {
-        query: text,
-        autoSend: true,
-        isPartialQuery: false,
-        mode: "agent",
-        preserveFocus: true,
-      });
+      // Lazy vscode fallback: only used when uiAdapter is not injected (test compatibility).
+      // Production code must provide uiAdapter via VoiceRuntimeDeps.
+      if (deps.uiAdapter) {
+        await deps.uiAdapter.executeCommand("workbench.action.chat.open", {
+          query: text,
+          autoSend: true,
+          isPartialQuery: false,
+          mode: "agent",
+          preserveFocus: true,
+        });
+      } else {
+        const vscode = await import("vscode");
+        await vscode.commands.executeCommand("workbench.action.chat.open", {
+          query: text,
+          autoSend: true,
+          isPartialQuery: false,
+          mode: "agent",
+          preserveFocus: true,
+        });
+      }
       log("dictation: sent to agent conversation");
       return true;
     } catch (err) {
       log(`dictation: insert failed (mode=${state.voiceInputTarget}) — ${String(err)}`);
-      void deps.uiAdapter?.showWarningMessage(
-        "Accordo Voice: couldn't send directly to chat conversation. Focus chat input manually or switch input target to focused text input.",
-      );
+      const warnMsg = "Accordo Voice: couldn't send directly to chat conversation. Focus chat input manually or switch input target to focused text input.";
+      if (deps.uiAdapter) {
+        void deps.uiAdapter.showWarningMessage(warnMsg);
+      } else {
+        const vscode = await import("vscode");
+        void vscode.window.showWarningMessage(warnMsg);
+      }
       return false;
     }
   }
@@ -138,13 +155,19 @@ export async function doStartDictation(
 
   if (sessionFsm.state !== "active") {
     if (!sessionFsm.policy.enabled) {
-      void deps.uiAdapter?.showWarningMessage(
-        "Accordo Voice: session inactive. Enable `accordo.voice.enabled` in settings.",
-      );
+      const msg = "Accordo Voice: session inactive. Enable `accordo.voice.enabled` in settings.";
+      if (deps.uiAdapter) void deps.uiAdapter.showWarningMessage(msg);
+      else {
+        const vscode = await import("vscode");
+        void vscode.window.showWarningMessage(msg);
+      }
     } else {
-      void deps.uiAdapter?.showWarningMessage(
-        "Accordo Voice: session inactive. Check STT provider availability.",
-      );
+      const msg = "Accordo Voice: session inactive. Check STT provider availability.";
+      if (deps.uiAdapter) void deps.uiAdapter.showWarningMessage(msg);
+      else {
+        const vscode = await import("vscode");
+        void vscode.window.showWarningMessage(msg);
+      }
     }
     return;
   }
@@ -164,7 +187,12 @@ export async function doStartDictation(
         : process.platform === "darwin"
           ? "Install via `brew install sox`"
           : "Install via `apt install sox` (or your distro package manager)";
-    void deps.uiAdapter?.showWarningMessage(`Accordo Voice: sox not found. ${soxInstallHint}.`);
+    const msg = `Accordo Voice: sox not found. ${soxInstallHint}.`;
+    if (deps.uiAdapter) void deps.uiAdapter.showWarningMessage(msg);
+    else {
+      const vscode = await import("vscode");
+      void vscode.window.showWarningMessage(msg);
+    }
     return;
   }
 
@@ -189,9 +217,12 @@ export async function doStartDictation(
     state.dictState.active = false;
     deps.syncUiAndState();
     log(`dictation: failed to start recorder — ${String(err)}`);
-    void deps.uiAdapter?.showErrorMessage(
-      `Accordo Voice: failed to start recording — ${String(err)}`,
-    );
+    const msg = `Accordo Voice: failed to start recording — ${String(err)}`;
+    if (deps.uiAdapter) void deps.uiAdapter.showErrorMessage(msg);
+    else {
+      const vscode = await import("vscode");
+      void vscode.window.showErrorMessage(msg);
+    }
     return;
   }
 
@@ -225,9 +256,12 @@ export async function doStartDictation(
       audioFsm.error();
       audioFsm.reset();
       sessionFsm.pushToTalkEnd();
-      void deps.uiAdapter?.showErrorMessage(
-        `Accordo Voice: transcription failed — ${String(err)}`,
-      );
+      const msg = `Accordo Voice: transcription failed — ${String(err)}`;
+      if (deps.uiAdapter) void deps.uiAdapter.showErrorMessage(msg);
+      else {
+        const vscode = await import("vscode");
+        void vscode.window.showErrorMessage(msg);
+      }
     } finally {
       state.micPreparing = false;
       state.dictState.stop = undefined;
