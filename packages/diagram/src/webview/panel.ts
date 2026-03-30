@@ -8,6 +8,8 @@ import { basename, extname } from "node:path";
 import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
 
+import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
+import type { SurfaceCommentAdapter } from "@accordo/capabilities";
 import { getWebviewHtml } from "./html.js";
 import type {
   HostToastMessage,
@@ -15,7 +17,6 @@ import type {
   WebviewToHostMessage,
 } from "./protocol.js";
 import { DiagramCommentsBridge } from "../comments/diagram-comments-bridge.js";
-import type { SurfaceAdapterLike } from "../comments/diagram-comments-bridge.js";
 import {
   createPanelState,
   assertNotDisposed,
@@ -148,8 +149,8 @@ export class DiagramPanel {
     log(`[TIMING] create: _initCommentsBridge starting (${Date.now() - createStart}ms since create start)`);
     const mmdUri = vscode.Uri.file(mmdPath).toString();
     try {
-      const adapter = await vscode.commands.executeCommand<SurfaceAdapterLike | undefined>(
-        "accordo_comments_internal_getSurfaceAdapter",
+      const adapter = await vscode.commands.executeCommand<SurfaceCommentAdapter | undefined>(
+        CAPABILITY_COMMANDS.COMMENTS_GET_SURFACE_ADAPTER,
         mmdUri,
       );
       state._commentsBridge = new DiagramCommentsBridge(adapter ?? null, panel.webview, mmdUri);
@@ -184,8 +185,8 @@ export class DiagramPanel {
     state._workspaceRoot = resolveWorkspaceRoot(mmdPath);
     const mmdUri = vscode.Uri.file(mmdPath).toString();
     try {
-      const adapter = await vscode.commands.executeCommand<SurfaceAdapterLike | undefined>(
-        "accordo_comments_internal_getSurfaceAdapter",
+      const adapter = await vscode.commands.executeCommand<SurfaceCommentAdapter | undefined>(
+        CAPABILITY_COMMANDS.COMMENTS_GET_SURFACE_ADAPTER,
         mmdUri,
       );
       state._commentsBridge = new DiagramCommentsBridge(adapter ?? null, existingPanel.webview, mmdUri);

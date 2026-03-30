@@ -19,6 +19,8 @@ import type {
   CommentIntent,
   CommentThread,
 } from "@accordo/bridge-types";
+import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
+import type { SurfaceCommentAdapter } from "@accordo/capabilities";
 import type { CommentStore } from "./comment-store.js";
 import type { NativeComments } from "./native-comments.js";
 
@@ -36,19 +38,10 @@ export interface BridgeAPI {
 // ── SurfaceCommentAdapter ────────────────────────────────────────────────────
 
 /**
- * Generalised surface adapter for any Accordo surface modality.
- * Accepts the full CommentAnchor verbatim — callers own anchor construction.
+ * Re-exported from @accordo/capabilities — canonical location.
  * Source: requirements-comments.md §5.2 (M40-EXT-11)
  */
-export interface SurfaceCommentAdapter {
-  createThread(args: { uri: string; anchor: CommentAnchor; body: string; intent?: string }): Promise<CommentThread>;
-  reply(args: { threadId: string; body: string }): Promise<void>;
-  resolve(args: { threadId: string; resolutionNote?: string }): Promise<void>;
-  reopen(args: { threadId: string }): Promise<void>;
-  delete(args: { threadId: string; commentId?: string }): Promise<void>;
-  getThreadsForUri(uri: string): CommentThread[];
-  onChanged(listener: (uri: string) => void): { dispose(): void };
-}
+export type { SurfaceCommentAdapter } from "@accordo/capabilities";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -106,7 +99,7 @@ export function registerBridgeIntegrationCommands(
 
   return [
     // Adapter for accordo-md-viewer — creates anchors from blockId/line
-    vscode.commands.registerCommand("accordo_comments_internal_getStore", () => ({
+    vscode.commands.registerCommand(CAPABILITY_COMMANDS.COMMENTS_GET_STORE, () => ({
       ...shared,
       async createThread(args: { uri: string; blockId: string; body: string; intent?: string; line?: number }) {
         let anchor: CommentAnchor;
@@ -130,11 +123,11 @@ export function registerBridgeIntegrationCommands(
       },
     })),
 
-    vscode.commands.registerCommand("accordo_comments_internal_getThreadsForUri",
+    vscode.commands.registerCommand(CAPABILITY_COMMANDS.COMMENTS_GET_THREADS_FOR_URI,
       (uri: string) => store.getAllThreads().filter(t => t.anchor.uri === uri),
     ),
 
-    vscode.commands.registerCommand("accordo_comments_internal_createSurfaceComment",
+    vscode.commands.registerCommand(CAPABILITY_COMMANDS.COMMENTS_CREATE_SURFACE_COMMENT,
       async (params: Record<string, unknown>) => store.createThread({
         uri: params["uri"] as string,
         anchor: params["anchor"] as CommentAnchor,
@@ -144,7 +137,7 @@ export function registerBridgeIntegrationCommands(
       }),
     ),
 
-    vscode.commands.registerCommand("accordo_comments_internal_resolveThread",
+    vscode.commands.registerCommand(CAPABILITY_COMMANDS.COMMENTS_RESOLVE_THREAD,
       async (threadId: string) => {
         await store.resolve({ threadId, resolutionNote: "Resolved via internal API", author: { kind: "user", name: "User" } });
         nc.updateThread(store.getThread(threadId)!); // ! safe: resolveThread succeeds only if thread exists
@@ -153,7 +146,7 @@ export function registerBridgeIntegrationCommands(
 
     // Generalised surface adapter — M40-EXT-11
     // Accepts a full CommentAnchor from the caller; callers own anchor shape.
-    vscode.commands.registerCommand("accordo_comments_internal_getSurfaceAdapter",
+    vscode.commands.registerCommand(CAPABILITY_COMMANDS.COMMENTS_GET_SURFACE_ADAPTER,
       (): SurfaceCommentAdapter => ({
         ...shared,
         async createThread(args) {

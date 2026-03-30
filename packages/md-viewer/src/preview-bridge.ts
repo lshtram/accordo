@@ -24,6 +24,7 @@
 
 import type { CommentThread, CommentAnchorText } from "@accordo/bridge-types";
 import type { BlockCoordinates } from "@accordo/bridge-types";
+import type { CommentStoreAdapter } from "@accordo/capabilities";
 
 // ── ResolverLike — bidirectional blockId ↔ source line mapping ────────────────
 
@@ -36,18 +37,10 @@ export interface ResolverLike {
   lineToBlockId(line: number): string | null;
 }
 
-// ── CommentStoreLike — minimal interface needed from accordo-comments ─────────
+// ── CommentStoreLike — alias for CommentStoreAdapter from @accordo/capabilities ─
 
-export interface CommentStoreLike {
-  createThread(args: { uri: string; blockId: string; body: string; intent?: string; line?: number }): Promise<CommentThread>;
-  reply(args: { threadId: string; body: string }): Promise<void>;
-  resolve(args: { threadId: string; resolutionNote?: string }): Promise<void>;
-  reopen(args: { threadId: string }): Promise<void>;
-  delete(args: { threadId: string; commentId?: string }): Promise<void>;
-  getThreadsForUri(uri: string): CommentThread[];
-  /** Listener fires after a mutation for the specified URI. */
-  onChanged(listener: (uri: string) => void): { dispose(): void };
-}
+/** @deprecated Use CommentStoreAdapter from @accordo/capabilities directly. */
+export type CommentStoreLike = CommentStoreAdapter;
 import type { SdkThread, WebviewMessage, HostMessage } from "@accordo/comment-sdk";
 
 // ── WebviewPanel interface (injected, avoids hard VSCode dep in tests) ────────

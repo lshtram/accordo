@@ -11,6 +11,7 @@
 
 import type * as vscode from "vscode";
 import type { CommentThread } from "@accordo/bridge-types";
+import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
 
 // ── NavigationEnv ────────────────────────────────────────────────────────────
 
@@ -70,7 +71,7 @@ export async function navigateToThread(
             // accordo_preview_internal_focusThread returns true when a live panel
             // was found, false when not.
             const found = await env.executeCommand(
-              "accordo_preview_internal_focusThread", anchor.uri, thread.id, undefined,
+              CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD, anchor.uri, thread.id, undefined,
             );
             if (found) return;
             // Preview not open — open it.
@@ -84,7 +85,7 @@ export async function navigateToThread(
           }
           await env.delay(400);
           try {
-            await env.executeCommand("accordo_preview_internal_focusThread", anchor.uri, thread.id, undefined);
+            await env.executeCommand(CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD, anchor.uri, thread.id, undefined);
             return;
           } catch {
             // Preview still not available — fall through to text editor.
@@ -97,7 +98,7 @@ export async function navigateToThread(
       editor.revealRange(range, 2);
       // Expand the gutter comment thread widget so the inline view is open.
       try {
-        await env.executeCommand("accordo_comments_internal_expandThread", thread.id);
+        await env.executeCommand(CAPABILITY_COMMANDS.COMMENTS_EXPAND_THREAD, thread.id);
       } catch {
         // Non-critical — widget may already be visible.
       }
@@ -110,7 +111,7 @@ export async function navigateToThread(
       if (surfaceType === "markdown-preview") {
         const coords = anchor.coordinates;
         const blockId = (coords as { blockId?: string }).blockId;
-        await env.executeCommand("accordo_preview_internal_focusThread", uriStr, thread.id, blockId);
+        await env.executeCommand(CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD, uriStr, thread.id, blockId);
         return;
       }
 
@@ -123,10 +124,10 @@ export async function navigateToThread(
         // accordo_presentation_internal_goto throws on error (no UI), unlike the
         // user-facing accordo.presentation.goto which swallows errors to showErrorMessage.
         try {
-          await env.executeCommand("accordo_presentation_internal_goto", coords.slideIndex);
+          await env.executeCommand(CAPABILITY_COMMANDS.PRESENTATION_GOTO, coords.slideIndex);
           // Focus the comment thread in the presentation webview.
           try {
-            await env.executeCommand("accordo_presentation_internal_focusThread", thread.id);
+            await env.executeCommand(CAPABILITY_COMMANDS.PRESENTATION_FOCUS_THREAD, thread.id);
           } catch { /* non-critical */ }
           return;
         } catch {
@@ -135,9 +136,9 @@ export async function navigateToThread(
         await env.executeCommand("accordo.presentation.open", uri);
         await env.delay(2000);
         try {
-          await env.executeCommand("accordo_presentation_internal_goto", coords.slideIndex);
+          await env.executeCommand(CAPABILITY_COMMANDS.PRESENTATION_GOTO, coords.slideIndex);
           try {
-            await env.executeCommand("accordo_presentation_internal_focusThread", thread.id);
+            await env.executeCommand(CAPABILITY_COMMANDS.PRESENTATION_FOCUS_THREAD, thread.id);
           } catch { /* non-critical */ }
         } catch {
           await env.showInformationMessage(
@@ -149,7 +150,7 @@ export async function navigateToThread(
 
       if (surfaceType === "browser") {
         try {
-          await env.executeCommand("accordo_browser_focusThread", thread.id);
+          await env.executeCommand(CAPABILITY_COMMANDS.BROWSER_FOCUS_THREAD, thread.id);
         } catch {
           await env.showInformationMessage("Browser extension not connected.");
         }
@@ -160,7 +161,7 @@ export async function navigateToThread(
         try {
           // Pass the mmd file URI so the command can open the panel if it is not
           // already showing — mirrors the slidev open-then-navigate pattern.
-          await env.executeCommand("accordo_diagram_focusThread", thread.id, uriStr);
+          await env.executeCommand(CAPABILITY_COMMANDS.DIAGRAM_FOCUS_THREAD, thread.id, uriStr);
         } catch {
           await env.showInformationMessage("Diagram extension not connected.");
         }

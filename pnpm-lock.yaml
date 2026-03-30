@@ -122,6 +122,16 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(@types/node@20.19.35)(jsdom@26.1.0)(tsx@4.21.0)
 
+  packages/capabilities:
+    dependencies:
+      '@accordo/bridge-types':
+        specifier: workspace:*
+        version: link:../bridge-types
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   packages/comment-sdk:
     devDependencies:
       '@vitest/coverage-v8':
@@ -142,6 +152,9 @@ importers:
       '@accordo/bridge-types':
         specifier: workspace:*
         version: link:../bridge-types
+      '@accordo/capabilities':
+        specifier: workspace:*
+        version: link:../capabilities
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.35
@@ -157,6 +170,9 @@ importers:
 
   packages/diagram:
     dependencies:
+      '@accordo/capabilities':
+        specifier: workspace:*
+        version: link:../capabilities
       '@accordo/comment-sdk':
         specifier: workspace:*
         version: link:../comment-sdk
@@ -243,6 +259,9 @@ importers:
 
   packages/marp:
     dependencies:
+      '@accordo/capabilities':
+        specifier: workspace:*
+        version: link:../capabilities
       '@marp-team/marp-core':
         specifier: ^4.1.0
         version: 4.3.0
@@ -270,6 +289,10 @@ importers:
         version: 3.2.4(@types/node@20.19.35)(jsdom@26.1.0)(tsx@4.21.0)
 
   packages/md-viewer:
+    dependencies:
+      '@accordo/capabilities':
+        specifier: workspace:*
+        version: link:../capabilities
     devDependencies:
       '@accordo/bridge-types':
         specifier: workspace:*

@@ -17,6 +17,7 @@ import type {
   SlideCoordinates,
   AccordoComment,
 } from "@accordo/bridge-types";
+import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
 
 // ── Intent label map ──────────────────────────────────────────────────────────
 
@@ -239,7 +240,7 @@ export class NativeCommentController {
           }
 
           const focused: boolean = await vscode.commands.executeCommand(
-            "accordo_preview_internal_focusThread",
+            CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD,
             uri,
             threadId,
             blockId,
@@ -276,7 +277,7 @@ export class NativeCommentController {
           }
           await new Promise<void>((r) => setTimeout(r, 300));
           await vscode.commands.executeCommand(
-            "accordo_preview_internal_focusThread",
+            CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD,
             uri,
             threadId,
             blockId,
@@ -284,7 +285,7 @@ export class NativeCommentController {
         },
       ),
       vscode.commands.registerCommand(
-        "accordo_comments_internal_expandThread",
+        CAPABILITY_COMMANDS.COMMENTS_EXPAND_THREAD,
         (threadId: string): boolean => {
           const widget = this.widgets.get(threadId);
           if (widget) {

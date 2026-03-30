@@ -5,8 +5,9 @@
  */
 
 import * as vscode from "vscode";
+import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
+import type { SurfaceCommentAdapter } from "@accordo/capabilities";
 import type { BridgeAPI, ParsedDeck } from "./types.js";
-import type { SurfaceAdapterLike } from "./types.js";
 import { parseDeck } from "./narration.js";
 import { MarpAdapter } from "./marp-adapter.js";
 import { PresentationProvider } from "./presentation-provider.js";
@@ -100,7 +101,7 @@ async function openSession(
   session: SessionState,
   provider: PresentationProvider,
   stateContrib: PresentationStateContribution,
-  commentsAdapter: SurfaceAdapterLike | null,
+  commentsAdapter: SurfaceCommentAdapter | null,
 ): Promise<{ error?: string }> {
   closeSession(session, provider, stateContrib);
 
@@ -247,12 +248,12 @@ async function discoverDeckFiles(): Promise<string[]> {
   return files;
 }
 
-async function acquireCommentsAdapter(): Promise<SurfaceAdapterLike | null> {
+async function acquireCommentsAdapter(): Promise<SurfaceCommentAdapter | null> {
   const commentsExt = vscode.extensions.getExtension("accordo.accordo-comments");
   if (!commentsExt) return null;
   try {
-    const result = await vscode.commands.executeCommand<SurfaceAdapterLike>(
-      "accordo_comments_internal_getSurfaceAdapter",
+    const result = await vscode.commands.executeCommand<SurfaceCommentAdapter>(
+      CAPABILITY_COMMANDS.COMMENTS_GET_SURFACE_ADAPTER,
       "slide",
     );
     return result ?? null;

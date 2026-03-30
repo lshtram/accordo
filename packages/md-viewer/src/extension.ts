@@ -19,7 +19,8 @@
  */
 
 import * as vscode from "vscode";
-import type { CommentStoreLike } from "./preview-bridge.js";
+import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
+import type { CommentStoreAdapter } from "@accordo/capabilities";
 import { CommentablePreview, PREVIEW_VIEW_TYPE } from "./commentable-preview.js";
 
 // ── activate ──────────────────────────────────────────────────────────────────
@@ -41,7 +42,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   // M41b-EXT-02: retrieve CommentStore via internal command; null when absent
-  let store: CommentStoreLike | null = null;
+  let store: CommentStoreAdapter | null = null;
   if (commentsExt) {
     try {
       // Ensure the comments extension has actually activated before calling its command
@@ -49,8 +50,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await commentsExt.activate();
       }
       const acquired = (await vscode.commands.executeCommand(
-        "accordo_comments_internal_getStore",
-      )) as CommentStoreLike | undefined;
+        CAPABILITY_COMMANDS.COMMENTS_GET_STORE,
+      )) as CommentStoreAdapter | undefined;
       if (acquired && typeof acquired.createThread === "function") {
         store = acquired;
       }
@@ -117,7 +118,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Finds the live webview panel for the given URI and sends a comments:focus message.
     // Returns true if a panel was found and focused, false otherwise.
     vscode.commands.registerCommand(
-      "accordo_preview_internal_focusThread",
+      CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD,
       (uri: string, threadId: string, blockId?: string): boolean => {
         const panel = CommentablePreview.livePanels.get(uri);
         if (panel) {

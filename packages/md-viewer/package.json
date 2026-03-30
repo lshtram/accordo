@@ -80,6 +80,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "echo 'no lint configured yet'"
   },
+  "dependencies": {
+    "@accordo/capabilities": "workspace:*"
+  },
   "devDependencies": {
     "@accordo/bridge-types": "workspace:*",
     "@accordo/comment-sdk": "workspace:*",

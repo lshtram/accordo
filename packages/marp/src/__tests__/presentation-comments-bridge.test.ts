@@ -24,12 +24,12 @@ import {
 } from "../presentation-comments-bridge.js";
 import type { SlideCoordinates } from "@accordo/bridge-types";
 import type { WebviewSender } from "../presentation-comments-bridge.js";
-import type { SurfaceAdapterLike } from "../types.js";
+import type { SurfaceCommentAdapter } from "@accordo/capabilities";
 import type { CommentThread } from "@accordo/bridge-types";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeAdapter(): SurfaceAdapterLike {
+function makeAdapter(): SurfaceCommentAdapter {
   return {
     createThread: vi.fn().mockResolvedValue({
       id: "t1",

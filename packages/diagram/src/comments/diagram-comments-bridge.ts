@@ -11,24 +11,13 @@
  */
 
 import type { CommentAnchorSurface, CommentThread } from "@accordo/bridge-types";
+import type { SurfaceCommentAdapter } from "@accordo/capabilities";
 import type { WebviewToHostMessage } from "../webview/protocol.js";
 
 // ── Adapter interface (same shape as SurfaceCommentAdapter) ──────────────────
 
-export interface SurfaceAdapterLike {
-  createThread(args: {
-    uri: string;
-    anchor: CommentAnchorSurface;
-    body: string;
-    intent?: string;
-  }): Promise<CommentThread>;
-  reply(args: { threadId: string; body: string }): Promise<void>;
-  resolve(args: { threadId: string; resolutionNote?: string }): Promise<void>;
-  reopen(args: { threadId: string }): Promise<void>;
-  delete(args: { threadId: string; commentId?: string }): Promise<void>;
-  getThreadsForUri(uri: string): CommentThread[];
-  onChanged(listener: (uri: string) => void): { dispose(): void };
-}
+/** @deprecated Use SurfaceCommentAdapter from @accordo/capabilities instead. */
+export type SurfaceAdapterLike = SurfaceCommentAdapter;
 
 // ── Webview sender interface ─────────────────────────────────────────────────
 
@@ -53,7 +42,7 @@ export class DiagramCommentsBridge {
    * @param mmdUri   File URI of the open .mmd file (host-owned, A18-R02)
    */
   constructor(
-    private readonly adapter: SurfaceAdapterLike | null,
+    private readonly adapter: SurfaceCommentAdapter | null,
     private readonly sender: WebviewSender,
     private readonly mmdUri: string,
   ) {}

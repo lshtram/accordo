@@ -55,6 +55,7 @@
     "lint": "echo 'no lint configured yet'"
   },
   "dependencies": {
+    "@accordo/capabilities": "workspace:*",
     "@marp-team/marp-core": "^4.1.0"
   },
   "devDependencies": {

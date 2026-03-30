@@ -23,6 +23,7 @@
     "lint": "echo 'no lint configured yet'"
   },
   "dependencies": {
+    "@accordo/capabilities": "workspace:*",
     "@accordo/comment-sdk": "workspace:*",
     "@excalidraw/excalidraw": "0.17.6",
     "mermaid": "11.12.3",

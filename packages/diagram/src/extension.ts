@@ -35,6 +35,7 @@
 
 import * as vscode from "vscode";
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
+import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
 import { DiagramPanel } from "./webview/panel.js";
 import { createDiagramTools } from "./tools/diagram-tools.js";
 import { parseMermaid } from "./parser/adapter.js";
@@ -136,7 +137,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Reveals the panel and asks the webview to open the SDK popover.
   log("Registering accordo_diagram_focusThread command");
   context.subscriptions.push(
-    vscode.commands.registerCommand("accordo_diagram_focusThread", async (threadId: unknown, mmdUri: unknown) => {
+    vscode.commands.registerCommand(CAPABILITY_COMMANDS.DIAGRAM_FOCUS_THREAD, async (threadId: unknown, mmdUri: unknown) => {
       const tid = String(threadId ?? "");
       const uriStr = String(mmdUri ?? "");
       log(`accordo_diagram_focusThread: threadId=${tid}, mmdUri=${uriStr}, open panels=${_registry.size}`);

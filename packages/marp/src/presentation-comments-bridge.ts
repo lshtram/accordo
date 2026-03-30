@@ -5,7 +5,7 @@
  */
 
 import type { SlideCoordinates, CommentAnchorSurface } from "@accordo/bridge-types";
-import type { SurfaceAdapterLike } from "./types.js";
+import type { SurfaceCommentAdapter } from "@accordo/capabilities";
 
 export function encodeBlockId(coords: SlideCoordinates): string {
   return `slide:${coords.slideIndex}:${coords.x.toFixed(4)}:${coords.y.toFixed(4)}`;
@@ -29,7 +29,7 @@ export class PresentationCommentsBridge {
   private adapterUnsubscribe: { dispose(): void } | null = null;
 
   constructor(
-    private readonly adapter: SurfaceAdapterLike | null,
+    private readonly adapter: SurfaceCommentAdapter | null,
     private readonly sender: WebviewSender,
   ) {}
 

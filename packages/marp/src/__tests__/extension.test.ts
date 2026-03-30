@@ -33,6 +33,7 @@ import {
 import { activate, deactivate } from "../extension.js";
 import type { BridgeAPI } from "../types.js";
 import type * as vscode from "vscode";
+import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
 
 // Helper to cast MockExtensionContext to the full vscode.ExtensionContext type.
 // The mock provides only the fields used by accordo-marp; the cast is safe for testing.
@@ -111,7 +112,7 @@ function setupExtensions(
   });
 
   vi.mocked(commands.executeCommand).mockImplementation((cmd: string) => {
-    if (cmd === "accordo_comments_internal_getSurfaceAdapter" && commentsActive) {
+    if (cmd === CAPABILITY_COMMANDS.COMMENTS_GET_SURFACE_ADAPTER && commentsActive) {
       return Promise.resolve({ dispose: vi.fn() });
     }
     return Promise.resolve(undefined);
@@ -275,7 +276,7 @@ describe("M50-EXT-05: Comments surface adapter", () => {
     await activate(asCtx(ctx));
 
     expect(commands.executeCommand).toHaveBeenCalledWith(
-      "accordo_comments_internal_getSurfaceAdapter",
+      CAPABILITY_COMMANDS.COMMENTS_GET_SURFACE_ADAPTER,
       expect.anything(),
     );
   });
@@ -365,7 +366,7 @@ describe("M50-EXT-07: Works without comments extension", () => {
     await activate(asCtx(ctx));
 
     const getSurfaceAdapterCalls = (commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls
-      .filter(([cmd]: [string]) => cmd === "accordo_comments_internal_getSurfaceAdapter");
+      .filter(([cmd]: [string]) => cmd === CAPABILITY_COMMANDS.COMMENTS_GET_SURFACE_ADAPTER);
     expect(getSurfaceAdapterCalls).toHaveLength(0);
   });
 });

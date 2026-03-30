@@ -137,6 +137,7 @@
   },
   "devDependencies": {
     "@accordo/bridge-types": "workspace:*",
+    "@accordo/capabilities": "workspace:*",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.100.0",
     "typescript": "^5.7.0",
