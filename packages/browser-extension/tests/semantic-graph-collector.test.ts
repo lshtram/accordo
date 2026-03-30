@@ -1175,5 +1175,5 @@ describe("B2-SG-010: Performance budget", () => {
     expect(result.a11yTree.length).toBeGreaterThan(0);
     // Performance budget: must complete within 15 seconds
     expect(elapsed).toBeLessThan(15_000);
-  });
+  }, 15_000);
 });

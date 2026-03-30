@@ -133,17 +133,30 @@ export function buildScorecard(
     }
   }
 
+  /**
+   * getScore is a narrowing helper that re-checks presence at runtime,
+   * throwing on the impossible path so TypeScript does not need `!`.
+   * The outer loop already guarantees every key is present; this guard
+   * is a defensive belt-and-suspenders for the type checker.
+   */
+  const getScore = (cat: EvalCategory): CategoryScore => {
+    const result = results.get(cat);
+    if (result === undefined) {
+      throw new Error(`buildScorecard: category "${cat}" unexpectedly missing`);
+    }
+    return result.score;
+  };
+
   return {
-    // Non-null assertion justified: presence checked by the loop above
-    "session-context": results.get("session-context")!.score,
-    "text-extraction": results.get("text-extraction")!.score,
-    "semantic-structure": results.get("semantic-structure")!.score,
-    "layout-geometry": results.get("layout-geometry")!.score,
-    "visual-capture": results.get("visual-capture")!.score,
-    "interaction-model": results.get("interaction-model")!.score,
-    "deltas-efficiency": results.get("deltas-efficiency")!.score,
-    "robustness": results.get("robustness")!.score,
-    "security-privacy": results.get("security-privacy")!.score,
+    "session-context": getScore("session-context"),
+    "text-extraction": getScore("text-extraction"),
+    "semantic-structure": getScore("semantic-structure"),
+    "layout-geometry": getScore("layout-geometry"),
+    "visual-capture": getScore("visual-capture"),
+    "interaction-model": getScore("interaction-model"),
+    "deltas-efficiency": getScore("deltas-efficiency"),
+    "robustness": getScore("robustness"),
+    "security-privacy": getScore("security-privacy"),
   };
 }
 
@@ -174,12 +187,14 @@ export function buildEvidenceTable(
   }
 
   return [...items].sort((a, b) => {
-    // Sort by letter first, then numerically by the number portion
-    const aLetter = a.itemId[0];
-    const bLetter = b.itemId[0];
+    // Sort by letter first, then numerically by the number portion.
+    // charAt(0) returns "" for empty strings (never undefined), avoiding the
+    // `string | undefined` that bracket indexing produces. itemId is validated
+    // to be non-empty above, so charAt(0) always yields the category letter.
+    const aLetter = a.itemId.charAt(0);
+    const bLetter = b.itemId.charAt(0);
     if (aLetter !== bLetter) {
-      // Non-null assertion justified: itemId is non-empty and validated above
-      return aLetter!.localeCompare(bLetter!);
+      return aLetter.localeCompare(bLetter);
     }
     const aNum = parseInt(a.itemId.slice(1), 10);
     const bNum = parseInt(b.itemId.slice(1), 10);
