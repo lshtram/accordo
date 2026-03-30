@@ -1,7 +1,7 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
 **Date:** 2026-03-30  
-**Status:** ACTIVE — Wave 3 modularity COMPLETE  
+**Status:** Phase 2 and P2 cleanup COMPLETE — 2 items remain (bridge-core extraction, comments-node-service)  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
@@ -201,19 +201,19 @@ These items were pending in prior plans and remain in scope. They are not browse
 6. **~~MOD-P1-01~~** — `bridge-types` domain split + barrel export + consumer import updates. ✅ **DONE** (`b789aa9`, 10 tests, 2026-03-29)
 
 **Phase 2 — fully parallel (5 agents, after Phase 1 gate)**
-7. **MOD-P2-B1** — `hub/server.ts` decomposition.
-8. **MOD-P2-B2** — `bridge/extension.ts` decomposition.
-9. **MOD-P2-B3** — `voice` + `diagram` + `editor` leaf splits (3 packages, 1 agent).
-10. **MOD-P2-B4** — `comments` comment-store extraction + comment-tools split (sequential B4a→B4b).
-11. **MOD-P2-B5** — `browser-extension` relay-actions + service-worker split (sequential B5a→B5b→cleanup).
+7. **~~MOD-P2-B1~~** — ✅ **DONE** (prior session) — `hub/server.ts` split into server-routing/sse/mcp/reauth
+8. **~~MOD-P2-B2~~** — ✅ **DONE** (`fdb34c4`) — `bridge/extension.ts` 251→217 LOC; extracted `extension-vscode-adapter.ts`
+9. **~~MOD-P2-B3~~** — ✅ **DONE** (prior session) — voice diagram editor splits complete
+10. **~~MOD-P2-B4~~** — ✅ **DONE** (prior session) — comment-store extraction + comment-tools split
+11. **~~MOD-P2-B5~~** — ✅ **DONE** (prior session) — browser-extension relay-actions + service-worker split
 
-**After Phase 2 (P2 items)**
-12. **MOD-P2-11** — remove repeated forwarding/error boilerplate in browser-extension.
-13. **MOD-P2-12** — consolidate repeated merge/sync pathways in service worker.
-14. **MOD-P2-13** — normalize comments tool response shapes.
-15. **MOD-P2-14** — extract `bridge-core` with `HostEnvironment` interface (needs B2).
-16. **MOD-P2-15** — extract `comments-node-service` adapter (needs B4a).
-17. **MOD-P2-16** — align docs/examples with real exported Bridge API surface.
+**After Phase 2 (P2 cleanup — now all done)**
+12. **~~MOD-P2-11~~** — ✅ **DONE** (`fdb34c4`) — sw-router: extract actionFailed() helper
+13. **~~MOD-P2-12~~** — ✅ **DONE** (prior session) — merge/sync already consolidated in sw-comment-sync.ts
+14. **~~MOD-P2-13~~** — ✅ **DONE** (prior session) — comment tool responses normalized
+15. **~~MOD-P2-14~~** — ⏳ **PENDING** — extract `bridge-core` with `HostEnvironment` interface
+16. **~~MOD-P2-15~~** — ⏳ **PENDING** — extract `comments-node-service` adapter
+17. **~~MOD-P2-16~~** — ✅ **DONE** (`fdb34c4`) — Bridge README updated to match real API surface
 
 **Later (not in current wave)**
 18. **D2-001** — add "requires live E2E" flag to D2 checklist for CDP/DOM tools.
