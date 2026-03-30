@@ -1,7 +1,7 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
-**Date:** 2026-03-29  
-**Status:** ACTIVE  
+**Date:** 2026-03-30  
+**Status:** ACTIVE — Wave 3 modularity COMPLETE  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
@@ -184,8 +184,8 @@ These items were pending in prior plans and remain in scope. They are not browse
 ## 2) Next Execution Queue (in order)
 
 **Priority 0 (must fix before any new work)**
-0. **B2-CTX-000** — fix `browser_diff_snapshots` (returns `action-failed` for ALL calls; CDP investigation required).
-1. **B2-CTX-000b** — fix `browser_get_text_map` + `browser_get_semantic_graph` Hub registration (M113-SEM blocked despite D2 PASS).
+0. **~~B2-CTX-000~~** — ✅ **DONE** (`2a20512`) — `browser_diff_snapshots` snapshot store scope verified; fix was in `browser_get_semantic_graph` content-script stub which threw "not implemented" → caused action-failed cascade.
+1. **~~B2-CTX-000b~~** — ✅ **DONE** (`2a20512`) — `browser_get_semantic_graph` now implemented via `collectSemanticGraph()` in content-script context; dual-context pattern matching `handleGetTextMap`.
 
 **Priority A Item 2 — Tab-scoped targeting contract (only 2 tools missing)**
 2. **B2-CTX-002** — add `tabId` param to `browser_capture_region`.
