@@ -42,6 +42,10 @@ function isNoReceiverError(err: unknown): boolean {
   return msg.includes("Receiving end does not exist") || msg.includes("Could not establish connection");
 }
 
+function actionFailed(): SwResponse {
+  return { success: false, error: "action-failed" };
+}
+
 /**
  * Create the message handler with injected relay bridge and forward/broadcast functions.
  * This factory pattern avoids circular module dependencies.
@@ -123,7 +127,7 @@ export function createHandleMessage(
           await broadcastCommentsUpdated(comment.pageUrl);
           return { success: true, data: comment };
         } catch {
-          return { success: false, error: "action-failed" };
+          return actionFailed();
         }
       }
 

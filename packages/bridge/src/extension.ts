@@ -34,6 +34,7 @@ import {
   cleanupExtension,
 } from "./extension-composition.js";
 import type { ExtensionState, ComposedBridgeAPI } from "./extension-composition.js";
+import { createVsCodeApi, createConfirmationFn } from "./extension-vscode-adapter.js";
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -150,45 +151,10 @@ export async function activate(
   const hubManagerEvents = buildHubManagerEvents(lazyDeps);
 
   // 4. Build HostEnvironment for StatePublisher
-  const vscodeApi: import("./state-publisher.js").HostEnvironment = {
-    window: {
-      get activeTextEditor() { return vscode.window.activeTextEditor as import("./state-publisher.js").TextEditor | undefined; },
-      get visibleTextEditors() { return vscode.window.visibleTextEditors as readonly import("./state-publisher.js").TextEditor[]; },
-      get activeTerminal() { return vscode.window.activeTerminal as import("./state-publisher.js").Terminal | undefined; },
-      onDidChangeActiveTextEditor: (l) => vscode.window.onDidChangeActiveTextEditor(l as (e: vscode.TextEditor | undefined) => void),
-      onDidChangeVisibleTextEditors: (l) => vscode.window.onDidChangeVisibleTextEditors(l as (e: readonly vscode.TextEditor[]) => void),
-      onDidChangeTextEditorSelection: (l) => vscode.window.onDidChangeTextEditorSelection(l as (e: vscode.TextEditorSelectionChangeEvent) => void),
-      onDidChangeActiveTerminal: (l) => vscode.window.onDidChangeActiveTerminal(l as (e: vscode.Terminal | undefined) => void),
-      tabGroups: {
-        get all() { return vscode.window.tabGroups.all as readonly import("./state-publisher.js").TabGroup[]; },
-        onDidChangeTabGroups: (l) => vscode.window.tabGroups.onDidChangeTabGroups(l as (e: vscode.TabGroupChangeEvent) => void),
-        onDidChangeTabs: (l) => vscode.window.tabGroups.onDidChangeTabs(l as (e: vscode.TabChangeEvent) => void),
-      },
-    },
-    workspace: {
-      get workspaceFolders() {
-        return vscode.workspace.workspaceFolders as readonly import("./state-publisher.js").WorkspaceFolder[] | undefined;
-      },
-      get name() { return vscode.workspace.name; },
-      onDidChangeWorkspaceFolders: (l) =>
-        vscode.workspace.onDidChangeWorkspaceFolders(
-          l as (e: vscode.WorkspaceFoldersChangeEvent) => void,
-        ),
-    },
-    env: {
-      get remoteName() { return vscode.env.remoteName; },
-    },
-  };
+  const vscodeApi = createVsCodeApi();
 
   // 5. Build confirmation dialog
-  const confirmationFn = async (toolName: string, args: Record<string, unknown>): Promise<boolean> => {
-    const answer = await vscode.window.showWarningMessage(
-      `Allow tool "${toolName}" to run?`,
-      { modal: true, detail: JSON.stringify(args, null, 2) },
-      "Allow",
-    );
-    return answer === "Allow";
-  };
+  const confirmationFn = createConfirmationFn();
 
   // 6. Create services
   services = createServices({

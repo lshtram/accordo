@@ -69,9 +69,34 @@ const bridge = vscode.extensions.getExtension("accordo.accordo-bridge")?.exports
 // Register tools
 bridge.registerTools("my-extension", myToolDefinitions);
 
-// Update modality state
+// Publish per-extension state
 bridge.publishState("my-extension", { customData: "..." });
+
+// Get current IDE state
+const state = bridge.getState();
+
+// Check connection status
+const connected = bridge.isConnected();
+
+// Listen for connection changes
+bridge.onConnectionStatusChanged((connected: boolean) => {
+  console.log("Bridge connection status:", connected);
+});
+
+// Invoke a registered tool directly
+const result = await bridge.invokeTool("my-extension_myTool", { arg: "value" });
 ```
+
+### BridgeAPI Reference
+
+| Method | Returns | Description |
+|---|---|---|
+| `registerTools(extensionId, tools)` | `vscode.Disposable` | Register tools; dispose to unregister |
+| `publishState(extensionId, state)` | `void` | Push state patch to Hub immediately |
+| `getState()` | `IDEState` | Get cached IDE state (local, no network) |
+| `isConnected()` | `boolean` | True if Bridge has active WS connection to Hub |
+| `onConnectionStatusChanged` | `Event<boolean>` | Fires when connection state changes |
+| `invokeTool(toolName, args, timeout?)` | `Promise<unknown>` | Invoke a registered tool directly |
 
 ## Development
 
