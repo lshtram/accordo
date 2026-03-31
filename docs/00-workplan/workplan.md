@@ -1,33 +1,16 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
-**Date:** 2026-03-30  
-**Status:** ✅ Wave 1 COMPLETE — 2 items remain from Phase 2 cleanup (MOD-P2-14, MOD-P2-15 — satisfied by current architecture)  
+**Date:** 2026-03-31  
+**Status:** Wave 1 + Priority 0 complete — 10 open items (4 browser, 6 editor/voice/script), 4 later  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
 
 ## 1) Current Operating Priorities
 
-### 🔴 Priority 0 — Critical fixes (D2 review gap — found via live E2E)
+### ~~Priority 0 — Critical fixes (D2 review gap — found via live E2E)~~ ✅ RESOLVED
 
-**Source:** `docs/50-reviews/review-closeout-2026-03-29.md`  
-**Problem:** D2 reviews reported PASS for all browser2.0 modules, but live E2E
-evaluation found `diff_snapshots` returns `action-failed` for ALL calls. This
-means diff-based agent workflows are completely non-functional in production.
-
-**Why D2 missed this:** D2 is a code-level structural review; it does not verify
-that the Hub runtime correctly registers tools or that CDP commands succeed
-end-to-end.
-
-**Planned deliverables:**
-1. Fix `browser_diff_snapshots` — CDP `DOM.compareDeep` equivalent or reimplementation. Live E2E confirmed: returns `action-failed` for ALL calls.
-2. Fix tool registration for `browser_get_text_map` and `browser_get_semantic_graph`
-   in Hub runtime (M113-SEM is blocked at runtime despite passing D2).
-3. Add smoke test to D2 checklist: "requires live E2E" flag for CDP/DOM-dependent tools.
-   *(Reference: `docs/50-reviews/review-closeout-2026-03-29.md` §6)*.
-
-**Success criteria:** `diff_snapshots` returns valid diff output (not `action-failed`)
-for a simple DOM change scenario.
+`browser_diff_snapshots` action-failed cascade fixed via B2-CTX-000 (`2a20512`). Root cause was `browser_get_semantic_graph` content-script stub throwing "not implemented". Semantic graph now implemented via `collectSemanticGraph()`. Remaining item (D2-001: add "requires live E2E" flag to checklist) moved to Later queue.
 
 ---
 
@@ -51,81 +34,9 @@ for a simple DOM change scenario.
 
 ---
 
-### Priority B — Wave 1 modularity cleanup (from readability/modularity review)
+### ~~Priority B — Wave 1 modularity cleanup~~ ✅ FULLY COMPLETE
 
-Reference: `docs/50-reviews/browser-stack-readability-modularity-review-2026-03-29.md`,
-`docs/50-reviews/full-project-modularity-plugin-review-2026-03-29.md`
-
-**Execution model:** Phase 1 ✅ COMPLETE → Phase 2 (parallel, 5 agents) — ready to launch
-
----
-
-#### Phase 1 — Foundation (sequential, 1 agent)
-
-**Goal:** Split the shared `bridge-types` interface contract and update all consumers.
-This unblocks all Phase 2 agents — after Phase 1, every remaining task is package-internal.
-
-**Agent A1 — bridge-types split + consumer update**
-
-| Package | Files | Action |
-|---|---|---|
-| `bridge-types` | `src/index.ts` (split → 5 new + barrel) | `ide-types.ts`, `tool-types.ts`, `ws-types.ts`, `comment-types.ts`, `constants.ts` + barrel `index.ts` |
-| `browser` | `src/**/*.ts` (import path updates only) | Update direct imports from old `bridge-types` paths to barrel |
-| `script` | `src/**/*.ts` (import path updates only) | Same import path updates |
-| All 13 packages | — | `pnpm -r typecheck` + `pnpm -r test` + `pnpm -r build` all green before Phase 2 |
-
-**Phase 1 gate (all must pass before Phase 2 launches):**
-- `pnpm -r typecheck` — zero type errors
-- `pnpm -r test` — all tests green
-- `pnpm -r build` — all packages build cleanly
-- No `@accordo/bridge-types/*` subpath imports introduced anywhere (CI grep check)
-
-**Barrel export enforcement (permanent):**
-- `no-restricted-imports` lint rule banning `@accordo/bridge-types/*` subpath imports
-- `package.json exports` field maintained without subpath entries
-
----
-
-#### Phase 2 — Parallel (5 agents, truly independent after Phase 1)
-
-All work is package-internal. No cross-package coordination. File sets confirmed disjoint
-(explore agent verified: no two agents touch the same file).
-
-Each agent's success criteria (measurable):
-- **API parity:** exported symbol set unchanged (or explicitly documented delta list)
-- **Behavior parity:** package tests unchanged and green
-- **Type parity:** `tsc --noEmit` clean for the package
-- **Build parity:** package build clean
-- **Size target:** original file reduced to <250 LOC; no new file exceeds 300 LOC
-- **No import regression:** no new cross-package runtime deps introduced
-- **No route/security drift (hub/bridge):** auth and endpoint contract tests must pass
-
-| Agent | Package | Files Touched | What is done |
-|---|---|---|---|
-| **B1** | `hub` | `server.ts` (trimmed) + 4 new | Split 615-line `server.ts` into `server-routing.ts`, `server-sse.ts`, `server-mcp.ts`, `server-reauth.ts`; original becomes delegation shell |
-| **B2** | `bridge` | `extension.ts` (trimmed) + 3 new | Split 618-line `extension.ts` into `extension-bootstrap.ts`, `extension-composition.ts`, `extension-service-factory.ts`; original becomes thin bootstrap/composition |
-| **B3** | `voice` + `diagram` + `editor` | 3 packages, 1 file each (each trimmed + 2-3 new) | Split `voice/extension.ts` (776 LOC), `diagram/webview/panel.ts` (763 LOC), `editor/tools/editor.ts` (594 LOC) each into focused modules; fully parallel to each other and to B1/B2 |
-| **B4** | `comments` | 2 files each (each trimmed + 2 new) | B4a: extract `comment-repository.ts` (zero vscode imports) + `vscode-comment-repository.ts`; B4b: split `comment-tools.ts` into `definitions` + `handlers`; **sequential within agent** — B4a first, then B4b |
-| **B5** | `browser-extension` | 2 god files split | B5a: create `relay-actions` per-feature handlers + `relay-forwarder.ts` + compatibility shim; B5b: split `service-worker.ts` into focused modules; **sequential within agent** — create shim first, split service-worker, remove shim |
-
-**Internal sequences (non-negotiable):**
-- B4: B4a (`comment-store`) → B4b (`comment-tools`) because tools depend on store behavior
-- B5: create compatibility shim for `relay-actions` → split `service-worker` → remove shim because `service-worker` imports from `relay-actions`
-
-**After Phase 2:** merge each agent's branch, run full `pnpm -r typecheck + test + build`, then proceed to P2 items.
-
----
-
-#### P2 (after Phase 1 + Phase 2 complete)
-
-11. Remove repeated forwarding/error boilerplate in browser-extension relay paths.
-12. Consolidate repeated merge/sync pathways in service worker.
-13. Normalize comments tool response shapes to reduce caller-specific wrappers.
-14. Extract `bridge-core` with `HostEnvironment` interface (requires B2 complete first).
-15. Extract `comments-node-service` adapter (requires B4a complete first).
-16. Align docs/examples with real exported Bridge API surface.
-
----
+Phase 1 (bridge-types split) and Phase 2 (5 parallel agents: hub, bridge, voice/diagram/editor, comments, browser-extension) plus all P2 cleanup items are done. See `docs/00-workplan/accomplished-tasks.md` for details.
 
 ### Priority C — E2E evaluation follow-through
 
@@ -142,22 +53,69 @@ Targeted upgrades:
 
 ---
 
+### Priority F — Diagram tool gaps (found during live testing, 2026-03-31)
+
+| # | Gap | Priority | Status |
+|---|---|---|---|
+| F-1 | Style persistence: position changes are saved correctly ✅ | — | **FIXED** |
+| F-2 | Style persistence: fill type (strokeStyle, fillStyle) not being saved | MEDIUM | Open |
+| F-3 | Style persistence: font type (fontFamily) not being saved | MEDIUM | Open |
+| F-4 | Style guide updates: added newline (`\\n`) and dark font color guidance | — | **DONE** |
+| F-5 | Newline rendering: `normalizeLabel()` converts Mermaid `\\n` → actual newline for Excalidraw | — | **DONE** |
+
+**F-2 detail:** When user changes fill type (e.g., from hachure to solid), the change is not persisted to layout.json. Likely the `canvas:node-styled` message handler or `patchNode` not properly saving all style fields.
+
+**F-3 detail:** When user changes font family (e.g., Excalifont to Nunito), the change is not persisted. Same root cause as F-2.
+
+**Root cause hypothesis:** The `handleNodeStyled` in `panel-core.ts` patches `style` via `patchNode`, but only certain fields may be whitelisted or the reconciliation between canvas-generated styles and stored styles may be dropping changes.
+
+---
+
+### Priority E — Editor/Voice/Script feature gaps (found during live MCP testing)
+
+**Source:** live E2E MCP tool testing session, 2026-03-30  
+**Context:** after fixing Hub spawn, MCP config sync, and protocol contract issues (`6f1e6b0`), a full MCP interface sweep found these gaps.
+
+| # | Gap | Priority | Status |
+|---|---|---|---|
+| E-1 | `voice_readAloud` missing `block` parameter — script narration cannot sequence steps | **HIGH** | Open |
+| E-2 | `script_run` returns "Invalid JSON" error — tool completely non-functional | **HIGH** | Open |
+| E-3 | No MCP tool to toggle markdown preview panel | MEDIUM | Open |
+| E-4 | `panel_toggle` only maps left sidebar — missing terminal/output/problems | MEDIUM | Done (superseded by E-6) |
+| E-5 | No tool to toggle VS Code Copilot Chat panel | LOW | Open |
+| E-6 | Bar tools redesign: single `accordo_layout_panel(area, view, action)` tool with `BarState` tracker (`unknown\|open\|closed`) — replaces E-4 toggle approach and original 6-tool design | **HIGH** | Phase A done — stubs in `packages/editor/src/tools/bar.ts`; design: `docs/00-workplan/e-6-bar-tools.md`; old design archived to `docs/90-archive/` |
+
+**E-1 detail:** `inputSchema` in `packages/voice/src/tools/read-aloud.ts` lacks `block` property. Script runner passes `block: true/false` to `speakText`, and `doSpeakText` handles it correctly, but the MCP tool has no way to receive it. Fix: add `block` (boolean, default: true) to inputSchema and handler.
+
+**E-2 detail:** `accordo_script_run` returns "Invalid JSON" on valid NarrationScript input. Needs investigation in `packages/script/src/tools/run-script.ts` and `packages/script/src/script-types.ts`. Test with minimal: `{"steps":[{"type":"speak","text":"Hello"}]}`.
+
+**E-3 detail:** `accordo_editor_*` tools cover file operations but not preview. VS Code has `markdown.showPreview` / `markdown.showPreviewToSide`. Need a new tool wrapping these commands.
+
+**E-4 detail (superseded by E-6):** Initial implementation of bottom panel support in `panel_toggle` done. Superseded by E-6 redesign — explicit open/close semantics with state tracker replace toggle semantics.
+
+**E-6 detail:** Single tool `accordo_layout_panel({ area, view?, action })`. Area-level open/close + optional view-level open. `BarState` tracker: `{ sidebar: "unknown"|"open"|"closed", panel: "...", rightBar: "..." }`. Unknown→close forces open then close. Free-string `view` with hardcoded fallback + heuristic for third-party views. Stubs in `packages/editor/src/tools/bar.ts` (handler throws "not implemented"). Design: `docs/00-workplan/e-6-bar-tools.md`.
+
+**E-5 detail:** Would need `copilot.panel.focus` or similar. Requires Copilot extension installed. Low priority.
+
+**Verified working tools (reference):**
+`editor_open`, `editor_close`, `editor_scroll`, `editor_split`, `editor_focus`, `editor_reveal`, `editor_highlight`, `editor_clearHighlights`, `editor_save`, `editor_saveAll`, `editor_format`, `terminal_open`, `terminal_run`, `terminal_focus`, `terminal_list`, `terminal_close`, `panel_toggle` (sidebar only), `layout_zen`, `layout_fullscreen`, `layout_joinGroups`, `layout_evenGroups`, `layout_state`, `comment_*`, `diagram_*`, `presentation_*`, `voice_readAloud` (fire-and-forget only), `voice_dictation`, `voice_setPolicy`, `voice_discover`.
+
+**Needs investigation:** `script_run`, `script_stop`, `script_status`, `script_discover`.
+
+---
+
 ### Priority D — Cross-project backlog (non-browser, still open)
 
 These items were pending in prior plans and remain in scope. They are not browser-only work and must stay visible in the active workplan.
 
-#### D1. Wave 1 modularity tasks outside browser stack
+#### ~~D1. Wave 1 modularity tasks outside browser stack~~ ✅ COMPLETE
 
-1. `packages/bridge/src/extension.ts` decomposition (bootstrap/orchestrator/api-factory split).
-2. `packages/hub/src/server.ts` decomposition (router/SSE/MCP/reauth split).
-3. `packages/comments` hotspot decomposition:
-   - `extension.ts`
-   - `comment-tools.ts`
-   - `comment-store.ts`
-4. `packages/bridge-types/src/index.ts` domain split with stable barrel export.
-5. Voice and diagram hotspot splits from modularity wave plan:
-   - `packages/voice/src/extension.ts`
-   - `packages/diagram/src/webview/panel.ts`
+All items completed in Phase 2 (B1–B5) and P2 cleanup:
+1. ~~`packages/bridge/src/extension.ts` decomposition~~ ✅ B2
+2. ~~`packages/hub/src/server.ts` decomposition~~ ✅ B1
+3. ~~`packages/comments` hotspot decomposition~~ ✅ B4
+4. ~~`packages/bridge-types/src/index.ts` domain split~~ ✅ MOD-P1-01
+5. ~~Voice and diagram hotspot splits~~ ✅ B3
 
 #### D2. Cross-cutting technical debt still open
 
@@ -181,44 +139,32 @@ These items were pending in prior plans and remain in scope. They are not browse
 
 ---
 
-## 2) Next Execution Queue (in order)
+## 2) Execution Queue — Open Items Only
 
-**Priority 0 (must fix before any new work)**
-0. **~~B2-CTX-000~~** — ✅ **DONE** (`2a20512`) — `browser_diff_snapshots` snapshot store scope verified; fix was in `browser_get_semantic_graph` content-script stub which threw "not implemented" → caused action-failed cascade.
-1. **~~B2-CTX-000b~~** — ✅ **DONE** (`2a20512`) — `browser_get_semantic_graph` now implemented via `collectSemanticGraph()` in content-script context; dual-context pattern matching `handleGetTextMap`.
+**Priority A — Browser continuity (tab-scoped targeting)**
+1. **B2-CTX-002** — add `tabId` param to `browser_capture_region`.
+2. **B2-CTX-003** — add `tabId` param to `browser_diff_snapshots`.
+3. **B2-CTX-004** — verify CDP routing for background tabs, Hub registration for text_map + semantic_graph, `diff_snapshots` internal state for non-active tabs.
+4. **B2-CTX-005** — E2E continuity tests under tab switching (Playwright or similar).
 
-**Priority A Item 2 — Tab-scoped targeting contract (only 2 tools missing)**
-2. **B2-CTX-002** — add `tabId` param to `browser_capture_region`.
-3. **B2-CTX-003** — add `tabId` param to `browser_diff_snapshots`.
+**Priority E — Editor/Voice/Script gaps (from live MCP testing)**
+5. **E-1** — add `block` param to `voice_readAloud` MCP tool inputSchema + handler.
+6. **E-2** — fix `script_run` "Invalid JSON" error — investigate handler + types.
+7. **E-3** — add MCP tool for markdown preview toggle.
+8. **~~E-4~~** — ✅ **DONE (superseded by E-6)** — bottom panel support in `panel_toggle` implemented; replaced by E-6 redesign.
 
-**Priority A Item 3 — Non-active tab workflows**
-4. **B2-CTX-004** — verify CDP routing for background tabs, Hub registration for text_map + semantic_graph, `diff_snapshots` internal state for non-active tabs.
+**Priority E (new) — Bar tools redesign**
+9. **E-6** — ✅ **Phase A + Review PASS** — `accordo_layout_panel({ area, view?, action })`, `BarState` tracker, focus-first pattern for panel views, rightBar view rejection, ~36 tests planned. Review: `docs/50-reviews/e-6-bar-tools-A.md`. Ready for Phase B.
 
-**Priority A Item 4 — E2E smoke tests**
-5. **B2-CTX-005** — E2E continuity tests under tab switching (Playwright or similar).
-
-**Phase 1 — bridge-types split (1 agent, unblocks everything)**
-6. **~~MOD-P1-01~~** — `bridge-types` domain split + barrel export + consumer import updates. ✅ **DONE** (`b789aa9`, 10 tests, 2026-03-29)
-
-**Phase 2 — fully parallel (5 agents, after Phase 1 gate)**
-7. **~~MOD-P2-B1~~** — ✅ **DONE** (prior session) — `hub/server.ts` split into server-routing/sse/mcp/reauth
-8. **~~MOD-P2-B2~~** — ✅ **DONE** (`fdb34c4`) — `bridge/extension.ts` 251→217 LOC; extracted `extension-vscode-adapter.ts`
-9. **~~MOD-P2-B3~~** — ✅ **DONE** (prior session) — voice diagram editor splits complete
-10. **~~MOD-P2-B4~~** — ✅ **DONE** (prior session) — comment-store extraction + comment-tools split
-11. **~~MOD-P2-B5~~** — ✅ **DONE** (prior session) — browser-extension relay-actions + service-worker split
-
-**After Phase 2 (P2 cleanup — all done or satisfied by architecture)**
-12. **~~MOD-P2-11~~** — ✅ **DONE** (`fdb34c4`) — sw-router: extract actionFailed() helper
-13. **~~MOD-P2-12~~** — ✅ **DONE** (prior session) — merge/sync already consolidated in sw-comment-sync.ts
-14. **~~MOD-P2-13~~** — ✅ **DONE** (prior session) — comment tool responses normalized
-15. **~~MOD-P2-14~~** — ✅ **CLOSED (architecture satisfied)** — HostEnvironment interface already clean; package extraction deferred until second editor bridge is needed
-16. **~~MOD-P2-15~~** — ✅ **CLOSED (prerequisites complete)** — CommentRepository domain logic already extracted; service design deferred to future feature planning
-17. **~~MOD-P2-16~~** — ✅ **DONE** (`fdb34c4`) — Bridge README updated to match real API surface
+**Priority F — Diagram style persistence (from live testing)**
+10. **F-2** — Investigate why fill type (strokeStyle, fillStyle) changes are not persisted to layout.json.
+11. **F-3** — Investigate why font family changes are not persisted to layout.json.
 
 **Later (not in current wave)**
-18. **D2-001** — add "requires live E2E" flag to D2 checklist for CDP/DOM tools.
-19. **TD-CROSS-2** — uniform logging migration.
-20. **M95-VA** — visual annotation layer planning kickoff.
+10. **E-5** — VS Code Copilot Chat panel toggle (low priority, extension dependency).
+11. **D2-001** — add "requires live E2E" flag to D2 checklist for CDP/DOM tools.
+12. **TD-CROSS-2** — uniform logging migration.
+13. **M95-VA** — visual annotation layer planning kickoff.
 
 ---
 

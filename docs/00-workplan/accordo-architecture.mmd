@@ -1,0 +1,8 @@
+flowchart TD
+  Agent["AI Agent\nOpenCode/Claude"] --> Hub["accordo-hub\nMCP Server"]
+  Hub --> Registry["Tool Registry"]
+  Hub --> Dispatch["MCP Dispatch"]
+  Dispatch --> Bridge["accordo-bridge\nVS Code Extension"]
+  Bridge --> Editor["accordo-editor\n22 Editor Tools"]
+  Bridge --> Voice["accordo-voice\nVoice Tools"]
+  Bridge --> Script["accordo-script\nScript Runner"]

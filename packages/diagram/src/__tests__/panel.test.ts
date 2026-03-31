@@ -269,16 +269,38 @@ describe("Canvas message dispatch", () => {
   it("AP-12: canvas:node-moved writes updated layout.json with new position", async () => {
     await DiagramPanel.create(ctx as never, mmdPath);
 
-    vi.useFakeTimers();
+    // canvas:ready must be sent first to trigger loadAndPost which sets _currentLayout
+    vscPanel.webview.simulateMessage({ type: "canvas:ready" });
+
+    // Poll until host:load-scene is posted, then wait extra for async completion
+    await new Promise<void>((resolve) => {
+      const interval = setInterval(() => {
+        const calls = vi.mocked(vscPanel.webview.postMessage).mock.calls;
+        const found = calls.some(
+          ([msg]) => (msg as HostLoadSceneMessage).type === "host:load-scene",
+        );
+        if (found) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 10);
+      // Timeout after 10s
+      setTimeout(() => {
+        clearInterval(interval);
+        resolve();
+      }, 10_000);
+    });
+    // Extra buffer for loadAndPost to fully complete
+    await new Promise(r => setTimeout(r, 200));
+
     vscPanel.webview.simulateMessage({
       type: "canvas:node-moved",
       nodeId: "A",
       x: 200,
       y: 300,
     });
-    await vi.advanceTimersByTimeAsync(150); // fires the debounce, starts writeLayout
-    vi.useRealTimers();
-    await new Promise(r => setTimeout(r, 50)); // wait for file I/O to land
+    // Wait for debounce (100ms) plus file I/O
+    await new Promise(r => setTimeout(r, 200));
 
     const layoutPath = layoutPathFor(mmdPath, tmpDir);
     const raw = await (await import("node:fs/promises")).readFile(layoutPath, "utf8");
@@ -289,16 +311,38 @@ describe("Canvas message dispatch", () => {
   it("AP-13: canvas:node-resized writes updated layout.json with new dimensions", async () => {
     await DiagramPanel.create(ctx as never, mmdPath);
 
-    vi.useFakeTimers();
+    // canvas:ready must be sent first to trigger loadAndPost which sets _currentLayout
+    vscPanel.webview.simulateMessage({ type: "canvas:ready" });
+
+    // Poll until host:load-scene is posted, then wait extra for async completion
+    await new Promise<void>((resolve) => {
+      const interval = setInterval(() => {
+        const calls = vi.mocked(vscPanel.webview.postMessage).mock.calls;
+        const found = calls.some(
+          ([msg]) => (msg as HostLoadSceneMessage).type === "host:load-scene",
+        );
+        if (found) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 10);
+      // Timeout after 10s
+      setTimeout(() => {
+        clearInterval(interval);
+        resolve();
+      }, 10_000);
+    });
+    // Extra buffer for loadAndPost to fully complete
+    await new Promise(r => setTimeout(r, 200));
+
     vscPanel.webview.simulateMessage({
       type: "canvas:node-resized",
       nodeId: "A",
       w: 240,
       h: 80,
     });
-    await vi.advanceTimersByTimeAsync(150); // fires the debounce, starts writeLayout
-    vi.useRealTimers();
-    await new Promise(r => setTimeout(r, 50)); // wait for file I/O to land
+    // Wait for debounce (100ms) plus file I/O
+    await new Promise(r => setTimeout(r, 200));
 
     const layoutPath = layoutPathFor(mmdPath, tmpDir);
     const raw = await (await import("node:fs/promises")).readFile(layoutPath, "utf8");

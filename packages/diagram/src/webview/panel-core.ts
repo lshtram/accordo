@@ -205,7 +205,11 @@ export function patchLayout(
   apply: (layout: LayoutStore) => LayoutStore,
 ): void {
   const layoutPath = layoutPathFor(state.mmdPath, state._workspaceRoot);
-  const base = state._currentLayout ?? createEmptyLayout("flowchart");
+  // FIX: If _currentLayout is null, the initial layout hasn't loaded yet.
+  // Drop this mutation — the real layout will be written by loadAndPost.
+  if (state._currentLayout === null) return;
+
+  const base = state._currentLayout;
   state._currentLayout = apply(base);
 
   if (state._layoutWriteTimer !== null) clearTimeout(state._layoutWriteTimer);

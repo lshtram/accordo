@@ -34,15 +34,18 @@ export function setupWebview(
   state: PanelState,
 ): void {
   // Message listener: register BEFORE setting html so canvas:ready is never missed.
+  // Create the extended state ONCE and reuse it so _currentLayout mutations from
+  // loadAndPost persist across subsequent messages (canvas:node-moved, etc.).
+  const extState = state as PanelState & {
+    _panel: vscode.WebviewPanel;
+    _log?: (m: string) => void;
+    _createTime?: number;
+  };
+  extState._panel = panel;
   state._disposables.push(
     panel.webview.onDidReceiveMessage((msg: unknown) => {
-      const extState = state as PanelState & {
-        _panel: vscode.WebviewPanel;
-        _log?: (m: string) => void;
-        _createTime?: number;
-      };
       handleWebviewMessage(
-        { ...extState, _panel: panel },
+        extState,
         msg as WebviewToHostMessage,
       );
     }),

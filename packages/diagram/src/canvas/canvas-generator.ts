@@ -39,6 +39,15 @@ function edgeKey(from: string, to: string, ordinal: number): string {
 }
 
 /**
+ * Convert Mermaid label escapes to Excalidraw newlines.
+ * Mermaid uses \\n (escaped backslash-n) in label text for line breaks,
+ * but Excalidraw text elements need actual newline characters.
+ */
+function normalizeLabel(label: string): string {
+  return label.replace(/\\n/g, "\n");
+}
+
+/**
  * Generate an Excalidraw canvas scene from a parsed diagram and its layout.
  *
  * @param parsed  Parsed diagram graph (nodes, edges, clusters, renames).
@@ -124,7 +133,7 @@ export function generateCanvas(
         height: 20,
         roughness,
         fontFamily,
-        label: cluster.label,
+        label: normalizeLabel(cluster.label),
         containerId: elemId,
       });
     }
@@ -173,7 +182,7 @@ export function generateCanvas(
         roughness: nl.style?.roughness ?? roughness,
         fontFamily: nl.style?.fontFamily ?? fontFamily,
         fontSize: textFontSize,
-        label: node.label,
+        label: normalizeLabel(node.label),
         strokeColor: nl.style?.fontColor,
         containerId: elemId,
       });
@@ -257,7 +266,7 @@ export function generateCanvas(
         height: 20,
         roughness,
         fontFamily,
-        label: edge.label,
+        label: normalizeLabel(edge.label),
         containerId: arrowId,
       });
     }
