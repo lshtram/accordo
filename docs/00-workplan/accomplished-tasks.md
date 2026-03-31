@@ -87,6 +87,14 @@
 - Testing guide: `docs/40-testing/testing-guide-m113-sem.md`
 - Reviews (all 32 files in `docs/50-reviews/`):
   - M100: `m100-snap-A.md`, `m100-snap-B.md`, `m100-snap-D2.md`
+
+## Diagram bug fixes (2026-03-31)
+
+| Fix | Root cause | Solution | Evidence |
+|---|---|---|---|
+| **G-2** Alt+click on edges didn't open comment dialog | Hit-test AABB used el.width/el.height which are always 0 for arrow elements (geometry lives in points[] polyline) | `hitsEdgePolyline()`: point-to-polyline distance test with 8px threshold; `edgePolylineMidpoint()`: arc-length walk to midpoint | `64b76b8`, `docs/reviews/g2-edge-hit-testing-phase{1,2,3}.md`, 541 tests pass |
+| **F-2/F-3** fillStyle/strokeStyle/fontFamily not persisted | `detectNodeMutations()` missed fillStyle/strokeStyle/fontFamily fields; `toExcalidrawPayload()` hardcoded fillStyle | Added field detection + REVERSE_FONT_FAMILY_MAP | `abba06f` |
+| **patchHandler** new nodes not collision-resolved | `patchHandler` never called `placeNodes()` before `writeLayout()`; new nodes went to `unplaced[]` | `ReconcileResult` now includes `diagram: ParsedDiagram`; `patchHandler` calls `placeNodes()` before write | `fa87eb9`, `docs/reviews/patch-handler-placement-bugfix.md` |
   - M101: `m101-diff-A.md`, `m101-diff-B.md`, `m101-diff-D2.md`
   - M102: `m102-filt-A.md`, `m102-filt-B.md`, `m102-filt-B2.md`, `m102-filt-D2.md`
   - M109: `m109-wait-A.md`, `m109-wait-B.md`, `m109-wait-D2.md`

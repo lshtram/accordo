@@ -1,7 +1,7 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
 **Date:** 2026-03-31  
-**Status:** Wave 1 + Priority 0 complete — 9 open items (4 browser, 3 editor/voice/script, 2 diagram), 4 later  
+**Status:** Wave 1 + Priority 0 complete — 8 open items (4 browser, 3 editor/voice/script, 1 diagram), 4 later  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
@@ -71,7 +71,7 @@ Targeted upgrades:
 | # | Gap | Priority | Status |
 |---|---|---|---|
 | G-1 | Comments on .md files in accordo markdown preview not rendering | **HIGH** | Open |
-| G-2 | Alt+click on diagram edges inconsistently opens comment dialog (shapes always work) | **HIGH** | Open |
+| G-2 | Alt+click on diagram edges inconsistently opens comment dialog (shapes always work) | **HIGH** | **FIXED** (`64b76b8`) |
 | G-3 | Comment pins don't track diagram viewport movement (pins stay fixed when panning) | MEDIUM | Open |
 
 **G-1 detail:** The accordo markdown preview does not show comment threads overlaid on the rendered markdown. The built-in VS Code markdown preview shows comments; our preview does not. Likely missing the comment overlay/renderer integration in `commentable-preview.ts`.
@@ -176,6 +176,9 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 **Priority F — Diagram style persistence (from live testing)**
 10. **~~F-2~~** — ✅ **FIXED** (`abba06f`) — fillStyle + strokeStyle detection + fillStyle passthrough
 11. **~~F-3~~** — ✅ **FIXED** (`abba06f`) — fontFamily detection with REVERSE_FONT_FAMILY_MAP
+
+**Priority G — Comments bugs (from live testing)**
+12. **~~G-2~~** — ✅ **FIXED** (`64b76b8`) — edge hit-testing via point-to-polyline distance (8px threshold); edge comment pin midpoint now computed from arc-length walk
 
 **Later (not in current wave)**
 14. **E-5** — VS Code Copilot Chat panel toggle (low priority, extension dependency).
