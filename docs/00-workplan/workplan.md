@@ -62,6 +62,7 @@ Targeted upgrades:
 | F-3 | Style persistence: font type (fontFamily) not being saved | MEDIUM | Open |
 | F-4 | Style guide updates: added newline (`\\n`) and dark font color guidance | — | **DONE** |
 | F-5 | Newline rendering: `normalizeLabel()` converts Mermaid `\\n` → actual newline for Excalidraw | — | **DONE** |
+| F-6 | Ctrl+F search: works in built-in markdown preview but not in accordo markdown preview | MEDIUM | Open |
 
 **F-2 detail:** When user changes fill type (e.g., from hachure to solid), the change is not persisted to layout.json. Likely the `canvas:node-styled` message handler or `patchNode` not properly saving all style fields.
 
@@ -80,7 +81,7 @@ Targeted upgrades:
 |---|---|---|---|
 | E-1 | `voice_readAloud` missing `block` parameter — script narration cannot sequence steps | **HIGH** | Open |
 | E-2 | `script_run` returns "Invalid JSON" error — tool completely non-functional | **HIGH** | Open |
-| E-3 | No MCP tool to toggle markdown preview panel | MEDIUM | Open |
+| E-3 | No MCP tool to toggle markdown preview panel | MEDIUM | Done — auto-open .md in preview via `accordo_editor_open` (8cb86b1) |
 | E-4 | `panel_toggle` only maps left sidebar — missing terminal/output/problems | MEDIUM | Done (superseded by E-6) |
 | E-5 | No tool to toggle VS Code Copilot Chat panel | LOW | Open |
 | E-6 | Bar tools redesign: single `accordo_layout_panel(area, view, action)` tool with `BarState` tracker (`unknown\|open\|closed`) — replaces E-4 toggle approach and original 6-tool design | **HIGH** | ✅ **DONE** — 55 tests pass, MCP + script runner both work; design: `docs/00-workplan/e-6-bar-tools.md` |
@@ -150,7 +151,7 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 **Priority E — Editor/Voice/Script gaps (from live MCP testing)**
 5. **E-1** — add `block` param to `voice_readAloud` MCP tool inputSchema + handler.
 6. **E-2** — fix `script_run` "Invalid JSON" error — investigate handler + types.
-7. **E-3** — add MCP tool for markdown preview toggle.
+7. **~~E-3~~** — ✅ **DONE** — `accordo_editor_open` auto-routes .md → preview, .mmd → diagram (8cb86b1)
 8. **~~E-4~~** — ✅ **DONE (superseded by E-6)** — bottom panel support in `panel_toggle` implemented; replaced by E-6 redesign.
 
 **Priority E (new) — Bar tools redesign**
