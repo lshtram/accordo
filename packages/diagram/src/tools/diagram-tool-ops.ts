@@ -24,11 +24,12 @@ import type {
 } from "./diagram-tool-types.js";
 
 import { DiagToolError } from "./diagram-tool-types.js";
-import type { DiagramType, LayoutStore, NodeStyle, ReconcileResult } from "../types.js";
+import type { DiagramType, LayoutStore, NodeStyle, ParsedDiagram, ReconcileResult } from "../types.js";
 import { parseMermaid, detectDiagramType } from "../parser/adapter.js";
 import { computeInitialLayout } from "../layout/auto-layout.js";
 import { layoutPathFor, readLayout, writeLayout } from "../layout/layout-store.js";
 import { reconcile, InvalidMermaidError } from "../reconciler/reconciler.js";
+import { placeNodes } from "../reconciler/placement.js";
 
 // ── Path guard ────────────────────────────────────────────────────────────────
 
@@ -331,6 +332,31 @@ export async function patchHandler(
       };
     }
     finalLayout = { ...finalLayout, clusters: updatedClusters };
+  }
+
+  // Resolve any remaining unplaced nodes with collision-avoiding placement.
+  // Filter out nodes that already have positions from nodeStyles overrides.
+  const trueUnplaced = finalLayout.unplaced.filter(
+    (id) => finalLayout.nodes[id] === undefined,
+  );
+  if (trueUnplaced.length > 0) {
+    const placed = placeNodes(trueUnplaced, reconcileResult.diagram, finalLayout);
+    const updatedNodes = { ...finalLayout.nodes };
+    for (const [nodeId, pos] of placed) {
+      const existing = updatedNodes[nodeId];
+      updatedNodes[nodeId] = {
+        ...existing,
+        x: pos.x,
+        y: pos.y,
+        w: pos.w,
+        h: pos.h,
+        style: existing?.style ?? {},
+      };
+    }
+    finalLayout = { ...finalLayout, nodes: updatedNodes, unplaced: [] };
+  } else if (finalLayout.unplaced.length > 0) {
+    // All unplaced nodes were pre-positioned via nodeStyles — just clear the list.
+    finalLayout = { ...finalLayout, unplaced: [] };
   }
 
   await writeFile(resolved, reconcileResult.mermaidCleaned ?? newSource, "utf-8");

@@ -12,6 +12,7 @@
  *   – styleGuideHandler                 DT-42..DT-46
  *   – createDiagramTools array          DT-47..DT-48
  *   – patchHandler nodeStyles A14-v2    DT-49..DT-52
+ *   – patchHandler placeNodes() fix      DT-53..DT-58
  *
  * BACKFILL NOTE (A14-v2): DT-49..DT-52 were written after the width/height
  * segregation and new style fields were implemented (implementation-before-test
@@ -904,5 +905,151 @@ describe("patchHandler nodeStyles — A14-v2 width/height and new style fields",
     // width/height must not bleed into style
     expect(layout.nodes.A.style?.width).toBeUndefined();
     expect(layout.nodes.A.style?.height).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DT-53..DT-58  patchHandler — placeNodes() placement fix
+//
+// These tests verify that when patchHandler adds new nodes via `content`,
+// placeNodes() assigns them x/y/w/h and clears layout.unplaced.
+//
+// Each test is written so that if the placeNodes() block were removed from
+// patchHandler (the "placement fix"), the test would fail.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("patchHandler placeNodes() placement fix — DT-53..DT-58", () => {
+  // DT-53: New node added via `content` appears in layout.nodes with finite x/y/w/h
+  it("DT-53: new node added via content is written to layout.nodes with x/y/w/h", async () => {
+    // Start with A-->B; patch to add node C
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+
+    const patchedContent = "flowchart TD\nA-->B\nB-->C\n";
+    await patchHandler({ path: "arch.mmd", content: patchedContent }, makeCtx());
+
+    const layout = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+
+    // Node C must exist in layout.nodes (not stuck in unplaced[])
+    expect(layout.nodes.C).toBeDefined();
+    // All four position/size fields must be finite numbers
+    expect(Number.isFinite(layout.nodes.C.x)).toBe(true);
+    expect(Number.isFinite(layout.nodes.C.y)).toBe(true);
+    expect(Number.isFinite(layout.nodes.C.w)).toBe(true);
+    expect(Number.isFinite(layout.nodes.C.h)).toBe(true);
+  });
+
+  // DT-54: layout.unplaced[] is empty after adding new nodes
+  it("DT-54: unplaced[] is [] after patch adds new nodes", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+
+    const patchedContent = "flowchart TD\nA-->B\nB-->C\n";
+    await patchHandler({ path: "arch.mmd", content: patchedContent }, makeCtx());
+
+    const layout = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+    expect(layout.unplaced).toEqual([]);
+  });
+
+  // DT-55: Newly placed node does not overlap an existing positioned node
+  it("DT-55: newly placed node does not overlap an existing positioned node", async () => {
+    // Write layout.json directly so that node A has a known fixed position
+    const mmdPath = join(tmpDir, "arch.mmd");
+    const lpPath  = layoutPathFor(mmdPath, tmpDir);
+    await writeFile(mmdPath, SIMPLE_FLOWCHART);
+    await mkdir(dirname(lpPath), { recursive: true });
+    await writeFile(
+      lpPath,
+      JSON.stringify({
+        version: "1.0",
+        diagram_type: "flowchart",
+        nodes: {
+          A: { id: "A", x: 100, y: 0, w: 100, h: 60, style: {} },
+          B: { id: "B", x: 300, y: 0, w: 100, h: 60, style: {} },
+        },
+        edges: {},
+        clusters: {},
+        unplaced: [],
+        aesthetics: { roughness: 1, animationMode: "draw-on" },
+      }),
+    );
+
+    // Patch adds node C connected to A; placeNodes() must position C without overlapping A
+    const patchedContent = "flowchart TD\nA-->B\nA-->C\n";
+    await patchHandler({ path: "arch.mmd", content: patchedContent }, makeCtx());
+
+    const layout = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+    const A = layout.nodes.A;
+    const C = layout.nodes.C;
+
+    // AABB overlap check (same logic as placeNodes' rectsOverlap)
+    const overlaps = !(
+      A.x + A.w <= C.x ||
+      C.x + C.w <= A.x ||
+      A.y + A.h <= C.y ||
+      C.y + C.h <= A.y
+    );
+    expect(overlaps).toBe(false);
+  });
+
+  // DT-56: Two new nodes added in the same patch do not overlap each other
+  it("DT-56: two new nodes added in the same patch do not overlap each other", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+
+    // Add two new nodes C and D in the same rank (both children of B)
+    const patchedContent = "flowchart TD\nA-->B\nB-->C\nB-->D\n";
+    await patchHandler({ path: "arch.mmd", content: patchedContent }, makeCtx());
+
+    const layout = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+    const C = layout.nodes.C;
+    const D = layout.nodes.D;
+
+    const overlaps = !(
+      C.x + C.w <= D.x ||
+      D.x + D.w <= C.x ||
+      C.y + C.h <= D.y ||
+      D.y + D.h <= C.y
+    );
+    expect(overlaps).toBe(false);
+  });
+
+  // DT-57: Node with explicit nodeStyles x/y override is NOT moved by placeNodes()
+  it("DT-57: nodeStyles x/y override prevents placeNodes() from moving the node", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+
+    // Explicitly pin node A at (999, 999) — placeNodes() must NOT override this
+    await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        nodeStyles: { A: { x: 999, y: 999 } },
+      },
+      makeCtx(),
+    );
+
+    const layout = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+    expect(layout.nodes.A.x).toBe(999);
+    expect(layout.nodes.A.y).toBe(999);
+  });
+
+  // DT-58: layout.unplaced[] is also empty when no new nodes were added (regression guard)
+  it("DT-58: unplaced[] is [] even when no new nodes were added (regression guard)", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+
+    // Patch with identical content — nothing new added
+    await patchHandler({ path: "arch.mmd", content: SIMPLE_FLOWCHART }, makeCtx());
+
+    const layout = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+    expect(layout.unplaced).toEqual([]);
   });
 });

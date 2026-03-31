@@ -375,6 +375,8 @@ export interface ReconcileResult {
     /** Human-readable rename descriptions: ["old_id -> new_id", ...] */
     renamesApplied: readonly string[];
   };
+  /** The already-parsed new diagram — useful for callers that need to re-use the parse result without re-parsing. */
+  diagram: ParsedDiagram;
 }
 
 // ── §9 Canvas generator ────────────────────────────────────────────────────────

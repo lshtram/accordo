@@ -177,5 +177,6 @@ export async function reconcile(
       clustersChanged,
       renamesApplied,
     },
+    diagram: newDiagram,
   };
 }
