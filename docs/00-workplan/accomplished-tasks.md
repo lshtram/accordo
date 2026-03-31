@@ -26,7 +26,16 @@
 | M111-EVAL | ✅ Completed |
 | M112-TEXT | ✅ Completed |
 | M113-SEM | ✅ Completed |
+| F-2 + F-3 — Diagram style persistence (fillStyle, strokeStyle, fontFamily → layout.json) | ✅ Completed (`abba06f`, 9 new tests, 2026-03-31) |
 | Phase 1 modularity — bridge-types split | ✅ Completed (`b789aa9`, 10 tests, 2026-03-29) |
+| Phase 2 modularity — B1 hub/server.ts split | ✅ Completed (prior session) |
+| Phase 2 modularity — B2 bridge/extension.ts split | ✅ Completed (`fdb34c4`) |
+| Phase 2 modularity — B3 voice/diagram/editor splits | ✅ Completed (prior session) |
+| Phase 2 modularity — B4 comments split | ✅ Completed (prior session) |
+| Phase 2 modularity — B5 browser-extension split | ✅ Completed (prior session) |
+| P2 cleanup — MOD-P2-11 through MOD-P2-16 | ✅ Completed (`fdb34c4`, prior session) |
+| Priority 0 — browser_diff_snapshots fix (B2-CTX-000/000b) | ✅ Completed (`2a20512`) |
+| Hub spawn + MCP config sync + protocol fixes | ✅ Completed (`6f1e6b0`) |
 
 ---
 
@@ -45,6 +54,10 @@
 | Browser 2.x W1/W2 | M100, M101, M102, M109, M111, M112, M113 completed |
 | B2-CTX-001 | Multi-tab support: browser_list_pages, browser_select_page, tabId on 5 understanding tools |
 | MOD-P1-01 | Phase 1: bridge-types split into 5 domain files + barrel export + ESLint + downstream typecheck ✅ |
+| MOD-P2 (B1–B5) | Phase 2: hub, bridge, voice/diagram/editor, comments, browser-extension splits ✅ |
+| P2 cleanup | MOD-P2-11 through MOD-P2-16: relay helpers, merge/sync, response normalization, README ✅ |
+| B2-CTX-000 | Priority 0: browser_diff_snapshots + semantic_graph fix ✅ |
+| 6f1e6b0 | Hub spawn, MCP config sync, protocol contract fixes ✅ |
 
 ---
 

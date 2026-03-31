@@ -1,7 +1,7 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
 **Date:** 2026-03-31  
-**Status:** Wave 1 + Priority 0 complete — 11 open items (4 browser, 3 editor/voice/script, 2 diagram), 4 later  
+**Status:** Wave 1 + Priority 0 complete — 9 open items (4 browser, 3 editor/voice/script, 2 diagram), 4 later  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
@@ -58,11 +58,27 @@ Targeted upgrades:
 | # | Gap | Priority | Status |
 |---|---|---|---|
 | F-1 | Style persistence: position changes are saved correctly ✅ | — | **FIXED** |
-| F-2 | Style persistence: fill type (strokeStyle, fillStyle) not being saved | MEDIUM | Open |
-| F-3 | Style persistence: font type (fontFamily) not being saved | MEDIUM | Open |
+| F-2 | Style persistence: fill type (strokeStyle, fillStyle) not being saved | MEDIUM | **FIXED** (`abba06f`) |
+| F-3 | Style persistence: font type (fontFamily) not being saved | MEDIUM | **FIXED** (`abba06f`) |
 | F-4 | Style guide updates: added newline (`\\n`) and dark font color guidance | — | **DONE** |
 | F-5 | Newline rendering: `normalizeLabel()` converts Mermaid `\\n` → actual newline for Excalidraw | — | **DONE** |
 | F-6 | Ctrl+F search: works in built-in markdown preview but not in accordo markdown preview | MEDIUM | Open |
+
+---
+
+### Priority G — Comments bugs (found during live testing, 2026-03-31)
+
+| # | Gap | Priority | Status |
+|---|---|---|---|
+| G-1 | Comments on .md files in accordo markdown preview not rendering | **HIGH** | Open |
+| G-2 | Alt+click on diagram edges inconsistently opens comment dialog (shapes always work) | **HIGH** | Open |
+| G-3 | Comment pins don't track diagram viewport movement (pins stay fixed when panning) | MEDIUM | Open |
+
+**G-1 detail:** The accordo markdown preview does not show comment threads overlaid on the rendered markdown. The built-in VS Code markdown preview shows comments; our preview does not. Likely missing the comment overlay/renderer integration in `commentable-preview.ts`.
+
+**G-2 detail:** Alt+click on diagram shapes always opens the comment dialog. Alt+click on edges only works sometimes — possibly a hit-testing issue where edges are rendered in an SVG layer that doesn't receive pointer events the same way as shapes.
+
+**G-3 detail:** When panning the diagram canvas, comment pins stay at their original viewport coordinates instead of moving with the content. The pin positions should be relative to the diagram content, not the viewport.
 
 **F-2 detail:** When user changes fill type (e.g., from hachure to solid), the change is not persisted to layout.json. Likely the `canvas:node-styled` message handler or `patchNode` not properly saving all style fields.
 
@@ -158,8 +174,8 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 9. **~~E-6~~** — ✅ **DONE** (`6d63faf`) — 55 tests, live demo verified; commit: `feat(editor): E-6 Bar Tools`
 
 **Priority F — Diagram style persistence (from live testing)**
-10. **F-2** — Investigate why fill type (strokeStyle, fillStyle) changes are not persisted to layout.json.
-11. **F-3** — Investigate why font family changes are not persisted to layout.json.
+10. **~~F-2~~** — ✅ **FIXED** (`abba06f`) — fillStyle + strokeStyle detection + fillStyle passthrough
+11. **~~F-3~~** — ✅ **FIXED** (`abba06f`) — fontFamily detection with REVERSE_FONT_FAMILY_MAP
 
 **Later (not in current wave)**
 14. **E-5** — VS Code Copilot Chat panel toggle (low priority, extension dependency).
