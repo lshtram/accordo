@@ -14,6 +14,7 @@ import type { ExtensionToolDefinition, IDEState } from "@accordo/bridge-types";
 import { editorTools } from "./tools/editor.js";
 import { terminalTools, registerTerminalLifecycle } from "./tools/terminal.js";
 import { createLayoutTools } from "./tools/layout.js";
+import { layoutPanelHandler } from "./tools/bar.js";
 
 // ── BridgeAPI (minimal interface — full type lives in accordo-bridge) ─────────
 
@@ -61,6 +62,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const disposable = bridge.registerTools("accordo.accordo-editor", allTools);
   context.subscriptions.push(disposable);
+
+  // Also register accordo_layout_panel as a plain VS Code command so the
+  // script runner (accordo_script_run) can invoke it via executeCommand,
+  // even when the MCP Hub is not connected.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("accordo_layout_panel", layoutPanelHandler),
+  );
 }
 
 // ── deactivate ────────────────────────────────────────────────────────────────

@@ -120,6 +120,11 @@ const ACCORDO_COMMAND_IDS: Record<
     args: "{}",
     description: "Return the full current IDE state snapshot. Call at the start of every task.",
   },
+  accordo_layout_panel: {
+    args: '{ "area": "sidebar", "action": "open" }',
+    description:
+      "Control VS Code area containers (sidebar, panel, right bar) — open, close, or open a specific view within an area. Use explicit open/close instead of toggle for predictable results.",
+  },
 
   // ── Comment tools (accordo-comments) ─────────────────────────────────────
   comment_list: {
