@@ -1,7 +1,7 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
 **Date:** 2026-03-31  
-**Status:** Wave 1 + Priority 0 complete — 12 open items (4 browser, 4 editor/voice/script, 2 diagram), 4 later  
+**Status:** Wave 1 + Priority 0 complete — 11 open items (4 browser, 3 editor/voice/script, 2 diagram), 4 later  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
@@ -83,7 +83,7 @@ Targeted upgrades:
 | E-3 | No MCP tool to toggle markdown preview panel | MEDIUM | Open |
 | E-4 | `panel_toggle` only maps left sidebar — missing terminal/output/problems | MEDIUM | Done (superseded by E-6) |
 | E-5 | No tool to toggle VS Code Copilot Chat panel | LOW | Open |
-| E-6 | Bar tools redesign: single `accordo_layout_panel(area, view, action)` tool with `BarState` tracker (`unknown\|open\|closed`) — replaces E-4 toggle approach and original 6-tool design | **HIGH** | Phase A done — stubs in `packages/editor/src/tools/bar.ts`; design: `docs/00-workplan/e-6-bar-tools.md`; old design archived to `docs/90-archive/` |
+| E-6 | Bar tools redesign: single `accordo_layout_panel(area, view, action)` tool with `BarState` tracker (`unknown\|open\|closed`) — replaces E-4 toggle approach and original 6-tool design | **HIGH** | ✅ **DONE** — 55 tests pass, MCP + script runner both work; design: `docs/00-workplan/e-6-bar-tools.md` |
 
 **E-1 detail:** `inputSchema` in `packages/voice/src/tools/read-aloud.ts` lacks `block` property. Script runner passes `block: true/false` to `speakText`, and `doSpeakText` handles it correctly, but the MCP tool has no way to receive it. Fix: add `block` (boolean, default: true) to inputSchema and handler.
 
@@ -154,7 +154,7 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 8. **~~E-4~~** — ✅ **DONE (superseded by E-6)** — bottom panel support in `panel_toggle` implemented; replaced by E-6 redesign.
 
 **Priority E (new) — Bar tools redesign**
-9. **E-6** — ✅ **Phase A + Review PASS** — `accordo_layout_panel({ area, view?, action })`, `BarState` tracker, focus-first pattern for panel views, rightBar view rejection, ~36 tests planned. Review: `docs/50-reviews/e-6-bar-tools-A.md`. Ready for Phase B.
+9. **~~E-6~~** — ✅ **DONE** (`6d63faf`) — 55 tests, live demo verified; commit: `feat(editor): E-6 Bar Tools`
 
 **Priority F — Diagram style persistence (from live testing)**
 10. **F-2** — Investigate why fill type (strokeStyle, fillStyle) changes are not persisted to layout.json.
