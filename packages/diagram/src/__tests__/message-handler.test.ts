@@ -10,7 +10,7 @@
 
 // API checklist:
 // ✓ applyHostMessage — 6 tests (WF-01..WF-06)
-// ✓ detectNodeMutations — 3 tests (WF-07..WF-09)
+// ✓ detectNodeMutations — 10 tests (WF-07..WF-16)
 
 import { describe, it, expect, vi } from "vitest";
 import {
@@ -229,5 +229,100 @@ describe("detectNodeMutations", () => {
     const next = [{ ...bgEl, x: 999, y: 999 }];
 
     expect(detectNodeMutations(prev, next)).toEqual([]);
+  });
+
+  it("WF-10: fillStyle changed on shape element → styled mutation with fillStyle:solid", () => {
+    const prev: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, fillStyle: "hachure", strokeStyle: "solid" },
+    ];
+    const next: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, fillStyle: "solid", strokeStyle: "solid" },
+    ];
+
+    const mutations = detectNodeMutations(prev, next);
+    expect(mutations).toEqual([
+      { type: "styled", nodeId: "auth", style: { fillStyle: "solid" } },
+    ]);
+  });
+
+  it("WF-11: strokeStyle changed on shape element → styled mutation with strokeStyle:dashed", () => {
+    const prev: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, fillStyle: "hachure", strokeStyle: "solid" },
+    ];
+    const next: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, fillStyle: "hachure", strokeStyle: "dashed" },
+    ];
+
+    const mutations = detectNodeMutations(prev, next);
+    expect(mutations).toEqual([
+      { type: "styled", nodeId: "auth", style: { strokeStyle: "dashed" } },
+    ]);
+  });
+
+  it("WF-12: fillStyle changed on text element → NOT emitted", () => {
+    const prev: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, customData: { mermaidId: "auth:text" }, fillStyle: "hachure" },
+    ];
+    const next: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, customData: { mermaidId: "auth:text" }, fillStyle: "solid" },
+    ];
+
+    const mutations = detectNodeMutations(prev, next);
+    // No fillStyle patch should appear in any mutation
+    expect(mutations).toEqual([]);
+  });
+
+  it("WF-13: fontFamily changed on text element → styled mutation with string Nunito on parent nodeId", () => {
+    const prev: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, customData: { mermaidId: "auth:text" }, fontFamily: 1 },
+    ];
+    const next: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, customData: { mermaidId: "auth:text" }, fontFamily: 2 },
+    ];
+
+    const mutations = detectNodeMutations(prev, next);
+    // nodeId should be the parent shape "auth", not "auth:text"
+    expect(mutations).toEqual([
+      { type: "styled", nodeId: "auth", style: { fontFamily: "Nunito" } },
+    ]);
+  });
+
+  it("WF-14: fontFamily changed on shape element → NOT emitted", () => {
+    const prev: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, fontFamily: 1 },
+    ];
+    const next: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, fontFamily: 2 },
+    ];
+
+    const mutations = detectNodeMutations(prev, next);
+    // fontFamily mutations are only emitted for text elements, not shape elements
+    expect(mutations).toEqual([]);
+  });
+
+  it("WF-15: unknown fontFamily numeric value (99) → NOT emitted", () => {
+    const prev: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, customData: { mermaidId: "auth:text" }, fontFamily: 1 },
+    ];
+    const next: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, customData: { mermaidId: "auth:text" }, fontFamily: 99 },
+    ];
+
+    const mutations = detectNodeMutations(prev, next);
+    // Unmapped fontFamily 99 should not produce a mutation
+    expect(mutations).toEqual([]);
+  });
+
+  it("WF-16: fillStyle changed on edge arrow → NOT emitted", () => {
+    const prev: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, customData: { mermaidId: "A->B:0" }, fillStyle: "hachure", type: "arrow" },
+    ];
+    const next: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, customData: { mermaidId: "A->B:0" }, fillStyle: "solid", type: "arrow" },
+    ];
+
+    const mutations = detectNodeMutations(prev, next);
+    // Arrow elements do not produce styled mutations
+    expect(mutations).toEqual([]);
   });
 });

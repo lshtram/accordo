@@ -92,6 +92,21 @@ export const FONT_FAMILY_MAP: Readonly<Record<string, number>> = {
   "Comic Shanns": 3,
 } as const;
 
+/**
+ * Numeric → string font family mapping (reverse of FONT_FAMILY_MAP).
+ * Used by detectNodeMutations (message-handler.ts) to convert Excalidraw's
+ * numeric fontFamily back to the string name before persisting to layout JSON.
+ *
+ * Type uses Partial<Record<>> so that lookups on unknown numeric keys correctly
+ * return `string | undefined` — the compiler enforces the null check required
+ * by WF-15 (unknown fontFamily → skip, don't emit).
+ */
+export const REVERSE_FONT_FAMILY_MAP: Readonly<Partial<Record<number, "Excalifont" | "Nunito" | "Comic Shanns">>> = {
+  1: "Excalifont",
+  2: "Nunito",
+  3: "Comic Shanns",
+} as const;
+
 // ── toExcalidrawPayload ───────────────────────────────────────────────────────
 
 /**
@@ -115,7 +130,7 @@ export function toExcalidrawPayload(
       version: 1,
       versionNonce: Math.round(Math.random() * 1e9),
       isDeleted: false,
-      fillStyle: "hachure" as const,
+      fillStyle: rest.fillStyle ?? ("hachure" as const),
       strokeWidth: rest.strokeWidth ?? 1,
       strokeStyle: rest.strokeStyle ?? ("solid" as const),
       opacity: 100,

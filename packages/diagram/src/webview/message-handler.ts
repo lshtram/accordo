@@ -38,10 +38,17 @@
  *   WF-07  detectNodeMutations: x/y changed → { type:"moved", nodeId, x, y }
  *   WF-08  detectNodeMutations: width/height changed → { type:"resized", nodeId, w, h }
  *   WF-09  detectNodeMutations: element with empty mermaidId → skipped
+ *   WF-10  detectNodeMutations: fillStyle changed on shape → emitted
+ *   WF-11  detectNodeMutations: strokeStyle changed on shape → emitted
+ *   WF-12  detectNodeMutations: fillStyle changed on text element → NOT emitted
+ *   WF-13  detectNodeMutations: fontFamily changed on text → emitted (reverse-mapped)
+ *   WF-14  detectNodeMutations: fontFamily changed on shape → NOT emitted
+ *   WF-15  detectNodeMutations: unknown fontFamily numeric → NOT emitted
+ *   WF-16  detectNodeMutations: fillStyle changed on edge arrow → NOT emitted
  */
 
 import type { HostToWebviewMessage } from "./protocol.js";
-import type { ExcalidrawAPIElement } from "./scene-adapter.js";
+import { type ExcalidrawAPIElement, REVERSE_FONT_FAMILY_MAP } from "./scene-adapter.js";
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -206,6 +213,32 @@ export function detectNodeMutations(
         style.fontColor = nextEl.strokeColor;
       } else {
         style.strokeColor = nextEl.strokeColor;
+      }
+    }
+
+    // F-2: Detect fillStyle/strokeStyle changes on shape elements only.
+    // Guard: exclude text elements (fillStyle has no visual effect on text) AND
+    // edge arrows (mermaidId contains "->") — arrows are not addressable layout
+    // nodes; emitting a styled mutation for "A->B:0" would create a spurious
+    // entry in layout.nodes via handleNodeStyled (data corruption).
+    // Also exclude edge labels (":label" suffix) for the same reason.
+    if (!isText && !mermaidId.endsWith(":label") && !mermaidId.includes("->")) {
+      if (nextEl.fillStyle !== prevEl.fillStyle) style.fillStyle = nextEl.fillStyle;
+      if (nextEl.strokeStyle !== prevEl.strokeStyle) style.strokeStyle = nextEl.strokeStyle;
+    }
+
+    // F-3: Detect fontFamily changes on text elements only.
+    // Excalidraw stores fontFamily as a number (1=Excalifont, 2=Nunito, 3=Comic Shanns).
+    // Reverse-map to the string name before emitting; skip unknown numeric values
+    // so we never persist an invalid fontFamily string (WF-15).
+    if (isText) {
+      const nextFf = (nextEl as unknown as Record<string, unknown>).fontFamily as number | undefined;
+      const prevFf = (prevEl as unknown as Record<string, unknown>).fontFamily as number | undefined;
+      if (nextFf != null && prevFf != null && nextFf !== prevFf) {
+        const fontName = REVERSE_FONT_FAMILY_MAP[nextFf];
+        if (fontName != null) {
+          style.fontFamily = fontName;
+        }
       }
     }
 

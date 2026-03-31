@@ -9,7 +9,7 @@
 
 // API checklist:
 // ✓ FONT_FAMILY_MAP — structural (allowed to pass on stub)
-// ✓ toExcalidrawPayload — 5 tests (SA-01..SA-05)
+// ✓ toExcalidrawPayload — 7 tests (SA-01..SA-07)
 
 import { describe, it, expect } from "vitest";
 import { toExcalidrawPayload, FONT_FAMILY_MAP } from "../webview/scene-adapter.js";
@@ -82,5 +82,38 @@ describe("toExcalidrawPayload", () => {
     expect(el.startBinding).toEqual({ elementId: "exc-a", focus: 0, gap: 4 });
     expect(el.endBinding).toEqual({ elementId: "exc-b", focus: 0, gap: 4 });
     expect(el.customData.mermaidId).toBe("A->B:0");
+  });
+
+  it("SA-06: fillStyle solid on element passes through toExcalidrawPayload (not hardcoded to hachure)", () => {
+    const el: ExcalidrawElement = {
+      id: "exc-1",
+      mermaidId: "auth",
+      type: "rectangle",
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 50,
+      roughness: 1,
+      fontFamily: "Excalifont",
+      fillStyle: "solid",
+    };
+    const [result] = toExcalidrawPayload([el]);
+    expect(result.fillStyle).toBe("solid");
+  });
+
+  it("SA-07: fillStyle absent on element → defaults to hachure in toExcalidrawPayload", () => {
+    const el: ExcalidrawElement = {
+      id: "exc-1",
+      mermaidId: "auth",
+      type: "rectangle",
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 50,
+      roughness: 1,
+      fontFamily: "Excalifont",
+    };
+    const [result] = toExcalidrawPayload([el]);
+    expect(result.fillStyle).toBe("hachure");
   });
 });
