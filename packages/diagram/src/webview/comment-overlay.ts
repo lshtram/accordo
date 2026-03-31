@@ -18,6 +18,9 @@
 import { AccordoCommentSDK } from "@accordo/comment-sdk";
 import type { SdkThread } from "@accordo/comment-sdk";
 import { showToast } from "./excalidraw-canvas.js";
+import { hitsEdgePolyline, edgePolylineMidpoint } from "./comment-overlay-geometry.js";
+// Re-export geometry helpers so they are accessible via comment-overlay module
+export { hitsEdgePolyline, edgePolylineMidpoint };
 
 // ── Module-level state ────────────────────────────────────────────────────────
 
@@ -288,6 +291,7 @@ function pollForCanvasReady(): void {
         const elements = handle.getSceneElements();
         const el = elements.find((e) => e.id === excalId) as {
           x: number; y: number; width: number; height: number;
+          points?: ReadonlyArray<readonly [number, number]>;
         } | undefined;
         if (!el) return null;
         const appState = handle.getAppState() as {
@@ -298,8 +302,9 @@ function pollForCanvasReady(): void {
         const rect = canvasRoot.getBoundingClientRect();
         const z = appState.zoom.value;
         const isEdge = blockId.startsWith("edge:");
-        const pinSceneX = isEdge ? el.x + el.width / 2 : el.x + el.width;
-        const pinSceneY = isEdge ? el.y + el.height / 2 : el.y;
+        const pinMid = isEdge ? edgePolylineMidpoint(el) : null;
+        const pinSceneX = pinMid ? pinMid.x : el.x + el.width;
+        const pinSceneY = pinMid ? pinMid.y : el.y;
         const x = (pinSceneX + appState.scrollX) * z + rect.left;
         const y = (pinSceneY + appState.scrollY) * z + rect.top;
         return { x, y };
@@ -330,7 +335,7 @@ function pollForCanvasReady(): void {
       const e = rawEvent as MouseEvent;
       if (!e.altKey) return;
       const elements = handle.getSceneElements() as Array<
-        { id: string; customData?: { mermaidId?: string; kind?: string }; x: number; y: number; width: number; height: number }
+        { id: string; customData?: { mermaidId?: string; kind?: string; type?: string }; x: number; y: number; width: number; height: number; points?: ReadonlyArray<readonly [number, number]> }
       >;
       const appState = handle.getAppState() as {
         scrollX: number;
@@ -346,12 +351,12 @@ function pollForCanvasReady(): void {
         const mermaidId = el.customData?.mermaidId;
         if (!mermaidId) continue;
         if (mermaidId.endsWith(":text") || mermaidId.endsWith(":label")) continue;
-        if (
-          sceneX >= el.x &&
-          sceneX <= el.x + el.width &&
-          sceneY >= el.y &&
-          sceneY <= el.y + el.height
-        ) {
+        const isEdge = el.customData?.kind === "edge" || el.customData?.type === "arrow";
+        const hit = isEdge
+          ? hitsEdgePolyline(sceneX, sceneY, el)
+          : sceneX >= el.x && sceneX <= el.x + el.width &&
+            sceneY >= el.y && sceneY <= el.y + el.height;
+        if (hit) {
           hitBlockId = reverseMap.get(el.id) ?? null;
           if (!hitBlockId) {
             const prefix = mermaidId.includes("->") ? "edge" : "node";
