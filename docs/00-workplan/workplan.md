@@ -1,7 +1,7 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
 **Date:** 2026-03-31  
-**Status:** Wave 1 + Priority 0 complete — 10 open items (4 browser, 6 editor/voice/script), 4 later  
+**Status:** Wave 1 + Priority 0 complete — 12 open items (4 browser, 4 editor/voice/script, 2 diagram), 4 later  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
@@ -161,10 +161,10 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 11. **F-3** — Investigate why font family changes are not persisted to layout.json.
 
 **Later (not in current wave)**
-10. **E-5** — VS Code Copilot Chat panel toggle (low priority, extension dependency).
-11. **D2-001** — add "requires live E2E" flag to D2 checklist for CDP/DOM tools.
-12. **TD-CROSS-2** — uniform logging migration.
-13. **M95-VA** — visual annotation layer planning kickoff.
+14. **E-5** — VS Code Copilot Chat panel toggle (low priority, extension dependency).
+15. **D2-001** — add "requires live E2E" flag to D2 checklist for CDP/DOM tools.
+16. **TD-CROSS-2** — uniform logging migration.
+17. **M95-VA** — visual annotation layer planning kickoff.
 
 ---
 
