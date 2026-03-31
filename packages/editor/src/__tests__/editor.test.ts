@@ -114,7 +114,7 @@ describe("openHandler — §4.1", () => {
     makeWorkspace();
     await expect(
       openHandler({ path: "/workspace/src/foo.ts" }),
-    ).resolves.toEqual({ opened: true, path: "/workspace/src/foo.ts" });
+    ).resolves.toEqual({ opened: true, path: "/workspace/src/foo.ts", surface: "editor" });
     expect(window.showTextDocument).toHaveBeenCalled();
   });
 
@@ -124,6 +124,7 @@ describe("openHandler — §4.1", () => {
     expect(result).toEqual({
       opened: true,
       path: expect.any(String),
+      surface: "editor",
     });
     expect(normalizePathForComparison((result as Record<string, unknown>).path as string)).toBe("/workspace/src/foo.ts");
   });

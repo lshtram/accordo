@@ -198,7 +198,7 @@ describe("openHandler — §4.1", () => {
   it("OPEN-01: returns { opened: true, path } when file opens successfully", async () => {
     makeWorkspace();
     const result = await openHandler({ path: "/workspace/src/foo.ts" });
-    expect(result).toEqual({ opened: true, path: "/workspace/src/foo.ts" });
+    expect(result).toEqual({ opened: true, path: "/workspace/src/foo.ts", surface: "editor" });
   });
 
   it("OPEN-02: returns { error: string } when file not found", async () => {
@@ -218,6 +218,27 @@ describe("openHandler — §4.1", () => {
     const options = callArgs[1] as { selection: vscodeMock.Range };
     expect(options?.selection?.start?.line).toBe(9);   // 10 - 1 = 9 (0-based)
     expect(options?.selection?.start?.character).toBe(4); // 5 - 1 = 4 (0-based)
+  });
+
+  it("OPEN-04: .md file opens in accordo.markdownPreview, returns surface: 'preview'", async () => {
+    makeWorkspace();
+    const result = await openHandler({ path: "/workspace/src/readme.md" });
+    expect(result).toEqual({ opened: true, path: "/workspace/src/readme.md", surface: "preview" });
+    expect(vi.mocked(commands.executeCommand)).toHaveBeenCalledWith(
+      "vscode.openWith",
+      expect.any(vscodeMock.Uri),
+      "accordo.markdownPreview",
+    );
+  });
+
+  it("OPEN-05: .mmd file opens in accordo-diagram, returns surface: 'diagram'", async () => {
+    makeWorkspace();
+    const result = await openHandler({ path: "/workspace/src/diagram.mmd" });
+    expect(result).toEqual({ opened: true, path: "/workspace/src/diagram.mmd", surface: "diagram" });
+    expect(vi.mocked(commands.executeCommand)).toHaveBeenCalledWith(
+      "accordo-diagram.open",
+      expect.any(vscodeMock.Uri),
+    );
   });
 });
 

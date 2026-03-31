@@ -9,35 +9,59 @@
 import * as vscode from "vscode";
 import type { ExtensionToolDefinition, IDEState } from "@accordo/bridge-types";
 import { errorMessage, wrapHandler } from "../util.js";
+import { barTools } from "./bar.js";
 
 // ── Panel command map (§4.14) ─────────────────────────────────────────────────
 
-const PANEL_COMMANDS: Record<string, string> = {
-  explorer: "workbench.view.explorer",
-  search: "workbench.view.search",
-  git: "workbench.view.scm",
-  debug: "workbench.view.debug",
-  extensions: "workbench.view.extensions",
+/** Area indicates whether the panel lives in the left sidebar or the bottom panel. */
+type PanelArea = "sidebar" | "panel";
+
+/** Command entry for a panel: the VS Code command ID and which area it belongs to. */
+interface PanelEntry {
+  readonly command: string;
+  readonly area: PanelArea;
+}
+
+/**
+ * Panel command mapping.
+ *
+ * Sidebar views use show/focus commands (idempotent — always opens).
+ * Bottom panel views use toggle commands where available (flip visibility).
+ * See docs/00-workplan/panel-toggle-architecture.md §4.1 for rationale.
+ */
+const PANEL_COMMANDS: Readonly<Record<string, PanelEntry>> = {
+  // ── Primary sidebar views (show/focus) ──
+  explorer:        { command: "workbench.view.explorer",                   area: "sidebar" },
+  search:          { command: "workbench.view.search",                     area: "sidebar" },
+  git:             { command: "workbench.view.scm",                        area: "sidebar" },
+  debug:           { command: "workbench.view.debug",                      area: "sidebar" },
+  extensions:      { command: "workbench.view.extensions",                 area: "sidebar" },
+
+  // ── Bottom panel views (toggle or show/focus) ──
+  terminal:        { command: "workbench.action.terminal.toggleTerminal",  area: "panel" },
+  output:          { command: "workbench.action.output.toggleOutput",      area: "panel" },
+  problems:        { command: "workbench.actions.view.problems",           area: "panel" },
+  "debug-console": { command: "workbench.debug.action.toggleRepl",         area: "panel" },
 };
 
 // ── §4.14 accordo_panel_toggle ────────────────────────────────────────────────
 
 export async function panelToggleHandler(
   args: Record<string, unknown>,
-): Promise<{ visible: true; panel: string } | { error: string }> {
+): Promise<{ panel: string; area: PanelArea } | { error: string }> {
   try {
     const panel = args["panel"];
     if (typeof panel !== "string" || !panel) {
       return { error: "Argument 'panel' must be a non-empty string" };
     }
 
-    const command = PANEL_COMMANDS[panel];
-    if (!command) {
+    const entry = PANEL_COMMANDS[panel];
+    if (!entry) {
       return { error: `Unknown panel '${panel}'. Valid panels: ${Object.keys(PANEL_COMMANDS).join(", ")}` };
     }
 
-    await vscode.commands.executeCommand(command);
-    return { visible: true, panel };
+    await vscode.commands.executeCommand(entry.command);
+    return { panel, area: entry.area };
   } catch (err) {
     return { error: errorMessage(err) };
   }
@@ -103,13 +127,16 @@ export const layoutTools: ExtensionToolDefinition[] = [
     name: "accordo_panel_toggle",
     group: "layout",
     description:
-      "Toggle visibility of a VSCode sidebar panel (explorer, search, git, debug, extensions).",
+      "Toggle visibility of a VSCode sidebar panel (explorer, search, git, debug, extensions) or bottom panel (terminal, output, problems, debug-console).",
     inputSchema: {
       type: "object",
       properties: {
         panel: {
           type: "string",
-          enum: ["explorer", "search", "git", "debug", "extensions"],
+          enum: [
+            "explorer", "search", "git", "debug", "extensions",
+            "terminal", "output", "problems", "debug-console",
+          ],
           description: "Panel to toggle",
         },
       },
@@ -204,6 +231,7 @@ export async function layoutStateHandler(
 export function createLayoutTools(getState: () => IDEState): ExtensionToolDefinition[] {
   return [
     ...layoutTools,
+    ...barTools,
     {
       name: "accordo_layout_state",
       group: "layout",

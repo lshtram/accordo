@@ -44,13 +44,17 @@ export {
 /**
  * Open a file in the editor, optionally scrolling to a line/column.
  *
+ * .md files are automatically opened in the Accordo markdown preview
+ * ("accordo.markdownPreview" custom editor) when the md-viewer extension
+ * is installed. Non-.md files open in the standard text editor.
+ *
  * @param args.path - Required. File path (relative or absolute).
  * @param args.line - Optional. 1-based line number. Default: 1.
  * @param args.column - Optional. 1-based column. Default: 1.
  */
 export async function openHandler(
   args: Record<string, unknown>,
-): Promise<{ opened: true; path: string } | { error: string }> {
+): Promise<{ opened: true; path: string; surface: "editor" | "preview" | "diagram" } | { error: string }> {
   try {
     const p = argString(args, "path");
     const line = argNumberOpt(args, "line", 1);
@@ -58,9 +62,23 @@ export async function openHandler(
     const resolved = resolvePath(p);
     const uri = vscode.Uri.file(resolved);
     const position = new vscode.Position(line - 1, column - 1);
+
+    if (resolved.endsWith(".md")) {
+      // Open .md files in the Accordo markdown preview (if md-viewer is installed).
+      // Falls back to standard text editor if the custom editor is not available.
+      await vscode.commands.executeCommand("vscode.openWith", uri, "accordo.markdownPreview");
+      return { opened: true, path: resolved, surface: "preview" };
+    }
+
+    if (resolved.endsWith(".mmd")) {
+      // Open .mmd files in the Accordo diagram viewer.
+      await vscode.commands.executeCommand("accordo-diagram.open", uri);
+      return { opened: true, path: resolved, surface: "diagram" };
+    }
+
     const range = new vscode.Range(position, position);
     await vscode.window.showTextDocument(uri, { selection: range });
-    return { opened: true, path: resolved };
+    return { opened: true, path: resolved, surface: "editor" };
   } catch (err) {
     return { error: errorMessage(err) };
   }
