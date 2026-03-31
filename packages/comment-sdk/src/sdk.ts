@@ -180,6 +180,15 @@ export class AccordoCommentSDK {
     this._threads.removeThread(threadId);
   }
 
+  /**
+   * Reposition all pins in-place by re-evaluating coordinateToScreen for each thread.
+   * Does NOT recreate DOM nodes — only updates style.left/top.
+   * Used for pan/scroll viewport changes.
+   */
+  reposition(): void {
+    this._positioner.reposition();
+  }
+
   // ── Internal helpers ──────────────────────────────────────────────────────
 
   /** Compute the pin state for a thread (tested directly via resolvePinState). */

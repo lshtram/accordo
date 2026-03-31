@@ -127,6 +127,9 @@ let _fontReady: Promise<void> = Promise.resolve();
 // Snapshots the previous element list for mutation detection on each onChange.
 let prevElements: ReadonlyArray<ExcalidrawAPIElement> = [];
 
+// Snapshots the previous viewport state for pin repositioning on pan/zoom.
+let prevViewportState = { scrollX: 0, scrollY: 0, zoom: 1 };
+
 // Timing reference set by webview.ts bootstrap
 let _webviewT0 = 0;
 export function setWebviewT0(t: number): void {
@@ -219,6 +222,7 @@ export function ExcalidrawApp() {
       win.__accordoExportFns = exportFns;
       win.__accordoUI = ui;
       win.__accordoCanvasReady = true;
+      (win as Window & { __accordoShowToast?: (msg: string) => void }).__accordoShowToast = showToast;
 
       // Signal to the host that the webview is ready
       vscode.postMessage({ type: "canvas:timing", label: "script-to-excalidraw-ready", ms: Math.round(performance.now() - _webviewT0) });
@@ -233,6 +237,23 @@ export function ExcalidrawApp() {
       appStateRaw: Record<string, unknown>,
     ) => {
       const vscode = _vscode!;
+
+      // G-3: Detect viewport pan/zoom — Excalidraw uses CSS transforms, not DOM scroll,
+      // so PinPositioner (which listens for DOM scroll) never fires. We detect changes
+      // here in handleChange and call repositionPins to re-position all comment pins.
+      const scrollX = (appStateRaw["scrollX"] as number) ?? 0;
+      const scrollY = (appStateRaw["scrollY"] as number) ?? 0;
+      const zoom = (appStateRaw["zoom"] as { value: number } | undefined)?.value ?? 1;
+      if (
+        scrollX !== prevViewportState.scrollX ||
+        scrollY !== prevViewportState.scrollY ||
+        zoom !== prevViewportState.zoom
+      ) {
+        prevViewportState = { scrollX, scrollY, zoom };
+        const win = window as Window & { __accordoRepositionPins?: (zoom?: number) => void };
+        win.__accordoRepositionPins?.(zoom);
+      }
+
       const next = elements as unknown as readonly ExcalidrawAPIElement[];
       const mutations: NodeMutation[] = detectNodeMutations(
         prevElements as ExcalidrawAPIElement[],

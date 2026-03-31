@@ -1,4 +1,86 @@
 /**
+ * G-3 — Comment pins track diagram viewport movement
+ *
+ * Tests that repositionPins() calls sdk.reposition() (in-place style.left/top updates)
+ * rather than sdk.loadThreads() (which does destructive DOM recreation causing flicker).
+ *
+ * Requirements: G-3 (diag_workplan.md §4.16 — A18-W04 pin re-render on scroll/zoom)
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { handleCommentsLoad, repositionPins, sdk } from "../webview/comment-overlay.js";
+import type { SdkThread } from "@accordo/comment-sdk";
+
+/**
+ * Mock the AccordoCommentSDK module so we can spy on reposition without
+ * needing the real SDK DOM initialization (init() requires a canvas container).
+ */
+vi.mock("@accordo/comment-sdk", () => ({
+  AccordoCommentSDK: vi.fn(() => ({
+    init: vi.fn(),
+    loadThreads: vi.fn(),
+    reposition: vi.fn(),
+    openPopover: vi.fn(),
+  })),
+}));
+
+describe("repositionPins (G-3 — viewport pin tracking)", () => {
+  beforeEach(() => {
+    vi.mocked(sdk.reposition).mockClear();
+  });
+
+  // G3-T1: repositionPins calls sdk.reposition() (not loadThreads) for in-place updates
+  // DR-1 fix: Using sdk.reposition() avoids DOM recreation and visible flicker at 60fps.
+  it("G3-T1: repositionPins calls sdk.reposition() for in-place pin updates", () => {
+    // Clear any prior calls
+    vi.mocked(sdk.reposition).mockClear();
+    vi.mocked(sdk.loadThreads).mockClear();
+
+    // handleCommentsLoad calls sdk.loadThreads() to load threads (correct behavior)
+    handleCommentsLoad([
+      {
+        id: "thread-1",
+        anchor: {
+          kind: "surface",
+          uri: "file:///test.mmd",
+          surfaceType: "diagram",
+          coordinates: { nodeId: "node:A" },
+        },
+        status: "open",
+        comments: [
+          {
+            id: "c1",
+            author: { kind: "user", name: "Alice" },
+            body: "Comment on A",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      },
+    ]);
+
+    // Verify loadThreads was called once by handleCommentsLoad
+    expect(vi.mocked(sdk.loadThreads)).toHaveBeenCalledTimes(1);
+    vi.mocked(sdk.loadThreads).mockClear();
+
+    // repositionPins should call sdk.reposition() (not loadThreads)
+    repositionPins();
+
+    expect(vi.mocked(sdk.reposition)).toHaveBeenCalledTimes(1);
+    // loadThreads should NOT be called by repositionPins
+    expect(vi.mocked(sdk.loadThreads)).not.toHaveBeenCalled();
+  });
+});
+
+describe("repositionPins empty state (G-3 — viewport pin tracking)", () => {
+  // G3-T2: repositionPins is safe to call with no threads loaded
+  it("G3-T2: repositionPins does not throw when no threads are loaded", () => {
+    // handleCommentsLoad with empty array clears currentSdkThreads to []
+    handleCommentsLoad([]);
+    expect(() => repositionPins()).not.toThrow();
+  });
+});
+
+/**
  * G-2 — Edge hit-testing geometry helpers
  *
  * Tests hitsEdgePolyline() and edgePolylineMidpoint() — the two named, exported

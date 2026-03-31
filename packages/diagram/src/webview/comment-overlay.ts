@@ -17,14 +17,25 @@
 
 import { AccordoCommentSDK } from "@accordo/comment-sdk";
 import type { SdkThread } from "@accordo/comment-sdk";
-import { showToast } from "./excalidraw-canvas.js";
 import { hitsEdgePolyline, edgePolylineMidpoint } from "./comment-overlay-geometry.js";
+
+// showToast is imported lazily (at call time, not import time) to avoid
+// triggering the Excalidraw module-load chain in unit tests that import
+// this module without a DOM.  excalidraw-canvas.ts sets window.__accordoShowToast
+// during bootstrap, so the reference is always valid at runtime.
+function getShowToast(): (msg: string) => void {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const win = typeof window !== "undefined" ? window : null;
+  const fn = win && (win as Window & { __accordoShowToast?: (msg: string) => void }).__accordoShowToast;
+  return fn ?? (() => { /* no-op before canvas bootstrap */ });
+}
 // Re-export geometry helpers so they are accessible via comment-overlay module
 export { hitsEdgePolyline, edgePolylineMidpoint };
 
 // ── Module-level state ────────────────────────────────────────────────────────
 
 const sdk = new AccordoCommentSDK();
+export { sdk };
 
 /** mermaidId (no prefix) → excalidraw element ID */
 let idMap = new Map<string, string>();
@@ -34,11 +45,6 @@ let reverseMap = new Map<string, string>();
 
 /** Current threads rendered by the SDK. */
 let currentSdkThreads: SdkThread[] = [];
-
-/** Last known scroll/zoom state for change detection. */
-let prevScrollX = 0;
-let prevScrollY = 0;
-let prevZoom = 1;
 
 // ── A18-W03 — Convert CommentThread[] → SdkThread[] ────────────────────────
 
@@ -107,6 +113,7 @@ function rebuildIdMap(
 // Base size: 22 × 22 px at zoom 1.0.
 
 let _pinSizeStyle: HTMLStyleElement | null = null;
+let _lastZoom: number = 1;
 
 function _updatePinSizeCss(zoom: number): void {
   if (!_pinSizeStyle) {
@@ -117,6 +124,7 @@ function _updatePinSizeCss(zoom: number): void {
   const sz = Math.round(22 * zoom);
   const fs = Math.round(11 * zoom);
   _pinSizeStyle.textContent = `.accordo-pin{width:${sz}px;height:${sz}px;font-size:${fs}px;}`;
+  _lastZoom = zoom;
 }
 
 // ── A18-W05 — Custom inline input overlay ────────────────────────────────────
@@ -208,7 +216,7 @@ function showCommentInputOverlay(clientX: number, clientY: number, blockId: stri
     }
     vscode.postMessage({ type: "comment:create", blockId, body });
     dismiss();
-    showToast("Comment added");
+    getShowToast()("Comment added");
   }
 
   cancelBtn.addEventListener("click", (e) => { e.stopPropagation(); dismiss(); });
@@ -263,7 +271,6 @@ function pollForCanvasReady(): void {
         getSceneElements(): Array<{ id: string; customData?: { mermaidId?: string; kind?: string } }>;
         getAppState(): { scrollX: number; scrollY: number; zoom: { value: number } };
       };
-      __accordoWebviewUI?: { postMessage(msg: unknown): void };
     };
 
     if (!win.__accordoCanvasReady) return;
@@ -271,14 +278,11 @@ function pollForCanvasReady(): void {
     _initPollingActive = false;
 
     const handle = win.__accordoHandle!;
-    const ui = win.__accordoWebviewUI!;
     const canvasRoot = document.getElementById("excalidraw-root");
     if (!canvasRoot) return;
 
     // Wire showToast from excalidraw-canvas into the window for comment-overlay's use
-    // (comment-overlay's getShowToast reads from window.__accordoShowToast)
-    // We import showToast directly from excalidraw-canvas at the top of this module
-    // instead — but we need to re-export it for use by the callback below.
+    // (comment-overlay's getShowToast reads from window.__accordoShowToast at call time).
     // The SDK callbacks post messages via ui.postMessage which already routes to vscode.
     sdk.init({
       container: canvasRoot,
@@ -372,15 +376,14 @@ function pollForCanvasReady(): void {
     });
 
     // ── A18-W04 — Pin re-render on scroll/zoom ─────────────────────────────
-    // We poll the appState by wrapping the Excalidraw handle's updateScene.
-    // A simpler approach: expose a function that comment-overlay.ts calls
-    // when it receives scroll/zoom change notifications via postMessage.
-    // Since the comment SDK manages its own pin positioning via coordinateToScreen,
-    // we just need to call sdk.loadThreads() whenever scroll/zoom changes.
-    // We do this from the window message handler in webview.ts (comments:load
-    // and canvas:node-moved messages trigger it there).
-    void prevScrollX; void prevScrollY; void prevZoom; // suppress unused warnings
+    // Excalidraw uses CSS transforms for pan/zoom (not DOM scroll), so
+    // PinPositioner's DOM scroll listeners never fire. Instead, excalidraw-canvas.ts
+    // calls window.__accordoRepositionPins(zoom) from its handleChange callback
+    // when it detects scrollX/scrollY/zoom value changes.
     _updatePinSizeCss(1); // initial default zoom
+
+    // DR-4: Expose repositionPins on window to avoid circular import with excalidraw-canvas
+    win.__accordoRepositionPins = repositionPins;
   }, 50);
 }
 
@@ -405,6 +408,21 @@ export function handleCommentsLoad(threads: unknown[]): void {
  */
 export function handleFocusThread(threadId: string): void {
   sdk.openPopover(threadId);
+}
+
+/**
+ * Reposition all comment pins — called when the Excalidraw viewport scrolls or zooms.
+ * Uses in-place style.left/top updates (via sdk.reposition()) to avoid DOM
+ * recreation and visible flicker. Zoom changes also update pin size CSS.
+ *
+ * @param zoom - Current zoom level (optional). If provided and different from
+ *               last recorded zoom, updates pin size CSS before repositioning.
+ */
+export function repositionPins(zoom?: number): void {
+  if (zoom !== undefined && zoom !== _lastZoom) {
+    _updatePinSizeCss(zoom);
+  }
+  sdk.reposition();
 }
 
 /**

@@ -125,6 +125,16 @@ export class PinPositioner {
     this._repositionHandler = undefined;
   }
 
+  /**
+   * Manually trigger an in-place reposition of all registered pins.
+   * Updates style.left/top without any DOM creation/removal.
+   * Called by the SDK when the viewport pans/zooms (not by DOM scroll events,
+   * which are handled internally by the registered scroll listeners).
+   */
+  reposition(): void {
+    this._repositionHandler?.();
+  }
+
   // ── Private ──────────────────────────────────────────────────────────────
 
   private _registerScrollTarget(target: EventTarget): void {
