@@ -143,6 +143,7 @@ const VIEW_COMMANDS: Readonly<Record<string, ViewEntry>> = {
   git:             { command: "workbench.view.scm",                       area: "sidebar" },
   debug:           { command: "workbench.view.debug",                     area: "sidebar" },
   extensions:      { command: "workbench.view.extensions",                area: "sidebar" },
+  comments:        { command: "accordo-comments-panel.focus",             area: "sidebar" },
 
   // ── Panel views ──
   terminal:        { command: "workbench.action.terminal.toggleTerminal", area: "panel" },
@@ -354,7 +355,7 @@ export const barTools: ExtensionToolDefinition[] = [
         view: {
           type: "string",
           description:
-            "Optional: specific view to open within the area. Only valid for 'sidebar' and 'panel' areas (not 'rightBar'). Sidebar: 'explorer', 'search', 'git', 'debug', 'extensions'. Panel: 'terminal', 'output', 'problems', 'debug-console'. Other extension views may also work — try the view ID. Only valid with action 'open'.",
+            "Optional: specific view to open within the area. Only valid for 'sidebar' and 'panel' areas (not 'rightBar'). Sidebar: 'explorer', 'search', 'git', 'debug', 'extensions', 'comments'. Panel: 'terminal', 'output', 'problems', 'debug-console'. Other extension views may also work — try the view ID. Only valid with action 'open'.",
         },
         action: {
           type: "string",

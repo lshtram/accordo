@@ -18,7 +18,7 @@
  *   [x] E-6-10: rightBar has no views; area-level only
  *
  * Exported API checklist:
- *   ✓ layoutPanelHandler  — 36 tests
+ *   ✓ layoutPanelHandler  — 37 tests
  *   ✓ _resetBarState      — used in beforeEach + 2 tests
  *   ✓ _getBarState        — 6 tests
  *   ✓ barTools            — 9 registration tests
@@ -203,6 +203,7 @@ describe("view-level open — E-6-06, E-6-08, E-6-09", () => {
       ["git",        "workbench.view.scm"],
       ["debug",      "workbench.view.debug"],
       ["extensions", "workbench.view.extensions"],
+      ["comments",   "accordo-comments-panel.focus"],
     ];
 
     for (const [view, vsCommand] of sidebarViewCases) {
