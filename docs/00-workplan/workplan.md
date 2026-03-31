@@ -1,7 +1,7 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
 **Date:** 2026-03-31  
-**Status:** Wave 1 + Priority 0 complete — 7 open items (4 browser, 3 editor/voice/script), 4 later  
+**Status:** Wave 1 + Priority 0 complete — 4 open items (Priority A browser tab continuity), 4 later  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
@@ -62,7 +62,7 @@ Targeted upgrades:
 | F-3 | Style persistence: font type (fontFamily) not being saved | MEDIUM | **FIXED** (`abba06f`) |
 | F-4 | Style guide updates: added newline (`\\n`) and dark font color guidance | — | **DONE** |
 | F-5 | Newline rendering: `normalizeLabel()` converts Mermaid `\\n` → actual newline for Excalidraw | — | **DONE** |
-| F-6 | Ctrl+F search: works in built-in markdown preview but not in accordo markdown preview | MEDIUM | Open |
+| F-6 | Ctrl+F search: works in built-in markdown preview but not in accordo markdown preview | MEDIUM | ✅ **DONE** |
 
 ---
 
@@ -70,7 +70,7 @@ Targeted upgrades:
 
 | # | Gap | Priority | Status |
 |---|---|---|---|
-| G-1 | Comments on .md files in accordo markdown preview not rendering | **HIGH** | Open |
+| G-1 | Comments on .md files in accordo markdown preview not rendering | **HIGH** | ✅ **DONE** |
 | G-2 | Alt+click on diagram edges inconsistently opens comment dialog (shapes always work) | **HIGH** | **FIXED** (`64b76b8`) |
 | G-3 | Comment pins don't track diagram viewport movement (pins stay fixed when panning) | MEDIUM | **FIXED** (`271b02f`) |
 
@@ -95,8 +95,8 @@ Targeted upgrades:
 
 | # | Gap | Priority | Status |
 |---|---|---|---|
-| E-1 | `voice_readAloud` missing `block` parameter — script narration cannot sequence steps | **HIGH** | Open |
-| E-2 | `script_run` returns "Invalid JSON" error — tool completely non-functional | **HIGH** | Open |
+| E-1 | `voice_readAloud` missing `block` parameter — script narration cannot sequence steps | **HIGH** | In progress (other session) |
+| E-2 | `script_run` returns "Invalid JSON" error — tool completely non-functional | **HIGH** | In progress (other session) |
 | E-3 | No MCP tool to toggle markdown preview panel | MEDIUM | Done — auto-open .md in preview via `accordo_editor_open` (8cb86b1) |
 | E-4 | `panel_toggle` only maps left sidebar — missing terminal/output/problems | MEDIUM | Done (superseded by E-6) |
 | E-5 | No tool to toggle VS Code Copilot Chat panel | LOW | Open |
