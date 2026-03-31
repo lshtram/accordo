@@ -6,6 +6,8 @@ patterns:
   P-04: "replace_string_in_file context mismatch — re-read file before editing"
   P-08: "semantic_search must not be parallelized — use search_subagent"
   P-11: "git commit -m with newlines hangs zsh — single-line -m or use -F file"
+  P-12: "Excalidraw arrow elements have width/height=0 — use point-to-polyline distance for hit-testing"
+  P-13: "Excalidraw pans via CSS transforms (React state), not DOM scroll — track viewport via onChange callback"
 ---
 
 # patterns.md — Generic Agent Patterns
@@ -64,3 +66,21 @@ Parallel `semantic_search` calls produce degraded/duplicate results.
 Multi-line `-m` strings leave the shell in `dquote>` mode.
 
 - **Rule:** Single concise `-m` line. For longer messages, `create_file` a message file + `git commit -F`.
+
+---
+
+## P-12 — Excalidraw arrow elements have `width/height = 0` for hit-testing
+
+Excalidraw stores arrow/line geometry in `points[]` (relative polyline coordinates), not in `width/height`. Using AABB `el.x + el.width` / `el.y + el.height` degenerates to a zero-area point test for arrows.
+
+- **Rule:** For any Excalidraw element where `el.type === "arrow"` or `kind === "edge"`, use point-to-polyline distance (within threshold N scene-pixels) instead of AABB. For pin/midpoint positioning, walk the polyline arc-length rather than using `el.x + el.width/2`.
+- **Example:** See `packages/diagram/src/webview/comment-overlay-geometry.ts` (`hitsEdgePolyline`, `edgePolylineMidpoint`).
+
+---
+
+## P-13 — Excalidraw pans via CSS transforms, not DOM scroll events
+
+Excalidraw uses internal React state (`appState.scrollX/scrollY`) and CSS `transform` for panning. No DOM `scroll` event fires. Listeners on native `scroll` events will never fire during canvas pan.
+
+- **Rule:** To track viewport changes (for pins, overlays, etc.), use the `onChange` / `handleChange` callback in the Excalidraw integration — compare `appState.scrollX/scrollY/zoom` against a previous snapshot and react to value changes there. Do not rely on DOM scroll/resize events.
+- **Example:** See `packages/diagram/src/webview/excalidraw-canvas.ts` (`prevViewportState` ref + `handleChange` viewport detection).
