@@ -189,6 +189,17 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 
 ---
 
+## 4) Completed This Session
+
+| Item | Status | Evidence |
+|---|---|---|
+| **AudioQueue** — singleton audio player with receipt-based FIFO sequencing | ✅ **DONE** (`1a419d6`) | 368 tests passing; 29 audio-queue tests; Phase A→B→C→D→D3→E complete |
+
+**AudioQueue detail:** `packages/voice/src/core/audio/audio-queue.ts` + integration into `streamingSpeak()` (AQ-INT-01), `doSpeakText()` (AQ-INT-02), `createReadAloudTool()` (AQ-INT-03). Prevents O(N×sentences) aplay process explosion from overlapping fire-and-forget streaming calls. Root cause was two-fold: (1) streamingSpeak pre-spawned next player before current finished, and (2) every sentence in a streaming call spawned its own player without any serialization. Fix: single persistent process playing chunks sequentially via FIFO queue, each enqueue() returns a receipt Promise that resolves when that chunk finishes. Review artifacts: `docs/reviews/audio-queue-phase-a.md`, `docs/reviews/audio-queue-phase-a-review.md`, `docs/reviews/audio-queue-phase-c-assessment.md`, `docs/reviews/audio-queue-phase-d.md`. Testing guide: `docs/30-development/testing-guide-audio-queue.md`.
+
+
+---
+
 ## 3) Guardrails
 
 - Keep TDD phase gates and reviewer checkpoints mandatory.
