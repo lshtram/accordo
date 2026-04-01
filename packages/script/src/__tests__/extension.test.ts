@@ -1,6 +1,11 @@
 /**
- * M52-EXT — extension.ts tests (Phase B — must FAIL before implementation)
- * Coverage: M52-EXT-01 through M52-EXT-13
+ * M52-EXT — extension.ts tests
+ * Coverage: M52-EXT-01, M52-EXT-03 through M52-EXT-07, M52-EXT-10, M52-EXT-12, M52-EXT-13
+ *
+ * NOTE: M52-EXT-02 (bridge acquisition), M52-EXT-10 (Bridge tool registration),
+ * and M52-EXT-11 (state publishing) have been removed. The 4 script tools
+ * (accordo_script_run/stop/status/discover) are Hub-native tools registered in
+ * packages/hub/src/server.ts. This extension must NOT register them via Bridge.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -24,21 +29,9 @@ function makeBridge(): BridgeAPI {
   };
 }
 
-function setupBridge(bridge: BridgeAPI | undefined): void {
-  (extensions as Record<string, unknown>).getExtension = vi.fn().mockImplementation(
-    (id: string) => id === "accordo.accordo-bridge"
-      ? (bridge ? { exports: bridge, isActive: true } : undefined)
-      : undefined,
-  );
-}
-
 function setupVoiceInstalled(installed: boolean): void {
-  const originalGetExtension = (extensions as Record<string, unknown>).getExtension as ReturnType<typeof vi.fn>;
-  const bridgeMock = originalGetExtension.mock.results[0]?.value;
-
   (extensions as Record<string, unknown>).getExtension = vi.fn().mockImplementation(
     (id: string) => {
-      if (id === "accordo.accordo-bridge") return bridgeMock;
       if (id === "accordo.accordo-voice") return installed ? { exports: {}, isActive: true } : undefined;
       return undefined;
     },
@@ -47,6 +40,8 @@ function setupVoiceInstalled(installed: boolean): void {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: no extensions installed
+  (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue(undefined);
 });
 
 // ── M52-EXT-00: exports ──────────────────────────────────────────────────────
@@ -65,29 +60,35 @@ describe("M52-EXT exports", () => {
 
 describe("M52-EXT-01 activation returns ScriptExtensionApi", () => {
   it("returns an object with a runner", () => {
-    setupBridge(undefined);
     const ctx = createExtensionContextMock();
     const api = activate(ctx);
     expect(api.runner).toBeDefined();
   });
 });
 
-// ── M52-EXT-02: bridge acquisition ───────────────────────────────────────────
+// ── M52-EXT-10 (regression): no Bridge tool registration ─────────────────────
+// The 4 script tools are Hub-native. Registering them via Bridge would create
+// ghost tool entries (pointing to a runner that never runs scripts) in Hub's
+// bridgeTools pool. See packages/hub/src/server.ts for the canonical registration.
 
-describe("M52-EXT-02 bridge acquisition", () => {
-  it("queries extensions for accordo.accordo-bridge", () => {
-    setupBridge(undefined);
+describe("M52-EXT-10 no Bridge tool registration", () => {
+  it("does NOT call bridge.registerTools (tools are Hub-native)", () => {
+    const bridge = makeBridge();
+    // Simulate bridge being available
+    (extensions as Record<string, unknown>).getExtension = vi.fn().mockImplementation(
+      (id: string) => id === "accordo.accordo-bridge" ? { exports: bridge, isActive: true } : undefined,
+    );
     const ctx = createExtensionContextMock();
     activate(ctx);
-    expect(extensions.getExtension).toHaveBeenCalledWith("accordo.accordo-bridge");
+
+    expect(bridge.registerTools).not.toHaveBeenCalled();
   });
 });
 
-// ── M52-EXT-10: accordo.script.stop command ──────────────────────────────────
+// ── M52-EXT-10b: accordo.script.stop command ─────────────────────────────────
 
-describe("M52-EXT-10 accordo.script.stop command", () => {
+describe("M52-EXT-10b accordo.script.stop command", () => {
   it("registers the accordo.script.stop VS Code command", () => {
-    setupBridge(undefined);
     const ctx = createExtensionContextMock();
     activate(ctx);
 
@@ -98,7 +99,6 @@ describe("M52-EXT-10 accordo.script.stop command", () => {
   });
 
   it("calling accordo.script.stop calls runner.stop()", () => {
-    setupBridge(undefined);
     const ctx = createExtensionContextMock();
     const api = activate(ctx);
     vi.spyOn(api.runner, "stop").mockResolvedValue(undefined);
@@ -117,7 +117,6 @@ describe("M52-EXT-10 accordo.script.stop command", () => {
 
 describe("M52-EXT-03 ScriptSubtitleBar created", () => {
   it("creates a status bar item via window.createStatusBarItem", () => {
-    setupBridge(undefined);
     const ctx = createExtensionContextMock();
     activate(ctx);
     expect(window.createStatusBarItem).toHaveBeenCalled();
@@ -128,7 +127,6 @@ describe("M52-EXT-03 ScriptSubtitleBar created", () => {
 
 describe("M52-EXT-04 executeCommand wiring", () => {
   it("runner.deps.executeCommand calls vscode.commands.executeCommand", async () => {
-    setupBridge(undefined);
     const ctx = createExtensionContextMock();
     const api = activate(ctx);
     const onComplete = vi.fn();
@@ -151,10 +149,7 @@ describe("M52-EXT-04 executeCommand wiring", () => {
 
 describe("M52-EXT-05 speakText wiring", () => {
   it("speakText dep absent when voice extension not installed", () => {
-    const bridge = makeBridge();
-    setupBridge(bridge);
     setupVoiceInstalled(false);
-
     const ctx = createExtensionContextMock();
     const api = activate(ctx);
 
@@ -162,7 +157,6 @@ describe("M52-EXT-05 speakText wiring", () => {
     // We verify indirectly: run a speak step and confirm commands.executeCommand
     //  is NOT called with accordo.voice.speakText
     (commands.executeCommand as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-    const onComplete = vi.fn();
     api.runner.run({ steps: [{ type: "speak", text: "hi" }] });
 
     // If no voice, it falls back to subtitle bar (showSubtitle / wait), not commands.executeCommand
@@ -175,10 +169,7 @@ describe("M52-EXT-05 speakText wiring", () => {
   });
 
   it("speakText dep present when voice extension is installed", () => {
-    const bridge = makeBridge();
-    setupBridge(bridge);
     setupVoiceInstalled(true);
-
     const ctx = createExtensionContextMock();
     activate(ctx);
 
@@ -191,7 +182,6 @@ describe("M52-EXT-05 speakText wiring", () => {
 
 describe("M52-EXT-07 openAndHighlight wiring", () => {
   it("highlight step calls workspace.openTextDocument and window.showTextDocument", async () => {
-    setupBridge(undefined);
     const ctx = createExtensionContextMock();
     const api = activate(ctx);
 
@@ -213,67 +203,17 @@ describe("M52-EXT-07 openAndHighlight wiring", () => {
 
 describe("M52-EXT-12 graceful degradation without bridge", () => {
   it("activate does not throw when bridge is unavailable", () => {
-    setupBridge(undefined);
     const ctx = createExtensionContextMock();
     expect(() => activate(ctx)).not.toThrow();
   });
 
-  it("commands are still registered even without bridge", () => {
-    setupBridge(undefined);
+  it("accordo.script.stop is registered even without bridge", () => {
     const ctx = createExtensionContextMock();
     activate(ctx);
 
     const registeredNames = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls
       .map(([name]) => name as string);
     expect(registeredNames).toContain("accordo.script.stop");
-  });
-});
-
-// ── M52-EXT-10: bridge tool registration ─────────────────────────────────────
-
-describe("M52-EXT-10 tool registration via bridge", () => {
-  it("registers exactly 4 script tools via bridge.registerTools", () => {
-    const bridge = makeBridge();
-    setupBridge(bridge);
-    const ctx = createExtensionContextMock();
-    activate(ctx);
-
-    expect(bridge.registerTools).toHaveBeenCalledOnce();
-    const [extensionId, tools] = (bridge.registerTools as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(extensionId).toBe("accordo.accordo-script");
-    expect(tools).toHaveLength(4);
-  });
-
-  it("registered tool names include run, stop, status", () => {
-    const bridge = makeBridge();
-    setupBridge(bridge);
-    const ctx = createExtensionContextMock();
-    activate(ctx);
-
-    const [, tools] = (bridge.registerTools as ReturnType<typeof vi.fn>).mock.calls[0];
-    const names = (tools as Array<{ name: string }>).map(t => t.name);
-    expect(names).toContain("accordo_script_run");
-    expect(names).toContain("accordo_script_stop");
-    expect(names).toContain("accordo_script_status");
-    expect(names).toContain("accordo_script_discover");
-  });
-});
-
-// ── M52-EXT-11: state publishing ─────────────────────────────────────────────
-
-describe("M52-EXT-11 state publishing to bridge", () => {
-  it("publishes state on step complete", async () => {
-    const bridge = makeBridge();
-    setupBridge(bridge);
-    const ctx = createExtensionContextMock();
-    const api = activate(ctx);
-
-    api.runner.run({ steps: [{ type: "clear-highlights" }] });
-    await vi.waitFor(() => expect(bridge.publishState).toHaveBeenCalled(), { timeout: 1000 });
-
-    const [extId, state] = (bridge.publishState as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(extId).toBe("accordo.accordo-script");
-    expect(state).toHaveProperty("state");
   });
 });
 

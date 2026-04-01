@@ -2,8 +2,14 @@
  * extension.ts
  *
  * accordo-script VS Code extension entry point.
- * Wires together ScriptSubtitleBar, ScriptRunner, and the three MCP tools,
- * then registers them with the Bridge via BridgeAPI.
+ * Wires together ScriptSubtitleBar and ScriptRunner.
+ *
+ * NOTE: The 4 MCP script tools (accordo_script_run, accordo_script_stop,
+ * accordo_script_status, accordo_script_discover) are Hub-native tools
+ * registered in packages/hub/src/server.ts. They must NOT be registered
+ * here via Bridge — doing so would create a dual-registration where Hub's
+ * bridgeTools pool would contain ghost tool entries pointing to a runner
+ * that never executes any scripts.
  *
  * M52-EXT — Extension Wiring
  */
@@ -11,10 +17,6 @@
 import * as vscode from "vscode";
 import { ScriptSubtitleBar } from "./subtitle-bar.js";
 import { ScriptRunner, type ScriptRunnerDeps } from "./script-runner.js";
-import { makeRunScriptTool } from "./tools/run-script.js";
-import { makeStopScriptTool } from "./tools/stop-script.js";
-import { makeScriptStatusTool } from "./tools/script-status.js";
-import { makeScriptDiscoverTool } from "./tools/script-discover.js";
 
 /** Exported by the Bridge extension as its public API surface. */
 export interface BridgeAPI {
@@ -38,9 +40,6 @@ export function activate(context: vscode.ExtensionContext): ScriptExtensionApi {
   // ── Subtitle bar ─────────────────────────────────────────────────────────
   const subtitleBar = new ScriptSubtitleBar();
   context.subscriptions.push(subtitleBar);
-
-  // ── Optional bridge ───────────────────────────────────────────────────────
-  const bridge = vscode.extensions.getExtension<BridgeAPI>("accordo.accordo-bridge")?.exports;
 
   // ── Voice wiring ──────────────────────────────────────────────────────────
   const voiceInstalled = !!vscode.extensions.getExtension("accordo.accordo-voice");
@@ -96,17 +95,7 @@ export function activate(context: vscode.ExtensionContext): ScriptExtensionApi {
   };
 
   // ── Runner ────────────────────────────────────────────────────────────────
-  const runner = new ScriptRunner(deps, {
-    onStepComplete: () => {
-      bridge?.publishState("accordo.accordo-script", { ...runner.status });
-    },
-    onComplete: () => {
-      bridge?.publishState("accordo.accordo-script", { ...runner.status });
-    },
-    onStop: () => {
-      bridge?.publishState("accordo.accordo-script", { ...runner.status });
-    },
-  });
+  const runner = new ScriptRunner(deps);
 
   // ── Commands ──────────────────────────────────────────────────────────────
   context.subscriptions.push(
@@ -114,18 +103,6 @@ export function activate(context: vscode.ExtensionContext): ScriptExtensionApi {
       void runner.stop();
     }),
   );
-
-  // ── MCP tool registration ─────────────────────────────────────────────────
-  if (bridge) {
-    const tools = [
-      makeRunScriptTool(runner),
-      makeStopScriptTool(runner),
-      makeScriptStatusTool(runner),
-      makeScriptDiscoverTool(),
-    ];
-    const toolsDisposable = bridge.registerTools("accordo.accordo-script", tools);
-    context.subscriptions.push(toolsDisposable);
-  }
 
   return { runner };
 }
