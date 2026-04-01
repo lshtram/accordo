@@ -20,6 +20,15 @@ import type { ScriptRunnerDeps } from "./script-runner.js";
 const SCRIPT_DEP_TIMEOUT = 30_000;
 
 /**
+ * Short timeout for fire-and-forget best-effort bridge calls (ms).
+ * Used for showSubtitle and clearHighlights — these are non-critical and
+ * should not hold live timer handles for 30 s each. A 3 s timeout means
+ * at most 3 s of dangling timer per call instead of 30 s, reducing event-loop
+ * pressure when a demo script fires dozens of these in quick succession.
+ */
+const FIRE_AND_FORGET_TIMEOUT = 3_000;
+
+/**
  * Call bridgeServer.invoke and throw on failure.
  * DEC-007: preserves the ScriptRunner's error handling contract —
  * every dep method that fails throws, so errPolicy ("abort"|"skip") works.
@@ -68,9 +77,11 @@ export function createScriptDepsAdapter(
     // interface. We fire bridgeServer.invoke() but do NOT await it — the
     // promise is intentionally detached (fire-and-forget). Errors are caught and
     // logged rather than propagated since the caller (ScriptRunner) cannot act on them.
+    // Uses FIRE_AND_FORGET_TIMEOUT (3 s) rather than the full 30 s to limit the
+    // number of live timer handles during long demo scripts.
     showSubtitle: (text: string, durationMs: number): void => {
       void bridgeServer
-        .invoke("accordo_subtitle_show", { text, durationMs }, SCRIPT_DEP_TIMEOUT)
+        .invoke("accordo_subtitle_show", { text, durationMs }, FIRE_AND_FORGET_TIMEOUT)
         .catch(() => {
           // Swallow errors — subtitle display is best-effort and non-critical.
           // The script continues regardless.
@@ -87,11 +98,12 @@ export function createScriptDepsAdapter(
     },
 
     // clearHighlights is synchronous in the interface — fire-and-forget.
+    // Uses FIRE_AND_FORGET_TIMEOUT (3 s) rather than the full 30 s.
     clearHighlights: (): void => {
       void bridgeServer.invoke(
         "accordo_editor_clearHighlights",
         {},
-        SCRIPT_DEP_TIMEOUT,
+        FIRE_AND_FORGET_TIMEOUT,
       );
     },
 

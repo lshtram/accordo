@@ -5,13 +5,29 @@
  * synthesizing sentence N+1 to reduce perceived latency.
  *
  * M51-STR
+ *
+ * Design note — process safety (fix for CPU-spike / process explosion bug):
+ *
+ * The original implementation pre-spawned the NEXT audio player process before
+ * the current sentence had finished playing. When multiple fire-and-forget
+ * streamingSpeak() calls overlapped (e.g. from a demo script), this produced
+ * O(N * sentences) audio player processes running concurrently, saturating all
+ * CPU cores. The fix: synthesis of the next sentence still overlaps with
+ * playback (valuable latency win), but the next PLAYER is only created after
+ * the current sentence finishes. The marginal spawn cost (~5–10 ms on Linux)
+ * is negligible compared to synthesis time.
+ *
+ * Cancellation: checked at three points —
+ *   1. Before entering the loop (fast bail)
+ *   2. After synthesis completes (before play starts)
+ *   3. After play completes (before next iteration)
+ * This ensures no orphaned player processes survive cancellation.
  */
 
 import type { TtsProvider, TtsSynthesisRequest } from "../providers/tts-provider.js";
 import type { CancellationToken } from "../providers/stt-provider.js";
 import { splitIntoSentences } from "../../text/sentence-splitter.js";
-import { playPcmAudio, createPreSpawnedPlayer } from "./playback.js";
-import type { PreSpawnedPlayer } from "./playback.js";
+import { playPcmAudio } from "./playback.js";
 
 export interface StreamingSpeakOptions {
   language: string;
@@ -56,11 +72,13 @@ export async function streamingSpeak(
     speed,
   });
 
-  // M51-STR-06: single-sentence falls back to single-shot (no overlap needed)
+  // M51-STR-06: single-sentence — single-shot (no overlap needed)
   if (sentences.length === 1) {
     const tSynth = Date.now();
     const result = await ttsProvider.synthesize(makeRequest(sentences[0]!), cancellationToken);
     const synthMs = Date.now() - tSynth;
+    // Check cancellation after synthesis but before spawning a player process.
+    if (cancellationToken?.isCancellationRequested) return;
     const tPlay = Date.now();
     await playPcmAudio(result.audio, result.sampleRate ?? 22050);
     const playMs = Date.now() - tPlay;
@@ -69,36 +87,33 @@ export async function streamingSpeak(
   }
 
   // M51-STR-03 + M51-STR-04: streaming pipeline
-  // Kick off the first synthesis before entering the loop so it starts
-  // immediately. Pre-spawn a player immediately so the process is already
-  // running (stdin open) by the time the first synthesis completes —
-  // eliminating the spawn overhead from the perceived start latency.
+  //
+  // SYNTHESIS overlaps with playback (latency win kept):
+  //   synthesis of sentence i+1 starts while sentence i is playing.
+  //
+  // PLAYER SPAWN does NOT overlap (process-safety fix):
+  //   the audio player for sentence i+1 is created only after sentence i
+  //   finishes playing. This prevents concurrent player process accumulation
+  //   when multiple overlapping fire-and-forget calls are in flight.
   const tFirstSynth = Date.now();
   let pendingSynthesis = ttsProvider.synthesize(makeRequest(sentences[0]!), cancellationToken);
-
-  // Pre-spawn the player for sentence 0. On macOS/Linux the OS process starts
-  // immediately and waits for WAV data on stdin — zero additional spawn delay
-  // when it's time to play.
-  let currentPlayer: PreSpawnedPlayer = createPreSpawnedPlayer();
   let pendingSynthStartMs = tFirstSynth;
 
   for (let i = 0; i < sentences.length; i++) {
-    // M51-STR-05: check cancellation at the top of each iteration
-    if (cancellationToken?.isCancellationRequested) {
-      currentPlayer.abort();
-      return;
-    }
+    // Cancellation check 1: top of each iteration — before awaiting synthesis.
+    if (cancellationToken?.isCancellationRequested) return;
 
-    // Await the synthesis that was started in the previous iteration (or above)
+    // Await the synthesis that was started in the previous iteration (or above).
     const tAwaitSynth = Date.now();
     const current = await pendingSynthesis;
     const synthMs = Date.now() - pendingSynthStartMs;
     const synthWaitMs = Date.now() - tAwaitSynth; // 0 if synth finished during prev play
 
-    // Pre-spawn the NEXT player and kick off the NEXT synthesis in parallel,
-    // BEFORE we block on play(). Both overlap with playback of the current
-    // sentence, meaning the next player's spawn delay is fully hidden.
-    let nextPlayer: PreSpawnedPlayer | null = null;
+    // Cancellation check 2: after synthesis completes — before spawning a player.
+    if (cancellationToken?.isCancellationRequested) return;
+
+    // Kick off synthesis of the NEXT sentence now, so it runs in parallel with
+    // the current playback below (this is the latency-saving overlap).
     const nextSynthStart = Date.now();
     if (i + 1 < sentences.length && !cancellationToken?.isCancellationRequested) {
       pendingSynthesis = ttsProvider.synthesize(
@@ -106,13 +121,13 @@ export async function streamingSpeak(
         cancellationToken,
       );
       pendingSynthStartMs = nextSynthStart;
-      nextPlayer = createPreSpawnedPlayer();
     }
 
-    // Play the current sentence via the pre-spawned player (stdin-pipe path on
-    // macOS/Linux: no additional spawn + no temp-file write).
+    // Play the current sentence. The player is created here (not before) so
+    // only one player process exists at a time, regardless of how many
+    // concurrent streamingSpeak() calls are in flight.
     const tPlay = Date.now();
-    await currentPlayer.play(current.audio, current.sampleRate ?? 22050);
+    await playPcmAudio(current.audio, current.sampleRate ?? 22050);
     const playMs = Date.now() - tPlay;
 
     log?.(
@@ -120,10 +135,8 @@ export async function streamingSpeak(
       (synthWaitMs > 50 ? " ← GAP" : ""),
     );
 
-    // Advance to the pre-spawned player for the next sentence.
-    if (nextPlayer !== null) {
-      currentPlayer = nextPlayer;
-    }
+    // Cancellation check 3: after play — before next iteration spawns another player.
+    if (cancellationToken?.isCancellationRequested) return;
   }
 
   log?.(`[stream] done: total=${Date.now() - t0}ms`);
