@@ -1,11 +1,14 @@
 /**
  * Tests for tool-registry.ts
  * Requirements: requirements-hub.md §5.1
+ * DEC-006 — Dual-pool design (bridgeTools + hubTools)
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { ToolRegistration } from "@accordo/bridge-types";
 import { ToolRegistry } from "../tool-registry.js";
+import type { HubToolRegistration } from "../hub-tool-types.js";
+import { isHubTool } from "../hub-tool-types.js";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -190,6 +193,196 @@ describe("ToolRegistry", () => {
       registry.register([TOOL_OPEN, TOOL_CLOSE, TOOL_RUN]);
       registry.register([TOOL_OPEN]);
       expect(registry.size).toBe(1);
+    });
+  });
+});
+
+// ── DEC-006: Dual-pool design (hubTools + bridgeTools) ───────────────────────
+
+function makeHubTool(name: string): HubToolRegistration {
+  return {
+    name,
+    description: `Hub-native tool: ${name}`,
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    dangerLevel: "safe",
+    requiresConfirmation: false,
+    idempotent: true,
+    localHandler: vi.fn().mockResolvedValue({ ok: true }),
+  };
+}
+
+const HUB_TOOL_RUN = makeHubTool("accordo_script_run");
+const HUB_TOOL_STOP = makeHubTool("accordo_script_stop");
+
+describe("ToolRegistry — DEC-006: dual-pool design", () => {
+  let registry: ToolRegistry;
+
+  beforeEach(() => {
+    registry = new ToolRegistry();
+  });
+
+  // ── registerHubTool ────────────────────────────────────────────────────────
+
+  describe("registerHubTool", () => {
+    it("DEC-006: registerHubTool adds to hubTools pool — retrievable by get()", () => {
+      registry.registerHubTool(HUB_TOOL_RUN);
+
+      const result = registry.get("accordo_script_run");
+      expect(result).toBeDefined();
+      expect(result?.name).toBe("accordo_script_run");
+    });
+
+    it("DEC-006: registerHubTool tool is identifiable as hub tool via isHubTool()", () => {
+      registry.registerHubTool(HUB_TOOL_RUN);
+
+      const result = registry.get("accordo_script_run");
+      expect(result).toBeDefined();
+      expect(isHubTool(result!)).toBe(true);
+    });
+
+    it("DEC-006: registerHubTool does NOT add to bridgeTools", () => {
+      registry.registerHubTool(HUB_TOOL_RUN);
+
+      // register() with empty list clears bridge tools — hub tool must survive
+      registry.register([]);
+      expect(registry.get("accordo_script_run")).toBeDefined();
+    });
+
+    it("DEC-006: registerHubTool replaces existing hub tool with same name", () => {
+      const v1 = makeHubTool("accordo_script_run");
+      const v2 = makeHubTool("accordo_script_run");
+      v2.description = "Updated description";
+
+      registry.registerHubTool(v1);
+      registry.registerHubTool(v2);
+
+      const result = registry.get("accordo_script_run");
+      expect(result?.description).toBe("Updated description");
+    });
+  });
+
+  // ── register (bridge) does not affect hub tools ────────────────────────────
+
+  describe("register (bridge) vs hubTools", () => {
+    it("DEC-006: register() clears only bridgeTools — hub tools survive", () => {
+      registry.registerHubTool(HUB_TOOL_RUN);
+      registry.registerHubTool(HUB_TOOL_STOP);
+      registry.register([TOOL_OPEN, TOOL_CLOSE]);
+
+      // Now replace bridge tools with a different set
+      registry.register([TOOL_RUN]);
+
+      // Bridge tools replaced: TOOL_OPEN and TOOL_CLOSE gone, TOOL_RUN present
+      expect(registry.get("accordo_editor_open")).toBeUndefined();
+      expect(registry.get("accordo_terminal_run")).toBeDefined();
+
+      // Hub tools unchanged
+      expect(registry.get("accordo_script_run")).toBeDefined();
+      expect(registry.get("accordo_script_stop")).toBeDefined();
+    });
+
+    it("DEC-006: register() with empty list clears bridge tools, hub tools remain", () => {
+      registry.registerHubTool(HUB_TOOL_RUN);
+      registry.register([TOOL_OPEN]);
+
+      registry.register([]);
+
+      expect(registry.get("accordo_editor_open")).toBeUndefined();
+      expect(registry.get("accordo_script_run")).toBeDefined();
+      expect(registry.size).toBe(1); // only hub tool
+    });
+  });
+
+  // ── list() merges both pools ───────────────────────────────────────────────
+
+  describe("list — merging", () => {
+    it("DEC-006: list() returns tools from both pools", () => {
+      registry.registerHubTool(HUB_TOOL_RUN);
+      registry.register([TOOL_OPEN]);
+
+      const all = registry.list();
+      const names = all.map(t => t.name);
+      expect(names).toContain("accordo_script_run");
+      expect(names).toContain("accordo_editor_open");
+      expect(all).toHaveLength(2);
+    });
+
+    it("DEC-006: list() hub tools win on name collision", () => {
+      // Create a bridge tool with the same name as a hub tool
+      const bridgeCollision = makeTool("accordo_script_run", {
+        description: "Bridge version (should lose)",
+      });
+      registry.register([bridgeCollision]);
+      registry.registerHubTool(HUB_TOOL_RUN);
+
+      const all = registry.list();
+      const scriptTool = all.find(t => t.name === "accordo_script_run");
+      expect(scriptTool).toBeDefined();
+      // Hub tool wins — its description, not the bridge version's
+      expect(scriptTool?.description).toBe(HUB_TOOL_RUN.description);
+      // Deduplicated — only one entry for the colliding name
+      expect(all.filter(t => t.name === "accordo_script_run")).toHaveLength(1);
+    });
+  });
+
+  // ── get() priority ─────────────────────────────────────────────────────────
+
+  describe("get — priority", () => {
+    it("DEC-006: get() checks hubTools first, then bridgeTools", () => {
+      const bridgeVersion = makeTool("accordo_script_run", {
+        description: "Bridge version",
+      });
+      registry.register([bridgeVersion]);
+      registry.registerHubTool(HUB_TOOL_RUN);
+
+      const result = registry.get("accordo_script_run");
+      expect(result?.description).toBe(HUB_TOOL_RUN.description);
+    });
+
+    it("DEC-006: get() falls back to bridgeTools when hubTools has no match", () => {
+      registry.register([TOOL_OPEN]);
+      registry.registerHubTool(HUB_TOOL_RUN);
+
+      const result = registry.get("accordo_editor_open");
+      expect(result).toBeDefined();
+      expect(result?.name).toBe("accordo_editor_open");
+    });
+  });
+
+  // ── size with dual pools ──────────────────────────────────────────────────
+
+  describe("size — dual pool", () => {
+    it("DEC-006: size counts tools from both pools (deduplicated)", () => {
+      registry.registerHubTool(HUB_TOOL_RUN);
+      registry.registerHubTool(HUB_TOOL_STOP);
+      registry.register([TOOL_OPEN, TOOL_CLOSE]);
+
+      expect(registry.size).toBe(4);
+    });
+
+    it("DEC-006: size deduplicates on name collision", () => {
+      const collision = makeTool("accordo_script_run");
+      registry.register([collision, TOOL_OPEN]);
+      registry.registerHubTool(HUB_TOOL_RUN);
+
+      // 2 bridge + 1 hub, but 1 name collision → 2 unique
+      expect(registry.size).toBe(2);
+    });
+  });
+
+  // ── toMcpTools strips localHandler ────────────────────────────────────────
+
+  describe("toMcpTools — hub tools", () => {
+    it("DEC-005: toMcpTools strips localHandler from hub tools", () => {
+      registry.registerHubTool(HUB_TOOL_RUN);
+
+      const mcpTools = registry.toMcpTools();
+      expect(mcpTools).toHaveLength(1);
+      expect(mcpTools[0]).not.toHaveProperty("localHandler");
+      expect(mcpTools[0]).toHaveProperty("name", "accordo_script_run");
     });
   });
 });

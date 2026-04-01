@@ -24,6 +24,7 @@ import {
   classifyError,
   isInvokeTimeout,
 } from "./mcp-error-mapper.js";
+import { isHubTool } from "./hub-tool-types.js";
 
 /**
  * Extract a soft-error message from a tool result data object.
@@ -107,6 +108,34 @@ export class McpCallExecutor {
     };
 
     // Invoke via bridge server (handles connection + concurrency checks)
+    // First check if this is a Hub-native tool with a localHandler.
+    // If so, execute locally without routing through the bridge.
+    if (isHubTool(tool)) {
+      try {
+        const data = await tool.localHandler(toolArgs);
+        // Soft-error check on local handler result
+        const softErrorMsg = extractSoftError(data);
+        if (softErrorMsg !== undefined) {
+          audit("error", softErrorMsg);
+          return buildSoftErrorResponse(id, softErrorMsg);
+        }
+        audit("success");
+        return buildToolSuccessResponse(id, data);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        audit("error", msg);
+        return {
+          jsonrpc: "2.0",
+          id,
+          result: {
+            content: [{ type: "text" as const, text: msg }],
+            isError: true,
+          },
+        };
+      }
+    }
+
+    // Bridge-routed tool: invoke via bridge server
     try {
       const result = await this.bridgeServer.invoke(toolName, toolArgs, this.toolCallTimeout);
       if (!result.success) {

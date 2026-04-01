@@ -14,7 +14,7 @@
 import http from "node:http";
 import * as fs from "node:fs";
 import { ACCORDO_PROTOCOL_VERSION } from "@accordo/bridge-types";
-import type { HealthResponse } from "@accordo/bridge-types";
+import type { HealthResponse, IDEState } from "@accordo/bridge-types";
 import { BridgeServer } from "./bridge-server.js";
 import { McpHandler } from "./mcp-handler.js";
 import { ToolRegistry } from "./tool-registry.js";
@@ -26,6 +26,7 @@ import { createSseManager } from "./server-sse.js";
 import { createMcpRequestHandler, extractAgentHint } from "./server-mcp.js";
 import { createReauthHandler } from "./server-reauth.js";
 import type { Router } from "./server-routing.js";
+import { ScriptRunner, createScriptDepsAdapter, createScriptTools } from "./script/index.js";
 
 export interface HubServerOptions {
   /** Port to listen on. Default: 3000 */
@@ -91,14 +92,26 @@ export class HubServer {
       secret: options.bridgeSecret,
       maxConcurrent: options.maxConcurrent,
       maxQueueDepth: options.maxQueueDepth,
-      onGraceExpired: () => { this.stateCache.clearModalities(); },
+      onGraceExpired: (): void => { this.stateCache.clearModalities(); },
     });
     this.toolRegistry = new ToolRegistry();
     this.stateCache = new StateCache();
+
+    // Wire up Hub-native script runner and tools (DEC-005)
+    const scriptDeps = createScriptDepsAdapter(this.bridgeServer);
+    const scriptRunner = new ScriptRunner(scriptDeps);
+    const scriptTools = createScriptTools({
+      runner: scriptRunner,
+      toolRegistry: this.toolRegistry,
+    });
+    for (const tool of scriptTools) {
+      this.toolRegistry.registerHubTool(tool);
+    }
+
     this.mcpHandler = new McpHandler({
       toolRegistry: this.toolRegistry,
       bridgeServer: this.bridgeServer,
-      getState: () => this.stateCache.getState(),
+      getState: (): IDEState => this.stateCache.getState(),
       toolCallTimeout: options.toolCallTimeout,
       auditFile: options.auditFile,
       debugLogger: this.debugLogger,

@@ -864,3 +864,195 @@ describe("McpHandler — M32: idempotent retry on timeout", () => {
   });
 });
 
+// ── DEC-005: McpCallExecutor Hub-native tool short-circuit ────────────────────
+//
+// When a tool is a HubToolRegistration (has localHandler), the executor calls
+// localHandler directly instead of routing through bridgeServer.invoke().
+// This bypasses the bridge entirely for Hub-native tools like script tools.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("McpHandler — DEC-005: Hub-native tool short-circuit", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("DEC-005: Hub-native tool calls localHandler directly, skips bridgeServer.invoke()", async () => {
+    const { handler, toolRegistry, bridgeServer } = createHandler();
+    const session = handler.createSession();
+
+    // Register a Hub-native tool
+    const hubTool = {
+      name: "accordo_script_status",
+      description: "Get script status",
+      inputSchema: { type: "object" as const, properties: {} },
+      dangerLevel: "safe" as const,
+      requiresConfirmation: false,
+      idempotent: true,
+      localHandler: vi.fn().mockResolvedValue({ state: "idle", currentStep: -1, totalSteps: 0 }),
+    };
+    toolRegistry.registerHubTool(hubTool);
+
+    const invokeSpy = vi.spyOn(bridgeServer, "invoke");
+
+    const req = makeRequest("tools/call", {
+      name: "accordo_script_status",
+      arguments: {},
+    });
+    const response = await handler.handleRequest(req, session);
+
+    // localHandler was called
+    expect(hubTool.localHandler).toHaveBeenCalledTimes(1);
+    expect(hubTool.localHandler).toHaveBeenCalledWith({});
+
+    // bridgeServer.invoke was NOT called
+    expect(invokeSpy).not.toHaveBeenCalled();
+
+    // Response is a success (no error)
+    expect(response?.error).toBeUndefined();
+    const result = response?.result as { content: Array<{ text: string }>; isError?: boolean };
+    expect(result?.isError).toBeUndefined();
+    expect(result?.content[0]?.text).toContain("idle");
+  });
+
+  it("DEC-005: Bridge tool still routes through bridgeServer.invoke()", async () => {
+    const { handler, bridgeServer } = createHandler([SAMPLE_TOOL]);
+    const session = handler.createSession();
+
+    const invokeSpy = vi.spyOn(bridgeServer, "invoke").mockResolvedValue({
+      type: "result",
+      id: "r1",
+      success: true,
+      data: { opened: true },
+    });
+
+    const req = makeRequest("tools/call", {
+      name: "accordo_editor_open",
+      arguments: { path: "/foo.ts" },
+    });
+    await handler.handleRequest(req, session);
+
+    // bridgeServer.invoke WAS called (bridge tool path)
+    expect(invokeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("DEC-005: localHandler error propagates as isError:true result", async () => {
+    const { handler, toolRegistry } = createHandler();
+    const session = handler.createSession();
+
+    const hubTool = {
+      name: "accordo_script_run",
+      description: "Run a script",
+      inputSchema: { type: "object" as const, properties: {}, required: ["script"] },
+      dangerLevel: "safe" as const,
+      requiresConfirmation: false,
+      idempotent: false,
+      localHandler: vi.fn().mockRejectedValue(new Error("ScriptRunner already running")),
+    };
+    toolRegistry.registerHubTool(hubTool);
+
+    const req = makeRequest("tools/call", {
+      name: "accordo_script_run",
+      arguments: { script: { steps: [] } },
+    });
+    const response = await handler.handleRequest(req, session);
+
+    // Response is a tool-level error (not JSON-RPC error)
+    expect(response?.error).toBeUndefined();
+    const result = response?.result as { content: Array<{ text: string }>; isError?: boolean };
+    expect(result?.isError).toBe(true);
+    expect(result?.content[0]?.text).toContain("already running");
+  });
+
+  it("DEC-005: localHandler soft-error { error: '...' } is detected", async () => {
+    const { handler, toolRegistry } = createHandler();
+    const session = handler.createSession();
+
+    const hubTool = {
+      name: "accordo_script_status",
+      description: "Get script status",
+      inputSchema: { type: "object" as const, properties: {} },
+      dangerLevel: "safe" as const,
+      requiresConfirmation: false,
+      idempotent: true,
+      localHandler: vi.fn().mockResolvedValue({ error: "Internal state corrupted" }),
+    };
+    toolRegistry.registerHubTool(hubTool);
+
+    const req = makeRequest("tools/call", {
+      name: "accordo_script_status",
+      arguments: {},
+    });
+    const response = await handler.handleRequest(req, session);
+
+    // Soft error detected → isError: true
+    expect(response?.error).toBeUndefined();
+    const result = response?.result as { content: Array<{ text: string }>; isError?: boolean };
+    expect(result?.isError).toBe(true);
+    expect(result?.content[0]?.text).toBe("Internal state corrupted");
+  });
+
+  it("DEC-005: Hub-native tool audit entry is written on success", async () => {
+    vi.clearAllMocks();
+    vi.mocked(auditLog.hashArgs).mockReturnValue("mock-hash-64chars-----------------------------------");
+
+    const { handler, toolRegistry } = createHandlerWithAudit();
+    const session = handler.createSession();
+
+    const hubTool = {
+      name: "accordo_script_status",
+      description: "Get script status",
+      inputSchema: { type: "object" as const, properties: {} },
+      dangerLevel: "safe" as const,
+      requiresConfirmation: false,
+      idempotent: true,
+      localHandler: vi.fn().mockResolvedValue({ state: "idle" }),
+    };
+    toolRegistry.registerHubTool(hubTool);
+
+    const req = makeRequest("tools/call", {
+      name: "accordo_script_status",
+      arguments: {},
+    });
+    await handler.handleRequest(req, session);
+
+    expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
+      "/tmp/test-audit.jsonl",
+      expect.objectContaining({ result: "success", tool: "accordo_script_status" }),
+    );
+  });
+
+  it("DEC-005: Hub-native tool audit entry is written on error", async () => {
+    vi.clearAllMocks();
+    vi.mocked(auditLog.hashArgs).mockReturnValue("mock-hash-64chars-----------------------------------");
+
+    const { handler, toolRegistry } = createHandlerWithAudit();
+    const session = handler.createSession();
+
+    const hubTool = {
+      name: "accordo_script_run",
+      description: "Run a script",
+      inputSchema: { type: "object" as const, properties: {} },
+      dangerLevel: "safe" as const,
+      requiresConfirmation: false,
+      idempotent: false,
+      localHandler: vi.fn().mockRejectedValue(new Error("Validation failed")),
+    };
+    toolRegistry.registerHubTool(hubTool);
+
+    const req = makeRequest("tools/call", {
+      name: "accordo_script_run",
+      arguments: {},
+    });
+    await handler.handleRequest(req, session);
+
+    expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
+      "/tmp/test-audit.jsonl",
+      expect.objectContaining({
+        result: "error",
+        tool: "accordo_script_run",
+        errorMessage: "Validation failed",
+      }),
+    );
+  });
+});
+
