@@ -30,6 +30,35 @@ vi.mock("../text/text-cleaner.js", () => ({
   ),
 }));
 
+// AQ-INT-02: Mock the audioQueue so extension activation doesn't spawn real subprocesses.
+vi.mock("../core/audio/audio-queue.js", () => {
+  const mockAudioQueue = {
+    enqueue: vi.fn().mockResolvedValue(undefined),
+    cancel: vi.fn(),
+    dispose: vi.fn().mockResolvedValue(undefined),
+    get size() { return 0; },
+    get isPlaying() { return false; },
+  };
+  return {
+    createAudioQueue: vi.fn(() => mockAudioQueue),
+    DEFAULT_MAX_QUEUE_DEPTH: 10,
+    CancelledError: class extends Error {
+      name = "CancelledError";
+      constructor() { super("Audio playback was cancelled"); }
+    },
+    QueueFullError: class extends Error {
+      name = "QueueFullError";
+      currentSize: number;
+      maxDepth: number;
+      constructor(currentSize: number, maxDepth: number) {
+        super(`Audio queue is full (${String(currentSize)}/${String(maxDepth)} chunks)`);
+        this.currentSize = currentSize;
+        this.maxDepth = maxDepth;
+      }
+    },
+  };
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeTtsProvider(available = true): TtsProvider {

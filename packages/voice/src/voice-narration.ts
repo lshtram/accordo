@@ -13,6 +13,7 @@ import type { NarrationFsm } from "./core/fsm/narration-fsm.js";
 import type { SttProvider } from "./core/providers/stt-provider.js";
 import type { TtsProvider } from "./core/providers/tts-provider.js";
 import type { PlaybackHandle } from "./core/audio/playback.js";
+import type { AudioQueue } from "./core/audio/audio-queue.js";
 import type { CleanMode } from "./text/text-cleaner.js";
 
 // ── NarrationDeps ─────────────────────────────────────────────────────────────
@@ -30,6 +31,8 @@ export interface NarrationDeps {
   playPcmAudio: (pcm: Uint8Array, sampleRate: number) => Promise<void>;
   startPcmPlayback: (pcm: Uint8Array, sampleRate: number) => Promise<PlaybackHandle>;
   streamingSpeak: (...args: unknown[]) => unknown;
+  /** AQ-INT-01: Injected audio queue for receipt-based playback sequencing. */
+  audioQueue: AudioQueue;
   log: (msg: string) => void;
   syncUiAndState: () => void;
   dictState: { active: boolean };
@@ -110,7 +113,12 @@ export async function doSpeakText(deps: NarrationDeps, args: { text: string; voi
   const cleaned = deps.cleanTextForNarration(args.text, "narrate-full");
   const play = async (): Promise<void> => {
     const result = await deps.ttsProvider.synthesize({ text: cleaned, language: policy.language, voice: args.voice ?? policy.voice, speed: args.speed ?? policy.speed });
-    await deps.playPcmAudio(result.audio, result.sampleRate ?? 22050);
+    // AQ-INT-02: use AudioQueue for receipt-based sequential playback when available.
+    if (deps.audioQueue) {
+      await deps.audioQueue.enqueue(result.audio, result.sampleRate ?? 22050);
+    } else {
+      await deps.playPcmAudio(result.audio, result.sampleRate ?? 22050);
+    }
   };
   if (args.block !== false) { await play(); } else { void play(); }
 }

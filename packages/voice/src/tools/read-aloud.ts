@@ -11,6 +11,7 @@ import type { TtsProvider } from "../core/providers/tts-provider.js";
 import type { CleanMode } from "../text/text-cleaner.js";
 import type { StreamingSpeakOptions } from "../core/audio/streaming-tts.js";
 import type { CancellationToken } from "../core/providers/stt-provider.js";
+import type { AudioQueue } from "../core/audio/audio-queue.js";
 
 export type PlayAudioFn = (pcm: Uint8Array, sampleRate: number) => Promise<void>;
 export type StreamSpeakFn = (text: string, ttsProvider: TtsProvider, options: StreamingSpeakOptions) => Promise<void>;
@@ -39,6 +40,8 @@ export interface ReadAloudToolDeps {
    * starting, preventing overlapping concurrent pipelines.
    */
   onSpeakActive?: (cancel: () => void) => void;
+  /** AQ-INT-03: Optional audio queue for receipt-based playback sequencing. */
+  audioQueue?: AudioQueue;
 }
 
 /** Simple mutable cancellation token — not a VS Code dependency. */
@@ -58,7 +61,7 @@ function makeCancellationToken(): CancellationToken & { cancel(): void } {
 
 /** M50-RA */
 export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefinition {
-  const { sessionFsm, narrationFsm, ttsProvider, cleanText, playAudio, streamSpeak, log, onSpeakActive } = deps;
+  const { sessionFsm, narrationFsm, ttsProvider, cleanText, playAudio, streamSpeak, log, onSpeakActive, audioQueue } = deps;
 
   // Bug #14: module-level token so each invocation can cancel the previous one.
   let activeToken: ReturnType<typeof makeCancellationToken> | null = null;
@@ -139,6 +142,7 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
           speed,
           cancellationToken: token,
           log,
+          audioQueue,
         })
           .then(() => {
             if (activeToken === token) activeToken = null;

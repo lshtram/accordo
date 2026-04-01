@@ -26,6 +26,7 @@
 
 import type { TtsProvider, TtsSynthesisRequest } from "../providers/tts-provider.js";
 import type { CancellationToken } from "../providers/stt-provider.js";
+import type { AudioQueue } from "./audio-queue.js";
 import { splitIntoSentences } from "../../text/sentence-splitter.js";
 import { playPcmAudio } from "./playback.js";
 
@@ -34,6 +35,8 @@ export interface StreamingSpeakOptions {
   voice?: string;
   speed?: number;
   cancellationToken?: CancellationToken;
+  /** AQ-INT-02: Optional audio queue for receipt-based playback sequencing. */
+  audioQueue?: AudioQueue;
   /** Optional logger — receives per-sentence timing lines for the output channel. */
   log?: (msg: string) => void;
 }
@@ -54,7 +57,7 @@ export async function streamingSpeak(
   ttsProvider: TtsProvider,
   options: StreamingSpeakOptions,
 ): Promise<void> {
-  const { language, voice, speed, cancellationToken, log } = options;
+  const { language, voice, speed, cancellationToken, audioQueue, log } = options;
   const t0 = Date.now();
 
   // M51-STR-02: split into sentences
@@ -80,7 +83,13 @@ export async function streamingSpeak(
     // Check cancellation after synthesis but before spawning a player process.
     if (cancellationToken?.isCancellationRequested) return;
     const tPlay = Date.now();
-    await playPcmAudio(result.audio, result.sampleRate ?? 22050);
+    // AQ-INT-01: when an AudioQueue is provided, enqueue the chunk for sequential
+    // receipt-based playback instead of fire-and-forget playPcmAudio.
+    if (audioQueue) {
+      await audioQueue.enqueue(result.audio, result.sampleRate ?? 22050);
+    } else {
+      await playPcmAudio(result.audio, result.sampleRate ?? 22050);
+    }
     const playMs = Date.now() - tPlay;
     log?.(`[stream] s0: synth=${synthMs}ms play=${playMs}ms total=${Date.now() - t0}ms`);
     return;
@@ -126,8 +135,14 @@ export async function streamingSpeak(
     // Play the current sentence. The player is created here (not before) so
     // only one player process exists at a time, regardless of how many
     // concurrent streamingSpeak() calls are in flight.
+    // AQ-INT-01: when an AudioQueue is provided, enqueue the chunk for sequential
+    // receipt-based playback instead of fire-and-forget playPcmAudio.
     const tPlay = Date.now();
-    await playPcmAudio(current.audio, current.sampleRate ?? 22050);
+    if (audioQueue) {
+      await audioQueue.enqueue(current.audio, current.sampleRate ?? 22050);
+    } else {
+      await playPcmAudio(current.audio, current.sampleRate ?? 22050);
+    }
     const playMs = Date.now() - tPlay;
 
     log?.(

@@ -20,6 +20,7 @@ import { VoicePanelProvider } from "./ui/voice-panel.js";
 import { cleanTextForNarration } from "./text/text-cleaner.js";
 import { playPcmAudio, startPcmPlayback, type PlaybackHandle } from "./core/audio/playback.js";
 import { streamingSpeak } from "./core/audio/streaming-tts.js";
+import { createAudioQueue, type AudioQueue } from "./core/audio/audio-queue.js";
 import { createDiscoverTool } from "./tools/discover.js";
 import { createReadAloudTool } from "./tools/read-aloud.js";
 import { createDictationTool } from "./tools/dictation.js";
@@ -52,6 +53,7 @@ export interface VoiceActivateDeps {
 // ── Module globals ────────────────────────────────────────────────────────────
 
 let _ttsProvider: TtsProvider | undefined;
+let _audioQueue: AudioQueue | undefined;
 
 // ── activate ──────────────────────────────────────────────────────────────────
 
@@ -160,10 +162,17 @@ export async function activate(
   });
   context.subscriptions.push(vscode.window.registerWebviewViewProvider(VoicePanelProvider.VIEW_TYPE, panelProvider));
 
+  // AQ-INT-04: Create audio queue — one instance per extension activation,
+  // scoped to extension lifecycle (not a process-global singleton).
+  // Disposed in deactivate(). Integration routing (AQ-INT-01/02/03) is Phase C.
+  const audioQueue = createAudioQueue({ log: (msg) => logger.log(msg) });
+  _audioQueue = audioQueue;
+
   const narrationDeps: NarrationDeps = {
     sessionFsm, narrationFsm, sttProvider: stt, ttsProvider: tts,
     cleanTextForNarration, playPcmAudio, startPcmPlayback,
     streamingSpeak: streamingSpeak as NarrationDeps["streamingSpeak"],
+    audioQueue,
     log: (msg) => logger.log(msg), syncUiAndState: doSyncUiAndState,
     dictState: runtimeState.dictState,
     getActiveNarrationPlayback: () => activeNarrationPlayback,
@@ -201,6 +210,7 @@ export async function activate(
           playAudio: (pcm, sampleRate) => playPcmAudio(pcm, sampleRate),
           streamSpeak: streamingSpeak, log: (msg) => logger.log(msg),
           onSpeakActive: (cancel) => { activeStreamCancel = cancel; }, // Bug #14
+          audioQueue,
         }),
         createDictationTool({
           sessionFsm, audioFsm, sttProvider: stt, vocabulary,
@@ -248,6 +258,8 @@ export async function activate(
 
 /** M50-EXT-16 */
 export async function deactivate(): Promise<void> {
+  await _audioQueue?.dispose();
+  _audioQueue = undefined;
   await _ttsProvider?.dispose();
   _ttsProvider = undefined;
 }
