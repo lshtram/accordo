@@ -251,7 +251,7 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 
 | # | Feature | Status |
 |---|---|---|
-| T-01 | **H7: edgeStyles in patch** — add `edgeStyles` argument to `accordo_diagram_patch` tool: `{ strokeColor, strokeWidth, strokeStyle, routing }` per edge key | ⏳ |
+| T-01 | **H7: edgeStyles in patch** — add `edgeStyles` argument to `accordo_diagram_patch` tool: `{ strokeColor, strokeWidth, strokeStyle, routing }` per edge key | ✅ **DONE** (`b604678` — 558 tests, testing guide) |
 
 ---
 
