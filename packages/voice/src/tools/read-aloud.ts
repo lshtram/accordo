@@ -83,6 +83,7 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
         },
         voice: { type: "string", description: "Override voice from policy" },
         speed: { type: "number", description: "Override speed from policy (0.5–2.0)" },
+        block: { type: "boolean", description: "Wait for playback to complete before returning (default: false for agents, true for scripts)" },
       },
       required: ["text"],
     },
@@ -114,6 +115,8 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
       narrationFsm.enqueue({ text: processedText, mode: effectiveMode });
       narrationFsm.startProcessing();
 
+      // Respect the block parameter — when true, await playback completion before returning.
+      const block = args.block as boolean | undefined;
       if (streamSpeak) {
         // Bug #14 fix: cancel any in-flight pipeline before starting a new one.
         // This prevents overlapping concurrent streamSpeak calls.
@@ -129,14 +132,46 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
           onSpeakActive(() => { token.cancel(); });
         }
 
-        // M51-STR: Fire-and-forget — delegate to the streaming pipeline which
-        // handles sentence splitting, synthesis, and overlapped playback.
-        // The tool call returns instantly so the agent is never blocked.
-        // Mark audio as "playing" eagerly — the pipeline starts playback
-        // as soon as the first sentence is synthesized.
+        // Mark audio as "playing" — the pipeline starts playback as soon as the
+        // first sentence is synthesized.
         narrationFsm.audioReady();
 
-        void streamSpeak(processedText, ttsProvider, {
+        if (block === true) {
+          // Blocking path (used by script runner with block:true):
+          // await the full streaming pipeline so playback completes before returning.
+          // streamingSpeak awaits audioQueue.enqueue for each chunk, which resolves
+          // when that chunk finishes playing, so this waits for all playback to end.
+          try {
+            await streamSpeak(processedText, ttsProvider, {
+              language: policy.language,
+              voice,
+              speed,
+              cancellationToken: token,
+              log,
+              audioQueue,
+            });
+            if (activeToken === token) activeToken = null;
+            narrationFsm.complete();
+          } catch (bgErr) {
+            if (activeToken === token) activeToken = null;
+            log?.(`[readAloud] blocking playback failed: ${String(bgErr)}`);
+            narrationFsm.error();
+            return { error: `Read aloud failed: ${String(bgErr)}` };
+          }
+          return {
+            spoken: true,
+            textLength: rawText.length,
+            cleanedLength: processedText.length,
+            voice,
+            _handlerMs: Date.now() - t0,
+            _availMs: t1 - t0,
+          };
+        }
+
+        // Fire-and-forget path (block === false or undefined):
+        // Return immediately so the agent is never blocked.
+        // The pipeline runs in the background; .then()/.catch() manage FSM state.
+        streamSpeak(processedText, ttsProvider, {
           language: policy.language,
           voice,
           speed,
