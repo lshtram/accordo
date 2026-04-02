@@ -43,7 +43,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   {
     name: "accordo_editor_close",
     group: "editor",
-    description: "Close a specific editor tab, or the active editor if no path given.",
+    description: "Close a specific editor tab (text or webview), or the active editor if no path given. For .mmd diagram files, falls back to closing the active tab if the file is not found in open tabs.",
     inputSchema: {
       type: "object",
       properties: {
