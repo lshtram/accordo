@@ -97,9 +97,9 @@ export async function closeHandler(
   try {
     const p = argStringOpt(args, "path");
     if (!p) {
-      if (!vscode.window.activeTextEditor) {
-        return { error: "No active editor to close" };
-      }
+      // No path: close the active editor tab (text or webview).
+      // activeTextEditor is null for webview panels — use the command directly
+      // rather than checking activeTextEditor.
       await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
       return { closed: true };
     }
@@ -108,7 +108,6 @@ export async function closeHandler(
     let foundTab: vscode.Tab | undefined;
     for (const group of vscode.window.tabGroups.all) {
       for (const tab of group.tabs) {
-        // tab.input is a discriminated union; TextEditorTabInput has .uri but the base TabInput type does not expose it
         const input = tab.input as { uri?: vscode.Uri };
         if (input?.uri?.fsPath === targetFsPath) {
           foundTab = tab;
@@ -118,6 +117,28 @@ export async function closeHandler(
       if (foundTab) break;
     }
     if (!foundTab) {
+      // Fallback: match by tab label (covers webview tabs like diagram panels
+      // whose CustomEditorTabInput has no URI field).
+      const label = resolved.replace(/.*\//, "").replace(/\.mmd$/, "");
+      for (const group of vscode.window.tabGroups.all) {
+        for (const tab of group.tabs) {
+          if (tab.label === label || tab.label === resolved) {
+            foundTab = tab;
+            break;
+          }
+        }
+        if (foundTab) break;
+      }
+    }
+    if (!foundTab) {
+      // Tab not found by URI or label — only fall back to closing the active editor
+      // for .mmd files (diagram webview panels don't expose URI/label reliably).
+      // For other file types, the tab must be found explicitly — close the wrong
+      // tab silently would be a semantic contract violation.
+      if (resolved.endsWith(".mmd")) {
+        await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+        return { closed: true };
+      }
       return { error: `File is not open: ${resolved}` };
     }
     await vscode.window.tabGroups.close(foundTab, false);

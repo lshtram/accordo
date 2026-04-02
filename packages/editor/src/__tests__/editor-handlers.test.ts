@@ -253,11 +253,10 @@ describe("closeHandler — §4.2", () => {
     expect(result).toEqual({ closed: true });
   });
 
-  it("CLOSE-02: returns { error: string } when no active editor and no path", async () => {
+  it("CLOSE-02: returns { closed: true } when no active editor and no path (closes active tab)", async () => {
     mockState.activeTextEditor = null;
     const result = await closeHandler({});
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toBe("No active editor to close");
+    expect(result).toEqual({ closed: true });
   });
 
   it("CLOSE-03: returns { closed: true } when closing specific file tab", async () => {
@@ -273,7 +272,15 @@ describe("closeHandler — §4.2", () => {
     expect(result).toEqual({ closed: true });
   });
 
-  it("CLOSE-04: returns { error: string } when file not in any tab", async () => {
+  it("CLOSE-04: returns { closed: true } when .mmd file not in any tab (falls back to active editor)", async () => {
+    makeWorkspace();
+    mockState.tabGroups.all = [];
+    const result = await closeHandler({ path: "/workspace/notopen.mmd" });
+    // .mmd files fall back to closing active editor
+    expect(result).toEqual({ closed: true });
+  });
+
+  it("CLOSE-05: returns { error } when non-.mmd file not in any tab (no fallback)", async () => {
     makeWorkspace();
     mockState.tabGroups.all = [];
     const result = await closeHandler({ path: "/workspace/notopen.ts" });

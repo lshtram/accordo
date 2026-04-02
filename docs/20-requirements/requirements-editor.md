@@ -148,12 +148,18 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 | Condition | Error message |
 |---|---|
-| No active editor and no path given | `"No active editor to close"` |
-| File not open | `"File is not open: <path>"` |
+| Non-.mmd file not open | `"File is not open: <path>"` |
+| .mmd file not open | Falls back to closing the active editor — returns `{ closed: true }` |
+| No path and no active editor | Returns `{ closed: true }` (always succeeds) |
 
 **Implementation:**
-- If path: find the tab via `vscode.window.tabGroups`, close it
-- If no path: `vscode.commands.executeCommand('workbench.action.closeActiveEditor')`
+- No path: `vscode.commands.executeCommand('workbench.action.closeActiveEditor')` — always succeeds
+- Path provided:
+  1. Search tabs by URI fsPath
+  2. Fall back to label match (stripped path + `.mmd` suffix) — handles diagram webview panels
+  3. If tab still not found:
+     - `.mmd` files → `workbench.action.closeActiveEditor` (diagram webviews don't expose URI/label reliably)
+     - All other files → return error
 
 ---
 
@@ -688,12 +694,12 @@ interface SearchMatch {
 
 ### 4.14 `accordo.panel.toggle`
 
-**Purpose:** Toggle visibility of a VSCode sidebar panel.
+**Purpose:** Show or toggle visibility of a VSCode panel (sidebar views and bottom panel views).
 
 | Property | Value |
 |---|---|
 | Danger level | safe |
-| Idempotent | yes |
+| Idempotent | yes (sidebar views); no (bottom panel views toggle) |
 | Requires confirmation | no |
 | Timeout class | fast (5s) |
 
@@ -705,7 +711,10 @@ interface SearchMatch {
   properties: {
     panel: {
       type: "string",
-      enum: ["explorer", "search", "git", "debug", "extensions"],
+      enum: [
+        "explorer", "search", "git", "debug", "extensions",
+        "terminal", "output", "problems", "debug-console"
+      ],
       description: "Panel to toggle"
     }
   },
@@ -716,18 +725,32 @@ interface SearchMatch {
 **Response:**
 
 ```typescript
-{ visible: true, panel: string }
+{ panel: string, area: "sidebar" | "panel" }
+// or
+{ error: string }
 ```
 
 **Implementation — command mapping:**
 
-| Panel | VSCode Command |
-|---|---|
-| explorer | `workbench.view.explorer` |
-| search | `workbench.view.search` |
-| git | `workbench.view.scm` |
-| debug | `workbench.view.debug` |
-| extensions | `workbench.view.extensions` |
+| Panel | VSCode Command | Area |
+|---|---|---|
+| explorer | `workbench.view.explorer` | sidebar |
+| search | `workbench.view.search` | sidebar |
+| git | `workbench.view.scm` | sidebar |
+| debug | `workbench.view.debug` | sidebar |
+| extensions | `workbench.view.extensions` | sidebar |
+| terminal | `workbench.action.terminal.toggleTerminal` | panel |
+| output | `workbench.action.output.toggleOutput` | panel |
+| problems | `workbench.actions.view.problems` | panel |
+| debug-console | `workbench.debug.action.toggleRepl` | panel |
+
+**Behaviour notes:**
+- Sidebar view commands (explorer, search, etc.) **show/focus** the view — idempotent.
+- Bottom panel commands (terminal, output, debug-console) **toggle** visibility.
+- `problems` uses a show/focus command — opens the Problems panel but does not toggle.
+- The tool cannot detect current visibility state due to VS Code API limitations.
+
+**Design document:** `docs/00-workplan/panel-toggle-architecture.md`
 
 ---
 
@@ -904,6 +927,92 @@ interface SearchMatch {
 - Add `layoutStateHandler` + tool definition inside the factory
 - Update `extension.ts` to call `createLayoutTools(() => bridge.getState())`
 - Add `accordo_layout_state` entry to `accordo_script_discover` catalog in `packages/script/src/tools/script-discover.ts`
+
+---
+
+### 4.27 `accordo.layout.panel`
+
+**Module ID:** E-6  
+**Purpose:** Control VS Code area containers (primary sidebar, bottom panel, auxiliary bar) with explicit open/close semantics and an optional view parameter. Replaces the original 6-tool design (sidebar.open/close, panel.open/close, auxiliaryBar.open/close) with a single combined tool.
+
+**Architecture reference:** `docs/00-workplan/e-6-bar-tools.md`
+
+| Property | Value |
+|---|---|
+| Danger level | safe |
+| Idempotent | yes |
+| Requires confirmation | no |
+| Timeout class | fast (5s) |
+
+**Input Schema:**
+
+```typescript
+{
+  type: "object",
+  properties: {
+    area: {
+      type: "string",
+      enum: ["sidebar", "panel", "rightBar"],
+      description: "Which VS Code area to control"
+    },
+    view: {
+      type: "string",
+      description: "Optional: specific view to open within the area. Only valid with action 'open'."
+    },
+    action: {
+      type: "string",
+      enum: ["open", "close"],
+      description: "Action to perform: 'open' or 'close'. No toggle."
+    }
+  },
+  required: ["area", "action"]
+}
+```
+
+**Response (area-level):**
+
+```typescript
+{ area: string, action: "opened" | "closed", previousState: "unknown" | "open" | "closed", wasNoOp: boolean }
+```
+
+**Response (view-level open):**
+
+```typescript
+{ area: string, action: "opened", view: string, previousState: "unknown" | "open" | "closed", wasNoOp: false }
+```
+
+**Errors:**
+
+| Condition | Error message |
+|---|---|
+| `area` missing or invalid | `"Argument 'area' must be one of: sidebar, panel, rightBar"` |
+| `action` missing or invalid | `"Argument 'action' must be one of: open, close"` |
+| `view` + `action: "close"` | `"Cannot close a specific view. Omit 'view' to close the area, or use action 'open' to switch to a view."` |
+| Unknown `view` for the area | `"Unknown view '<view>' for area '<area>'. Known views: <list>"` |
+| VS Code command fails | `"Command failed: <error message>"` |
+
+**Requirements:**
+
+| ID | Requirement |
+|---|---|
+| E-6-01 | `accordo_layout_panel` is registered as a single MCP tool via `BridgeAPI.registerTools()` |
+| E-6-02 | Module-level `BarState` tracker with `{ sidebar, panel, rightBar }` each `"unknown" \| "open" \| "closed"` |
+| E-6-03 | State starts as `"unknown"` for all areas; resets on extension reload |
+| E-6-04 | `unknown → close` transitions through `focus*` then `close*` to ensure deterministic state |
+| E-6-05 | `open → open` and `closed → close` are idempotent no-ops |
+| E-6-06 | `view` parameter opens a specific view and implicitly opens the containing area |
+| E-6-07 | `view` + `action: "close"` returns an error |
+| E-6-08 | View-area mismatch (e.g., `area: "panel", view: "explorer"`) returns an error |
+| E-6-09 | Unknown views attempt heuristic `workbench.view.<view>` command; graceful error on failure |
+| E-6-10 | `rightBar` has no hardcoded views; area-level open/close only |
+
+**Implementation:**
+
+- File: `packages/editor/src/tools/bar.ts`
+- Single handler function `layoutPanelHandler(args)` replaces 6 previous handler wrappers
+- Exports `barTools: ExtensionToolDefinition[]` (array of 1 tool)
+- Imported and spread by `createLayoutTools()` in `packages/editor/src/tools/layout.ts`
+- State tracker and command maps are module-level constants
 
 ---
 

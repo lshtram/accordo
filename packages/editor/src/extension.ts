@@ -12,9 +12,38 @@
 import * as vscode from "vscode";
 import type { ExtensionToolDefinition, IDEState } from "@accordo/bridge-types";
 import { editorTools } from "./tools/editor.js";
-import { terminalTools, registerTerminalLifecycle } from "./tools/terminal.js";
-import { createLayoutTools } from "./tools/layout.js";
+import {
+  terminalTools,
+  registerTerminalLifecycle,
+  terminalOpenHandler,
+  terminalRunHandler,
+  terminalFocusHandler,
+  terminalListHandler,
+  terminalCloseHandler,
+} from "./tools/terminal.js";
+import {
+  createLayoutTools,
+  panelToggleHandler,
+  layoutZenHandler,
+  layoutFullscreenHandler,
+  layoutJoinGroupsHandler,
+  layoutEvenGroupsHandler,
+  layoutStateHandler,
+} from "./tools/layout.js";
 import { layoutPanelHandler } from "./tools/bar.js";
+import {
+  openHandler,
+  closeHandler,
+  scrollHandler,
+  splitHandler,
+  focusGroupHandler,
+  revealHandler,
+  highlightHandler,
+  clearHighlightsHandler,
+  saveHandler,
+  saveAllHandler,
+  formatHandler,
+} from "./tools/editor-handlers.js";
 
 // ── BridgeAPI (minimal interface — full type lives in accordo-bridge) ─────────
 
@@ -63,11 +92,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const disposable = bridge.registerTools("accordo.accordo-editor", allTools);
   context.subscriptions.push(disposable);
 
-  // Also register accordo_layout_panel as a plain VS Code command so the
-  // script runner (accordo_script_run) can invoke it via executeCommand,
-  // even when the MCP Hub is not connected.
+  // Register all editor/terminal/layout tools as VS Code commands so the
+  // NarrationScript runner (accordo_script_run "command" steps) can invoke
+  // them via vscode.commands.executeCommand, even when the MCP Hub is not
+  // connected. Each command passes its args directly to the tool handler.
+  const cmd = (id: string, fn: (args: Record<string, unknown>) => unknown): vscode.Disposable =>
+    vscode.commands.registerCommand(id, (args: unknown) =>
+      fn((args as Record<string, unknown> | undefined) ?? {}),
+    );
+
+  const getState = (): IDEState => bridge.getState();
+
   context.subscriptions.push(
-    vscode.commands.registerCommand("accordo_layout_panel", layoutPanelHandler),
+    // ── Editor tools ──
+    cmd("accordo_editor_open",           openHandler),
+    cmd("accordo_editor_close",          closeHandler),
+    cmd("accordo_editor_scroll",         scrollHandler),
+    cmd("accordo_editor_split",          splitHandler),
+    cmd("accordo_editor_focus",          focusGroupHandler),
+    cmd("accordo_editor_reveal",         revealHandler),
+    cmd("accordo_editor_highlight",      highlightHandler),
+    cmd("accordo_editor_clearHighlights", clearHighlightsHandler),
+    cmd("accordo_editor_save",           saveHandler),
+    cmd("accordo_editor_saveAll",        saveAllHandler),
+    cmd("accordo_editor_format",         formatHandler),
+    // ── Terminal tools ──
+    cmd("accordo_terminal_open",         terminalOpenHandler),
+    cmd("accordo_terminal_run",          terminalRunHandler),
+    cmd("accordo_terminal_focus",        terminalFocusHandler),
+    cmd("accordo_terminal_list",         terminalListHandler),
+    cmd("accordo_terminal_close",        terminalCloseHandler),
+    // ── Layout tools ──
+    cmd("accordo_panel_toggle",          panelToggleHandler),
+    cmd("accordo_layout_zen",            layoutZenHandler),
+    cmd("accordo_layout_fullscreen",     layoutFullscreenHandler),
+    cmd("accordo_layout_joinGroups",     layoutJoinGroupsHandler),
+    cmd("accordo_layout_evenGroups",     layoutEvenGroupsHandler),
+    cmd("accordo_layout_state",          (args) => layoutStateHandler(args, getState)),
+    cmd("accordo_layout_panel",          layoutPanelHandler),
   );
 }
 
