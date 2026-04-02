@@ -167,10 +167,10 @@ export async function parseMermaid(source: string): Promise<ParseResult> {
   }
 
   // Invoke the mermaid internal parser — all mermaid-version-specific field
-  // access is in the per-type files (flowchart.ts etc.).
+  // access (including diag.db) is in the per-type files (flowchart.ts etc.).
   type MermaidDb = Record<string, unknown>;
   interface MermaidDiagram {
-    parser: { yy: MermaidDb; parser?: { yy: MermaidDb } };
+    db: MermaidDb;
   }
   const mermaid = await getMermaid();
   const mermaidApi = (mermaid as unknown as {
@@ -191,10 +191,10 @@ export async function parseMermaid(source: string): Promise<ParseResult> {
     };
   }
 
-  // Mermaid 11.x wraps the real db at diag.parser.parser.yy; the top-level
-  // diag.parser.yy is an empty proxy when running in a real Node environment.
-  // Mocked tests return the db directly at diag.parser.yy (no inner parser).
-  const db = diag.parser.parser?.yy ?? diag.parser.yy;
+  // Mermaid 11.x stores the parsed flowchart database at diag.db.
+  // The top-level diag.parser and diag.parser.yy are internal bookkeeping
+  // objects that are not needed here.
+  const db = diag.db;
   const parsed = parseFlowchart(db);
   return {
     valid: true,

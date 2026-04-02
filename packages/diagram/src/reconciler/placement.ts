@@ -31,7 +31,7 @@
  * @param parsed          Current parsed diagram (provides edges for neighbour
  *                        lookup and node shapes for sizing).
  * @param existingLayout  Current layout store (read-only; not mutated).
- * @param options.direction   Flow direction — "TD" (default) or "LR".
+ * @param options.direction   Flow direction — "TD" (default), "LR", "BT", or "RL".
  * @param options.nodeSpacing Gap in pixels between placed node and neighbour;
  *                            default 60.
  * @returns Map from nodeId → { x, y, w, h } for the newly placed nodes only.
@@ -79,13 +79,15 @@ export function placeNodes(
   parsed: ParsedDiagram,
   existingLayout: LayoutStore,
   options?: {
-    direction?: "TD" | "LR";
+    direction?: "TD" | "LR" | "BT" | "RL";
     nodeSpacing?: number;
   }
 ): Map<string, { x: number; y: number; w: number; h: number }> {
   if (unplacedIds.length === 0) return new Map();
 
-  const direction = options?.direction ?? (parsed.direction as "TD" | "LR" | undefined) ?? "TD";
+  const direction = options?.direction
+    ?? (parsed.direction as "TD" | "LR" | "RL" | "BT" | undefined)
+    ?? "TD";
   const nodeSpacing = options?.nodeSpacing ?? 60;
 
   // ── Step 1: Run full dagre layout pass to get ideal positions ──────────────
@@ -93,8 +95,9 @@ export function placeNodes(
   // respecting the full graph topology (rank, sibling relationships, etc.).
   const idealPos = new Map<string, { x: number; y: number; w: number; h: number }>();
   try {
+    const rankdirMap: Record<string, "TB" | "LR" | "RL" | "BT"> = { TD: "TB", BT: "BT", LR: "LR", RL: "RL" };
     const ideal = computeInitialLayout(parsed, {
-      rankdir:     direction === "LR" ? "LR" : "TB",
+      rankdir:     rankdirMap[direction] ?? "TB",
       nodeSpacing,
       rankSpacing: nodeSpacing + 20,
     });
@@ -180,22 +183,26 @@ export function placeNodes(
         }
       }
       if (nearestNeighbour) {
-        candX = direction === "LR"
-          ? nearestNeighbour.x + nearestNeighbour.w + nodeSpacing
-          : nearestNeighbour.x;
-        candY = direction === "LR"
-          ? nearestNeighbour.y
-          : nearestNeighbour.y + nearestNeighbour.h + nodeSpacing;
+        switch (direction) {
+          case "LR": candX = nearestNeighbour.x + nearestNeighbour.w + nodeSpacing; candY = nearestNeighbour.y; break;
+          case "RL": candX = nearestNeighbour.x - nearestNeighbour.w - nodeSpacing; candY = nearestNeighbour.y; break;
+          case "BT": candX = nearestNeighbour.x;                                       candY = nearestNeighbour.y - nearestNeighbour.h - nodeSpacing; break;
+          default:  candX = nearestNeighbour.x;                                       candY = nearestNeighbour.y + nearestNeighbour.h + nodeSpacing; break;
+        }
       }
     }
 
     // ── Step 3: Find closest collision-free spot from candidate ─────────────
     // TD: cross-axis = rightward/leftward (preserves rank level)
     // LR: cross-axis = downward/upward
-    const crossDx = direction === "TD" ? w + nodeSpacing : 0;
-    const crossDy = direction === "TD" ? 0 : h + nodeSpacing;
-    const flowDx  = direction === "LR" ? w + nodeSpacing : 0;
-    const flowDy  = direction === "LR" ? 0 : h + nodeSpacing;
+    let crossDx: number, crossDy: number, flowDx: number, flowDy: number;
+    switch (direction) {
+      case "TD": crossDx = w + nodeSpacing; crossDy = 0;               flowDx = 0;               flowDy = h + nodeSpacing; break;
+      case "BT": crossDx = w + nodeSpacing; crossDy = 0;               flowDx = 0;               flowDy = -(h + nodeSpacing); break;
+      case "LR": crossDx = 0;               crossDy = h + nodeSpacing; flowDx = w + nodeSpacing; flowDy = 0;               break;
+      case "RL": crossDx = 0;               crossDy = h + nodeSpacing; flowDx = -(w + nodeSpacing); flowDy = 0;             break;
+      default:  crossDx = w + nodeSpacing; crossDy = 0;               flowDx = 0;               flowDy = h + nodeSpacing; break;
+    }
 
     function hasOverlap(cx: number, cy: number): boolean {
       for (const placed of allPlaced.values()) {

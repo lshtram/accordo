@@ -459,6 +459,112 @@ describe("reconcile — @rename annotations", () => {
     expect(result.mermaidCleaned).toBeUndefined();
   });
 
+  // ── S-04: Edge key migration on rename ───────────────────────────────────────
+
+  it("S-04-F1: @rename migrates edge routing when oldId is the from end", async () => {
+    // Old diagram: edge A→B with orthogonal routing
+    const oldParsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")], ["B", makeNode("B")]]),
+      edges: [makeEdge("A", "B", 0)],
+    });
+    // New diagram: A renamed to A2, edge is now A2→B
+    const newParsed = makeParsed({
+      nodes: new Map([["A2", makeNode("A2")], ["B", makeNode("B")]]),
+      edges: [makeEdge("A2", "B", 0)],
+      renames: [{ oldId: "A", newId: "A2" }],
+    });
+
+    const oldEdgeKey = edgeKey("A", "B", 0);
+    const newEdgeKey = edgeKey("A2", "B", 0);
+    const currentLayout = makeLayout({
+      nodes: { A: makeNodeLayout({ x: 50, y: 100 }), B: makeNodeLayout({ x: 300, y: 100 }) },
+      edges: { [oldEdgeKey]: { routing: "orthogonal", waypoints: [{ x: 175, y: 130 }], style: { stroke: "blue" } } },
+    });
+
+    mockBoth(newParsed, oldParsed);
+    const result = await reconcile(
+      "old",
+      "flowchart TD\n%% @rename: A -> A2\nA2-->B",
+      currentLayout,
+    );
+
+    // New edge key must exist
+    expect(result.layout.edges[newEdgeKey]).toBeDefined();
+    // Old edge key must not exist
+    expect(result.layout.edges[oldEdgeKey]).toBeUndefined();
+    // Routing data preserved
+    expect(result.layout.edges[newEdgeKey]!.routing).toBe("orthogonal");
+    expect(result.layout.edges[newEdgeKey]!.waypoints).toHaveLength(1);
+    expect(result.layout.edges[newEdgeKey]!.style).toEqual({ stroke: "blue" });
+  });
+
+  it("S-04-F2: @rename migrates edge routing when oldId is the to end", async () => {
+    // Old diagram: edge A→B
+    const oldParsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")], ["B", makeNode("B")]]),
+      edges: [makeEdge("A", "B", 0)],
+    });
+    // New diagram: B renamed to B2, edge is now A→B2
+    const newParsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")], ["B2", makeNode("B2")]]),
+      edges: [makeEdge("A", "B2", 0)],
+      renames: [{ oldId: "B", newId: "B2" }],
+    });
+
+    const oldEdgeKey = edgeKey("A", "B", 0);
+    const newEdgeKey = edgeKey("A", "B2", 0);
+    const currentLayout = makeLayout({
+      nodes: { A: makeNodeLayout({ x: 50, y: 100 }), B: makeNodeLayout({ x: 300, y: 100 }) },
+      edges: { [oldEdgeKey]: { routing: "auto", waypoints: [], style: { stroke: "red" } } },
+    });
+
+    mockBoth(newParsed, oldParsed);
+    const result = await reconcile(
+      "old",
+      "flowchart TD\n%% @rename: B -> B2\nA-->B2",
+      currentLayout,
+    );
+
+    expect(result.layout.edges[newEdgeKey]).toBeDefined();
+    expect(result.layout.edges[oldEdgeKey]).toBeUndefined();
+    expect(result.layout.edges[newEdgeKey]!.routing).toBe("auto");
+    expect(result.layout.edges[newEdgeKey]!.style).toEqual({ stroke: "red" });
+  });
+
+  it("S-04-F3: @rename migrates self-loop edge when oldId appears as both from and to", async () => {
+    // Old diagram: self-loop A→A
+    const oldParsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")]]),
+      edges: [makeEdge("A", "A", 0)],
+    });
+    // New diagram: A renamed to A2, self-loop is now A2→A2
+    const newParsed = makeParsed({
+      nodes: new Map([["A2", makeNode("A2")]]),
+      edges: [makeEdge("A2", "A2", 0)],
+      renames: [{ oldId: "A", newId: "A2" }],
+    });
+
+    const oldEdgeKey = edgeKey("A", "A", 0);
+    const newEdgeKey = edgeKey("A2", "A2", 0);
+    const currentLayout = makeLayout({
+      nodes: { A: makeNodeLayout({ x: 200, y: 200 }) },
+      edges: { [oldEdgeKey]: { routing: "orthogonal", waypoints: [{ x: 200, y: 100 }], style: {} } },
+    });
+
+    mockBoth(newParsed, oldParsed);
+    const result = await reconcile(
+      "old",
+      "flowchart TD\n%% @rename: A -> A2\nA2-->A2",
+      currentLayout,
+    );
+
+    expect(result.layout.edges[newEdgeKey]).toBeDefined();
+    expect(result.layout.edges[oldEdgeKey]).toBeUndefined();
+    expect(result.layout.edges[newEdgeKey]!.routing).toBe("orthogonal");
+  });
+
+  // ── RC-23 ─────────────────────────────────────────────────────────────────
+
   it("RC-23: @rename with unknown oldId → no crash, rename is silently skipped", async () => {
     const oldParsed = makeParsed({ nodes: new Map([["A", makeNode("A")]]) });
     const newParsed = makeParsed({

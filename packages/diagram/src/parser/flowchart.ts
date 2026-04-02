@@ -1,7 +1,7 @@
 /**
  * A2 — Flowchart-specific Mermaid parser (internal)
  *
- * Accesses the undocumented mermaid `diagram.parser.yy` API.
+ * Accesses the mermaid `diagram.db` API (mermaid 11.x).
  * This is the ONLY file in the codebase that imports mermaid internals.
  * All other modules use the stable ParsedDiagram type via adapter.ts.
  *
@@ -30,8 +30,8 @@ export type FlowchartDb = Record<string, unknown>;
 
 interface MermaidVertex {
   id: string;
-  label?: string; // mermaid 11.x primary field
-  text?: string;  // fallback for older internal API shapes
+  text?: string;  // mermaid 11.x primary field
+  label?: string; // fallback for older internal API shapes
   type: string;
   classes?: string[];
 }
@@ -80,18 +80,40 @@ export function parseFlowchart(db: FlowchartDb): ParsedDiagram {
   const rawSubgraphs = (db.getSubGraphs as () => MermaidSubgraph[])();
   const direction = (db.getDirection as () => string)() as
     | "TD"
+    | "TB"
     | "LR"
     | "RL"
     | "BT";
 
+  // Mermaid 11.x uses "TB" (top-to-bottom); normalize to "TD" for downstream code.
+  const normalizedDirection =
+    direction === "TB" ? "TD" : direction;
+
   // Build cluster membership: nodeId → clusterId
   const nodeToCluster = new Map<NodeId, ClusterId>();
+  const clusterIdSet = new Set(rawSubgraphs.map(sg => sg.id));
+
+  // First pass: build all clusters (parent not yet set)
   const clusters: ParsedCluster[] = rawSubgraphs.map((sg) => {
-    for (const nodeId of sg.nodes) {
+    const directMembers = sg.nodes.filter(id => !clusterIdSet.has(id));
+    for (const nodeId of directMembers) {
       nodeToCluster.set(nodeId, sg.id);
     }
-    return { id: sg.id, label: sg.title, members: [...sg.nodes] };
+    return { id: sg.id, label: sg.title, members: directMembers };
   });
+
+  // Second pass: derive parent from membership
+  // If cluster X's nodes array contains cluster Y's ID → Y.parent = X
+  for (const sg of rawSubgraphs) {
+    for (const nodeId of sg.nodes) {
+      if (clusterIdSet.has(nodeId)) {
+        const childCluster = clusters.find(c => c.id === nodeId);
+        if (childCluster && !childCluster.parent) {
+          childCluster.parent = sg.id;
+        }
+      }
+    }
+  }
 
   // Build nodes map
   const nodes = new Map<NodeId, ParsedNode>();
@@ -102,7 +124,7 @@ export function parseFlowchart(db: FlowchartDb): ParsedDiagram {
   for (const [id, v] of vertexEntries) {
     nodes.set(id, {
       id,
-      label: v.label ?? v.text ?? "",
+      label: v.text ?? v.label ?? "",
       shape: SHAPE_MAP[v.type] ?? "rectangle",
       classes: v.classes ? [...v.classes] : [],
       cluster: nodeToCluster.get(id),
@@ -130,6 +152,6 @@ export function parseFlowchart(db: FlowchartDb): ParsedDiagram {
     edges,
     clusters,
     renames: [], // overridden by adapter.ts spread with parsed annotations
-    direction,
+    direction: normalizedDirection,
   };
 }

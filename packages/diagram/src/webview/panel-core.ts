@@ -20,6 +20,7 @@ import {
 import { reconcile } from "../reconciler/reconciler.js";
 import { generateCanvas } from "../canvas/canvas-generator.js";
 import { computeInitialLayout } from "../layout/auto-layout.js";
+import type { LayoutOptions } from "../layout/auto-layout.js";
 import { toExcalidrawPayload } from "./scene-adapter.js";
 import type { LayoutStore, SpatialDiagramType } from "../types.js";
 import type {
@@ -79,7 +80,10 @@ export async function loadAndPost(
   let layout = await readLayout(layoutPath);
   if (layout === null) {
     try {
-      layout = computeInitialLayout(parseResult.diagram);
+      const dir = parseResult.diagram.direction;
+      // Mermaid uses "TD" but dagre uses "TB" — they mean the same thing.
+      const rankdir = (dir === "TD" ? "TB" : dir) as LayoutOptions["rankdir"];
+      layout = computeInitialLayout(parseResult.diagram, { rankdir });
     } catch {
       layout = createEmptyLayout(parseResult.diagram.type as SpatialDiagramType);
     }
@@ -173,6 +177,16 @@ export function handleWebviewMessage(
       break;
     case "canvas:timing":
       log(`[TIMING webview] ${msg.label}: ${msg.ms}ms`);
+      break;
+    case "canvas:edge-routed":
+      // Future: wire to patchEdge(layout, msg.edgeKey, { waypoints: msg.waypoints })
+      log(`[diag.2] ${msg.type} — not yet implemented`);
+      break;
+    case "canvas:node-added":
+    case "canvas:node-deleted":
+    case "canvas:edge-added":
+    case "canvas:edge-deleted":
+      log(`[diag.2] ${msg.type} — not yet implemented`);
       break;
     case "comment:create":
     case "comment:reply":

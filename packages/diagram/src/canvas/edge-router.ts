@@ -113,26 +113,26 @@ function clampToBorder(
   return [cx + t * dx, cy + t * dy];
 }
 
+function routeSelfLoop(box: BoundingBox): RouteResult {
+  const { x, y, w, h } = box;
+  const cx = x + w / 2;
+  const off = 60;
+  return {
+    points: [
+      [cx, y],
+      [x + w + off, y],
+      [x + w + off, y + h / 2],
+      [cx, y + h],
+    ],
+    startBinding: { focus: 0, gap: ARROW_GAP },
+    endBinding:   { focus: 0, gap: ARROW_GAP },
+  };
+}
+
 function routeAuto(
   source: BoundingBox,
   target: BoundingBox
 ): RouteResult {
-  if (isSameBox(source, target)) {
-    // Self-loop: rectangular path around the top-right corner of the node.
-    const { x, y, w, h } = source;
-    const cx = x + w / 2;
-    const off = 60;
-    return {
-      points: [
-        [cx, y],
-        [x + w + off, y],
-        [x + w + off, y + h / 2],
-        [cx, y + h],
-      ],
-      startBinding: { focus: 0, gap: ARROW_GAP },
-      endBinding:   { focus: 0, gap: ARROW_GAP },
-    };
-  }
   const sc = centre(source);
   const tc = centre(target);
   const start = clampToBorder(sc, tc, source, ARROW_GAP);
@@ -190,6 +190,11 @@ export function routeEdge(
   source: BoundingBox,
   target: BoundingBox
 ): RouteResult {
+  // Self-loop: same geometry regardless of routing mode — handle first.
+  if (isSameBox(source, target)) {
+    return routeSelfLoop(source);
+  }
+
   // Normalise aliases and unknown values to a canonical mode.
   const mode: EdgeRouting =
     routing === "curved" ? "auto"

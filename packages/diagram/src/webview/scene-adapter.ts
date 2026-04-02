@@ -26,6 +26,21 @@
 
 import type { ExcalidrawElement } from "../types.js";
 
+// ── FNV-1a 32-bit hash ───────────────────────────────────────────────────────
+
+/**
+ * FNV-1a 32-bit hash — stable per mermaidId, produces well-distributed
+ * non-negative integers suitable for Rough.js seed.
+ */
+function fnv1a32(str: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
 // ── ExcalidrawAPIElement ──────────────────────────────────────────────────────
 
 /**
@@ -128,14 +143,14 @@ export function toExcalidrawPayload(
       ...rest,
       // ── Required Excalidraw fields (replaceAllElements needs them all) ───
       version: 1,
-      versionNonce: Math.round(Math.random() * 1e9),
+      versionNonce: fnv1a32((mermaidId ?? el.id) + ":nonce"),
       isDeleted: false,
       fillStyle: rest.fillStyle ?? ("hachure" as const),
       strokeWidth: rest.strokeWidth ?? 1,
       strokeStyle: rest.strokeStyle ?? ("solid" as const),
       opacity: 100,
       angle: 0,
-      seed: Math.round(Math.random() * 1e9),
+      seed: fnv1a32(mermaidId ?? el.id),
       groupIds: [],
       frameId: null,
       updated: now,
@@ -145,7 +160,10 @@ export function toExcalidrawPayload(
       backgroundColor: rest.backgroundColor ?? "transparent",
       // ── Mapped fields ────────────────────────────────────────────────────
       fontFamily: FONT_FAMILY_MAP[fontFamily] ?? 1,
-      // roundness: number → { type: 2 } (PROPORTIONAL_RADIUS) | null
+      // Excalidraw roundness: { type: 2 } = PROPORTIONAL_RADIUS — radius scales
+      // with element dimensions. Our numeric roundness (8=rounded, 32=stadium) controls
+      // SHAPE selection in shape-map.ts; the actual radius is Excalidraw's PROPORTIONAL_RADIUS
+      // applied to the element's w/h. No user-settable "amount" field exists in Excalidraw.
       roundness: roundness != null ? { type: 2 as const } : null,
       boundElements: boundElements ?? null,
       containerId: containerId ?? null,

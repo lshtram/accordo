@@ -15,7 +15,7 @@
  * Source: diag_arch_v4.2.md §7.1, diag_workplan.md §5 A7
  */
 
-import type { LayoutStore, ReconcileResult, NodeId } from "../types.js";
+import type { LayoutStore, ReconcileResult, NodeId, EdgeLayout } from "../types.js";
 import { parseMermaid } from "../parser/adapter.js";
 import { matchEdges } from "./edge-identity.js";
 import { addUnplaced } from "../layout/layout-store.js";
@@ -99,6 +99,12 @@ export async function reconcile(
   const renamesApplied: string[] = [];
   let mermaidCleaned: string | undefined;
 
+  // Build lookup map before the rename loop so it can be used for edge key migration.
+  const renameMap = new Map<string, string>();
+  for (const { oldId, newId } of renames) {
+    renameMap.set(oldId, newId);
+  }
+
   if (renames.length > 0) {
     for (const { oldId, newId } of renames) {
       if (layout.nodes[oldId] !== undefined) {
@@ -108,7 +114,43 @@ export async function reconcile(
       }
     }
     mermaidCleaned = stripRenameDirectives(newSource);
+
+    // Migrate edge keys when nodes are renamed (§7.2).
+    const updatedEdges: Record<string, EdgeLayout> = {};
+    for (const [edgeKey, edgeLayout] of Object.entries(layout.edges)) {
+      const arrowIdx = edgeKey.indexOf("->");
+      const colonIdx = edgeKey.lastIndexOf(":");
+      if (arrowIdx === -1 || colonIdx === -1) {
+        // Malformed key — pass through unchanged
+        updatedEdges[edgeKey] = edgeLayout;
+        continue;
+      }
+      const from = edgeKey.slice(0, arrowIdx);
+      const to   = edgeKey.slice(arrowIdx + 2, colonIdx);
+      const ord  = edgeKey.slice(colonIdx + 1);
+      const newFrom = renameMap.has(from) ? renameMap.get(from)! : from;
+      const newTo   = renameMap.has(to)   ? renameMap.get(to)! : to;
+      const newKey  = `${newFrom}->${newTo}:${ord}`;
+      updatedEdges[newKey] = edgeLayout;
+    }
+    layout = { ...layout, edges: updatedEdges };
   }
+
+  // ── Apply renames to oldParsed edges before matchEdges ──────────────────────
+  // matchEdges groups edges by (from, to) pair key.  When a node is renamed
+  // A → A2 the old diagram has pair "A>B" and the new diagram has "A2>B" —
+  // they never match, so the edge lands in 'added' and routing is reset to
+  // "auto".  Fix: produce a renamed copy of oldDiagram.edges so matchEdges
+  // sees matching pair keys.  The early edge-key migration above already
+  // updated layout.edges, so the 'preserved' lookup in oldKey space works.
+  const oldEdgesForMatch: typeof oldDiagram.edges =
+    renameMap.size > 0
+      ? oldDiagram.edges.map((e) => ({
+          ...e,
+          from: renameMap.get(e.from) ?? e.from,
+          to:   renameMap.get(e.to)   ?? e.to,
+        }))
+      : oldDiagram.edges;
 
   // ── Node diff ────────────────────────────────────────────────────────────────
   const oldNodeIds = new Set<string>(oldDiagram.nodes.keys());
@@ -137,7 +179,7 @@ export async function reconcile(
 
   // ── Edge reconciliation via A5 matchEdges ────────────────────────────────────
   const { preserved, added: edgesAddedKeys, removed: edgesRemovedKeys } =
-    matchEdges(oldDiagram.edges, newDiagram.edges, layout.edges);
+    matchEdges(oldEdgesForMatch, newDiagram.edges, layout.edges);
 
   const newEdges: LayoutStore["edges"] = {};
 

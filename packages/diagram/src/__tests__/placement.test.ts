@@ -126,6 +126,34 @@ describe("placeNodes (A6 — unplaced placement)", () => {
     expect(result.get("newNode")!.y).toBeGreaterThan(0);
   });
 
+  // ── S-05: BT/RL direction placement ─────────────────────────────────────────
+
+  it("S-05-F1: BT direction → successor placed above anchor (y < anchor.y)", () => {
+    // In BT (bottom-to-top), flow goes upward, so successor node2 should be
+    // positioned ABOVE node1 (y coordinate is smaller/less).
+    const anchor = makeNode("anchor");
+    const newNode = makeNode("newNode");
+    const diagram = makeDiagram([anchor, newNode], [makeParsedEdge("anchor", "newNode")]);
+    const layout = makeLayoutStore({ anchor: makeNodeLayout(100, 200) });
+    const result = placeNodes(["newNode"], diagram, layout, { direction: "BT" });
+    const pos = result.get("newNode")!;
+    // Node placed above anchor — y should be less than anchor's y
+    expect(pos.y).toBeLessThan(200);
+  });
+
+  it("S-05-F2: RL direction → successor placed left of anchor (x < anchor.x)", () => {
+    // In RL (right-to-left), flow goes leftward, so successor node2 should be
+    // positioned LEFT of node1 (x coordinate is smaller/less).
+    const anchor = makeNode("anchor");
+    const newNode = makeNode("newNode");
+    const diagram = makeDiagram([anchor, newNode], [makeParsedEdge("anchor", "newNode")]);
+    const layout = makeLayoutStore({ anchor: makeNodeLayout(300, 100) });
+    const result = placeNodes(["newNode"], diagram, layout, { direction: "RL" });
+    const pos = result.get("newNode")!;
+    // Node placed left of anchor — x should be less than anchor's x
+    expect(pos.x).toBeLessThan(300);
+  });
+
   // PL-04: single node with positioned neighbour, LR → placed to the right
   it("PL-04: single node with positioned neighbour, LR flow → placed right of neighbour", () => {
     const anchor = makeNode("anchor");

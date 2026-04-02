@@ -39,7 +39,7 @@ const mermaidMock = {
     initialize: vi.fn(),
     mermaidAPI: {
       getDiagramFromText: vi.fn((_source: string) => ({
-        parser: { yy: _mockDb },
+        db: _mockDb,
       })),
       initialize: vi.fn(),
     },
@@ -393,6 +393,19 @@ describe("parseMermaid — direction", () => {
     if (!result.valid) return;
     expect(result.diagram.direction).toBe(dir);
   });
+
+  it("normalizes 'TB' from mermaid to 'TD'", async () => {
+    setMockDb({
+      getVertices: () => ({}),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TB",
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.diagram.direction).toBe("TD");
+  });
 });
 
 // ── 8. Empty diagram ──────────────────────────────────────────────────────────
@@ -609,5 +622,20 @@ describe("parseMermaid — vertex text-field fallback", () => {
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.nodes.get("X")?.label).toBe("TextLabel");
+  });
+
+  it("prefers vertex.text over vertex.label when both are present", async () => {
+    setMockDb({
+      getVertices: () => ({
+        Y: { id: "Y", text: "TextValue", label: "LabelValue", type: "square", classes: [] },
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+    });
+    const result = await parseMermaid("flowchart TD\n  Y[TextValue]");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.diagram.nodes.get("Y")?.label).toBe("TextValue");
   });
 });
