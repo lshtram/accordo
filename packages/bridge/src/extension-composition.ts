@@ -257,6 +257,8 @@ export function makeWsClientEvents(
       deps.bootstrap.outputChannel.appendLine("[accordo-bridge] Auth failure — Hub credentials invalid");
       deps.bootstrap.connectionStatusEmitter.fire(false);
       deps.bootstrap.updateStatusBar();
+      // LCM-04: trigger full restart (reauth → hard fallback → kill+respawn with new credentials)
+      void deps.services.hubManager.restart();
     },
 
     onProtocolMismatch: (message: string): void => {
