@@ -105,8 +105,7 @@ The Hub is the **central control plane**. It has zero VSCode dependency.
 - **Process model:** Standalone. Bridge auto-starts it, or it runs manually via `npx accordo-hub`
 - **Port:** `3000` (configurable via `--port` / `ACCORDO_HUB_PORT`)
 - **Loopback only:** Binds to `127.0.0.1` by default. Flag `--host 0.0.0.0` for explicit opt-in to external access.
-- **PID file:** On startup Hub writes its PID to `~/.accordo/hub.pid` (directory created with mode `0700` if absent, file written with mode `0600`). On graceful shutdown the file is removed. Bridge checks the PID file on activation to detect orphaned Hub processes from a previous VSCode crash.
-- **Token file:** `~/.accordo/token` is written with mode `0600` (readable only by the owning user). Directory `~/.accordo/` is created with mode `0700`.
+- **Ephemeral model:** Hub is spawned by Bridge and dies with its owning VSCode window. No PID file, no token file, no port file. The `~/.accordo/` directory is used only for audit logs and log files. See `multi-session-architecture.md` §3 for the full lifecycle specification.
 
 ### 3.3 Server Endpoints
 
@@ -116,7 +115,7 @@ The Hub is the **central control plane**. It has zero VSCode dependency.
 | `/instructions` | GET | Returns rendered system prompt (markdown). |
 | `/health` | GET | Returns `{ ok: true, uptime: <seconds>, bridge: "connected"\|"disconnected", toolCount: <number>, protocolVersion: <string> }` |
 | `/bridge` | WebSocket | Bridge connection point. Authenticated via `x-accordo-secret` header. |
-| `/bridge/reauth` | POST | Credential rotation without Hub respawn. Auth: `x-accordo-secret: <current-secret>`. Body: `{ "newToken": "<new-token>", "newSecret": "<new-secret>" }`. Hub atomically replaces `ACCORDO_BRIDGE_SECRET` and `ACCORDO_TOKEN` then returns 200. Allows Bridge to rotate credentials without terminating active CLI agent sessions (e.g. on `accordo.hub.restart`). Returns 401 if the current secret is wrong. |
+| `/bridge/reauth` | POST | Credential rotation without Hub respawn. Auth: `x-accordo-secret: <current-secret>`. Body: `{ "newToken": "<new-token>", "newSecret": "<new-secret>" }`. Hub atomically replaces `ACCORDO_BRIDGE_SECRET` and `ACCORDO_TOKEN` in memory, then returns 200. No files are written. Allows Bridge to rotate credentials without terminating active agent sessions (e.g. on `accordo.hub.restart`). Returns 401 if the current secret is wrong. |
 
 ### 3.4 MCP Transport — Streamable HTTP
 
@@ -279,28 +278,37 @@ The Bridge is the **only VSCode-specific core component**. It is the nervous sys
 On activation:
 1. Read stored ACCORDO_BRIDGE_SECRET from VSCode SecretStorage (key: "accordo.bridgeSecret")
 2. Read stored ACCORDO_TOKEN from VSCode SecretStorage (key: "accordo.hubToken")
-3. Check if Hub is already running (GET http://localhost:{port}/health)
+   (If either is absent — first launch — generate and persist immediately)
+3. Check if Hub is already running: GET http://localhost:{port}/health
 4. If running and healthy:
-   a. Use the stored secret to connect WebSocket
-   b. If WS upgrade rejected (401/403) → Hub was externally restarted; Bridge does not know the new secret and cannot reauth. Kill Hub and go to step 5.
-   c. If WS connects → session resumes, no respawn needed
-5. If not running (or step 4b triggered) and autoStart is true:
+   a. Attempt WS connect with stored secret
+   b. If WS OK → session resumes, skip to step 7
+   c. If WS close code 4001 → Hub is orphaned/foreign (different secret)
+      Bridge cannot reauth. Kill the existing Hub (SIGTERM + 2s grace + SIGKILL),
+      then fall through to step 5.
+5. If not running (or step 4c triggered) and autoStart is true:
    a. Generate a new ACCORDO_BRIDGE_SECRET (crypto.randomUUID())
    b. Generate a new ACCORDO_TOKEN (crypto.randomBytes(32).toString('hex'))
    c. Persist both to VSCode SecretStorage
-   d. Spawn Hub: execFile(nodePath, ['-e', "require('accordo-hub')"], { env: {...} })
+   d. Spawn Hub: execFile(nodePath, [hubEntry, '--port', port], {env})
       Where nodePath = accordo.hub.executablePath || process.execPath
       env: { ACCORDO_BRIDGE_SECRET, ACCORDO_TOKEN, ACCORDO_HUB_PORT: port }
-   e. Wait for /health (poll every 500ms, timeout 10s)
-   f. If timeout → show error notification, abort
+   e. Parse Hub stderr for actual port (Hub prints "[hub] Listening on 127.0.0.1:<port>")
+   f. Poll /health at 500ms intervals (max 10s)
+   g. If timeout → show error notification, abort
 6. Connect WebSocket to ws://localhost:{port}/bridge
    headers: { "x-accordo-secret": secret }
-7. On connect: send full IDEState snapshot
+7. On connect: send full IDEState snapshot (with protocolVersion)
 8. On disconnect: retry with exponential backoff (1s, 2s, 4s, max 30s)
 
-On `accordo.hub.restart` command (soft restart — Hub keeps running, CLI agents uninterrupted):
+On deactivate() — async:
+1. Close WebSocket connection (graceful close frame)
+2. Kill Hub: SIGTERM → wait 2s → SIGKILL if still alive
+   (See multi-session-architecture.md §3.3)
+
+On `accordo.hub.restart` command (soft restart — Hub keeps running, agents uninterrupted):
 1. Generate new ACCORDO_BRIDGE_SECRET + ACCORDO_TOKEN
-2. POST /bridge/reauth with current secret → Hub updates credentials atomically
+2. POST /bridge/reauth with current secret → Hub updates credentials in memory
 3. Persist new credentials to SecretStorage
 4. Close and reconnect WS with new secret
 5. Rewrite agent config files with new token
@@ -628,7 +636,7 @@ Same topology as SSH. The Codespace VM runs the workspace extension host + Hub. 
 | **Codespaces** | Browser / local VS Code UI | Codespace VM | Codespace VM | Codespace port-forwarding: the forwarded port URL for port 3000, with the same bearer token. |
 | **All remote** | Remote host | Remote host | Remote host | `localhost:3000` direct — identical to Local. |
 
-**Auth note for remote topologies:** The bearer token is stored in VSCode SecretStorage on the remote host. When configuring agents that run on a different host (e.g., local agent + SSH remote IDE), the token must be manually extracted from `~/.accordo/token` on the remote and provided to the agent.
+**Auth note for remote topologies:** The bearer token is stored in VSCode SecretStorage on the remote host and written to workspace config files (e.g., `opencode.json`). When configuring agents that run on a different host (e.g., local agent + SSH remote IDE), the token must be extracted from the workspace config file on the remote host (e.g., `ssh user@host cat /path/to/project/opencode.json | jq '.mcp.accordo.headers.Authorization'`). See `multi-session-architecture.md` §7 for the full remote topology matrix.
 
 ---
 
@@ -640,7 +648,7 @@ Same topology as SSH. The Codespace VM runs the workspace extension host + Hub. 
 |---|---|
 | **Loopback binding** | `127.0.0.1` by default. Explicit `--host` flag required for any other interface. |
 | **Origin validation** | All HTTP requests must have either no `Origin` header (non-browser) or an `Origin` of `localhost`/`127.0.0.1`. Reject all other origins. Prevents DNS rebinding. |
-| **Bearer token** | `Authorization: Bearer <token>` required on `/mcp` and `/instructions`. Token originates from Bridge: generated on Hub spawn, stored in VSCode `SecretStorage` (key: `accordo.hubToken`), passed to Hub as `ACCORDO_TOKEN` env var. Hub also writes it to `~/.accordo/token` as a fallback for out-of-band agent access (e.g. local CLI agents). Never committed to workspace. |
+| **Bearer token** | `Authorization: Bearer <token>` required on `/mcp` and `/instructions`. Token originates from Bridge: generated on Hub spawn, stored in VSCode `SecretStorage` (key: `accordo.hubToken`), passed to Hub as `ACCORDO_TOKEN` env var. Hub holds the token in memory only — no file is written. Token is workspace-local (written to workspace config files by Bridge). Never committed to workspace (config files are in `.gitignore`). |
 | **CORS** | No CORS headers served by default. Agents use same-origin or non-browser requests. |
 
 ### 7.2 WebSocket Security
@@ -745,21 +753,23 @@ Messages exceeding this limit cause `ws` to close the connection with a protocol
 1. VSCode opens workspace
 2. accordo-bridge activates (onStartupFinished)
 3. Bridge reads stored secret + token from VSCode SecretStorage
+   (If absent: generate new ones, persist immediately)
 4. Bridge checks GET http://localhost:{port}/health
 5. If Hub is running and healthy:
-   a. Attempt WS connect with stored secret → if OK, skip to step 7
-   b. If WS auth fails → Hub was replaced; generate new secret+token, go to step 6
+   a. Attempt WS connect with stored secret → if OK, skip to step 8
+   b. If WS close code 4001 → Hub is orphaned/foreign; kill and fall through to step 6
 6. If Hub not running (or step 5b) and autoStart:
    a. Generate new ACCORDO_BRIDGE_SECRET + ACCORDO_TOKEN, persist to SecretStorage
    b. Bridge spawns Hub via execFile(nodePath, ...) with env vars
-   c. Bridge polls /health (500ms interval, 10s timeout)
+   c. Parse Hub stderr for actual port
+   d. Bridge polls /health (500ms interval, 10s timeout)
 7. Bridge connects WS to ws://localhost:{port}/bridge
 8. Bridge sends stateSnapshot (full IDEState) including ACCORDO_PROTOCOL_VERSION
 9. Hub validates protocol version; if mismatch → close WS with 4002, log error
 10. Hub marks itself ready
 11. accordo-editor activates, calls bridge.registerTools()
 12. Bridge sends toolRegistry message to Hub
-13. Bridge registers Hub via McpHttpServerDefinition (native VSCode MCP, shared Hub instance)
+13. Bridge registers Hub as native MCP server (Copilot — via settings or lm API)
 14. Bridge writes opencode.json / .claude/mcp.json if configured (token from SecretStorage)
 15. Agent starts, connects MCP, fetches /instructions
 16. Agent sees IDE state + 16 editor tools. Session is live.
@@ -861,10 +871,13 @@ The VS Code **built-in Comments panel** (bottom-bar `workbench.panel.comments`) 
 ## 13. Component: accordo-script (Session 10D)
 
 > **Agent note [2026-03-11]:** Established during Session 10D. The script module is the automation layer that sequences multi-step IDE experiences from a single agent call.
+> **Agent note [2026-04-01]:** Migrated from extension host to Hub. ScriptRunner + types live in Hub, tools are Hub-native with localHandler (DEC-005). The extension retains only SubtitleBar and state display.
 
 ### 13.1 Role
 
 Exposes a **declarative scripting runtime** as MCP tools. The agent produces a `NarrationScript` JSON object in one call; `accordo-script` executes each step sequentially without further round-trips.
+
+**Hub-native architecture:** The ScriptRunner and its 4 MCP tools (run, stop, status, discover) live in the Hub process. Script tool calls are handled locally via the `localHandler` pattern (DEC-005) without routing through BridgeServer. When a script's `command` steps need to control the IDE (e.g. open a file, highlight lines), the ScriptRunner's deps adapter calls `bridgeServer.invoke()` — the same path AI agents use. The Hub doesn't know it's running a script; it just dispatches tool calls.
 
 Designed to be **voice-optional**: `speak` steps synthesise audio if `accordo-voice` is installed; otherwise they fall back to the subtitle bar and continue. This ensures automated demos, code walkthroughs, and teaching sequences work on any machine regardless of audio setup.
 
@@ -872,23 +885,27 @@ Designed to be **voice-optional**: `speak` steps synthesise audio if `accordo-vo
 
 | Step `type` | Fields | Behaviour |
 |---|---|---|
-| `speak` | `text` | Calls `accordo.voice.speakText` command if voice installed; otherwise shows subtitle |
-| `subtitle` | `text`, `durationMs?` | Shows text in status bar subtitle bar for `durationMs` (default 3000) |
-| `delay` | `ms` | Pauses execution for `ms` milliseconds |
-| `highlight` | `path`, `startLine`, `endLine`, `color?` | Highlights a range in a file using editor decorations |
-| `clear-highlights` | — | Clears all active highlights |
-| `command` | `command`, `args?` | Calls `vscode.commands.executeCommand(command, ...args)` |
+| `speak` | `text` | Calls `accordo_voice_readAloud` via Bridge; falls back to subtitle if voice unavailable |
+| `subtitle` | `text`, `durationMs?` | Calls `accordo_subtitle_show` via Bridge (future subtitle service) |
+| `delay` | `ms` | Pauses execution for `ms` milliseconds (local setTimeout in Hub) |
+| `highlight` | `path`, `startLine`, `endLine`, `color?` | Calls `accordo_editor_highlight` via Bridge |
+| `clear-highlights` | — | Calls `accordo_editor_clearHighlights` via Bridge |
+| `command` | `command`, `args?` | Calls `bridgeServer.invoke(command, args)` — routes to any registered tool |
 
-**`command` universality:** The Bridge `registerTools()` wrapper auto-registers every Accordo MCP tool as a VS Code command (same name as the tool). This means every tool from every modality (editor, voice, comments, presentations, diagrams, …) is reachable via `command` steps, with zero changes to `accordo-script`.
+**`command` universality:** Every registered Accordo MCP tool is reachable via `command` steps through `bridgeServer.invoke()`. This means every tool from every modality (editor, voice, comments, presentations, diagrams, …) is reachable without any changes to the script module.
 
-### 13.3 MCP Tools
+### 13.3 MCP Tools (Hub-native)
 
-| Tool | Purpose | Danger | Idempotent |
-|---|---|---|---|
-| `accordo_script_run` | Accept and execute a `NarrationScript` | moderate | no |
-| `accordo_script_stop` | Cancel the running script | safe | yes |
-| `accordo_script_status` | Poll execution progress (current step, state) | safe | yes |
-| `accordo_script_discover` | Return full reference card (step types, command IDs, example) | safe | yes |
+| Tool | Purpose | Danger | Idempotent | Handler |
+|---|---|---|---|---|
+| `accordo_script_run` | Accept and execute a `NarrationScript` | moderate | no | localHandler |
+| `accordo_script_stop` | Cancel the running script | safe | yes | localHandler |
+| `accordo_script_status` | Poll execution progress (current step, state) | safe | yes | localHandler |
+| `accordo_script_discover` | Return full reference card (step types, available tools) | safe | yes | localHandler |
+
+**Hub-native tool pattern:** These tools are registered via `ToolRegistry.registerHubTool()` and have a `localHandler` field. `McpCallExecutor` checks `isHubTool(tool)` before routing to the Bridge — if true, it calls `localHandler` directly. Tools still appear in `tools/list` identically to Bridge-registered tools. See DEC-005.
+
+**Dynamic discover:** `accordo_script_discover` no longer uses hardcoded command IDs. It calls `toolRegistry.list()` to return whatever tools are currently registered, making the reference card automatically reflect newly installed extensions.
 
 ### 13.4 LLM Schema Design
 
@@ -903,20 +920,18 @@ The `accordo_script_run` input schema uses a **flat property list with inline ex
 ### 13.5 Internal File Structure
 
 ```
-accordo-script/
-├── src/
-│   ├── extension.ts           — activate(), wire tools, Bridge registration
-│   ├── script-types.ts        — NarrationScript, ScriptStep discriminated union, ScriptState
-│   ├── script-runner.ts       — ScriptRunner: sequential executor, cancellation, error policy
-│   ├── subtitle-bar.ts        — ScriptSubtitleBar: status bar text, auto-clear
-│   └── tools/
-│       ├── run-script.ts          — accordo_script_run: accept, validate, start script
-│       ├── stop-script.ts         — accordo_script_stop: cancel running script
-│       ├── script-status.ts       — accordo_script_status: poll progress
-│       └── script-discover.ts     — accordo_script_discover: reference card
-├── package.json
-├── tsconfig.json
-└── vitest.config.ts
+packages/hub/src/script/          ← Hub-native script module
+├── index.ts                      — barrel export
+├── script-types.ts               — NarrationScript, ScriptStep discriminated union, ScriptState
+├── script-runner.ts              — ScriptRunner: sequential executor, cancellation, error policy
+├── script-deps-adapter.ts        — Factory: ScriptRunnerDeps wired to bridgeServer.invoke()
+└── script-tools.ts               — 4 HubToolRegistration factories (run, stop, status, discover)
+
+packages/hub/src/hub-tool-types.ts — HubToolRegistration, isHubTool() type guard
+
+packages/script/src/              ← Extension host (retained)
+├── extension.ts                  — activate(), SubtitleBar, Bridge state display (gutted)
+└── subtitle-bar.ts               — ScriptSubtitleBar: status bar text, auto-clear
 ```
 
 ---
@@ -1590,3 +1605,79 @@ The architectural reservation ensures that:
 - The relay transport path is extensible for new tool categories without structural changes
 - The `CommentBackendAdapter` portability pattern generalises to other browser capabilities
 - The content script overlay architecture leaves room for a second visual layer alongside pins
+
+---
+
+## 16. Component: OpenCode Narration Plugin
+
+**Location:** `.opencode/plugins/narration.ts`  
+**Runtime:** Bun (OpenCode's runtime — native `fetch`, no Node.js)  
+**Architecture ref:** Alternative to `voice-architecture.md` ADR-03 for the OpenCode agent client  
+**Requirements:** `docs/20-requirements/requirements-narration-plugin.md`
+
+### 16.1 Purpose
+
+The narration plugin provides automatic voice narration of agent responses in OpenCode.
+It exists because OpenCode lacks a reliable hook to inject voice directives into the
+system prompt (the standard ADR-03 approach for Copilot/Claude). Instead, the plugin
+operates **post-hoc**: it observes when the agent finishes, extracts the response,
+optionally summarizes it, and calls Accordo's `readAloud` tool.
+
+### 16.2 Data Flow
+
+```
+┌─────────────┐     session.idle      ┌───────────────────┐
+│  OpenCode   │ ───────────────────► │  Narration Plugin  │
+│  Agent Loop │    (event + sessionID) │  (.opencode/       │
+└─────────────┘                       │   plugins/)        │
+                                      └────────┬──────────┘
+                                               │
+                              ┌────────────────┼────────────────┐
+                              │                │                │
+                              ▼                ▼                ▼
+                     ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+                     │ OpenCode     │ │ Gemini Flash │ │ Accordo Hub  │
+                     │ Session API  │ │ (summarize)  │ │ POST /mcp    │
+                     │ (messages)   │ │              │ │ (readAloud)  │
+                     └──────────────┘ └──────────────┘ └──────────────┘
+```
+
+1. OpenCode emits `session.idle` when the agent finishes a response
+2. Plugin debounces (1500ms) to filter subagent intermediate completions
+3. Plugin calls `client.session.messages()` to extract the last assistant message
+4. If `narrationMode === "summary"`: plugin calls Gemini 2.0 Flash to produce a 2-3 sentence spoken summary
+5. If `narrationMode === "everything"`: plugin uses the full response text (no LLM call)
+6. Plugin calls `accordo_voice_readAloud` via JSON-RPC 2.0 on the Hub's `/mcp` endpoint
+7. On any failure: plugin silently skips (logs to stderr only)
+
+### 16.3 Boundary Rules
+
+| Rule | Rationale |
+|---|---|
+| Plugin NEVER modifies Hub, Bridge, or voice extension | Client-side only — zero backend changes |
+| Plugin NEVER imports `vscode` | Runs in Bun, not in VSCode extension host |
+| Plugin NEVER imports npm packages | Zero dependencies — raw `fetch` only |
+| Plugin reads `opencode.json` for MCP auth only | Same token the agent uses; no separate auth flow |
+| All errors are swallowed (logged to stderr) | Plugin must never interrupt the agent workflow |
+
+### 16.4 Integration Points
+
+| System | Interface | Direction |
+|---|---|---|
+| OpenCode plugin API | `session.idle` event, `client.session.messages()` | Plugin ← OpenCode |
+| Google AI API | `POST generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | Plugin → Google |
+| Accordo Hub MCP | `POST /mcp` (JSON-RPC 2.0, bearer auth) — `tools/call` for `accordo_voice_readAloud` and `accordo_voice_discover` | Plugin → Hub |
+| `opencode.json` | Read Hub URL + bearer token from `mcp.accordo` config | Plugin ← Filesystem |
+| Environment variables | `GEMINI_API_KEY`, `ACCORDO_NARRATION_MODE` | Plugin ← Environment |
+
+### 16.5 Relationship to ADR-03
+
+This plugin is a **complement** to ADR-03 (agent-driven summary narration), not a replacement:
+
+| Aspect | ADR-03 (agent-driven) | §16 Plugin (client-driven) |
+|---|---|---|
+| Mechanism | System prompt injects `readAloud` directive | Plugin observes idle, calls readAloud externally |
+| Summarization | Agent summarizes its own response | External LLM (Gemini Flash) summarizes |
+| Clients | Copilot, Claude (instruction URL consumers) | OpenCode only |
+| Hub changes | Prompt engine renders voice section | None |
+| Reliability | Depends on agent following instructions | Deterministic (always triggers on idle) |

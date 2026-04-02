@@ -142,7 +142,7 @@ Group 1:
 | Authentication | `x-accordo-secret: <current-secret>` header. 401 if wrong. |
 | Request body | `{ "newSecret": "<new-secret>", "newToken": "<new-token>" }`. Both fields required. |
 | Response | `200 OK` with empty body on success. |
-| Behaviour | Hub atomically updates `ACCORDO_BRIDGE_SECRET` and `ACCORDO_TOKEN` in memory and rewrites `~/.accordo/token`. The WebSocket server immediately begins accepting the new secret. Active CLI agent MCP sessions are **not disrupted**. |
+| Behaviour | Hub atomically updates `ACCORDO_BRIDGE_SECRET` and `ACCORDO_TOKEN` in memory. The WebSocket server immediately begins accepting the new secret. Active agent MCP sessions are **not disrupted**. No files are written — token exists in memory only. |
 | Use case | Bridge calls this before reconnecting with a new secret, avoiding a Hub kill-and-respawn that would disrupt in-flight CLI agent sessions. |
 
 ### 2.7 IDE State Debug Endpoint — `GET /state`
@@ -295,13 +295,13 @@ interface ToolRegistration {
 | Variable | Purpose |
 |---|---|
 | `ACCORDO_HUB_PORT` | Override for `--port`. CLI flag wins. |
-| `ACCORDO_TOKEN` | Bearer token for HTTP auth. Set by Bridge on Hub spawn. Hub writes it to `~/.accordo/token` on startup for out-of-band agent use (e.g. CLI agents not managed by Bridge). Never read from workspace config files. |
+| `ACCORDO_TOKEN` | Bearer token for HTTP auth. Set by Bridge on Hub spawn. Hub holds it in memory only — does NOT write to `~/.accordo/token` or any file. Token lifetime matches Hub lifetime. |
 | `ACCORDO_BRIDGE_SECRET` | Shared secret for WS auth. Set by Bridge on spawn. Rotates every time Hub is (re)spawned or when `/bridge/reauth` is called. |
 | `ACCORDO_LOG_DIR` | Directory for log files. Default: `~/.accordo/logs/` |
 | `ACCORDO_AUDIT_FILE` | Audit log path. Default: `~/.accordo/audit.jsonl` |
 | `ACCORDO_MAX_CONCURRENT_INVOCATIONS` | Maximum in-flight tool invocations Hub-wide across all agents. Default: `16`. |
 
-**File permissions:** Hub creates `~/.accordo/` with mode `0700` if it does not exist. It writes `~/.accordo/token` and `~/.accordo/hub.pid` with mode `0600`. These files are never world-readable.
+**File permissions:** Hub creates `~/.accordo/` with mode `0700` if it does not exist, but only when audit logging or log files are configured. No token, PID, or port files are written. See `multi-session-architecture.md` §8.
 
 ---
 
@@ -400,17 +400,11 @@ interface AuditEntry {
 
 ---
 
-## 8. PID File
+## 8. PID File — REMOVED
 
-Hub writes its process ID to `~/.accordo/hub.pid` on startup and removes it on graceful shutdown.
-
-| Requirement | Detail |
-|---|---|
-| Write on start | Immediately after binding the HTTP port, before processing any requests |
-| File mode | `0600` (owner read/write only) |
-| Directory | `~/.accordo/` — created with mode `0700` if absent |
-| Remove on shutdown | On `SIGTERM` or `SIGINT` before process exits |
-| Stale PID detection | Bridge reads the PID file on activation and sends a `kill -0 <pid>` check. If the process does not exist, the PID file is stale and Bridge proceeds with a fresh spawn. If the process exists and `/health` returns OK, Bridge reconnects. |
+> **Removed in ephemeral Hub model.** Hub no longer writes a PID file. Orphan detection
+> is handled by the Bridge's startup health check + WS auth failure path. See
+> `multi-session-architecture.md` §3.2 step 3 and DECISION-MS-02.
 
 ---
 
@@ -424,7 +418,7 @@ Hub writes its process ID to `~/.accordo/hub.pid` on startup and removes it on g
 | CONC-04 | If the queue is full, Hub immediately returns MCP error `-32004` (`"Server busy — invocation queue full"`). |
 | CONC-05 | When a result (or timeout) returns, the counter decrements and the next queued invocation is dequeued and forwarded in the same tick. |
 | CONC-06 | Cancelled invocations that have already been forwarded to Bridge still occupy an in-flight slot until Bridge sends `cancelled` or `result`. |
-| CONC-07 | Per-session parallelism is not limited. Multiple agents from a swarm may each have multiple calls in flight simultaneously, subject only to the Hub-wide limit. |
+| CONC-07 | Per-session effective parallelism is bounded by `max(2, ceil(16 / N))` where N is the number of active sessions. This is a floor, not a cap — a single session can still use all 16 slots when it is the only active session. Multiple agents from a swarm are subject to fair queuing under load. |
 
 ---
 

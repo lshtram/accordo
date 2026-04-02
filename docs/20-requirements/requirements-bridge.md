@@ -226,7 +226,7 @@ The Bridge constructs `ToolRegistration` from `ExtensionToolDefinition` by:
 | LCM-08 | If health check times out, show `vscode.window.showErrorMessage` with "Accordo Hub failed to start" and offer "Retry" and "Show Log" actions. |
 | LCM-09 | Stream Hub stdout/stderr to an `OutputChannel` named "Accordo Hub". |
 | LCM-10 | If Hub process exits unexpectedly, attempt restart once (generates new secret/token). If second attempt fails, show error and stop. |
-| LCM-11 | On VSCode shutdown (`deactivate()`), gracefully close WS connection. Do NOT kill Hub process (it may serve CLI agents). |
+| LCM-11 | On VSCode shutdown (`deactivate()`), kill the Hub process: send SIGTERM, wait up to 2 seconds for exit, then SIGKILL if still alive. The Hub is ephemeral — it lives and dies with the VSCode window. See `multi-session-architecture.md` §3. `deactivate()` must be `async` to await the kill sequence. |
 | LCM-12 | On `accordo.hub.restart` command — **soft restart (preferred):** Generate new ACCORDO_BRIDGE_SECRET + ACCORDO_TOKEN → POST `/bridge/reauth` with current secret → if 200: persist new credentials, reconnect WS, rewrite agent config files. Hub never stops; CLI agent sessions are uninterrupted. **Hard fallback** (if reauth returns non-200 or Hub is unreachable): close WS → kill Hub process → generate new credentials → re-run spawn sequence. |
 
 ### 4.2 Spawn Sequence Diagram
@@ -237,18 +237,25 @@ activate()
   ├── Read secret + token from context.secrets
   │
   ├── GET /health ──► Hub alive?
-  │   │ yes                │ no
+  │   │ yes                │ no (connection refused)
   │   │                    ├── autoStart? ──► no → show warning, return
   │   │                    │ yes
+  │   │                    ├── Generate fresh credentials (secret + token)
+  │   │                    ├── Persist to SecretStorage
   │   │                    ├── execFile(nodePath, [hubEntry, '--port', port], {env})
-  │   │                    │   (uses creds already ensured by LCM-01)
+  │   │                    │   (env: ACCORDO_BRIDGE_SECRET, ACCORDO_TOKEN, ACCORDO_HUB_PORT)
+  │   │                    ├── Parse Hub stderr for actual port
   │   │                    ├── poll /health (500ms × 20 = 10s max)
   │   │                    │   └── timeout → show error, return
+  │   │                    │
+  │   ├── Attempt WS connect with stored secret
+  │   │   ├── WS OK → session resumes, skip to state snapshot
+  │   │   └── WS close code 4001 (auth fail) → Hub is orphaned/foreign
+  │   │       ├── Kill existing Hub process (SIGTERM + SIGKILL fallback)
+  │   │       └── Generate fresh credentials, spawn new Hub (same as "no" path)
   │   │
   │   ├── Connect WS (ws://localhost:{port}/bridge)
   │   │   headers: { "x-accordo-secret": secret }
-  │   │   └── If close code 4001 (auth fail): generate + persist new secret,
-  │   │                                 kill Hub, respawn from scratch
   │   │
   │   ├── Send stateSnapshot (full IDEState + protocolVersion)
   │   │
@@ -482,7 +489,7 @@ export interface OpenTab {
 }
 ```
 
-**Note for remote topologies:** When the agent runs on a different host than the Hub (e.g., local terminal + SSH remote IDE), the token must be extracted manually from `~/.accordo/token` on the remote host and the port must be forwarded. See architecture.md §6.5 for the topology matrix.
+**Note for remote topologies:** When the agent runs on a different host than the Hub (e.g., local terminal + SSH remote IDE), the token must be extracted from the workspace config file (e.g., `opencode.json`) on the remote host and the port must be forwarded. See architecture.md §6.5 and multi-session-architecture.md §7 for the topology matrix.
 
 ### 8.5 Config File Format Validation
 

@@ -189,7 +189,50 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 
 ---
 
-## 4) Completed This Session
+### Priority H — Diagram Flowchart Debt Cleanup
+
+**Goal:** Make the `flowchart` diagram type production-quality before adding new diagram types. All fixes are diagram-type-agnostic and apply to future types (classDiagram, stateDiagram, erDiagram, block-beta, mindmap).
+
+**Source:** Full forensic review + architect consultation, 2026-04-02.
+
+**Architectural guidance:** All fixes reviewed by `@architect` before implementation.
+
+---
+
+#### Phase S — Simple Fixes (developer → reviewer, no TDD)
+
+| # | Issue | File(s) | Complexity | Status |
+|---|---|---|---|---|
+| S-01 | **C4: Deterministic seed** — replace `Math.random()` with FNV-1a hash of mermaidId | `scene-adapter.ts` | Low | ✅ **DONE** (`scene-adapter.ts`) |
+| S-02 | **C5: Protocol message stubs** — add no-op `case` handlers for `canvas:edge-routed`, `canvas:node-added`, `canvas:node-deleted`, `canvas:edge-added`, `canvas:edge-deleted` to eliminate "unhandled" log noise | `panel-core.ts` | Trivial | ✅ **DONE** (`panel-core.ts`) |
+| S-03 | **H1: Roundness comment** — add explanatory comment in `scene-adapter.ts` that `{ type: 2 }` is PROPORTIONAL_RADIUS and the number value is shape-selection only | `scene-adapter.ts` | Trivial | ✅ **DONE** (`scene-adapter.ts`) |
+| S-04 | **C1: Rename updates edge keys** — when node A→B rename, scan `layout.edges` and update all edge keys containing oldId | `reconciler.ts` | Low | ✅ **DONE** (`reconciler.ts` + 3 new tests) |
+| S-05 | **C2: BT/RL placement** — add full 4-direction switch (TD/BT/LR/RL) for crossDx/crossDy/flowDx/flowDy in `placement.ts` | `placement.ts` | Low | ✅ **DONE** (`placement.ts` + 2 new tests) |
+| S-06 | **H4: Self-loop in all routing modes** — factor self-loop detection out of `routeAuto` into `routeEdge` dispatch layer | `edge-router.ts` | Low | ✅ **DONE** (`edge-router.ts`) |
+| S-07 | **M7: cluster.parent** — in `parseFlowchart`, derive parent from membership: if cluster X lists cluster Y's ID as a member, Y.parent = X | `flowchart.ts` | Low | ✅ **DONE** (`flowchart.ts`) |
+
+---
+
+#### Phase T — TDD Features (full TDD cycle)
+
+| # | Feature | Status |
+|---|---|---|
+| T-01 | **H7: edgeStyles in patch** — add `edgeStyles` argument to `accordo_diagram_patch` tool: `{ strokeColor, strokeWidth, strokeStyle, routing }` per edge key | ⏳ |
+
+---
+
+#### Phase D — Deferred (requires more research)
+
+| # | Issue | Blocker |
+|---|---|---|
+| D-01 | **M1: Shape fidelity** — hexagon/cylinder/parallelogram approximations | Need Excalidraw native shape investigation |
+| D-02 | **H5: Edge strokeDash passthrough** — trace through canvas-generator + scene-adapter for strokeDash on arrow elements | Needs code trace |
+| D-03 | **L1: Curved routing** — implement `{ type: "curved" }` routing mode in edge-router | Needs Excalidraw curved arrow implementation |
+| D-04 | **H6: Multiple waypoints** — orthogonal routing uses only first waypoint; needs Z-shape support | Needs design |
+
+---
+
+### Priority A — Browser continuity for agents (MUST-HAVE)
 
 | Item | Status | Evidence |
 |---|---|---|
