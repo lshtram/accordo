@@ -189,6 +189,38 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 
 ---
 
+### Priority I — Multi-Session Architecture (Ephemeral Hub)
+
+**Module:** `multi-session` — Hub ephemeral lifecycle + multi-session support  
+**Architecture:** `docs/10-architecture/multi-session-architecture.md` (ephemeral Hub model)  
+**Review:** `docs/reviews/multi-session-ephemeral-hub-phase-a-review.md` (CONDITIONAL PASS — 2 blocking fixes applied)  
+**Phase A status:** ✅ COMPLETE — architect delivered, reviewer flagged 2 blocks, architect resolved
+
+**Goal:** Enable multiple AI sessions (OpenCode, Copilot, Claude) to work in parallel against the same VSCode/Hub. Simple FIFO queue with global 16-slot cap (no per-session scheduling — see CONC-03 in requirements-hub.md).
+
+**MVP scope (Scenario A — multi-agent, single Hub, single VSCode):**
+
+| # | Requirement | ID | Notes |
+|---|---|---|---|
+| MS-01 | Session enriched with `agentHint`, `label`, `group` | §1.2 | Stored at creation, not transient |
+| MS-02 | `sessionId` + `agentHint` added to `InvokeMessage` | §2.1.2 | Bridge needs session context |
+| MS-03 | ~~Weighted Fair Queue~~ — **REMOVED** (FIFO sufficient) | — | User rejected as over-engineered; simple FIFO with global 16-slot cap is the final design |
+| MS-04 | `FileActivityTracker`: advisory conflict warnings | §3.3 | Last-writer-wins; no blocking |
+| MS-05 | `AuditEntry` denormalized with `agentHint` | §2.1 | Efficient audit filtering |
+| MS-06 | Session idle timeout + TTL reaping | §1.3 | Abandoned session cleanup |
+
+**Deferred (post-MVP):** port auto-increment (Scenario B), instances.json discovery, session labels/groups UI, conductor/worker model (Scenario C)
+
+**Open questions (known gaps, address during implementation):**
+- OQ-01: stderr parse timeout — if Bridge reader hasn't started when Hub prints port
+- OQ-02: same-project two-window race — both windows write same opencode.json simultaneously
+- OQ-04: reauth token propagation — how does `/bridge/reauth` affect in-flight calls from other sessions
+
+**Source:** user request 2026-04-02 — parallel opencode sessions + multi-project VSCode windows  
+**Companion to:** `docs/10-architecture/multi-session-architecture.md` (amends architecture.md §§3.2, 4.3, 6.5, 7.1, 9)
+
+---
+
 ### Priority H — Diagram Flowchart Debt Cleanup
 
 **Goal:** Make the `flowchart` diagram type production-quality before adding new diagram types. All fixes are diagram-type-agnostic and apply to future types (classDiagram, stateDiagram, erDiagram, block-beta, mindmap).
@@ -203,13 +235,15 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 
 | # | Issue | File(s) | Complexity | Status |
 |---|---|---|---|---|
-| S-01 | **C4: Deterministic seed** — replace `Math.random()` with FNV-1a hash of mermaidId | `scene-adapter.ts` | Low | ✅ **DONE** (`scene-adapter.ts`) |
-| S-02 | **C5: Protocol message stubs** — add no-op `case` handlers for `canvas:edge-routed`, `canvas:node-added`, `canvas:node-deleted`, `canvas:edge-added`, `canvas:edge-deleted` to eliminate "unhandled" log noise | `panel-core.ts` | Trivial | ✅ **DONE** (`panel-core.ts`) |
-| S-03 | **H1: Roundness comment** — add explanatory comment in `scene-adapter.ts` that `{ type: 2 }` is PROPORTIONAL_RADIUS and the number value is shape-selection only | `scene-adapter.ts` | Trivial | ✅ **DONE** (`scene-adapter.ts`) |
-| S-04 | **C1: Rename updates edge keys** — when node A→B rename, scan `layout.edges` and update all edge keys containing oldId | `reconciler.ts` | Low | ✅ **DONE** (`reconciler.ts` + 3 new tests) |
-| S-05 | **C2: BT/RL placement** — add full 4-direction switch (TD/BT/LR/RL) for crossDx/crossDy/flowDx/flowDy in `placement.ts` | `placement.ts` | Low | ✅ **DONE** (`placement.ts` + 2 new tests) |
-| S-06 | **H4: Self-loop in all routing modes** — factor self-loop detection out of `routeAuto` into `routeEdge` dispatch layer | `edge-router.ts` | Low | ✅ **DONE** (`edge-router.ts`) |
-| S-07 | **M7: cluster.parent** — in `parseFlowchart`, derive parent from membership: if cluster X lists cluster Y's ID as a member, Y.parent = X | `flowchart.ts` | Low | ✅ **DONE** (`flowchart.ts`) |
+| S-01 | **C4: Deterministic seed** — replace `Math.random()` with FNV-1a hash of mermaidId | `scene-adapter.ts` | Low | ✅ **DONE** (`2f9cb32`) |
+| S-02 | **C5: Protocol message stubs** — add no-op `case` handlers for `canvas:edge-routed`, `canvas:node-added`, `canvas:node-deleted`, `canvas:edge-added`, `canvas:edge-deleted` to eliminate "unhandled" log noise | `panel-core.ts` | Trivial | ✅ **DONE** (`2f9cb32`) |
+| S-03 | **H1: Roundness comment** — add explanatory comment in `scene-adapter.ts` that `{ type: 2 }` is PROPORTIONAL_RADIUS and the number value is shape-selection only | `scene-adapter.ts` | Trivial | ✅ **DONE** (`2f9cb32`) |
+| S-04 | **C1: Rename updates edge keys** — when node A→B rename, scan `layout.edges` and update all edge keys containing oldId | `reconciler.ts` | Low | ✅ **DONE** (`2f9cb32` + 3 new tests) |
+| S-05 | **C2: BT/RL placement** — add full 4-direction switch (TD/BT/LR/RL) for crossDx/crossDy/flowDx/flowDy in `placement.ts` | `placement.ts` | Low | ✅ **DONE** (`2f9cb32` + 2 new tests) |
+| S-06 | **H4: Self-loop in all routing modes** — factor self-loop detection out of `routeAuto` into `routeEdge` dispatch layer | `edge-router.ts` | Low | ✅ **DONE** (`2f9cb32`) |
+| S-07 | **M7: cluster.parent** — in `parseFlowchart`, derive parent from membership: if cluster X lists cluster Y's ID as a member, Y.parent = X | `flowchart.ts` | Low | ✅ **DONE** (`2f9cb32`) |
+| S-08 | **BT/RL fresh layout bug** — `panel-core.ts` now passes `rankdir: parsed.direction` to `computeInitialLayout` so `flowchart BT/LR/RL/TD` is respected on initial open | `panel-core.ts` | Low | ✅ **DONE** (`2f9cb32`) |
+| S-09 | **Mermaid parsing cleanup** — use `diag.db` public API (not `parser.parser.yy`), TB→TD normalization at adapter boundary, text/label priority swap | `adapter.ts`, `flowchart.ts` | Low | ✅ **DONE** (`2f9cb32` + 2 new tests) |
 
 ---
 
