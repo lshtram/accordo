@@ -77,9 +77,11 @@ vi.mock("node:child_process", async () => {
     },
   );
 
+  const execFileSync = vi.fn(() => "/usr/bin/node\n");
+
   state.execFileFn = execFile as (...args: unknown[]) => unknown;
 
-  return { execFile };
+  return { execFile, execFileSync };
 });
 
 import {
@@ -288,34 +290,46 @@ describe("HubManager", () => {
     });
   });
 
-  // ── LCM-03: fires onHubReady when hub already running ────────────────────
+  // ── LCM-03: always spawns (no reuse of foreign Hub) ─────────────────────────
 
-  describe("activate — LCM-03: fires onHubReady when hub is healthy", () => {
-    it("LCM-03: fires onHubReady when hub is already running (creds pre-stored)", async () => {
+  describe("activate — LCM-03: always spawns (no foreign Hub reuse)", () => {
+    beforeEach(() => {
+      // activate() starts a fire-and-forget promise chain: spawn().then(_pollAndNotify)
+      // Use fake timers so we can flush the microtask queue via advanceTimersByTime(0)
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("LCM-03: always-spawn — onHubReady fires after _pollAndNotify resolves", async () => {
       const { manager, events } = makeManager({
         secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
       });
       vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+      (manager as unknown as { pollHealth: Function }).pollHealth = vi.fn().mockResolvedValue(true);
+      vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
+
       await manager.activate();
+      // Flush microtasks: advanceTime(0) lets the .then(() => _pollAndNotify) chain execute
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(manager["hubProcess"].spawn).toHaveBeenCalledWith("s", "t", 3000);
       expect(events.onHubReady).toHaveBeenCalledWith(3000, "t");
     });
 
-    it("LCM-03: fires onHubReady when hub is healthy even with no pre-stored creds", async () => {
-      const { manager, events } = makeManager({ secrets: {} });
+    it("LCM-03: always-spawn — spawn is called even when checkHealth would return true", async () => {
+      const { manager } = makeManager({
+        secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      });
       vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+      (manager as unknown as { pollHealth: Function }).pollHealth = vi.fn().mockResolvedValue(true);
+      const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
+
       await manager.activate();
-      expect(events.onHubReady).toHaveBeenCalledWith(3000, manager.getToken());
-    });
-  });
+      await vi.advanceTimersByTimeAsync(0);
 
-  // ── LCM-02: health check on activation ───────────────────────────────────
-
-  describe("activate — LCM-02: checks health on startup", () => {
-    it("LCM-02: activate() calls checkHealth() before any spawn decision", async () => {
-      const { manager } = makeManager();
-      const checkSpy = vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
-      await manager.activate().catch(() => {});
-      expect(checkSpy).toHaveBeenCalled();
+      expect(spawnSpy).toHaveBeenCalledWith("s", "t", 3000);
     });
   });
 
@@ -498,13 +512,13 @@ describe("HubManager", () => {
       await expect(manager.deactivate()).resolves.toBeUndefined();
     });
 
-    it("LCM-11: deactivate() does NOT call killHub (Hub stays alive for CLI agents)", async () => {
+    it("LCM-11: deactivate() calls killHub to prevent orphan processes", async () => {
       const { manager } = makeManager();
       vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
       await manager.activate().catch(() => {});
       const killSpy = vi.spyOn(manager, "killHub").mockResolvedValue(undefined);
       await manager.deactivate().catch(() => {});
-      expect(killSpy).not.toHaveBeenCalled();
+      expect(killSpy).toHaveBeenCalled();
     });
   });
 
@@ -931,23 +945,28 @@ const tmpPortFile = path.join(os.tmpdir(), `accordo-test-hub-${process.pid}.port
 afterAll(() => { try { fs.unlinkSync(tmpPortFile); } catch { /* ignore */ } });
 
 describe("HubManager — portFilePath: dynamic port discovery", () => {
-  beforeEach(() => { vi.useRealTimers(); });
+  beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => {
     try { fs.unlinkSync(tmpPortFile); } catch { /* ignore */ }
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
-  it("activate() uses port from portFilePath when Hub already healthy on that port", async () => {
+  it("activate() uses port from portFilePath when spawning (autoStart=true)", async () => {
     // Hub previously started on port 3001 and wrote the port file.
+    // With always-spawn: Bridge still reads the port file (to get the right port),
+    // spawns on that port, and onHubReady fires after pollHealth succeeds.
     fs.writeFileSync(tmpPortFile, "3001");
     const { manager, events } = makeManager({
       secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
-      config: { port: 3000, portFilePath: tmpPortFile, autoStart: false },
+      config: { port: 3000, portFilePath: tmpPortFile, autoStart: true },
     });
     vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+    vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
+    vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
 
     await manager.activate();
+    await vi.advanceTimersByTimeAsync(0);
 
     // onHubReady must be called with port 3001 (from file), not 3000 (config)
     expect(events.onHubReady).toHaveBeenCalledWith(3001, expect.any(String));
@@ -955,50 +974,34 @@ describe("HubManager — portFilePath: dynamic port discovery", () => {
   });
 
   it("activate() ignores portFilePath when file is absent (uses configured port)", async () => {
-    // No port file exists — Hub hasn't started yet or is on default port.
+    // No port file exists — Bridge spawns on the configured port.
     const { manager, events } = makeManager({
       secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
-      config: { port: 3000, portFilePath: "/tmp/accordo-nonexistent-port.port", autoStart: false },
+      config: { port: 3000, portFilePath: "/tmp/accordo-nonexistent-port.port", autoStart: true },
     });
     vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+    vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
+    vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
 
     await manager.activate();
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(events.onHubReady).toHaveBeenCalledWith(3000, expect.any(String));
     expect(manager.getPort()).toBe(3000);
-  });
-
-  it("pollHealth() updates port from portFilePath on each iteration", async () => {
-    vi.useFakeTimers();
-    // Port file is written by Hub after it starts.
-    let callCount = 0;
-    const { manager } = makeManager({
-      config: { port: 3000, portFilePath: tmpPortFile },
-    });
-    vi.spyOn(manager, "checkHealth").mockImplementation(async () => {
-      callCount++;
-      return callCount >= 2; // healthy on 2nd call
-    });
-
-    // Write port file before the 2nd poll fires
-    const p = manager.pollHealth(5000, 500);
-    await vi.advanceTimersByTimeAsync(100);
-    fs.writeFileSync(tmpPortFile, "3002"); // Hub started on 3002
-    await vi.advanceTimersByTimeAsync(1100); // advance past 2 poll intervals (500ms + 1000ms)
-    await p;
-
-    expect(manager.getPort()).toBe(3002);
   });
 
   it("portFilePath with invalid content is ignored, port stays unchanged", async () => {
     fs.writeFileSync(tmpPortFile, "not-a-port");
     const { manager, events } = makeManager({
       secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
-      config: { port: 4567, portFilePath: tmpPortFile, autoStart: false },
+      config: { port: 4567, portFilePath: tmpPortFile, autoStart: true },
     });
     vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+    vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
+    vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
 
     await manager.activate();
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(manager.getPort()).toBe(4567); // unchanged
     expect(events.onHubReady).toHaveBeenCalledWith(4567, expect.any(String));

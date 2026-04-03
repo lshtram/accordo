@@ -177,30 +177,27 @@ export class HubManager {
 
     this._applyPortFile();
 
-    const healthy = await this.checkHealth();
-    if (healthy) {
-      this.events.onHubReady(this.port, token);
-      return;
+    // NOTE: we always spawn — we do not reuse a foreign Hub on the same port,
+    // because a foreign Hub has a different bridge secret and WS auth will fail.
+    // Bridge must own its own Hub instance, port, and token.
+    if (this.config.autoStart) {
+      this.hubProcess
+        .spawn(secret, token, this.port)
+        .then(() => this._pollAndNotify())
+        .catch((err: unknown) => {
+          this.events.onHubError(err instanceof Error ? err : new Error(String(err)));
+        });
     }
-
-    if (!this.config.autoStart) {
-      return;
-    }
-
-    this.hubProcess
-      .spawn(secret, token, this.port)
-      .then(() => this._pollAndNotify())
-      .catch((err: unknown) => {
-        this.events.onHubError(err instanceof Error ? err : new Error(String(err)));
-      });
   }
 
   /**
-   * LCM-11: Graceful deactivation. Close WS but do NOT kill Hub.
+   * LCM-11: Graceful deactivation. Kill Hub so no orphan processes are left
+   * when the VS Code window or extension host closes.
    */
   async deactivate(): Promise<void> {
     this.deactivated = true;
     this.pollCancelled = true;
+    await this.killHub();
   }
 
   /**
