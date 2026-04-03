@@ -1,16 +1,62 @@
 import * as vscode from "vscode";
+import * as net from "net";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { BrowserRelayServer } from "./relay-server.js";
 import { buildPageUnderstandingTools } from "./page-understanding-tools.js";
 import { buildWaitForTool } from "./wait-tool.js";
 import { buildTextMapTool } from "./text-map-tool.js";
 import { buildSemanticGraphTool } from "./semantic-graph-tool.js";
 import { buildDiffSnapshotsTool } from "./diff-tool.js";
+import { buildControlTools } from "./control-tool-types.js";
 import { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { BrowserBridgeAPI, BrowserRelayAction } from "./types.js";
 
 const EXTENSION_ID = "accordo.accordo-browser";
 const TOKEN_KEY = "browserRelayToken";
 const DEV_RELAY_TOKEN = "accordo-local-dev-token";
+const RELAY_BASE_PORT = 40111;
+const RELAY_HOST = "127.0.0.1";
+
+/**
+ * Find a free TCP port starting at `startPort`, scanning up to `maxTries` candidates.
+ */
+function findFreePort(startPort: number, host: string, maxTries = 10): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let attempt = 0;
+    const tryPort = (port: number) => {
+      if (attempt++ >= maxTries) {
+        reject(new Error(`No free port found in range ${startPort}–${startPort + maxTries - 1}`));
+        return;
+      }
+      const server = net.createServer();
+      server.once("error", () => {
+        server.close();
+        tryPort(port + 1);
+      });
+      server.once("listening", () => {
+        server.close(() => resolve(port));
+      });
+      server.listen(port, host);
+    };
+    tryPort(startPort);
+  });
+}
+
+/**
+ * Persist the relay port to ~/.accordo/relay.port so the Chrome extension
+ * (or other consumers) can discover the active relay when the default port is in use.
+ */
+function writeRelayPort(port: number): void {
+  try {
+    const dir = path.join(os.homedir(), ".accordo");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "relay.port"), String(port), "utf8");
+  } catch {
+    // best-effort — failure must not block activation
+  }
+}
 
 /**
   * Map a Chrome browser relay action to the corresponding unified comment_* tool.
@@ -136,17 +182,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   let relayStartError: string | null = null;
 
+  const relayPort = await findFreePort(RELAY_BASE_PORT, RELAY_HOST).catch((err: unknown) => {
+    relayStartError = err instanceof Error ? err.message : String(err);
+    out.appendLine(`[accordo-browser] findFreePort failed: ${relayStartError}`);
+    return RELAY_BASE_PORT; // fallback — start() will fail and be caught below
+  });
+
   const relay = new BrowserRelayServer({
-    host: "127.0.0.1",
-    port: 40111,
+    host: RELAY_HOST,
+    port: relayPort,
     token,
     onEvent: (event, details) => {
       out.appendLine(`[accordo-browser] ${event}${details ? ` ${JSON.stringify(details)}` : ""}`);
       if (event === "relay-client-connected" || event === "relay-client-disconnected") {
         bridge.publishState(EXTENSION_ID, {
           connected: relay.isConnected(),
-          relayHost: "127.0.0.1",
-          relayPort: 40111,
+          relayHost: RELAY_HOST,
+          relayPort,
           relayStartError,
         });
       }
@@ -202,7 +254,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   try {
     await relay.start();
-    out.appendLine("[accordo-browser] relay listening on 127.0.0.1:40111 (unified tool routing)");
+    writeRelayPort(relayPort);
+    out.appendLine(`[accordo-browser] relay listening on ${RELAY_HOST}:${relayPort} (unified tool routing)`);
   } catch (err) {
     relayStartError = err instanceof Error ? err.message : String(err);
     out.appendLine(`[accordo-browser] relay start failed: ${relayStartError}`);
@@ -231,7 +284,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // B2-DE-001..007: Agents can compare two page snapshots and see what changed.
   const diffTool = buildDiffSnapshotsTool(relay, snapshotStore);
 
-  const allBrowserTools = [...pageUnderstandingTools, waitTool, textMapTool, semanticGraphTool, diffTool];
+  const allBrowserTools = [...pageUnderstandingTools, waitTool, textMapTool, semanticGraphTool, diffTool, ...buildControlTools(relay)];
 
   const toolsDisposable = bridge.registerTools(EXTENSION_ID, allBrowserTools);
   context.subscriptions.push(toolsDisposable);
@@ -291,8 +344,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   bridge.publishState(EXTENSION_ID, {
     connected: relay.isConnected(),
-    relayHost: "127.0.0.1",
-    relayPort: 40111,
+    relayHost: RELAY_HOST,
+    relayPort,
     relayStartError,
   });
   out.appendLine("[accordo-browser] published modality state");

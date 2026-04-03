@@ -262,13 +262,26 @@ export class WsClient {
   }
 
   /**
+   * Send a JSON payload only when the socket is fully open (readyState OPEN).
+   * Silently drops the message when the socket is absent, CONNECTING, CLOSING,
+   * or CLOSED — callers must never throw on a not-yet-connected send.
+   *
+   * The WS OPEN constant is 1 (per the WebSocket spec and the `ws` library).
+   */
+  private sendIfOpen(payload: string): void {
+    if (this.ws && this.ws.readyState === 1 /* WebSocket.OPEN */) {
+      this.ws.send(payload);
+    }
+  }
+
+  /**
    * Send a result message back to Hub.
    *
    * @param result - Tool invocation result
    */
   sendResult(result: ResultMessage): void {
     this.log(`[ws-client] → result [id=${result.id.slice(0,8)}, success=${result.success}]`);
-    this.ws?.send(JSON.stringify(result));
+    this.sendIfOpen(JSON.stringify(result));
   }
 
   /**
@@ -284,7 +297,7 @@ export class WsClient {
     if (this.lastState !== null) {
       this.lastState = { ...this.lastState, ...patch };
     }
-    this.ws?.send(JSON.stringify({ type: "stateUpdate", patch }));
+    this.sendIfOpen(JSON.stringify({ type: "stateUpdate", patch }));
   }
 
   /**
@@ -297,7 +310,7 @@ export class WsClient {
     // Always refresh the reconnect cache so WS-07 replays the latest state.
     this.lastState = state;
     this.log(`[ws-client] → stateSnapshot (connected=${this.state === "connected"})`);
-    this.ws?.send(
+    this.sendIfOpen(
       JSON.stringify({
         type: "stateSnapshot",
         protocolVersion: ACCORDO_PROTOCOL_VERSION,
@@ -316,7 +329,7 @@ export class WsClient {
     // Always refresh the reconnect cache so WS-07 replays the latest tools.
     this.lastTools = tools;
     this.log(`[ws-client] → toolRegistry (${tools.length} tools, connected=${this.state === "connected"})`);
-    this.ws?.send(JSON.stringify({ type: "toolRegistry", tools }));
+    this.sendIfOpen(JSON.stringify({ type: "toolRegistry", tools }));
   }
 
   /**
@@ -325,7 +338,7 @@ export class WsClient {
    * @param ts - Timestamp from the ping message
    */
   sendPong(ts: number): void {
-    this.ws?.send(JSON.stringify({ type: "pong", ts }));
+    this.sendIfOpen(JSON.stringify({ type: "pong", ts }));
   }
 
   /**
@@ -335,7 +348,7 @@ export class WsClient {
    * @param late - Whether the handler completed before cancel arrived
    */
   sendCancelled(id: string, late: boolean): void {
-    this.ws?.send(JSON.stringify({ type: "cancelled", id, late }));
+    this.sendIfOpen(JSON.stringify({ type: "cancelled", id, late }));
   }
 
   /**
