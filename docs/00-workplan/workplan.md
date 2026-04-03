@@ -1,7 +1,7 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
-**Date:** 2026-03-31  
-**Status:** Wave 1 + Priority 0 complete — 4 open items (Priority A browser tab continuity), 4 later  
+**Date:** 2026-04-03  
+**Status:** Wave 1 + Priority 0 complete — multi-session parallelization shipped — 5 open items (Priority A browser tab continuity, Priority H process hygiene), 4 later  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
