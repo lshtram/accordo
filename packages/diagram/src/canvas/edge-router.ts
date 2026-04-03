@@ -179,7 +179,33 @@ function routeOrthogonalMultiWaypoint(
   _source: BoundingBox,
   _target: BoundingBox
 ): RouteResult {
-  throw new Error("not implemented");
+  const [sx, sy] = centre(_source);
+  const [tx, ty] = centre(_target);
+
+  // Build the full control point chain: [S, W1, W2, ..., WN, E]
+  const controls: Array<[number, number]> = [[sx, sy]];
+  for (const wp of _waypoints) controls.push([wp.x, wp.y]);
+  controls.push([tx, ty]);
+
+  // Start with S; for each consecutive pair, emit H-first L-junction points
+  const pts: Array<[number, number]> = [[sx, sy]];
+  for (let i = 0; i < controls.length - 1; i++) {
+    const [x1, y1] = controls[i]!;
+    const [x2, y2] = controls[i + 1]!;
+    // Horizontal-first: go to (x2, y1), then to (x2, y2)
+    const corner: [number, number] = [x2, y1];
+    const endpoint: [number, number] = [x2, y2];
+    // Only add corner if it differs from the last point (avoids zero-length H segment)
+    if (pts[pts.length - 1]![0] !== corner[0] || pts[pts.length - 1]![1] !== corner[1]) {
+      pts.push(corner);
+    }
+    // Only add endpoint if it differs from the last point (avoids zero-length V segment)
+    if (pts[pts.length - 1]![0] !== endpoint[0] || pts[pts.length - 1]![1] !== endpoint[1]) {
+      pts.push(endpoint);
+    }
+  }
+
+  return { points: pts, startBinding: null, endBinding: null };
 }
 
 function routeOrthogonal(
