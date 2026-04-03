@@ -13,7 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest watch",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'no lint configured yet'",
+    "lint": "eslint src/",
     "start": "node dist/index.js"
   },
   "dependencies": {
@@ -23,6 +23,9 @@
     "@accordo/bridge-types": "workspace:*",
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "eslint": "^10.1.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },

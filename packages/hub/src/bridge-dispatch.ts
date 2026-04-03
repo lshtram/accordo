@@ -27,16 +27,22 @@ interface PendingInvoke {
   resolve: (r: ResultMessage) => void;
   reject: (e: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  /** MS-02: Session ID for per-session tracking */
+  sessionId: string;
 }
 
 /**
  * An invocation queued because the in-flight limit was reached.
- * CONC-03: Queued until an in-flight slot becomes available.
+ * CONC-03: Simple FIFO — queue in order of arrival.
  */
 interface QueuedInvoke {
   tool: string;
   args: Record<string, unknown>;
   timeout: number;
+  /** MS-02: Session ID for logging/tracking */
+  sessionId: string;
+  /** MS-02: Agent hint of the caller (e.g. "copilot", "opencode") */
+  agentHint?: string | null;
   resolve: (r: ResultMessage) => void;
   reject: (e: Error) => void;
 }
@@ -71,14 +77,18 @@ export interface BridgeDispatchOptions {
 /**
  * Handles in-flight invocations, message dispatch, and concurrency management.
  * Operates on shared BridgeConnectionState for connection presence checks.
+ *
+ * CONC-03: Simple FIFO queue — global 16 concurrent slots, 64 queue depth.
+ * All invocations are queued in arrival order. No per-session scheduling.
  */
 export class BridgeDispatch {
   private readonly maxConcurrent: number;
   private readonly maxQueueDepth: number;
   private inflight = 0;
+  /** Total queued (global cap: 64) */
   private queued = 0;
-  /** CONC-03: FIFO queue for invocations waiting for an in-flight slot */
-  private invokeQueue: QueuedInvoke[] = [];
+  /** Simple FIFO queue — all invocations queued in arrival order */
+  private queue: QueuedInvoke[] = [];
   private pendingInvokes = new Map<string, PendingInvoke>();
   private pendingStateRequest: PendingStateRequest | null = null;
 
@@ -96,15 +106,27 @@ export class BridgeDispatch {
 
   /**
    * Invoke a tool on the Bridge.
-   * Requirements: requirements-hub.md §5.4, §9
+   * Requirements: requirements-hub.md §5.4, §9, MS-02
+   *
+   * @param tool - Tool name
+   * @param args - Tool arguments
+   * @param timeout - Timeout in milliseconds
+   * @param sessionId - MCP session ID of the caller (MS-02)
+   * @param agentHint - Agent hint of the caller (MS-02)
    */
   async invoke(
     tool: string,
     args: Record<string, unknown>,
     timeout: number,
+    sessionId?: string,
+    agentHint?: string | null,
   ): Promise<ResultMessage> {
+    // MS-02: Accept sessionId as either a positional param or extracted from args.
+    const resolvedSessionId = sessionId ?? (typeof args.sessionId === "string" ? args.sessionId : randomUUID());
+
     // Queue-full check runs BEFORE connection check so it is testable without a
     // live Bridge connection (degenerate configs: maxConcurrent=0, maxQueueDepth=0).
+    // Check BEFORE incrementing queued, so we throw at exactly maxQueueDepth.
     if (this.inflight >= this.maxConcurrent && this.queued >= this.maxQueueDepth) {
       this.log(`[hub:bridge] invoke(${tool}) REJECTED — queue full (inflight=${this.inflight}, queued=${this.queued})`);
       throw new JsonRpcError("Server busy — invocation queue full", -32004);
@@ -118,32 +140,19 @@ export class BridgeDispatch {
       throw new JsonRpcError("Bridge not connected", -32603);
     }
 
-    // CONC-03: queue when at concurrency limit (but queue not full)
-    if (this.inflight >= this.maxConcurrent) {
-      this.queued++;
-      this.log(`[hub:bridge] invoke(${tool}) QUEUED (inflight=${this.inflight}, queued=${this.queued})`);
-      return new Promise<ResultMessage>((resolve, reject) => {
-        this.invokeQueue.push({ tool, args, timeout, resolve, reject });
-      });
+    // Dispatch immediately if there's a free slot; otherwise queue FIFO.
+    if (this.inflight < this.maxConcurrent) {
+      return this.dispatchInvoke(tool, args, timeout, resolvedSessionId, agentHint);
     }
 
-    const id = randomUUID();
-    this.log(`[hub:bridge] invoke(${tool}) → Bridge [id=${id.slice(0, 8)}, timeout=${timeout}ms, inflight=${this.inflight + 1}]`);
+    this.queued++;
+    this.log(`[hub:bridge] invoke(${tool}) QUEUED session=${resolvedSessionId} (inflight=${this.inflight}, queued=${this.queued})`);
 
     return new Promise<ResultMessage>((resolve, reject) => {
-      this.inflight++;
+      this.queue.push({ tool, args, timeout, sessionId: resolvedSessionId, agentHint, resolve, reject });
 
-      const timer = setTimeout(() => {
-        this.pendingInvokes.delete(id);
-        this.inflight--;
-        this.send({ type: "cancel", id });
-        this.dequeueAndDispatch();
-        this.log(`[hub:bridge] invoke(${tool}) TIMED OUT after ${timeout}ms [id=${id.slice(0, 8)}]`);
-        reject(new JsonRpcError(`Tool invocation timed out after ${timeout}ms`, -32000));
-      }, timeout);
-
-      this.pendingInvokes.set(id, { resolve, reject, timer });
-      this.send({ type: "invoke", id, tool, args, timeout });
+      // Try to dispatch — may free a slot synchronously if a result was processed
+      this.dequeueAndDispatch();
     });
   }
 
@@ -319,10 +328,10 @@ export class BridgeDispatch {
     this.inflight = 0;
 
     // Drain the FIFO queue — reject queued invocations immediately.
-    for (const queued of this.invokeQueue) {
+    for (const queued of this.queue) {
       queued.reject(err);
     }
-    this.invokeQueue = [];
+    this.queue = [];
     this.queued = 0;
 
     if (this.pendingStateRequest) {
@@ -335,30 +344,60 @@ export class BridgeDispatch {
   // ─── Private helpers ──────────────────────────────────────────────────────
 
   /**
-   * CONC-05: Dequeue the next waiting invocation and dispatch it.
+   * Dispatch an invocation directly (slot was available).
+   */
+  private dispatchInvoke(
+    tool: string,
+    args: Record<string, unknown>,
+    timeout: number,
+    sessionId: string,
+    agentHint?: string | null,
+  ): Promise<ResultMessage> {
+    const id = randomUUID();
+    this.inflight++;
+
+    this.log(`[hub:bridge] invoke(${tool}) DISPATCHED session=${sessionId} (inflight=${this.inflight})`);
+
+    return new Promise<ResultMessage>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingInvokes.delete(id);
+        this.inflight--;
+        this.dequeueAndDispatch();
+        this.send({ type: "cancel", id });
+        reject(new JsonRpcError(`Tool invocation timed out after ${timeout}ms`, -32000));
+      }, timeout);
+
+      this.pendingInvokes.set(id, { resolve, reject, timer, sessionId });
+      this.send({ type: "invoke", id, tool, args, timeout, sessionId, agentHint: agentHint ?? null });
+    });
+  }
+
+  /**
+   * CONC-03: Dequeue the next waiting invocation in FIFO order.
    * Called after each in-flight slot becomes free (result/timeout/cancel).
-   * No-op when queue is empty.
+   * No-op when queue is empty or inflight is at limit.
    */
   private dequeueAndDispatch(): void {
-    if (this.invokeQueue.length === 0) return;
-    // Non-null assertion is safe: we just checked the array is non-empty.
-    const next = this.invokeQueue.shift()!;
+    if (this.queue.length === 0) return;
+    if (this.inflight >= this.maxConcurrent) return;
+
+    const next = this.queue.shift()!;
     this.queued--;
 
-    const id = randomUUID();
-    const { tool, args, timeout, resolve, reject } = next;
+    const { tool, args, timeout, sessionId, agentHint, resolve, reject } = next;
 
+    const id = randomUUID();
     this.inflight++;
 
     const timer = setTimeout(() => {
       this.pendingInvokes.delete(id);
       this.inflight--;
-      this.send({ type: "cancel", id });
       this.dequeueAndDispatch();
+      this.send({ type: "cancel", id });
       reject(new JsonRpcError(`Tool invocation timed out after ${timeout}ms`, -32000));
     }, timeout);
 
-    this.pendingInvokes.set(id, { resolve, reject, timer });
-    this.send({ type: "invoke", id, tool, args, timeout });
+    this.pendingInvokes.set(id, { resolve, reject, timer, sessionId });
+    this.send({ type: "invoke", id, tool, args, timeout, sessionId, agentHint: agentHint ?? null });
   }
 }

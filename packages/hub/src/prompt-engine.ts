@@ -269,7 +269,7 @@ export function renderPrompt(
 
     if (narrationMode === "narrate-summary") {
       voiceLines.push(
-        "Directive: You MUST call accordo_voice_readAloud as the LAST tool call in EVERY response — including the very first one. Pass a 2-3 sentence spoken summary of your answer. Keep it concise and natural for spoken delivery. Do not repeat the full response — summarize the key points. This is a mandatory step, not optional.",
+        "Directive: At the end of every response, call accordo_voice_readAloud as the LAST tool call with a 2-3 sentence spoken summary of your answer, plain language, no technical formatting. Do NOT write the summary in your visible response text — only pass it to the readAloud tool.",
       );
       voiceLines.push(
         "If accordo_voice_readAloud returns an error or is unavailable, skip the voice step and proceed with your text response — do not retry.",

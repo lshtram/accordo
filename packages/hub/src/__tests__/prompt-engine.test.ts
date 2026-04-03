@@ -453,9 +453,10 @@ describe("M51-SN: Voice section + narration directive in system prompt", () => {
       modalities: { "accordo-voice": makeVoiceModality() },
     });
     const result = renderPrompt(state, []);
-    expect(result).toContain("call accordo_voice_readAloud");
+    expect(result).toContain("accordo_voice_readAloud");
     expect(result).toContain("2-3 sentence spoken summary");
-    expect(result).toContain("Do not repeat the full response");
+    expect(result).toContain("plain language, no technical formatting");
+    expect(result).toContain("Do NOT write the summary in your visible response text");
   });
 
   it("M51-SN-04: narrate-everything directive instructs full response readback", () => {

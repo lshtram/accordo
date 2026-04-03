@@ -38,6 +38,8 @@ export interface AuditEntry {
   durationMs: number;
   /** Human-readable error message, present when result is "error" */
   errorMessage?: string;
+  /** MS-05: Agent hint — denormalized so queries don't require a join */
+  agentHint?: string;
 }
 
 /**
@@ -87,5 +89,12 @@ export function writeAuditEntry(filePath: string, entry: AuditEntry): void {
   const dir = path.dirname(filePath);
   fs.mkdirSync(dir, { recursive: true });
   rotateIfNeeded(filePath);
-  fs.appendFileSync(filePath, JSON.stringify(entry) + "\n", "utf8");
+
+  // MS-05: Normalize agentHint — undefined becomes "unknown"
+  const normalizedEntry: AuditEntry = {
+    ...entry,
+    agentHint: entry.agentHint ?? "unknown",
+  };
+
+  fs.appendFileSync(filePath, JSON.stringify(normalizedEntry) + "\n", "utf8");
 }

@@ -25,6 +25,10 @@ export interface InvokeMessage {
   args: Record<string, unknown>;
   /** Timeout in milliseconds */
   timeout: number;
+  /** MCP session ID of the caller — MS-02 */
+  sessionId?: string;
+  /** Agent hint of the caller (e.g. "copilot", "opencode") — MS-02 */
+  agentHint?: string | null;
 }
 
 /**

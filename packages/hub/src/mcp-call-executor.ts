@@ -137,7 +137,13 @@ export class McpCallExecutor {
 
     // Bridge-routed tool: invoke via bridge server
     try {
-      const result = await this.bridgeServer.invoke(toolName, toolArgs, this.toolCallTimeout);
+      const result = await this.bridgeServer.invoke(
+        toolName,
+        toolArgs,
+        this.toolCallTimeout,
+        session.id,
+        session.agentHint,
+      );
       if (!result.success) {
         // Tool handler returned an error — surface as MCP tool error so agents
         // can read the message and adapt. isError:true signals the LLM that the
@@ -164,7 +170,13 @@ export class McpCallExecutor {
         const firstMsg = err instanceof Error ? err.message : String(err);
         audit("timeout", firstMsg);
         try {
-          const retryResult = await this.bridgeServer.invoke(toolName, toolArgs, this.toolCallTimeout);
+          const retryResult = await this.bridgeServer.invoke(
+            toolName,
+            toolArgs,
+            this.toolCallTimeout,
+            session.id,
+            session.agentHint,
+          );
           if (!retryResult.success) {
             audit("error", retryResult.error ?? "Tool execution failed");
             return buildBridgeFailureResponse(id, retryResult.error ?? "Tool execution failed");

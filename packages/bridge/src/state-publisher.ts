@@ -30,6 +30,7 @@ import {
   TAB_DEBOUNCE_MS,
   KEYFRAME_INTERVAL_MS,
 } from "./state-collector.js";
+import type { HostEnvironment, VsDisposable } from "./state-collector.js";
 import { computePatch, emptyState } from "./state-diff.js";
 
 // Re-export types and constants so existing importers continue to work
@@ -80,7 +81,7 @@ export interface StatePublisherSend {
  *        immediately (extension-driven, infrequent).
  */
 export class StatePublisher {
-  private vscode: import("./state-collector.js").HostEnvironment;
+  private vscode: HostEnvironment;
   private send: StatePublisherSend;
 
   /** Current local snapshot of all IDE state fields — always up to date */
@@ -90,7 +91,7 @@ export class StatePublisher {
   private sentState: IDEState | null = null;
 
   /** Active event listener disposables */
-  private disposables: import("./state-collector.js").VsDisposable[] = [];
+  private disposables: VsDisposable[] = [];
 
   /** Pending debounce timers keyed by category */
   private debounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
@@ -103,7 +104,7 @@ export class StatePublisher {
    * @param sendFns    Callbacks to WsClient for outbound WS messages
    */
   constructor(
-    vscodeApi: import("./state-collector.js").HostEnvironment,
+    vscodeApi: HostEnvironment,
     sendFns: StatePublisherSend,
   ) {
     this.vscode = vscodeApi;

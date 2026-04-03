@@ -64,7 +64,7 @@ export class StdioTransport {
     this.running = true;
     return new Promise<void>((resolve) => {
       let settled = false;
-      const settle = () => {
+      const settle = (): void => {
         if (!settled) {
           settled = true;
           this.running = false;

@@ -27,13 +27,13 @@ import { bootstrapExtension } from "./extension-bootstrap.js";
 import type { BootstrapResult } from "./extension-bootstrap.js";
 import { createServices } from "./extension-service-factory.js";
 import type { Services } from "./extension-service-factory.js";
-import { WsClient } from "./ws-client.js";
+import type { WsClient } from "./ws-client.js";
 import {
   composeExtension,
   buildHubManagerEvents,
   cleanupExtension,
 } from "./extension-composition.js";
-import type { ExtensionState, ComposedBridgeAPI } from "./extension-composition.js";
+import type { ExtensionState, ComposedBridgeAPI, CompositionDeps } from "./extension-composition.js";
 import { createVsCodeApi, createConfirmationFn } from "./extension-vscode-adapter.js";
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -134,7 +134,7 @@ export async function activate(
   };
 
   // Build hubManagerEvents using a lazy deps proxy
-  const lazyDeps: import("./extension-composition.js").CompositionDeps = {
+  const lazyDeps: CompositionDeps = {
     get bootstrap() { return depsContainer.bootstrap; },
     get services() {
       if (depsContainer.services === null) throw new Error("services not yet created");

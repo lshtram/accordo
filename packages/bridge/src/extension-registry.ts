@@ -118,7 +118,7 @@ export class ExtensionRegistry {
 
     // REG-05: return disposable
     return {
-      dispose: () => {
+      dispose: (): void => {
         for (const name of toolNames) {
           this.tools.delete(name);
           this.handlers.delete(name);

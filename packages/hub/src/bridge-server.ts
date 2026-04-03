@@ -82,19 +82,19 @@ export class BridgeServer {
         maxConcurrent: options.maxConcurrent,
         maxQueueDepth: options.maxQueueDepth,
         log,
-        send: (msg) => { this.conn.send(msg); },
+        send: (msg): void => { this.conn.send(msg); },
       },
     );
 
     this.conn = new BridgeConnection({
-      getSecret: () => this.secret,
+      getSecret: (): string => this.secret,
       maxPayload: options.maxPayload ?? 1_048_576,
       maxMessagesPerSecond: this.maxMessagesPerSecond,
       graceWindowMs: this.graceWindowMs,
       onGraceExpired: options.onGraceExpired,
       log,
-      onMessage: (raw) => { this.dispatch.routeMessage(raw); },
-      onDisconnect: () => {
+      onMessage: (raw): void => { this.dispatch.routeMessage(raw); },
+      onDisconnect: (): void => {
         this.dispatch.rejectAllPending(new JsonRpcError("Bridge disconnected", -32603));
       },
     });
@@ -120,8 +120,10 @@ export class BridgeServer {
     tool: string,
     args: Record<string, unknown>,
     timeout: number,
+    sessionId?: string,
+    agentHint?: string | null,
   ): Promise<ResultMessage> {
-    return this.dispatch.invoke(tool, args, timeout);
+    return this.dispatch.invoke(tool, args, timeout, sessionId, agentHint);
   }
 
   /**

@@ -12,6 +12,8 @@ import type { IDEState } from "@accordo/bridge-types";
 import type { ToolRegistry } from "./tool-registry.js";
 import type { BridgeServer } from "./bridge-server.js";
 import type { McpDebugLogger } from "./debug-log.js";
+import type { Session } from "./mcp-session.js";
+import type { JsonRpcRequest, JsonRpcResponse } from "./mcp-dispatch.js";
 import { McpSessionRegistry } from "./mcp-session.js";
 import { McpDispatch } from "./mcp-dispatch.js";
 
@@ -79,10 +81,10 @@ export class McpHandler {
    * Returns null for notifications (no id).
    */
   async handleRequest(
-    request: import("./mcp-dispatch.js").JsonRpcRequest,
-    session: import("./mcp-session.js").Session,
+    request: JsonRpcRequest,
+    session: Session,
     agentHint?: string,
-  ): Promise<import("./mcp-dispatch.js").JsonRpcResponse | null> {
+  ): Promise<JsonRpcResponse | null> {
     return this.dispatch.handleRequest(request, session, agentHint);
   }
 
@@ -91,7 +93,7 @@ export class McpHandler {
    *
    * @returns A new Session with a unique UUID
    */
-  createSession(agentHint?: string): import("./mcp-session.js").Session {
+  createSession(agentHint?: string): Session {
     return this.sessionRegistry.createSession(agentHint);
   }
 
@@ -101,7 +103,7 @@ export class McpHandler {
    * @param id - Session ID string
    * @returns The session, or undefined if not found
    */
-  getSession(id: string): import("./mcp-session.js").Session | undefined {
+  getSession(id: string): Session | undefined {
     return this.sessionRegistry.getSession(id);
   }
 }

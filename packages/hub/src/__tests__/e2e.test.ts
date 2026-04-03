@@ -381,7 +381,15 @@ const ALL_TOOLS: ToolRegistration[] = [
 
 // Canonical list of all expected tool names — derived once so tests don't
 // accidentally re-compute it differently from the registration list above.
-const EXPECTED_TOOL_NAMES = ALL_TOOLS.map((t) => t.name);
+// Includes both Bridge tools (ALL_TOOLS) and Hub-native script tools (DEC-006).
+const HUB_NATIVE_TOOL_NAMES = [
+  "accordo_script_run",
+  "accordo_script_stop",
+  "accordo_script_status",
+  "accordo_script_discover",
+];
+const HUB_NATIVE_TOOL_COUNT = HUB_NATIVE_TOOL_NAMES.length;
+const EXPECTED_TOOL_NAMES = [...ALL_TOOLS.map((t) => t.name), ...HUB_NATIVE_TOOL_NAMES];
 
 // ── Fake IDE state ────────────────────────────────────────────────────────────
 
@@ -618,7 +626,7 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
     bridge.registerTools(ALL_TOOLS);
 
     // Wait until the Hub has processed the registry
-    await waitForToolCount(baseUrl, ALL_TOOLS.length);
+    await waitForToolCount(baseUrl, ALL_TOOLS.length + HUB_NATIVE_TOOL_COUNT);
   }, 10_000);
 
   afterAll(async () => {
@@ -631,8 +639,8 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
   it("E2E-01: /health toolCount equals the number of registered tools", async () => {
     const res = await fetch(`${baseUrl}/health`);
     const body = (await res.json()) as { toolCount: number; bridge: string };
-    // Confirm the exact count — not just "> 0"
-    expect(body.toolCount).toBe(ALL_TOOLS.length);
+    // Confirm the exact count — Bridge tools + Hub-native script tools (DEC-006)
+    expect(body.toolCount).toBe(ALL_TOOLS.length + HUB_NATIVE_TOOL_COUNT);
     expect(body.bridge).toBe("connected");
   });
 
@@ -845,7 +853,7 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
     // Confirm toolCount is unchanged — the Hub is still healthy
     const healthRes = await fetch(`${baseUrl}/health`);
     const health = (await healthRes.json()) as { toolCount: number };
-    expect(health.toolCount).toBe(ALL_TOOLS.length);
+    expect(health.toolCount).toBe(ALL_TOOLS.length + HUB_NATIVE_TOOL_COUNT);
   });
 
   // ── E2E-07: State flow ───────────────────────────────────────────────────
@@ -881,23 +889,23 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
   // ── E2E-09: Re-registration ──────────────────────────────────────────────
 
   it("E2E-09: sending a new toolRegistry replaces the previous registry", async () => {
-    // Send a reduced registry (3 tools)
+    // Send a reduced registry (3 bridge tools)
     const reducedTools = ALL_TOOLS.slice(0, 3);
     bridge.registerTools(reducedTools);
 
-    // Wait for Hub to process the new registry
-    await waitForToolCount(baseUrl, 3);
+    // Wait for Hub to process the new registry (3 bridge + 4 Hub-native = 7)
+    await waitForToolCount(baseUrl, 3 + HUB_NATIVE_TOOL_COUNT);
 
     const res = await fetch(`${baseUrl}/health`);
     const shrunk = (await res.json()) as { toolCount: number };
-    expect(shrunk.toolCount).toBe(3);
+    expect(shrunk.toolCount).toBe(3 + HUB_NATIVE_TOOL_COUNT);
 
     // Restore the full registry
     bridge.registerTools(ALL_TOOLS);
-    await waitForToolCount(baseUrl, ALL_TOOLS.length);
+    await waitForToolCount(baseUrl, ALL_TOOLS.length + HUB_NATIVE_TOOL_COUNT);
 
     const res2 = await fetch(`${baseUrl}/health`);
     const restored = (await res2.json()) as { toolCount: number };
-    expect(restored.toolCount).toBe(ALL_TOOLS.length);
+    expect(restored.toolCount).toBe(ALL_TOOLS.length + HUB_NATIVE_TOOL_COUNT);
   });
 });
