@@ -292,37 +292,110 @@ For Accordo's use case (programmatic rendering, not user editing), risks #2 and 
 
 ---
 
-## 11. Updated Recommendation
+## 11. Excalidraw Library Ecosystem (New Research — 2026-04-04)
 
-**Change from DEFER to CONDITIONAL PROCEED for hexagon and parallelogram only.**
+### 11.1 The Library System
 
-### Hexagon + Parallelogram: PROCEED (Medium priority)
+Excalidraw has a community library ecosystem at `libraries.excalidraw.com`. Libraries are distributed as `.excalidrawlib` files — simple JSON with a predictable structure:
 
-- Use `line` elements with closed point paths on current 0.17.6
-- No version upgrade required
-- Rough.js rendering confirmed
-- Scope as a standalone TDD module: update `shape-map.ts` to emit `line` elements with point arrays for these two shapes, update `types.ts` to include `"line"` in the type union, update `canvas-generator.ts` and `scene-adapter.ts` for `line` element handling
-- Text overlay (separate `text` element at shape center) required as a companion change
+```json
+{
+  "type": "excalidrawlib",
+  "version": 1,
+  "library": [
+    [ { "type": "line", "points": [[0,-40],[69.3,40],[-69.3,40],[0,-40]], ... ],
+    ...
+  ]
+}
+```
 
-### Cylinder: DEFER (unchanged)
+The `library` is an array of arrays — each inner array is one library item (can contain multiple elements grouped together). Library items are standard Excalidraw elements (rectangle, ellipse, line, arrow, text, etc.) with `roughness`, `fillStyle`, `strokeColor` all preserved.
 
-- Cannot be represented as a single `line` polygon — curved caps require composition
-- Multi-element composition (ellipse + rectangle) is high-effort and fragile
-- Rectangle approximation remains acceptable for diag.2
-- Revisit when/if Excalidraw adds native cylinder support or a shape library emerges
+Libraries are loaded programmatically via:
+```javascript
+import { loadLibraryFromBlob } from "@excalidraw/excalidraw";
+const libraryData = await loadLibraryFromBlob(blob, "unpublished");
+excalidrawAPI.updateLibrary(libraryData);
+```
 
-### Version Upgrade: NOT REQUIRED
+### 11.2 Existing Libraries Relevant to D-01
 
-- The `loopLock` feature (PR #9477) is a UI improvement, not needed for programmatic polygon creation
-- Stay on 0.17.6 — no upgrade needed for this work
-- If upgrading for other reasons, target ≥ 0.18.0-864353b for loopLock user-editing benefits
+| Library | Shapes | Hexagon? | Cylinder? | Notes |
+|---|---|---|---|---|
+| `lipis/polygons.excalidrawlib` | triangle, pentagon, **hexagon**, octagon, decagon, dodecagon | ✅ YES | ❌ | Already has the hexagon we need! |
+| `andreandreandradecosta/3d-shapes.excalidrawlib` | **cylinder**, cube | ❌ | ✅ YES | Cylinder as ellipse+rect+ellipse composition |
+| `BjoernKW/UML-ER-library.excalidrawlib` | UML class shapes, ER entity shapes | ❌ | ❌ | Could help with classDiagram shapes later |
+| `youritjang/software-architecture.excalidrawlib` | microservice, database, cache, event bus | ❌ | ✅ (as generic) | Database icon usable for cylinder |
 
-### Implementation Sequence (when scheduled)
+### 11.3 Key Insight: Hexagon is ALREADY Available
 
-1. Add `"line"` to `ExcalidrawElement.type` union in `types.ts`
-2. Add `points` field to `ExcalidrawElement` interface
-3. Update `SHAPE_TABLE` in `shape-map.ts` — hexagon and parallelogram entries emit `line` type with point-generating functions
-4. Update `canvas-generator.ts` to handle `line`-type elements (pass points through)
-5. Update `scene-adapter.ts` `toExcalidrawPayload()` to include points for `line` elements
-6. Handle text overlay — generate companion `text` element centered on each polygon shape
-7. Update layout dimensions — hexagon at 180×80, parallelogram at 180×60 (adjust as needed)
+The `lipis/polygons.excalidrawlib` library contains a hexagon as a `line` element with closed point array:
+```
+points: [[-0.0,-80.0],[69.282,40.0],[-69.282,40.0],[-0.0,-80.0]]
+```
+This is a flat-topped hexagon (pointy sides, flat top/bottom) rendered with `roughness: 1, fillStyle: "solid"`. We can load this library and use the hexagon element directly.
+
+The library JSON file is accessible at:
+`https://raw.githubusercontent.com/excalidraw/excalidraw-libraries/main/libraries/lipis/polygons.excalidrawlib`
+
+### 11.4 The Custom Library Option
+
+Since no single library has all mermaid shapes (hexagon, cylinder, parallelogram, trapezoid, subroutine), we have two options:
+
+**Option A — Load existing libraries at runtime:**
+- Fetch `lipis/polygons.excalidrawlib` for hexagon (or compute directly in code)
+- Fetch `andreandreandradecosta/3d-shapes.excalidrawlib` for cylinder (or compose ellipse+rect ourselves)
+- Parallelogram and trapezoid still need custom polygon computation
+
+**Option B — Create our own `accordo-mermaid-shapes.excalidrawlib`:**
+1. Draw all missing mermaid shapes (hexagon, parallelogram, trapezoid, subroutine) in Excalidraw
+2. Export as `.excalidrawlib` using Excalidraw's library export feature
+3. Store the JSON in `packages/diagram/media/accordo-mermaid-shapes.excalidrawlib`
+4. Load it via `loadLibraryFromBlob()` when the webview initializes
+5. Reference library items by name when generating canvas elements
+
+**Option B is preferred because:**
+- Shapes are hand-drawn once in Excalidraw with correct roughness, proportions, stroke
+- Library format is just JSON — no special tooling needed
+- Can be extended as new shapes are needed
+- Rough.js rendering is baked into the element data from Excalidraw
+- Publishing to `libraries.excalidraw.com` would let other users benefit too
+
+---
+
+## 12. Updated Recommendation (Revised)
+
+**Change from CONDITIONAL PROCEED to PREFERRED APPROACH: Custom Library.**
+
+### Preferred: Create `accordo-mermaid-shapes.excalidrawlib`
+
+1. **Draw shapes in Excalidraw** — hexagon, parallelogram, trapezoid, subroutine, improved cylinder composition
+2. **Export via Excalidraw's library panel** → produces `.excalidrawlib` JSON
+3. **Store in `packages/diagram/media/accordo-mermaid-shapes.excalidrawlib`**
+4. **Load in webview init** via `loadLibraryFromBlob()` + `excalidrawAPI.updateLibrary()`
+5. **Use library items** in canvas generator by referencing them from `initialData` or merging into scene
+
+### Why this beats programmatic polygon computation:
+- Shapes look hand-drawn because they ARE hand-drawn in Excalidraw
+- No need to compute polygon vertex coordinates in TypeScript
+- Rough.js rendering is correct (comes from Excalidraw's own rendering)
+- Can add/fix shapes without touching code
+- Community could use the library directly in Excalidraw too
+
+### Cylinder: Still Complex
+The cylinder in `3d-shapes.excalidrawlib` is a 5-element composition (ellipse cap, rectangle body, partial side lines). For programmatic generation, this is high-effort. For the library approach, we can draw a better cylinder shape and export it as a single library item.
+
+### Implementation Steps (Revised):
+
+1. Draw mermaid shapes in Excalidraw, export as `accordo-mermaid-shapes.excalidrawlib`
+2. Store in `packages/diagram/media/`
+3. Add loading logic to webview init (fetch + `loadLibraryFromBlob` + `updateLibrary`)
+4. Update `canvas-generator.ts` to reference library items by name/id for these shapes
+5. Keep `rectangle`/`ellipse`/`diamond` for all other shapes (no changes needed)
+6. Text overlay (separate `text` element) remains for all polygon/container shapes
+
+### What changed from prior recommendation:
+- No need to compute polygon coordinates in TypeScript anymore
+- Library format is stable and Excalidraw-native
+- `types.ts` may not need `"line"` in the union (if we use library items instead of programmatic `line` elements)
+- Rough.js rendering quality is guaranteed (comes from Excalidraw)

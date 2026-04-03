@@ -325,3 +325,45 @@ Two recovery strategies were considered:
 - (-) `line` polygons are not native containers — text must be a separate overlaid element
 - (-) Selection/resize behavior differs from native shapes (less critical for programmatic rendering)
 - (-) Cylinder remains a rectangle approximation until a better approach emerges
+
+---
+
+## DEC-015 — D-01 shape fidelity: Excalidraw library over programmatic polygon computation
+
+**Date:** 2026-04-04  
+**Module:** `packages/diagram` (D-01 — shape fidelity gap)
+
+**Context:** Reconsidering DEC-014's "line polygon" approach after discovering the Excalidraw community library ecosystem at `libraries.excalidraw.com`. Libraries are distributed as `.excalidrawlib` files (simple JSON of Excalidraw elements) that can be loaded programmatically via `loadLibraryFromBlob()` + `excalidrawAPI.updateLibrary()`. Critically, the `lipis/polygons.excalidrawlib` community library already contains a hexagon shape, and `andreandreandradecosta/3d-shapes.excalidrawlib` contains a cylinder composition.
+
+**Decision:** Supersede DEC-014's programmatic polygon computation with a **custom `accordo-mermaid-shapes.excalidrawlib`** library approach:
+1. Draw all missing mermaid shapes (hexagon, parallelogram, trapezoid, subroutine, improved cylinder) in Excalidraw
+2. Export via Excalidraw's library panel → produces `.excalidrawlib` JSON
+3. Store in `packages/diagram/media/accordo-mermaid-shapes.excalidrawlib`
+4. Load in webview init via `fetch()` + `loadLibraryFromBlob()` + `excalidrawAPI.updateLibrary()`
+5. Reference library items in canvas generator
+
+**Why library over programmatic polygon computation:**
+- Shapes are hand-drawn once in Excalidraw — correct roughness, proportions, stroke baked in
+- No TypeScript polygon vertex math — library IS the shape definition
+- Can be updated/extended without code changes
+- Rough.js rendering is guaranteed correct (from Excalidraw itself)
+- Publishing to `libraries.excalidraw.com` benefits the wider Excalidraw community
+
+**Existing libraries to leverage:**
+- `lipis/polygons.excalidrawlib` → hexagon (flat-topped, 6 vertices)
+- `andreandreandradecosta/3d-shapes.excalidrawlib` → cylinder (ellipse+rect composition — or draw better single shape)
+
+**Shapes still needing custom library entries:** parallelogram, trapezoid, subroutine
+
+**What this changes from DEC-014:**
+- `types.ts` may NOT need `"line"` in the type union (if we use library items instead of programmatic `line` elements)
+- `shape-map.ts` emits library item references rather than computed `line` point arrays
+- Webview loads the library on init (one-time fetch of ~2KB JSON file)
+- Canvas generator references library items by their element IDs
+
+**Consequences:**
+- (+) Shape quality is excellent — hand-drawn in Excalidraw by design
+- (+) Maintainable — add shapes by drawing them, not computing math
+- (+) Community could use the library directly
+- (-) Requires webview to fetch + load library on init (minor latency, one-time)
+- (-) Custom library must be created and maintained (small effort, high value)
