@@ -184,7 +184,15 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
     let bridge: PreviewBridge | undefined;
     if (this.store) {
       bridge = new PreviewBridge(this.store, webviewPanel.webview, docUri, resolverAdapter);
-      bridge.loadThreadsForUri();
+      // Wait for the webview to signal readiness before pushing threads.
+      // Setting webview.html is asynchronous; the message listener in the webview
+      // may not be registered yet when we reach this line synchronously.
+      const readySub = webviewPanel.webview.onDidReceiveMessage((msg: unknown) => {
+        if ((msg as { type?: string }).type === "webview:ready") {
+          readySub.dispose();
+          bridge!.loadThreadsForUri();
+        }
+      });
     }
 
     // M41b-CPE-06: re-render on text change for this document

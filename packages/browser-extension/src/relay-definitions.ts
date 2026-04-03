@@ -18,6 +18,7 @@ import type { VersionedSnapshot } from "./snapshot-versioning.js";
 export type RelayAction =
   | "get_all_comments"
   | "get_comments"
+  | "get_comments_version"
   | "create_comment"
   | "reply_comment"
   | "resolve_thread"
@@ -34,7 +35,11 @@ export type RelayAction =
   | "get_text_map"
   | "get_semantic_graph"
   | "list_pages"
-  | "select_page";
+  | "select_page"
+  | "navigate"
+  | "click"
+  | "type"
+  | "press_key";
 
 export interface RelayActionRequest {
   requestId: string;
@@ -63,10 +68,16 @@ export interface RelayActionResponse {
     | "snapshot-not-found"
     | "snapshot-stale"
     | "navigation-interrupted"
-    | "page-closed";
+    | "page-closed"
+    | "control-not-granted"
+    | "unsupported-page"
+    | "element-not-found"
+    | "element-off-screen";
 }
 
 export interface CapturePayload {
+  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
+  tabId?: number;
   anchorKey?: string;
   nodeRef?: string;
   rect?: { x: number; y: number; width: number; height: number };

@@ -182,3 +182,147 @@ Wait for a future where SVG export handles these shapes natively, or Excalidraw 
 **Recommendation:** **DEFER** — keep current approximations. The effort to improve these shapes (using polygon composites or multi-element compositions) is high and the result would still be an approximation, not native shape fidelity. This is appropriate as a future enhancement when diagram rendering is more mature, not a priority fix.
 
 **If Hexagon fidelity is critical**, the hexagon → diamond mapping is the highest-impact improvement to pursue first (as a standalone polygon implementation), but it should be scoped as a separate feature request with its own TDD cycle.
+
+---
+
+## 8. New Finding: PR #9477 — Line Polygons (loopLock)
+
+**Date:** 2026-04-03 (updated research)
+
+### 8.1 PR Summary
+
+Excalidraw PR [#9477 — "feat: line polygons"](https://github.com/excalidraw/excalidraw/pull/9477) was merged on **May 26, 2025** by @dwelle. It adds a `loopLock` boolean property to `ExcalidrawLineElement`:
+
+- When `loopLock: true`, the line's first and last points are locked together, forming a closed polygon
+- Requires at least 4 points (3 vertices + closing point)
+- Enables UI features: "Loop Lock" toggle, closed polygon selection, fill support
+- The PR creates "line polygons" — arbitrary closed shapes rendered with Rough.js hand-drawn style
+
+### 8.2 Version Availability
+
+| Version | Published | loopLock Available? |
+|---|---|---|
+| **0.17.6** (installed) | 2024-04-17 | ❌ No |
+| **0.18.0** (stable) | 2025-03-10 | ❌ No — PR merged 2.5 months AFTER this release |
+| **0.18.0-864353b** (pre-release) | 2025-05-27 | ✅ Yes — published the day after PR merge |
+
+**Critical finding:** The `loopLock` feature is NOT available in any stable release as of the research date. It exists only in pre-release builds ≥ `0.18.0-864353b`.
+
+### 8.3 Impact on D-01
+
+The loopLock feature is a **UI convenience** (locking endpoints in the editor), not a rendering requirement. For **programmatic** polygon creation (which is how Accordo generates shapes), the key insight is:
+
+> A `line` element with a `points` array where the last point equals the first point already draws a visually closed polygon — even without `loopLock`.
+
+This means:
+- **Hexagon** can be drawn as a `line` element with 7 points (6 vertices + closing): `[[0,40],[45,0],[135,0],[180,40],[135,80],[45,80],[0,40]]`
+- **Parallelogram** can be drawn as a `line` element with 5 points (4 vertices + closing): `[[20,0],[180,0],[160,60],[0,60],[20,0]]`
+- Both work on the **current** 0.17.6 version via the Skeleton API
+
+---
+
+## 9. Skeleton API: `convertToExcalidrawElements()`
+
+The official programmatic API for creating Excalidraw elements is `convertToExcalidrawElements()` from `@excalidraw/excalidraw`. Confirmed capabilities:
+
+### 9.1 Supported Types
+
+| Type | Shape | Points Required |
+|---|---|---|
+| `rectangle` | Rectangle | No — uses width/height |
+| `ellipse` | Ellipse | No — uses width/height |
+| `diamond` | Diamond | No — uses width/height |
+| `line` | Open/closed path | Yes — `points: [[x,y], ...]` |
+| `arrow` | Arrow | Yes — `points: [[x,y], ...]` |
+| `text` | Text | No |
+| `frame` | Frame container | No — uses width/height |
+
+### 9.2 Line Element with Points
+
+The `line` type supports arbitrary point arrays. Creating a closed polygon:
+
+```typescript
+convertToExcalidrawElements([{
+  type: "line",
+  x: 100,
+  y: 100,
+  points: [[0,40],[45,0],[135,0],[180,40],[135,80],[45,80],[0,40]],
+  strokeColor: "#000000",
+  backgroundColor: "#ffffff",
+  fillStyle: "hachure",
+}]);
+```
+
+This produces a closed hexagon with Rough.js hand-drawn rendering, using only features available in 0.17.6.
+
+---
+
+## 10. Revised Options Matrix
+
+### Option B (Revised): Line-Based Polygon Shapes
+
+Use `line` elements with closed point arrays for hexagon and parallelogram. This is a meaningful improvement over the original Option B analysis:
+
+| Factor | Original Assessment | Revised Assessment |
+|---|---|---|
+| **Hexagon fidelity** | Speculative | ✅ Confirmed viable — 6-vertex `line` polygon |
+| **Parallelogram fidelity** | Speculative | ✅ Confirmed viable — 4-vertex `line` polygon with skew |
+| **Cylinder fidelity** | Unclear | ⚠️ Still hard — requires composition (ellipse + rect) or line-art approximation |
+| **Version requirement** | Unknown | ✅ Works on 0.17.6 (no loopLock needed for programmatic use) |
+| **Rough.js rendering** | Uncertain | ✅ `line` elements are rendered by Rough.js with hand-drawn style |
+| **Container binding** | Risk flagged | ⚠️ **Key risk** — `line` polygons are NOT native containers. Text binding, selection handles, and resize behavior differ from `rectangle`/`diamond`/`ellipse`. Text must be a separate overlaid element. |
+
+### Effort Estimate (Revised)
+
+| Shape | Approach | Code Changes | Effort |
+|---|---|---|---|
+| **Hexagon** | `line` polygon, 7 points | `shape-map.ts`, `types.ts`, `canvas-generator.ts`, `scene-adapter.ts` | Medium |
+| **Parallelogram** | `line` polygon, 5 points | Same files | Medium |
+| **Cylinder** | Composition (ellipse + rect + ellipse) or accept rectangle | Multiple element generation, group binding | High |
+
+### Container Binding Risk
+
+The most significant risk: `line`-based polygons are not Excalidraw "container" elements. This means:
+1. Text cannot be bound directly to the shape — it must be a separate `text` element positioned at the shape's center
+2. Selection behavior differs — users can't click the filled area, only the edges
+3. Resize handles work differently — points are individually draggable, not uniform scaling
+4. Group behavior may need explicit grouping logic
+
+For Accordo's use case (programmatic rendering, not user editing), risks #2 and #3 are less critical since users don't manually manipulate these shapes. Risk #1 (text binding) is the primary concern.
+
+---
+
+## 11. Updated Recommendation
+
+**Change from DEFER to CONDITIONAL PROCEED for hexagon and parallelogram only.**
+
+### Hexagon + Parallelogram: PROCEED (Medium priority)
+
+- Use `line` elements with closed point paths on current 0.17.6
+- No version upgrade required
+- Rough.js rendering confirmed
+- Scope as a standalone TDD module: update `shape-map.ts` to emit `line` elements with point arrays for these two shapes, update `types.ts` to include `"line"` in the type union, update `canvas-generator.ts` and `scene-adapter.ts` for `line` element handling
+- Text overlay (separate `text` element at shape center) required as a companion change
+
+### Cylinder: DEFER (unchanged)
+
+- Cannot be represented as a single `line` polygon — curved caps require composition
+- Multi-element composition (ellipse + rectangle) is high-effort and fragile
+- Rectangle approximation remains acceptable for diag.2
+- Revisit when/if Excalidraw adds native cylinder support or a shape library emerges
+
+### Version Upgrade: NOT REQUIRED
+
+- The `loopLock` feature (PR #9477) is a UI improvement, not needed for programmatic polygon creation
+- Stay on 0.17.6 — no upgrade needed for this work
+- If upgrading for other reasons, target ≥ 0.18.0-864353b for loopLock user-editing benefits
+
+### Implementation Sequence (when scheduled)
+
+1. Add `"line"` to `ExcalidrawElement.type` union in `types.ts`
+2. Add `points` field to `ExcalidrawElement` interface
+3. Update `SHAPE_TABLE` in `shape-map.ts` — hexagon and parallelogram entries emit `line` type with point-generating functions
+4. Update `canvas-generator.ts` to handle `line`-type elements (pass points through)
+5. Update `scene-adapter.ts` `toExcalidrawPayload()` to include points for `line` elements
+6. Handle text overlay — generate companion `text` element centered on each polygon shape
+7. Update layout dimensions — hexagon at 180×80, parallelogram at 180×60 (adjust as needed)

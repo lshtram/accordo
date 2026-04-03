@@ -10,7 +10,8 @@
     "storage",
     "contextMenus",
     "scripting",
-    "webNavigation"
+    "webNavigation",
+    "debugger"
   ],
 
   "host_permissions": [

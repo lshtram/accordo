@@ -250,6 +250,7 @@ export function buildPageUnderstandingTools(
       inputSchema: {
         type: "object",
         properties: {
+          tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
           anchorKey: { type: "string", description: "Anchor key identifying target element" },
           nodeRef: { type: "string", description: "Node ref from page map" },
           rect: {

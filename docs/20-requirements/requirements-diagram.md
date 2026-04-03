@@ -152,25 +152,93 @@ StrokeStyle on edges was silently dropped by `detectNodeMutations` (edge mermaid
 3. Handle self-loop curves (rounded rectangle variant)
 4. Handle N-waypoint case (curve through waypoints)
 
+### diag.2 — Future Modules (NOT STARTED)
+
+Beyond parsers, these modules are planned for diag.2 (full list in `diagram-architecture.md §18`):
+
+| Module | Notes |
+|---|---|
+| Fine-grained topology tools | `add_node`, `remove_node`, `add_edge`, `remove_edge`, `add_cluster` |
+| Layout tools | `move_node`, `resize_node`, `set_node_style`, `set_edge_routing` |
+| Undo/redo | Operation log (50-entry ring buffer) |
+| Full shape fidelity | hexagon, cylinder, parallelogram canvas approximations |
+| Draw-on animation | Progressive element loading at render time |
+| Dirty-canvas guard | Merge human layout + agent topology changes |
+
 ### D-01 — Shape Fidelity (DEFERRED)
 
 **Research:** `docs/reviews/D-01-shape-fidelity-research.md`  
 **Finding:** Excalidraw has no native hexagon/cylinder/parallelogram types. Improved approximations require polygon-based workarounds that add complexity without achieving true native fidelity.  
 **Recommendation:** Keep current diamond/rectangle approximations. Not worth the effort for marginal gain.
 
-### diag.2 — Future Modules (NOT STARTED)
+### diag.2 — Additional Parsers (NOT STARTED)
 
-Full list in `docs/10-architecture/diagram-architecture.md §18`. Key items:
+Architecture reference: `docs/10-architecture/diagram-types-architecture.md`
 
-| Module | Notes |
-|---|---|
-| Fine-grained topology tools | `add_node`, `remove_node`, `add_edge`, `remove_edge`, `add_cluster` |
-| Layout tools | `move_node`, `resize_node`, `set_node_style`, `set_edge_routing` |
-| Additional parsers | classDiagram, stateDiagram-v2, erDiagram, mindmap |
-| Undo/redo | Operation log (50-entry ring buffer) |
-| Full shape fidelity | hexagon, cylinder, parallelogram canvas approximations |
-| Draw-on animation | Progressive element loading at render time |
-| Dirty-canvas guard | Merge human layout + agent topology changes |
+#### diag.2.1 — stateDiagram-v2 Parser
+
+| ID | Requirement | Acceptance Criteria |
+|---|---|---|
+| SD-R01 | Parse simple states | `db.nodes` with `isGroup===false` → `ParsedNode` with `shape: "rounded"` |
+| SD-R02 | Parse start/end pseudostates | `[*]` → nodes with `shape: "circle"` (stateStart/stateEnd mapped) |
+| SD-R03 | Parse composite states as clusters | `isGroup===true` → `ParsedCluster`; children's `parentId` → `cluster` membership |
+| SD-R04 | Parse nested composite states | Cluster with `parent` set when composites are nested |
+| SD-R05 | Parse transitions as edges | `db.edges` → `ParsedEdge` with label from `edge.label` |
+| SD-R06 | Ordinal counter for parallel edges | Multiple edges between same states get sequential ordinals |
+| SD-R07 | Full pipeline integration | `parseMermaid()` dispatches to `parseStateDiagram`; layout + canvas succeed end-to-end |
+
+#### diag.2.2 — classDiagram Parser
+
+| ID | Requirement | Acceptance Criteria |
+|---|---|---|
+| CD-R01 | Parse classes with attributes and methods | `db.classes` Map → `ParsedNode` with structured label |
+| CD-R02 | Parse class annotations | `<<interface>>`, `<<abstract>>` preserved in label |
+| CD-R03 | Parse namespaces as clusters | `db.namespaces` → `ParsedCluster`; class `parent` → membership |
+| CD-R04 | Map relation types to EdgeType | EXTENSION→inheritance, COMPOSITION→composition, AGGREGATION→aggregation, DOTTED→realization/dotted |
+| CD-R05 | Parse relationship labels | `relation.title` → `ParsedEdge.label` |
+
+#### diag.2.3 — erDiagram Parser
+
+| ID | Requirement | Acceptance Criteria |
+|---|---|---|
+| ER-R01 | Parse entities with attributes | `db.entities` Map → `ParsedNode` with attribute list label |
+| ER-R02 | Use entity label as NodeId | Entity `label` (not synthetic `id`) used as stable identity |
+| ER-R03 | Parse relationships | `db.relationships` → `ParsedEdge`; resolve synthetic entity IDs |
+| ER-R04 | Map relationship types | IDENTIFYING→arrow, NON_IDENTIFYING→dotted |
+| ER-R05 | Default LR direction | ER diagrams default to left-to-right layout |
+
+#### diag.2.4 — mindmap Parser
+
+| ID | Requirement | Acceptance Criteria |
+|---|---|---|
+| MM-R01 | Parse tree from getMindmap() | Recursive tree → flat `ParsedNode` entries |
+| MM-R02 | Path-based node identity | Dot-separated path IDs (e.g., "root.Origins.Long history") |
+| MM-R03 | Synthetic parent→child edges | Tree structure → `ParsedEdge` entries |
+| MM-R04 | Map node types to shapes | nodeType enum → rounded/rectangle/circle/ellipse/hexagon |
+| MM-R05 | d3-hierarchy radial layout | New layout engine (separate from dagre) |
+
+#### diag.2.5 — block-beta Parser
+
+| ID | Requirement | Acceptance Criteria |
+|---|---|---|
+| BB-R01 | Parse blocks from getBlocksFlat() | Skip root; map block types to shapes |
+| BB-R02 | Composite blocks as clusters | `type: "composite"` → `ParsedCluster` with children |
+| BB-R03 | Parse edges | `db.getEdges()` → `ParsedEdge` with ordinals |
+| BB-R04 | Column-aware layout | Grid layout respects `widthInColumns` and `columns` |
+| BB-R05 | cytoscape-fcose or custom grid layout | New layout engine (separate from dagre) |
+
+### D-03 — Curved Routing (NEXT)
+
+**Research:** `docs/reviews/D-03-curved-routing-research.md` ✅  
+**Approach:** Catmull-Rom spline interpolation — generate 16–20 intermediate points along a smooth curve; Excalidraw natively renders smooth curves through multi-point `points` array.
+
+**Files to touch:** `packages/diagram/src/canvas/edge-router.ts`, `edge-router.test.ts`
+
+**Implementation plan:**
+1. Add `routeCurved()` stub; remove `"curved" → "auto"` alias in `routeEdge` switch
+2. Implement Catmull-Rom spline sampling
+3. Handle self-loop curves (rounded rectangle variant)
+4. Handle N-waypoint case (curve through waypoints)
 
 ---
 

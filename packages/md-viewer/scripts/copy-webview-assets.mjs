@@ -3,13 +3,14 @@
  * Copies third-party webview assets into dist/ so the extension can serve
  * them via vscode-resource: URIs.
  *
- * Also wraps @accordo/comment-sdk as a browser IIFE (sdk.browser.js) so
+ * Bundles @accordo/comment-sdk as a browser IIFE (sdk.browser.js) so
  * it can be loaded with a plain <script> tag (no type="module" needed).
  */
 
-import { readFileSync, writeFileSync, copyFileSync, mkdirSync, readdirSync } from "fs";
+import { copyFileSync, mkdirSync, readdirSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import * as esbuild from "esbuild";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const pkgDir = join(__dir, "..");
@@ -18,13 +19,22 @@ const nm = join(pkgDir, "node_modules");
 
 mkdirSync(dist, { recursive: true });
 
-// ── 1. Comment SDK — wrap ESM class as browser IIFE ─────────────────────────
-const sdkSrc = readFileSync(join(nm, "@accordo/comment-sdk/dist/sdk.js"), "utf8");
-// Strip the `export ` prefix from `export class AccordoCommentSDK`
-const stripped = sdkSrc.replace(/^export (class AccordoCommentSDK)/m, "$1");
-const iife = `(function(){\n${stripped}\nwindow.AccordoCommentSDK = AccordoCommentSDK;\n})();\n`;
-writeFileSync(join(dist, "sdk.browser.js"), iife, "utf8");
-console.log("  ✓ sdk.browser.js");
+// ── 1. Comment SDK — bundle as browser IIFE via esbuild ──────────────────────
+// globalName "AccordoSDK" avoids a collision: the SDK module has a named export
+// called "AccordoCommentSDK", so if globalName were also "AccordoCommentSDK",
+// esbuild would assign the namespace object { AccordoCommentSDK: class } to the
+// same-named global — making `new AccordoCommentSDK()` fail at runtime.
+// The webview init script accesses the class as AccordoSDK.AccordoCommentSDK.
+await esbuild.build({
+  entryPoints: [join(nm, "@accordo/comment-sdk/dist/sdk.js")],
+  bundle: true,
+  format: "iife",
+  globalName: "AccordoSDK",
+  outfile: join(dist, "sdk.browser.js"),
+  minify: false,
+  sourcemap: false,
+});
+console.log("  ✓ sdk.browser.js (esbuild IIFE bundle)");
 
 // ── 2. Comment SDK CSS ───────────────────────────────────────────────────────
 copyFileSync(

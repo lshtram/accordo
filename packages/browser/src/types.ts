@@ -20,7 +20,11 @@ export type BrowserRelayAction =
   | "get_text_map"
   | "get_semantic_graph"
   | "list_pages"
-  | "select_page";
+  | "select_page"
+  | "navigate"
+  | "click"
+  | "type"
+  | "press_key";
 
 // ── Snapshot Envelope (shared contract) ──────────────────────────────────────
 

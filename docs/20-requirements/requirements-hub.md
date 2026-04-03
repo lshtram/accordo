@@ -414,11 +414,10 @@ interface AuditEntry {
 |---|---|
 | CONC-01 | Hub maintains an in-flight counter (invocations sent to Bridge, awaiting result). |
 | CONC-02 | Maximum in-flight invocations: `ACCORDO_MAX_CONCURRENT_INVOCATIONS` (default `16`). |
-| CONC-03 | Invocations arriving when the limit is reached are placed in a Hub-wide FIFO queue. Max queue depth: `64`. |
+| CONC-03 | FIFO queue — invocations queue in order of arrival when all in-flight slots are occupied. Global cap: 16 concurrent, 64 queued. |
 | CONC-04 | If the queue is full, Hub immediately returns MCP error `-32004` (`"Server busy — invocation queue full"`). |
 | CONC-05 | When a result (or timeout) returns, the counter decrements and the next queued invocation is dequeued and forwarded in the same tick. |
 | CONC-06 | Cancelled invocations that have already been forwarded to Bridge still occupy an in-flight slot until Bridge sends `cancelled` or `result`. |
-| CONC-07 | Per-session effective parallelism is bounded by `max(2, ceil(16 / N))` where N is the number of active sessions. This is a floor, not a cap — a single session can still use all 16 slots when it is the only active session. Multiple agents from a swarm are subject to fair queuing under load. |
 
 ---
 

@@ -7,6 +7,7 @@
 
 import type { BrowserCommentThread } from "./types.js";
 import { MESSAGE_TYPES } from "./constants.js";
+import { hasPermission, grant, revoke } from "./control-permission.js";
 
 const STORAGE_KEY = "commentsMode";
 
@@ -272,6 +273,50 @@ export async function initPopup(container: HTMLElement): Promise<void> {
   header.appendChild(toggleBtn);
   container.appendChild(header);
   await renderState();
+
+  // ── Control Mode: Grant/Revoke browser control ─────────────────────────────────
+  const controlSection = document.createElement("div");
+  controlSection.style.cssText = `
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border-bottom: 1px solid #eee;
+  `;
+
+  const controlLabel = document.createElement("span");
+  controlLabel.id = "accordo-control-label";
+  controlLabel.style.cssText = "font-size: 13px; font-weight: 600;";
+
+  const controlBtn = document.createElement("button");
+  controlBtn.id = "accordo-control-btn";
+  controlBtn.style.cssText = `
+    background: #ff6600; color: white; border: none; border-radius: 14px;
+    padding: 4px 14px; font-size: 12px; cursor: pointer; font-weight: 600;
+  `;
+
+  const renderControlState = async (): Promise<void> => {
+    const isGranted = await hasPermission(tabId);
+    controlLabel.textContent = `Browser Control: ${isGranted ? "ON" : "OFF"}`;
+    controlLabel.style.color = isGranted ? "#2a7a2a" : "#888";
+    controlBtn.textContent = isGranted ? "Revoke" : "Grant";
+    controlBtn.style.background = isGranted ? "#e53e3e" : "#ff6600";
+    dbg(`renderControlState: isGranted=${isGranted}`);
+  };
+
+  controlBtn.addEventListener("click", async () => {
+    const isGranted = await hasPermission(tabId);
+    if (isGranted) {
+      dbg(`controlBtn click: revoking control for tabId=${tabId}`);
+      await revoke(tabId);
+    } else {
+      dbg(`controlBtn click: granting control for tabId=${tabId}`);
+      await grant(tabId);
+    }
+    await renderControlState();
+  });
+
+  controlSection.appendChild(controlLabel);
+  controlSection.appendChild(controlBtn);
+  container.appendChild(controlSection);
+  await renderControlState();
 
   // ── Shortcut hint ──────────────────────────────────────────────────────────
   const hint = document.createElement("div");

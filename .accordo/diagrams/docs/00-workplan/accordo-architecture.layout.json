@@ -1,0 +1,181 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "Agent": {
+      "x": 210,
+      "y": 30,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#E8E0F0",
+        "fontColor": "#4A3080",
+        "fontWeight": "bold"
+      }
+    },
+    "Hub": {
+      "x": 380,
+      "y": 118,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D4E8F5",
+        "fontColor": "#1A5276",
+        "fontWeight": "bold"
+      }
+    },
+    "Registry": {
+      "x": 91,
+      "y": 310,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#ffec99",
+        "fontColor": "#f08c00",
+        "strokeColor": "#f08c00",
+        "fillStyle": "cross-hatch",
+        "fontSize": 20,
+        "fontFamily": "Nunito"
+      }
+    },
+    "Dispatch": {
+      "x": 558,
+      "y": 235,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#b2f2bb",
+        "fontColor": "#e03131",
+        "strokeColor": "#e03131",
+        "fontSize": 20
+      }
+    },
+    "Bridge": {
+      "x": 321,
+      "y": 446,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D4E8F5",
+        "fontColor": "#1A5276",
+        "fontWeight": "bold"
+      }
+    },
+    "Editor": {
+      "x": 50,
+      "y": 556,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D5F5E3",
+        "fontColor": "#1E8449",
+        "fontWeight": "bold"
+      }
+    },
+    "Voice": {
+      "x": 330,
+      "y": 590,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D5F5E3",
+        "fontColor": "#1E8449"
+      }
+    },
+    "Script": {
+      "x": 623,
+      "y": 475,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D5F5E3",
+        "fontColor": "#1E8449"
+      }
+    },
+    "Hub->Registry:0": {
+      "style": {
+        "strokeColor": "#f08c00"
+      }
+    },
+    "BrowserTools": {
+      "x": -269,
+      "y": 450,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "DiagramTools": {
+      "x": -29,
+      "y": 450,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "CommentsTools": {
+      "x": 211,
+      "y": 450,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    }
+  },
+  "edges": {
+    "Agent->Hub:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Hub->Registry:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Hub->Dispatch:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Dispatch->Bridge:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Bridge->Editor:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Bridge->Voice:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Bridge->Script:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Registry->BrowserTools:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Registry->DiagramTools:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Registry->CommentsTools:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  }
+}

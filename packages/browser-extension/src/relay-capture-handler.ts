@@ -96,20 +96,26 @@ export async function cropImageToBounds(
 
 // ── Capture subroutines ──────────────────────────────────────────────────────
 
-/** Resolve padded bounds from payload (rect, anchorKey/nodeRef, or full-viewport fallback). */
+/** Resolve padded bounds from payload (rect, anchorKey/nodeRef, or full-viewport fallback).
+ *
+ * B2-CTX-003: When targetTabId is provided, RESOLVE_ANCHOR_BOUNDS message is sent
+ * to that tab instead of querying for the active tab.
+ */
 async function resolvePaddedBounds(
   payload: CapturePayload,
   padding: number,
+  targetTabId?: number,
 ): Promise<{ x: number; y: number; width: number; height: number }> {
   let bounds: { x: number; y: number; width: number; height: number } | null = null;
 
   if (payload.rect) {
     bounds = { ...payload.rect };
   } else if (payload.anchorKey !== undefined || payload.nodeRef !== undefined) {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id) {
+    // B2-CTX-003: Use targetTabId if provided, otherwise query for active tab
+    const tabId = targetTabId ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+    if (tabId !== undefined) {
       try {
-        const resolved = await chrome.tabs.sendMessage(tab.id, {
+        const resolved = await chrome.tabs.sendMessage(tabId, {
           type: "RESOLVE_ANCHOR_BOUNDS",
           anchorKey: payload.anchorKey,
           nodeRef: payload.nodeRef,
@@ -152,8 +158,9 @@ async function buildCaptureSuccess(
   height: number,
   sizeBytes: number,
   anchorSource: string,
+  targetTabId?: number,
 ): Promise<Record<string, unknown>> {
-  const envelope = await requestContentScriptEnvelope("visual");
+  const envelope = await requestContentScriptEnvelope("visual", targetTabId);
   return {
     success: true,
     dataUrl,
@@ -171,9 +178,10 @@ async function retryCaptureAtReducedQuality(
   paddedBounds: { x: number; y: number; width: number; height: number },
   quality: number,
   anchorSource: string,
+  targetTabId?: number,
 ): Promise<Record<string, unknown>> {
   const reducedQuality = Math.max(MIN_QUALITY, quality - QUALITY_RETRY_STEP);
-  const envelope = await requestContentScriptEnvelope("visual");
+  const envelope = await requestContentScriptEnvelope("visual", targetTabId);
   try {
     const retryCropped = await cropImageToBounds(fullDataUrl, paddedBounds, reducedQuality);
     const retrySize = estimateSizeBytes(retryCropped.dataUrl);
@@ -186,6 +194,7 @@ async function retryCaptureAtReducedQuality(
       retryCropped.height,
       retrySize,
       anchorSource,
+      targetTabId,
     );
   } catch {
     return { success: false, error: "image-too-large", ...envelope };
@@ -197,6 +206,12 @@ async function retryCaptureAtReducedQuality(
 /**
  * Execute the capture_region operation: resolve bounds, capture visible tab,
  * crop to target. Returns the raw capture result with SnapshotEnvelope fields.
+ *
+ * B2-CTX-004: When payload.tabId is a non-active tab, implements tab-swap:
+ * 1. Save current active tab ID
+ * 2. Activate target tab via chrome.tabs.update
+ * 3. Call resolvePaddedBounds (now uses correct tab) and captureVisibleTab
+ * 4. Restore original active tab
  */
 async function executeCaptureRegion(
   payload: CapturePayload,
@@ -205,10 +220,28 @@ async function executeCaptureRegion(
   const anchorSource: string = payload.anchorKey ?? payload.nodeRef ?? "rect";
   const padding = Math.min(MAX_PADDING, Math.max(0, payload.padding ?? DEFAULT_PADDING));
 
-  const paddedBounds = await resolvePaddedBounds(payload, padding);
+  // B2-CTX-004: Tab-swap logic for non-active tab capture
+  const targetTabId = payload.tabId;
+  let originalTabId: number | undefined;
+  let swapped = false;
+  if (targetTabId !== undefined) {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    originalTabId = activeTab?.id;
+    // Only swap if target is different from current active
+    if (originalTabId !== targetTabId) {
+      await chrome.tabs.update(targetTabId, { active: true });
+      swapped = true;
+    }
+  }
+
+  const paddedBounds = await resolvePaddedBounds(payload, padding, targetTabId);
 
   if (paddedBounds.width < MIN_CAPTURE_DIMENSION || paddedBounds.height < MIN_CAPTURE_DIMENSION) {
-    const envelope = await requestContentScriptEnvelope("visual");
+    // Restore tab before returning if we swapped
+    if (swapped && originalTabId !== undefined) {
+      await chrome.tabs.update(originalTabId, { active: true });
+    }
+    const envelope = await requestContentScriptEnvelope("visual", targetTabId);
     return { success: false, error: "no-target", ...envelope };
   }
 
@@ -216,7 +249,11 @@ async function executeCaptureRegion(
   try {
     fullDataUrl = await captureVisibleTab(quality);
   } catch {
-    const envelope = await requestContentScriptEnvelope("visual");
+    // Restore tab before returning if we swapped
+    if (swapped && originalTabId !== undefined) {
+      await chrome.tabs.update(originalTabId, { active: true });
+    }
+    const envelope = await requestContentScriptEnvelope("visual", targetTabId);
     return { success: false, error: "capture-failed", ...envelope };
   }
 
@@ -236,11 +273,16 @@ async function executeCaptureRegion(
 
   const sizeBytes = estimateSizeBytes(dataUrl);
 
-  if (sizeBytes > MAX_CAPTURE_BYTES && quality > MIN_QUALITY) {
-    return retryCaptureAtReducedQuality(fullDataUrl, paddedBounds, quality, anchorSource);
+  // Restore original tab before any envelope request (envelope should reflect original tab context)
+  if (swapped && originalTabId !== undefined) {
+    await chrome.tabs.update(originalTabId, { active: true });
   }
 
-  return buildCaptureSuccess(dataUrl, width, height, sizeBytes, anchorSource);
+  if (sizeBytes > MAX_CAPTURE_BYTES && quality > MIN_QUALITY) {
+    return retryCaptureAtReducedQuality(fullDataUrl, paddedBounds, quality, anchorSource, targetTabId);
+  }
+
+  return buildCaptureSuccess(dataUrl, width, height, sizeBytes, anchorSource, targetTabId);
 }
 
 // ── Capture Region Handler ───────────────────────────────────────────────────

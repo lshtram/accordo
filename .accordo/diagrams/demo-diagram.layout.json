@@ -1,0 +1,83 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "A": {
+      "x": 90,
+      "y": 30,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "B": {
+      "x": 6,
+      "y": 133,
+      "w": 140,
+      "h": 80,
+      "style": {
+        "strokeWidth": 4,
+        "strokeColor": "#1971c2",
+        "fontColor": "#1971c2"
+      }
+    },
+    "C": {
+      "x": 155,
+      "y": 330,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "D": {
+      "x": 90,
+      "y": 470,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "B->D:0": {
+      "style": {
+        "strokeWidth": 4,
+        "strokeColor": "#f08c00"
+      }
+    },
+    "B->D:0:label": {
+      "style": {
+        "strokeColor": "#f08c00"
+      }
+    }
+  },
+  "edges": {
+    "A->B:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "B->C:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeStyle": "dashed"
+      }
+    },
+    "B->D:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeStyle": "dashed",
+        "strokeWidth": 4
+      }
+    },
+    "C->D:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  }
+}

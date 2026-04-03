@@ -86,6 +86,7 @@
   "devDependencies": {
     "@accordo/bridge-types": "workspace:*",
     "@accordo/comment-sdk": "workspace:*",
+    "esbuild": "^0.24.2",
     "@hackmd/markdown-it-task-lists": "^2.1.4",
     "@shikijs/markdown-it": "^4.0.1",
     "@traptitech/markdown-it-katex": "^3.6.0",

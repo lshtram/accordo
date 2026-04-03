@@ -48,14 +48,20 @@ export async function resolveRequestedUrl(payload: Record<string, unknown>): Pro
  * snapshot sequencing. The service worker MUST NOT mint envelopes directly —
  * it delegates to the content script to maintain a single monotonic counter.
  *
+ * B2-CTX-005: When tabId is provided, the message is sent to that tab directly
+ * instead of querying for the active tab.
+ *
  * Falls back to a service-worker-local envelope only when no content script
  * is available (e.g., chrome:// pages, test environments).
  */
-export async function requestContentScriptEnvelope(source: "dom" | "visual"): Promise<SnapshotEnvelope> {
+export async function requestContentScriptEnvelope(
+  source: "dom" | "visual",
+  tabId?: number,
+): Promise<SnapshotEnvelope> {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id) {
-      const response = await chrome.tabs.sendMessage(tab.id, {
+    const targetTabId = tabId ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+    if (targetTabId !== undefined) {
+      const response = await chrome.tabs.sendMessage(targetTabId, {
         type: "CAPTURE_SNAPSHOT_ENVELOPE",
         source,
       });

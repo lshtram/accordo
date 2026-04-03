@@ -113,6 +113,38 @@ chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown
       })();
       return true;
     }
+    case "RESOLVE_ELEMENT_COORDS": {
+      void (async () => {
+        const { uid, selector } = (message as { uid?: string; selector?: string });
+        if (!uid && !selector) {
+          _sendResponse({ error: "no-identifier" }); return;
+        }
+        let element: Element | null = null;
+        if (uid) {
+          const { getElementByRef } = await import("./page-map-traversal.js");
+          element = getElementByRef(uid) ?? null;
+          if (!element) {
+            const { resolveAnchorKey } = await import("./enhanced-anchor.js");
+            element = resolveAnchorKey(uid);
+          }
+        }
+        if (!element && selector) {
+          element = document.querySelector(selector);
+        }
+        if (!element) {
+          _sendResponse({ error: "not-found" }); return;
+        }
+        const rect = element.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) {
+          _sendResponse({ error: "zero-size" }); return;
+        }
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+        const inViewport = x >= 0 && y >= 0 && x <= window.innerWidth && y <= window.innerHeight;
+        _sendResponse({ x, y, bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height }, inViewport });
+      })();
+      return true;
+    }
     case "comments-mode-on": void activateCommentsModeFromHandlers(); break;
     case "comments-mode-off": deactivateCommentsModeFromHandlers(); break;
     case "COMMENTS_UPDATED": void loadAndRenderPins(); break;

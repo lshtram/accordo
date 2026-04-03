@@ -4,10 +4,18 @@
   "publisher": "accordo",
   "version": "0.1.0",
   "description": "Accordo IDE Editor Tools — 22 MCP tools exposing VSCode editor, terminal, and workspace capabilities",
-  "categories": ["Other"],
-  "extensionKind": ["workspace"],
-  "activationEvents": ["onStartupFinished"],
-  "extensionDependencies": ["accordo.accordo-bridge"],
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionDependencies": [
+    "accordo.accordo-bridge"
+  ],
   "type": "module",
   "main": "./dist/extension.js",
   "scripts": {
@@ -17,12 +25,15 @@
     "test": "vitest run",
     "test:watch": "vitest watch",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'no lint configured yet'"
+    "lint": "eslint src/"
   },
   "devDependencies": {
     "@accordo/bridge-types": "workspace:*",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.100.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "eslint": "^10.1.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },

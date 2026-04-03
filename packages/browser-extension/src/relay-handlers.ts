@@ -43,3 +43,10 @@ export {
   handleListPages,
   handleSelectPage,
 } from "./relay-tab-handlers.js";
+
+export {
+  handleNavigate,
+  handleClick,
+  handleType,
+  handlePressKey,
+} from "./relay-control-handlers.js";

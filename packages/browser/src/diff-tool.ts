@@ -28,6 +28,8 @@ import type { SnapshotRetentionStore } from "./snapshot-retention.js";
  * B2-DE-004: If `fromSnapshotId` is omitted, use the snapshot before `toSnapshotId`.
  */
 export interface DiffSnapshotsArgs {
+  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
+  tabId?: number;
   /** Earlier snapshot ID (baseline). If omitted, uses the snapshot before `toSnapshotId` (B2-DE-004). */
   fromSnapshotId?: string;
   /** Later snapshot ID (current). If omitted, captures a fresh snapshot (B2-DE-003). */
@@ -134,6 +136,10 @@ export function buildDiffSnapshotsTool(
     inputSchema: {
       type: "object",
       properties: {
+        tabId: {
+          type: "number",
+          description: "B2-CTX-001: Optional tab ID to target; omit for active tab",
+        },
         fromSnapshotId: {
           type: "string",
           description: "Earlier snapshot ID (baseline). Omit to use the snapshot before toSnapshotId.",
@@ -209,14 +215,22 @@ function extractRelayErrorCode(
  * B2-DE-003: When `toSnapshotId` is omitted, the handler MUST resolve it before
  * calling `diff_snapshots` — not rely on the relay to fill it in.
  *
+ * B2-CTX-002: When tabId is provided, it MUST be included in the get_page_map
+ * payload so the fresh snapshot is captured from the correct tab.
+ *
  * @returns The resolved snapshotId string, or a DiffToolError to propagate.
  */
 async function resolveFreshSnapshot(
   relay: BrowserRelayLike,
+  tabId?: number,
 ): Promise<string | DiffToolError> {
+  const payload: Record<string, unknown> = {};
+  if (tabId !== undefined) {
+    payload.tabId = tabId;
+  }
   let freshResponse: Awaited<ReturnType<BrowserRelayLike["request"]>>;
   try {
-    freshResponse = await relay.request("get_page_map", {}, DIFF_TIMEOUT_MS);
+    freshResponse = await relay.request("get_page_map", payload, DIFF_TIMEOUT_MS);
   } catch (err: unknown) {
     return { success: false, error: classifyRelayError(err) };
   }
@@ -245,18 +259,26 @@ async function resolveFreshSnapshot(
  *      which the handler then propagates as the structured error code.
  *   2. Compute the previous snapshotId as `pageId:(version - 1)` from `toSnapshotId`.
  *
+ * B2-CTX-003: When tabId is provided, it MUST be included in the get_page_map
+ * payload so the preflight check is performed on the correct tab.
+ *
  * @returns The derived fromSnapshotId string, or a DiffToolError to propagate.
  */
 async function resolveFromSnapshot(
   relay: BrowserRelayLike,
   toSnapshotId: string,
+  tabId?: number,
 ): Promise<string | DiffToolError> {
   // Preflight: verify relay accessibility. Strict relays reject this call
   // (no fromSnapshotId/toSnapshotId in payload) and return the
   // "implicit-snapshot-resolution-required" error, which we propagate.
+  const payload: Record<string, unknown> = {};
+  if (tabId !== undefined) {
+    payload.tabId = tabId;
+  }
   let preflightResponse: Awaited<ReturnType<BrowserRelayLike["request"]>>;
   try {
-    preflightResponse = await relay.request("get_page_map", {}, DIFF_TIMEOUT_MS);
+    preflightResponse = await relay.request("get_page_map", payload, DIFF_TIMEOUT_MS);
   } catch (err: unknown) {
     return { success: false, error: classifyRelayError(err) };
   }
@@ -317,7 +339,7 @@ export async function handleDiffSnapshots(
   // The handler MUST resolve this before calling diff_snapshots.
   let resolvedToSnapshotId = args.toSnapshotId;
   if (resolvedToSnapshotId === undefined) {
-    const resolved = await resolveFreshSnapshot(relay);
+    const resolved = await resolveFreshSnapshot(relay, args.tabId);
     if (typeof resolved !== "string") return resolved; // propagate error
     resolvedToSnapshotId = resolved;
   }
@@ -327,7 +349,7 @@ export async function handleDiffSnapshots(
   // The handler MUST resolve this before calling diff_snapshots.
   let resolvedFromSnapshotId = args.fromSnapshotId;
   if (resolvedFromSnapshotId === undefined) {
-    const resolved = await resolveFromSnapshot(relay, resolvedToSnapshotId);
+    const resolved = await resolveFromSnapshot(relay, resolvedToSnapshotId, args.tabId);
     if (typeof resolved !== "string") return resolved; // propagate error
     resolvedFromSnapshotId = resolved;
   }

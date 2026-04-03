@@ -98,6 +98,8 @@ export interface GetDomExcerptArgs {
 
 /** Input for browser_capture_region (M91-CR) */
 export interface CaptureRegionArgs {
+  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
+  tabId?: number;
   /** Anchor key identifying the target element (from inspect_element) */
   anchorKey?: string;
   /** Node ref from page map (ref field) */

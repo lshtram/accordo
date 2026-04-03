@@ -73,7 +73,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // so VS Code does not auto-open .md files in the preview.
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(PREVIEW_VIEW_TYPE, preview, {
-      webviewOptions: { retainContextWhenHidden: true },
+      webviewOptions: { retainContextWhenHidden: true, enableFindWidget: true },
       supportsMultipleEditorsPerDocument: defaultSurface !== "text",
     }),
   );

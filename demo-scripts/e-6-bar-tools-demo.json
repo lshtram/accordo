@@ -1,0 +1,196 @@
+{
+  "label": "E-6 Bar Tools Demo — accordo_layout_panel",
+  "errPolicy": "abort",
+  "steps": [
+    {
+      "type": "speak",
+      "text": "Welcome to the E-6 Bar Tools demo. Today we're testing accordo_layout_panel — a single tool that controls all three VS Code collapsible areas: sidebar, bottom panel, and the right auxiliary bar.",
+      "block": true
+    },
+    {
+      "type": "subtitle",
+      "text": "Tool: accordo_layout_panel({ area, view?, action })",
+      "durationMs": 4000
+    },
+    {
+      "type": "speak",
+      "text": "Before we start — the tool uses a state tracker. All areas start as 'unknown' because VS Code doesn't tell us if a panel is open or closed. The first action we take synchronises the state.",
+      "block": true
+    },
+    {
+      "type": "speak",
+      "text": "Journey 1: Agent closes the sidebar to give the user more code space.",
+      "block": true
+    },
+    {
+      "type": "command",
+      "command": "accordo_layout_panel",
+      "args": { "area": "sidebar", "action": "close" }
+    },
+    {
+      "type": "delay",
+      "ms": 2000
+    },
+    {
+      "type": "speak",
+      "text": "The sidebar closes. If it was already closed, this is a no-op — the tool is idempotent. The response tells us the action taken and the previous state.",
+      "block": true
+    },
+    {
+      "type": "speak",
+      "text": "Journey 2: Agent opens the sidebar and switches to the Git Source Control view.",
+      "block": true
+    },
+    {
+      "type": "command",
+      "command": "accordo_layout_panel",
+      "args": { "area": "sidebar", "view": "git", "action": "open" }
+    },
+    {
+      "type": "delay",
+      "ms": 2000
+    },
+    {
+      "type": "speak",
+      "text": "Sidebar opens and the Git view becomes active. The view parameter works for all five sidebar views: explorer, search, git, debug, and extensions.",
+      "block": true
+    },
+    {
+      "type": "speak",
+      "text": "Journey 3: Agent opens the bottom panel to show the terminal.",
+      "block": true
+    },
+    {
+      "type": "command",
+      "command": "accordo_layout_panel",
+      "args": { "area": "panel", "view": "terminal", "action": "open" }
+    },
+    {
+      "type": "delay",
+      "ms": 2000
+    },
+    {
+      "type": "speak",
+      "text": "The bottom panel opens and the Terminal tab is active. Notice we use a focus-first pattern for panel views: we open the panel first, then switch to the terminal. This avoids accidentally hiding the panel.",
+      "block": true
+    },
+    {
+      "type": "speak",
+      "text": "Journey 4: Same panel, but the agent wants to see build output.",
+      "block": true
+    },
+    {
+      "type": "command",
+      "command": "accordo_layout_panel",
+      "args": { "area": "panel", "view": "output", "action": "open" }
+    },
+    {
+      "type": "delay",
+      "ms": 2000
+    },
+    {
+      "type": "speak",
+      "text": "The panel was already open — so we just switched from the Terminal view to the Output view. No hiding, no drama.",
+      "block": true
+    },
+    {
+      "type": "speak",
+      "text": "Journey 5: Agent opens the right auxiliary bar.",
+      "block": true
+    },
+    {
+      "type": "command",
+      "command": "accordo_layout_panel",
+      "args": { "area": "rightBar", "action": "open" }
+    },
+    {
+      "type": "delay",
+      "ms": 2000
+    },
+    {
+      "type": "speak",
+      "text": "The right sidebar opens. The right bar doesn't have predefined views — users drag whatever they want there. That's why the view parameter is not supported for rightBar.",
+      "block": true
+    },
+    {
+      "type": "speak",
+      "text": "Error case 1: Agent tries to close a specific view — which is not allowed.",
+      "block": true
+    },
+    {
+      "type": "command",
+      "command": "accordo_layout_panel",
+      "args": { "area": "sidebar", "view": "explorer", "action": "close" }
+    },
+    {
+      "type": "delay",
+      "ms": 2000
+    },
+    {
+      "type": "speak",
+      "text": "The tool returns a clear error: you cannot close a view, only the area. To close the sidebar, omit the view parameter.",
+      "block": true
+    },
+    {
+      "type": "speak",
+      "text": "Error case 2: Agent tries to specify a view for the rightBar.",
+      "block": true
+    },
+    {
+      "type": "command",
+      "command": "accordo_layout_panel",
+      "args": { "area": "rightBar", "view": "explorer", "action": "open" }
+    },
+    {
+      "type": "delay",
+      "ms": 2000
+    },
+    {
+      "type": "speak",
+      "text": "Another clear error: rightBar does not support the view parameter. Use area-level open or close only.",
+      "block": true
+    },
+    {
+      "type": "speak",
+      "text": "Closing everything down — sidebar, panel, rightBar — to restore editor space.",
+      "block": true
+    },
+    {
+      "type": "command",
+      "command": "accordo_layout_panel",
+      "args": { "area": "sidebar", "action": "close" }
+    },
+    {
+      "type": "delay",
+      "ms": 1000
+    },
+    {
+      "type": "command",
+      "command": "accordo_layout_panel",
+      "args": { "area": "panel", "action": "close" }
+    },
+    {
+      "type": "delay",
+      "ms": 1000
+    },
+    {
+      "type": "command",
+      "command": "accordo_layout_panel",
+      "args": { "area": "rightBar", "action": "close" }
+    },
+    {
+      "type": "delay",
+      "ms": 2000
+    },
+    {
+      "type": "speak",
+      "text": "All three areas are now closed. Clean code space. The state tracker remembers these states — so the next open call will know the areas are closed and won't do a no-op.",
+      "block": true
+    },
+    {
+      "type": "speak",
+      "text": "That was the E-6 Bar Tools demo. Summary: one tool, three areas, explicit open and close, state tracker for idempotency, view-level control for sidebar and panel, clear error messages.",
+      "block": true
+    }
+  ]
+}

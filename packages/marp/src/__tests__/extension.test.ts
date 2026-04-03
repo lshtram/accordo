@@ -528,6 +528,48 @@ describe("VS Code commands registered by activate", () => {
     expect(registeredCmds).toContain("accordo.marp.close");
   });
 
+  it("registers accordo_presentation_goto as a VS Code command for script runner", async () => {
+    const bridge = makeBridge();
+    setupExtensions(bridge, false);
+    setupEngineConfig("marp");
+    const ctx = makeExtensionContext();
+
+    await activate(asCtx(ctx));
+
+    const registeredCmds = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([cmd]: [string]) => cmd,
+    );
+    expect(registeredCmds).toContain("accordo_presentation_goto");
+  });
+
+  it("registers accordo_presentation_next as a VS Code command for script runner", async () => {
+    const bridge = makeBridge();
+    setupExtensions(bridge, false);
+    setupEngineConfig("marp");
+    const ctx = makeExtensionContext();
+
+    await activate(asCtx(ctx));
+
+    const registeredCmds = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([cmd]: [string]) => cmd,
+    );
+    expect(registeredCmds).toContain("accordo_presentation_next");
+  });
+
+  it("registers accordo_presentation_prev as a VS Code command for script runner", async () => {
+    const bridge = makeBridge();
+    setupExtensions(bridge, false);
+    setupEngineConfig("marp");
+    const ctx = makeExtensionContext();
+
+    await activate(asCtx(ctx));
+
+    const registeredCmds = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([cmd]: [string]) => cmd,
+    );
+    expect(registeredCmds).toContain("accordo_presentation_prev");
+  });
+
   it("command disposables are pushed to context.subscriptions", async () => {
     const bridge = makeBridge();
     setupExtensions(bridge, false);
@@ -536,7 +578,7 @@ describe("VS Code commands registered by activate", () => {
 
     await activate(asCtx(ctx));
 
-    expect(ctx.subscriptions.length).toBeGreaterThanOrEqual(2);
+    expect(ctx.subscriptions.length).toBeGreaterThanOrEqual(5);
   });
 });
 

@@ -90,6 +90,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("accordo.marp.close", () => {
       closeSession(session, provider, stateContrib);
     }),
+    // Script runner commands — these mirror the MCP tools so NarrationScript
+    // "command" steps can invoke presentation navigation via executeCommand.
+    vscode.commands.registerCommand("accordo_presentation_goto", (args: unknown) => {
+      const index = (args as { index?: number } | undefined)?.index;
+      if (typeof index === "number") {
+        return gotoSlide(index - 1, session, stateContrib);
+      }
+      return Promise.resolve({});
+    }),
+    vscode.commands.registerCommand("accordo_presentation_next", () =>
+      nextSlide(session, stateContrib),
+    ),
+    vscode.commands.registerCommand("accordo_presentation_prev", () =>
+      prevSlide(session, stateContrib),
+    ),
     toolRegistration,
   );
 }

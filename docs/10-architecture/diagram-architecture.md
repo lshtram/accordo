@@ -314,38 +314,56 @@ interface ParsedCluster {
 
 ### 6.3 Implementation per diagram type
 
-The adapter module has one function per diagram type. Each function accesses `diagram.parser.yy` (the internal `db`) to extract the data, then normalizes it to the `ParsedDiagram` interface.
+The adapter module has one function per diagram type. Each function accesses the `diag.db` object (returned by `mermaid.mermaidAPI.getDiagramFromText()`) to extract the data, then normalizes it to the `ParsedDiagram` interface.
 
-**Flowchart** (diag.1 — MVP):
-```typescript
-// diagram.parser.yy exposes:
-//   getVertices()   → Map<id, { id, label, type, classes[], ... }>
-//   getEdges()      → Array<{ start, end, text, type, stroke, ... }>
-//   getSubGraphs()  → Array<{ id, title, nodes[], ... }>
-//   getDirection()  → "TD" | "LR" | ...
-```
+> **IMPORTANT:** The `diag.db` API varies by diagram type — some use getter methods, others use direct property access. The speculative method-based signatures originally in this section were incorrect. See `docs/10-architecture/diagram-types-architecture.md` for the **verified, runtime-inspected** data structures for all 6 spatial types.
 
-**Class diagram** (diag.2):
+**Flowchart** (diag.1 — implemented):
 ```typescript
-// diagram.parser.yy exposes:
-//   getClasses()    → Map<name, { id, members[], methods[], ... }>
-//   getRelations()  → Array<{ id1, id2, relation, ... }>
-//   getNamespaces() → Array<{ id, classes[], ... }>
+// diag.db exposes getter methods:
+//   db.getVertices()   → Map<id, { id, text, type, classes[], ... }>
+//   db.getEdges()      → Array<{ start, end, text, type, ... }>
+//   db.getSubGraphs()  → Array<{ id, title, nodes[], ... }>
+//   db.getDirection()  → "TD" | "TB" | "LR" | ...
 ```
 
 **State diagram** (diag.2):
 ```typescript
-// diagram.parser.yy exposes:
-//   getRootDoc()    → Array<{ stmt, id, description, ... }>
-//   getStates()     → Map<id, { id, descriptions[], type, ... }>
-//   getRelations()  → Array<{ id1, id2, description, ... }>
+// diag.db exposes direct properties (NOT methods):
+//   db.nodes  → Array<{ id, label, shape, isGroup, parentId, ... }>
+//   db.edges  → Array<{ id, start, end, label, ... }>
+```
+
+**Class diagram** (diag.2):
+```typescript
+// diag.db exposes direct properties (NOT methods):
+//   db.classes    → Map<name, { id, label, members[], methods[], annotations[], parent?, ... }>
+//   db.relations  → Array<{ id1, id2, relation: { type1, type2, lineType }, title, ... }>
+//   db.namespaces → Map<name, { id, ... }>
+//   db.direction  → string
 ```
 
 **ER diagram** (diag.2):
 ```typescript
-// diagram.parser.yy exposes:
-//   getEntities()       → Map<name, { attributes[], ... }>
-//   getRelationships()  → Array<{ entityA, entityB, relSpec, ... }>
+// diag.db exposes direct properties (NOT methods):
+//   db.entities      → Map<name, { id, label, attributes[], shape, ... }>
+//   db.relationships → Array<{ entityA, entityB, relSpec: { cardA, relType, cardB }, roleA, ... }>
+```
+
+**Mindmap** (diag.2):
+```typescript
+// diag.db exposes a getter method + property:
+//   db.getMindmap() → recursive tree: { id, nodeId, descr, type, children[], isRoot, ... }
+//   db.nodeType     → enum: { DEFAULT: 0, ROUNDED_RECT: 1, RECT: 2, CIRCLE: 3, CLOUD: 4, BANG: 5, HEXAGON: 6 }
+```
+
+**Block-beta** (diag.2):
+```typescript
+// diag.db exposes getter methods:
+//   db.getBlocksFlat()     → Array<{ id, label, type, widthInColumns, children?, ... }>
+//   db.getBlocks()         → Array (hierarchical, children nested)
+//   db.getEdges()          → Array<{ id, start, end, label, arrowTypeEnd, ... }>
+//   db.getColumns(parentId) → number
 ```
 
 ### 6.4 Version pinning and upgrade strategy
@@ -1173,7 +1191,9 @@ Mermaid itself (v11.x) is composed on multiple layout engines — they are split
 | `mindmap` | Spatial | Radial tree from root | `d3-hierarchy` | diag.2 |
 
 **Why not "use Mermaid's layout by rendering to SVG and parsing coordinates" (Kroki extraction approach):**
-Mermaid's rendering layer (`dagre-d3-es`) fuses layout and SVG drawing into one pass. Extracting positions from the SVG output is fragile — the coordinate transform chain (viewBox, CSS offsets, nested `<g>` transforms) changes between Mermaid versions. Since we pin Mermaid at `11.12.3` and the underlying layout libraries are stable independent packages, calling them directly gives us the same quality with zero fragility.
+Mermaid's rendering layer (`dagre-d3-es`) fuses layout and SVG drawing into one pass. Extracting positions from the SVG output is fragile — the coordinate transform chain (viewBox, CSS offsets, nested `<g>` transforms) changes between Mermaid versions. Since we pin Mermaid at `11.4.1` and the underlying layout libraries are stable independent packages, calling them directly gives us the same quality with zero fragility.
+
+**Per-type db API reference:** See `docs/10-architecture/diagram-types-architecture.md` for the verified, runtime-inspected Mermaid `diag.db` data structures for all 6 spatial types.
 
 **A4 scope (diag.1):** `computeInitialLayout` dispatches on `diagramType`. For diag.1, only `flowchart`, `stateDiagram-v2`, `classDiagram`, and `erDiagram` receive real dagre implementations. `block-beta` and `mindmap` throw `"not supported in diag.1"` with a clear error so the caller can fall back gracefully. The dispatch structure means each type is a one-arm change in diag.2 with no cross-module impact.
 

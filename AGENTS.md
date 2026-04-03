@@ -166,7 +166,52 @@ These are project-level decisions that override or extend [`docs/30-development/
 
 ---
 
-## 6. Picking Up Mid-Project
+## 6. VS Code Extension Development
+
+### Reloading VS Code after dist changes
+
+When modifying VS Code extension code, VS Code in dev mode auto-reloads extensions when their `dist/` changes. If auto-reload doesn't work, or to force a clean reload:
+
+```bash
+# Full restart (rebuilds all packages first)
+./scripts/dev-open.sh
+
+# Faster: skip rebuild if dist files are already fresh
+./scripts/dev-open.sh --no-build
+
+# Or reload just the current window without rebuilding
+# (Cmd+Shift+P → "Developer: Reload Window")
+```
+
+The `dev-open.sh` script:
+- Builds all VS Code extensions via `pnpm -r --filter="./packages/*" run build`
+- Launches VS Code with all packages in `extensionDevelopmentPath` mode
+- Uses a separate `--user-data-dir` so multiple instances don't conflict
+
+### Iterating on a specific package
+
+To rebuild a single package without touching the others:
+
+```bash
+cd packages/<package-name>
+pnpm build
+# Then reload VS Code window
+```
+
+### Checking extension logs
+
+VS Code extension logs are at:
+```
+/run/user/1000/accordo-vscode-<project-slug>/logs/<timestamp>/window1/exthost/output_logging_<timestamp>/
+```
+
+Key log files:
+- `1-Accordo Hub.log` — Hub relay server activity
+- `4-Accordo Browser Relay.log` — Browser extension relay activity
+
+---
+
+## 7. Picking Up Mid-Project
 
 1. Open [`docs/00-workplan/workplan.md`](docs/00-workplan/workplan.md) — read **Current Status** and **Weekly Plan §5**
 2. The active module and its requirements source are listed in the week's TDD execution table

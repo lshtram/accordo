@@ -121,9 +121,12 @@ describe("buildWebviewHtml", () => {
     expect(nonceScripts.length).toBeGreaterThan(0);
   });
 
-  it("M41b-TPL-07: init script calls AccordoCommentSDK.init", () => {
+  it("M41b-TPL-07: init script instantiates AccordoSDK.AccordoCommentSDK (namespaced access)", () => {
     const html = buildWebviewHtml(SAMPLE_OPTS);
-    expect(html).toContain("AccordoCommentSDK");
+    // The IIFE bundle assigns the exports namespace to var AccordoSDK, so the
+    // class is accessed as AccordoSDK.AccordoCommentSDK — NOT as AccordoCommentSDK
+    // directly (which would be the namespace object, not the constructor).
+    expect(html).toContain("new AccordoSDK.AccordoCommentSDK()");
   });
   it("M41b-TPL-03: optional markdownCssUri is injected as a link tag when provided", () => {
     const mdUri = "vscode-resource:/ext/dist/markdown-body.css";

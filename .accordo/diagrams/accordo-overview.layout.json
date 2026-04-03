@@ -1,0 +1,267 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "AI": {
+      "x": 1050,
+      "y": 30,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#1a1a2e",
+        "strokeColor": "#e94560",
+        "strokeWidth": 3,
+        "fillStyle": "solid",
+        "fontColor": "#ffffff",
+        "fontWeight": "bold"
+      }
+    },
+    "Hub": {
+      "x": 1050,
+      "y": 170,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#16213e",
+        "strokeColor": "#0f3460",
+        "strokeWidth": 3,
+        "fillStyle": "solid",
+        "fontColor": "#ffffff",
+        "fontWeight": "bold"
+      }
+    },
+    "Bridge": {
+      "x": 1050,
+      "y": 310,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#533483",
+        "strokeColor": "#e94560",
+        "strokeWidth": 3,
+        "fillStyle": "solid",
+        "fontColor": "#ffffff",
+        "fontWeight": "bold"
+      }
+    },
+    "Editor": {
+      "x": 90,
+      "y": 450,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D4E8F5",
+        "strokeColor": "#1A5276",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#1A5276",
+        "fontWeight": "bold"
+      }
+    },
+    "Voice": {
+      "x": 330,
+      "y": 450,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#E8E0F0",
+        "strokeColor": "#4A3080",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#4A3080",
+        "fontWeight": "bold"
+      }
+    },
+    "Diagram": {
+      "x": 570,
+      "y": 450,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D5F5E3",
+        "strokeColor": "#1E8449",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#1E8449",
+        "fontWeight": "bold"
+      }
+    },
+    "Comments": {
+      "x": 810,
+      "y": 450,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#FEF9E7",
+        "strokeColor": "#B7950B",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#B7950B",
+        "fontWeight": "bold"
+      }
+    },
+    "Browser": {
+      "x": 1050,
+      "y": 450,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#FDEDEC",
+        "strokeColor": "#922B21",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#922B21",
+        "fontWeight": "bold"
+      }
+    },
+    "Script": {
+      "x": 1290,
+      "y": 450,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#EAECEE",
+        "strokeColor": "#566573",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#566573",
+        "fontWeight": "bold"
+      }
+    },
+    "Marp": {
+      "x": 1530,
+      "y": 450,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D5F5E3",
+        "strokeColor": "#1E8449",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#1E8449"
+      }
+    },
+    "MdViewer": {
+      "x": 1770,
+      "y": 450,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D4E8F5",
+        "strokeColor": "#1A5276",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#1A5276"
+      }
+    },
+    "Types": {
+      "x": 2010,
+      "y": 450,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#EAECEE",
+        "strokeColor": "#566573",
+        "strokeWidth": 2,
+        "fillStyle": "dashed",
+        "fontColor": "#566573"
+      }
+    }
+  },
+  "edges": {
+    "AI->Hub:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#e94560",
+        "strokeWidth": 3
+      }
+    },
+    "Hub->Bridge:0": {
+      "routing": "curved",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#e94560",
+        "strokeWidth": 3
+      }
+    },
+    "Bridge->Editor:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#4A90D9",
+        "strokeWidth": 2
+      }
+    },
+    "Bridge->Voice:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#7B68EE",
+        "strokeWidth": 2
+      }
+    },
+    "Bridge->Diagram:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#27AE60",
+        "strokeWidth": 2
+      }
+    },
+    "Bridge->Comments:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#F39C12",
+        "strokeWidth": 2
+      }
+    },
+    "Bridge->Browser:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#E74C3C",
+        "strokeWidth": 2
+      }
+    },
+    "Bridge->Script:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#95A5A6",
+        "strokeWidth": 2
+      }
+    },
+    "Bridge->Marp:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#27AE60",
+        "strokeWidth": 2,
+        "strokeStyle": "dashed"
+      }
+    },
+    "Bridge->MdViewer:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#4A90D9",
+        "strokeWidth": 2,
+        "strokeStyle": "dashed"
+      }
+    },
+    "Bridge->Types:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  }
+}

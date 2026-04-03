@@ -134,6 +134,21 @@ describe("activate", () => {
     );
   });
 
+  it("F-6: webviewOptions.enableFindWidget is true (enables Ctrl+F in preview)", async () => {
+    setupCommentsExtPresent();
+    const ctx = createMockExtensionContext();
+
+    await activate(ctx as never);
+
+    expect(window.registerCustomEditorProvider).toHaveBeenCalledWith(
+      "accordo.markdownPreview",
+      expect.anything(),
+      expect.objectContaining({
+        webviewOptions: expect.objectContaining({ enableFindWidget: true }),
+      }),
+    );
+  });
+
   it("reads accordo_preview_defaultSurface and passes supportsMultipleEditorsPerDocument=false when 'text'", async () => {
     setupCommentsExtPresent();
     const ctx = createMockExtensionContext();

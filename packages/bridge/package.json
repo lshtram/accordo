@@ -4,9 +4,15 @@
   "publisher": "accordo",
   "version": "0.1.0",
   "description": "Accordo IDE Bridge — VSCode extension connecting editor to Hub",
-  "categories": ["Other"],
-  "extensionKind": ["workspace"],
-  "activationEvents": ["onStartupFinished"],
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "extensionDependencies": [],
   "type": "module",
   "main": "./dist/extension.js",
@@ -17,7 +23,7 @@
     "test": "vitest run",
     "test:watch": "vitest watch",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'no lint configured yet'"
+    "lint": "eslint src/"
   },
   "contributes": {
     "configuration": {
@@ -79,6 +85,9 @@
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.100.0",
     "@types/ws": "^8.5.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "eslint": "^10.1.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },

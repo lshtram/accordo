@@ -59,7 +59,7 @@ describe("panelToggleHandler — §4.14", () => {
   for (const [panel, vsCommand] of panelCases) {
     it(`§4.14-PANEL-${panel.toUpperCase()}: '${panel}' executes '${vsCommand}'`, async () => {
       const result = await panelToggleHandler({ panel });
-      expect(result).toEqual({ visible: true, panel });
+      expect(result).toEqual({ panel, area: "sidebar" });
       expect(commands.executeCommand).toHaveBeenCalledWith(vsCommand);
     });
   }
@@ -191,13 +191,16 @@ describe("layoutTools registration — Module 20", () => {
     expect(byName("accordo_panel_toggle").inputSchema.required).toContain("panel");
   });
 
-  it("M20-REG-05: panel enum contains all 5 panels", () => {
+  it("M20-REG-05: panel enum contains all 9 panels", () => {
     const props = byName("accordo_panel_toggle").inputSchema.properties as Record<
       string,
       { enum?: string[] }
     >;
     expect(props["panel"].enum).toEqual(
-      expect.arrayContaining(["explorer", "search", "git", "debug", "extensions"]),
+      expect.arrayContaining([
+        "explorer", "search", "git", "debug", "extensions",
+        "terminal", "output", "problems", "debug-console",
+      ]),
     );
   });
 
@@ -327,15 +330,16 @@ describe("createLayoutTools() factory — M74-LS", () => {
     expect(names).toContain("accordo_layout_state");
   });
 
-  it("M74-LS-01: createLayoutTools returns all 5 existing layout tools plus layoutState (6 total)", () => {
+  it("M74-LS-01: createLayoutTools returns all 5 existing layout tools plus 1 bar tool plus layoutState (7 total)", () => {
     const tools = createLayoutTools(getState);
-    expect(tools).toHaveLength(6);
+    expect(tools).toHaveLength(7);
     const names = tools.map((t) => t.name);
     expect(names).toContain("accordo_panel_toggle");
     expect(names).toContain("accordo_layout_zen");
     expect(names).toContain("accordo_layout_fullscreen");
     expect(names).toContain("accordo_layout_joinGroups");
     expect(names).toContain("accordo_layout_evenGroups");
+    expect(names).toContain("accordo_layout_panel"); // E-6 consolidated bar tools into 1
     expect(names).toContain("accordo_layout_state");
   });
 

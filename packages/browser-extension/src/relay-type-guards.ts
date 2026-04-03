@@ -82,6 +82,9 @@ export function readAnchorContext(
 /**
  * Narrow an unknown value to a CapturePayload, validating only the optional
  * fields that the capture logic actually reads.
+ *
+ * B2-CTX-003: tabId is extracted from the payload and included in the returned
+ * CapturePayload so the capture handler can route to the correct tab.
  */
 export function toCapturePayload(payload: Record<string, unknown>): CapturePayload {
   const rect = payload.rect;
@@ -98,6 +101,7 @@ export function toCapturePayload(payload: Record<string, unknown>): CapturePaylo
     }
   }
   return {
+    tabId: readOptionalNumber(payload, "tabId"),
     anchorKey: readOptionalString(payload, "anchorKey"),
     nodeRef: readOptionalString(payload, "nodeRef"),
     padding: readOptionalNumber(payload, "padding"),

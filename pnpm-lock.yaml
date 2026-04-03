@@ -26,6 +26,15 @@ importers:
       '@types/ws':
         specifier: ^8.5.0
         version: 8.18.1
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.57.2
+        version: 8.57.2(@typescript-eslint/parser@8.57.2(eslint@10.1.0)(typescript@5.9.3))(eslint@10.1.0)(typescript@5.9.3)
+      '@typescript-eslint/parser':
+        specifier: ^8.57.2
+        version: 8.57.2(eslint@10.1.0)(typescript@5.9.3)
+      eslint:
+        specifier: ^10.1.0
+        version: 10.1.0
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
@@ -228,6 +237,15 @@ importers:
       '@types/vscode':
         specifier: ^1.100.0
         version: 1.109.0
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.57.2
+        version: 8.57.2(@typescript-eslint/parser@8.57.2(eslint@10.1.0)(typescript@5.9.3))(eslint@10.1.0)(typescript@5.9.3)
+      '@typescript-eslint/parser':
+        specifier: ^8.57.2
+        version: 8.57.2(eslint@10.1.0)(typescript@5.9.3)
+      eslint:
+        specifier: ^10.1.0
+        version: 10.1.0
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
@@ -250,6 +268,15 @@ importers:
       '@types/ws':
         specifier: ^8.5.0
         version: 8.18.1
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.57.2
+        version: 8.57.2(@typescript-eslint/parser@8.57.2(eslint@10.1.0)(typescript@5.9.3))(eslint@10.1.0)(typescript@5.9.3)
+      '@typescript-eslint/parser':
+        specifier: ^8.57.2
+        version: 8.57.2(eslint@10.1.0)(typescript@5.9.3)
+      eslint:
+        specifier: ^10.1.0
+        version: 10.1.0
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
@@ -330,6 +357,9 @@ importers:
       '@types/vscode':
         specifier: ^1.100.0
         version: 1.109.0
+      esbuild:
+        specifier: ^0.24.2
+        version: 0.24.2
       katex:
         specifier: ^0.16.33
         version: 0.16.33

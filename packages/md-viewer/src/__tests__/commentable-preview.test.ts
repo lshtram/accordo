@@ -59,6 +59,8 @@ function makeMockWebviewPanel() {
     asWebviewUri: vi.fn().mockImplementation((uri: { fsPath: string }) => ({
       toString: () => `vscode-resource:${uri.fsPath}`,
     })),
+    // Expose msgListeners so tests can fire messages into the webview
+    _msgListeners: msgListeners,
   };
   return {
     webview,
@@ -188,10 +190,17 @@ describe("CommentablePreview", () => {
     expect(panel.webview.html).toBe("<html>mock</html>");
   });
 
-  it("M41b-CPE-05: calls bridge.loadThreadsForUri() after initial render", async () => {
+  it("M41b-CPE-05: calls bridge.loadThreadsForUri() after receiving webview:ready message", async () => {
     const panel = makeMockWebviewPanel();
     const cp = new CommentablePreview(makeMockContext() as never, makeMockStore() as never);
     await cp.resolveCustomTextEditor(makeMockDocument() as never, panel as never);
+
+    // loadThreadsForUri is NOT called until the webview signals readiness
+    expect(mockLoadThreads).not.toHaveBeenCalled();
+
+    // Simulate the webview posting the webview:ready message
+    const msgListeners = (panel.webview as Record<string, unknown> & { _msgListeners?: Array<(m: unknown) => void> })._msgListeners;
+    msgListeners?.forEach((cb) => cb({ type: "webview:ready" }));
 
     expect(mockLoadThreads).toHaveBeenCalledOnce();
   });

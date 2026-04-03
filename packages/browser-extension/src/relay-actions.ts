@@ -38,6 +38,13 @@ import {
   handleSelectPage,
 } from "./relay-handlers.js";
 
+import {
+  handleNavigate,
+  handleClick,
+  handleType,
+  handlePressKey,
+} from "./relay-control-handlers.js";
+
 // ── Re-exports (preserve public API surface) ─────────────────────────────────
 
 export { defaultStore };
@@ -126,6 +133,16 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
         return await handleListPages(request);
       case "select_page":
         return await handleSelectPage(request);
+
+      // ── Browser control ──
+      case "navigate":
+        return await handleNavigate(request);
+      case "click":
+        return await handleClick(request);
+      case "type":
+        return await handleType(request);
+      case "press_key":
+        return await handlePressKey(request);
 
       default:
         return { requestId: request.requestId, success: false, error: "unsupported-action" };

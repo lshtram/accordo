@@ -119,7 +119,7 @@ ${body}
 ${extraScripts}
   <script nonce="${nonce}">
     (function () {
-      const sdk = new AccordoCommentSDK();
+      const sdk = new AccordoSDK.AccordoCommentSDK();
       const vscode = acquireVsCodeApi();
 
       function coordinateToScreen(blockId) {
@@ -157,6 +157,10 @@ ${extraScripts}
 
       window.addEventListener('message', (event) => {
         const msg = event.data;
+        if (msg.type === 'webview:ready') {
+          // readiness signal — host will push threads after receiving this
+          return;
+        }
         if (msg.type === 'comments:load') {
           sdk.loadThreads(msg.threads);
         } else if (msg.type === 'comments:add') {
@@ -177,6 +181,9 @@ ${extraScripts}
           sdk.openPopover(msg.threadId);
         }
       });
+
+      // Signal readiness to the host — host will push threads after receiving this
+      vscode.postMessage({ type: 'webview:ready' });
 
       var isDark = document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast');
       mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default' });

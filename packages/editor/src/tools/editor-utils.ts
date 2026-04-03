@@ -5,7 +5,7 @@
  * 300 LOC per-file limit (§5.3 of the handoff spec).
  */
 
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 
 // ── Arg extraction helpers ────────────────────────────────────────────────────
 
