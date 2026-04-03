@@ -24,7 +24,7 @@ import type {
 } from "./diagram-tool-types.js";
 
 import { DiagToolError } from "./diagram-tool-types.js";
-import type { DiagramType, LayoutStore, NodeStyle, ParsedDiagram, ReconcileResult } from "../types.js";
+import type { DiagramType, EdgeLayout, EdgeStyle, LayoutStore, NodeStyle, ParsedDiagram, ReconcileResult } from "../types.js";
 import { parseMermaid, detectDiagramType } from "../parser/adapter.js";
 import { computeInitialLayout } from "../layout/auto-layout.js";
 import { layoutPathFor, readLayout, writeLayout } from "../layout/layout-store.js";
@@ -334,6 +334,38 @@ export async function patchHandler(
     finalLayout = { ...finalLayout, clusters: updatedClusters };
   }
 
+  // Apply edgeStyles overrides (visual style fields + routing).
+  // IMPORTANT: Handler must read `existing.style ?? {}` and produce
+  // `style: { ...existing.style, ...styleFields }` before calling patchEdge.
+  // Do NOT pass raw `styleFields` as the `style` value — patchEdge does a
+  // shallow spread which would wipe existing style properties (deep-merge requirement).
+  // waypoints is intentionally excluded — deferred to D-04.
+  const rawEdgeStyles = args.edgeStyles as Record<string, Record<string, unknown>> | undefined;
+  if (rawEdgeStyles !== undefined && typeof rawEdgeStyles === "object") {
+    const styleWhitelist = ["strokeColor", "strokeWidth", "strokeStyle", "strokeDash"] as const;
+    const updatedEdges = { ...finalLayout.edges };
+    for (const [edgeKey, overrides] of Object.entries(rawEdgeStyles)) {
+      const existing = updatedEdges[edgeKey];
+      if (existing === undefined) {
+        // Unknown edge key — silent skip.
+        continue;
+      }
+      const { routing, ...rest } = overrides;
+      const styleFields: Partial<EdgeStyle> = {};
+      for (const field of styleWhitelist) {
+        if (field in rest) {
+          (styleFields as Record<string, unknown>)[field] = (rest as Record<string, unknown>)[field];
+        }
+      }
+      updatedEdges[edgeKey] = {
+        ...existing,
+        ...(routing !== undefined ? { routing: routing as EdgeLayout["routing"] } : {}),
+        style: { ...existing.style, ...styleFields },
+      };
+    }
+    finalLayout = { ...finalLayout, edges: updatedEdges };
+  }
+
   // Resolve any remaining unplaced nodes with collision-avoiding placement.
   // Filter out nodes that already have positions from nodeStyles overrides.
   const trueUnplaced = finalLayout.unplaced.filter(
@@ -437,86 +469,15 @@ export function styleGuideHandler(
   _args: Record<string, unknown>,
 ): ToolResult<DiagramStyleGuideResult> {
   return ok({
-    palette: {
-      primary: "#4A90D9",
-      secondary: "#7B68EE",
-      success: "#27AE60",
-      warning: "#F39C12",
-      danger: "#E74C3C",
-      neutral: "#95A5A6",
-      background: "#FAFAFA",
-      border: "#BDC3C7",
-    },
-    starterTemplate: [
-      "flowchart TD",
-      '  A["Start\nClick"] --> B{Decision}',
-      '  B -- Yes --> C["Action\nRun"]',
-      "  B -- No --> D[End]",
-    ].join("\n"),
-    conventions: [
-      "Use PascalCase node IDs for clarity (e.g. ServiceA, DbLayer)",
-      "Prefer flowchart TD for top-down hierarchies, LR for pipelines",
-      "Add %% @rename: old_id -> new_id comments to trigger layout migration",
-      "Keep node labels concise — 3 words or fewer",
-      "Use subgraphs to group related nodes into clusters",
-      "Avoid duplicate node IDs across subgraph boundaries",
-    ],
-    stylingInstructions: [
-      "IMPORTANT: Do NOT use Mermaid classDef or style directives — Accordo ignores them.",
-      "To style or resize nodes, pass the 'nodeStyles' argument to accordo_diagram_patch alongside your content.",
-      "nodeStyles is an object mapping node IDs to per-node overrides.",
-      "",
-      "LABEL NEWLINES:",
-      "  Use \\n (escaped backslash-n) in Mermaid node labels for line breaks, e.g.:",
-      "  Agent[\"AI Agent\\nOpenCode/Claude\"]",
-      "  This renders as two lines in Excalidraw.",
-      "",
-      "FONT COLORS — ALWAYS use dark text on pale backgrounds:",
-      "  Excalidraw renders white text by default, which is invisible on light fills.",
-      "  Always specify fontColor explicitly. Recommended dark palette:",
-      "    On purple (#E8E0F0): dark purple font #4A3080",
-      "    On light blue (#D4E8F5): dark blue font #1A5276",
-      "    On light green (#D5F5E3): dark green font #1E8449",
-      "    On light yellow (#FEF9E7): dark gold font #B7950B",
-      "    On light gray (#EAECEE): dark gray font #566573",
-      "  Use fontWeight: 'bold' for key/heading nodes to improve readability.",
-      "",
-      "VISUAL STYLE fields (stored in layout.json NodeStyle):",
-      "  backgroundColor: hex string, e.g. '#4A90D9'",
-      "  strokeColor: hex string for the border",
-      "  strokeWidth: number in px, e.g. 2",
-      "  strokeStyle: 'solid' | 'dashed' | 'dotted'",
-      "  fillStyle: 'hachure' | 'cross-hatch' | 'solid' | 'zigzag' | 'dots' | 'dashed' | 'zigzag-line'",
-      "  opacity: number 0–1, e.g. 0.8",
-      "  roughness: number 0–3 (0=crisp, 1=hand-drawn default, higher=more rough)",
-      "",
-      "FONT fields:",
-      "  fontColor: hex string for text color",
-      "  fontSize: number in px, e.g. 18",
-      "  fontFamily: 'Excalifont' | 'Nunito' | 'Comic Shanns'",
-      "  fontWeight: 'normal' | 'bold'",
-      "",
-      "SIZE / POSITION fields (applied to NodeLayout dimensions/coordinates, not NodeStyle):",
-      "  width: number in px — overrides the node width",
-      "  height: number in px — overrides the node height",
-      "  x: number in px — overrides the node X position (left edge)",
-      "  y: number in px — overrides the node Y position (top edge)",
-      "",
-      "CLUSTER OVERRIDES (use the 'clusterStyles' argument, NOT nodeStyles):",
-      "  clusterStyles: { MCP: { x: 50, y: 20, width: 600, height: 400, backgroundColor: '#f0f0f0' } }",
-      "  Cluster IDs are the subgraph IDs from the Mermaid source (e.g. 'subgraph MCP' → ID is 'MCP').",
-      "",
-      "IMPORTANT: NEVER edit .layout.json or .excalidraw files directly.",
-      "Always use accordo_diagram_patch to modify node/cluster positions, sizes, and styles.",
-      "",
-      "EXAMPLE — apply blue fill, white text, wider node:",
-      "  nodeStyles: { A: { backgroundColor: '#4A90D9', fontColor: '#ffffff', width: 220 } }",
-      "",
-      "EXAMPLE — dashed border + solid fill + Nunito font:",
-      "  nodeStyles: { B: { strokeStyle: 'dashed', fillStyle: 'solid', fontFamily: 'Nunito' } }",
-      "",
-      "nodeStyles merges into existing styles — update only what you need.",
-      "nodeStyles only applies to nodes that already exist in the diagram.",
+    message:
+      "Load the full styling guide from: skills/diagrams/skill.md",
+    skills: [
+      {
+        id: "accordo-diagrams",
+        path: "skills/diagrams/skill.md",
+        description:
+          "Complete diagram guide: Mermaid syntax, nodeStyles, edgeStyles, colour palette, font colours, procedures, anti-patterns",
+      },
     ],
   });
 }

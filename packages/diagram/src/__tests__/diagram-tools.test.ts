@@ -13,6 +13,7 @@
  *   – createDiagramTools array          DT-47..DT-48
  *   – patchHandler nodeStyles A14-v2    DT-49..DT-52
  *   – patchHandler placeNodes() fix      DT-53..DT-58
+ *   – patchHandler edgeStyles T-01       DT-59..DT-66
  *
  * BACKFILL NOTE (A14-v2): DT-49..DT-52 were written after the width/height
  * segregation and new style fields were implemented (implementation-before-test
@@ -725,7 +726,7 @@ describe("renderHandler", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DT-42..DT-46  styleGuideHandler
+// DT-42..DT-44  styleGuideHandler
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("styleGuideHandler", () => {
@@ -735,56 +736,32 @@ describe("styleGuideHandler", () => {
     expect(result.ok).toBe(true);
   });
 
-  // DT-43: palette is defined and non-empty
-  it("DT-43: result.data.palette is a non-empty record", () => {
+  // DT-43: returns message and skills array
+  it("DT-43: returns message and skills array pointing to the skill file", () => {
     const result = styleGuideHandler({});
     expect(result.ok).toBe(true);
     if (result.ok) {
       const d: DiagramStyleGuideResult = result.data;
-      expect(typeof d.palette).toBe("object");
-      expect(Object.keys(d.palette).length).toBeGreaterThan(0);
+      expect(typeof d.message).toBe("string");
+      expect(d.message).toContain("skills/diagrams/skill.md");
+      expect(Array.isArray(d.skills)).toBe(true);
+      expect(d.skills.length).toBeGreaterThan(0);
+      expect(d.skills[0]).toHaveProperty("id");
+      expect(d.skills[0]).toHaveProperty("path");
+      expect(d.skills[0]).toHaveProperty("description");
     }
   });
 
-  // DT-44: starterTemplate is non-empty and starts with a mermaid keyword
-  it("DT-44: starterTemplate is a non-empty valid Mermaid snippet", () => {
+  // DT-44: skills array includes accordo-diagrams skill
+  it("DT-44: skills includes accordo-diagrams with diagram guidance", () => {
     const result = styleGuideHandler({});
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const tmpl = result.data.starterTemplate;
-      expect(typeof tmpl).toBe("string");
-      expect(tmpl.trim().length).toBeGreaterThan(0);
-      // Should start with a recognised diagram type keyword
-      expect(/^(flowchart|graph|classDiagram|sequenceDiagram|stateDiagram|erDiagram|mindmap|block-beta)/m.test(tmpl)).toBe(true);
-    }
-  });
-
-  // DT-45: conventions is a non-empty string array
-  it("DT-45: conventions is a non-empty array of strings", () => {
-    const result = styleGuideHandler({});
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      const { conventions } = result.data;
-      expect(Array.isArray(conventions)).toBe(true);
-      expect(conventions.length).toBeGreaterThan(0);
-      for (const item of conventions) {
-        expect(typeof item).toBe("string");
-      }
-    }
-  });
-
-  // DT-46: stylingInstructions is present and warns against classDef
-  it("DT-46: stylingInstructions is a non-empty array and documents the nodeStyles approach", () => {
-    const result = styleGuideHandler({});
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      const { stylingInstructions } = result.data;
-      expect(Array.isArray(stylingInstructions)).toBe(true);
-      expect(stylingInstructions.length).toBeGreaterThan(0);
-      // Must explain not to use classDef and instead use nodeStyles in patch
-      const joined = stylingInstructions.join(" ");
-      expect(joined).toContain("classDef");
-      expect(joined).toContain("nodeStyles");
+      const { skills } = result.data;
+      const diagramSkill = skills.find((s) => s.id === "accordo-diagrams");
+      expect(diagramSkill).toBeDefined();
+      expect(diagramSkill!.path).toBe("skills/diagrams/skill.md");
+      expect(diagramSkill!.description).toContain("nodeStyles");
     }
   });
 });
@@ -1051,5 +1028,195 @@ describe("patchHandler placeNodes() placement fix — DT-53..DT-58", () => {
       await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
     );
     expect(layout.unplaced).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DT-59..DT-66  patchHandler edgeStyles — T-01
+//
+// Tests for the edgeStyles argument added to accordo_diagram_patch.
+// Edge keys use the 'source->target:index' format (e.g. 'A->B:0').
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("patchHandler edgeStyles — T-01", () => {
+  // DT-59: edgeStyles strokeColor is written to layout.json edges[key].style.strokeColor
+  it("DT-59: edgeStyles strokeColor → stored in edges['A->B:0'].style.strokeColor", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+    // Create initial layout
+    await patchHandler({ path: "arch.mmd", content: SIMPLE_FLOWCHART }, makeCtx());
+
+    // Apply strokeColor to edge A->B:0
+    await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        edgeStyles: { "A->B:0": { strokeColor: "#E74C3C" } },
+      },
+      makeCtx(),
+    );
+
+    const layout = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+    expect(layout.edges["A->B:0"].style.strokeColor).toBe("#E74C3C");
+  });
+
+  // DT-60: edgeStyles routing is written to EdgeLayout.routing (NOT inside style)
+  it("DT-60: edgeStyles routing → stored in edges['A->B:0'].routing, NOT in .style", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+    await patchHandler({ path: "arch.mmd", content: SIMPLE_FLOWCHART }, makeCtx());
+
+    await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        edgeStyles: { "A->B:0": { routing: "orthogonal" } },
+      },
+      makeCtx(),
+    );
+
+    const layout = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+    expect(layout.edges["A->B:0"].routing).toBe("orthogonal");
+    // routing must NOT appear inside .style
+    expect(layout.edges["A->B:0"].style.routing).toBeUndefined();
+  });
+
+  // DT-61: unknown edgeStyles key is silently skipped (no error)
+  it("DT-61: unknown edge key in edgeStyles is silently skipped", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+    await patchHandler({ path: "arch.mmd", content: SIMPLE_FLOWCHART }, makeCtx());
+
+    const result = await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        edgeStyles: { "NONEXISTENT->EDGE:0": { strokeColor: "#f00" } },
+      },
+      makeCtx(),
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  // DT-62: unknown style field inside edgeStyles is silently dropped (whitelist)
+  it("DT-62: unknown style field inside edgeStyles is silently dropped", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+    await patchHandler({ path: "arch.mmd", content: SIMPLE_FLOWCHART }, makeCtx());
+
+    await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        edgeStyles: { "A->B:0": { strokeColor: "#f00", unknownField: "garbage" } as Record<string, unknown> },
+      },
+      makeCtx(),
+    );
+
+    const layout = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+    expect(layout.edges["A->B:0"].style.strokeColor).toBe("#f00");
+    expect(layout.edges["A->B:0"].style.unknownField).toBeUndefined();
+  });
+
+  // DT-63: absent edgeStyles → no error, edges unchanged
+  it("DT-63: absent edgeStyles param → no error, edges unchanged", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+    await patchHandler({ path: "arch.mmd", content: SIMPLE_FLOWCHART }, makeCtx());
+
+    const layoutBefore = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+
+    // Patch with no edgeStyles
+    await patchHandler({ path: "arch.mmd", content: SIMPLE_FLOWCHART }, makeCtx());
+
+    const layoutAfter = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+    expect(layoutAfter.edges).toEqual(layoutBefore.edges);
+  });
+
+  // DT-64: multiple style fields applied in one call
+  it("DT-64: multiple style fields applied in one edgeStyles call", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+    await patchHandler({ path: "arch.mmd", content: SIMPLE_FLOWCHART }, makeCtx());
+
+    await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        edgeStyles: {
+          "A->B:0": { strokeColor: "#E74C3C", strokeWidth: 3, strokeStyle: "dashed" },
+        },
+      },
+      makeCtx(),
+    );
+
+    const layout = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+    expect(layout.edges["A->B:0"].style.strokeColor).toBe("#E74C3C");
+    expect(layout.edges["A->B:0"].style.strokeWidth).toBe(3);
+    expect(layout.edges["A->B:0"].style.strokeStyle).toBe("dashed");
+  });
+
+  // DT-65: routing + style fields applied together in one call
+  it("DT-65: routing and style fields applied together", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+    await patchHandler({ path: "arch.mmd", content: SIMPLE_FLOWCHART }, makeCtx());
+
+    await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        edgeStyles: {
+          "A->B:0": { routing: "direct", strokeColor: "#27AE60" },
+        },
+      },
+      makeCtx(),
+    );
+
+    const layout = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+    expect(layout.edges["A->B:0"].routing).toBe("direct");
+    expect(layout.edges["A->B:0"].style.strokeColor).toBe("#27AE60");
+  });
+
+  // DT-66: edgeStyles partial patch preserves existing style fields (deep-merge guard)
+  // Proves that patching strokeColor doesn't wipe a previously set strokeWidth.
+  it("DT-66: edgeStyles partial patch → existing style fields preserved", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+    await patchHandler({ path: "arch.mmd", content: SIMPLE_FLOWCHART }, makeCtx());
+
+    // Step 1: Set strokeColor on edge A->B:0
+    await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        edgeStyles: { "A->B:0": { strokeColor: "#f00" } },
+      },
+      makeCtx(),
+    );
+
+    // Step 2: Set strokeWidth WITHOUT specifying strokeColor
+    await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        edgeStyles: { "A->B:0": { strokeWidth: 2 } },
+      },
+      makeCtx(),
+    );
+
+    // Assert both fields are present — strokeColor was NOT wiped by the second patch
+    const layout = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+    expect(layout.edges["A->B:0"].style.strokeColor).toBe("#f00");
+    expect(layout.edges["A->B:0"].style.strokeWidth).toBe(2);
   });
 });

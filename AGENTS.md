@@ -123,6 +123,7 @@ These apply regardless of which mode you are in:
    Read only the YAML front matter to see what is documented — load the full section
    only if a relevant pattern ID applies. When you hit new friction, add an entry to
    the appropriate file (generic tool issue → `patterns.md`, project-specific → `accordo-patterns.md`).
+6. **Commit every time a task or phase is done; push only when the user explicitly says "push".**
 
 ---
 
@@ -150,7 +151,18 @@ These are project-level decisions that override or extend [`docs/30-development/
 | [`docs/30-development/patterns.md`](docs/30-development/patterns.md) | Generic agent tool patterns (shared across projects) |
 | [`docs/30-development/accordo-patterns.md`](docs/30-development/accordo-patterns.md) | Accordo-specific patterns (VS Code, Hub, Bridge) |
 | [`.copilot/compound.md`](.copilot/compound.md) | Compound mode — instructions for session retrospective |
-| [`skills/debugging/skill.md`](skills/debugging/skill.md) | Debugging skill — 5-phase process, instrumentation guide, Accordo topology |
+
+## 5.1 Project Skills (Always Available)
+
+**Read these skills directly from `skills/` when working on relevant tasks. These are project-specific skills not loaded via the global `skill` tool.**
+
+| Skill | When to Use |
+|---|---|
+| [`skills/diagrams/skill.md`](skills/diagrams/skill.md) | User says "diagram", "flowchart", or needs to visualize architecture/processes. **Critical: Mermaid classDef is IGNORED — use `accordo_diagram_patch` with `nodeStyles` for all styling.** |
+| [`skills/presentations/skill.md`](skills/presentations/skill.md) | User says "present", "deck", "slides", or needs to create a Marp presentation. |
+| [`skills/script-authoring/skill.md`](skills/script-authoring/skill.md) | User says "demo", "walkthrough", "script", or needs narrated demonstrations. |
+| [`skills/debugging/skill.md`](skills/debugging/skill.md) | Fails, test failures, unexpected runtime behavior — load before debugging. |
+| [`skills/README.md`](skills/README.md) | Skills index — lists all project skills and how to create new ones. |
 
 ---
 

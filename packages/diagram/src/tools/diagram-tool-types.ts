@@ -105,9 +105,10 @@ export interface DiagramRenderResult {
 }
 
 export interface DiagramStyleGuideResult {
-  palette: Record<string, string>;
-  starterTemplate: string;
-  conventions: string[];
-  /** How to apply per-node colours and fonts via accordo_diagram_patch. */
-  stylingInstructions: string[];
+  message: string;
+  skills: Array<{
+    id: string;
+    path: string;
+    description: string;
+  }>;
 }

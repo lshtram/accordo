@@ -202,6 +202,7 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 15. **D2-001** — add "requires live E2E" flag to D2 checklist for CDP/DOM tools.
 16. **TD-CROSS-2** — uniform logging migration.
 17. **M95-VA** — visual annotation layer planning kickoff.
+18. **MCP-TOOL-OPT** — Audit all MCP tool handlers for instruction-heavy content that could move to skills (done for `style_guide`, apply same pattern elsewhere).
 
 ---
 
