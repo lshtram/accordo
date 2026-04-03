@@ -149,4 +149,124 @@ describe("routeEdge (A9 — edge router)", () => {
     const result = routeEdge("future-routing-mode", [], LEFT, RIGHT);
     expect(result.points.length).toBeGreaterThanOrEqual(2);
   });
+
+  // ── D-04: Z-shape multi-waypoint orthogonal routing ─────────────────────────
+
+  // ER-16: "orthogonal" with 2 waypoints → exactly 7 points (Z-shape H-first)
+  // Path: S → (W1.x,S.y) → W1 → (W1.x,W2.y) → W2 → (E.x,W2.y) → E
+  // Deduplication of collinear intermediate points → 7 unique points
+  it("ER-16: 'orthogonal' with 2 waypoints → exactly 7 points (Z-shape)", () => {
+    const waypoints = [{ x: 150, y: 200 }, { x: 300, y: 250 }];
+    const result = routeEdge("orthogonal", waypoints, LEFT, DIAG);
+    expect(result.points.length).toBe(7);
+  });
+
+  // ER-17: "orthogonal" with 3 waypoints → exactly 9 points (H-first staircase)
+  // S(90,130)→H→(150,130)→V→(150,200)=W1→H→(250,200)→V→(250,250)=W2→H→(350,250)→V→(350,280)=W3→H→(390,280)→V→(390,330)=E
+  // Path: [S(90,130),(150,130),(150,200),(250,200),(250,250),(350,250),(350,280),(390,280),E(390,330)] = 9 points
+  it("ER-17: 'orthogonal' with 3 waypoints → exactly 9 points (H-first staircase)", () => {
+    const waypoints = [
+      { x: 150, y: 200 },
+      { x: 250, y: 250 },
+      { x: 350, y: 280 },
+    ];
+    const result = routeEdge("orthogonal", waypoints, LEFT, DIAG);
+    expect(result.points.length).toBe(9);
+  });
+
+  // ER-18: all segments in multi-waypoint path are axis-aligned (Δx=0 or Δy=0)
+  it("ER-18: multi-waypoint orthogonal path has only axis-aligned segments", () => {
+    const waypoints = [{ x: 150, y: 200 }, { x: 300, y: 250 }];
+    const result = routeEdge("orthogonal", waypoints, LEFT, DIAG);
+    // Must have more than just S→T (2 points) — Z-shape needs at least 5 for 2 waypoints
+    expect(result.points.length).toBeGreaterThan(waypoints.length + 2);
+    for (let i = 0; i < result.points.length - 1; i++) {
+      const [x1, y1] = result.points[i]!;
+      const [x2, y2] = result.points[i + 1]!;
+      const isHorizontal = y1 === y2;
+      const isVertical = x1 === x2;
+      expect(
+        isHorizontal || isVertical,
+        `segment ${i}→${i + 1} is diagonal: (${x1},${y1})→(${x2},${y2})`
+      ).toBe(true);
+    }
+  });
+
+  // ER-19: multi-waypoint path starts at source centre, ends at target centre,
+  // and visits every waypoint (not a direct S→T shortcut)
+  it("ER-19: multi-waypoint path endpoints are source and target centres", () => {
+    const waypoints = [{ x: 150, y: 200 }, { x: 300, y: 250 }];
+    const result = routeEdge("orthogonal", waypoints, LEFT, DIAG);
+    // Path must be longer than a direct S→T line — Z-shape with 2 waypoints has 7 pts
+    expect(result.points.length).toBeGreaterThan(waypoints.length + 2);
+    const [sx, sy] = [LEFT.x + LEFT.w / 2, LEFT.y + LEFT.h / 2];
+    const [tx, ty] = [DIAG.x + DIAG.w / 2, DIAG.y + DIAG.h / 2];
+    expect(result.points[0]).toEqual([sx, sy]);
+    expect(result.points[result.points.length - 1]).toEqual([tx, ty]);
+  });
+
+  // ER-20: multi-waypoint path visits each waypoint (waypoints lie on the path)
+  it("ER-20: each waypoint appears as a vertex in the output path", () => {
+    const waypoints = [{ x: 150, y: 200 }, { x: 300, y: 250 }];
+    const result = routeEdge("orthogonal", waypoints, LEFT, DIAG);
+    // Path must include at least all waypoints plus S and T
+    expect(result.points.length).toBeGreaterThan(waypoints.length);
+    for (const wp of waypoints) {
+      const found = result.points.some(([px, py]) => px === wp.x && py === wp.y);
+      expect(found, `waypoint (${wp.x},${wp.y}) not found in path`).toBe(true);
+    }
+  });
+
+  // ER-23: collinear consecutive waypoints produce no zero-length segments
+  it("ER-23: no zero-length segments from collinear waypoints", () => {
+    // Two waypoints at same y (horizontally collinear)
+    const waypoints = [{ x: 150, y: 200 }, { x: 250, y: 200 }];
+    const result = routeEdge("orthogonal", waypoints, LEFT, RIGHT);
+    for (let i = 0; i < result.points.length - 1; i++) {
+      const [x1, y1] = result.points[i]!;
+      const [x2, y2] = result.points[i + 1]!;
+      const segLen = Math.hypot(x2 - x1, y2 - y1);
+      expect(segLen, `zero-length segment at index ${i}`).toBeGreaterThan(0);
+    }
+  });
+
+  // ER-24: multi-waypoint orthogonal returns null bindings (explicit path, no bindings)
+  it("ER-24: multi-waypoint orthogonal returns null bindings", () => {
+    const waypoints = [{ x: 150, y: 200 }, { x: 300, y: 250 }];
+    const result = routeEdge("orthogonal", waypoints, LEFT, DIAG);
+    // Must have a proper multi-waypoint path (not just S→T direct)
+    expect(result.points.length).toBeGreaterThan(waypoints.length + 2);
+    expect(result.startBinding).toBeNull();
+    expect(result.endBinding).toBeNull();
+  });
+
+  // ER-25: reversed/backward waypoint ordering → algorithm produces valid Z-shape
+  // [W2, W1] instead of [W1, W2] should still produce a valid axis-aligned path
+  // without crashing. The path will have different intermediate corners but still
+  // visit all waypoints.
+  it("ER-25: reversed waypoint ordering → valid axis-aligned path (no crash)", () => {
+    const waypoints = [
+      { x: 300, y: 250 }, // reversed: W2 first
+      { x: 150, y: 200 }, // reversed: W1 second
+    ];
+    const result = routeEdge("orthogonal", waypoints, LEFT, DIAG);
+    // Must produce a valid multi-waypoint path, not crash
+    expect(result.points.length).toBeGreaterThan(waypoints.length + 2);
+    // All segments must be axis-aligned regardless of waypoint order
+    for (let i = 0; i < result.points.length - 1; i++) {
+      const [x1, y1] = result.points[i]!;
+      const [x2, y2] = result.points[i + 1]!;
+      const isHorizontal = y1 === y2;
+      const isVertical = x1 === x2;
+      expect(
+        isHorizontal || isVertical,
+        `segment ${i}→${i + 1} is diagonal: (${x1},${y1})→(${x2},${y2})`
+      ).toBe(true);
+    }
+    // Every waypoint must still appear in the path
+    for (const wp of waypoints) {
+      const found = result.points.some(([px, py]) => px === wp.x && py === wp.y);
+      expect(found, `waypoint (${wp.x},${wp.y}) not found in path`).toBe(true);
+    }
+  });
 });
