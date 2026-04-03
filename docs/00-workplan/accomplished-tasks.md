@@ -107,6 +107,27 @@
 
 ---
 
+## Diagram Modality — Completed Work
+
+All diagram work documented in `docs/20-requirements/requirements-diagram.md §2` with full requirement IDs, test evidence, and commit hashes.
+
+| Work | Evidence |
+|---|---|
+| **diag.1** (A1–A17, 568 tests) | Sessions 11/11b — flowchart parser, reconciler, layout store, canvas generator, MCP tools, webview, comments bridge |
+| **Phase S** (S-01..S-09) | `2f9cb32` — deterministic seed, protocol stubs, roundness comment, rename edge keys, BT/RL placement, self-loop routing, cluster.parent, BT/RL fresh layout, Mermaid parsing |
+| **Phase T** (T-01) | `b604678` — edgeStyles in accordo_diagram_patch (558 tests) |
+| **Phase D** (D-02) | `810d6e0` — strokeDash on edges persisted |
+| **Phase D** (D-04) | `4eb4104` — Z-shape multi-waypoint routing (8 tests ER-16..ER-25) |
+| **Edge strokeStyle fix** | `9e372c3` — strokeStyle on edges routed to patchEdge |
+| **Bug fixes F-2/F-3** | `abba06f` — fillStyle, strokeStyle, fontFamily persistence |
+| **Bug fix G-2** | `64b76b8` — edge hit-testing for comments |
+| **Bug fix G-3** | `271b02f` — pin viewport tracking |
+| **A18 Comments bridge** | Sessions 11/11b — A18-T01..T12 (12 tests) + webview Alt+click overlay + pin rendering |
+
+**Next open item:** D-03 — curved routing (`docs/reviews/D-03-curved-routing-research.md`)
+
+---
+
 ## Notes
 
 - Active planning now lives in `docs/00-workplan/workplan.md` and should include only open work.

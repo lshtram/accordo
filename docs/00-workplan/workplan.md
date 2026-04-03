@@ -1,7 +1,7 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
 **Date:** 2026-04-03  
-**Status:** Wave 1 + Priority 0 complete — multi-session parallelization shipped — 5 open items (Priority A browser tab continuity, Priority H process hygiene), 4 later  
+**Status:** Wave 1 + Priority 0 + Priority H (diagram flowchart debt) complete — D-03 curved routing is next open diagram item; browser work in parallel agent session  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
@@ -71,14 +71,20 @@ Targeted upgrades:
 
 ### Priority F — Diagram tool gaps (found during live testing, 2026-03-31)
 
-| # | Gap | Priority | Status |
-|---|---|---|---|
-| F-1 | Style persistence: position changes are saved correctly ✅ | — | **FIXED** |
-| F-2 | Style persistence: fill type (strokeStyle, fillStyle) not being saved | MEDIUM | **FIXED** (`abba06f`) |
-| F-3 | Style persistence: font type (fontFamily) not being saved | MEDIUM | **FIXED** (`abba06f`) |
-| F-4 | Style guide updates: added newline (`\\n`) and dark font color guidance | — | **DONE** |
-| F-5 | Newline rendering: `normalizeLabel()` converts Mermaid `\\n` → actual newline for Excalidraw | — | **DONE** |
-| F-6 | Ctrl+F search: works in built-in markdown preview but not in accordo markdown preview | MEDIUM | ✅ **DONE** |
+All items completed — see `docs/20-requirements/requirements-diagram.md §2` for full traceability (F-1 through F-6, G-1 through G-3).
+
+| # | Gap | Status |
+|---|---|---|
+| F-1 | Style persistence: position changes saved correctly | ✅ Fixed |
+| F-2 | fillStyle/strokeStyle not persisted | ✅ Fixed (`abba06f`) |
+| F-3 | fontFamily not persisted | ✅ Fixed (`abba06f`) |
+| F-4 | Style guide newline + dark font color | ✅ Done |
+| F-5 | normalizeLabel() converts Mermaid `\n` → newline | ✅ Done |
+| F-6 | Ctrl+F search in accordo markdown preview | ✅ Done |
+| G-1 | Comments on .md files in accordo markdown preview | ✅ Fixed |
+| G-2 | Alt+click on edges → comment dialog | ✅ Fixed (`64b76b8`) |
+| G-3 | Comment pins track viewport movement | ✅ Fixed (`271b02f`) |
+| — | Edge strokeStyle persistence (edges excluded from style detection) | ✅ Fixed (`9e372c3`) |
 
 ---
 
@@ -159,9 +165,8 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 
 #### D3. Outstanding non-browser validation/documentation tasks
 
-1. Session 11b D3 manual checklist completion (diagram comments bridge).
-2. Voice deferred item: inter-sentence silence investigation/trim strategy.
-3. Documentation reorganization closeout:
+1. Voice deferred item: inter-sentence silence investigation/trim strategy.
+2. Documentation reorganization closeout:
    - remove stale duplicate index references
    - keep active vs archive boundaries explicit
    - keep package/module map docs up to date
@@ -189,20 +194,16 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 **Priority E (new) — Bar tools redesign**
 9. **~~E-6~~** — ✅ **DONE** (`6d63faf`) — 55 tests, live demo verified; commit: `feat(editor): E-6 Bar Tools`
 
-**Priority F — Diagram style persistence (from live testing)**
-10. **~~F-2~~** — ✅ **FIXED** (`abba06f`) — fillStyle + strokeStyle detection + fillStyle passthrough
-11. **~~F-3~~** — ✅ **FIXED** (`abba06f`) — fontFamily detection with REVERSE_FONT_FAMILY_MAP
-
-**Priority G — Comments bugs (from live testing)**
-12. **~~G-2~~** — ✅ **FIXED** (`64b76b8`) — edge hit-testing via point-to-polyline distance (8px threshold); edge comment pin midpoint now computed from arc-length walk
-13. **~~G-3~~** — ✅ **FIXED** (`271b02f`) — pins track viewport via in-place reposition; zoom triggers _updatePinSizeCss; also fixed __accordoShowToast wiring + removed phantom __accordoWebviewUI global
+**Diagram — Next open item**
+10. **D-03** — Curved routing: implement `routeCurved()` with Catmull-Rom spline (16-20 points); remove `"curved" → "auto"` alias. Research complete — implementation ready. See `docs/reviews/D-03-curved-routing-research.md`.
 
 **Later (not in current wave)**
-14. **E-5** — VS Code Copilot Chat panel toggle (low priority, extension dependency).
-15. **D2-001** — add "requires live E2E" flag to D2 checklist for CDP/DOM tools.
-16. **TD-CROSS-2** — uniform logging migration.
-17. **M95-VA** — visual annotation layer planning kickoff.
-18. **MCP-TOOL-OPT** — Audit all MCP tool handlers for instruction-heavy content that could move to skills (done for `style_guide`, apply same pattern elsewhere).
+11. **D-01** — Shape fidelity: hexagon/cylinder/parallelogram approximations. **Deferred** — Excalidraw has no native types; polygon workarounds add complexity without true fidelity.
+12. **E-5** — VS Code Copilot Chat panel toggle (low priority, extension dependency).
+13. **D2-001** — add "requires live E2E" flag to D2 checklist for CDP/DOM tools.
+14. **TD-CROSS-2** — uniform logging migration.
+15. **M95-VA** — visual annotation layer planning kickoff.
+16. **MCP-TOOL-OPT** — Audit all MCP tool handlers for instruction-heavy content that could move to skills (done for `style_guide`, apply same pattern elsewhere).
 
 ---
 
@@ -242,44 +243,17 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 
 **Goal:** Make the `flowchart` diagram type production-quality before adding new diagram types. All fixes are diagram-type-agnostic and apply to future types (classDiagram, stateDiagram, erDiagram, block-beta, mindmap).
 
-**Source:** Full forensic review + architect consultation, 2026-04-02.
+**Source:** Full forensic review + architect consultation, 2026-04-02.  
+**Architectural guidance:** All fixes reviewed by `@architect` before implementation.  
+**Complete status:** See `docs/20-requirements/requirements-diagram.md §2` — all Phase S, T, and D items documented with commit references and test evidence.
 
-**Architectural guidance:** All fixes reviewed by `@architect` before implementation.
-
----
-
-#### Phase S — Simple Fixes (developer → reviewer, no TDD)
-
-| # | Issue | File(s) | Complexity | Status |
-|---|---|---|---|---|
-| S-01 | **C4: Deterministic seed** — replace `Math.random()` with FNV-1a hash of mermaidId | `scene-adapter.ts` | Low | ✅ **DONE** (`2f9cb32`) |
-| S-02 | **C5: Protocol message stubs** — add no-op `case` handlers for `canvas:edge-routed`, `canvas:node-added`, `canvas:node-deleted`, `canvas:edge-added`, `canvas:edge-deleted` to eliminate "unhandled" log noise | `panel-core.ts` | Trivial | ✅ **DONE** (`2f9cb32`) |
-| S-03 | **H1: Roundness comment** — add explanatory comment in `scene-adapter.ts` that `{ type: 2 }` is PROPORTIONAL_RADIUS and the number value is shape-selection only | `scene-adapter.ts` | Trivial | ✅ **DONE** (`2f9cb32`) |
-| S-04 | **C1: Rename updates edge keys** — when node A→B rename, scan `layout.edges` and update all edge keys containing oldId | `reconciler.ts` | Low | ✅ **DONE** (`2f9cb32` + 3 new tests) |
-| S-05 | **C2: BT/RL placement** — add full 4-direction switch (TD/BT/LR/RL) for crossDx/crossDy/flowDx/flowDy in `placement.ts` | `placement.ts` | Low | ✅ **DONE** (`2f9cb32` + 2 new tests) |
-| S-06 | **H4: Self-loop in all routing modes** — factor self-loop detection out of `routeAuto` into `routeEdge` dispatch layer | `edge-router.ts` | Low | ✅ **DONE** (`2f9cb32`) |
-| S-07 | **M7: cluster.parent** — in `parseFlowchart`, derive parent from membership: if cluster X lists cluster Y's ID as a member, Y.parent = X | `flowchart.ts` | Low | ✅ **DONE** (`2f9cb32`) |
-| S-08 | **BT/RL fresh layout bug** — `panel-core.ts` now passes `rankdir: parsed.direction` to `computeInitialLayout` so `flowchart BT/LR/RL/TD` is respected on initial open | `panel-core.ts` | Low | ✅ **DONE** (`2f9cb32`) |
-| S-09 | **Mermaid parsing cleanup** — use `diag.db` public API (not `parser.parser.yy`), TB→TD normalization at adapter boundary, text/label priority swap | `adapter.ts`, `flowchart.ts` | Low | ✅ **DONE** (`2f9cb32` + 2 new tests) |
-
----
-
-#### Phase T — TDD Features (full TDD cycle)
-
-| # | Feature | Status |
+| Phase | Items | Status |
 |---|---|---|
-| T-01 | **H7: edgeStyles in patch** — add `edgeStyles` argument to `accordo_diagram_patch` tool: `{ strokeColor, strokeWidth, strokeStyle, routing }` per edge key | ✅ **DONE** (`b604678` — 558 tests, testing guide) |
-
----
-
-#### Phase D — Deferred (requires more research)
-
-| # | Issue | Blocker |
-|---|---|---|
-| D-01 | **M1: Shape fidelity** — hexagon/cylinder/parallelogram approximations | Need Excalidraw native shape investigation |
-| D-02 | **H5: Edge strokeDash passthrough** — strokeDash on arrows now persisted via detectNodeMutations + canvas-generator read-path; 2 new tests CG-34/35, DT-67, WF-17 | ✅ **DONE** (`810d6e0`) |
-| D-03 | **L1: Curved routing** — implement `{ type: "curved" }` routing mode in edge-router | Needs Excalidraw curved arrow implementation |
-| D-04 | **H6: Multiple waypoints** — Z-shape routing via H-first staircase; 8 new tests ER-16..ER-25; pure function, no type changes | ✅ **DONE** (`4eb4104`) |
+| Phase S (S-01..S-09) | Deterministic seed, protocol stubs, roundness comment, rename edge keys, BT/RL placement, self-loop routing, cluster.parent, BT/RL fresh layout, Mermaid parsing cleanup | ✅ All done (`2f9cb32`) |
+| Phase T (T-01) | edgeStyles in `accordo_diagram_patch` | ✅ Done (`b604678` — 558 tests) |
+| Phase D (D-02, D-04) | strokeDash on edges, Z-shape waypoints | ✅ Done (`810d6e0`, `4eb4104`) |
+| Phase D (D-03) | Curved routing — implement `routeCurved()` | 🔜 **NEXT** |
+| Phase D (D-01) | Shape fidelity (hexagon/cylinder/parallelogram) | ⏸️ **Deferred** — Excalidraw has no native types; effort vs fidelity tradeoff unfavorable |
 
 ---
 
