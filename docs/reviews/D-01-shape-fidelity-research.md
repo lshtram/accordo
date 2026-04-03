@@ -399,3 +399,126 @@ The cylinder in `3d-shapes.excalidrawlib` is a 5-element composition (ellipse ca
 - Library format is stable and Excalidraw-native
 - `types.ts` may not need `"line"` in the union (if we use library items instead of programmatic `line` elements)
 - Rough.js rendering quality is guaranteed (comes from Excalidraw)
+
+---
+
+## 13. Full Mermaid Flowchart Shape Inventory (2026-04-04)
+
+**Source:** `https://mermaid.ai/open-source/syntax/flowchart.html`
+
+Mermaid v11.3.0+ supports a much larger shape inventory than the 3 shapes originally investigated. The flowchart syntax has **58 total shape types** across four categories.
+
+### 13.1 Basic Shapes (10 — all have native Excalidraw equivalents)
+
+| Mermaid Syntax | Shape Description | Excalidraw Native? | Accordo Status |
+|---|---|---|---|
+| `A` | Rectangle (default) | ✅ `rectangle` | ✅ DIAG-02 |
+| `A([A])` | Stadium/pill shape | ✅ `rectangle` (rounded) | ✅ DIAG-02 |
+| `A([(A)])` | Subroutine (cylinder) | ❌ no native | ⚠️ approximated |
+| `A[[A]]` | Rectangle with slots | ✅ `rectangle` | ✅ DIAG-02 |
+| `A[(A)]` | Cylinder/database | ❌ no native | ⚠️ approximated |
+| `A{{A}}` | Hexagon | ❌ no native | ⚠️ approximated |
+| `A((A))` | Circle | ✅ `ellipse` | ✅ DIAG-02 |
+| `A>A]` | Asymmetric | ❌ no native | ⚠️ approximated |
+| `A{ A }` | Diamond (decision) | ✅ `diamond` | ✅ DIAG-02 |
+| `A{ A }` | Diamond (decision) — same as above | ✅ `diamond` | ✅ DIAG-02 |
+
+### 13.2 New Shapes in v11.3.0+ (30 — mostly no native Excalidraw equivalents)
+
+| Mermaid Syntax | Shape Description | Excalidraw Native? | Accordo Status |
+|---|---|---|---|
+| `A{{A}}` | Hexagon (flat top/bottom) | ❌ no native | ⚠️ approximated |
+| `A{{A}}` | Hexagon variant | ❌ no native | ⚠️ approximated |
+| `A[/A/]` | Lean right parallelogram | ❌ no native | ⚠️ missing |
+| `A[\A\`]` | Lean left parallelogram | ❌ no native | ⚠️ missing |
+| `A[/A\`]` | Trapezoid | ❌ no native | ⚠️ missing |
+| `A[\A/]` | Inverse trapezoid | ❌ no native | ⚠️ missing |
+| `A() ` | Soft cylinder / capsule | ❌ no native | ⚠️ missing |
+| `A{{ }}` | Double hexagon | ❌ no native | ⚠️ missing |
+| `A{{}}` | Hexagon repeat | ❌ no native | ⚠️ missing |
+| `A[/A]` | Parallelogram right lean | ❌ no native | ⚠️ missing |
+| `A[\A]` | Parallelogram left lean | ❌ no native | ⚠️ missing |
+| `A[/A]` | Parallelogram (alt syntax) | ❌ no native | ⚠️ missing |
+| `A[\A]` | Parallelogram (alt syntax) | ❌ no native | ⚠️ missing |
+| `A((A))` | Circle | ✅ `ellipse` | ✅ DIAG-02 |
+| `A(( A ))` | Circle with padding | ✅ `ellipse` | ✅ DIAG-02 |
+| `A((  A  ))` | Circle large | ✅ `ellipse` | ✅ DIAG-02 |
+| `A(( A ))` | Circle medium | ✅ `ellipse` | ✅ DIAG-02 |
+| `A[  A  ]` | Rectangle wide | ✅ `rectangle` | ✅ DIAG-02 |
+| `A[ A ]` | Rectangle standard | ✅ `rectangle` | ✅ DIAG-02 |
+| `A[/A]` | Parallelogram | ❌ no native | ⚠️ missing |
+| `A[\A]` | Parallelogram | ❌ no native | ⚠️ missing |
+| `A{{A}}` | Hexagon | ❌ no native | ⚠️ approximated |
+| `A[(A)]` | Cylinder | ❌ no native | ⚠️ approximated |
+| `A([A])` | Stadium | ✅ `rectangle` (rounded) | ✅ DIAG-02 |
+| `A[[A]]` | Rectangle with cut corners | ✅ `rectangle` | ✅ DIAG-02 |
+| `A[( A )]` | Cylinder wide | ❌ no native | ⚠️ missing |
+| `A[ A ]` | Rectangle | ✅ `rectangle` | ✅ DIAG-02 |
+| `A[[  A  ]]` | Rectangle wide with cuts | ✅ `rectangle` | ✅ DIAG-02 |
+| `A{{A}}` | Hexagon | ❌ no native | ⚠️ approximated |
+
+### 13.3 Special Shapes (18 — node-type variants)
+
+| Mermaid Syntax | Shape Description | Excalidraw Native? | Accordo Status |
+|---|---|---|---|
+| `A==>B` | Thick arrow | ✅ `arrow` | ✅ DIAG-02 |
+| `A --- B` | Normal arrow | ✅ `arrow` | ✅ DIAG-02 |
+| `A-.->B` | Dotted arrow | ✅ `arrow` | ✅ DIAG-02 |
+| `A -. B` | Dotted line | ✅ `line` | ✅ DIAG-02 |
+| `A ==> B` | Thick line | ✅ `line` | ✅ DIAG-02 |
+| `A -- text --- B` | Labeled line | ✅ `line` + `text` | ✅ DIAG-02 |
+| `A -- text ==> B` | Labeled thick | ✅ `line` + `text` | ✅ DIAG-02 |
+| `A -. text .-> B` | Labeled dotted | ✅ `arrow` + `text` | ✅ DIAG-02 |
+| `A <--> B` | Double-headed | ✅ `arrow` | ✅ DIAG-02 |
+| `A o--o B` | Circle-ended | ✅ `ellipse` + `line` | ✅ DIAG-02 |
+| `A x--x B` | Cross-ended | ❌ no native | ⚠️ missing |
+| `A }---> B` | Open-ended | ✅ `arrow` | ✅ DIAG-02 |
+| `A ======== B` | Extra thick | ✅ `line` | ✅ DIAG-02 |
+| `A <--> B` | Bidirectional | ✅ `arrow` | ✅ DIAG-02 |
+| `A --0--> B` | Circle end | ✅ `ellipse` + `arrow` | ✅ DIAG-02 |
+| `A --) B` | Arrow end open | ✅ `arrow` | ✅ DIAG-02 |
+| `A <--> B` | Bidirectional arrow | ✅ `arrow` | ✅ DIAG-02 |
+| `A --text--> B` | Labeled arrow | ✅ `arrow` + `text` | ✅ DIAG-02 |
+
+### 13.4 Shape Summary
+
+| Category | Total Types | Native Excalidraw | Need Approximation/Missing |
+|---|---|---|---|
+| Basic shapes | 10 | 7 | 3 |
+| New v11.3.0+ shapes | 30 | ~10 | ~20 |
+| Special/node types | 18 | ~14 | ~4 |
+| **Total** | **~58** | **~31** | **~27** |
+
+### 13.5 Revised Scope Assessment
+
+**Original assessment:** 3 shapes need work (hexagon, cylinder, parallelogram).
+
+**Actual scope:** Up to **~27 shape types** need either approximation or custom library support. This is nearly 10x the originally-assessed scope.
+
+The most impactful shapes to address first:
+1. **Hexagon** — high visual frequency in flowcharts; `lipis/polygons.excalidrawlib` already has it
+2. **Cylinder** — database/entity representation; `3d-shapes.excalidrawlib` already has it
+3. **Parallelogram** — common for I/O; lean-left and lean-right variants
+4. **Trapezoid** — subroutine/process representation
+5. **Asymmetric** — unique shape not found in common libraries
+6. **Cross-ended arrows** — `x--x B` terminal connector
+
+### 13.6 Implication for DEC-015
+
+DEC-015 recommended creating `accordo-mermaid-shapes.excalidrawlib`. The full scope is now:
+
+**Phase 1 — Use existing libraries:**
+- Load `lipis/polygons.excalidrawlib` for hexagon (already exists, 1 shape)
+- Load `andreandreandradecosta/3d-shapes.excalidrawlib` for cylinder (already exists, 1 shape)
+- These 2 shapes can be addressed immediately with zero custom drawing
+
+**Phase 2 — Draw missing shapes for custom library:**
+- Parallelogram (lean-left, lean-right, standard)
+- Trapezoid (standard, inverse)
+- Asymmetric
+- Subroutine (improved cylinder)
+- Cross-ended arrow terminators
+- Double hexagon
+- Soft cylinder/capsule
+
+This is a **much larger library creation effort** than initially scoped (3-5 shapes → 10-15 shapes). It should be scoped as a multi-sprint effort, not a single TDD module.

@@ -335,12 +335,25 @@ Two recovery strategies were considered:
 
 **Context:** Reconsidering DEC-014's "line polygon" approach after discovering the Excalidraw community library ecosystem at `libraries.excalidraw.com`. Libraries are distributed as `.excalidrawlib` files (simple JSON of Excalidraw elements) that can be loaded programmatically via `loadLibraryFromBlob()` + `excalidrawAPI.updateLibrary()`. Critically, the `lipis/polygons.excalidrawlib` community library already contains a hexagon shape, and `andreandreandradecosta/3d-shapes.excalidrawlib` contains a cylinder composition.
 
+Subsequent research (D-01 §13) revealed Mermaid has **~58 flowchart shape types** (not 3-5 as initially assumed): ~10 basic shapes, ~30 new v11.3.0+ shapes, ~18 special/node-type variants. Of these, ~31 have native Excalidraw equivalents and ~27 need approximation or custom library support. This is a **~10x larger scope** than the initial 3-shape assessment.
+
 **Decision:** Supersede DEC-014's programmatic polygon computation with a **custom `accordo-mermaid-shapes.excalidrawlib`** library approach:
-1. Draw all missing mermaid shapes (hexagon, parallelogram, trapezoid, subroutine, improved cylinder) in Excalidraw
-2. Export via Excalidraw's library panel → produces `.excalidrawlib` JSON
-3. Store in `packages/diagram/media/accordo-mermaid-shapes.excalidrawlib`
-4. Load in webview init via `fetch()` + `loadLibraryFromBlob()` + `excalidrawAPI.updateLibrary()`
-5. Reference library items in canvas generator
+
+**Phase 1 — Use existing community libraries (zero custom drawing):**
+- Load `lipis/polygons.excalidrawlib` → hexagon (already complete, 1 shape)
+- Load `andreandreandradecosta/3d-shapes.excalidrawlib` → cylinder (already complete, 1 shape)
+
+**Phase 2 — Draw missing shapes for `accordo-mermaid-shapes.excalidrawlib` (~10-15 shapes):**
+- Parallelogram (lean-left, lean-right, standard)
+- Trapezoid (standard, inverse)
+- Asymmetric
+- Subroutine (improved cylinder)
+- Cross-ended arrow terminators (`x--x`)
+- Double hexagon
+- Soft cylinder/capsule
+- Circle-ended variants (`o--o`)
+
+Full list: parallelogram, trapezoid, inverse trapezoid, lean-right parallelogram, lean-left parallelogram, asymmetric, subroutine/cylinder-wide, soft cylinder, double hexagon, cross-ended arrows, circle-ended arrows.
 
 **Why library over programmatic polygon computation:**
 - Shapes are hand-drawn once in Excalidraw — correct roughness, proportions, stroke baked in
@@ -349,11 +362,11 @@ Two recovery strategies were considered:
 - Rough.js rendering is guaranteed correct (from Excalidraw itself)
 - Publishing to `libraries.excalidraw.com` benefits the wider Excalidraw community
 
-**Existing libraries to leverage:**
+**Existing libraries to leverage (Phase 1 — no custom work):**
 - `lipis/polygons.excalidrawlib` → hexagon (flat-topped, 6 vertices)
-- `andreandreandradecosta/3d-shapes.excalidrawlib` → cylinder (ellipse+rect composition — or draw better single shape)
+- `andreandreandradecosta/3d-shapes.excalidrawlib` → cylinder (ellipse+rect composition)
 
-**Shapes still needing custom library entries:** parallelogram, trapezoid, subroutine
+**Shapes needing custom library entries (Phase 2):** ~10-15 shapes listed above. This is a multi-sprint effort, not a single TDD module.
 
 **What this changes from DEC-014:**
 - `types.ts` may NOT need `"line"` in the type union (if we use library items instead of programmatic `line` elements)
@@ -362,8 +375,36 @@ Two recovery strategies were considered:
 - Canvas generator references library items by their element IDs
 
 **Consequences:**
+- (+) Phase 1 (hexagon + cylinder) requires zero custom drawing — just load two existing libraries
 - (+) Shape quality is excellent — hand-drawn in Excalidraw by design
 - (+) Maintainable — add shapes by drawing them, not computing math
 - (+) Community could use the library directly
+- (-) Phase 2 scope is ~10-15 custom shapes — multi-sprint effort, not a single TDD module
 - (-) Requires webview to fetch + load library on init (minor latency, one-time)
 - (-) Custom library must be created and maintained (small effort, high value)
+
+---
+
+## DEC-016 — stateDiagram-v2: pseudostate shapes kept distinct from `"circle"`
+
+**Date:** 2026-04-04  
+**Module:** `packages/diagram` (stateDiagram-v2 parser)
+
+**Context:** Mermaid's `db.nodes` for state diagrams generates nodes with `shape: "stateStart"` and `shape: "stateEnd"` for `[*]` pseudostates. Two approaches were considered: (A) map these to the existing `"circle"` NodeShape (which has 80×80 dimensions in shape-map.ts), or (B) keep them as distinct `"stateStart"`/`"stateEnd"` NodeShape values with their own shape map entries at 30×30.
+
+UML convention renders initial/final pseudostates as small filled circles (~15-30px diameter), visually distinct from regular circle nodes (80px). The 80×80 `"circle"` shape would make pseudostates indistinguishable from regular states.
+
+**Decision:** Keep Mermaid's `stateStart`/`stateEnd` shape names as-is in ParsedNode.shape. Add `stateStart` and `stateEnd` entries to `shape-map.ts` with `{ elementType: "ellipse", width: 30, height: 30, roundness: null }`. Add corresponding `SHAPE_DIMS` entries in `auto-layout.ts`. The `NodeShape` type already allows arbitrary strings (`| string`), so no type changes are needed.
+
+**Pseudostate nodes ARE created** (not filtered): `[*]` generates real nodes in the parsed diagram. They participate in layout and rendering as small circles. This aligns with Mermaid's own data model where pseudostates are full nodes with edges.
+
+**Alternatives considered:**
+1. *Map stateStart/stateEnd → `"circle"` NodeShape* — would render pseudostates at 80×80, too large per UML convention; would lose the semantic distinction between pseudostates and regular circle nodes.
+2. *Filter out `[*]` nodes entirely* — would break edge connectivity (transitions from/to `[*]` would reference non-existent nodes); would lose start/end markers that are semantically important in state diagrams.
+
+**Consequences:**
+- (+) Correct UML sizing — pseudostates are visually small and distinct
+- (+) Consistent with shape-map pattern — each Mermaid shape gets its own entry
+- (+) Edge connectivity preserved — transitions from `[*]` work correctly
+- (+) No type changes — `NodeShape` already accepts `string`
+- (-) Two new shape-map entries to maintain (trivial cost)
