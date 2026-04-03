@@ -561,7 +561,7 @@ JSON schema validation rejects unknown keys. The Hub instructions are loaded via
 - Tool registry, state cache, prompt engine
 - Agent config file formats (opencode.json, .claude/mcp.json, .vscode/mcp.json)
 - Security model (loopback binding, Origin validation, bearer auth)
-- Concurrency model (16 in-flight, 64 queue)
+- Concurrency model (16 in-flight, 64 queue, simple FIFO — no per-session scheduling)
 - Dynamic port selection (`findFreePort`)
 
 ---
