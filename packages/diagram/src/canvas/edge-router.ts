@@ -157,6 +157,31 @@ function routeDirect(
   return { points: pts, startBinding: null, endBinding: null };
 }
 
+/**
+ * Route an orthogonal edge through N waypoints (N ≥ 2), producing a
+ * Z-shape axis-aligned polyline.
+ *
+ * Algorithm: for each consecutive pair of control points (source → wp1,
+ * wp1 → wp2, …, wpN → target), emit an H-V segment pair (horizontal
+ * move then vertical move). Adjacent duplicate points are removed to
+ * avoid zero-length segments.
+ *
+ * @param waypoints  2 or more intermediate waypoints (absolute canvas coords).
+ * @param source     Bounding box of the source node.
+ * @param target     Bounding box of the target node.
+ * @returns          RouteResult with axis-aligned polyline and null bindings.
+ *
+ * Requirement: ER-16..ER-24 (D-04 Z-shape waypoint routing)
+ * @internal — called from routeOrthogonal when waypoints.length >= 2.
+ */
+function routeOrthogonalMultiWaypoint(
+  _waypoints: ReadonlyArray<{ readonly x: number; readonly y: number }>,
+  _source: BoundingBox,
+  _target: BoundingBox
+): RouteResult {
+  throw new Error("not implemented");
+}
+
 function routeOrthogonal(
   waypoints: ReadonlyArray<{ readonly x: number; readonly y: number }>,
   source: BoundingBox,
@@ -165,7 +190,10 @@ function routeOrthogonal(
   const [sx, sy] = centre(source);
   const [tx, ty] = centre(target);
   let pts: Array<[number, number]>;
-  if (waypoints.length > 0) {
+  if (waypoints.length >= 2) {
+    // D-04: Z-shape multi-waypoint routing.
+    return routeOrthogonalMultiWaypoint(waypoints, source, target);
+  } else if (waypoints.length === 1) {
     // Use first waypoint as explicit bend hint.
     const bend = waypoints[0]!;
     pts = [[sx, sy], [bend.x, sy], [bend.x, bend.y], [tx, ty]];
