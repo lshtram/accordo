@@ -277,7 +277,7 @@ All items completed in Phase 2 (B1–B5) and P2 cleanup:
 | # | Issue | Blocker |
 |---|---|---|
 | D-01 | **M1: Shape fidelity** — hexagon/cylinder/parallelogram approximations | Need Excalidraw native shape investigation |
-| D-02 | **H5: Edge strokeDash passthrough** — trace through canvas-generator + scene-adapter for strokeDash on arrow elements | Needs code trace |
+| D-02 | **H5: Edge strokeDash passthrough** — strokeDash on arrows now persisted via detectNodeMutations + canvas-generator read-path; 2 new tests CG-34/35, DT-67, WF-17 | ✅ **DONE** (`810d6e0`) |
 | D-03 | **L1: Curved routing** — implement `{ type: "curved" }` routing mode in edge-router | Needs Excalidraw curved arrow implementation |
 | D-04 | **H6: Multiple waypoints** — orthogonal routing uses only first waypoint; needs Z-shape support | Needs design |
 
