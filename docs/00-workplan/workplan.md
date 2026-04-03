@@ -38,6 +38,22 @@
 
 Phase 1 (bridge-types split) and Phase 2 (5 parallel agents: hub, bridge, voice/diagram/editor, comments, browser-extension) plus all P2 cleanup items are done. See `docs/00-workplan/accomplished-tasks.md` for details.
 
+### Priority H — Process hygiene: audit VS Code + hub process count
+
+**Added:** 2026-04-03  
+**Context:** With two parallel sessions (engram + accordo), `ps aux | grep accordo` shows ~20 processes:
+2 VS Code main processes × ~7 Electron sub-processes each (GPU, network service, NodeService workers for extension host) + 2 hubs + 2 sherpa voice workers + 1 Kokoro TTS server.
+
+**To investigate:**
+- Are all the NodeService workers expected? Each session spawns ~4–5 — is that one per extension or per extension host?
+- Can the sherpa voice worker count be bounded (one global worker vs. one per session)?
+- Is there any leak path that grows process count over time (e.g., exthost restarts, reconnects)?
+
+**Success criteria:** confirm each process category is bounded and expected, or reduce unnecessary ones.  
+**Status:** Open — needs a fresh look after a full session cycle.
+
+---
+
 ### Priority C — E2E evaluation follow-through
 
 Reference: `docs/50-reviews/mcp-webview-evaluation-e2e-2026-03-29.md`
