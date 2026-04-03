@@ -434,6 +434,8 @@ export interface ExcalidrawElement {
   strokeWidth?: number;
   /** Stroke line style. */
   strokeStyle?: "solid" | "dashed" | "dotted";
+  /** Dashed stroke flag. */
+  strokeDash?: boolean;
   /** Opacity 0–100 (Excalidraw convention). */
   opacity?: number;
   /** Corner rounding level.  null = crisp corners.  Only for rectangles. */

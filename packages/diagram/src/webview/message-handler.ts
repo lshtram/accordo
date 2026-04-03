@@ -227,6 +227,17 @@ export function detectNodeMutations(
       if (nextEl.strokeStyle !== prevEl.strokeStyle) style.strokeStyle = nextEl.strokeStyle;
     }
 
+    // Detect strokeDash changes — applies to all elements including edges.
+    // strokeDash on edges IS a valid layout property (unlike fillStyle/strokeStyle).
+    // strokeDash is not in ExcalidrawAPIElement, so we cast through Record.
+    if (!isText && !mermaidId.endsWith(":label")) {
+      const nextSd = (nextEl as unknown as Record<string, unknown>).strokeDash as boolean | undefined;
+      const prevSd = (prevEl as unknown as Record<string, unknown>).strokeDash as boolean | undefined;
+      if (nextSd !== prevSd) {
+        style.strokeDash = nextSd;
+      }
+    }
+
     // F-3: Detect fontFamily changes on text elements only.
     // Excalidraw stores fontFamily as a number (1=Excalifont, 2=Nunito, 3=Comic Shanns).
     // Reverse-map to the string name before emitting; skip unknown numeric values

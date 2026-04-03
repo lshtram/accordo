@@ -325,4 +325,17 @@ describe("detectNodeMutations", () => {
     // Arrow elements do not produce styled mutations
     expect(mutations).toEqual([]);
   });
+
+  it("WF-17: strokeDash change on arrow element IS emitted", () => {
+    const prev: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, customData: { mermaidId: "A->B:0" }, strokeDash: false, type: "arrow" },
+    ];
+    const next: ExcalidrawAPIElement[] = [
+      { ...BASE_EL, customData: { mermaidId: "A->B:0" }, strokeDash: true, type: "arrow" },
+    ];
+
+    const mutations = detectNodeMutations(prev, next);
+    // strokeDash on edges IS a valid layout property — must be emitted
+    expect(mutations).toEqual([{ type: "styled", nodeId: "A->B:0", style: { strokeDash: true } }]);
+  });
 });

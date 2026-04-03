@@ -1219,4 +1219,24 @@ describe("patchHandler edgeStyles — T-01", () => {
     expect(layout.edges["A->B:0"].style.strokeColor).toBe("#f00");
     expect(layout.edges["A->B:0"].style.strokeWidth).toBe(2);
   });
+
+  // DT-67: edgeStyles strokeDash is written to layout.json edges[key].style.strokeDash
+  it("DT-67: edgeStyles strokeDash → stored in edges['A->B:0'].style.strokeDash", async () => {
+    await writeFile(join(tmpDir, "arch.mmd"), SIMPLE_FLOWCHART);
+    await patchHandler({ path: "arch.mmd", content: SIMPLE_FLOWCHART }, makeCtx());
+
+    await patchHandler(
+      {
+        path: "arch.mmd",
+        content: SIMPLE_FLOWCHART,
+        edgeStyles: { "A->B:0": { strokeDash: true } },
+      },
+      makeCtx(),
+    );
+
+    const layout = JSON.parse(
+      await readFile(layoutPathFor(join(tmpDir, "arch.mmd"), tmpDir), "utf-8"),
+    );
+    expect(layout.edges["A->B:0"].style.strokeDash).toBe(true);
+  });
 });

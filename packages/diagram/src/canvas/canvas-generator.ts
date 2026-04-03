@@ -250,6 +250,10 @@ export function generateCanvas(
         : null,
       // Bind the label text element so Excalidraw tracks and moves it with the arrow.
       boundElements: labelTextId ? [{ id: labelTextId, type: "text" }] : null,
+      // Stroke properties for edge elements.
+      strokeColor: edgeL?.style?.strokeColor,
+      strokeWidth: edgeL?.style?.strokeWidth,
+      strokeStyle: edgeL?.style?.strokeStyle ?? (edgeL?.style?.strokeDash ? "dashed" : undefined),
     });
 
     if (edge.label && labelTextId) {

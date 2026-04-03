@@ -11,9 +11,8 @@
  * overrides were implemented (implementation-before-test exception agreed by
  * reviewer). The implementation already exists; these tests verify its contract.
  *
- * NOTE: edge strokeStyle (per-edge override from EdgeLayout.style) is NOT
- * currently implemented in generateCanvas() — this is a documented requirement
- * gap (no test coverage here; deferred to a future pass).
+ * NOTE: edge strokeStyle (per-edge override from EdgeLayout.style) is implemented
+ * (CG-34..CG-35) — strokeStyle wins over strokeDash when both are set.
  *
  * Uses real getShapeProps() (A8), routeEdge() (A9), and placeNodes() (A6) as
  * dependencies — these are pure, fully-tested functions whose correctness is
@@ -25,7 +24,7 @@
  */
 
 // API checklist:
-// ✓ generateCanvas — 33 tests (CG-01..CG-33)
+// ✓ generateCanvas — 35 tests (CG-01..CG-35)
 //   covered paths:
 //   CG-01..CG-03  return shape (empty diagram, single node, CanvasScene structure)
 //   CG-04..CG-10  node rendering (element type, position/size, roughness, fontFamily)
@@ -38,6 +37,7 @@
 //   CG-26..CG-27  immutability + render-order invariant
 //   CG-28..CG-33  A10-v2 per-node style overrides (fillStyle, strokeStyle, roughness, fontFamily,
 //                 strokeDash backward-compat, absent fillStyle → undefined)
+//   CG-34..CG-35  A10-v2 edge strokeStyle (strokeDash → dashed, strokeStyle wins over strokeDash)
 
 import { describe, it, expect } from "vitest";
 import type {
@@ -586,5 +586,46 @@ describe("generateCanvas — per-node style overrides (A10-v2)", () => {
     const textEl = scene.elements.find((e) => e.mermaidId === "A:text" && e.type === "text");
     expect(textEl).toBeDefined();
     expect(textEl!.fontFamily).toBe("Nunito");
+  });
+});
+
+// ── CG-34..CG-35: Edge stroke styling ─────────────────────────────────────────
+
+describe("generateCanvas — edge stroke styling (A10-v2)", () => {
+  // CG-34: edge with strokeDash:true and no explicit strokeStyle → dashed
+  it("CG-34: edge with strokeDash:true (no strokeStyle) → arrow strokeStyle is 'dashed'", () => {
+    const k = edgeKey("A", "B", 0);
+    const parsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")], ["B", makeNode("B")]]),
+      edges: [makeEdge("A", "B")],
+    });
+    const layout = makeLayout({
+      nodes: { A: makeNodeLayout({ x: 0, y: 0 }), B: makeNodeLayout({ x: 300, y: 0 }) },
+      edges: { [k]: { routing: "auto", waypoints: [], style: { strokeDash: true } } },
+    });
+    const scene = generateCanvas(parsed, layout);
+    const arrow = scene.elements.find((e) => e.type === "arrow");
+    expect(arrow).toBeDefined();
+    expect(arrow!.strokeStyle).toBe("dashed");
+  });
+
+  // CG-35: explicit strokeStyle wins over strokeDash
+  it("CG-35: edge with strokeStyle + strokeDash → strokeStyle wins", () => {
+    const k = edgeKey("A", "B", 0);
+    const parsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")], ["B", makeNode("B")]]),
+      edges: [makeEdge("A", "B")],
+    });
+    const layout = makeLayout({
+      nodes: { A: makeNodeLayout({ x: 0, y: 0 }), B: makeNodeLayout({ x: 300, y: 0 }) },
+      edges: {
+        [k]: { routing: "auto", waypoints: [], style: { strokeStyle: "dotted", strokeDash: true } },
+      },
+    });
+    const scene = generateCanvas(parsed, layout);
+    const arrow = scene.elements.find((e) => e.type === "arrow");
+    expect(arrow).toBeDefined();
+    // strokeStyle is explicit → it wins; strokeDash is ignored
+    expect(arrow!.strokeStyle).toBe("dotted");
   });
 });
