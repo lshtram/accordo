@@ -93,7 +93,8 @@ export function createDiagramTools(ctx: DiagramToolContext): ExtensionToolDefini
       description:
         "Update an existing .mmd file with new Mermaid source and reconcile the stored layout. " +
         "Use the optional 'nodeStyles' argument to set per-node colours, fonts, fill patterns, " +
-        "roughness, and size overrides. This is the ONLY correct way to style nodes — " +
+        "roughness, and size overrides. Use 'edgeStyles' to set per-edge stroke colour, width, " +
+        "style, and routing. This is the ONLY correct way to style nodes and edges — " +
         "never use Mermaid classDef directives (Accordo ignores them).",
       inputSchema: {
         type: "object",
@@ -131,6 +132,26 @@ export function createDiagramTools(ctx: DiagramToolContext): ExtensionToolDefini
                 height:          { type: "number", description: "Override node height in pixels" },
                 x:               { type: "number", description: "Override node X position in pixels" },
                 y:               { type: "number", description: "Override node Y position in pixels" },
+              },
+              additionalProperties: false,
+            },
+          },
+          edgeStyles: {
+            type: "object",
+            description:
+              "Optional per-edge style overrides. Keys are edge keys in 'source->target:index' format " +
+              "(e.g. 'A->B:0'). Visual fields: strokeColor (hex), strokeWidth (px), " +
+              "strokeStyle ('solid'|'dashed'|'dotted'), strokeDash (bool). " +
+              "Routing field: routing ('auto'|'orthogonal'|'direct'|'curved'). " +
+              "Note: waypoints is intentionally excluded — deferred to D-04.",
+            additionalProperties: {
+              type: "object",
+              properties: {
+                strokeColor:  { type: "string" },
+                strokeWidth:  { type: "number" },
+                strokeStyle:  { type: "string", enum: ["solid", "dashed", "dotted"] },
+                strokeDash:   { type: "boolean" },
+                routing:      { type: "string", enum: ["auto", "orthogonal", "direct", "curved"] },
               },
               additionalProperties: false,
             },
