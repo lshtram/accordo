@@ -16,6 +16,7 @@ import {
   layoutPathFor,
   createEmptyLayout,
   patchNode,
+  patchEdge,
 } from "../layout/layout-store.js";
 import { reconcile } from "../reconciler/reconciler.js";
 import { generateCanvas } from "../canvas/canvas-generator.js";
@@ -265,6 +266,7 @@ export function handleNodeResized(
 
 /**
  * Handle canvas:node-styled — patches style for the given nodeId.
+ * Edge IDs (containing "->") are routed to patchEdge; all others to patchNode.
  */
 export function handleNodeStyled(
   state: PanelState,
@@ -272,6 +274,14 @@ export function handleNodeStyled(
   stylePatch: Record<string, unknown>,
 ): void {
   patchLayout(state, (layout) => {
+    if (nodeId.includes("->")) {
+      // Edge — route to layout.edges
+      const existing = layout.edges[nodeId]?.style ?? {};
+      return patchEdge(layout, nodeId, {
+        style: { ...existing, ...stylePatch } as import("../types.js").EdgeStyle,
+      });
+    }
+    // Node — existing behaviour
     const existing = layout.nodes[nodeId]?.style ?? {};
     return patchNode(layout, nodeId, {
       style: { ...existing, ...stylePatch } as import("../types.js").NodeStyle,

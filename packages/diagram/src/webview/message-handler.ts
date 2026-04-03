@@ -217,13 +217,15 @@ export function detectNodeMutations(
     }
 
     // F-2: Detect fillStyle/strokeStyle changes on shape elements only.
-    // Guard: exclude text elements (fillStyle has no visual effect on text) AND
-    // edge arrows (mermaidId contains "->") — arrows are not addressable layout
-    // nodes; emitting a styled mutation for "A->B:0" would create a spurious
-    // entry in layout.nodes via handleNodeStyled (data corruption).
-    // Also exclude edge labels (":label" suffix) for the same reason.
+    // Guard: exclude text elements (fillStyle has no visual effect on text).
+    // Also exclude edge labels (":label" suffix).
+    // Note: strokeStyle changes on edges ARE emitted now — handleNodeStyled
+    // routes them to patchEdge (layout.edges) to avoid data corruption.
     if (!isText && !mermaidId.endsWith(":label") && !mermaidId.includes("->")) {
       if (nextEl.fillStyle !== prevEl.fillStyle) style.fillStyle = nextEl.fillStyle;
+    }
+    // strokeStyle — for non-text, non-label elements (including edges)
+    if (!isText && !mermaidId.endsWith(":label")) {
       if (nextEl.strokeStyle !== prevEl.strokeStyle) style.strokeStyle = nextEl.strokeStyle;
     }
 
