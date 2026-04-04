@@ -107,6 +107,10 @@ chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown
           const element = resolveAnchorKey(ref);
           if (!element) { _sendResponse({ error: "not-found" }); return; }
           const rect = element.getBoundingClientRect();
+          // CR-F-12: Detect element-off-screen — bounding box is entirely outside viewport
+          if (rect.right < 0 || rect.bottom < 0 || rect.left > window.innerWidth || rect.top > window.innerHeight) {
+            _sendResponse({ error: "element-off-screen" }); return;
+          }
           const pad = typeof padding === "number" ? padding : 8;
           _sendResponse({ bounds: { x: Math.max(0, rect.left - pad), y: Math.max(0, rect.top + window.scrollY - pad), width: rect.width + pad * 2, height: rect.height + pad * 2 } });
         } catch { _sendResponse({ error: "action-failed" }); }

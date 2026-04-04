@@ -208,15 +208,17 @@ export async function handleCaptureRegion(
       args as Record<string, unknown>,
       CAPTURE_REGION_TIMEOUT_MS,
     );
-    if (
-      response.success &&
-      response.data &&
-      typeof response.data === "object" &&
-      "success" in response.data &&
-      hasSnapshotEnvelope(response.data)
-    ) {
-      store.save(response.data.pageId, response.data);
-      return response.data as CaptureRegionResponse;
+    if (response.success && response.data && typeof response.data === "object" && hasSnapshotEnvelope(response.data)) {
+      const data = response.data;
+      // B2-SV-003: Check the inner success field to detect capture-level failures
+      if ("success" in data && data.success === true) {
+        store.save(data.pageId, data);
+        return data as CaptureRegionResponse;
+      }
+      // Relay returned a capture-level error (element-off-screen, image-too-large, capture-failed, etc.)
+      if ("error" in data && typeof data.error === "string") {
+        return { success: false, error: data.error };
+      }
     }
     return { success: false, error: "action-failed" };
   } catch (err: unknown) {
