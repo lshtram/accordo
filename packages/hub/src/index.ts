@@ -229,9 +229,31 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     fs.writeFileSync(path.join(accordoDir, "hub.port"), String(actualPort), { mode: 0o600 });
     console.error(`[hub] Listening on ${config.host}:${actualPort}`);
 
+    // ── Parent-exit tracking ────────────────────────────────────────────────
+    // The hub is spawned by the VS Code extension host (Electron). When the
+    // user closes that VS Code window the extension host dies and the hub
+    // becomes orphaned (adopted by init: ppid → 1).  Periodically check that
+    // the parent is still alive; if it dies, exit cleanly so no zombie hubs
+    // remain on ports 3000–3019.
+    const parentCheckInterval = setInterval(() => {
+      try {
+        // ppid === 1 means init/systemd has adopted the process (parent died)
+        if (process.ppid === 1) {
+          console.error("[hub] Parent died (ppid=1) — exiting");
+          process.exit(0);
+        }
+        // ESRCH means no such process with that pid exists
+        process.kill(process.ppid, 0);
+      } catch {
+        console.error("[hub] Parent process gone — exiting");
+        process.exit(0);
+      }
+    }, 5_000);
+
     // Keep alive until signal
     await new Promise<void>((resolve) => {
       const shutdown = (): void => {
+        clearInterval(parentCheckInterval);
         server.stop().catch(() => {}).finally(() => {
           // Remove PID and port files on clean shutdown
           const pidFile = path.join(os.homedir(), ".accordo", "hub.pid");
