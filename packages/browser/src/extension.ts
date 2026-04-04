@@ -9,9 +9,13 @@ import { buildWaitForTool } from "./wait-tool.js";
 import { buildTextMapTool } from "./text-map-tool.js";
 import { buildSemanticGraphTool } from "./semantic-graph-tool.js";
 import { buildDiffSnapshotsTool } from "./diff-tool.js";
+import { buildHealthTool } from "./health-tool.js";
 import { buildControlTools } from "./control-tool-types.js";
 import { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { BrowserBridgeAPI, BrowserRelayAction } from "./types.js";
+import { BrowserAuditLog } from "./security/audit-log.js";
+import type { SecurityConfig } from "./security/index.js";
+import { DEFAULT_REDACTION_PATTERNS } from "./security/index.js";
 
 const EXTENSION_ID = "accordo.accordo-browser";
 const TOKEN_KEY = "browserRelayToken";
@@ -266,7 +270,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // B2-SV-004: A single shared store ensures all 4 data-producing paths use coherent
   // 5-slot per-page FIFO retention semantics.
   const snapshotStore = new SnapshotRetentionStore();
-  const pageUnderstandingTools = buildPageUnderstandingTools(relay, snapshotStore);
+
+  // Security configuration: origin policy, redaction, and audit log.
+  const securityConfig: SecurityConfig = {
+    originPolicy: { allowedOrigins: [], deniedOrigins: [], defaultAction: "allow" },
+    redactionPolicy: { redactPatterns: DEFAULT_REDACTION_PATTERNS, replacement: "[REDACTED]" },
+    auditLog: new BrowserAuditLog({
+      filePath: path.join(os.homedir(), ".accordo", "browser-audit.jsonl"),
+    }),
+  };
+
+  const pageUnderstandingTools = buildPageUnderstandingTools(relay, snapshotStore, securityConfig);
 
   // M109-WAIT: Register the browser_wait_for tool alongside page-understanding tools.
   // B2-WA-001..007: Agents can wait for text, selector, or layout stability conditions.
@@ -274,17 +288,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // M112-TEXT: Register the browser_get_text_map tool.
   // B2-TX-001..010: Agents can extract structured text with reading order and visibility.
-  const textMapTool = buildTextMapTool(relay, snapshotStore);
+  const textMapTool = buildTextMapTool(relay, snapshotStore, securityConfig);
 
   // M113-SEM: Register the browser_get_semantic_graph tool.
   // B2-SG-001..015: Agents can extract unified semantic structure (a11y, landmarks, outline, forms).
-  const semanticGraphTool = buildSemanticGraphTool(relay, snapshotStore);
+  const semanticGraphTool = buildSemanticGraphTool(relay, snapshotStore, securityConfig);
 
   // M101-DIFF: Register the browser_diff_snapshots tool.
   // B2-DE-001..007: Agents can compare two page snapshots and see what changed.
   const diffTool = buildDiffSnapshotsTool(relay, snapshotStore);
 
-  const allBrowserTools = [...pageUnderstandingTools, waitTool, textMapTool, semanticGraphTool, diffTool, ...buildControlTools(relay)];
+  // GAP-H1: browser_health tool for connection observability
+  const healthTool = buildHealthTool(relay);
+
+  const allBrowserTools = [...pageUnderstandingTools, waitTool, textMapTool, semanticGraphTool, diffTool, healthTool, ...buildControlTools(relay)];
 
   const toolsDisposable = bridge.registerTools(EXTENSION_ID, allBrowserTools);
   context.subscriptions.push(toolsDisposable);

@@ -28,6 +28,11 @@ export interface SemanticA11yNode {
   nodeId: number;
   /** Child nodes in document order. */
   children: SemanticA11yNode[];
+  /**
+   * Accessibility/actionability states (disabled, checked, expanded, etc.).
+   * Only present when non-empty. MCP-A11Y-002.
+   */
+  states?: string[];
 }
 
 /**

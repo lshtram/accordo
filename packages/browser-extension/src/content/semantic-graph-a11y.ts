@@ -11,6 +11,7 @@
 import type { SemanticA11yNode } from "./semantic-graph-types.js";
 import type { NodeIdRegistry } from "./semantic-graph-helpers.js";
 import {
+  collectElementStates,
   EXCLUDED_TAGS,
   getAccessibleName,
   getRole,
@@ -95,6 +96,10 @@ function buildA11yNode(
   };
 
   if (name !== undefined) node.name = name;
+
+  // MCP-A11Y-002: Collect accessibility/actionability states
+  const states = collectElementStates(el);
+  if (states.length > 0) node.states = states;
 
   // Heading level
   if (role === "heading") {

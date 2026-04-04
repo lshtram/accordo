@@ -66,6 +66,10 @@ export interface SnapshotEnvelopeFields {
   viewport: Viewport;
   /** Data source type. */
   source: SnapshotSource;
+  /** Unique audit ID for this capture (UUIDv4). I3-001. Optional — set by MCP handler. */
+  auditId?: string;
+  /** Page URL from which this snapshot was captured. Optional — available after first successful response. */
+  pageUrl?: string;
 }
 
 /**
@@ -114,6 +118,14 @@ export interface BrowserRelayLike {
   request(action: BrowserRelayAction, payload: Record<string, unknown>, timeoutMs?: number): Promise<BrowserRelayResponse>;
   push(action: BrowserRelayAction, payload: Record<string, unknown>): void;
   isConnected(): boolean;
+  /** Returns the CDP debugger WebSocket URL if connected. Undefined when disconnected. */
+  getDebuggerUrl?(): string;
+  /**
+   * Optional error listener: the relay calls this whenever it returns an error
+   * response (e.g. browser-not-connected, timeout). The subscriber can use this
+   * to populate a local error ring buffer (e.g. for browser_health).
+   */
+  onError?(error: string): void;
   /**
    * Optional interceptor: if set, the relay calls this instead of forwarding
    * to Chrome. The extension uses this to route browser events through the

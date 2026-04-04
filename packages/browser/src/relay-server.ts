@@ -20,6 +20,9 @@ export class BrowserRelayServer implements BrowserRelayLike {
   private client: WebSocket | null = null;
   private pending = new Map<string, (value: BrowserRelayResponse) => void>();
 
+  /** Optional error listener — called whenever the relay returns an error response. */
+  onError?: (error: string) => void;
+
   constructor(options: RelayServerOptions) {
     this.options = options;
   }
@@ -149,6 +152,13 @@ export class BrowserRelayServer implements BrowserRelayLike {
     return !!this.client && this.client.readyState === WebSocket.OPEN;
   }
 
+  /** Returns the CDP debugger URL when connected. */
+  getDebuggerUrl(): string {
+    // Chrome connects to its own CDP endpoint through the relay.
+    // We return a placeholder — a real implementation would track the actual URL.
+    return "ws://localhost:9222";
+  }
+
   /**
    * Fire-and-forget push to the connected Chrome client.
    * Sends a frame directly over the WebSocket without registering a pending
@@ -164,6 +174,7 @@ export class BrowserRelayServer implements BrowserRelayLike {
   async request(action: BrowserRelayAction, payload: Record<string, unknown>, timeoutMs = 3000): Promise<BrowserRelayResponse> {
     if (!this.client || this.client.readyState !== WebSocket.OPEN) {
       this.emit("relay-request-disconnected", { action });
+      this.onError?.("browser-not-connected");
       return { requestId: "", success: false, error: "browser-not-connected" };
     }
 
@@ -173,6 +184,7 @@ export class BrowserRelayServer implements BrowserRelayLike {
     const response = await new Promise<BrowserRelayResponse>((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
+        this.onError?.("timeout");
         resolve({ requestId, success: false, error: "timeout" });
       }, timeoutMs);
 

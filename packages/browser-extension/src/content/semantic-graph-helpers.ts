@@ -69,6 +69,69 @@ export function isHidden(el: HTMLElement): boolean {
   );
 }
 
+// ── Element State Collection ──────────────────────────────────────────────────
+
+/**
+ * Collect accessibility/actionability states from a DOM element.
+ *
+ * Returns an array of state strings in deterministic order.
+ * Only non-default states are included (e.g., "disabled" only when truly disabled).
+ * Returns an empty array when no states apply.
+ *
+ * Used by both the a11y tree builder (GAP-C1) and element inspector (GAP-F1)
+ * to provide a shared, consistent state representation.
+ *
+ * MCP-A11Y-002.
+ */
+export function collectElementStates(el: HTMLElement): string[] {
+  const states: string[] = [];
+
+  // HTMLInputElement — has disabled, readOnly, required, checked
+  if (el instanceof HTMLInputElement) {
+    if (el.disabled) states.push("disabled");
+    if (el.readOnly) states.push("readonly");
+    if (el.required) states.push("required");
+    if (el.checked) states.push("checked");
+  }
+
+  // HTMLTextAreaElement — has disabled, readOnly, required (no checked)
+  if (el instanceof HTMLTextAreaElement) {
+    if (el.disabled) states.push("disabled");
+    if (el.readOnly) states.push("readonly");
+    if (el.required) states.push("required");
+  }
+
+  // HTMLSelectElement — has disabled, required (no readOnly, no checked)
+  if (el instanceof HTMLSelectElement) {
+    if (el.disabled) states.push("disabled");
+    if (el.required) states.push("required");
+  }
+
+  // HTMLButtonElement — only has disabled (no readOnly/required/checked)
+  if (el instanceof HTMLButtonElement && el.disabled) {
+    states.push("disabled");
+  }
+
+  // ARIA attribute states
+  const ariaExpanded = el.getAttribute("aria-expanded");
+  if (ariaExpanded === "true") states.push("expanded");
+  else if (ariaExpanded === "false") states.push("collapsed");
+
+  const ariaSelected = el.getAttribute("aria-selected");
+  if (ariaSelected === "true") states.push("selected");
+
+  const ariaPressed = el.getAttribute("aria-pressed");
+  if (ariaPressed === "true") states.push("pressed");
+
+  // Focus state
+  if (document.activeElement === el) states.push("focused");
+
+  // Hidden attribute
+  if (el.hasAttribute("hidden")) states.push("hidden");
+
+  return states;
+}
+
 // ── Role Maps ─────────────────────────────────────────────────────────────────
 
 /** Tags excluded from a11y tree traversal (non-content). */

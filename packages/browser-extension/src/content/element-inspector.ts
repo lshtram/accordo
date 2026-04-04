@@ -12,6 +12,7 @@
 import type { AnchorStrategy } from "./enhanced-anchor.js";
 import { generateAnchorKey } from "./enhanced-anchor.js";
 import { getElementByRef } from "./page-map-collector.js";
+import { collectElementStates } from "./semantic-graph-helpers.js";
 import { captureSnapshotEnvelope } from "../snapshot-versioning.js";
 import type { SnapshotEnvelope } from "../snapshot-versioning.js";
 
@@ -81,6 +82,26 @@ export interface ElementDetail {
   accessibleName?: string;
   /** Data-test-related attributes */
   testIds?: Record<string, string>;
+  /**
+   * Accessibility/actionability states (disabled, readonly, focused, etc.).
+   * Only present when non-empty. GAP-F1 / MCP-A11Y-002.
+   */
+  states?: string[];
+  /**
+   * Whether pointer events are enabled (getComputedStyle pointerEvents !== "none").
+   * GAP-F1 / MCP-INT-001.
+   */
+  hasPointerEvents?: boolean;
+  /**
+   * Whether another element is visually on top at the element's center point.
+   * GAP-F1 / MCP-INT-001.
+   */
+  isObstructed?: boolean;
+  /**
+   * Click target dimensions in CSS pixels (element bounding box width × height).
+   * GAP-F1 / MCP-INT-001.
+   */
+  clickTargetSize?: { width: number; height: number };
 }
 
 /** Result of element inspection — includes full SnapshotEnvelope (B2-SV-003) */
@@ -233,6 +254,27 @@ function buildDetail(element: Element): ElementDetail {
   const visibleConfidence = computeVisibilityConfidence(element);
   const visible = visibleConfidence === "high";
 
+  // GAP-F1: Collect accessibility/actionability states (MCP-A11Y-002)
+  const states = collectElementStates(element as HTMLElement);
+
+  // GAP-F1: Eventability hints (MCP-INT-001)
+  const computedStyle = window.getComputedStyle(element);
+  const hasPointerEvents = computedStyle.pointerEvents !== "none";
+
+  // isObstructed: check if another element is on top at the center point.
+  // Guard against JSDOM / non-browser environments where elementFromPoint may not exist.
+  // Use element.contains() to avoid false positives when a descendant (e.g. <span>)
+  // is returned by elementFromPoint instead of the target element itself.
+  const centerX = rect.x + rect.width / 2;
+  const centerY = rect.y + rect.height / 2;
+  let isObstructed: boolean | undefined;
+  if (rect.width > 0 && rect.height > 0 && typeof document.elementFromPoint === "function") {
+    const top = document.elementFromPoint(centerX, centerY);
+    isObstructed = top !== null && !element.contains(top);
+  }
+
+  const clickTargetSize = { width: Math.round(rect.width), height: Math.round(rect.height) };
+
   return {
     tag,
     id,
@@ -246,6 +288,10 @@ function buildDetail(element: Element): ElementDetail {
     visibleConfidence,
     accessibleName,
     testIds: Object.keys(testIds).length > 0 ? testIds : undefined,
+    ...(states.length > 0 ? { states } : {}),
+    hasPointerEvents,
+    ...(isObstructed !== undefined ? { isObstructed } : {}),
+    clickTargetSize,
   };
 }
 
