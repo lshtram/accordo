@@ -88,6 +88,14 @@ export interface TraversalOptions {
   filterPipeline: FilterPipeline;
   /** Mutable counter: tracks nodes visited before filtering */
   totalBeforeFilter: { count: number };
+  /**
+   * B2-FI-002 flat-list mode: when true, non-matching ancestors are traversed
+   * to unlimited depth so matching descendants (e.g. interactive elements) are
+   * never lost due to maxDepth truncation. Enabled automatically when
+   * interactiveOnly: true is set. Matching elements are still returned as a
+   * flat promoted list (no wrapper parent node).
+   */
+  flatListMode?: boolean;
 }
 
 // ── Core buildNode ────────────────────────────────────────────────────────────
@@ -207,7 +215,12 @@ export function buildNode(
 
   // Element fails filter — skip it BUT recurse into children so matching
   // descendants are not pruned (traversal semantics fix).
-  if (depth >= opts.maxDepth) {
+  //
+  // B2-FI-002 flat-list mode: when flatListMode is true (set by interactiveOnly),
+  // we bypass the maxDepth guard for non-matching ancestors so that interactive
+  // elements at any depth are reachable. Without this, a non-interactive element
+  // sitting exactly at maxDepth would swallow all its interactive children.
+  if (depth >= opts.maxDepth && !opts.flatListMode) {
     if (element.children.length > 0) truncated.value = true;
     return [];
   }

@@ -755,6 +755,84 @@ describe("M102-FILT collector — visibleOnly, regionFilter, nested-child retent
   });
 
   /**
+   * B2-FI-002 flat-list mode: interactiveOnly=true with a very small maxDepth must
+   * still return interactive elements that live deeper than maxDepth in the DOM.
+   *
+   * Regression test for the bug reported in the evaluation:
+   *   get_page_map({ interactiveOnly: true, maxDepth: 2 }) returned 0 results when
+   *   all interactive elements were at depth >= 3.
+   *
+   * The fix: when interactiveOnly=true, non-matching ancestors are traversed
+   * beyond maxDepth so interactive descendants at any depth are reachable.
+   */
+  it("B2-FI-002 flat-list mode: interactiveOnly=true + small maxDepth still returns deep interactive elements", () => {
+    // Build a DOM where interactive elements live at depth 4 (body > div > div > div > button)
+    document.body.innerHTML = `
+      <div id="level1">
+        <div id="level2">
+          <div id="level3">
+            <button id="deep-btn-1">Click me</button>
+            <a id="deep-link-1" href="#">Go</a>
+          </div>
+        </div>
+      </div>
+    `;
+    // maxDepth: 2 means the normal traversal would stop at level2 div, never reaching the button
+    const result = collectPageMap({ interactiveOnly: true, maxDepth: 2 });
+    const ids = result.nodes.map((n) => n.id).filter(Boolean);
+
+    // Interactive elements at depth 4 must be returned despite maxDepth: 2
+    expect(ids).toContain("deep-btn-1");
+    expect(ids).toContain("deep-link-1");
+
+    // Non-interactive ancestors must NOT appear
+    expect(ids).not.toContain("level1");
+    expect(ids).not.toContain("level2");
+    expect(ids).not.toContain("level3");
+  });
+
+  /**
+   * B2-FI-002 flat-list mode: backward compatibility — without interactiveOnly,
+   * maxDepth truncation must still work normally (no regression).
+   */
+  it("B2-FI-002 backward compat: without interactiveOnly, maxDepth still truncates tree normally", () => {
+    document.body.innerHTML = `
+      <div id="level1">
+        <div id="level2">
+          <div id="level3">
+            <button id="deep-btn">Deep button</button>
+          </div>
+        </div>
+      </div>
+    `;
+    // Without interactiveOnly, depth 2 means nodes beyond maxDepth are NOT returned.
+    // Depth numbering: body's direct children start at depth 0.
+    // level1=depth0, level2=depth1, level3=depth2 (at the limit — included but no children),
+    // deep-btn=depth3 (beyond maxDepth — NOT included).
+    const result = collectPageMap({ maxDepth: 2 });
+
+    // Flatten the tree to collect all node IDs at every depth
+    function collectIds(nodes: typeof result.nodes): string[] {
+      const ids: string[] = [];
+      for (const n of nodes) {
+        if (n.id) ids.push(n.id);
+        if (n.children) ids.push(...collectIds(n.children));
+      }
+      return ids;
+    }
+    const allIds = collectIds(result.nodes);
+
+    // level1 (depth 0), level2 (depth 1), level3 (depth 2) are all included in the tree
+    expect(allIds).toContain("level1");
+    expect(allIds).toContain("level2");
+    expect(allIds).toContain("level3");
+
+    // deep-btn at depth 3 (> maxDepth 2) must NOT appear — truncated
+    expect(allIds).not.toContain("deep-btn");
+    expect(result.truncated).toBe(true);
+  });
+
+  /**
    * Combined: regionFilter + interactiveOnly. Only interactive elements
    * inside the region should appear.
    */

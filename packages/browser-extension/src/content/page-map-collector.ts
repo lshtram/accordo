@@ -199,6 +199,10 @@ export function collectPageMap(options?: PageMapOptions): PageMapResult {
     viewportOnly,
     filterPipeline,
     totalBeforeFilter,
+    // B2-FI-002: when interactiveOnly is set, enable flat-list mode so that
+    // interactive elements at any DOM depth are collected regardless of maxDepth.
+    // Non-matching ancestors are traversed beyond maxDepth without being included.
+    flatListMode: options?.interactiveOnly === true,
   };
 
   const pageUrl = document.location?.href ?? "https://localhost/";
