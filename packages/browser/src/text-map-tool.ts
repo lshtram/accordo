@@ -18,6 +18,9 @@ import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { BrowserRelayLike, SnapshotEnvelopeFields } from "./types.js";
 import { hasSnapshotEnvelope } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
+import type { SecurityConfig } from "./security/index.js";
+import { checkOrigin, extractOrigin, mergeOriginPolicy, redactTextMapResponse, DEFAULT_SECURITY_CONFIG } from "./security/index.js";
+import { buildStructuredError } from "./page-tool-types.js";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -36,6 +39,12 @@ export interface GetTextMapArgs {
   tabId?: number;
   /** Maximum number of text segments to return (default: 500, max: 2000). B2-TX-008. */
   maxSegments?: number;
+  /** I1-text: When true, scan text for PII and replace with [REDACTED]. */
+  redactPII?: boolean;
+  /** I2-001: Allowed origins for this request. Overrides global policy. */
+  allowedOrigins?: string[];
+  /** I2-001: Denied origins for this request. Overrides global policy. */
+  deniedOrigins?: string[];
 }
 
 // ── Tool Result Types ────────────────────────────────────────────────────────
@@ -72,6 +81,10 @@ export interface TextMapResponse extends SnapshotEnvelopeFields {
   segments: TextSegment[];
   totalSegments: number;
   truncated: boolean;
+  /** True when PII redaction was applied to text content. MCP-SEC-002. */
+  redactionApplied?: boolean;
+  /** Warning when PII may be present in response. MCP-VC-005. */
+  redactionWarning?: string;
 }
 
 /**
@@ -97,9 +110,10 @@ export interface TextMapToolError {
 export function buildTextMapTool(
   relay: BrowserRelayLike,
   store: SnapshotRetentionStore,
+  security: SecurityConfig = DEFAULT_SECURITY_CONFIG,
 ): ExtensionToolDefinition {
   return {
-    name: "browser_get_text_map",
+    name: "accordo_browser_get_text_map",
     description:
       "Extract the text content of the current page as structured segments " +
       "with raw/normalized text, bounding boxes, visibility flags, " +
@@ -118,11 +132,27 @@ export function buildTextMapTool(
           minimum: 1,
           maximum: 2000,
         },
+        redactPII: {
+          type: "boolean",
+          description:
+            "When true, scan text content for email addresses, phone numbers, " +
+            "and API keys and replace with [REDACTED]. I1-text.",
+        },
+        allowedOrigins: {
+          type: "array",
+          items: { type: "string" },
+          description: "Only allow data from these origins. Empty = use global policy.",
+        },
+        deniedOrigins: {
+          type: "array",
+          items: { type: "string" },
+          description: "Block data from these origins. Takes precedence over allowedOrigins.",
+        },
       },
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args) => handleGetTextMap(relay, args as GetTextMapArgs, store),
+    handler: (args) => handleGetTextMap(relay, args as GetTextMapArgs, store, security),
   };
 }
 
@@ -156,16 +186,22 @@ function classifyRelayError(err: unknown): "timeout" | "browser-not-connected" {
  * @param relay — The relay connection to the Chrome extension
  * @param args — Tool input arguments
  * @param store — Shared snapshot retention store
+ * @param security — Security configuration (origin policy, redaction, audit)
  * @returns Text map response or error
  */
 async function handleGetTextMap(
   relay: BrowserRelayLike,
   args: GetTextMapArgs,
   store: SnapshotRetentionStore,
+  security: SecurityConfig,
 ): Promise<TextMapResponse | TextMapToolError> {
   if (!relay.isConnected()) {
-    return { success: false, error: "browser-not-connected" };
+    return buildStructuredError("browser-not-connected") as TextMapToolError;
   }
+
+  // F4: Create audit entry before relay call
+  const auditEntry = security.auditLog.createEntry("accordo_browser_get_text_map", undefined, undefined);
+  const startTime = Date.now();
 
   try {
     const response = await relay.request(
@@ -180,18 +216,76 @@ async function handleGetTextMap(
         errCode === "browser-not-connected" ? "browser-not-connected"
         : errCode === "timeout" ? "timeout"
         : "action-failed";
-      return { success: false, error: mappedError };
+      security.auditLog.completeEntry(auditEntry, {
+        action: "blocked",
+        redacted: false,
+        durationMs: Date.now() - startTime,
+      });
+      return buildStructuredError(mappedError) as TextMapToolError;
     }
 
     const data = response.data;
+    const relayPageUrl = (data as { pageUrl?: string }).pageUrl;
 
-    // B2-TX-007: Validate SnapshotEnvelope and persist
+    // F1: Origin policy check using the pageUrl from the relay response.
+    // This runs after DOM access but BEFORE saving to the store or returning,
+    // ensuring blocked origins never reach the store or the caller.
+    if (relayPageUrl) {
+      const origin = extractOrigin(relayPageUrl) ?? relayPageUrl;
+      const policy = mergeOriginPolicy(security.originPolicy, args.allowedOrigins, args.deniedOrigins);
+      if (checkOrigin(origin, policy) === "block") {
+        security.auditLog.completeEntry(auditEntry, {
+          action: "blocked",
+          redacted: false,
+          durationMs: Date.now() - startTime,
+        });
+        return buildStructuredError("origin-blocked") as TextMapToolError;
+      }
+    }
+
+    // B2-TX-007: Validate SnapshotEnvelope and persist (only after origin check passes)
     if (hasSnapshotEnvelope(data)) {
       store.save(data.pageId, data as SnapshotEnvelopeFields);
     }
 
-    return data as TextMapResponse;
+    const result = data as TextMapResponse;
+
+    // F2: Apply redaction if requested (fail-closed)
+    if (args.redactPII) {
+      try {
+        const redactionOccurred = redactTextMapResponse(result as any, security.redactionPolicy);
+        // redacted: true if patterns existed and matched content; false if no patterns or no matches
+        (result as any).redactionApplied = redactionOccurred;
+      } catch {
+        security.auditLog.completeEntry(auditEntry, {
+          action: "blocked",
+          redacted: false,
+          durationMs: Date.now() - startTime,
+        });
+        return buildStructuredError("redaction-failed") as TextMapToolError;
+      }
+    } else {
+      // F5: Redaction warning when redactPII is not set (unconditional per MCP-VC-005)
+      (result as any).redactionWarning = "PII may be present in response";
+    }
+
+    // F4: Add auditId to response
+    (result as any).auditId = auditEntry.auditId;
+
+    security.auditLog.completeEntry(auditEntry, {
+      action: "allowed",
+      redacted: !!(result as any).redactionApplied,
+      durationMs: Date.now() - startTime,
+    });
+
+    // Return a shallow copy so subsequent calls don't overwrite auditId on the same object
+    return { ...result };
   } catch (err: unknown) {
-    return { success: false, error: classifyRelayError(err) };
+    security.auditLog.completeEntry(auditEntry, {
+      action: "blocked",
+      redacted: false,
+      durationMs: Date.now() - startTime,
+    });
+    return buildStructuredError(classifyRelayError(err)) as TextMapToolError;
   }
 }

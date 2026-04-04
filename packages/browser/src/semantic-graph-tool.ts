@@ -17,6 +17,9 @@ import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { BrowserRelayLike, SnapshotEnvelopeFields } from "./types.js";
 import { hasSnapshotEnvelope } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
+import type { SecurityConfig } from "./security/index.js";
+import { checkOrigin, extractOrigin, mergeOriginPolicy, redactSemanticGraphResponse, DEFAULT_SECURITY_CONFIG } from "./security/index.js";
+import { buildStructuredError } from "./page-tool-types.js";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -38,6 +41,12 @@ export interface GetSemanticGraphArgs {
   maxDepth?: number;
   /** Exclude hidden elements (default: true). B2-SG-009. */
   visibleOnly?: boolean;
+  /** I1-text: When true, scan text for PII and replace with [REDACTED]. */
+  redactPII?: boolean;
+  /** I2-001: Allowed origins for this request. Overrides global policy. */
+  allowedOrigins?: string[];
+  /** I2-001: Denied origins for this request. Overrides global policy. */
+  deniedOrigins?: string[];
 }
 
 // ── Tool Result Types ────────────────────────────────────────────────────────
@@ -118,6 +127,12 @@ export interface SemanticGraphResponse extends SnapshotEnvelopeFields {
   outline: OutlineHeading[];
   /** B2-SG-005: Form models. */
   forms: FormModel[];
+  /** True when PII redaction was applied to text content. MCP-SEC-002. */
+  redactionApplied?: boolean;
+  /** Warning when PII may be present in response. MCP-VC-005. */
+  redactionWarning?: string;
+  /**审计 ID. I3-001. */
+  auditId?: string;
 }
 
 /**
@@ -149,6 +164,15 @@ function narrowArgs(raw: unknown): GetSemanticGraphArgs {
   }
   if (typeof obj["visibleOnly"] === "boolean") {
     result.visibleOnly = obj["visibleOnly"];
+  }
+  if (typeof obj["redactPII"] === "boolean") {
+    result.redactPII = obj["redactPII"];
+  }
+  if (Array.isArray(obj["allowedOrigins"])) {
+    result.allowedOrigins = obj["allowedOrigins"] as string[];
+  }
+  if (Array.isArray(obj["deniedOrigins"])) {
+    result.deniedOrigins = obj["deniedOrigins"] as string[];
   }
 
   return result;
@@ -199,9 +223,10 @@ function narrowSemanticGraphResponse(data: unknown): SemanticGraphResponse | und
 export function buildSemanticGraphTool(
   relay: BrowserRelayLike,
   store: SnapshotRetentionStore,
+  security: SecurityConfig = DEFAULT_SECURITY_CONFIG,
 ): ExtensionToolDefinition {
   return {
-    name: "browser_get_semantic_graph",
+    name: "accordo_browser_get_semantic_graph",
     description:
       "Extract the semantic structure of the current page: accessibility tree, " +
       "landmark regions, document heading outline (H1–H6), and form models " +
@@ -225,11 +250,27 @@ export function buildSemanticGraphTool(
           description:
             "Exclude hidden elements from all sub-trees (default: true).",
         },
+        redactPII: {
+          type: "boolean",
+          description:
+            "When true, scan text content for email addresses, phone numbers, " +
+            "and API keys and replace with [REDACTED]. I1-text.",
+        },
+        allowedOrigins: {
+          type: "array",
+          items: { type: "string" },
+          description: "Only allow data from these origins. Empty = use global policy.",
+        },
+        deniedOrigins: {
+          type: "array",
+          items: { type: "string" },
+          description: "Block data from these origins. Takes precedence over allowedOrigins.",
+        },
       },
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (rawArgs) => handleGetSemanticGraph(relay, narrowArgs(rawArgs), store),
+    handler: (rawArgs) => handleGetSemanticGraph(relay, narrowArgs(rawArgs), store, security),
   };
 }
 
@@ -263,16 +304,22 @@ function classifyRelayError(err: unknown): "timeout" | "browser-not-connected" {
  * @param relay — The relay connection to the Chrome extension
  * @param args — Narrowed tool input arguments
  * @param store — Shared snapshot retention store
+ * @param security — Security configuration (origin policy, redaction, audit)
  * @returns Semantic graph response or error
  */
 async function handleGetSemanticGraph(
   relay: BrowserRelayLike,
   args: GetSemanticGraphArgs,
   store: SnapshotRetentionStore,
+  security: SecurityConfig,
 ): Promise<SemanticGraphResponse | SemanticGraphToolError> {
   if (!relay.isConnected()) {
-    return { success: false, error: "browser-not-connected" };
+    return buildStructuredError("browser-not-connected") as SemanticGraphToolError;
   }
+
+  // F4: Create audit entry before relay call
+  const auditEntry = security.auditLog.createEntry("accordo_browser_get_semantic_graph", undefined, undefined);
+  const startTime = Date.now();
 
   try {
     const payload: Record<string, unknown> = {};
@@ -292,10 +339,32 @@ async function handleGetSemanticGraph(
         errCode === "browser-not-connected" ? "browser-not-connected"
         : errCode === "timeout" ? "timeout"
         : "action-failed";
-      return { success: false, error: mappedError };
+      security.auditLog.completeEntry(auditEntry, {
+        action: "blocked",
+        redacted: false,
+        durationMs: Date.now() - startTime,
+      });
+      return buildStructuredError(mappedError) as SemanticGraphToolError;
     }
 
     // B2-SG-007: Validate SnapshotEnvelope and persist
+    // F1: Origin policy check using the pageUrl from the relay response.
+    // This runs after DOM access but BEFORE saving to the store,
+    // ensuring blocked origins never reach the store or the caller.
+    const relayPageUrl = (response.data as { pageUrl?: string }).pageUrl;
+    if (relayPageUrl) {
+      const origin = extractOrigin(relayPageUrl) ?? relayPageUrl;
+      const policy = mergeOriginPolicy(security.originPolicy, args.allowedOrigins, args.deniedOrigins);
+      if (checkOrigin(origin, policy) === "block") {
+        security.auditLog.completeEntry(auditEntry, {
+          action: "blocked",
+          redacted: false,
+          durationMs: Date.now() - startTime,
+        });
+        return buildStructuredError("origin-blocked") as SemanticGraphToolError;
+      }
+    }
+
     if (hasSnapshotEnvelope(response.data)) {
       store.save(response.data.pageId, response.data as SnapshotEnvelopeFields);
     }
@@ -303,11 +372,53 @@ async function handleGetSemanticGraph(
     // Narrow the payload to SemanticGraphResponse with a runtime guard
     const narrowed = narrowSemanticGraphResponse(response.data);
     if (narrowed === undefined) {
-      return { success: false, error: "action-failed" };
+      security.auditLog.completeEntry(auditEntry, {
+        action: "blocked",
+        redacted: false,
+        durationMs: Date.now() - startTime,
+      });
+      return buildStructuredError("action-failed") as SemanticGraphToolError;
     }
 
-    return narrowed;
+    const result = narrowed;
+
+    // F2: Apply redaction if requested (fail-closed)
+    if (args.redactPII) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const redactionOccurred = redactSemanticGraphResponse(result as any, security.redactionPolicy);
+        // redacted: true if patterns existed and matched content; false if no patterns or no matches
+        result.redactionApplied = redactionOccurred;
+      } catch {
+        security.auditLog.completeEntry(auditEntry, {
+          action: "blocked",
+          redacted: false,
+          durationMs: Date.now() - startTime,
+        });
+        return buildStructuredError("redaction-failed") as SemanticGraphToolError;
+      }
+    } else {
+      // F5: Redaction warning when redactPII is not set (unconditional per MCP-VC-005)
+      result.redactionWarning = "PII may be present in response";
+    }
+
+    // F4: Add auditId to response
+    result.auditId = auditEntry.auditId;
+
+    security.auditLog.completeEntry(auditEntry, {
+      action: "allowed",
+      redacted: !!result.redactionApplied,
+      durationMs: Date.now() - startTime,
+    });
+
+    // Return a shallow copy so subsequent calls don't overwrite auditId on the same object
+    return { ...result };
   } catch (err: unknown) {
-    return { success: false, error: classifyRelayError(err) };
+    security.auditLog.completeEntry(auditEntry, {
+      action: "blocked",
+      redacted: false,
+      durationMs: Date.now() - startTime,
+    });
+    return buildStructuredError(classifyRelayError(err)) as SemanticGraphToolError;
   }
 }
