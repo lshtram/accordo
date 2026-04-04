@@ -40,16 +40,18 @@
 **Target:** 45/45  
 **Plan:** `docs/50-reviews/M110-TC-45-45-plan.md`
 
-| Phase | Gap | Effort | Score Gain |
-|---|---|---:|---|
-| Phase 1 | GAP-C1: A11y states; GAP-F1: actionability+eventability; GAP-H1: error taxonomy+health | 3d | +5 → 36 |
-| Phase 2 | GAP-E1: PNG format; GAP-E2: screenshot modes; GAP-A1: readyState | 1.5d | +3 → 39 |
-| Phase 3 | GAP-D1: geometry helpers+viewport ratios+containers; GAP-D2: z-order | 4d | +3 → 42 |
-| Phase 4 | GAP-G1: retention control; GAP-I1: screenshot redaction+TTL | 3d | +3 → 45 |
+| Phase | Gap | Effort | Score Gain | Status |
+|---|---|---:|---:|:---:|
+| Phase 1 | GAP-C1: A11y states; GAP-F1: actionability+eventability; GAP-H1: error taxonomy+health | 3d | +5 → 36 | ✅ DONE (`fb4b8ad`) |
+| Phase 2 | GAP-E1: PNG format; GAP-E2: screenshot modes; GAP-A1: readyState | 1.5d | +3 → 39 | |
+| Phase 3 | GAP-D1: geometry helpers+viewport ratios+containers; GAP-D2: z-order | 4d | +3 → 42 | |
+| Phase 4 | GAP-G1: retention control; GAP-I1: screenshot redaction+TTL | 3d | +3 → 45 | |
 
 **3 new MCP tools:** `get_spatial_relations`, `manage_snapshots`, `browser_health`  
 **2 new content script modules:** `spatial-helpers.ts`, screenshot redaction helper  
-**Total: ~11.5 days**
+**Total: ~11.5 days**  
+**Phase 1 tests:** 48 new (16 a11y-states + 11 actionability + 21 health-tool)  
+**Review artifacts:** `docs/reviews/M110-TC-45-45-phase1-D2.md`, `docs/reviews/M110-TC-45-45-phase1-D2-recheck.md`, `docs/reviews/M110-TC-45-45-phase1-review.md`
 
 ---
 
