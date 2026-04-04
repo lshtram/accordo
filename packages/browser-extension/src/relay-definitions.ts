@@ -30,6 +30,7 @@ export type RelayAction =
   | "inspect_element"
   | "get_dom_excerpt"
   | "capture_region"
+  | "capture_full_page_screenshot"
   | "diff_snapshots"
   | "wait_for"
   | "get_text_map"
@@ -83,6 +84,8 @@ export interface CapturePayload {
   rect?: { x: number; y: number; width: number; height: number };
   padding?: number;
   quality?: number;
+  /** P4-CR: "viewport" (default) or "fullPage" */
+  mode?: "viewport" | "fullPage";
 }
 
 // ── Module-level Singleton ───────────────────────────────────────────────────

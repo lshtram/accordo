@@ -13,6 +13,7 @@ import type { RelayActionRequest, RelayActionResponse, CapturePayload } from "./
 import { defaultStore, isVersionedSnapshot } from "./relay-definitions.js";
 import { requestContentScriptEnvelope } from "./relay-forwarder.js";
 import { toCapturePayload, resolveBoundsFromMessage, toCaptureStoreRecord, readOptionalString } from "./relay-type-guards.js";
+import { ensureAttached, sendCommand } from "./debugger-manager.js";
 
 // ── Image Capture Constants ──────────────────────────────────────────────────
 
@@ -285,6 +286,86 @@ async function executeCaptureRegion(
   return buildCaptureSuccess(dataUrl, width, height, sizeBytes, anchorSource, targetTabId);
 }
 
+// ── Full-Page Capture (P4-CR) ───────────────────────────────────────────────
+
+/**
+ * Execute a full-page screenshot capture via CDP.
+ *
+ * When mode === "fullPage", this function is called instead of executeCaptureRegion.
+ * It uses chrome.debugger (via DebuggerManager) to execute CDP Page.captureScreenshot
+ * with captureBeyondViewport: true, which captures the entire scrollable page.
+ *
+ * B2-CTX-004: Tab-swap logic applies for non-active tab targeting.
+ */
+async function executeCaptureFullPage(
+  payload: CapturePayload,
+): Promise<Record<string, unknown>> {
+  const targetTabId = payload.tabId;
+  let originalTabId: number | undefined;
+  let swapped = false;
+  if (targetTabId !== undefined) {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    originalTabId = activeTab?.id;
+    if (originalTabId !== targetTabId) {
+      await chrome.tabs.update(targetTabId, { active: true });
+      swapped = true;
+    }
+  }
+
+  const envelope = await requestContentScriptEnvelope("visual", targetTabId);
+
+  if (targetTabId === undefined) {
+    if (swapped && originalTabId !== undefined) {
+      await chrome.tabs.update(originalTabId, { active: true });
+    }
+    return { success: false, error: "browser-not-connected", ...envelope };
+  }
+
+  try {
+    // Ensure debugger is attached to the target tab
+    await ensureAttached(targetTabId);
+
+    // Capture full page via CDP
+    const cdpResult = await sendCommand<{ data: string; width: number; height: number }>(
+      targetTabId,
+      "Page.captureScreenshot",
+      { captureBeyondViewport: true, format: "png" },
+    );
+
+    // Convert base64 PNG to data URL
+    const dataUrl = `data:image/png;base64,${cdpResult.data}`;
+    const sizeBytes = Math.round((cdpResult.data.length * 3) / 4);
+
+    if (swapped && originalTabId !== undefined) {
+      await chrome.tabs.update(originalTabId, { active: true });
+    }
+
+    return {
+      success: true,
+      dataUrl,
+      width: cdpResult.width,
+      height: cdpResult.height,
+      sizeBytes,
+      anchorSource: "fullPage",
+      mode: "fullPage",
+      ...envelope,
+    };
+  } catch (err) {
+    if (swapped && originalTabId !== undefined) {
+      await chrome.tabs.update(originalTabId, { active: true });
+    }
+    const errorMsg = err instanceof Error ? err.message : "capture-failed";
+    // Classify common CDP errors
+    if (errorMsg.includes("not attached") || errorMsg.includes("disconnected")) {
+      return { success: false, error: "browser-not-connected", ...envelope };
+    }
+    if (errorMsg.includes("unsupported-page")) {
+      return { success: false, error: "unsupported-page", ...envelope };
+    }
+    return { success: false, error: "capture-failed", ...envelope };
+  }
+}
+
 // ── Capture Region Handler ───────────────────────────────────────────────────
 
 /** Persist a successful capture result to the snapshot store. */
@@ -306,7 +387,14 @@ export async function handleCaptureRegion(
   request: RelayActionRequest,
 ): Promise<RelayActionResponse> {
   const capturePayload = toCapturePayload(request.payload);
-  const captureResult = await executeCaptureRegion(capturePayload);
+
+  // P4-CR: Route to full-page capture when mode is "fullPage"
+  let captureResult: Record<string, unknown>;
+  if (capturePayload.mode === "fullPage") {
+    captureResult = await executeCaptureFullPage(capturePayload);
+  } else {
+    captureResult = await executeCaptureRegion(capturePayload);
+  }
 
   // B2-SV-004: persist successful captures in the store for retention.
   await persistCaptureResult(captureResult);

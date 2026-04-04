@@ -121,6 +121,9 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
       // ── Capture and diff ──
       case "capture_region":
         return await handleCaptureRegion(request);
+      case "capture_full_page_screenshot":
+        // P4-CR: Full-page screenshot is routed through handleCaptureRegion with mode="fullPage"
+        return await handleCaptureRegion({ ...request, payload: { ...request.payload, mode: "fullPage" } });
       case "diff_snapshots":
         return await handleDiffSnapshots(request);
 

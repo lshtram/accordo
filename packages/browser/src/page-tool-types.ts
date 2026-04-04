@@ -65,6 +65,13 @@ export interface GetPageMapArgs {
    * Only elements whose bounding box intersects the region are returned.
    */
   regionFilter?: { x: number; y: number; width: number; height: number };
+
+  // ── MCP-SEC: Security Parameters ──────────────────────────────────────────
+
+  /** I2-001: Allowed origins for this request. Overrides global policy. */
+  allowedOrigins?: string[];
+  /** I2-001: Denied origins for this request. Overrides global policy. */
+  deniedOrigins?: string[];
 }
 
 /**
@@ -82,6 +89,10 @@ export interface InspectElementArgs {
   selector?: string;
   /** B2-SV-006: Stable node ID from a page map snapshot (alternative to ref/selector) */
   nodeId?: number;
+  /** I2-001: Allowed origins for this request. Overrides global policy. */
+  allowedOrigins?: string[];
+  /** I2-001: Denied origins for this request. Overrides global policy. */
+  deniedOrigins?: string[];
 }
 
 /** Input for browser_get_dom_excerpt */
@@ -94,6 +105,10 @@ export interface GetDomExcerptArgs {
   maxDepth?: number;
   /** Maximum character length of the HTML output (default: 2000) */
   maxLength?: number;
+  /** I2-001: Allowed origins for this request. Overrides global policy. */
+  allowedOrigins?: string[];
+  /** I2-001: Denied origins for this request. Overrides global policy. */
+  deniedOrigins?: string[];
 }
 
 /** Input for browser_capture_region (M91-CR) */
@@ -110,6 +125,13 @@ export interface CaptureRegionArgs {
   padding?: number;
   /** JPEG quality 1–100 (default: 70, clamped to 30–85) */
   quality?: number;
+  /** P4-CR: Capture mode — "viewport" (default) captures visible area, "fullPage" captures entire scrollable page.
+   * When mode is "fullPage", rect, anchorKey, and nodeRef are ignored. */
+  mode?: "viewport" | "fullPage";
+  /** I2-001: Allowed origins for this request. Overrides global policy. */
+  allowedOrigins?: string[];
+  /** I2-001: Denied origins for this request. Overrides global policy. */
+  deniedOrigins?: string[];
 }
 
 /** Input for browser_wait_for (inlined from wait-tool.ts for multi-tab support) */
@@ -127,6 +149,12 @@ export interface GetTextMapArgs {
   /** B2-CTX-001: Optional tab ID to target; omit for active tab */
   tabId?: number;
   maxSegments?: number;
+  /** I1-text: When true, scan text for PII and replace with [REDACTED]. */
+  redactPII?: boolean;
+  /** I2-001: Allowed origins for this request. Overrides global policy. */
+  allowedOrigins?: string[];
+  /** I2-001: Denied origins for this request. Overrides global policy. */
+  deniedOrigins?: string[];
 }
 
 /** Input for browser_get_semantic_graph (inlined for multi-tab support) */
@@ -135,6 +163,12 @@ export interface GetSemanticGraphArgs {
   tabId?: number;
   maxDepth?: number;
   visibleOnly?: boolean;
+  /** I1-text: When true, scan text for PII and replace with [REDACTED]. */
+  redactPII?: boolean;
+  /** I2-001: Allowed origins for this request. Overrides global policy. */
+  allowedOrigins?: string[];
+  /** I2-001: Denied origins for this request. Overrides global policy. */
+  deniedOrigins?: string[];
 }
 
 /** Input for browser_list_pages (B2-CTX-001) */
@@ -172,12 +206,29 @@ export interface PageMapResponse extends SnapshotEnvelopeFields {
     totalAfterFilter: number;
     reductionRatio: number;
   };
+
+  /** True when PII redaction was applied to text content. MCP-SEC-002. */
+  redactionApplied?: boolean;
+  /** Warning when PII may be present in response. MCP-VC-005. */
+  redactionWarning?: string;
 }
 
-/** Error response from page understanding tools. */
+/**
+ * Structured error response from page understanding tools.
+ * MCP-ER-001: All error responses are structured objects.
+ * MCP-ER-002: Includes retry hints for transient errors.
+ */
 export interface PageToolError {
   success: false;
+  /** Machine-readable error code. */
   error: string;
+  /** Whether the agent should retry this operation. MCP-ER-002. */
+  retryable?: boolean;
+  /** Suggested delay before retry in ms. MCP-ER-002. */
+  retryAfterMs?: number;
+  /** Human-readable detail for diagnostics. */
+  details?: string;
+  /** Preserved for backward compatibility on specific tools. */
   pageUrl?: null;
   found?: false;
 }
@@ -193,6 +244,10 @@ export interface InspectElementResponse extends SnapshotEnvelopeFields {
   element?: Record<string, unknown>;
   context?: Record<string, unknown>;
   visibilityConfidence?: string;
+  /** True when PII redaction was applied to text content. MCP-SEC-002. */
+  redactionApplied?: boolean;
+  /** Warning when PII may be present in response. MCP-VC-005. */
+  redactionWarning?: string;
 }
 
 /**
@@ -204,6 +259,10 @@ export interface DomExcerptResponse extends SnapshotEnvelopeFields {
   text?: string;
   nodeCount?: number;
   truncated?: boolean;
+  /** True when PII redaction was applied to text content. MCP-SEC-002. */
+  redactionApplied?: boolean;
+  /** Warning when PII may be present in response. MCP-VC-005. */
+  redactionWarning?: string;
 }
 
 /**
@@ -217,7 +276,11 @@ export interface CaptureRegionResponse extends SnapshotEnvelopeFields {
   sizeBytes?: number;
   /** Anchor source identifier (anchorKey, nodeRef, or "rect") */
   anchorSource?: string;
+  /** P4-CR: Capture mode used — "viewport" or "fullPage" */
+  mode?: string;
   error?: CaptureError;
+  /** Warning that screenshots are not subject to redaction policy. MCP-VC-005. */
+  redactionWarning?: string;
 }
 
 /** Response from browser_list_pages (B2-CTX-001) */
@@ -240,7 +303,23 @@ export type CaptureError =
   | "capture-failed"
   | "no-target"
   | "browser-not-connected"
-  | "timeout";
+  | "timeout"
+  | "origin-blocked"       // B2-ER-007: blocked by origin policy
+  | "redaction-failed";    // B2-ER-008: fail-closed redaction error
+
+/** Relay-level errors (transient — retryable). MCP-ER-002. */
+export type RelayError =
+  | "browser-not-connected"
+  | "timeout"
+  | "action-failed";
+
+/** Security-related errors (permanent — not retryable). */
+export type SecurityError =
+  | "origin-blocked"
+  | "redaction-failed";
+
+/** All possible browser tool error codes. MCP-ER-001. */
+export type BrowserToolErrorCode = CaptureError | RelayError | SecurityError;
 
 // ── Tool Timeouts ────────────────────────────────────────────────────────────
 
@@ -272,4 +351,35 @@ export function classifyRelayError(err: unknown): "timeout" | "browser-not-conne
     return "timeout";
   }
   return "timeout";
+}
+
+// ── Retry Classification (MCP-ER-002) ────────────────────────────────────────
+
+/** Transient errors that the agent can retry. */
+const TRANSIENT_ERRORS: Record<string, number> = {
+  "browser-not-connected": 2000,
+  "timeout": 1000,
+  "action-failed": 1000,
+};
+
+/**
+ * Build a structured error response from an error code.
+ *
+ * MCP-ER-001: All errors are structured objects with `success`, `error`,
+ * `retryable`, and optionally `retryAfterMs` and `details`.
+ *
+ * MCP-ER-002: Transient errors include retry hints.
+ *
+ * @param errorCode — Machine-readable error code
+ * @param details — Optional human-readable detail
+ * @param extra — Optional extra fields (pageUrl, found) for backward compatibility
+ * @returns A fully structured PageToolError
+ */
+export function buildStructuredError(
+  errorCode: string,
+  details?: string,
+  extra?: { pageUrl?: null; found?: false },
+): PageToolError {
+  // TODO: implement — MCP-ER-001, MCP-ER-002
+  throw new Error("not implemented yet");
 }

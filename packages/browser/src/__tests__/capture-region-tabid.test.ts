@@ -137,3 +137,92 @@ describe("B2-CTX-001: capture_region tabId hub-side pass-through", () => {
     expect(payload.tabId).toBe(99);
   });
 });
+
+// ── P4-CR: Full-page screenshot mode ───────────────────────────────────────
+
+describe("P4-CR: capture_region mode parameter", () => {
+  let relay: ReturnType<typeof createRecordingRelay>;
+  let store: SnapshotRetentionStore;
+
+  beforeEach(() => {
+    relay = createRecordingRelay();
+    relay.resetRecordedPayload();
+    store = new SnapshotRetentionStore();
+  });
+
+  /**
+   * P4-CR: Default mode is "viewport" — mode field is absent from payload
+   * when not specified (backward compatibility).
+   */
+  it("P4-CR: handleCaptureRegion omits mode from relay payload when not specified (default: viewport)", async () => {
+    const args: CaptureRegionArgs = { anchorKey: "btn_1" };
+
+    await handleCaptureRegion(relay, args, store);
+
+    const payload = relay.getRecordedPayload();
+    expect(payload).not.toHaveProperty("mode");
+  });
+
+  /**
+   * P4-CR: When mode is "viewport", it is passed through to the relay.
+   */
+  it("P4-CR: handleCaptureRegion passes mode='viewport' through to relay.request", async () => {
+    const args: CaptureRegionArgs = { mode: "viewport", anchorKey: "btn_1" };
+
+    await handleCaptureRegion(relay, args, store);
+
+    const payload = relay.getRecordedPayload();
+    expect(payload.mode).toBe("viewport");
+  });
+
+  /**
+   * P4-CR: When mode is "fullPage", it is passed through to the relay.
+   */
+  it("P4-CR: handleCaptureRegion passes mode='fullPage' through to relay.request", async () => {
+    const args: CaptureRegionArgs = { mode: "fullPage" };
+
+    await handleCaptureRegion(relay, args, store);
+
+    const payload = relay.getRecordedPayload();
+    expect(payload.mode).toBe("fullPage");
+  });
+
+  /**
+   * P4-CR: rect, anchorKey, and nodeRef are still passed through to the relay
+   * even when mode is "fullPage" — the extension side ignores them for fullPage.
+   * The Hub handler performs transparent pass-through without inspecting mode.
+   */
+  it("P4-CR: handleCaptureRegion still passes rect/anchorKey/nodeRef through when mode='fullPage'", async () => {
+    const args: CaptureRegionArgs = {
+      mode: "fullPage",
+      tabId: 5,
+      anchorKey: "btn_1",
+      nodeRef: "ref-42",
+      rect: { x: 10, y: 20, width: 300, height: 200 },
+    };
+
+    await handleCaptureRegion(relay, args, store);
+
+    const payload = relay.getRecordedPayload();
+    expect(payload.tabId).toBe(5);
+    expect(payload.anchorKey).toBe("btn_1");
+    expect(payload.nodeRef).toBe("ref-42");
+    expect(payload.rect).toEqual({ x: 10, y: 20, width: 300, height: 200 });
+  });
+
+  /**
+   * P4-CR: fullPage mode can be used without any target (no rect, anchorKey, nodeRef).
+   */
+  it("P4-CR: handleCaptureRegion accepts mode='fullPage' with no target parameters", async () => {
+    const args: CaptureRegionArgs = { mode: "fullPage", tabId: 3 };
+
+    await handleCaptureRegion(relay, args, store);
+
+    const payload = relay.getRecordedPayload();
+    expect(payload.mode).toBe("fullPage");
+    expect(payload.tabId).toBe(3);
+    expect(payload).not.toHaveProperty("anchorKey");
+    expect(payload).not.toHaveProperty("nodeRef");
+    expect(payload).not.toHaveProperty("rect");
+  });
+});
