@@ -47,6 +47,8 @@ export interface NavigateArgs {
   url?: string;
   /** Maximum wait time for navigation in ms (default: 15000, max: 30000) */
   timeout?: number;
+  /** GAP-A1: Wait for a specific document readyState before returning. Default: "domcontentloaded" */
+  waitUntil?: "load" | "domcontentloaded" | "networkidle";
 }
 
 /**
@@ -58,6 +60,8 @@ export interface NavigateResponse {
   url?: string;
   /** Page title after navigation */
   title?: string;
+  /** GAP-A1: document.readyState at the time of the response */
+  readyState?: "loading" | "interactive" | "complete";
   error?: "control-not-granted" | "invalid-url" | "navigation-failed" | "timeout" | "browser-not-connected";
 }
 
@@ -166,6 +170,7 @@ export async function handleNavigate(
     if (args.type !== undefined) payload["type"] = args.type;
     if (args.url !== undefined) payload["url"] = args.url;
     if (args.timeout !== undefined) payload["timeout"] = args.timeout;
+    if (args.waitUntil !== undefined) payload["waitUntil"] = args.waitUntil;
 
     const response = await relay.request("navigate", payload, NAVIGATE_RELAY_TIMEOUT_MS);
     if (response.success && response.data && typeof response.data === "object") {
@@ -174,6 +179,7 @@ export async function handleNavigate(
         success: true,
         url: d.url as string | undefined,
         title: d.title as string | undefined,
+        readyState: d.readyState as NavigateResponse["readyState"],
       };
     }
     return { success: false, error: (response.error as NavigateResponse["error"]) ?? "navigation-failed" };
@@ -257,7 +263,7 @@ export async function handlePressKey(
 
 export function buildNavigateTool(relay: BrowserRelayLike): ExtensionToolDefinition {
   return {
-    name: "browser_navigate",
+    name: "accordo_browser_navigate",
     description: "Navigate to a URL or perform back/forward/reload in the browser tab",
     inputSchema: {
       type: "object",
@@ -266,6 +272,7 @@ export function buildNavigateTool(relay: BrowserRelayLike): ExtensionToolDefinit
         type: { type: "string", enum: ["url", "back", "forward", "reload"], description: "Navigation type. Default: 'url'" },
         url: { type: "string", description: "Target URL (required when type is 'url')" },
         timeout: { type: "number", description: "Maximum wait time for navigation in ms (default: 15000, max: 30000)" },
+        waitUntil: { type: "string", enum: ["load", "domcontentloaded", "networkidle"], description: "GAP-A1: Wait for document readyState before returning. Default: 'domcontentloaded'" },
       },
     },
     dangerLevel: "moderate",
@@ -276,7 +283,7 @@ export function buildNavigateTool(relay: BrowserRelayLike): ExtensionToolDefinit
 
 export function buildClickTool(relay: BrowserRelayLike): ExtensionToolDefinition {
   return {
-    name: "browser_click",
+    name: "accordo_browser_click",
     description: "Click an element in the browser page by uid, selector, or coordinates",
     inputSchema: {
       type: "object",
@@ -301,7 +308,7 @@ export function buildClickTool(relay: BrowserRelayLike): ExtensionToolDefinition
 
 export function buildTypeTool(relay: BrowserRelayLike): ExtensionToolDefinition {
   return {
-    name: "browser_type",
+    name: "accordo_browser_type",
     description: "Type text into an element or the page",
     inputSchema: {
       type: "object",
@@ -323,7 +330,7 @@ export function buildTypeTool(relay: BrowserRelayLike): ExtensionToolDefinition 
 
 export function buildPressKeyTool(relay: BrowserRelayLike): ExtensionToolDefinition {
   return {
-    name: "browser_press_key",
+    name: "accordo_browser_press_key",
     description: "Press a keyboard key or key combination in the browser",
     inputSchema: {
       type: "object",

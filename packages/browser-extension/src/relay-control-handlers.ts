@@ -90,6 +90,13 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
       await sendCommand(tabId, "Page.reload");
     }
 
+    // GAP-A1: Get document.readyState after navigation
+    const readyStateResult = await sendCommand<{ result: { value: string } }>(tabId, "Runtime.evaluate", {
+      expression: "document.readyState",
+      returnByValue: true,
+    });
+    const readyState = (readyStateResult?.result?.value ?? "interactive") as "loading" | "interactive" | "complete";
+
     // Get frame tree for title
     const frameTree = await sendCommand<{ frameTree: { frame: { title: string } } }>(tabId, "Page.getFrameTree");
     const title = frameTree?.frameTree?.frame?.title ?? "";
@@ -100,7 +107,7 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
     return {
       requestId: request.requestId,
       success: true,
-      data: { url, title },
+      data: { url, title, readyState },
     };
   } catch (e) {
     const msg = (e as Error).message;

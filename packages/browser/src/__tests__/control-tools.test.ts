@@ -2,47 +2,47 @@
  * control-tools.test.ts
  *
  * Tests for M110-TC — browser_tab_control MCP Tools
- * (browser_navigate, browser_click, browser_type, browser_press_key)
+ * (accordo_browser_navigate, accordo_browser_click, accordo_browser_type, accordo_browser_press_key)
  *
  * These tests validate the contract defined in REQ-TC-001 through REQ-TC-017:
- * - REQ-TC-001: browser_navigate creates new tab when no tabId, navigates to URL
- * - REQ-TC-002: browser_navigate navigates existing tab when tabId provided
- * - REQ-TC-003: browser_navigate fails with PERMISSION_REQUIRED when permission denied
- * - REQ-TC-004: browser_navigate sends correct "navigate" relay action to extension
- * - REQ-TC-005: browser_click resolves uid to viewport coordinates via RESOLVE_ELEMENT_COORDS
- * - REQ-TC-006: browser_click dispatches Input.dispatchMouseEvent with correct x/y
- * - REQ-TC-007: browser_click fails with PERMISSION_REQUIRED if tab not granted
- * - REQ-TC-008: browser_click supports dblClick: true option
- * - REQ-TC-009: browser_type resolves uid to input area coordinates
- * - REQ-TC-010: browser_type dispatches Input.dispatchKeyEvent for each char (keydown+keyup)
- * - REQ-TC-011: browser_type fails with PERMISSION_REQUIRED if tab not granted
- * - REQ-TC-012: browser_type supports pressEnter/pressTab/pressEscape shortcuts
- * - REQ-TC-013: browser_press_key dispatches correct Input.dispatchKeyEvent for key
- * - REQ-TC-014: browser_press_key handles modifier keys (Shift/Control/Alt/Meta) bitmask
- * - REQ-TC-015: browser_press_key uses KeyCodeMap for named keys
+ * - REQ-TC-001: accordo_browser_navigate creates new tab when no tabId, navigates to URL
+ * - REQ-TC-002: accordo_browser_navigate navigates existing tab when tabId provided
+ * - REQ-TC-003: accordo_browser_navigate fails with PERMISSION_REQUIRED when permission denied
+ * - REQ-TC-004: accordo_browser_navigate sends correct "navigate" relay action to extension
+ * - REQ-TC-005: accordo_browser_click resolves uid to viewport coordinates via RESOLVE_ELEMENT_COORDS
+ * - REQ-TC-006: accordo_browser_click dispatches Input.dispatchMouseEvent with correct x/y
+ * - REQ-TC-007: accordo_browser_click fails with PERMISSION_REQUIRED if tab not granted
+ * - REQ-TC-008: accordo_browser_click supports dblClick: true option
+ * - REQ-TC-009: accordo_browser_type resolves uid to input area coordinates
+ * - REQ-TC-010: accordo_browser_type dispatches Input.dispatchKeyEvent for each char (keydown+keyup)
+ * - REQ-TC-011: accordo_browser_type fails with PERMISSION_REQUIRED if tab not granted
+ * - REQ-TC-012: accordo_browser_type supports pressEnter/pressTab/pressEscape shortcuts
+ * - REQ-TC-013: accordo_browser_press_key dispatches correct Input.dispatchKeyEvent for key
+ * - REQ-TC-014: accordo_browser_press_key handles modifier keys (Shift/Control/Alt/Meta) bitmask
+ * - REQ-TC-015: accordo_browser_press_key uses KeyCodeMap for named keys
  * - REQ-TC-016: PERMISSION_REQUIRED when hasPermission(tabId) returns false
  * - REQ-TC-017: TAB_NOT_FOUND when tabId refers to non-existent tab
  *
  * API checklist (buildNavigateTool):
- * - name: "browser_navigate" → registered
+ * - name: "accordo_browser_navigate" → registered
  * - description mentions navigate/URL/back/forward/reload
  * - schema includes tabId?, type?, url?, timeout?
  * - dangerLevel: "moderate"
  *
  * API checklist (buildClickTool):
- * - name: "browser_click" → registered
+ * - name: "accordo_browser_click" → registered
  * - description mentions uid/selector/coordinates click target
  * - schema includes tabId?, uid?, selector?, coordinates?, dblClick?
  * - dangerLevel: "moderate"
  *
  * API checklist (buildTypeTool):
- * - name: "browser_type" → registered
+ * - name: "accordo_browser_type" → registered
  * - description mentions typing text
  * - schema includes tabId?, text, uid?, selector?, clearFirst?, submitKey?
  * - dangerLevel: "moderate"
  *
  * API checklist (buildPressKeyTool):
- * - name: "browser_press_key" → registered
+ * - name: "accordo_browser_press_key" → registered
  * - description mentions key/modifier support
  * - schema includes tabId?, key
  * - dangerLevel: "moderate"
@@ -160,7 +160,7 @@ describe("buildNavigateTool", () => {
   it("REQ-TC-001..004: returns browser_navigate tool definition", () => {
     const relay = makeRelayResolve<NavigateResponse>({ success: true, url: "https://example.com" });
     const tool = buildNavigateTool(relay);
-    expect(tool.name).toBe("browser_navigate");
+    expect(tool.name).toBe("accordo_browser_navigate");
   });
 
   it("REQ-TC-001..004: tool description mentions URL navigation", () => {
@@ -193,7 +193,7 @@ describe("buildClickTool", () => {
   it("REQ-TC-005..008: returns browser_click tool definition", () => {
     const relay = makeRelayResolve<ClickResponse>({ success: true });
     const tool = buildClickTool(relay);
-    expect(tool.name).toBe("browser_click");
+    expect(tool.name).toBe("accordo_browser_click");
   });
 
   it("REQ-TC-005..008: tool description mentions uid/selector/coordinates", () => {
@@ -234,7 +234,7 @@ describe("buildTypeTool", () => {
   it("REQ-TC-009..012: returns browser_type tool definition", () => {
     const relay = makeRelayResolve<TypeResponse>({ success: true });
     const tool = buildTypeTool(relay);
-    expect(tool.name).toBe("browser_type");
+    expect(tool.name).toBe("accordo_browser_type");
   });
 
   it("REQ-TC-009..012: tool description mentions text typing", () => {
@@ -277,7 +277,7 @@ describe("buildPressKeyTool", () => {
   it("REQ-TC-013..015: returns browser_press_key tool definition", () => {
     const relay = makeRelayResolve<PressKeyResponse>({ success: true, key: "Enter" });
     const tool = buildPressKeyTool(relay);
-    expect(tool.name).toBe("browser_press_key");
+    expect(tool.name).toBe("accordo_browser_press_key");
   });
 
   it("REQ-TC-013..015: tool description mentions key/modifier support", () => {
@@ -318,10 +318,10 @@ describe("buildControlTools", () => {
     const tools = buildControlTools(relay);
     expect(tools).toHaveLength(4);
     const names = tools.map((t) => t.name);
-    expect(names).toContain("browser_navigate");
-    expect(names).toContain("browser_click");
-    expect(names).toContain("browser_type");
-    expect(names).toContain("browser_press_key");
+    expect(names).toContain("accordo_browser_navigate");
+    expect(names).toContain("accordo_browser_click");
+    expect(names).toContain("accordo_browser_type");
+    expect(names).toContain("accordo_browser_press_key");
   });
 });
 
@@ -440,6 +440,89 @@ describe("handleNavigate — permission / tab-not-found error handling", () => {
     ) as NavigateResponse;
     expect(result.success).toBe(false);
     expect(result.error).toBe("browser-not-connected");
+  });
+});
+
+// ── GAP-A1: readyState in navigate response ──────────────────────────────────
+
+describe("GAP-A1: handleNavigate readyState", () => {
+  it("GAP-A1: returns readyState from relay response", async () => {
+    const relay = makeRelayResolve<NavigateResponse>({
+      success: true,
+      url: "https://example.com",
+      title: "Example",
+      readyState: "complete",
+    });
+    const result = await expectHandle(
+      () => handleNavigate(relay, { url: "https://example.com" }),
+      "GAP-A1"
+    ) as NavigateResponse;
+    expect(result.success).toBe(true);
+    expect(result.readyState).toBe("complete");
+  });
+
+  it("GAP-A1: readyState is undefined when relay does not provide it", async () => {
+    const relay = makeRelayResolve<NavigateResponse>({
+      success: true,
+      url: "https://example.com",
+      title: "Example",
+    });
+    const result = await expectHandle(
+      () => handleNavigate(relay, { url: "https://example.com" }),
+      "GAP-A1"
+    ) as NavigateResponse;
+    expect(result.success).toBe(true);
+    expect(result.readyState).toBeUndefined();
+  });
+
+  it("GAP-A1: sends waitUntil parameter to relay when specified", async () => {
+    const relay = makeRelayResolve<NavigateResponse>({
+      success: true,
+      url: "https://example.com",
+    });
+    await expectHandle(
+      () => handleNavigate(relay, { url: "https://example.com", waitUntil: "networkidle" }),
+      "GAP-A1"
+    );
+    expect(relay.request).toHaveBeenCalledWith(
+      "navigate",
+      expect.objectContaining({ waitUntil: "networkidle" }),
+      expect.any(Number)
+    );
+  });
+
+  it("GAP-A1: omits waitUntil from relay payload when not specified (backward compatible)", async () => {
+    const relay = makeRelayResolve<NavigateResponse>({
+      success: true,
+      url: "https://example.com",
+    });
+    await expectHandle(
+      () => handleNavigate(relay, { url: "https://example.com" }),
+      "GAP-A1"
+    );
+    const calls = relay.request.mock.calls;
+    const payload = calls[calls.length - 1][1] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("waitUntil");
+  });
+});
+
+// ── buildNavigateTool: GAP-A1 schema ────────────────────────────────────────
+
+describe("buildNavigateTool — GAP-A1 waitUntil schema", () => {
+  it("GAP-A1: tool schema includes waitUntil property", () => {
+    const relay = makeRelayResolve<NavigateResponse>({ success: true });
+    const tool = buildNavigateTool(relay);
+    const schema = tool.inputSchema as { properties: Record<string, unknown> };
+    expect(schema.properties).toHaveProperty("waitUntil");
+  });
+
+  it("GAP-A1: waitUntil enum includes load, domcontentloaded, networkidle", () => {
+    const relay = makeRelayResolve<NavigateResponse>({ success: true });
+    const tool = buildNavigateTool(relay);
+    const schema = tool.inputSchema as { properties: { waitUntil: { enum: string[] } } };
+    expect(schema.properties.waitUntil.enum).toContain("load");
+    expect(schema.properties.waitUntil.enum).toContain("domcontentloaded");
+    expect(schema.properties.waitUntil.enum).toContain("networkidle");
   });
 });
 
