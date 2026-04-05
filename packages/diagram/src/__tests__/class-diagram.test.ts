@@ -309,13 +309,15 @@ describe("parseMermaid — classDiagram relationships [REQ-CD-04]", () => {
     expect(result.diagram.edges).toHaveLength(5);
   });
 
-  it("relationship from/to are correct", async () => {
+  it("relationship from/to are correct (parent above child for inheritance)", async () => {
     const result = await parseMermaid("classDiagram\n  class Animal");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     const inheritance = result.diagram.edges.find((e) => e.type === "inheritance");
-    expect(inheritance?.from).toBe("Dog");
-    expect(inheritance?.to).toBe("Animal");
+    // For EXTENSION (B extends A): id1=B, id2=A. We store from=A (parent), to=B (child)
+    // so Dagre places the child BELOW the parent in TB layout.
+    expect(inheritance?.from).toBe("Animal");
+    expect(inheritance?.to).toBe("Dog");
   });
 
   it("relationship label text is extracted", async () => {
@@ -383,10 +385,13 @@ describe("parseMermaid — classDiagram relationships [REQ-CD-04]", () => {
       notes: new Map(),
       direction: "TD",
     });
-    const result = await parseMermaid("classDiagram\n  class A");
+    const result = await parseMermaid(`classDiagram\n  class A`);
     expect(result.valid).toBe(true);
     if (!result.valid) return;
-    const abEdges = result.diagram.edges.filter((e) => e.from === "A" && e.to === "B");
+    // For EXTENSION (B extends A): id1=B (child), id2=A (parent).
+    // We store from=A (parent), to=B (child).
+    // So with id1="A", id2="B": from="B", to="A" (reversed).
+    const abEdges = result.diagram.edges.filter((e) => e.from === "B" && e.to === "A");
     expect(abEdges.map((e) => e.ordinal)).toEqual([0, 1, 2]);
   });
 });

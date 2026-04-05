@@ -147,9 +147,19 @@ export function parseClassDiagram(db: ClassDiagramDb): ParsedDiagram {
     const key = `${r.id1}:${r.id2}`;
     const ordinal = ordinalCounter.get(key) ?? 0;
     ordinalCounter.set(key, ordinal + 1);
+
+    // For inheritance (EXTENSION / "A <|-- B" where B extends A):
+    // mermaid db: id1=B (child), id2=A (parent).
+    // We store: from=parent, to=child so Dagre places child BELOW parent
+    // (Dagre's Sugiyama treats "from" as the node ABOVE "to" in TB layout).
+    // For all other relation types, id1→id2 is the natural edge direction.
+    const isInheritance = r.relation.type1 === RELATION_TYPE.EXTENSION;
+    const from = isInheritance ? r.id2 : r.id1;
+    const to   = isInheritance ? r.id1 : r.id2;
+
     return {
-      from: r.id1,
-      to: r.id2,
+      from,
+      to,
       label: r.title ?? "",
       ordinal,
       type: EDGE_TYPE_MAP[r.relation.type1] ?? "arrow",

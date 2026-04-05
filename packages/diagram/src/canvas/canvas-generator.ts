@@ -44,6 +44,108 @@ function edgeKey(from: string, to: string, ordinal: number): string {
   return `${from}->${to}:${ordinal}`;
 }
 
+// ── Obstacle detection for arrow routing ───────────────────────────────────────
+
+/**
+ * Check if the axis-aligned bounding box intersects the line segment p1→p2.
+ * Uses the separating axis theorem for axis-aligned boxes.
+ */
+function boxIntersectsSegment(
+  bx: number, by: number, bw: number, bh: number,
+  p1: [number, number], p2: [number, number],
+): boolean {
+  // Check if either endpoint is inside the box
+  if (p1[0]! >= bx && p1[0]! <= bx + bw && p1[1]! >= by && p1[1]! <= by + bh) return true;
+  if (p2[0]! >= bx && p2[0]! <= bx + bw && p2[1]! >= by && p2[1]! <= by + bh) return true;
+
+  // Check intersection with each box edge using cross-product method
+  const minX = Math.min(p1[0]!, p2[0]!);
+  const maxX = Math.max(p1[0]!, p2[0]!);
+  const minY = Math.min(p1[1]!, p2[1]!);
+  const maxY = Math.max(p1[1]!, p2[1]!);
+
+  // If the bounding boxes don't overlap at all, no intersection
+  if (maxX < bx || minX > bx + bw) return false;
+  if (maxY < by || minY > by + bh) return false;
+
+  // Check if the line segment crosses the box — use the bounding box of the segment
+  // as a quick reject, then do precise checks
+  const [ax, ay] = p1;
+  const [bx2, by2] = p2;
+
+  // For each edge of the box, check if segment crosses it
+  const edges: Array<[[number, number], [number, number]]> = [
+    [[bx, by], [bx + bw, by]],           // top
+    [[bx + bw, by], [bx + bw, by + bh]], // right
+    [[bx, by + bh], [bx, by]],           // left (going down)
+    [[bx, by + bh], [bx + bw, by + bh]], // bottom
+  ];
+
+  for (const [[x1, y1], [x2, y2]] of edges) {
+    if (segmentsIntersect([ax, ay], [bx2, by2], [x1, y1], [x2, y2])) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function segmentsIntersect(
+  p1: [number, number], p2: [number, number],
+  p3: [number, number], p4: [number, number],
+): boolean {
+  const d1x = p2[0]! - p1[0]!;
+  const d1y = p2[1]! - p1[1]!;
+  const d2x = p4[0]! - p3[0]!;
+  const d2y = p4[1]! - p3[1]!;
+  const cross = d1x * d2y - d1y * d2x;
+  if (Math.abs(cross) < 1e-10) return false; // parallel
+
+  const dx = p3[0]! - p1[0]!;
+  const dy = p3[1]! - p1[1]!;
+  const t = (dx * d2y - dy * d2x) / cross;
+  const u = (dx * d1y - dy * d1x) / cross;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+
+/**
+ * Detect if the straight-line path between two nodes would pass through
+ * any intermediate node. If so, the caller should use orthogonal routing.
+ *
+ * @param fromId  Source node ID
+ * @param toId    Target node ID
+ * @param nodes   All node layouts (from LayoutStore)
+ * @param margin  Extra padding around obstacle boxes (default 5px)
+ */
+function wouldPassThroughObstacle(
+  fromId: string,
+  toId: string,
+  nodes: Record<string, { x: number; y: number; w: number; h: number }>,
+  margin: number = 5,
+): boolean {
+  const fromNL = nodes[fromId];
+  const toNL = nodes[toId];
+  if (!fromNL || !toNL) return false;
+
+  const sc: [number, number] = [fromNL.x + fromNL.w / 2, fromNL.y + fromNL.h / 2];
+  const tc: [number, number] = [toNL.x + toNL.w / 2, toNL.y + toNL.h / 2];
+
+  for (const [nodeId, nl] of Object.entries(nodes)) {
+    if (nodeId === fromId || nodeId === toId) continue;
+    // Add small margin to the obstacle box
+    const bx = nl.x - margin;
+    const by = nl.y - margin;
+    const bw = nl.w + 2 * margin;
+    const bh = nl.h + 2 * margin;
+
+    if (boxIntersectsSegment(bx, by, bw, bh, sc, tc)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Convert Mermaid label escapes to Excalidraw newlines.
  * Mermaid uses \\n (escaped backslash-n) in label text for line breaks,
@@ -279,8 +381,17 @@ export function generateCanvas(
 
     const key = edgeKey(edge.from, edge.to, edge.ordinal);
     const edgeL = resolvedLayout.edges[key];
-    const routing = edgeL?.routing ?? "auto";
+
+    // Use orthogonal routing when the straight-line path between source and target
+    // would pass through any intermediate node. This prevents edges from visually
+    // "cutting through" other nodes in the diagram.
+    let routing = edgeL?.routing ?? "auto";
     const waypoints = edgeL?.waypoints ?? [];
+    if (routing === "auto" && waypoints.length === 0) {
+      if (wouldPassThroughObstacle(edge.from, edge.to, resolvedLayout.nodes)) {
+        routing = "orthogonal";
+      }
+    }
 
     const sourceBB = { x: fromLayout.x, y: fromLayout.y, w: fromLayout.w, h: fromLayout.h };
     const targetBB = { x: toLayout.x, y: toLayout.y, w: toLayout.w, h: toLayout.h };
