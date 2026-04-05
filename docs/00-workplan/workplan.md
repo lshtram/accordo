@@ -1,7 +1,7 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
-**Date:** 2026-04-04  
-**Status:** Wave 1 + Priority 0 + Priority H (diagram flowchart debt) complete. Browser MCP evaluation: **31/45 → 45/45 plan** at `docs/50-reviews/M110-TC-45-45-plan.md`. All P2 security features complete + live verified.  
+**Date:** 2026-04-05  
+**Status:** Phase 1 + Phase 2 of Priority J complete. **40/45** — 5 points to go. See `docs/50-reviews/M110-TC-45-45-plan.md` for remaining TDD gaps.  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
@@ -43,26 +43,17 @@
 | Phase | Gap | Effort | Score Gain | Status |
 |---|---|---:|---:|:---:|
 | Phase 1 | GAP-C1: A11y states; GAP-F1: actionability+eventability; GAP-H1: error taxonomy+health | 3d | +5 → 36 | ✅ DONE (`fb4b8ad`) |
-| Phase 2 | GAP-E1: PNG format; GAP-E2: screenshot modes; GAP-A1: readyState | 1.5d | +3 → 39 | |
-| Phase 3 | GAP-D1: geometry helpers+viewport ratios+containers; GAP-D2: z-order | 4d | +3 → 42 | |
-| Phase 4 | GAP-G1: retention control; GAP-I1: screenshot redaction+TTL | 3d | +3 → 45 | |
+| Phase 2 | GAP-E1: PNG format; GAP-E2: screenshot modes; GAP-A1: readyState; GAP-G1: retention control | 2d | +4 → 40 | ✅ DONE (E1:`3d62daf`, E2:`3d62daf`, A1:`c0d98eb`, G1:`d3244ac` + fixes:`2f6b5cd`) |
+| Phase 3 | GAP-D1: geometry helpers+viewport ratios+containers; GAP-D2: z-order | 4d | +3 → 43 | |
+| Phase 4 | GAP-I1: screenshot redaction+TTL | 2.5d | +2 → 45 | |
 
-**3 new MCP tools:** `get_spatial_relations`, `manage_snapshots`, `browser_health`  
-**2 new content script modules:** `spatial-helpers.ts`, screenshot redaction helper  
-**Total: ~11.5 days**  
-**Phase 1 tests:** 48 new (16 a11y-states + 11 actionability + 21 health-tool)  
-**Review artifacts:** `docs/reviews/M110-TC-45-45-phase1-D2.md`, `docs/reviews/M110-TC-45-45-phase1-D2-recheck.md`, `docs/reviews/M110-TC-45-45-phase1-review.md`
+**New MCP tools:** `manage_snapshots` (GAP-G1 ✅), `browser_health` (GAP-H1 ✅)  
+**Remaining:** `get_spatial_relations` (GAP-D1), screenshot redaction helper (GAP-I1)  
+**Phase 2 tests:** 23 new tests (662/663 passing, 1 pre-existing flaky)  
+**Phase 2 review artifacts:** `docs/reviews/M110-TC-gaps-E1-E2-A1-G1-D2.md`, `docs/reviews/M110-TC-gaps-E1-E2-A1-G1-D2-recheck.md`  
+**Phase 2 testing guide:** `docs/testing-guide-m110tc-phase2.md`
 
 ---
-
-### Priority A — Browser continuity for agents (MUST-HAVE)
-
-| Item | Status | Evidence |
-|---|---|---|
-| **AudioQueue** — singleton audio player with receipt-based FIFO sequencing | ✅ **DONE** (`1a419d6`) | 368 tests passing; 29 audio-queue tests; Phase A→B→C→D→D3→E complete |
-
-**AudioQueue detail:** `packages/voice/src/core/audio/audio-queue.ts` + integration into `streamingSpeak()` (AQ-INT-01), `doSpeakText()` (AQ-INT-02), `createReadAloudTool()` (AQ-INT-03). Prevents O(N×sentences) aplay process explosion from overlapping fire-and-forget streaming calls. Root cause was two-fold: (1) streamingSpeak pre-spawned next player before current finished, and (2) every sentence in a streaming call spawned its own player without any serialization. Fix: single persistent process playing chunks sequentially via FIFO queue, each enqueue() returns a receipt Promise that resolves when that chunk finishes. Review artifacts: `docs/reviews/audio-queue-phase-a.md`, `docs/reviews/audio-queue-phase-a-review.md`, `docs/reviews/audio-queue-phase-c-assessment.md`, `docs/reviews/audio-queue-phase-d.md`. Testing guide: `docs/30-development/testing-guide-audio-queue.md`.
-
 
 ---
 
