@@ -67,13 +67,18 @@ type WaitUntil = "load" | "domcontentloaded" | "networkidle";
  * Wait for a Page.lifecycleEvent with the given name.
  */
 function waitForLifecycleEvent(tabId: number, eventName: string): Promise<void> {
-  return new Promise((resolve) => {
-    const listener = (
-      _source: unknown,
-      _method: string,
-      params?: Record<string, unknown>
-    ) => {
-      if (params?.name === eventName) {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`waitUntil ${eventName} timed out`)), 30000)
+  );
+
+  const waitForEvent = new Promise<void>((resolve) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const listener = (source: unknown, _method: string, params?: Record<string, unknown>) => {
+      if (
+        _method === "Page.lifecycleEvent" &&
+        (source as { tabId?: number }).tabId === tabId &&
+        params?.name === eventName
+      ) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         chrome.debugger.onEvent.removeListener(listener as any);
         resolve();
@@ -82,6 +87,8 @@ function waitForLifecycleEvent(tabId: number, eventName: string): Promise<void> 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     chrome.debugger.onEvent.addListener(listener as any);
   });
+
+  return Promise.race([waitForEvent, timeout]);
 }
 
 export async function handleNavigate(request: RelayActionRequest): Promise<RelayActionResponse> {
@@ -108,7 +115,7 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
 
       if (waitUntil === "load" || waitUntil === "networkidle") {
         // Wait for the page to reach the requested lifecycle state
-        const eventName = waitUntil === "load" ? "load" : "networkidle";
+        const eventName = waitUntil === "load" ? "load" : "networkIdle";
         await sendCommand(tabId, "Page.setLifecycleEventsEnabled", { enabled: true });
         const lifecyclePromise = waitForLifecycleEvent(tabId, eventName);
         await sendCommand(tabId, "Page.navigate", { url });
