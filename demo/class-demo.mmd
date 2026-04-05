@@ -1,0 +1,23 @@
+classDiagram
+direction TB
+class Animal {
+    +String name
+    +int age
+    +makeSound() string
+}
+class Dog {
+    +String breed
+    +bark() string
+}
+class Cat {
+    +String color
+    +meow() string
+}
+Animal <|-- Dog : inherits
+Animal <|-- Cat : inherits
+Dog o-- Cat : neighbors
+class Zoo {
+    +List~Animal~ animals
+    +addAnimal(Animal)
+}
+Zoo *-- Animal : contains

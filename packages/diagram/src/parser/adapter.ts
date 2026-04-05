@@ -14,8 +14,11 @@ import type {
   SpatialDiagramType,
   ParseResult,
   RenameAnnotation,
+  ParsedDiagram,
 } from "../types.js";
 import { parseFlowchart } from "./flowchart.js";
+import { parseStateDiagram } from "./state-diagram.js";
+import { parseClassDiagram } from "./class-diagram.js";
 
 // Node.js compatibility: Mermaid 11 bundles DOMPurify and initialises it as a
 // module-level variable (`var yt = sr()`) when mermaid's chunks are first
@@ -136,7 +139,7 @@ export async function parseMermaid(source: string): Promise<ParseResult> {
           valid: false,
           error: {
             line: 0,
-            message: `Diagram type '${m[1]}' is not supported by this extension. Only spatial types are supported: flowchart, classDiagram, stateDiagram-v2, erDiagram, mindmap, block-beta.`,
+            message: `Diagram type '${m[1]}' is not supported by this extension.`,
           },
         };
       }
@@ -145,16 +148,6 @@ export async function parseMermaid(source: string): Promise<ParseResult> {
     return {
       valid: false,
       error: { line: 0, message: "Unrecognised or empty diagram source" },
-    };
-  }
-
-  if (type !== "flowchart") {
-    return {
-      valid: false,
-      error: {
-        line: 0,
-        message: `Diagram type '${type}' is not supported in diag.1 (flowchart only)`,
-      },
     };
   }
 
@@ -191,11 +184,31 @@ export async function parseMermaid(source: string): Promise<ParseResult> {
     };
   }
 
-  // Mermaid 11.x stores the parsed flowchart database at diag.db.
+  // Mermaid 11.x stores the parsed diagram database at diag.db.
   // The top-level diag.parser and diag.parser.yy are internal bookkeeping
   // objects that are not needed here.
   const db = diag.db;
-  const parsed = parseFlowchart(db);
+
+  // Dispatch to the appropriate parser based on diagram type.
+  const PARSERS: Record<string, (db: MermaidDb) => ParsedDiagram> = {
+    flowchart: parseFlowchart,
+    "stateDiagram-v2": parseStateDiagram,
+    classDiagram: parseClassDiagram,
+  };
+
+  const parser = PARSERS[type];
+  if (!parser) {
+    const registered = Object.keys(PARSERS).join(", ");
+    return {
+      valid: false,
+      error: {
+        line: 0,
+        message: `Diagram type '${type}' is not supported. Supported types: ${registered}`,
+      },
+    };
+  }
+
+  const parsed = parser(db);
   return {
     valid: true,
     diagram: { ...parsed, type, renames },

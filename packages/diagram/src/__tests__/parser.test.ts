@@ -11,6 +11,19 @@
  * The mock returns a controlled `parser.yy` db object per test.
  *
  * Requirements: diag_arch_v4.2.md §6, diag_workplan.md §5 A2 test table
+ *
+ * API checklist:
+ *   detectDiagramType — 14 tests
+ *   isSpatialType — 2 tests
+ *   parseMermaid — node extraction 3 tests
+ *   parseMermaid — edge extraction 7 tests
+ *   parseMermaid — edge ordinals 1 test
+ *   parseMermaid — cluster extraction 4 tests
+ *   parseMermaid — direction 5 tests
+ *   parseMermaid — rename annotations 3 tests
+ *   parseMermaid — error handling 5 tests
+ *   parseMermaid — unsupported diagram types 5 tests
+ *   parseMermaid — vertex text fallback 2 tests
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -603,6 +616,35 @@ describe("parseMermaid — unsupported diagram types", () => {
     mermaidMock.default.mermaidAPI.getDiagramFromText.mockClear();
     await parseMermaid("sequenceDiagram\nA->>B: hi");
     expect(mermaidMock.default.mermaidAPI.getDiagramFromText).not.toHaveBeenCalled();
+  });
+
+  it("REQ-R5: classDiagram is now supported and returns valid:true", async () => {
+    // Provide a classDiagram-style mock db (classes Map, relations, notes, direction)
+    setMockDb({
+      classes: new Map([["User", { id: "User", type: "", label: "User", text: "User", shape: "classBox", cssClasses: "", members: [], methods: [], annotations: [], domId: "User" }]]),
+      relations: [],
+      notes: new Map(),
+      direction: "TD",
+    } as unknown as MockDb);
+
+    const result = await parseMermaid("classDiagram\n  class User");
+
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+
+    expect(result.diagram.type).toBe("classDiagram");
+    expect(result.diagram.nodes.has("User")).toBe(true);
+  });
+
+  it("REQ-R6: sequenceDiagram remains unsupported without advertising non-registered parser support", async () => {
+    const result = await parseMermaid("sequenceDiagram\n  Alice->>Bob: hi");
+
+    expect(result.valid).toBe(false);
+    if (result.valid) return;
+
+    expect(result.error.message).toContain("sequenceDiagram");
+    expect(result.error.message).toContain("not supported");
+    expect(result.error.message).not.toContain("erDiagram, mindmap, block-beta");
   });
 });
 
