@@ -17,6 +17,8 @@ import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { BrowserRelayLike, SnapshotEnvelopeFields } from "./types.js";
 import { hasSnapshotEnvelope } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
+import type { SecurityConfig } from "./security/index.js";
+import { DEFAULT_SECURITY_CONFIG } from "./security/index.js";
 
 import {
   type CaptureRegionArgs,
@@ -172,10 +174,11 @@ export function resolveAnchorMetadata(args: InspectElementArgs): {
 export function buildPageUnderstandingTools(
   relay: BrowserRelayLike,
   store: SnapshotRetentionStore,
+  security: SecurityConfig = DEFAULT_SECURITY_CONFIG,
 ): ExtensionToolDefinition[] {
   return [
     {
-      name: "browser_get_page_map",
+      name: "accordo_browser_get_page_map",
       description: "Collect a structured page map from the current document",
       inputSchema: {
         type: "object",
@@ -205,14 +208,24 @@ export function buildPageUnderstandingTools(
             },
             required: ["x", "y", "width", "height"],
           },
+          allowedOrigins: {
+            type: "array",
+            items: { type: "string" },
+            description: "Only allow data from these origins. Empty = use global policy.",
+          },
+          deniedOrigins: {
+            type: "array",
+            items: { type: "string" },
+            description: "Block data from these origins. Takes precedence over allowedOrigins.",
+          },
         },
       },
       dangerLevel: "safe",
       idempotent: true,
-      handler: (args) => handleGetPageMap(relay, args as GetPageMapArgs, store),
+      handler: (args) => handleGetPageMap(relay, args as GetPageMapArgs, store, security),
     },
     {
-      name: "browser_inspect_element",
+      name: "accordo_browser_inspect_element",
       description: "Deep inspection of a specific DOM element",
       inputSchema: {
         type: "object",
@@ -221,14 +234,24 @@ export function buildPageUnderstandingTools(
           ref: { type: "string", description: "Element reference from page map" },
           selector: { type: "string", description: "CSS selector to find element" },
           nodeId: { type: "number", description: "B2-SV-006: Stable node ID from a page map snapshot" },
+          allowedOrigins: {
+            type: "array",
+            items: { type: "string" },
+            description: "Only allow data from these origins. Empty = use global policy.",
+          },
+          deniedOrigins: {
+            type: "array",
+            items: { type: "string" },
+            description: "Block data from these origins. Takes precedence over allowedOrigins.",
+          },
         },
       },
       dangerLevel: "safe",
       idempotent: true,
-      handler: (args) => handleInspectElement(relay, args as InspectElementArgs, store),
+      handler: (args) => handleInspectElement(relay, args as InspectElementArgs, store, security),
     },
     {
-      name: "browser_get_dom_excerpt",
+      name: "accordo_browser_get_dom_excerpt",
       description: "Get a sanitized HTML excerpt for a DOM subtree",
       inputSchema: {
         type: "object",
@@ -238,14 +261,24 @@ export function buildPageUnderstandingTools(
           selector: { type: "string", description: "CSS selector for the root element" },
           maxDepth: { type: "number", description: "Maximum depth (default 3)" },
           maxLength: { type: "number", description: "Maximum character length (default 2000)" },
+          allowedOrigins: {
+            type: "array",
+            items: { type: "string" },
+            description: "Only allow data from these origins. Empty = use global policy.",
+          },
+          deniedOrigins: {
+            type: "array",
+            items: { type: "string" },
+            description: "Block data from these origins. Takes precedence over allowedOrigins.",
+          },
         },
       },
       dangerLevel: "safe",
       idempotent: true,
-      handler: (args) => handleGetDomExcerpt(relay, args as unknown as GetDomExcerptArgs, store),
+      handler: (args) => handleGetDomExcerpt(relay, args as unknown as GetDomExcerptArgs, store, security),
     },
     {
-      name: "browser_capture_region",
+      name: "accordo_browser_capture_region",
       description: "Capture a cropped screenshot of a specific element or region",
       inputSchema: {
         type: "object",
@@ -265,14 +298,25 @@ export function buildPageUnderstandingTools(
           },
           padding: { type: "number", description: "Padding around element (default 8)" },
           quality: { type: "number", description: "JPEG quality 1-100 (default 70)" },
+          format: { type: "string", enum: ["jpeg", "png"], description: "GAP-E1: Output image format — 'jpeg' (default) or 'png'" },
+          allowedOrigins: {
+            type: "array",
+            items: { type: "string" },
+            description: "Only allow data from these origins. Empty = use global policy.",
+          },
+          deniedOrigins: {
+            type: "array",
+            items: { type: "string" },
+            description: "Block data from these origins. Takes precedence over allowedOrigins.",
+          },
         },
       },
       dangerLevel: "safe",
       idempotent: true,
-      handler: (args) => handleCaptureRegion(relay, args as CaptureRegionArgs, store),
+      handler: (args) => handleCaptureRegion(relay, args as CaptureRegionArgs, store, security),
     },
     {
-      name: "browser_list_pages",
+      name: "accordo_browser_list_pages",
       description: "List all open browser tabs/pages with their tabId, url, title, and active state.",
       inputSchema: {
         type: "object",
@@ -285,7 +329,7 @@ export function buildPageUnderstandingTools(
       handler: (args) => handleListPages(relay, args as ListPagesArgs),
     },
     {
-      name: "browser_select_page",
+      name: "accordo_browser_select_page",
       description: "Select (activate) a browser tab by its tabId.",
       inputSchema: {
         type: "object",

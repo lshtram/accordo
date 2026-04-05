@@ -128,6 +128,8 @@ export interface CaptureRegionArgs {
   /** P4-CR: Capture mode — "viewport" (default) captures visible area, "fullPage" captures entire scrollable page.
    * When mode is "fullPage", rect, anchorKey, and nodeRef are ignored. */
   mode?: "viewport" | "fullPage";
+  /** GAP-E1: Output format for the captured image — "jpeg" (default) or "png". */
+  format?: "jpeg" | "png";
   /** I2-001: Allowed origins for this request. Overrides global policy. */
   allowedOrigins?: string[];
   /** I2-001: Denied origins for this request. Overrides global policy. */
@@ -281,6 +283,8 @@ export interface CaptureRegionResponse extends SnapshotEnvelopeFields {
   error?: CaptureError;
   /** Warning that screenshots are not subject to redaction policy. MCP-VC-005. */
   redactionWarning?: string;
+  /** GAP-E2: Links this visual capture to the most recent DOM snapshot for this page. */
+  relatedSnapshotId?: string;
 }
 
 /** Response from browser_list_pages (B2-CTX-001) */
@@ -305,7 +309,10 @@ export type CaptureError =
   | "browser-not-connected"
   | "timeout"
   | "origin-blocked"       // B2-ER-007: blocked by origin policy
-  | "redaction-failed";    // B2-ER-008: fail-closed redaction error
+  | "redaction-failed"     // B2-ER-008: fail-closed redaction error
+  | "detached-node"        // MCP-ER-005: stale element reference (node removed from DOM)
+  | "blocked-resource"     // MCP-ER-005: CORS/CSP blocked resource
+  | "navigation-failed";   // MCP-ER-005: page navigation error
 
 /** Relay-level errors (transient — retryable). MCP-ER-002. */
 export type RelayError =
@@ -360,6 +367,7 @@ const TRANSIENT_ERRORS: Record<string, number> = {
   "browser-not-connected": 2000,
   "timeout": 1000,
   "action-failed": 1000,
+  "detached-node": 1000,  // MCP-ER-006: retryable — node may reappear after re-render
 };
 
 /**
@@ -380,6 +388,22 @@ export function buildStructuredError(
   details?: string,
   extra?: { pageUrl?: null; found?: false },
 ): PageToolError {
-  // TODO: implement — MCP-ER-001, MCP-ER-002
-  throw new Error("not implemented yet");
+  const TRANSIENT_ERRORS: Record<string, number> = {
+    "browser-not-connected": 2000,
+    "timeout": 1000,
+    "action-failed": 1000,
+    "detached-node": 1000,  // MCP-ER-006: retryable — node may reappear after re-render
+  };
+
+  const retryable = errorCode in TRANSIENT_ERRORS;
+  const retryAfterMs = retryable ? TRANSIENT_ERRORS[errorCode] : undefined;
+
+  return {
+    success: false,
+    error: errorCode,
+    ...(retryable ? { retryable: true, retryAfterMs } : { retryable: false }),
+    ...(details !== undefined ? { details } : {}),
+    pageUrl: null,
+    found: false,
+  };
 }

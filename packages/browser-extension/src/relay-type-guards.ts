@@ -103,6 +103,9 @@ export function toCapturePayload(payload: Record<string, unknown>): CapturePaylo
   const mode = payload.mode;
   const typedMode: "viewport" | "fullPage" | undefined =
     mode === "viewport" || mode === "fullPage" ? mode : undefined;
+  const format = payload.format;
+  const typedFormat: "jpeg" | "png" | undefined =
+    format === "jpeg" || format === "png" ? format : undefined;
   return {
     tabId: readOptionalNumber(payload, "tabId"),
     anchorKey: readOptionalString(payload, "anchorKey"),
@@ -111,6 +114,7 @@ export function toCapturePayload(payload: Record<string, unknown>): CapturePaylo
     quality: readOptionalNumber(payload, "quality"),
     rect: typedRect,
     mode: typedMode,
+    format: typedFormat,
   };
 }
 

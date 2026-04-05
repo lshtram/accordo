@@ -327,8 +327,8 @@ export async function handleCaptureRegion(
     );
     if (response.success && response.data && typeof response.data === "object" && hasSnapshotEnvelope(response.data)) {
       const data = response.data;
-      // B2-SV-003: Check the inner success field to detect capture-level failures
-      if ("success" in data && data.success === true) {
+        // B2-SV-003: Check the inner success field to detect capture-level failures
+        if ("success" in data && data.success === true) {
         const relayPageUrl = (data as { pageUrl?: string }).pageUrl;
 
         // F1: Origin policy check using the pageUrl from the relay response.
@@ -345,6 +345,10 @@ export async function handleCaptureRegion(
           }
         }
 
+        // GAP-E2: Get the most recent DOM snapshot ID BEFORE saving this capture
+        const previousSnapshot = store.getLatest(data.pageId);
+        const relatedSnapshotId = previousSnapshot?.snapshotId;
+
         store.save(data.pageId, data);
         const result = data as CaptureRegionResponse;
         // F4: Add auditId to response
@@ -352,6 +356,10 @@ export async function handleCaptureRegion(
         // F5: Redaction warning for screenshots (only when policy is configured)
         if (security.redactionPolicy.redactPatterns.length > 0) {
           (result as any).redactionWarning = "screenshots are not subject to redaction policy.";
+        }
+        // GAP-E2: Attach relatedSnapshotId linking this capture to the previous DOM snapshot
+        if (relatedSnapshotId !== undefined) {
+          (result as any).relatedSnapshotId = relatedSnapshotId;
         }
         // Return a shallow copy so subsequent calls don't overwrite auditId on the same object
         return { ...result };

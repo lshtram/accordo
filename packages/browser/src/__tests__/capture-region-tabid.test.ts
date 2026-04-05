@@ -226,3 +226,125 @@ describe("P4-CR: capture_region mode parameter", () => {
     expect(payload).not.toHaveProperty("rect");
   });
 });
+
+// ── GAP-E1: PNG/JPEG format support ─────────────────────────────────────────
+
+describe("GAP-E1: capture_region format parameter", () => {
+  let relay: ReturnType<typeof createRecordingRelay>;
+  let store: SnapshotRetentionStore;
+
+  beforeEach(() => {
+    relay = createRecordingRelay();
+    relay.resetRecordedPayload();
+    store = new SnapshotRetentionStore();
+  });
+
+  /**
+   * GAP-E1: Default format is absent from payload (backward compatible — relay defaults to jpeg).
+   */
+  it("GAP-E1: handleCaptureRegion omits format from relay payload when not specified (default: jpeg)", async () => {
+    const args: CaptureRegionArgs = { anchorKey: "btn_1" };
+
+    await handleCaptureRegion(relay, args, store);
+
+    const payload = relay.getRecordedPayload();
+    expect(payload).not.toHaveProperty("format");
+  });
+
+  /**
+   * GAP-E1: When format is "jpeg", it is passed through to the relay.
+   */
+  it("GAP-E1: handleCaptureRegion passes format='jpeg' through to relay.request", async () => {
+    const args: CaptureRegionArgs = { anchorKey: "btn_1", format: "jpeg" };
+
+    await handleCaptureRegion(relay, args, store);
+
+    const payload = relay.getRecordedPayload();
+    expect(payload.format).toBe("jpeg");
+  });
+
+  /**
+   * GAP-E1: When format is "png", it is passed through to the relay.
+   */
+  it("GAP-E1: handleCaptureRegion passes format='png' through to relay.request", async () => {
+    const args: CaptureRegionArgs = { anchorKey: "btn_1", format: "png" };
+
+    await handleCaptureRegion(relay, args, store);
+
+    const payload = relay.getRecordedPayload();
+    expect(payload.format).toBe("png");
+  });
+
+  /**
+   * GAP-E1: format works alongside all other parameters (tabId, rect, mode, etc.).
+   */
+  it("GAP-E1: handleCaptureRegion passes format along with all other parameters", async () => {
+    const args: CaptureRegionArgs = {
+      tabId: 5,
+      anchorKey: "btn_1",
+      format: "png",
+      mode: "viewport",
+      quality: 80,
+      padding: 16,
+    };
+
+    await handleCaptureRegion(relay, args, store);
+
+    const payload = relay.getRecordedPayload();
+    expect(payload.format).toBe("png");
+    expect(payload.tabId).toBe(5);
+    expect(payload.anchorKey).toBe("btn_1");
+    expect(payload.mode).toBe("viewport");
+    expect(payload.quality).toBe(80);
+    expect(payload.padding).toBe(16);
+  });
+});
+
+// ── GAP-E2: No-target viewport behavior + relatedSnapshotId ─────────────────
+
+describe("GAP-E2: capture_region no-target viewport behavior", () => {
+  let relay: ReturnType<typeof createRecordingRelay>;
+  let store: SnapshotRetentionStore;
+
+  beforeEach(() => {
+    relay = createRecordingRelay();
+    relay.resetRecordedPayload();
+    store = new SnapshotRetentionStore();
+  });
+
+  /**
+   * GAP-E2: When no target is provided in viewport mode, the relay returns
+   * raw full-viewport capture (mode: "viewport").
+   */
+  it("GAP-E2: handleCaptureRegion returns relatedSnapshotId from the store after successful capture", async () => {
+    // Pre-populate the store with a DOM snapshot
+    store.save("page", {
+      pageId: "page",
+      frameId: "main",
+      snapshotId: "page:0",
+      capturedAt: "2025-01-01T00:00:00.000Z",
+      viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom",
+    });
+
+    const args: CaptureRegionArgs = { tabId: 1 };
+
+    const result = await handleCaptureRegion(relay, args, store);
+
+    // The result should have relatedSnapshotId from the pre-existing DOM snapshot
+    expect(result).toHaveProperty("relatedSnapshotId");
+    expect((result as Record<string, unknown>).relatedSnapshotId).toBe("page:0");
+  });
+
+  /**
+   * GAP-E2: When no previous snapshot exists, relatedSnapshotId is not present.
+   */
+  it("GAP-E2: handleCaptureRegion omits relatedSnapshotId when no previous snapshot exists", async () => {
+    const args: CaptureRegionArgs = { tabId: 1 };
+
+    const result = await handleCaptureRegion(relay, args, store);
+
+    // No previous snapshot — relatedSnapshotId should not be set
+    expect(result).not.toHaveProperty("relatedSnapshotId");
+  });
+});

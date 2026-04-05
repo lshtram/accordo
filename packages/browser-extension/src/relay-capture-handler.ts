@@ -46,6 +46,7 @@ export async function cropImageToBounds(
   dataUrl: string,
   bounds: { x: number; y: number; width: number; height: number },
   quality: number,
+  format: "jpeg" | "png" = "jpeg",
 ): Promise<{ dataUrl: string; width: number; height: number }> {
   try {
     const width = Math.min(MAX_CAPTURE_DIMENSION, bounds.width);
@@ -60,7 +61,8 @@ export async function cropImageToBounds(
     }
 
     // Create blob and use createImageBitmap for async decoding
-    const blob = new Blob([bytes], { type: "image/jpeg" });
+    const mimeType = format === "png" ? "image/png" : "image/jpeg";
+    const blob = new Blob([bytes], { type: mimeType });
     const imageBitmap = await createImageBitmap(blob);
 
     // Create offscreen canvas and crop
@@ -74,7 +76,7 @@ export async function cropImageToBounds(
       0, 0, width, height,
     );
 
-    const croppedBlob = await canvas.convertToBlob({ type: "image/jpeg", quality: quality / 100 });
+    const croppedBlob = await canvas.convertToBlob({ type: mimeType, quality: format === "jpeg" ? quality / 100 : undefined });
     const croppedDataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = (): void => {
@@ -141,9 +143,9 @@ async function resolvePaddedBounds(
   };
 }
 
-/** Capture the visible tab as JPEG. Returns dataUrl or throws. */
-async function captureVisibleTab(quality: number): Promise<string> {
-  return chrome.tabs.captureVisibleTab({ format: "jpeg", quality });
+/** Capture the visible tab as JPEG or PNG. Returns dataUrl or throws. */
+async function captureVisibleTab(quality: number, format: "jpeg" | "png" = "jpeg"): Promise<string> {
+  return chrome.tabs.captureVisibleTab({ format, quality });
 }
 
 /** Estimate size in bytes from a data URL base64 string. */
@@ -180,11 +182,12 @@ async function retryCaptureAtReducedQuality(
   quality: number,
   anchorSource: string,
   targetTabId?: number,
+  format: "jpeg" | "png" = "jpeg",
 ): Promise<Record<string, unknown>> {
   const reducedQuality = Math.max(MIN_QUALITY, quality - QUALITY_RETRY_STEP);
   const envelope = await requestContentScriptEnvelope("visual", targetTabId);
   try {
-    const retryCropped = await cropImageToBounds(fullDataUrl, paddedBounds, reducedQuality);
+    const retryCropped = await cropImageToBounds(fullDataUrl, paddedBounds, reducedQuality, format);
     const retrySize = estimateSizeBytes(retryCropped.dataUrl);
     if (retrySize > MAX_CAPTURE_BYTES) {
       return { success: false, error: "image-too-large", ...envelope };
@@ -218,6 +221,7 @@ async function executeCaptureRegion(
   payload: CapturePayload,
 ): Promise<Record<string, unknown>> {
   const quality = Math.min(MAX_QUALITY, Math.max(MIN_QUALITY, payload.quality ?? DEFAULT_QUALITY));
+  const format: "jpeg" | "png" = payload.format ?? "jpeg";
   const anchorSource: string = payload.anchorKey ?? payload.nodeRef ?? "rect";
   const padding = Math.min(MAX_PADDING, Math.max(0, payload.padding ?? DEFAULT_PADDING));
 
@@ -235,6 +239,41 @@ async function executeCaptureRegion(
     }
   }
 
+  // GAP-E2: Check if a target is provided — if not in viewport mode, skip cropping
+  const hasTarget = payload.anchorKey !== undefined || payload.nodeRef !== undefined || payload.rect !== undefined;
+
+  if (!hasTarget) {
+    // GAP-E2: No target provided in viewport mode — return raw full-viewport capture without cropping
+    let fullDataUrl: string;
+    try {
+      fullDataUrl = await captureVisibleTab(quality, format);
+    } catch {
+      if (swapped && originalTabId !== undefined) {
+        await chrome.tabs.update(originalTabId, { active: true });
+      }
+      const envelope = await requestContentScriptEnvelope("visual", targetTabId);
+      return { success: false, error: "capture-failed", ...envelope };
+    }
+
+    const envelope = await requestContentScriptEnvelope("visual", targetTabId);
+    const sizeBytes = estimateSizeBytes(fullDataUrl);
+
+    if (swapped && originalTabId !== undefined) {
+      await chrome.tabs.update(originalTabId, { active: true });
+    }
+
+    return {
+      success: true,
+      dataUrl: fullDataUrl,
+      width: 1920, // raw viewport width
+      height: 1080, // raw viewport height
+      sizeBytes,
+      anchorSource: "viewport",
+      mode: "viewport",
+      ...envelope,
+    };
+  }
+
   const paddedBounds = await resolvePaddedBounds(payload, padding, targetTabId);
 
   if (paddedBounds.width < MIN_CAPTURE_DIMENSION || paddedBounds.height < MIN_CAPTURE_DIMENSION) {
@@ -248,7 +287,7 @@ async function executeCaptureRegion(
 
   let fullDataUrl: string;
   try {
-    fullDataUrl = await captureVisibleTab(quality);
+    fullDataUrl = await captureVisibleTab(quality, format);
   } catch {
     // Restore tab before returning if we swapped
     if (swapped && originalTabId !== undefined) {
@@ -262,7 +301,7 @@ async function executeCaptureRegion(
   let width: number;
   let height: number;
   try {
-    const cropped = await cropImageToBounds(fullDataUrl, paddedBounds, quality);
+    const cropped = await cropImageToBounds(fullDataUrl, paddedBounds, quality, format);
     dataUrl = cropped.dataUrl;
     width = cropped.width;
     height = cropped.height;
@@ -280,7 +319,7 @@ async function executeCaptureRegion(
   }
 
   if (sizeBytes > MAX_CAPTURE_BYTES && quality > MIN_QUALITY) {
-    return retryCaptureAtReducedQuality(fullDataUrl, paddedBounds, quality, anchorSource, targetTabId);
+    return retryCaptureAtReducedQuality(fullDataUrl, paddedBounds, quality, anchorSource, targetTabId, format);
   }
 
   return buildCaptureSuccess(dataUrl, width, height, sizeBytes, anchorSource, targetTabId);
@@ -326,10 +365,11 @@ async function executeCaptureFullPage(
     await ensureAttached(targetTabId);
 
     // Capture full page via CDP
+    const format: "jpeg" | "png" = payload.format ?? "jpeg";
     const cdpResult = await sendCommand<{ data: string; width: number; height: number }>(
       targetTabId,
       "Page.captureScreenshot",
-      { captureBeyondViewport: true, format: "png" },
+      { captureBeyondViewport: true, format },
     );
 
     // Convert base64 PNG to data URL
