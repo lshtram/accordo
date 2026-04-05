@@ -61,6 +61,29 @@ async function resolveElementCoords(
   return response as { x: number; y: number; bounds: { x: number; y: number; width: number; height: number }; inViewport: boolean } | { error: string };
 }
 
+type WaitUntil = "load" | "domcontentloaded" | "networkidle";
+
+/**
+ * Wait for a Page.lifecycleEvent with the given name.
+ */
+function waitForLifecycleEvent(tabId: number, eventName: string): Promise<void> {
+  return new Promise((resolve) => {
+    const listener = (
+      _source: unknown,
+      _method: string,
+      params?: Record<string, unknown>
+    ) => {
+      if (params?.name === eventName) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        chrome.debugger.onEvent.removeListener(listener as any);
+        resolve();
+      }
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    chrome.debugger.onEvent.addListener(listener as any);
+  });
+}
+
 export async function handleNavigate(request: RelayActionRequest): Promise<RelayActionResponse> {
   const payload = request.payload;
 
@@ -81,7 +104,19 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
       if (!url) {
         return actionFailed(request, "invalid-request");
       }
-      await sendCommand(tabId, "Page.navigate", { url });
+      const waitUntil = (payload.waitUntil as WaitUntil) || "domcontentloaded";
+
+      if (waitUntil === "load" || waitUntil === "networkidle") {
+        // Wait for the page to reach the requested lifecycle state
+        const eventName = waitUntil === "load" ? "load" : "networkidle";
+        await sendCommand(tabId, "Page.setLifecycleEventsEnabled", { enabled: true });
+        const lifecyclePromise = waitForLifecycleEvent(tabId, eventName);
+        await sendCommand(tabId, "Page.navigate", { url });
+        await lifecyclePromise;
+      } else {
+        // domcontentloaded (default): immediate return after navigation
+        await sendCommand(tabId, "Page.navigate", { url });
+      }
     } else if (type === "back") {
       await sendCommand(tabId, "Page.goBackInHistory");
     } else if (type === "forward") {
