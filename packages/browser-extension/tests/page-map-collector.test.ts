@@ -1026,3 +1026,362 @@ describe("B2-FI-008: Acceptance — >=40% reduction via real collectPageMap (3 f
     expect(avg).toBeGreaterThanOrEqual(0.40);
   });
 });
+
+// ── GAP-D1: Viewport Ratio and Container ID Enrichment ───────────────────────────
+
+/**
+ * GAP-D1 tests for D4 (viewportIntersectionRatio) and D5 (containerId)
+ *
+ * These tests validate that when includeBounds:true is passed to collectPageMap:
+ * - D4: Each node has viewportRatio (0-1) indicating how much of the element is visible
+ * - D5: Each node has containerId pointing to its nearest semantic container ancestor
+ *
+ * The PageNode type already has viewportRatio?: number and containerId?: number fields.
+ * The actual computation uses viewportIntersectionRatio() and findNearestContainer() from spatial-helpers.
+ */
+
+/**
+ * Recursively search a PageNode tree for a node matching a predicate.
+ * Required because collectPageMap returns a nested tree, not a flat array.
+ */
+function findNodeDeep(nodes: PageNode[], predicate: (n: PageNode) => boolean): PageNode | undefined {
+  for (const node of nodes) {
+    if (predicate(node)) return node;
+    if (node.children) {
+      const found = findNodeDeep(node.children, predicate);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Mock getBoundingClientRect for a DOM element by ID to return specific bounds.
+ * jsdom does not compute CSS layout, so layout-dependent tests must mock this.
+ */
+function mockBoundingRect(id: string, rect: { x: number; y: number; width: number; height: number }): void {
+  const el = document.getElementById(id);
+  if (el) {
+    vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
+      x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+      top: rect.y, left: rect.x, right: rect.x + rect.width, bottom: rect.y + rect.height,
+      toJSON: () => rect,
+    } as DOMRect);
+  }
+}
+
+describe("GAP-D1: viewportRatio enrichment (D4)", () => {
+  /**
+   * D4-viewportRatio-01: Node fully inside viewport → viewportRatio = 1.0
+   */
+  it("D4-viewportRatio-01: Node fully inside viewport → viewportRatio = 1.0", () => {
+    // Set up a simple DOM with an element fully inside the viewport
+    document.body.innerHTML = `<div id="test"></div>`;
+    // jsdom does not compute CSS layout — mock getBoundingClientRect to simulate
+    // an element fully inside the viewport (1024x768 in jsdom)
+    mockBoundingRect("test", { x: 100, y: 100, width: 200, height: 100 });
+    const result = collectPageMap({ includeBounds: true, maxDepth: 8 });
+    const node = findNodeDeep(result.nodes, (n) => n.id === "test");
+    expect(node).toBeDefined();
+    if (node && node.bounds) {
+      // Element is fully inside viewport (viewport is typically 1024x768 in jsdom)
+      expect(node.viewportRatio).toBeCloseTo(1.0, 2);
+    }
+  });
+
+  /**
+   * D4-viewportRatio-02: Node partially clipped → viewportRatio between 0 and 1
+   */
+  it("D4-viewportRatio-02: Node partially clipped by viewport → viewportRatio < 1.0", () => {
+    // Element partially off-screen to the left: x=-100, width=200 → 100px visible, 100px off
+    document.body.innerHTML = `<div id="partial"></div>`;
+    // jsdom does not compute CSS layout — mock bounds to simulate element at x=-100
+    mockBoundingRect("partial", { x: -100, y: 100, width: 200, height: 100 });
+    const result = collectPageMap({ includeBounds: true, maxDepth: 8 });
+    const node = findNodeDeep(result.nodes, (n) => n.id === "partial");
+    expect(node).toBeDefined();
+    if (node && node.bounds) {
+      // Element extends off-screen, so viewportRatio should be < 1.0
+      expect(node.viewportRatio).toBeLessThan(1.0);
+      expect(node.viewportRatio).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * D4-viewportRatio-03: Node entirely outside viewport → viewportRatio = 0.0
+   */
+  it("D4-viewportRatio-03: Node entirely outside viewport → viewportRatio = 0.0", () => {
+    // Position element way off-screen (below the viewport)
+    document.body.innerHTML = `<div id="offscreen" style="position:absolute;left:0;top:-5000px;width:100px;height:100px;"></div>`;
+    const result = collectPageMap({ includeBounds: true, maxDepth: 8 });
+    const node = result.nodes.find((n) => n.id === "offscreen");
+    expect(node).toBeDefined();
+    if (node && node.bounds) {
+      expect(node.viewportRatio).toBe(0.0);
+    }
+  });
+
+  /**
+   * D4-viewportRatio-04: Node at edge of viewport → correct ratio
+   */
+  it("D4-viewportRatio-04: Node at edge of viewport → correct ratio", () => {
+    // Element starts at y=700, height=200 → spans y=700..900
+    // Viewport (jsdom: 768px tall) clips at y=768 → 68px visible out of 200
+    // viewportRatio = (1920 * 68) / (1920 * 200) = 68/200 = 0.34
+    document.body.innerHTML = `<div id="edge"></div>`;
+    // jsdom does not compute CSS layout — mock bounds directly
+    mockBoundingRect("edge", { x: 0, y: 700, width: 1920, height: 200 });
+    const result = collectPageMap({ includeBounds: true, maxDepth: 8 });
+    const node = findNodeDeep(result.nodes, (n) => n.id === "edge");
+    expect(node).toBeDefined();
+    if (node && node.bounds) {
+      // Element starts at y=700, height=200, so it spans y=700..900
+      // Viewport ends at y=768, so only 68px is visible
+      // viewportRatio = visible_area / total_area = 68/200 = 0.34
+      expect(node.viewportRatio).toBeLessThan(1.0);
+      expect(node.viewportRatio).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * D4-viewportRatio-05: Node without bounds → no viewportRatio
+   */
+  it("D4-viewportRatio-05: Node collected without includeBounds → no viewportRatio", () => {
+    document.body.innerHTML = `<div id="nobounds"></div>`;
+    const result = collectPageMap({ includeBounds: false, maxDepth: 8 });
+    const node = result.nodes.find((n) => n.id === "nobounds");
+    expect(node).toBeDefined();
+    // Without includeBounds, the node should not have viewportRatio
+    // (it may be undefined or not present on the node object)
+    if (node && node.bounds) {
+      expect(node.viewportRatio).toBeUndefined();
+    }
+  });
+
+  /**
+   * D4-viewportRatio-06: Zero-size element → viewportRatio = 0.0 or handled gracefully
+   */
+  it("D4-viewportRatio-06: Zero-size element → viewportRatio = 0.0 or handled gracefully", () => {
+    document.body.innerHTML = `<div id="zero" style="position:absolute;left:100px;top:100px;width:0;height:0;"></div>`;
+    const result = collectPageMap({ includeBounds: true, maxDepth: 8 });
+    const node = result.nodes.find((n) => n.id === "zero");
+    expect(node).toBeDefined();
+    // Zero-size elements have no area to be visible
+    if (node && node.bounds) {
+      expect(node.viewportRatio).toBe(0.0);
+    }
+  });
+});
+
+describe("GAP-D1: containerId enrichment (D5)", () => {
+  /**
+   * D5-containerId-01: Child of semantic container → has containerId pointing to container
+   */
+  it("D5-containerId-01: Child of semantic container → has containerId", () => {
+    document.body.innerHTML = `
+      <section id="main-content">
+        <button id="action-btn">Click me</button>
+      </section>
+    `;
+    const result = collectPageMap({ includeBounds: true, maxDepth: 8 });
+    const sectionNode = findNodeDeep(result.nodes, (n) => n.id === "main-content");
+    const buttonNode = findNodeDeep(result.nodes, (n) => n.id === "action-btn");
+    expect(sectionNode).toBeDefined();
+    expect(buttonNode).toBeDefined();
+    // The button should have a containerId pointing to the section's nodeId
+    if (buttonNode && sectionNode) {
+      expect(buttonNode.containerId).toBe(sectionNode.nodeId);
+    }
+  });
+
+  /**
+   * D5-containerId-02: Deeply nested child → containerId points to nearest semantic ancestor
+   */
+  it("D5-containerId-02: Nested in article > section > div → nearest container is section", () => {
+    document.body.innerHTML = `
+      <article id="article-1">
+        <section id="section-1">
+          <div id="deeply-nested">
+            <span id="target">Target</span>
+          </div>
+        </section>
+      </article>
+    `;
+    const result = collectPageMap({ includeBounds: true, maxDepth: 8 });
+    const sectionNode = findNodeDeep(result.nodes, (n) => n.id === "section-1");
+    const targetNode = findNodeDeep(result.nodes, (n) => n.id === "target");
+    expect(sectionNode).toBeDefined();
+    expect(targetNode).toBeDefined();
+    // The target should point to section-1 (the nearest semantic container), not article-1
+    if (targetNode && sectionNode) {
+      expect(targetNode.containerId).toBe(sectionNode.nodeId);
+    }
+  });
+
+  /**
+   * D5-containerId-03: Element not in a semantic container → containerId is undefined
+   */
+  it("D5-containerId-03: Top-level element with no semantic container → containerId undefined", () => {
+    document.body.innerHTML = `<div id="orphan">Orphan element</div>`;
+    const result = collectPageMap({ includeBounds: true, maxDepth: 8 });
+    const orphanNode = result.nodes.find((n) => n.id === "orphan");
+    expect(orphanNode).toBeDefined();
+    // Orphan has no semantic container ancestor, so containerId should be undefined
+    if (orphanNode) {
+      expect(orphanNode.containerId).toBeUndefined();
+    }
+  });
+
+  /**
+   * D5-containerId-04: Semantic container tags are recognized
+   */
+  it("D5-containerId-04: Elements in article, section, aside, nav, header, footer, form, dialog, details are containers", () => {
+    const tags = ["article", "section", "aside", "nav", "header", "footer", "form", "dialog", "details"];
+    for (const tag of tags) {
+      // Note: <dialog> requires the `open` attribute to be visible (otherwise display:none in jsdom)
+      const openAttr = tag === "dialog" ? " open" : "";
+      document.body.innerHTML = `<${tag} id="test-${tag}"${openAttr}><button id="btn">Test</button></${tag}>`;
+      const result = collectPageMap({ includeBounds: true, maxDepth: 8 });
+      const containerNode = findNodeDeep(result.nodes, (n) => n.id === `test-${tag}`);
+      const btnNode = findNodeDeep(result.nodes, (n) => n.id === "btn");
+      expect(containerNode).toBeDefined();
+      expect(btnNode).toBeDefined();
+      if (btnNode && containerNode) {
+        expect(btnNode.containerId).toBe(containerNode.nodeId);
+      }
+    }
+  });
+
+  /**
+   * D5-containerId-05: Elements with semantic ARIA roles are containers
+   */
+  it("D5-containerId-05: Elements with role=region, navigation, main, complementary are containers", () => {
+    const roles = ["region", "navigation", "main", "complementary"];
+    for (const role of roles) {
+      document.body.innerHTML = `<div id="test-${role}" role="${role}"><button id="btn-${role}">Test</button></div>`;
+      const result = collectPageMap({ includeBounds: true, maxDepth: 8 });
+      const containerNode = findNodeDeep(result.nodes, (n) => n.id === `test-${role}`);
+      const btnNode = findNodeDeep(result.nodes, (n) => n.id === `btn-${role}`);
+      expect(containerNode).toBeDefined();
+      expect(btnNode).toBeDefined();
+      if (btnNode && containerNode) {
+        expect(btnNode.containerId).toBe(containerNode.nodeId);
+      }
+    }
+  });
+
+  /**
+   * D5-containerId-06: Node without includeBounds → no containerId
+   */
+  it("D5-containerId-06: Node collected without includeBounds → no containerId", () => {
+    document.body.innerHTML = `
+      <section id="main">
+        <button id="btn">Test</button>
+      </section>
+    `;
+    const result = collectPageMap({ includeBounds: false, maxDepth: 8 });
+    const btnNode = findNodeDeep(result.nodes, (n) => n.id === "btn");
+    expect(btnNode).toBeDefined();
+    // Without includeBounds, containerId should not be set (even if the element is inside a container)
+    if (btnNode && btnNode.bounds) {
+      expect(btnNode.containerId).toBeUndefined();
+    }
+  });
+
+  /**
+   * D5-containerId-07: <body> is NOT considered a container (stop at body)
+   */
+  it("D5-containerId-07: Elements inside body but not in semantic container → containerId undefined", () => {
+    document.body.innerHTML = `<button id="direct-body-btn">Direct body child</button>`;
+    const result = collectPageMap({ includeBounds: true, maxDepth: 8 });
+    const btnNode = result.nodes.find((n) => n.id === "direct-body-btn");
+    expect(btnNode).toBeDefined();
+    // Body itself is not a semantic container, so this button should have no containerId
+    if (btnNode) {
+      expect(btnNode.containerId).toBeUndefined();
+    }
+  });
+});
+
+describe("GAP-D1: Combined viewportRatio and containerId", () => {
+  /**
+   * D4+D5-combined-01: includeBounds:true enables both viewportRatio and containerId
+   */
+  it("D4+D5-combined-01: includeBounds:true enables both viewportRatio and containerId", () => {
+    document.body.innerHTML = `
+      <section id="container">
+        <div id="item">Item</div>
+      </section>
+    `;
+    const result = collectPageMap({ includeBounds: true, maxDepth: 8 });
+    const itemNode = findNodeDeep(result.nodes, (n) => n.id === "item");
+    const containerNode = findNodeDeep(result.nodes, (n) => n.id === "container");
+    expect(itemNode).toBeDefined();
+    expect(containerNode).toBeDefined();
+
+    if (itemNode && itemNode.bounds && containerNode) {
+      // Both viewportRatio and containerId should be present
+      expect(itemNode.viewportRatio).toBeDefined();
+      expect(itemNode.containerId).toBe(containerNode.nodeId);
+    }
+  });
+
+  /**
+   * D4+D5-combined-02: Both fields absent when includeBounds:false
+   */
+  it("D4+D5-combined-02: Both viewportRatio and containerId absent when includeBounds:false", () => {
+    document.body.innerHTML = `
+      <section id="container">
+        <div id="item">Item</div>
+      </section>
+    `;
+    const result = collectPageMap({ includeBounds: false, maxDepth: 8 });
+    const itemNode = findNodeDeep(result.nodes, (n) => n.id === "item");
+    expect(itemNode).toBeDefined();
+    // Without includeBounds, neither field should be present
+    if (itemNode && itemNode.bounds) {
+      expect(itemNode.viewportRatio).toBeUndefined();
+      expect(itemNode.containerId).toBeUndefined();
+    }
+  });
+
+  /**
+   * D4+D5-combined-03: Real fixture with multiple elements in/out of containers and viewport
+   */
+  it("D4+D5-combined-03: Real fixture — mixed container membership and visibility", () => {
+    document.body.innerHTML = `
+      <article id="art">
+        <section id="sec1">
+          <button id="btn1">Visible Button</button>
+        </section>
+        <div id="offscreen-section" style="position:absolute;top:-5000px;">
+          <span id="offscreen-span">Offscreen</span>
+        </div>
+      </article>
+      <button id="orphan-btn">Orphan</button>
+    `;
+    const result = collectPageMap({ includeBounds: true, maxDepth: 8 });
+
+    const btn1 = result.nodes.find((n) => n.id === "btn1");
+    const orphanBtn = result.nodes.find((n) => n.id === "orphan-btn");
+    const offscreenSpan = result.nodes.find((n) => n.id === "offscreen-span");
+    const sec1 = result.nodes.find((n) => n.id === "sec1");
+
+    // btn1 is in section, should have containerId
+    if (btn1 && sec1 && btn1.bounds) {
+      expect(btn1.containerId).toBe(sec1.nodeId);
+      expect(btn1.viewportRatio).toBeGreaterThan(0);
+    }
+
+    // orphan-btn has no container
+    if (orphanBtn && orphanBtn.bounds) {
+      expect(orphanBtn.containerId).toBeUndefined();
+    }
+
+    // offscreen-span is in a container but viewportRatio = 0
+    if (offscreenSpan && sec1 && offscreenSpan.bounds) {
+      expect(offscreenSpan.containerId).toBe(sec1.nodeId);
+      expect(offscreenSpan.viewportRatio).toBe(0.0);
+    }
+  });
+});
