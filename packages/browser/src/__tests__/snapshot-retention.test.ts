@@ -112,7 +112,7 @@ describe("SnapshotRetentionStore", () => {
     }
     const retained = store.list("p1");
     expect(retained).toHaveLength(RETENTION_SLOTS);
-    // Oldest (version 1) was evicted; newest (version 6) is present
+    // Oldest (version 1) was evicted; newest (version RETENTION_SLOTS+1) is present
     expect(retained[0].snapshotId).toBe("p1:2");
     expect(retained[RETENTION_SLOTS - 1].snapshotId).toBe(`p1:${RETENTION_SLOTS + 1}`);
   });
@@ -143,6 +143,152 @@ describe("SnapshotRetentionStore", () => {
     store.clear();
     expect(store.list("p1")).toEqual([]);
     expect(store.list("p2")).toEqual([]);
+  });
+});
+
+// ── GAP-G1: Retention control — increased slots + listAll + clear overload ────
+
+describe("GAP-G1: SnapshotRetentionStore retention control", () => {
+  it("GAP-G1: RETENTION_SLOTS equals 10", () => {
+    expect(RETENTION_SLOTS).toBe(10);
+  });
+
+  it("GAP-G1: listAll returns all pages with their snapshots", () => {
+    const store = new SnapshotRetentionStore();
+    store.save("page-a", makeEnvelope("page-a", 1));
+    store.save("page-a", makeEnvelope("page-a", 2));
+    store.save("page-b", makeEnvelope("page-b", 1));
+
+    const all = store.listAll();
+    expect(all.size).toBe(2);
+    expect(all.get("page-a")?.length).toBe(2);
+    expect(all.get("page-b")?.length).toBe(1);
+  });
+
+  it("GAP-G1: listAll returns empty Map when store is empty", () => {
+    const store = new SnapshotRetentionStore();
+    const all = store.listAll();
+    expect(all.size).toBe(0);
+  });
+
+  it("GAP-G1: clear(pageId) removes only that page", () => {
+    const store = new SnapshotRetentionStore();
+    store.save("page-a", makeEnvelope("page-a", 1));
+    store.save("page-b", makeEnvelope("page-b", 1));
+
+    store.clear("page-a");
+
+    expect(store.list("page-a")).toEqual([]);
+    expect(store.list("page-b")).toHaveLength(1);
+  });
+
+  it("GAP-G1: clear() without pageId removes all pages", () => {
+    const store = new SnapshotRetentionStore();
+    store.save("page-a", makeEnvelope("page-a", 1));
+    store.save("page-b", makeEnvelope("page-b", 1));
+
+    store.clear();
+
+    expect(store.list("page-a")).toEqual([]);
+    expect(store.list("page-b")).toEqual([]);
+  });
+
+  it("GAP-G1: clear(pageId) on non-existent page is a no-op", () => {
+    const store = new SnapshotRetentionStore();
+    store.save("page-a", makeEnvelope("page-a", 1));
+
+    store.clear("page-nonexistent");
+
+    expect(store.list("page-a")).toHaveLength(1);
+  });
+});
+
+// ── GAP-G1: buildManageSnapshotsTool ─────────────────────────────────────────
+
+describe("GAP-G1: buildManageSnapshotsTool", () => {
+  it("GAP-G1: tool name is browser_manage_snapshots", async () => {
+    const { buildManageSnapshotsTool } = await import("../manage-snapshots-tool.js");
+    const store = new SnapshotRetentionStore();
+    const relay = { request: vi.fn(), isConnected: vi.fn(() => true) };
+    const tool = buildManageSnapshotsTool(relay as never, store);
+    expect(tool.name).toBe("browser_manage_snapshots");
+  });
+
+  it("GAP-G1: tool has action and pageId in inputSchema", async () => {
+    const { buildManageSnapshotsTool } = await import("../manage-snapshots-tool.js");
+    const store = new SnapshotRetentionStore();
+    const relay = { request: vi.fn(), isConnected: vi.fn(() => true) };
+    const tool = buildManageSnapshotsTool(relay as never, store);
+    const schema = tool.inputSchema as { properties: Record<string, unknown>; required: string[] };
+    expect(schema.properties).toHaveProperty("action");
+    expect(schema.properties).toHaveProperty("pageId");
+    expect(schema.required).toContain("action");
+  });
+
+  it("GAP-G1: list action returns all snapshot metadata per page", async () => {
+    const { buildManageSnapshotsTool } = await import("../manage-snapshots-tool.js");
+    const store = new SnapshotRetentionStore();
+    store.save("page-a", makeEnvelope("page-a", 1));
+    store.save("page-a", makeEnvelope("page-a", 2));
+    store.save("page-b", makeEnvelope("page-b", 1));
+
+    const relay = { request: vi.fn(), isConnected: vi.fn(() => true) };
+    const tool = buildManageSnapshotsTool(relay as never, store);
+    const handler = tool.handler as (args: unknown) => Promise<unknown>;
+
+    const result = await handler({ action: "list" });
+    const r = result as { pages: { pageId: string; snapshotCount: number }[] };
+    expect(r.pages).toHaveLength(2);
+    const pageA = r.pages.find((p) => p.pageId === "page-a");
+    expect(pageA?.snapshotCount).toBe(2);
+    const pageB = r.pages.find((p) => p.pageId === "page-b");
+    expect(pageB?.snapshotCount).toBe(1);
+  });
+
+  it("GAP-G1: clear action without pageId empties the entire store", async () => {
+    const { buildManageSnapshotsTool } = await import("../manage-snapshots-tool.js");
+    const store = new SnapshotRetentionStore();
+    store.save("page-a", makeEnvelope("page-a", 1));
+    store.save("page-b", makeEnvelope("page-b", 1));
+
+    const relay = { request: vi.fn(), isConnected: vi.fn(() => true) };
+    const tool = buildManageSnapshotsTool(relay as never, store);
+    const handler = tool.handler as (args: unknown) => Promise<unknown>;
+
+    const result = await handler({ action: "clear" });
+    const r = result as { success: boolean; clearedCount: number };
+    expect(r.success).toBe(true);
+    expect(r.clearedCount).toBe(2);
+    expect(store.list("page-a")).toEqual([]);
+    expect(store.list("page-b")).toEqual([]);
+  });
+
+  it("GAP-G1: clear action with pageId removes only that page", async () => {
+    const { buildManageSnapshotsTool } = await import("../manage-snapshots-tool.js");
+    const store = new SnapshotRetentionStore();
+    store.save("page-a", makeEnvelope("page-a", 1));
+    store.save("page-b", makeEnvelope("page-b", 1));
+
+    const relay = { request: vi.fn(), isConnected: vi.fn(() => true) };
+    const tool = buildManageSnapshotsTool(relay as never, store);
+    const handler = tool.handler as (args: unknown) => Promise<unknown>;
+
+    const result = await handler({ action: "clear", pageId: "page-a" });
+    const r = result as { success: boolean; clearedPageId: string; clearedCount: number };
+    expect(r.success).toBe(true);
+    expect(r.clearedPageId).toBe("page-a");
+    expect(r.clearedCount).toBe(1);
+    expect(store.list("page-a")).toEqual([]);
+    expect(store.list("page-b")).toHaveLength(1);
+  });
+
+  it("GAP-G1: tool is registered with dangerLevel 'safe' and non-idempotent", async () => {
+    const { buildManageSnapshotsTool } = await import("../manage-snapshots-tool.js");
+    const store = new SnapshotRetentionStore();
+    const relay = { request: vi.fn(), isConnected: vi.fn(() => true) };
+    const tool = buildManageSnapshotsTool(relay as never, store);
+    expect(tool.dangerLevel).toBe("safe");
+    expect(tool.idempotent).toBe(false);
   });
 });
 
@@ -367,19 +513,24 @@ describe("B2-SV-004: shared store — all 4 paths use coherent per-page retentio
       isConnected: vi.fn(() => true),
     });
 
-    // Call 6 times across the 4 paths — version 1 must be evicted
+    // Call 11 times across the 4 paths — version 1 must be evicted (FIFO with 10 slots)
     await handleGetPageMap(makeVersionRelay(1, { pageUrl: "https://x.com", title: "X", nodes: [], totalElements: 0, depth: 0, truncated: false }), {}, store);
     await handleInspectElement(makeVersionRelay(2, { found: true, anchorKey: "id:x", anchorStrategy: "id", anchorConfidence: "high" }), {}, store);
     await handleGetDomExcerpt(makeVersionRelay(3, { found: true, html: "<div/>", text: "", nodeCount: 1, truncated: false }), { selector: "div" }, store);
     await handleCaptureRegion(makeVersionRelay(4, { source: "visual" as const, success: true, dataUrl: "data:image/jpeg;base64,A==", width: 10, height: 10, sizeBytes: 100 }), {}, store);
     await handleGetPageMap(makeVersionRelay(5, { pageUrl: "https://x.com", title: "X", nodes: [], totalElements: 0, depth: 0, truncated: false }), {}, store);
     await handleInspectElement(makeVersionRelay(6, { found: true, anchorKey: "id:x", anchorStrategy: "id", anchorConfidence: "high" }), {}, store);
+    await handleGetDomExcerpt(makeVersionRelay(7, { found: true, html: "<div/>", text: "", nodeCount: 1, truncated: false }), { selector: "div" }, store);
+    await handleCaptureRegion(makeVersionRelay(8, { source: "visual" as const, success: true, dataUrl: "data:image/jpeg;base64,A==", width: 10, height: 10, sizeBytes: 100 }), {}, store);
+    await handleGetPageMap(makeVersionRelay(9, { pageUrl: "https://x.com", title: "X", nodes: [], totalElements: 0, depth: 0, truncated: false }), {}, store);
+    await handleInspectElement(makeVersionRelay(10, { found: true, anchorKey: "id:x", anchorStrategy: "id", anchorConfidence: "high" }), {}, store);
+    await handleGetPageMap(makeVersionRelay(11, { pageUrl: "https://x.com", title: "X", nodes: [], totalElements: 0, depth: 0, truncated: false }), {}, store);
 
     const retained = store.list(pageId);
-    expect(retained).toHaveLength(RETENTION_SLOTS); // exactly 5
-    // version 1 evicted; versions 2–6 retained
+    expect(retained).toHaveLength(RETENTION_SLOTS); // exactly 10 (GAP-G1)
+    // version 1 evicted; versions 2–11 retained
     expect(retained[0].snapshotId).toBe(`${pageId}:2`);
-    expect(retained[RETENTION_SLOTS - 1].snapshotId).toBe(`${pageId}:6`);
+    expect(retained[RETENTION_SLOTS - 1].snapshotId).toBe(`${pageId}:11`);
     // version 1 is gone
     expect(store.get(`${pageId}:1`)).toBeUndefined();
   });

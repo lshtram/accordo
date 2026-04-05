@@ -14,8 +14,8 @@
 
 import type { SnapshotEnvelopeFields } from "./types.js";
 
-/** Maximum snapshots retained per pageId (FIFO eviction). */
-export const RETENTION_SLOTS = 5;
+/** Maximum snapshots retained per pageId (FIFO eviction). GAP-G1: increased from 5 to 10. */
+export const RETENTION_SLOTS = 10;
 
 /**
  * B2-SV-004: Per-page 5-slot FIFO retention store for snapshot envelopes.
@@ -96,7 +96,32 @@ export class SnapshotRetentionStore {
    * Clear all retained snapshots across all pages.
    * Useful in tests and on extension deactivation.
    */
-  clear(): void {
-    this.pages.clear();
+  clear(): void;
+  /**
+   * GAP-G1: Clear all retained snapshots for a specific page.
+   *
+   * @param pageId — Stable page identifier.
+   */
+  clear(pageId: string): void;
+  /**
+   * GAP-G1: Clear all retained snapshots for a specific page, or all pages if pageId is omitted.
+   *
+   * @param pageId — Optional stable page identifier. If omitted, clears all pages.
+   */
+  clear(pageId?: string): void {
+    if (pageId !== undefined) {
+      this.pages.delete(pageId);
+    } else {
+      this.pages.clear();
+    }
+  }
+
+  /**
+   * GAP-G1: Return snapshot metadata for all pages currently in the store.
+   *
+   * @returns A Map from pageId to its ordered list of SnapshotEnvelopeFields (oldest first).
+   */
+  listAll(): Map<string, SnapshotEnvelopeFields[]> {
+    return new Map(this.pages);
   }
 }

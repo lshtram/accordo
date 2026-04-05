@@ -10,6 +10,7 @@ import { buildTextMapTool } from "./text-map-tool.js";
 import { buildSemanticGraphTool } from "./semantic-graph-tool.js";
 import { buildDiffSnapshotsTool } from "./diff-tool.js";
 import { buildHealthTool } from "./health-tool.js";
+import { buildManageSnapshotsTool } from "./manage-snapshots-tool.js";
 import { buildControlTools } from "./control-tool-types.js";
 import { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { BrowserBridgeAPI, BrowserRelayAction } from "./types.js";
@@ -301,7 +302,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // GAP-H1: browser_health tool for connection observability
   const healthTool = buildHealthTool(relay);
 
-  const allBrowserTools = [...pageUnderstandingTools, waitTool, textMapTool, semanticGraphTool, diffTool, healthTool, ...buildControlTools(relay)];
+  // GAP-G1: browser_manage_snapshots tool for retention control
+  const manageSnapshotsTool = buildManageSnapshotsTool(relay, snapshotStore);
+
+  const allBrowserTools = [...pageUnderstandingTools, waitTool, textMapTool, semanticGraphTool, diffTool, healthTool, manageSnapshotsTool, ...buildControlTools(relay)];
 
   const toolsDisposable = bridge.registerTools(EXTENSION_ID, allBrowserTools);
   context.subscriptions.push(toolsDisposable);
