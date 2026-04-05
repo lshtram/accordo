@@ -18,6 +18,7 @@ import dagre from "@dagrejs/dagre";
 
 import type {
   ParsedDiagram,
+  ParsedCluster,
   ParsedNode,
   LayoutStore,
   NodeLayout,
@@ -44,6 +45,8 @@ const SHAPE_DIMS: Record<string, { w: number; h: number }> = {
   diamond:   { w: 140, h: 80 },
   circle:    { w: 80,  h: 80 },
   cylinder:  { w: 120, h: 80 },
+  stateStart: { w: 30, h: 30 },
+  stateEnd:   { w: 30, h: 30 },
 };
 
 const FALLBACK_DIMS = { w: 180, h: 60 };
@@ -103,11 +106,151 @@ function getDims(node: ParsedNode): { w: number; h: number; } {
   return SHAPE_DIMS[node.shape] ?? FALLBACK_DIMS;
 }
 
+function getClusterLeafNodes(
+  clusterId: string,
+  clusterMembers: ReadonlyMap<string, readonly string[]>,
+): string[] {
+  const members = clusterMembers.get(clusterId) ?? [];
+  const leaves: string[] = [];
+
+  for (const memberId of members) {
+    if (clusterMembers.has(memberId)) {
+      leaves.push(...getClusterLeafNodes(memberId, clusterMembers));
+      continue;
+    }
+    leaves.push(memberId);
+  }
+
+  return leaves;
+}
+
+function getClusterAnchorNodes(
+  clusterId: string,
+  direction: "in" | "out",
+  parsed: ParsedDiagram,
+  clusterMembers: ReadonlyMap<string, readonly string[]>,
+): string[] {
+  const descendants = getClusterLeafNodes(clusterId, clusterMembers);
+  const descendantSet = new Set(descendants);
+
+  if (direction === "in") {
+    const starts = descendants.filter((id) => parsed.nodes.get(id)?.shape === "stateStart");
+    if (starts.length > 0) {
+      return starts;
+    }
+
+    const internalTargets = new Set(
+      parsed.edges
+        .filter((edge) => descendantSet.has(edge.from) && descendantSet.has(edge.to))
+        .map((edge) => edge.to),
+    );
+    const roots = descendants.filter((id) => !internalTargets.has(id));
+    if (roots.length > 0) {
+      return roots;
+    }
+
+    return descendants.slice(0, 1);
+  }
+
+  const ends = descendants.filter((id) => parsed.nodes.get(id)?.shape === "stateEnd");
+  if (ends.length > 0) {
+    return ends;
+  }
+
+  const internalSources = new Set(
+    parsed.edges
+      .filter((edge) => descendantSet.has(edge.from) && descendantSet.has(edge.to))
+      .map((edge) => edge.from),
+  );
+  const leaves = descendants.filter(
+    (id) => !internalSources.has(id) && parsed.nodes.get(id)?.shape !== "stateStart",
+  );
+  if (leaves.length > 0) {
+    return leaves;
+  }
+
+  const nonStarts = descendants.filter((id) => parsed.nodes.get(id)?.shape !== "stateStart");
+  return nonStarts.length > 0 ? nonStarts : descendants;
+}
+
+function shiftClusterSubtree(
+  clusterId: string,
+  deltaY: number,
+  nodes: Record<string, NodeLayout>,
+  clusters: Record<string, ClusterLayout>,
+  clusterMembers: ReadonlyMap<string, readonly string[]>,
+): void {
+  const cluster = clusters[clusterId];
+  if (cluster !== undefined) {
+    cluster.y += deltaY;
+  }
+
+  for (const memberId of clusterMembers.get(clusterId) ?? []) {
+    const node = nodes[memberId];
+    if (node !== undefined) {
+      node.y += deltaY;
+      continue;
+    }
+    if (clusters[memberId] !== undefined) {
+      shiftClusterSubtree(memberId, deltaY, nodes, clusters, clusterMembers);
+    }
+  }
+}
+
+function recomputeClusterBox(
+  cluster: ParsedCluster,
+  nodes: Record<string, NodeLayout>,
+  clusters: Record<string, ClusterLayout>,
+): void {
+  const lefts: number[] = [];
+  const rights: number[] = [];
+  const tops: number[] = [];
+  const bottoms: number[] = [];
+
+  for (const memberId of cluster.members) {
+    const node = nodes[memberId];
+    if (node !== undefined) {
+      lefts.push(node.x);
+      rights.push(node.x + node.w);
+      tops.push(node.y);
+      bottoms.push(node.y + node.h);
+    }
+
+    const childCluster = clusters[memberId];
+    if (childCluster !== undefined) {
+      lefts.push(childCluster.x);
+      rights.push(childCluster.x + childCluster.w);
+      tops.push(childCluster.y);
+      bottoms.push(childCluster.y + childCluster.h);
+    }
+  }
+
+  if (lefts.length === 0) {
+    clusters[cluster.id] = { x: 0, y: 0, w: 0, h: 0, label: cluster.label, style: {} };
+    return;
+  }
+
+  const left = Math.min(...lefts);
+  const right = Math.max(...rights);
+  const top = Math.min(...tops);
+  const bottom = Math.max(...bottoms);
+
+  clusters[cluster.id] = {
+    x: left - CLUSTER_MARGIN,
+    y: top - CLUSTER_MARGIN - CLUSTER_LABEL_HEIGHT,
+    w: right - left + 2 * CLUSTER_MARGIN,
+    h: bottom - top + 2 * CLUSTER_MARGIN + CLUSTER_LABEL_HEIGHT,
+    label: cluster.label,
+    style: {},
+  };
+}
+
 // ── Core layout ───────────────────────────────────────────────────────────────
 
 /**
  * Run the dagre Sugiyama algorithm over `parsed` and build a LayoutStore.
- * x/y values stored in NodeLayout are the dagre-computed CENTRE coordinates.
+ * Dagre returns node coordinates at the centre point; NodeLayout stores the
+ * rendered node's top-left corner.
  *
  * When the diagram has clusters (subgraphs), the graph is built with
  * `compound: true` and each cluster member's parent is set via setParent().
@@ -125,6 +268,10 @@ function layoutWithDagre(
   const g = new dagre.graphlib.Graph({ multigraph: true, compound: hasCompound });
   g.setGraph({ rankdir, nodesep: nodeSpacing, ranksep: rankSpacing });
   g.setDefaultEdgeLabel(() => ({}));
+  const clusterIds = new Set(parsed.clusters.map((cluster) => cluster.id));
+  const clusterMembers = new Map(
+    parsed.clusters.map((cluster) => [cluster.id, cluster.members] as const),
+  );
 
   // --- cluster nodes (must be added before their children) ---
   if (hasCompound) {
@@ -143,9 +290,14 @@ function layoutWithDagre(
   // --- parent relationships ---
   if (hasCompound) {
     for (const cluster of parsed.clusters) {
+      // Only set parent for regular nodes (not child clusters)
+      // Child clusters are handled separately via cluster.parent below
       for (const memberId of cluster.members) {
-        g.setParent(memberId, cluster.id);
+        if (!clusterIds.has(memberId)) {
+          g.setParent(memberId, cluster.id);
+        }
       }
+      // Set parent for nested clusters
       if (cluster.parent) {
         g.setParent(cluster.id, cluster.parent);
       }
@@ -154,8 +306,21 @@ function layoutWithDagre(
 
   // --- edges (use EdgeKey as the multigraph edge name) ---
   for (const edge of parsed.edges) {
-    const key = `${edge.from}->${edge.to}:${edge.ordinal}`;
-    g.setEdge(edge.from, edge.to, {}, key);
+    const fromIds = clusterIds.has(edge.from)
+      ? getClusterAnchorNodes(edge.from, "out", parsed, clusterMembers)
+      : [edge.from];
+    const toIds = clusterIds.has(edge.to)
+      ? getClusterAnchorNodes(edge.to, "in", parsed, clusterMembers)
+      : [edge.to];
+
+    let syntheticOrdinal = 0;
+    for (const fromId of fromIds) {
+      for (const toId of toIds) {
+        const key = `${edge.from}->${edge.to}:${edge.ordinal}:${syntheticOrdinal}`;
+        g.setEdge(fromId, toId, {}, key);
+        syntheticOrdinal += 1;
+      }
+    }
   }
 
   dagre.layout(g);
@@ -169,8 +334,8 @@ function layoutWithDagre(
     const placed = g.node(id) as { x: number; y: number; width: number; height: number };
     const { w, h } = getDims(parsedNode);
     nodes[id] = {
-      x: placed.x,
-      y: placed.y,
+      x: placed.x - (w / 2),
+      y: placed.y - (h / 2),
       w,
       h,
       style: {},
@@ -178,8 +343,12 @@ function layoutWithDagre(
   }
 
   // --- collect edge results ---
+  // Skip edges that reference cluster IDs (same filter as when adding to dagre)
   const edges: Record<string, EdgeLayout> = {};
   for (const edge of parsed.edges) {
+    if (clusterIds.has(edge.from) || clusterIds.has(edge.to)) {
+      continue;
+    }
     const key = `${edge.from}->${edge.to}:${edge.ordinal}`;
     edges[key] = {
       routing: "auto",
@@ -189,45 +358,121 @@ function layoutWithDagre(
   }
 
   // --- compute cluster bounding boxes ---
-  // NodeLayout.x/y are dagre centre coords re-used directly as Excalidraw
-  // top-left coords. The rendered node therefore occupies x … x+w, y … y+h.
-  // Use full extents (not just centres) so the cluster box actually wraps the
-  // rendered shapes on canvas rather than only enclosing their centre points.
+  // NodeLayout.x/y are stored as top-left coords. Use full extents so the
+  // cluster box wraps the rendered shapes on canvas.
   const clusters: Record<string, ClusterLayout> = {};
-  for (const cluster of parsed.clusters) {
-    const lefts:   number[] = [];
-    const rights:  number[] = [];
-    const tops:    number[] = [];
-    const bottoms: number[] = [];
+  
+  // Process clusters in reverse order so nested clusters (which appear later
+  // in the array) are processed before their parent clusters. This ensures
+  // parent clusters can include child cluster bounds in their bounding box.
+  for (let i = parsed.clusters.length - 1; i >= 0; i--) {
+    const cluster = parsed.clusters[i];
+    recomputeClusterBox(cluster, nodes, clusters);
+  }
 
-    for (const memberId of cluster.members) {
-      const n = nodes[memberId];
-      if (n === undefined) continue;
-      lefts.push(n.x);
-      rights.push(n.x + n.w);
-      tops.push(n.y);
-      bottoms.push(n.y + n.h);
+  if (parsed.type === "stateDiagram-v2") {
+    for (let i = parsed.clusters.length - 1; i >= 0; i--) {
+      const cluster = parsed.clusters[i];
+      const directMembers = cluster.members
+        .map((memberId) => {
+          const node = nodes[memberId];
+          if (node !== undefined) {
+            return { id: memberId, y: node.y, bottom: node.y + node.h, isCluster: false };
+          }
+
+          const childCluster = clusters[memberId];
+          if (childCluster !== undefined) {
+            return {
+              id: memberId,
+              y: childCluster.y,
+              bottom: childCluster.y + childCluster.h,
+              isCluster: true,
+            };
+          }
+
+          return null;
+        })
+        .filter((member): member is { id: string; y: number; bottom: number; isCluster: boolean } => member !== null)
+        .sort((a, b) => a.y - b.y);
+
+      if (directMembers.length < 2) {
+        recomputeClusterBox(cluster, nodes, clusters);
+        continue;
+      }
+
+      if (directMembers.every((member) => member.isCluster)) {
+        const targetY = Math.min(...directMembers.map((member) => member.y));
+        for (const member of directMembers) {
+          const deltaY = targetY - member.y;
+          if (deltaY !== 0) {
+            shiftClusterSubtree(member.id, deltaY, nodes, clusters, clusterMembers);
+          }
+        }
+        recomputeClusterBox(cluster, nodes, clusters);
+        continue;
+      }
+
+      let previousBottom = directMembers[0].bottom;
+      for (const member of directMembers.slice(1)) {
+        const targetY = previousBottom + rankSpacing;
+        const deltaY = targetY - member.y;
+        if (deltaY !== 0) {
+          if (member.isCluster) {
+            shiftClusterSubtree(member.id, deltaY, nodes, clusters, clusterMembers);
+          } else {
+            nodes[member.id]!.y += deltaY;
+          }
+        }
+
+        const node = nodes[member.id];
+        const childCluster = clusters[member.id];
+        previousBottom = node !== undefined
+          ? node.y + node.h
+          : childCluster.y + childCluster.h;
+      }
+
+      recomputeClusterBox(cluster, nodes, clusters);
     }
 
-    if (lefts.length === 0) {
-      // Cluster with no placed members: zero-size at origin.
-      clusters[cluster.id] = { x: 0, y: 0, w: 0, h: 0, label: cluster.label, style: {} };
-      continue;
+    for (const edge of parsed.edges) {
+      if (!clusterIds.has(edge.to)) {
+        continue;
+      }
+
+      const externalNode = parsed.nodes.get(edge.from);
+      const targetCluster = clusters[edge.to];
+      const externalLayout = nodes[edge.from];
+      if (
+        externalNode?.shape !== "stateStart" ||
+        targetCluster === undefined ||
+        externalLayout === undefined
+      ) {
+        continue;
+      }
+
+      externalLayout.x = targetCluster.x + (targetCluster.w - externalLayout.w) / 2;
+      externalLayout.y = targetCluster.y - rankSpacing - externalLayout.h;
     }
 
-    const left   = Math.min(...lefts);
-    const right  = Math.max(...rights);
-    const top    = Math.min(...tops);
-    const bottom = Math.max(...bottoms);
+    for (const edge of parsed.edges) {
+      if (!clusterIds.has(edge.from)) {
+        continue;
+      }
 
-    clusters[cluster.id] = {
-      x: left   - CLUSTER_MARGIN,
-      y: top    - CLUSTER_MARGIN - CLUSTER_LABEL_HEIGHT,
-      w: right  - left   + 2 * CLUSTER_MARGIN,
-      h: bottom - top    + 2 * CLUSTER_MARGIN + CLUSTER_LABEL_HEIGHT,
-      label: cluster.label,
-      style: {},
-    };
+      const externalNode = parsed.nodes.get(edge.to);
+      const sourceCluster = clusters[edge.from];
+      const externalLayout = nodes[edge.to];
+      if (
+        externalNode?.shape !== "stateEnd" ||
+        sourceCluster === undefined ||
+        externalLayout === undefined
+      ) {
+        continue;
+      }
+
+      externalLayout.x = sourceCluster.x + (sourceCluster.w - externalLayout.w) / 2;
+      externalLayout.y = sourceCluster.y + sourceCluster.h + rankSpacing;
+    }
   }
 
   // Safe: the DAGRE_TYPES guard at call-site ensures parsed.type is one of the

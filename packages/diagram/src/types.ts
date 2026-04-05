@@ -91,6 +91,8 @@ export interface LayoutStore {
   unplaced: NodeId[];
   /** Global aesthetic settings applied to all canvas elements. */
   aesthetics: AestheticsConfig;
+  /** Optional metadata field for extensibility. */
+  metadata?: Record<string, unknown>;
 }
 
 /** Layout entry for a single node. */
@@ -262,6 +264,8 @@ export type NodeShape =
   | "parallelogram"
   | "hexagon"
   | "ellipse"
+  | "stateStart"
+  | "stateEnd"
   | string; // open for future diagram types
 
 /**
@@ -401,7 +405,7 @@ export interface ExcalidrawElement {
    */
   kind?: "cluster" | "node" | "edge" | "label";
   /** Excalidraw element type. */
-  type: "rectangle" | "diamond" | "ellipse" | "arrow" | "text";
+  type: "rectangle" | "diamond" | "ellipse" | "arrow" | "text" | "line" | "freedraw";
   /** X coordinate (pixels from canvas origin). */
   x: number;
   /** Y coordinate (pixels from canvas origin). */

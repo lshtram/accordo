@@ -31,7 +31,13 @@ import type {
 } from "../types.js";
 import { placeNodes } from "../reconciler/placement.js";
 import { getShapeProps } from "./shape-map.js";
-import { routeEdge } from "./edge-router.js";
+import { routeEdge, type EdgeInfo } from "./edge-router.js";
+
+/**
+ * Small perpendicular shift applied to each parallel edge's label to prevent
+ * label overlap.  ±LABEL_OFFSET_PX separates bidirectional/parallel labels.
+ */
+const LABEL_OFFSET_PX = 15;
 
 /** Build the EdgeKey string for a given edge. */
 function edgeKey(from: string, to: string, ordinal: number): string {
@@ -45,6 +51,82 @@ function edgeKey(from: string, to: string, ordinal: number): string {
  */
 function normalizeLabel(label: string): string {
   return label.replace(/\\n/g, "\n");
+}
+
+/**
+ * Compute the label waypoint position for a parallel edge.
+ * Returns the midpoint of the canonical edge path (from smaller node ID to larger),
+ * shifted perpendicular to separate parallel/bidirectional labels.  Returns null if
+ * no parallel siblings exist.
+ *
+ * @param sc        Centre of source node [x, y].
+ * @param tc        Centre of target node [x, y].
+ * @param edge      The edge being labeled.
+ * @param allEdges  All edges in the diagram (for parallel sibling detection).
+ * @returns         Absolute [x, y] waypoint for the label, or null.
+ */
+function computeLabelWaypoint(
+  sc: [number, number],
+  tc: [number, number],
+  edge: { from: string; to: string; ordinal: number },
+  allEdges: readonly { from: string; to: string; ordinal: number }[],
+): [number, number] | null {
+  // Find all parallel siblings (same node pair, either direction).
+  const siblings = allEdges.filter(
+    (e) =>
+      (e.from === edge.from && e.to === edge.to) ||
+      (e.from === edge.to && e.to === edge.from),
+  );
+  if (siblings.length <= 1) return null;
+
+  siblings.sort((a, b) => {
+    if (a.from !== b.from) return a.from.localeCompare(b.from);
+    return a.ordinal - b.ordinal;
+  });
+
+  const idx = siblings.findIndex(
+    (e) => e.from === edge.from && e.to === edge.to && e.ordinal === edge.ordinal,
+  );
+  if (idx < 0) return null;
+
+  // Canonical direction: from smaller node ID to larger node ID.
+  let cdx = tc[0] - sc[0];
+  let cdy = tc[1] - sc[1];
+  if (edge.from > edge.to) {
+    cdx = -cdx;
+    cdy = -cdy;
+  }
+
+  // Midpoint of the canonical path (in absolute coordinates).
+  const mx = (sc[0] + tc[0]) / 2;
+  const my = (sc[1] + tc[1]) / 2;
+
+  // Dominant-axis perpendicular: same formula as routeAuto.
+  let perpX: number, perpY: number;
+  const clen = Math.sqrt(cdx * cdx + cdy * cdy);
+  if (clen > 0 && Math.abs(cdx) >= Math.abs(cdy)) {
+    perpX = 0;
+    perpY = cdx > 0 ? 1 : -1;
+  } else if (clen > 0) {
+    perpX = cdy > 0 ? -1 : 1;
+    perpY = 0;
+  } else {
+    perpX = 0;
+    perpY = 0;
+  }
+
+  // Alternate ±LABEL_OFFSET_PX for each sibling.
+  const side = idx % 2 === 0 ? 1 : -1;
+  const offset = side * LABEL_OFFSET_PX;
+
+  // Small diagonal spread: ±spread pixels horizontal shift.
+  const spread = 10;
+  const horizShift = cdx >= 0 ? -side * spread : side * spread;
+
+  return [
+    mx + perpX * offset + horizShift,
+    my + perpY * offset,
+  ] as [number, number];
 }
 
 /**
@@ -203,23 +285,52 @@ export function generateCanvas(
     const sourceBB = { x: fromLayout.x, y: fromLayout.y, w: fromLayout.w, h: fromLayout.h };
     const targetBB = { x: toLayout.x, y: toLayout.y, w: toLayout.w, h: toLayout.h };
 
-    const routeResult = routeEdge(routing, waypoints, sourceBB, targetBB);
+    const sc: [number, number] = [fromLayout.x + fromLayout.w / 2, fromLayout.y + fromLayout.h / 2];
+    const tc: [number, number] = [toLayout.x + toLayout.w / 2, toLayout.y + toLayout.h / 2];
+
+    const routeResult = routeEdge(
+      routing,
+      waypoints,
+      sourceBB,
+      targetBB,
+      { from: edge.from, to: edge.to, ordinal: edge.ordinal },
+      parsed.edges as readonly EdgeInfo[],
+    );
 
     // Excalidraw arrow points must be relative to the element's x,y.
     // Use the first absolute point as the element origin, then subtract.
     const absPoints = routeResult.points;
     const ox = absPoints[0]![0];
     const oy = absPoints[0]![1];
-    const relPoints: ReadonlyArray<[number, number]> = absPoints.map(
+
+    // For parallel edges with labels: compute the label waypoint from node centers
+    // (not from the already-offset endpoints) to avoid double-offsetting.
+    let finalAbsPoints = absPoints;
+    let labelWpForPosition: [number, number] | null = null;
+    if (edge.label) {
+      labelWpForPosition = computeLabelWaypoint(
+        sc,
+        tc,
+        { from: edge.from, to: edge.to, ordinal: edge.ordinal },
+        parsed.edges as readonly { from: string; to: string; ordinal: number }[],
+      );
+      if (labelWpForPosition != null) {
+        // Insert waypoint at position 1 (between start and end) so the arrow
+        // bends through the label position.
+        finalAbsPoints = [
+          absPoints[0],
+          labelWpForPosition,
+          ...absPoints.slice(1),
+        ];
+      }
+    }
+
+    const relPoints: ReadonlyArray<[number, number]> = finalAbsPoints.map(
       ([px, py]) => [px - ox, py - oy] as [number, number],
     );
 
     // Pre-generate the arrow ID so we can reference it in shape boundElements.
     const arrowId = randomUUID();
-    // If this edge has a label, pre-generate its text ID so we can cross-reference
-    // the arrow and the text element (Excalidraw requires mutual binding).
-    const labelTextId = edge.label ? randomUUID() : null;
-
     // Track this arrow against its source and target nodes for boundElements patching.
     for (const nid of [edge.from, edge.to]) {
       const arr = nodeArrows.get(nid) ?? [];
@@ -248,32 +359,12 @@ export function generateCanvas(
       endBinding: toElemId && routeResult.endBinding
         ? { elementId: toElemId, ...routeResult.endBinding }
         : null,
-      // Bind the label text element so Excalidraw tracks and moves it with the arrow.
-      boundElements: labelTextId ? [{ id: labelTextId, type: "text" }] : null,
+      label: edge.label ? normalizeLabel(edge.label) : undefined,
       // Stroke properties for edge elements.
       strokeColor: edgeL?.style?.strokeColor,
       strokeWidth: edgeL?.style?.strokeWidth,
       strokeStyle: edgeL?.style?.strokeStyle ?? (edgeL?.style?.strokeDash ? "dashed" : undefined),
     });
-
-    if (edge.label && labelTextId) {
-      // containerId = arrowId causes Excalidraw to auto-position the label at
-      // the arrow midpoint and keep it there when the arrow is moved.
-      elements.push({
-        id: labelTextId,
-        mermaidId: `${key}:label`,
-        kind: "label",
-        type: "text",
-        x: ox,
-        y: oy,
-        width: 120,
-        height: 20,
-        roughness,
-        fontFamily,
-        label: normalizeLabel(edge.label),
-        containerId: arrowId,
-      });
-    }
   }
 
   // ── 4. Patch shape boundElements with arrow IDs ──────────────────────────────
