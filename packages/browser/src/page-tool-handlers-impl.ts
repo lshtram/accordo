@@ -359,7 +359,7 @@ export async function handleCaptureRegion(
         }
         // GAP-E2: Attach relatedSnapshotId linking this capture to the previous DOM snapshot
         if (relatedSnapshotId !== undefined) {
-          (result as any).relatedSnapshotId = relatedSnapshotId;
+          (result as CaptureRegionResponse).relatedSnapshotId = relatedSnapshotId;
         }
         // Return a shallow copy so subsequent calls don't overwrite auditId on the same object
         return { ...result };
