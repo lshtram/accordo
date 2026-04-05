@@ -372,8 +372,9 @@ async function executeCaptureFullPage(
       { captureBeyondViewport: true, format },
     );
 
-    // Convert base64 PNG to data URL
-    const dataUrl = `data:image/png;base64,${cdpResult.data}`;
+    // Convert base64 image to data URL with correct mime type
+    const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
+    const dataUrl = `data:${mimeType};base64,${cdpResult.data}`;
     const sizeBytes = Math.round((cdpResult.data.length * 3) / 4);
 
     if (swapped && originalTabId !== undefined) {
