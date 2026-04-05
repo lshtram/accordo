@@ -1,18 +1,19 @@
 /**
  * Tests for extension-composition.ts
  * Requirements: requirements-bridge.md §3, §5, §8, §9
+ * Reconnect scenarios: docs/10-architecture/reload-reconnect-test-scenarios.md §7–8
  *
  * Phase B design:
  * - All functions throw "not implemented" on the stub → all tests are RED.
- * - Mocks: vscode API, node:fs, node:ws, WsClient, HubManager, etc.
+ * - Mocks: vscode API, node:fs, node:ws, WsClient, HubManager, agent-config, etc.
  * - Tests cover all public functions and their wiring behaviours.
  *
  * API checklist:
- * - buildHubManagerEvents(deps: CompositionDeps) → HubManagerEvents  [6 tests]
+ * - buildHubManagerEvents(deps: CompositionDeps) → HubManagerEvents  [8 tests]  (6 existing + AR-05, AR-06)
  * - makeWsClientEvents(deps: CompositionDeps) → WsClientEvents      [7 tests]
  * - composeExtension(deps, registerFn) → ComposedBridgeAPI           [7 tests]
  * - registerCommands(deps, registerFn) → Disposable[]               [4 tests]
- * - cleanupExtension(state, services) → Promise<void>              [5 tests]
+ * - cleanupExtension(state, services) → Promise<void>              [8 tests]  (5 existing + RCE-01, RCE-02, RCE-03)
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -143,6 +144,7 @@ const mockHubManagerInstance = vi.hoisted(() => ({
   restart: vi.fn().mockResolvedValue(undefined),
   getPort: vi.fn().mockReturnValue(3000),
   isRunning: vi.fn().mockReturnValue(false),
+  softDisconnect: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("../hub-manager.js", () => ({
@@ -192,6 +194,14 @@ const mockStatePublisherInstance = vi.hoisted(() => ({
 
 vi.mock("../state-publisher.js", () => ({
   StatePublisher: vi.fn().mockImplementation(() => mockStatePublisherInstance),
+}));
+
+// ── Mock agent-config (writeAgentConfigs) ─────────────────────────────────────
+
+const mockWriteAgentConfigs = vi.hoisted(() => vi.fn());
+
+vi.mock("../agent-config.js", () => ({
+  writeAgentConfigs: mockWriteAgentConfigs,
 }));
 
 // ── Imports after mock registration ───────────────────────────────────────────
@@ -719,5 +729,146 @@ describe("cleanupExtension", () => {
     await cleanupExtension(state, services);
 
     expect(mockRegistryInstance.dispose).toHaveBeenCalled();
+  });
+});
+
+// ── cleanupExtension — reconnect scenarios (RCE-01 to RCE-03) ─────────────────
+// Scenarios from: docs/10-architecture/reload-reconnect-test-scenarios.md §8
+// These verify that cleanupExtension() calls softDisconnect() BEFORE WsClient disconnect.
+
+describe("cleanupExtension() — reconnect scenarios (RCE-01 to RCE-03)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // RCE-01: cleanupExtension() calls hubManager.softDisconnect() before wsClient.disconnect()
+  it("RCE-01: cleanupExtension() calls hubManager.softDisconnect() before wsClient.disconnect()", async () => {
+    const callOrder: string[] = [];
+
+    mockHubManagerInstance.softDisconnect.mockImplementation(async () => {
+      callOrder.push("softDisconnect");
+      return true;
+    });
+    mockWsClientInstance.disconnect.mockImplementation(async () => {
+      callOrder.push("disconnect");
+    });
+
+    const state = makeMockExtensionState({
+      wsClient: mockWsClientInstance as unknown as WsClient,
+    });
+    const services = makeMockServices();
+
+    await cleanupExtension(state, services);
+
+    expect(mockHubManagerInstance.softDisconnect).toHaveBeenCalled();
+    expect(mockWsClientInstance.disconnect).toHaveBeenCalled();
+    // softDisconnect must be called before wsClient.disconnect
+    expect(callOrder.indexOf("softDisconnect")).toBeLessThan(
+      callOrder.indexOf("disconnect"),
+    );
+  });
+
+  // RCE-02: cleanupExtension() full order: softDisconnect → wsClient.disconnect → router.cancelAll → statePublisher.dispose
+  it("RCE-02: cleanupExtension() order: softDisconnect → wsClient.disconnect → router.cancelAll → statePublisher.dispose", async () => {
+    const callOrder: string[] = [];
+
+    mockHubManagerInstance.softDisconnect.mockImplementation(async () => {
+      callOrder.push("softDisconnect");
+      return true;
+    });
+    mockWsClientInstance.disconnect.mockImplementation(async () => {
+      callOrder.push("disconnect");
+    });
+    mockRouterInstance.cancelAll.mockImplementation(() => {
+      callOrder.push("cancelAll");
+    });
+    mockStatePublisherInstance.dispose.mockImplementation(() => {
+      callOrder.push("dispose");
+    });
+
+    const state = makeMockExtensionState({
+      wsClient: mockWsClientInstance as unknown as WsClient,
+    });
+    const services = makeMockServices();
+
+    await cleanupExtension(state, services);
+
+    expect(callOrder).toContain("softDisconnect");
+    expect(callOrder).toContain("disconnect");
+    expect(callOrder).toContain("cancelAll");
+    expect(callOrder).toContain("dispose");
+
+    const idxSoft = callOrder.indexOf("softDisconnect");
+    const idxDisc = callOrder.indexOf("disconnect");
+    const idxCancel = callOrder.indexOf("cancelAll");
+    const idxDispose = callOrder.indexOf("dispose");
+
+    expect(idxSoft).toBeLessThan(idxDisc);
+    expect(idxDisc).toBeLessThan(idxCancel);
+    expect(idxCancel).toBeLessThan(idxDispose);
+  });
+
+  // RCE-03: softDisconnect() failure does NOT prevent remaining cleanup steps
+  it("RCE-03: softDisconnect() failure does NOT prevent wsClient.disconnect() from running", async () => {
+    mockHubManagerInstance.softDisconnect.mockRejectedValue(
+      new Error("soft disconnect failed"),
+    );
+
+    const state = makeMockExtensionState({
+      wsClient: mockWsClientInstance as unknown as WsClient,
+    });
+    const services = makeMockServices();
+
+    // Must not throw even though softDisconnect rejects
+    await expect(cleanupExtension(state, services)).resolves.toBeUndefined();
+
+    // All other cleanup steps must still run
+    expect(mockWsClientInstance.disconnect).toHaveBeenCalled();
+    expect(mockRouterInstance.cancelAll).toHaveBeenCalled();
+    expect(mockStatePublisherInstance.dispose).toHaveBeenCalled();
+    expect(mockRegistryInstance.dispose).toHaveBeenCalled();
+  });
+});
+
+// ── buildHubManagerEvents — reconnect: isReconnect flag (AR-05 to AR-06) ──────
+// Scenarios from: docs/10-architecture/reload-reconnect-test-scenarios.md §5
+// Verifies that the onHubReady callback skips writeAgentConfigs when isReconnect=true.
+
+describe("buildHubManagerEvents() — reconnect: isReconnect flag (AR-05 to AR-06)", () => {
+  beforeEach(() => {
+    mockFsState.files = {};
+    mockFsState.writtenFiles = [];
+    vi.clearAllMocks();
+    // Prevent secretStorage.get from hanging
+    vi.spyOn(
+      makeCompositionDeps().bootstrap.secretStorage,
+      "get",
+    ).mockResolvedValue(undefined);
+  });
+
+  // AR-05: onHubReady(port, token, true) — reconnect path — does NOT call writeAgentConfigs
+  it("AR-05: onHubReady(port, token, isReconnect=true) skips writeAgentConfigs()", () => {
+    const deps = makeCompositionDeps();
+    const events = buildHubManagerEvents(deps);
+
+    // TODO-EXT(AR-05): isReconnect flag not yet in HubManagerEvents.onHubReady interface.
+    // Once implemented, this call should pass true as a third argument.
+    events.onHubReady(3000, "test-token");
+
+    expect(mockWriteAgentConfigs).not.toHaveBeenCalled();
+  });
+
+  // AR-06: onHubReady(port, token) — fresh-spawn path — DOES call writeAgentConfigs
+  it("AR-06: onHubReady(port, token) without isReconnect flag calls writeAgentConfigs()", () => {
+    const deps = makeCompositionDeps();
+    const events = buildHubManagerEvents(deps);
+
+    // Call without isReconnect (fresh spawn path)
+    events.onHubReady(3000, "test-token");
+
+    expect(mockWriteAgentConfigs).toHaveBeenCalledOnce();
+    expect(mockWriteAgentConfigs).toHaveBeenCalledWith(
+      expect.objectContaining({ port: 3000, token: "test-token" }),
+    );
   });
 });
