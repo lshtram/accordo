@@ -1,7 +1,7 @@
 /**
  * health-tool.test.ts
  *
- * Tests for GAP-H1 + MCP-ER-004 — browser_health MCP tool
+ * Tests for GAP-H1 + MCP-ER-004 — accordo_browser_health MCP tool
  *
  * Tests validate:
  * - HEALTH-001: returns { connected: true } when relay is connected
@@ -14,7 +14,7 @@
  * - HEALTH-004: uptimeSeconds > 0
  *
  * API checklist (buildHealthTool):
- * - name: "browser_health"
+ * - name: "accordo_browser_health"
  * - description: mentions connection health, errors, uptime
  * - inputSchema: empty object {}
  * - dangerLevel: "safe"
@@ -45,11 +45,11 @@ function createMockRelay(overrides?: Partial<{
 
 // ── Tool Registration ─────────────────────────────────────────────────────────
 
-describe("browser_health tool registration", () => {
-  it("buildHealthTool returns tool with name 'browser_health'", () => {
+describe("accordo_browser_health tool registration", () => {
+  it("buildHealthTool returns tool with name 'accordo_browser_health'", () => {
     const relay = createMockRelay();
     const tool = buildHealthTool(relay);
-    expect(tool.name).toBe("browser_health");
+    expect(tool.name).toBe("accordo_browser_health");
   });
 
   it("Tool description mentions connection health, errors, and uptime", () => {
@@ -232,7 +232,7 @@ describe("HEALTH-004: Uptime validation", () => {
 
 // ── Handler behavior ──────────────────────────────────────────────────────────
 
-describe("browser_health handler behavior", () => {
+describe("accordo_browser_health handler behavior", () => {
   it("Handler queries relay.isConnected()", async () => {
     const relay = createMockRelay({ connected: true });
     const tool = buildHealthTool(relay);

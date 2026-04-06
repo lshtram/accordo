@@ -441,7 +441,8 @@ export type RelayError =
 
 /** Frame-targeting errors (permanent — not retryable). */
 export type FrameError =
-  | "iframe-cross-origin";
+  | "iframe-cross-origin"
+  | "no-content-script";
 
 /** Security-related errors (permanent — not retryable). */
 export type SecurityError =

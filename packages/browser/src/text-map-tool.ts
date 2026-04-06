@@ -94,7 +94,7 @@ export interface TextMapResponse extends SnapshotEnvelopeFields {
  */
 export interface TextMapToolError {
   success: false;
-  error: "browser-not-connected" | "timeout" | "action-failed" | "iframe-cross-origin";
+  error: "browser-not-connected" | "timeout" | "action-failed" | "iframe-cross-origin" | "no-content-script";
 }
 
 // ── Tool Definition ──────────────────────────────────────────────────────────
@@ -222,6 +222,7 @@ async function handleGetTextMap(
         errCode === "browser-not-connected" ? "browser-not-connected"
         : errCode === "timeout" ? "timeout"
         : errCode === "iframe-cross-origin" ? "iframe-cross-origin"
+        : errCode === "no-content-script" ? "no-content-script"
         : "action-failed";
       security.auditLog.completeEntry(auditEntry, {
         action: "blocked",

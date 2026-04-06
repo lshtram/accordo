@@ -457,6 +457,7 @@ function createCommandsMock() {
 /** Creates a fresh webNavigation mock with new vi.fn() implementations. */
 function createWebNavigationMock() {
   return {
+    getAllFrames: vi.fn(async () => []),
     onCommitted: {
       addListener: vi.fn(),
       removeListener: vi.fn(),
@@ -472,6 +473,8 @@ export const debuggerAttachedTabs = new Set<number>();
 
 /** Detach listener registry. */
 const debuggerDetachListeners: Array<(source: chrome.debugger.Debuggee, reason: string) => void> = [];
+/** Debugger event listener registry. */
+const debuggerEventListeners: Array<(source: chrome.debugger.Debuggee, method: string, params?: Record<string, unknown>) => void> = [];
 
 /** Creates a fresh debugger mock with new vi.fn() implementations. */
 function createDebuggerMock() {
@@ -500,8 +503,8 @@ function createDebuggerMock() {
 
     sendCommand: vi.fn(
       (
-        _target: chrome.debugger.Debuggee,
-        _method: string,
+        target: chrome.debugger.Debuggee,
+        method: string,
         _params?: Record<string, unknown>,
         callback?: (result: unknown) => void
       ): Promise<unknown> => {
@@ -509,10 +512,28 @@ function createDebuggerMock() {
         // debugger-manager.ts does its own check via its module-level attachedTabs Set.
         // Since we cannot reset that Set (debugger-manager.ts is not modifiable),
         // we trust the module-level check and just return a mock CDP response.
+        if (method === "Page.navigate" || method === "Page.reload" || method === "Page.goBackInHistory" || method === "Page.goForwardInHistory") {
+          for (const listener of debuggerEventListeners) {
+            listener(target, "Page.lifecycleEvent", { name: "DOMContentLoaded" });
+            listener(target, "Page.lifecycleEvent", { name: "load" });
+            listener(target, "Page.lifecycleEvent", { name: "networkIdle" });
+          }
+        }
         if (callback) callback({});
         return Promise.resolve({});
       }
     ),
+
+    onEvent: {
+      addListener: vi.fn((listener: (source: chrome.debugger.Debuggee, method: string, params?: Record<string, unknown>) => void) => {
+        debuggerEventListeners.push(listener);
+      }),
+      removeListener: vi.fn((listener: (source: chrome.debugger.Debuggee, method: string, params?: Record<string, unknown>) => void) => {
+        const idx = debuggerEventListeners.indexOf(listener);
+        if (idx !== -1) debuggerEventListeners.splice(idx, 1);
+      }),
+      hasListener: vi.fn(() => false),
+    },
 
     onDetach: {
       addListener: vi.fn((listener: (source: chrome.debugger.Debuggee, reason: string) => void) => {

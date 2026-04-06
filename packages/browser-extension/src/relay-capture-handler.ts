@@ -273,14 +273,7 @@ async function executeCaptureRegion(
     try {
       fullDataUrl = await captureVisibleTab(quality, format);
     } catch {
-      console.error("[Accordo SW] executeCaptureRegion captureVisibleTab failed", {
-        targetTabId,
-        format,
-        quality,
-        hasRect: payload.rect !== undefined,
-        anchorKey: payload.anchorKey,
-        nodeRef: payload.nodeRef,
-      });
+      console.warn("[Accordo SW] captureVisibleTab failed", { targetTabId, format, quality });
       // Restore tab before returning if we swapped
       if (swapped && originalTabId !== undefined) {
         await chrome.tabs.update(originalTabId, { active: true });
@@ -298,12 +291,7 @@ async function executeCaptureRegion(
     width = cropped.width;
     height = cropped.height;
   } catch {
-    console.error("[Accordo SW] executeCaptureRegion cropImageToBounds failed", {
-      targetTabId,
-      format,
-      quality,
-      paddedBounds,
-    });
+    console.warn("[Accordo SW] cropImageToBounds failed, using full screenshot", { targetTabId, format, quality });
     dataUrl = fullDataUrl;
     width = Math.min(MAX_CAPTURE_DIMENSION, paddedBounds.width);
     height = Math.min(MAX_CAPTURE_DIMENSION, paddedBounds.height);

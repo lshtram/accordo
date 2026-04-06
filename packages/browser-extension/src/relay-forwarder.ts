@@ -92,21 +92,45 @@ export async function resolveTargetTabId(payload: Record<string, unknown>): Prom
 }
 
 /**
+ * Sentinel returned when the content script is not reachable.
+ * Callers must check `isNoContentScript(result)` before treating result as data.
+ */
+export const NO_CONTENT_SCRIPT = Symbol("no-content-script");
+
+function isNoReceiverError(err: unknown): boolean {
+  const msg = (err as Error | undefined)?.message ?? String(err);
+  return (
+    msg.includes("Receiving end does not exist") ||
+    msg.includes("Could not establish connection") ||
+    msg.includes("No tab with id")
+  );
+}
+
+/**
  * Forward a page-understanding action to a content script via chrome.tabs.sendMessage.
  *
- * Returns the response data on success, or null if the content script is
- * unreachable or returns an error.
+ * Returns the response data on success, NO_CONTENT_SCRIPT if the content script is
+ * unreachable (not injected / tab not ready), or null if the content script returned
+ * an error response.
  */
 export async function forwardToContentScript(
   tabId: number,
   action: string,
   payload: Record<string, unknown>,
-): Promise<unknown | null> {
-  const response = await chrome.tabs.sendMessage(tabId, {
-    type: "PAGE_UNDERSTANDING_ACTION",
-    action,
-    payload,
-  });
+): Promise<unknown | null | typeof NO_CONTENT_SCRIPT> {
+  let response: unknown;
+  try {
+    response = await chrome.tabs.sendMessage(tabId, {
+      type: "PAGE_UNDERSTANDING_ACTION",
+      action,
+      payload,
+    });
+  } catch (err) {
+    if (isNoReceiverError(err)) {
+      return NO_CONTENT_SCRIPT;
+    }
+    return null;
+  }
   if (!response || hasErrorField(response)) {
     return null;
   }
@@ -123,20 +147,28 @@ export async function forwardToContentScript(
  * child frame identity for routing — the numeric frameId from chrome's frame
  * navigation API is used for SW-level forwarding.
  *
- * Returns the response data on success, or null if the frame is unreachable
- * or returns an error.
+ * Returns the response data on success, NO_CONTENT_SCRIPT if the frame's content
+ * script is unreachable, or null if it returned an error response.
  */
 export async function forwardToFrame(
   tabId: number,
   frameId: number,
   action: string,
   payload: Record<string, unknown>,
-): Promise<unknown | null> {
-  const response = await chrome.tabs.sendMessage(
-    tabId,
-    { type: "PAGE_UNDERSTANDING_ACTION", action, payload },
-    { frameId },
-  );
+): Promise<unknown | null | typeof NO_CONTENT_SCRIPT> {
+  let response: unknown;
+  try {
+    response = await chrome.tabs.sendMessage(
+      tabId,
+      { type: "PAGE_UNDERSTANDING_ACTION", action, payload },
+      { frameId },
+    );
+  } catch (err) {
+    if (isNoReceiverError(err)) {
+      return NO_CONTENT_SCRIPT;
+    }
+    return null;
+  }
   if (!response || hasErrorField(response)) {
     return null;
   }

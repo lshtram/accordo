@@ -70,7 +70,7 @@ export function buildHealthTool(
   };
 
   return {
-    name: "browser_health",
+    name: "accordo_browser_health",
     description:
       "Reports browser relay connection health, recent errors, and uptime. Use before attempting browser operations to verify the connection is functional.",
     inputSchema: {

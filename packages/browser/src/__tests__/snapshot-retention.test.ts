@@ -206,12 +206,12 @@ describe("GAP-G1: SnapshotRetentionStore retention control", () => {
 // ── GAP-G1: buildManageSnapshotsTool ─────────────────────────────────────────
 
 describe("GAP-G1: buildManageSnapshotsTool", () => {
-  it("GAP-G1: tool name is browser_manage_snapshots", async () => {
+  it("GAP-G1: tool name is accordo_browser_manage_snapshots", async () => {
     const { buildManageSnapshotsTool } = await import("../manage-snapshots-tool.js");
     const store = new SnapshotRetentionStore();
     const relay = { request: vi.fn(), isConnected: vi.fn(() => true) };
     const tool = buildManageSnapshotsTool(relay as never, store);
-    expect(tool.name).toBe("browser_manage_snapshots");
+    expect(tool.name).toBe("accordo_browser_manage_snapshots");
   });
 
   it("GAP-G1: tool has action and pageId in inputSchema", async () => {

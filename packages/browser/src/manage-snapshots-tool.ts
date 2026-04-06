@@ -112,7 +112,7 @@ export function buildManageSnapshotsTool(
   };
 
   return {
-    name: "browser_manage_snapshots",
+    name: "accordo_browser_manage_snapshots",
     description:
       "GAP-G1: List all retained snapshot metadata per page, or clear the snapshot store (all pages or a specific page). " +
       "Use 'list' to see what snapshots are currently retained. Use 'clear' to empty the store.",

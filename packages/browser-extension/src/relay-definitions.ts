@@ -74,7 +74,9 @@ export interface RelayActionResponse {
     | "control-not-granted"
     | "unsupported-page"
     | "element-not-found"
-    | "element-off-screen";
+    | "element-off-screen"
+    | "iframe-cross-origin"
+    | "no-content-script";
 }
 
 export interface CapturePayload {

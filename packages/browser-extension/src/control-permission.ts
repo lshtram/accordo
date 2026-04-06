@@ -2,7 +2,7 @@
  * M110-TC — Control Permission API
  *
  * Per-tab control permission state management.
- * Uses chrome.storage.session for session-scoped storage.
+ * Uses chrome.storage.local for persistent storage.
  *
  * REQ-TC-016: PERMISSION_REQUIRED when hasPermission(tabId) returns false.
  * REQ-TC-017: TAB_NOT_FOUND when tabId refers to non-existent tab.
@@ -22,7 +22,7 @@ export async function hasPermission(tabId: number): Promise<boolean> {
 
 /**
  * Grant agent control for a tab.
- * Stores tabId in chrome.storage.session and sets badge.
+ * Stores tabId in chrome.storage.local and sets badge.
  */
 export async function grant(tabId: number): Promise<void> {
   const tabs = await getGrantedTabs();

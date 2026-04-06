@@ -359,6 +359,19 @@ describe("B2-TX-010: Backward compatibility", () => {
     }
   });
 
+  it("F12: Handler maps relay iframe-cross-origin error to iframe-cross-origin", async () => {
+    const relay = createMockRelay({
+      response: Promise.resolve({ success: false, requestId: "test", error: "iframe-cross-origin" as const }),
+    });
+    const store = new SnapshotRetentionStore();
+    const result = await invokeToolHandler(relay, store);
+    expect(result).toHaveProperty("success");
+    if ("success" in result) {
+      expect(result.success).toBe(false);
+      expect((result as { error: string }).error).toBe("iframe-cross-origin");
+    }
+  });
+
   it("B2-TX-010: BrowserRelayAction union includes 'get_text_map'", async () => {
     // This is a compile-time check — import should succeed
     const { BrowserRelayAction } = await import("../types.js");

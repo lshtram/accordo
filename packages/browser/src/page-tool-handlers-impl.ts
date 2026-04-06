@@ -14,6 +14,17 @@ import type { SecurityConfig } from "./security/index.js";
 import { checkOrigin, extractOrigin, mergeOriginPolicy, redactPageMapResponse, redactInspectElementResponse, redactDomExcerptResponse, redactTextMapResponse, redactSemanticGraphResponse, DEFAULT_SECURITY_CONFIG } from "./security/index.js";
 import { buildStructuredError } from "./page-tool-types.js";
 
+/** Map a relay error code to a page tool error code. */
+function mapRelayError(errCode: string | undefined): string {
+  switch (errCode) {
+    case "iframe-cross-origin": return "iframe-cross-origin";
+    case "no-content-script": return "no-content-script";
+    case "browser-not-connected": return "browser-not-connected";
+    case "timeout": return "timeout";
+    default: return "action-failed";
+  }
+}
+
 import type {
   CaptureRegionArgs,
   CaptureRegionResponse,
@@ -190,20 +201,12 @@ export async function handleInspectElement(
       INSPECT_TIMEOUT_MS,
     );
     if (!response.success || response.data === undefined) {
-      const errCode = response.error ?? "action-failed";
-      const mappedError = errCode === "iframe-cross-origin"
-        ? "iframe-cross-origin"
-        : errCode === "browser-not-connected"
-          ? "browser-not-connected"
-          : errCode === "timeout"
-            ? "timeout"
-            : "action-failed";
       security.auditLog.completeEntry(auditEntry, {
         action: "blocked",
         redacted: false,
         durationMs: Date.now() - startTime,
       });
-      return buildStructuredError(mappedError) as PageToolError;
+      return buildStructuredError(mapRelayError(response.error)) as PageToolError;
     }
     if (
       response.data &&
@@ -309,20 +312,12 @@ export async function handleGetDomExcerpt(
       EXCERPT_TIMEOUT_MS,
     );
     if (!response.success || response.data === undefined) {
-      const errCode = response.error ?? "action-failed";
-      const mappedError = errCode === "iframe-cross-origin"
-        ? "iframe-cross-origin"
-        : errCode === "browser-not-connected"
-          ? "browser-not-connected"
-          : errCode === "timeout"
-            ? "timeout"
-            : "action-failed";
       security.auditLog.completeEntry(auditEntry, {
         action: "blocked",
         redacted: false,
         durationMs: Date.now() - startTime,
       });
-      return buildStructuredError(mappedError) as PageToolError;
+      return buildStructuredError(mapRelayError(response.error)) as PageToolError;
     }
     if (
       response.data &&

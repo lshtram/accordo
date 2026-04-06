@@ -16,6 +16,7 @@ import {
   resolveTargetTabId,
   forwardToContentScript,
   forwardToFrame,
+  NO_CONTENT_SCRIPT,
 } from "./relay-forwarder.js";
 import { normalizeUrl } from "./store.js";
 import { hasErrorField, hasDataField, readBoundsLiteral } from "./relay-type-guards.js";
@@ -66,6 +67,9 @@ async function handlePageUnderstandingAction(
   }
 
   const data = await forwardToContentScript(tabId, request.action, request.payload);
+  if (data === NO_CONTENT_SCRIPT) {
+    return actionFailed(request, "no-content-script");
+  }
   if (data === null) {
     return actionFailed(request);
   }
@@ -99,6 +103,9 @@ async function handleFrameIdRequest(
   const pageMapData = await forwardToFrame(tabId, 0, "get_page_map", {
     traverseFrames: true,
   });
+  if (pageMapData === NO_CONTENT_SCRIPT) {
+    return actionFailed(request, "no-content-script");
+  }
   if (pageMapData === null) {
     return actionFailed(request);
   }
@@ -127,6 +134,9 @@ async function handleFrameIdRequest(
   // Forward to the child frame (strip frameId from payload to avoid recursion)
   const { frameId: _frameId, ...forwardPayload } = request.payload as Record<string, unknown>;
   const data = await forwardToFrame(tabId, numericFrameId, request.action, forwardPayload);
+  if (data === NO_CONTENT_SCRIPT) {
+    return actionFailed(request, "no-content-script");
+  }
   if (data === null) {
     return actionFailed(request);
   }
