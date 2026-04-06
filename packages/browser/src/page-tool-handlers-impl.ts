@@ -13,6 +13,10 @@ import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
 import { checkOrigin, extractOrigin, mergeOriginPolicy, redactPageMapResponse, redactInspectElementResponse, redactDomExcerptResponse, redactTextMapResponse, redactSemanticGraphResponse, DEFAULT_SECURITY_CONFIG } from "./security/index.js";
 import { buildStructuredError } from "./page-tool-types.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
+import { pathToFileURL } from "node:url";
 
 /** Map a relay error code to a page tool error code. */
 function mapRelayError(errCode: string | undefined): string {
@@ -481,6 +485,28 @@ export async function handleCaptureRegion(
         // Feature 5: Explicitly advertise inline artifact transport (MCP checklist §3.1).
         // Current screenshots are always returned as base64 data URLs — no file-ref or remote-ref yet.
         (result as CaptureRegionResponse).artifactMode = "inline";
+        // G6: If caller requested file-ref transport, write the screenshot to disk.
+        if (args.transport === "file-ref" && typeof result.dataUrl === "string") {
+          try {
+            // Allow test/CI override via env var; default to ~/.accordo/screenshots
+            const screenshotsDir = process.env["ACCORDO_SCREENSHOTS_DIR"]
+              ?? path.join(os.homedir(), ".accordo", "screenshots");
+            fs.mkdirSync(screenshotsDir, { recursive: true });
+            const ext = args.format ?? "jpeg";
+            const filename = `${result.auditId ?? crypto.randomUUID()}.${ext}`;
+            const absPath = path.join(screenshotsDir, filename);
+            // Strip the data URL prefix (data:<mime>;base64,<data>)
+            const base64Data = result.dataUrl.replace(/^data:[^;]+;base64,/, "");
+            fs.writeFileSync(absPath, Buffer.from(base64Data, "base64"));
+            (result as CaptureRegionResponse).fileUri = pathToFileURL(absPath).href;
+            (result as CaptureRegionResponse).filePath = absPath;
+            (result as CaptureRegionResponse).artifactMode = "file-ref";
+            delete (result as CaptureRegionResponse).dataUrl;
+          } catch {
+            // Fall back to inline — caller can detect this via transportFallback
+            (result as CaptureRegionResponse).transportFallback = true;
+          }
+        }
         // Return a shallow copy so subsequent calls don't overwrite auditId on the same object
         return { ...result };
       }

@@ -153,6 +153,12 @@ export interface CaptureRegionArgs {
   allowedOrigins?: string[];
   /** I2-001: Denied origins for this request. Overrides global policy. */
   deniedOrigins?: string[];
+  /**
+   * G6: Artifact transport mode for the captured screenshot.
+   * "inline" (default) — returns base64 data URL in `dataUrl`.
+   * "file-ref" — writes the screenshot to disk and returns `fileUri` + `filePath` instead.
+   */
+  transport?: "inline" | "file-ref";
 }
 
 /** Input for browser_wait_for (inlined from wait-tool.ts for multi-tab support) */
@@ -363,6 +369,22 @@ export interface CaptureRegionResponse extends SnapshotEnvelopeFields {
    * MCP checklist §3.1: `artifactMode` must be present when binary output exists.
    */
   artifactMode?: "inline" | "file-ref" | "remote-ref";
+  /**
+   * G6: Absolute file:// URI for the screenshot file (only when transport="file-ref").
+   * Example: "file:///home/user/.accordo/screenshots/abc123.jpeg"
+   */
+  fileUri?: string;
+  /**
+   * G6: Absolute OS path to the screenshot file (only when transport="file-ref").
+   * Example: "/home/user/.accordo/screenshots/abc123.jpeg"
+   */
+  filePath?: string;
+  /**
+   * G6: True when transport="file-ref" was requested but the file write failed,
+   * causing a transparent fallback to inline transport. The dataUrl is populated
+   * and artifactMode="inline" in this case.
+   */
+  transportFallback?: boolean;
 }
 
 /** Response from browser_list_pages (B2-CTX-001) */

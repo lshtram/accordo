@@ -336,6 +336,12 @@ export function buildPageUnderstandingTools(
             items: { type: "string" },
             description: "Block data from these origins. Takes precedence over allowedOrigins.",
           },
+          transport: {
+            type: "string",
+            enum: ["inline", "file-ref"],
+            description:
+              "G6: Artifact transport mode. 'inline' (default): base64 data URL returned in dataUrl. 'file-ref': screenshot saved to ~/.accordo/screenshots/ and returned by fileUri + filePath instead of inline data.",
+          },
         },
       },
       dangerLevel: "safe",

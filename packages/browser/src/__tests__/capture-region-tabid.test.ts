@@ -2,6 +2,7 @@
  * capture-region-tabid.test.ts
  *
  * Tests for B2-CTX-001/B2-CTX-002 — tabId routing in capture_region tool.
+ * Also covers G6 file-ref transport (ADR-2).
  *
  * Tests the Hub handler (handleCaptureRegion in page-tool-handlers-impl.ts)
  * passes tabId through to the relay.request("capture_region", payload) call.
@@ -27,7 +28,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { handleCaptureRegion } from "../page-tool-handlers-impl.js";
 import type { CaptureRegionArgs } from "../page-tool-types.js";
 import type { BrowserRelayLike } from "../types.js";
@@ -521,5 +525,115 @@ describe("Feature 5: artifactMode: 'inline' on successful screenshot responses",
     expect(result).toHaveProperty("success", false);
     expect((result as Record<string, unknown>).error).toBe("origin-blocked");
     expect(result as Record<string, unknown>).not.toHaveProperty("artifactMode");
+  });
+});
+
+// ── G6: file-ref artifact transport (ADR-2) ──────────────────────────────────
+
+describe("G6: capture_region transport='file-ref' artifact transport", () => {
+  let relay: ReturnType<typeof createRecordingRelay>;
+  let store: SnapshotRetentionStore;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    relay = createRecordingRelay();
+    relay.resetRecordedPayload();
+    store = new SnapshotRetentionStore();
+    // Create a temp dir and point the handler to it via env var (avoids ESM mock limitations)
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "accordo-test-"));
+    process.env["ACCORDO_SCREENSHOTS_DIR"] = tmpDir;
+  });
+
+  afterEach(() => {
+    delete process.env["ACCORDO_SCREENSHOTS_DIR"];
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  /**
+   * G6: When transport="file-ref", the response must include fileUri (file:// URI),
+   * filePath (absolute OS path), artifactMode="file-ref", and no dataUrl.
+   */
+  it("G6: transport='file-ref' writes file and returns fileUri + filePath, omits dataUrl", async () => {
+    const args: CaptureRegionArgs = { tabId: 1, mode: "viewport", transport: "file-ref" };
+
+    const result = await handleCaptureRegion(relay, args, store) as Record<string, unknown>;
+
+    expect(result.success).toBe(true);
+    expect(result.artifactMode).toBe("file-ref");
+    expect(typeof result.fileUri).toBe("string");
+    expect((result.fileUri as string).startsWith("file://")).toBe(true);
+    expect(typeof result.filePath).toBe("string");
+    expect(result).not.toHaveProperty("dataUrl");
+    expect(result).not.toHaveProperty("transportFallback");
+
+    // File must actually exist on disk
+    expect(fs.existsSync(result.filePath as string)).toBe(true);
+  });
+
+  /**
+   * G6: The written file is non-empty and contains valid image data
+   * (the base64 payload from the relay).
+   */
+  it("G6: written screenshot file contains the decoded base64 payload", async () => {
+    const args: CaptureRegionArgs = { tabId: 1, mode: "viewport", transport: "file-ref" };
+
+    const result = await handleCaptureRegion(relay, args, store) as Record<string, unknown>;
+
+    const fileContents = fs.readFileSync(result.filePath as string);
+    // The mock relay returns "data:image/jpeg;base64,mock" — "mock" base64-decoded is non-empty bytes
+    expect(fileContents.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * G6: When format="png" and transport="file-ref", the filename uses .png extension.
+   */
+  it("G6: file extension matches the requested format", async () => {
+    const args: CaptureRegionArgs = { tabId: 1, mode: "viewport", transport: "file-ref", format: "png" };
+
+    const result = await handleCaptureRegion(relay, args, store) as Record<string, unknown>;
+
+    expect(result.artifactMode).toBe("file-ref");
+    expect((result.filePath as string).endsWith(".png")).toBe(true);
+  });
+
+  /**
+   * G6: Default transport (omitted) still returns inline dataUrl and artifactMode="inline".
+   * This is the regression guard — file-ref must not affect default behaviour.
+   */
+  it("G6: default transport (omitted) still returns inline dataUrl, no filePath", async () => {
+    const args: CaptureRegionArgs = { tabId: 1, mode: "viewport" };
+
+    const result = await handleCaptureRegion(relay, args, store) as Record<string, unknown>;
+
+    expect(result.success).toBe(true);
+    expect(result.artifactMode).toBe("inline");
+    expect(typeof result.dataUrl).toBe("string");
+    expect(result).not.toHaveProperty("filePath");
+    expect(result).not.toHaveProperty("fileUri");
+    expect(result).not.toHaveProperty("transportFallback");
+  });
+
+  /**
+   * G6: When transport="file-ref" but the write fails (unwritable dir),
+   * the response falls back to inline transport and sets transportFallback=true.
+   */
+  it("G6: transport='file-ref' falls back to inline with transportFallback=true on write error", async () => {
+    // Create a regular FILE at tmpDir/blocker, then point ACCORDO_SCREENSHOTS_DIR to a
+    // path whose parent is that file. mkdirSync(..., {recursive:true}) will throw ENOTDIR
+    // because a file component of the path is not a directory — this is reliable on all OSes.
+    const blocker = path.join(tmpDir, "blocker");
+    fs.writeFileSync(blocker, "x");
+    process.env["ACCORDO_SCREENSHOTS_DIR"] = path.join(blocker, "screenshots");
+
+    const args: CaptureRegionArgs = { tabId: 1, mode: "viewport", transport: "file-ref" };
+
+    const result = await handleCaptureRegion(relay, args, store) as Record<string, unknown>;
+
+    expect(result.success).toBe(true);
+    expect(result.artifactMode).toBe("inline");
+    expect(result.transportFallback).toBe(true);
+    expect(typeof result.dataUrl).toBe("string");
+    expect(result).not.toHaveProperty("filePath");
+    expect(result).not.toHaveProperty("fileUri");
   });
 });
