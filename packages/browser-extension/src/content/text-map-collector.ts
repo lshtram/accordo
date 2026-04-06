@@ -176,10 +176,34 @@ function getRole(el: HTMLElement): string | undefined {
 
 /**
  * Get the accessible name for an element. B2-TX-006.
- * Priority: aria-label > alt > title. Returns `undefined` when none present.
+ * Priority: aria-label > alt > title > text content.
+ * For elements where the accessible name IS the text content (buttons, links, headings),
+ * the normalized text content is returned as the accessible name (ARIA spec § 4.3 accname).
+ * Returns `undefined` when no name is derivable (e.g. non-semantic div with no label).
  */
-function getAccessibleName(el: HTMLElement): string | undefined {
-  return el.getAttribute("aria-label") ?? el.getAttribute("alt") ?? el.getAttribute("title") ?? undefined;
+function getAccessibleName(el: HTMLElement, textContent?: string): string | undefined {
+  const ariaLabel = el.getAttribute("aria-label");
+  if (ariaLabel !== null && ariaLabel.length > 0) return ariaLabel;
+  const alt = el.getAttribute("alt");
+  if (alt !== null && alt.length > 0) return alt;
+  const title = el.getAttribute("title");
+  if (title !== null && title.length > 0) return title;
+  // Fall back to text content for semantic roles where text IS the accessible name.
+  // This matches the ARIA spec (accname-1.1 §4.3): links, buttons, headings, etc.
+  const tag = el.tagName.toLowerCase();
+  const TEXT_NAME_TAGS = new Set(["a", "button", "h1", "h2", "h3", "h4", "h5", "h6", "label", "summary"]);
+  if (TEXT_NAME_TAGS.has(tag) && textContent && textContent.length > 0) {
+    return textContent;
+  }
+  // Also use text content when element has an explicit role that implies text-naming
+  const explicitRole = el.getAttribute("role");
+  if (explicitRole !== null) {
+    const TEXT_NAME_ROLES = new Set(["link", "button", "heading", "tab", "menuitem", "option", "treeitem"]);
+    if (TEXT_NAME_ROLES.has(explicitRole.toLowerCase()) && textContent && textContent.length > 0) {
+      return textContent;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -220,11 +244,12 @@ function collectRawSegments(doc: Document): TextSegment[] {
           const rect = getElementRect(current);
           const visibility = getVisibility(current);
           const role = getRole(current);
-          const accessibleName = getAccessibleName(current);
+          const normalizedText = rawText.replace(/\s+/g, " ").trim();
+          const accessibleName = getAccessibleName(current, normalizedText);
 
           const segment: TextSegment = {
             textRaw: rawText,
-            textNormalized: rawText.replace(/\s+/g, " ").trim(),
+            textNormalized: normalizedText,
             nodeId: nodeIdCounter++,
             bbox: {
               x: rect.x,

@@ -401,6 +401,18 @@ describe("B2-TX-006: Semantic context per segment", () => {
     const btnSegment = result.segments.find((s) => s.textNormalized === "Click me");
     expect(btnSegment?.accessibleName).toBe("Submit form");
   });
+
+  it("B2-TX-006: accessibleName falls back to text content for links and buttons without label attrs", () => {
+    // <a> and <button> elements use their text content as accessible name (ARIA spec § 4.3)
+    document.body.innerHTML = `<a href="/item">Article Title</a><button>Save</button>`;
+    const result = collectTextMap();
+    const linkSeg = result.segments.find((s) => s.textNormalized === "Article Title");
+    const btnSeg = result.segments.find((s) => s.textNormalized === "Save");
+    expect(linkSeg).toBeDefined();
+    expect(linkSeg!.accessibleName).toBe("Article Title");
+    expect(btnSeg).toBeDefined();
+    expect(btnSeg!.accessibleName).toBe("Save");
+  });
 });
 
 // ── B2-TX-007: Snapshot Envelope Compliance ───────────────────────────────────
