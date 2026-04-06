@@ -69,6 +69,11 @@ export interface GetPageMapArgs {
   /** B2-VD-001..004: Traverse open shadow roots and annotate closed hosts. Default: false. */
   piercesShadow?: boolean;
 
+  /** B2-VD-005..009: Enumerate top-level iframes and return metadata (frameId, src, bounds, sameOrigin).
+   * Child-frame DOM stitching is NOT included in this feature.
+   * Default: false. */
+  traverseFrames?: boolean;
+
   // ── MCP-SEC: Security Parameters ──────────────────────────────────────────
 
   /** I2-001: Allowed origins for this request. Overrides global policy. */
@@ -219,12 +224,40 @@ export interface PageMapResponse extends SnapshotEnvelopeFields {
     reductionRatio: number;
   };
 
+  /**
+   * B2-VD-005..009: Iframe metadata array.
+   * Present only when `traverseFrames: true` was passed to browser_get_page_map.
+   * Each entry describes an `<iframe>` element's identity and position.
+   * Child-frame DOM content is NOT included — same-origin iframe DOM traversal
+   * requires manifest `all_frames: true` and is planned for a future feature.
+   */
+  iframes?: readonly IframeMetadata[];
+
   /** Unique audit ID for this invocation (UUIDv4). MCP-SEC-004. Set by MCP handler. */
   auditId?: string;
   /** True when PII redaction was applied to text content. MCP-SEC-002. */
   redactionApplied?: boolean;
   /** Warning when PII may be present in response. MCP-VC-005. */
   redactionWarning?: string;
+}
+
+/**
+ * B2-VD-006: Metadata for a single `<iframe>` element in the page.
+ * Emitted in the `iframes` array of `PageMapResponse` when `traverseFrames: true`.
+ */
+export interface IframeMetadata {
+  /** Unique frame identifier (name, id, or auto-generated). */
+  frameId: string;
+  /** The iframe's `src` attribute (may be empty for srcdoc/about:blank). */
+  src: string;
+  /** Bounding box in parent viewport coordinates. */
+  bounds: { x: number; y: number; width: number; height: number };
+  /**
+   * Whether the iframe is same-origin as the parent document.
+   * - `true`: child-frame DOM is accessible to content script with `all_frames: true`.
+   * - `false`: child-frame DOM is opaque due to Same-Origin Policy.
+   */
+  sameOrigin: boolean;
 }
 
 /**

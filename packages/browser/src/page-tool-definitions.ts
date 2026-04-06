@@ -212,6 +212,10 @@ export function buildPageUnderstandingTools(
             type: "boolean",
             description: "B2-VD-001..004: Traverse open shadow roots and annotate closed hosts. Default: false",
           },
+          traverseFrames: {
+            type: "boolean",
+            description: "B2-VD-005..009: Enumerate top-level iframes and return metadata (frameId, src, bounds, sameOrigin). Child-frame DOM traversal NOT included — this feature only. Default: false",
+          },
           allowedOrigins: {
             type: "array",
             items: { type: "string" },

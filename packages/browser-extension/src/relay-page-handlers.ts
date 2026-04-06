@@ -109,6 +109,8 @@ export async function handleGetPageMap(
           textMatch: typeof p.textMatch === "string" ? p.textMatch : undefined,
           selector: typeof p.selector === "string" ? p.selector : undefined,
           regionFilter,
+          piercesShadow: typeof p.piercesShadow === "boolean" ? p.piercesShadow : undefined,
+          traverseFrames: typeof p.traverseFrames === "boolean" ? p.traverseFrames : undefined,
         });
       }
     : null;

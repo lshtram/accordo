@@ -1665,3 +1665,331 @@ describe("B2-VD-001..003: Shadow DOM traversal", () => {
     expect(node.shadowRoot).toBe("closed");
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// B2-VD-005..009: Iframe Metadata
+//
+// Tests for:
+// - IframeMetadata type exports and shape
+// - PageMapOptions.traverseFrames parameter
+// - PageMapResult.iframes optional field
+// - enumerateIframes helper function
+// - Same-origin / cross-origin iframe detection
+// - Bounds included when includeBounds=true
+// ══════════════════════════════════════════════════════════════════════════════
+
+import { enumerateIframes } from "../src/content/page-map-collector.js";
+import type { IframeMetadata } from "../src/content/page-map-collector.js";
+
+describe("B2-VD-005..009: Iframe metadata — type exports", () => {
+  /**
+   * B2-VD-006: IframeMetadata type has required fields: frameId, src, bounds, sameOrigin.
+   */
+  it("B2-VD-006: IframeMetadata type has required fields", () => {
+    const entry: IframeMetadata = {
+      frameId: "iframe-0",
+      src: "https://example.com/child.html",
+      bounds: { x: 0, y: 0, width: 400, height: 300 },
+      sameOrigin: true,
+    };
+    expect(entry.frameId).toBe("iframe-0");
+    expect(entry.src).toBe("https://example.com/child.html");
+    expect(entry.bounds).toEqual({ x: 0, y: 0, width: 400, height: 300 });
+    expect(entry.sameOrigin).toBe(true);
+  });
+
+  /**
+   * B2-VD-006: IframeMetadata sameOrigin can be false for cross-origin iframes.
+   */
+  it("B2-VD-006: IframeMetadata sameOrigin can be false", () => {
+    const entry: IframeMetadata = {
+      frameId: "iframe-0",
+      src: "https://other-domain.com/",
+      bounds: { x: 0, y: 0, width: 400, height: 300 },
+      sameOrigin: false,
+    };
+    expect(entry.sameOrigin).toBe(false);
+  });
+
+  /**
+   * B2-VD-006: IframeMetadata bounds are viewport coordinates.
+   */
+  it("B2-VD-006: IframeMetadata bounds uses viewport coordinates", () => {
+    const entry: IframeMetadata = {
+      frameId: "main-iframe",
+      src: "",
+      bounds: { x: 10, y: 20, width: 800, height: 600 },
+      sameOrigin: true,
+    };
+    expect(entry.bounds.x).toBe(10);
+    expect(entry.bounds.y).toBe(20);
+    expect(entry.bounds.width).toBe(800);
+    expect(entry.bounds.height).toBe(600);
+  });
+});
+
+describe("B2-VD-005..009: PageMapOptions.traverseFrames", () => {
+  /**
+   * B2-VD-009: PageMapOptions accepts traverseFrames parameter.
+   */
+  it("B2-VD-009: PageMapOptions allows traverseFrames parameter", () => {
+    const opts: PageMapOptions = { traverseFrames: true };
+    expect(opts.traverseFrames).toBe(true);
+  });
+
+  /**
+   * B2-VD-009: traverseFrames defaults to false (not set) — this is validated
+   * by the absence test below.
+   */
+  it("B2-VD-009: PageMapOptions allows traverseFrames: false", () => {
+    const opts: PageMapOptions = { traverseFrames: false };
+    expect(opts.traverseFrames).toBe(false);
+  });
+});
+
+describe("B2-VD-005..009: PageMapResult.iframes field", () => {
+  /**
+   * B2-VD-005: When traverseFrames is omitted, iframes is absent from result.
+   */
+  it("B2-VD-005: collectPageMap({}) — iframes is absent when traverseFrames is not set", () => {
+    document.body.innerHTML = `<iframe id="test-frame" src="https://example.com/"></iframe>`;
+    const result = collectPageMap({});
+    expect(result.iframes).toBeUndefined();
+  });
+
+  /**
+   * B2-VD-005: When traverseFrames=false, iframes is absent from result.
+   */
+  it("B2-VD-005: collectPageMap({ traverseFrames: false }) — iframes is absent", () => {
+    document.body.innerHTML = `<iframe id="test-frame" src="https://example.com/"></iframe>`;
+    const result = collectPageMap({ traverseFrames: false });
+    expect(result.iframes).toBeUndefined();
+  });
+
+  /**
+   * B2-VD-005: When traverseFrames=true, iframes is present in result.
+   */
+  it("B2-VD-005: collectPageMap({ traverseFrames: true }) — iframes is present", () => {
+    document.body.innerHTML = `<iframe id="test-frame" src="https://example.com/"></iframe>`;
+    const result = collectPageMap({ traverseFrames: true });
+    expect(result.iframes).toBeDefined();
+    expect(Array.isArray(result.iframes)).toBe(true);
+  });
+
+  /**
+   * B2-VD-006: iframes entries include frameId, src, bounds, sameOrigin.
+   */
+  it("B2-VD-006: collectPageMap({ traverseFrames: true }) — entries have frameId, src, bounds, sameOrigin", () => {
+    document.body.innerHTML = `<iframe id="test-frame" src="https://example.com/child.html"></iframe>`;
+    const result = collectPageMap({ traverseFrames: true });
+    expect(result.iframes).toBeDefined();
+    expect(result.iframes!.length).toBeGreaterThan(0);
+    const entry = result.iframes![0];
+    expect(entry).toHaveProperty("frameId");
+    expect(entry).toHaveProperty("src");
+    expect(entry).toHaveProperty("bounds");
+    expect(entry).toHaveProperty("sameOrigin");
+  });
+
+  /**
+   * B2-VD-006: frameId uses iframe id when name is absent.
+   */
+  it("B2-VD-006: frameId derived from iframe id when name attribute is empty", () => {
+    document.body.innerHTML = `<iframe id="my-iframe" src="https://example.com/"></iframe>`;
+    const result = collectPageMap({ traverseFrames: true });
+    expect(result.iframes).toBeDefined();
+    expect(result.iframes!.length).toBeGreaterThan(0);
+    expect(result.iframes![0].frameId).toBe("my-iframe");
+  });
+
+  /**
+   * B2-VD-006: frameId uses iframe name when name attribute is present.
+   */
+  it("B2-VD-006: frameId derived from iframe name attribute (preferred over id)", () => {
+    document.body.innerHTML = `<iframe id="my-id" name="my-name" src="https://example.com/"></iframe>`;
+    const result = collectPageMap({ traverseFrames: true });
+    expect(result.iframes).toBeDefined();
+    expect(result.iframes![0].frameId).toBe("my-name");
+  });
+
+  /**
+   * B2-VD-006: src reflects the iframe src attribute.
+   */
+  it("B2-VD-006: iframe src attribute is captured in metadata", () => {
+    document.body.innerHTML = `<iframe id="frame-1" src="https://example.com/embed"></iframe>`;
+    const result = collectPageMap({ traverseFrames: true });
+    expect(result.iframes![0].src).toBe("https://example.com/embed");
+  });
+
+  /**
+   * B2-VD-006: src is empty string for iframes without src attribute.
+   */
+  it("B2-VD-006: iframe with no src attribute has empty src string", () => {
+    document.body.innerHTML = `<iframe id="frame-1"></iframe>`;
+    const result = collectPageMap({ traverseFrames: true });
+    expect(result.iframes![0].src).toBe("");
+  });
+
+  /**
+   * B2-VD-007: Cross-origin iframe has sameOrigin=false.
+   *
+   * In the test environment (jsdom + localhost), cross-origin means a different
+   * host/port combination.
+   */
+  it("B2-VD-007: Cross-origin iframe has sameOrigin=false", () => {
+    document.body.innerHTML = `<iframe id="cross-frame" src="https://other-domain.example.com/"></iframe>`;
+    const result = collectPageMap({ traverseFrames: true });
+    expect(result.iframes![0].sameOrigin).toBe(false);
+  });
+
+  /**
+   * B2-VD-005: Page with no iframes returns empty array.
+   */
+  it("B2-VD-005: Page with no iframes — iframes is empty array", () => {
+    document.body.innerHTML = `<div>No iframes here</div>`;
+    const result = collectPageMap({ traverseFrames: true });
+    expect(result.iframes).toBeDefined();
+    expect(result.iframes!.length).toBe(0);
+  });
+
+  /**
+   * B2-VD-006: Multiple iframes are all enumerated.
+   */
+  it("B2-VD-006: Multiple iframes — all entries present", () => {
+    document.body.innerHTML = `
+      <iframe id="frame-1" src="https://example.com/1"></iframe>
+      <iframe id="frame-2" src="https://example.com/2"></iframe>
+      <iframe id="frame-3" src="https://other.example.com/3"></iframe>
+    `;
+    const result = collectPageMap({ traverseFrames: true });
+    expect(result.iframes!.length).toBe(3);
+    const ids = result.iframes!.map((e) => e.frameId);
+    expect(ids).toContain("frame-1");
+    expect(ids).toContain("frame-2");
+    expect(ids).toContain("frame-3");
+  });
+
+  /**
+   * B2-VD-007: Cross-origin iframe has sameOrigin=false in mixed-origin page.
+   *
+   * In the jsdom test environment, window.location.origin may not be a real browser
+   * origin (often "null" for file URLs). We test with absolute URLs where the origin
+   * is clearly different (different host), so the comparison is deterministic regardless
+   * of what the test environment's origin is.
+   *
+   * Note: jsdom does not enforce same-origin policy, so contentDocument is still
+   * accessible. This test validates the URL-based origin comparison logic only.
+   */
+  it("B2-VD-007: Cross-origin iframe has sameOrigin=false in mixed-origin page", () => {
+    document.body.innerHTML = `
+      <iframe id="cross-origin-frame" src="https://another-domain.example.com/embed"></iframe>
+    `;
+    const result = collectPageMap({ traverseFrames: true });
+    // Any iframe with a different origin than the parent should have sameOrigin=false
+    expect(result.iframes![0].sameOrigin).toBe(false);
+  });
+});
+
+describe("B2-VD-006: enumerateIframes helper — unit-level", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  /**
+   * enumerateIframes returns empty array when no iframes exist.
+   */
+  it("enumerateIframes: no iframes → empty array", () => {
+    document.body.innerHTML = `<div>content</div>`;
+    expect(enumerateIframes(false)).toEqual([]);
+  });
+
+  /**
+   * enumerateIframes returns actual bounds regardless of includeBounds.
+   */
+  it("enumerateIframes: includeBounds=false still returns actual iframe bounds", () => {
+    document.body.innerHTML = `<iframe id="frame-1" src="https://example.com/"></iframe>`;
+    const iframe = document.getElementById("frame-1") as HTMLIFrameElement;
+    vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue({
+      x: 10, y: 20, width: 300, height: 200,
+      top: 20, left: 10, bottom: 220, right: 310,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const result = enumerateIframes();
+    expect(result[0].bounds).toEqual({ x: 10, y: 20, width: 300, height: 200 });
+  });
+
+  it("B2-VD-006: explicit same-origin iframe URL with accessible contentDocument is sameOrigin=true", () => {
+    document.body.innerHTML = `<iframe id="same-origin" src="${window.location.origin}/child"></iframe>`;
+    const iframe = document.getElementById("same-origin") as HTMLIFrameElement;
+    Object.defineProperty(iframe, "contentDocument", {
+      value: document.implementation.createHTMLDocument("child"),
+      configurable: true,
+    });
+
+    const result = enumerateIframes();
+    expect(result[0].sameOrigin).toBe(true);
+  });
+
+  it("B2-VD-006: explicit same-origin iframe URL without DOM access is sameOrigin=false", () => {
+    document.body.innerHTML = `<iframe id="same-origin-blocked" src="${window.location.origin}/child"></iframe>`;
+    const iframe = document.getElementById("same-origin-blocked") as HTMLIFrameElement;
+    Object.defineProperty(iframe, "contentDocument", {
+      get() {
+        throw new DOMException("Blocked", "SecurityError");
+      },
+      configurable: true,
+    });
+
+    const result = enumerateIframes();
+    expect(result[0].sameOrigin).toBe(false);
+  });
+
+  it("B2-VD-006: about:blank iframe with accessible contentDocument is treated as same-origin", () => {
+    document.body.innerHTML = `<iframe id="blank-frame" src="about:blank"></iframe>`;
+    const iframe = document.getElementById("blank-frame") as HTMLIFrameElement;
+    Object.defineProperty(iframe, "contentDocument", {
+      value: document.implementation.createHTMLDocument("child"),
+      configurable: true,
+    });
+
+    const result = enumerateIframes();
+    expect(result[0].sameOrigin).toBe(true);
+  });
+
+  it("B2-VD-006: srcdoc iframe with accessible contentDocument is treated as same-origin", () => {
+    document.body.innerHTML = `<iframe id="srcdoc-frame" srcdoc="<p>hi</p>"></iframe>`;
+    const iframe = document.getElementById("srcdoc-frame") as HTMLIFrameElement;
+    Object.defineProperty(iframe, "contentDocument", {
+      value: document.implementation.createHTMLDocument("child"),
+      configurable: true,
+    });
+
+    const result = enumerateIframes();
+    expect(result[0].sameOrigin).toBe(true);
+  });
+
+  it("B2-VD-007: sandboxed iframe without accessible contentDocument is treated as opaque", () => {
+    document.body.innerHTML = `<iframe id="sandboxed" src="https://example.com/child" sandbox></iframe>`;
+    const iframe = document.getElementById("sandboxed") as HTMLIFrameElement;
+    Object.defineProperty(iframe, "contentDocument", {
+      get() {
+        throw new DOMException("Blocked", "SecurityError");
+      },
+      configurable: true,
+    });
+
+    const result = enumerateIframes();
+    expect(result[0].sameOrigin).toBe(false);
+  });
+
+  /**
+   * enumerateIframes is exported and callable.
+   */
+  it("enumerateIframes: function is exported and callable", () => {
+    document.body.innerHTML = `<iframe id="frame-1" src="https://example.com/"></iframe>`;
+    expect(typeof enumerateIframes).toBe("function");
+    const result = enumerateIframes();
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(1);
+  });
+});

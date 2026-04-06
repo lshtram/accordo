@@ -149,6 +149,54 @@ export interface PageMapOptions {
    * Default: false (B2-VD-004).
    */
   piercesShadow?: boolean;
+
+  // ── B2-VD-005..009: Iframe Metadata ────────────────────────────────────────
+
+  /**
+   * B2-VD-005..009: When true, enumerate top-level `<iframe>` elements and include
+   * their metadata (frameId, src, bounds, sameOrigin) in the `iframes` array.
+   *
+   * Same-origin iframes: `sameOrigin: true` — child-frame DOM is accessible
+   * to a content script with `all_frames: true` in the manifest.
+   * Cross-origin iframes: `sameOrigin: false` — child-frame DOM is opaque
+   * due to the Same-Origin Policy (hard browser security boundary).
+   *
+   * Child-frame DOM stitching (embedding child page-map nodes into the parent's
+   * response) is NOT implemented in this feature — it requires manifest
+   * `all_frames: true` deployment and a separate child-frame relay path.
+   *
+   * Default: false (B2-VD-009).
+   */
+  traverseFrames?: boolean;
+}
+
+/**
+ * B2-VD-006: Metadata for a single `<iframe>` element in the page.
+ *
+ * Emitted in the `iframes` array of `PageMapResult` when `traverseFrames: true`.
+ * Each entry describes the iframe's identity and viewport position from the
+ * parent's perspective — no child-frame DOM content is included at this stage.
+ */
+export interface IframeMetadata {
+  /** Unique frame identifier — derived from the iframe's `name` attribute,
+   * `id` attribute, or a generated `iframe-{index}` fallback. Used to route
+   * `browser_inspect_element` and other frame-aware requests. */
+  frameId: string;
+  /** The iframe's `src` attribute — may be empty for srcdoc or about:blank frames. */
+  src: string;
+  /** Bounding box of the iframe element in parent viewport coordinates. */
+  bounds: { x: number; y: number; width: number; height: number };
+  /**
+   * B2-VD-006: Whether this iframe is effectively same-origin/DOM-accessible
+   * from the parent document.
+   * - `true`: child-frame DOM is accessible to a content script with `all_frames: true`.
+   * - `false`: child-frame DOM is opaque due to Same-Origin Policy.
+   *
+   * Note: This is a conservative best-effort determination using URL origin
+   * classification plus DOM accessibility checks for inherited-origin cases
+   * such as `about:blank` and `srcdoc`.
+   */
+  sameOrigin: boolean;
 }
 
 /** Result of page map collection — includes full SnapshotEnvelope (B2-SV-003) */
@@ -169,6 +217,18 @@ export interface PageMapResult extends SnapshotEnvelope {
    * Present only when at least one filter parameter was provided.
    */
   filterSummary?: FilterSummary;
+
+  /**
+   * B2-VD-005..009: Iframe metadata array.
+   * Present only when `traverseFrames: true` was passed to collectPageMap.
+   *
+   * Each entry describes an `<iframe>` element found in the top-level document.
+   * Same-origin entries have `sameOrigin: true`; cross-origin entries have
+   * `sameOrigin: false`. Child-frame DOM content is NOT included at this stage —
+   * full same-origin iframe DOM traversal requires manifest `all_frames: true`
+   * and is planned for a future feature.
+   */
+  iframes?: IframeMetadata[];
 }
 
 /**
@@ -224,6 +284,90 @@ export function getElementByRef(ref: string): Element | null {
 /** Clear the ref index (called at the start of each collection) */
 export function clearRefIndex(): void {
   _clearRefIndex();
+}
+
+// ── Iframe enumeration helper ──────────────────────────────────────────────────
+
+/**
+ * B2-VD-006: Enumerate top-level `<iframe>` elements in the current document
+ * and return their metadata.
+ *
+ * This is a metadata-only pass — it does NOT traverse into child-frame DOMs.
+ * Same-origin determination is conservative: explicit URL origins are classified
+ * by origin comparison, while inherited-origin cases (`about:blank`, `srcdoc`,
+ * empty `src`) also require DOM accessibility. Cross-origin frames are marked
+ * `sameOrigin: false` (opaque due to
+ * Same-Origin Policy — a hard browser security boundary, not a design choice).
+ *
+ * B2-VD-005: When `traverseFrames: true`, this is called from collectPageMap
+ * to populate the `iframes` array in the response.
+ *
+ * Note: This helper is exported for direct use in tests.
+ *
+ * @returns Array of IframeMetadata for each top-level iframe
+ */
+export function enumerateIframes(): IframeMetadata[] {
+  try {
+    const iframes = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe"));
+    return iframes.map((iframe, index) => {
+      let frameId: string;
+      if (iframe.name && iframe.name.trim() !== "") {
+        frameId = iframe.name;
+      } else if (iframe.id && iframe.id.trim() !== "") {
+        frameId = iframe.id;
+      } else {
+        frameId = `iframe-${index}`;
+      }
+
+      const src = iframe.src ?? "";
+
+      // Determine same-origin conservatively.
+      // 1. If the iframe URL is explicitly cross-origin, always return false.
+      // 2. If the URL is explicitly same-origin, require DOM accessibility too.
+      // 3. If the URL is inherited-origin-ish (about:blank / srcdoc / empty src),
+      //    use DOM accessibility as the signal.
+      let sameOrigin = false;
+      try {
+        const inheritedOriginFrame = src === "" || src === "about:blank" || iframe.hasAttribute("srcdoc");
+        const domAccessible = (() => {
+          try {
+            return iframe.contentDocument !== null;
+          } catch {
+            return false;
+          }
+        })();
+
+        if (inheritedOriginFrame) {
+          sameOrigin = domAccessible;
+        } else {
+          const iframeUrl = new URL(src, document.baseURI);
+          sameOrigin = iframeUrl.origin === window.location.origin && domAccessible;
+        }
+      } catch {
+        sameOrigin = false;
+      }
+
+      let bounds: { x: number; y: number; width: number; height: number } = {
+        x: 0, y: 0, width: 0, height: 0,
+      };
+      try {
+        const rect = iframe.getBoundingClientRect();
+        bounds = {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+        };
+      } catch {
+        // ignore and leave zero bounds only if the browser cannot provide them
+      }
+
+      return { frameId, src, bounds, sameOrigin };
+    });
+  } catch {
+    // document.querySelectorAll can throw in environments without DOM access
+    return [];
+  }
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -289,6 +433,11 @@ export function collectPageMap(options?: PageMapOptions): PageMapResult {
     ? buildFilterSummary(filterPipeline, totalBeforeFilter.count, refCounter.count)
     : undefined;
 
+  // B2-VD-005..009: Enumerate iframe metadata when traverseFrames is true
+  const iframes = options?.traverseFrames === true
+    ? enumerateIframes()
+    : undefined;
+
   return {
     ...envelope,
     pageUrl,
@@ -297,5 +446,6 @@ export function collectPageMap(options?: PageMapOptions): PageMapResult {
     totalElements,
     truncated: truncated.value,
     ...(filterSummary ? { filterSummary } : {}),
+    ...(iframes ? { iframes } : {}),
   };
 }

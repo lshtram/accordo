@@ -698,6 +698,29 @@ describe("browser_get_page_map — filter parameter schema (B2-FI-001..008)", ()
     expect(pageMapTool?.inputSchema.properties.piercesShadow.type).toBe("boolean");
   });
 
+  it("B2-VD-005..009: tool accepts traverseFrames parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
+    expect(pageMapTool?.inputSchema.properties).toHaveProperty("traverseFrames");
+    expect(pageMapTool?.inputSchema.properties.traverseFrames.type).toBe("boolean");
+  });
+
+  /**
+   * B2-VD-009: traverseFrames description must honestly state child-frame DOM
+   * traversal is NOT included. The description must contain "NOT included" or similar
+   * disclaimer to avoid overclaiming.
+   */
+  it("B2-VD-009: traverseFrames description honestly disclaims child-frame DOM traversal", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
+    const desc = (pageMapTool?.inputSchema.properties.traverseFrames.description as string).toLowerCase();
+    expect(desc).toBeDefined();
+    // Must disclaim child-frame DOM traversal — this feature is metadata-only
+    expect(desc).toMatch(/not included|not part of|metadata.only|metadata only/);
+  });
+
   /**
    * B2-FI-007: Filter combination — all filter parameters are present for AND composition
    */
@@ -884,6 +907,19 @@ describe("PU-F-53: handler forwards to relay and returns structured result", () 
     expect(result).toHaveProperty("viewport");
     expect(result).toHaveProperty("totalElements");
     expect(result).toHaveProperty("truncated");
+  });
+
+  it("B2-VD-005..009: handleGetPageMap forwards traverseFrames to relay", async () => {
+    const relay = createMockRelay();
+    const args: GetPageMapArgs = { traverseFrames: true };
+
+    await handleGetPageMap(relay, args, noopStore);
+
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ traverseFrames: true }),
+      expect.any(Number),
+    );
   });
 
   /**
