@@ -46,7 +46,7 @@ export async function cropImageToBounds(
   dataUrl: string,
   bounds: { x: number; y: number; width: number; height: number },
   quality: number,
-  format: "jpeg" | "png" = "jpeg",
+  format: "jpeg" | "png" | "webp" = "jpeg",
 ): Promise<{ dataUrl: string; width: number; height: number }> {
   try {
     const width = Math.min(MAX_CAPTURE_DIMENSION, bounds.width);
@@ -61,7 +61,7 @@ export async function cropImageToBounds(
     }
 
     // Create blob and use createImageBitmap for async decoding
-    const mimeType = format === "png" ? "image/png" : "image/jpeg";
+    const mimeType = format === "png" ? "image/png" : format === "webp" ? "image/webp" : "image/jpeg";
     const blob = new Blob([bytes], { type: mimeType });
     const imageBitmap = await createImageBitmap(blob);
 
@@ -76,7 +76,7 @@ export async function cropImageToBounds(
       0, 0, width, height,
     );
 
-    const croppedBlob = await canvas.convertToBlob({ type: mimeType, quality: format === "jpeg" ? quality / 100 : undefined });
+    const croppedBlob = await canvas.convertToBlob({ type: mimeType, quality: (format === "jpeg" || format === "webp") ? quality / 100 : undefined });
     const croppedDataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = (): void => {
@@ -148,8 +148,8 @@ async function resolvePaddedBounds(
   };
 }
 
-/** Capture the visible tab as JPEG or PNG. Returns dataUrl or throws. */
-async function captureVisibleTab(quality: number, format: "jpeg" | "png" = "jpeg"): Promise<string> {
+/** Capture the visible tab as JPEG, PNG, or WebP. Returns dataUrl or throws. */
+async function captureVisibleTab(quality: number, format: "jpeg" | "png" | "webp" = "jpeg"): Promise<string> {
   return chrome.tabs.captureVisibleTab({ format, quality });
 }
 
@@ -189,7 +189,7 @@ async function retryCaptureAtReducedQuality(
   quality: number,
   anchorSource: string,
   targetTabId?: number,
-  format: "jpeg" | "png" = "jpeg",
+  format: "jpeg" | "png" | "webp" = "jpeg",
 ): Promise<Record<string, unknown>> {
   const reducedQuality = Math.max(MIN_QUALITY, quality - QUALITY_RETRY_STEP);
   const envelope = await requestContentScriptEnvelope("visual", targetTabId);
@@ -229,7 +229,7 @@ async function executeCaptureRegion(
   payload: CapturePayload,
 ): Promise<Record<string, unknown>> {
   const quality = Math.min(MAX_QUALITY, Math.max(MIN_QUALITY, payload.quality ?? DEFAULT_QUALITY));
-  const format: "jpeg" | "png" = payload.format ?? "jpeg";
+  const format: "jpeg" | "png" | "webp" = payload.format ?? "jpeg";
   const anchorSource: string = payload.anchorKey ?? payload.nodeRef ?? "rect";
   const padding = Math.min(MAX_PADDING, Math.max(0, payload.padding ?? DEFAULT_PADDING));
 
@@ -352,7 +352,7 @@ async function executeCaptureFullPage(
     await ensureAttached(targetTabId);
 
     // Capture full page via CDP
-    const format: "jpeg" | "png" = payload.format ?? "jpeg";
+    const format: "jpeg" | "png" | "webp" = payload.format ?? "jpeg";
     const cdpResult = await sendCommand<{ data: string; width: number; height: number }>(
       targetTabId,
       "Page.captureScreenshot",
@@ -360,7 +360,7 @@ async function executeCaptureFullPage(
     );
 
     // Convert base64 image to data URL with correct mime type
-    const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
+    const mimeType = format === "png" ? "image/png" : format === "webp" ? "image/webp" : "image/jpeg";
     const dataUrl = `data:${mimeType};base64,${cdpResult.data}`;
     const sizeBytes = Math.round((cdpResult.data.length * 3) / 4);
 
@@ -433,10 +433,10 @@ async function executeCaptureViewport(
 
     await ensureAttached(targetTabId);
 
-    const format: "jpeg" | "png" = payload.format ?? "jpeg";
+    const format: "jpeg" | "png" | "webp" = payload.format ?? "jpeg";
     const quality = Math.min(MAX_QUALITY, Math.max(MIN_QUALITY, payload.quality ?? DEFAULT_QUALITY));
     const screenshotParams: Record<string, unknown> = { captureBeyondViewport: false, format };
-    if (format === "jpeg") {
+    if (format === "jpeg" || format === "webp") {
       screenshotParams.quality = quality;
     }
     const cdpResult = await sendCommand<{ data: string; width: number; height: number }>(
@@ -445,7 +445,7 @@ async function executeCaptureViewport(
       screenshotParams,
     );
 
-    const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
+    const mimeType = format === "png" ? "image/png" : format === "webp" ? "image/webp" : "image/jpeg";
     const dataUrl = `data:${mimeType};base64,${cdpResult.data}`;
     const sizeBytes = Math.round((cdpResult.data.length * 3) / 4);
 

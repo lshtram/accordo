@@ -89,8 +89,8 @@ export interface CapturePayload {
   quality?: number;
   /** P4-CR: "viewport" (default) or "fullPage" */
   mode?: "viewport" | "fullPage";
-  /** GAP-E1: Output image format — "jpeg" (default) or "png" */
-  format?: "jpeg" | "png";
+  /** GAP-E1 / E4: Output image format — "jpeg" (default), "png", or "webp" */
+  format?: "jpeg" | "png" | "webp";
   /** GAP-I1: Redaction regex patterns to apply to screenshot (bbox-based). */
   redactPatterns?: string[];
 }

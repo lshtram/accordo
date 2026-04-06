@@ -307,6 +307,16 @@ describe("GAP-E1: capture_region format parameter", () => {
     expect(payload.quality).toBe(80);
     expect(payload.padding).toBe(16);
   });
+
+  /**
+   * E4: format="webp" is passed through to the relay (ADR-3).
+   */
+  it("E4: handleCaptureRegion passes format='webp' through to relay.request", async () => {
+    const args: CaptureRegionArgs = { anchorKey: "btn_1", format: "webp" };
+    await handleCaptureRegion(relay, args, store);
+    const payload = relay.getRecordedPayload();
+    expect(payload.format).toBe("webp");
+  });
 });
 
 // ── GAP-E2: No-target viewport behavior + relatedSnapshotId ─────────────────

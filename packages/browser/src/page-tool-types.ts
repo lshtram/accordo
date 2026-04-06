@@ -147,8 +147,8 @@ export interface CaptureRegionArgs {
    * When omitted, capture behaves as region mode and requires rect, anchorKey, or nodeRef.
    * When mode is "viewport" or "fullPage", rect, anchorKey, and nodeRef are ignored. */
   mode?: "viewport" | "fullPage";
-  /** GAP-E1: Output format for the captured image — "jpeg" (default) or "png". */
-  format?: "jpeg" | "png";
+  /** GAP-E1 / E4: Output format for the captured image — "jpeg" (default), "png", or "webp". */
+  format?: "jpeg" | "png" | "webp";
   /** I2-001: Allowed origins for this request. Overrides global policy. */
   allowedOrigins?: string[];
   /** I2-001: Denied origins for this request. Overrides global policy. */

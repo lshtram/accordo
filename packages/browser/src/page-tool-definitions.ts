@@ -301,7 +301,7 @@ export function buildPageUnderstandingTools(
     },
     {
       name: "accordo_browser_capture_region",
-      description: "Capture a cropped screenshot of a specific element or region. Supports viewport mode (mode='viewport'), full-page mode (mode='fullPage'), and region mode (default — requires anchorKey, nodeRef, or rect). Screenshots are returned inline as base64 data URLs. Successful responses include artifactMode: \"inline\" in the response to advertise this contract (MCP checklist §3.1). Use format='png' for lossless output.",
+      description: "Capture a cropped screenshot of a specific element or region. Supports viewport mode (mode='viewport'), full-page mode (mode='fullPage'), and region mode (default — requires anchorKey, nodeRef, or rect). Screenshots are returned inline as base64 data URLs. Successful responses include artifactMode: \"inline\" in the response to advertise this contract (MCP checklist §3.1). Use format='png' for lossless output. Use format='webp' for smaller files.",
       inputSchema: {
         type: "object",
         properties: {
@@ -325,7 +325,7 @@ export function buildPageUnderstandingTools(
             enum: ["viewport", "fullPage"],
             description: "GAP-E2 / MCP-VC-001..003: Capture mode. 'viewport' captures the visible area; 'fullPage' captures the entire scrollable page. Default (omitted) = region capture — requires anchorKey, nodeRef, or rect.",
           },
-          format: { type: "string", enum: ["jpeg", "png"], description: "GAP-E1 / MCP-VC-004: Output image format — 'jpeg' (default) or 'png'" },
+          format: { type: "string", enum: ["jpeg", "png", "webp"], description: "GAP-E1 / MCP-VC-004 / E4: Output image format — 'jpeg' (default), 'png', or 'webp'" },
           allowedOrigins: {
             type: "array",
             items: { type: "string" },

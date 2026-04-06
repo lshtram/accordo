@@ -104,8 +104,8 @@ export function toCapturePayload(payload: Record<string, unknown>): CapturePaylo
   const typedMode: "viewport" | "fullPage" | undefined =
     mode === "viewport" || mode === "fullPage" ? mode : undefined;
   const format = payload.format;
-  const typedFormat: "jpeg" | "png" | undefined =
-    format === "jpeg" || format === "png" ? format : undefined;
+  const typedFormat: "jpeg" | "png" | "webp" | undefined =
+    format === "jpeg" || format === "png" || format === "webp" ? format : undefined;
   return {
     tabId: readOptionalNumber(payload, "tabId"),
     anchorKey: readOptionalString(payload, "anchorKey"),
