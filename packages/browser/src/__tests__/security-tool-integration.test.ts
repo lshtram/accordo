@@ -324,7 +324,8 @@ describe("MCP-SEC-004: auditId in tool responses", () => {
 
     const result = await (tool.handler as any)({});
 
-    if ("success" in result && !result.success) return;
+    expect("success" in result ? result.success !== false : true).toBe(true);
+    expect(result).toHaveProperty("segments");
     // MCP-SEC-004: auditId is a UUID in the response
     expect(result).toHaveProperty("auditId");
     expect(typeof result.auditId).toBe("string");
@@ -344,7 +345,8 @@ describe("MCP-SEC-004: auditId in tool responses", () => {
 
     const result = await (tool.handler as any)({});
 
-    if ("success" in result && !result.success) return;
+    expect("success" in result ? result.success !== false : true).toBe(true);
+    expect(result).toHaveProperty("landmarks");
     expect(result).toHaveProperty("auditId");
     expect(typeof result.auditId).toBe("string");
   });
@@ -360,9 +362,198 @@ describe("MCP-SEC-004: auditId in tool responses", () => {
     const result1 = await (tool.handler as any)({});
     const result2 = await (tool.handler as any)({});
 
-    if ("success" in result1 && !result1.success) return;
-    if ("success" in result2 && !result2.success) return;
+    expect("success" in result1 ? result1.success !== false : true).toBe(true);
+    expect("success" in result2 ? result2.success !== false : true).toBe(true);
+    expect(result1).toHaveProperty("auditId");
+    expect(result2).toHaveProperty("auditId");
     expect(result1.auditId).not.toBe(result2.auditId);
+  });
+
+  it("MCP-SEC-004: get_page_map response includes auditId on success", async () => {
+    const relay = createMockRelay({
+      response: {
+        success: true,
+        requestId: "test",
+        data: {
+          ...MOCK_ENVELOPE,
+          pageUrl: "https://example.com",
+          title: "Test",
+          nodes: [],
+          totalElements: 0,
+          depth: 0,
+          truncated: false,
+        },
+      },
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tools = buildPageUnderstandingTools(relay, store, security);
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
+
+    const result = await (pageMapTool!.handler as any)({});
+
+    expect("success" in result ? result.success !== false : true).toBe(true);
+    expect(result).toHaveProperty("pageUrl", "https://example.com");
+    expect(result).toHaveProperty("auditId");
+    expect(typeof result.auditId).toBe("string");
+    expect(result.auditId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+  });
+
+  it("MCP-SEC-004: inspect_element response includes auditId on success", async () => {
+    const relay = createMockRelay({
+      response: {
+        success: true,
+        requestId: "test",
+        data: {
+          ...MOCK_ENVELOPE,
+          pageUrl: "https://example.com",
+          found: true,
+          anchorKey: "id:test",
+          anchorStrategy: "id",
+          anchorConfidence: "high",
+          element: { name: "Test", tag: "div" },
+        },
+      },
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tools = buildPageUnderstandingTools(relay, store, security);
+    const inspectTool = tools.find((t) => t.name === "accordo_browser_inspect_element");
+
+    const result = await (inspectTool!.handler as any)({ selector: "#test" });
+
+    expect("success" in result ? result.success !== false : true).toBe(true);
+    expect(result).toHaveProperty("found", true);
+    expect(result).toHaveProperty("auditId");
+    expect(typeof result.auditId).toBe("string");
+    expect(result.auditId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+  });
+
+  it("MCP-SEC-004: get_dom_excerpt response includes auditId on success", async () => {
+    const relay = createMockRelay({
+      response: {
+        success: true,
+        requestId: "test",
+        data: {
+          ...MOCK_ENVELOPE,
+          pageUrl: "https://example.com",
+          found: true,
+          html: "<div>Test</div>",
+          text: "Test",
+          nodeCount: 1,
+        },
+      },
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tools = buildPageUnderstandingTools(relay, store, security);
+    const excerptTool = tools.find((t) => t.name === "accordo_browser_get_dom_excerpt");
+
+    const result = await (excerptTool!.handler as any)({ selector: "#test" });
+
+    expect("success" in result ? result.success !== false : true).toBe(true);
+    expect(result).toHaveProperty("found", true);
+    expect(result).toHaveProperty("auditId");
+    expect(typeof result.auditId).toBe("string");
+    expect(result.auditId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+  });
+
+  it("MCP-SEC-004: capture_region response includes auditId on success", async () => {
+    const mockRelay = createMockRelay({
+      response: {
+        success: true,
+        requestId: "test",
+        data: {
+          ...MOCK_ENVELOPE,
+          pageUrl: "https://example.com",
+          success: true,
+          dataUrl: "data:image/png;base64,abc",
+          width: 100,
+          height: 100,
+          sizeBytes: 50,
+        },
+      },
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tools = buildPageUnderstandingTools(mockRelay, store, security);
+    const captureTool = tools.find((t) => t.name === "accordo_browser_capture_region");
+
+    const result = await (captureTool!.handler as any)({ mode: "viewport" });
+
+    expect(result).toHaveProperty("success", true);
+    expect(result).toHaveProperty("dataUrl");
+    expect(result).toHaveProperty("auditId");
+    expect(typeof result.auditId).toBe("string");
+    expect(result.auditId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+  });
+
+  it("MCP-SEC-004: get_page_map error response does NOT include auditId", async () => {
+    const relay = createMockRelay({
+      connected: false,
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tools = buildPageUnderstandingTools(relay, store, security);
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
+
+    const result = await (pageMapTool!.handler as any)({});
+
+    expect(result.success).toBe(false);
+    expect(result).not.toHaveProperty("auditId");
+  });
+
+  it("MCP-SEC-004: inspect_element error response does NOT include auditId", async () => {
+    const relay = createMockRelay({
+      connected: false,
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tools = buildPageUnderstandingTools(relay, store, security);
+    const inspectTool = tools.find((t) => t.name === "accordo_browser_inspect_element");
+
+    const result = await (inspectTool!.handler as any)({ selector: "#test" });
+
+    expect(result.success).toBe(false);
+    expect(result).not.toHaveProperty("auditId");
+  });
+
+  it("MCP-SEC-004: get_dom_excerpt error response does NOT include auditId", async () => {
+    const relay = createMockRelay({
+      connected: false,
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tools = buildPageUnderstandingTools(relay, store, security);
+    const excerptTool = tools.find((t) => t.name === "accordo_browser_get_dom_excerpt");
+
+    const result = await (excerptTool!.handler as any)({ selector: "#test" });
+
+    expect(result.success).toBe(false);
+    expect(result).not.toHaveProperty("auditId");
+  });
+
+  it("MCP-SEC-004: capture_region error response does NOT include auditId", async () => {
+    const mockRelay = createMockRelay({
+      connected: false,
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tools = buildPageUnderstandingTools(mockRelay, store, security);
+    const captureTool = tools.find((t) => t.name === "accordo_browser_capture_region");
+
+    const result = await (captureTool!.handler as any)({ mode: "viewport" });
+
+    expect(result.success).toBe(false);
+    expect(result).not.toHaveProperty("auditId");
   });
 });
 

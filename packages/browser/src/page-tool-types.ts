@@ -216,6 +216,8 @@ export interface PageMapResponse extends SnapshotEnvelopeFields {
     reductionRatio: number;
   };
 
+  /** Unique audit ID for this invocation (UUIDv4). MCP-SEC-004. Set by MCP handler. */
+  auditId?: string;
   /** True when PII redaction was applied to text content. MCP-SEC-002. */
   redactionApplied?: boolean;
   /** Warning when PII may be present in response. MCP-VC-005. */
@@ -253,6 +255,8 @@ export interface InspectElementResponse extends SnapshotEnvelopeFields {
   element?: Record<string, unknown>;
   context?: Record<string, unknown>;
   visibilityConfidence?: string;
+  /** Unique audit ID for this invocation (UUIDv4). MCP-SEC-004. Set by MCP handler. */
+  auditId?: string;
   /** True when PII redaction was applied to text content. MCP-SEC-002. */
   redactionApplied?: boolean;
   /** Warning when PII may be present in response. MCP-VC-005. */
@@ -268,6 +272,8 @@ export interface DomExcerptResponse extends SnapshotEnvelopeFields {
   text?: string;
   nodeCount?: number;
   truncated?: boolean;
+  /** Unique audit ID for this invocation (UUIDv4). MCP-SEC-004. Set by MCP handler. */
+  auditId?: string;
   /** True when PII redaction was applied to text content. MCP-SEC-002. */
   redactionApplied?: boolean;
   /** Warning when PII may be present in response. MCP-VC-005. */
@@ -288,6 +294,8 @@ export interface CaptureRegionResponse extends SnapshotEnvelopeFields {
   /** P4-CR: Capture mode used — "viewport" or "fullPage" */
   mode?: string;
   error?: CaptureError;
+  /** Unique audit ID for this capture (UUIDv4). MCP-SEC-004. Set by MCP handler. */
+  auditId?: string;
   /** Warning that screenshots are not subject to redaction policy. MCP-VC-005. */
   redactionWarning?: string;
   /** GAP-E2: Links this visual capture to the most recent DOM snapshot for this page. */

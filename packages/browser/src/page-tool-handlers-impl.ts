@@ -109,7 +109,7 @@ export async function handleGetPageMap(
       store.save(response.data.pageId, response.data);
       const result = response.data as PageMapResponse;
       // F4: Add auditId to response
-      (result as any).auditId = auditEntry.auditId;
+      result.auditId = auditEntry.auditId;
 
       // F2: Apply redaction if requested (fail-closed)
       if (args.redactPII) {
@@ -215,7 +215,7 @@ export async function handleInspectElement(
       store.save(response.data.pageId, response.data);
       const result = response.data as InspectElementResponse;
       // F4: Add auditId to response
-      (result as any).auditId = auditEntry.auditId;
+      result.auditId = auditEntry.auditId;
 
       // F2: Apply redaction if requested (fail-closed)
       if (args.redactPII) {
@@ -319,7 +319,7 @@ export async function handleGetDomExcerpt(
       store.save(response.data.pageId, response.data);
       const result = response.data as DomExcerptResponse;
       // F4: Add auditId to response
-      (result as any).auditId = auditEntry.auditId;
+      result.auditId = auditEntry.auditId;
 
       // F2: Apply redaction if requested (fail-closed)
       if (args.redactPII) {
@@ -436,7 +436,7 @@ export async function handleCaptureRegion(
         store.save(data.pageId, data);
         const result = data as CaptureRegionResponse;
         // F4: Add auditId to response
-        (result as any).auditId = auditEntry.auditId;
+        result.auditId = auditEntry.auditId;
         // GAP-I1: screenshotRedactionApplied and redactedSegmentCount are returned from the extension
         const relayData = data as Record<string, unknown>;
         if (relayData.screenshotRedactionApplied !== undefined) {
