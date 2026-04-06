@@ -26,6 +26,10 @@ import { hasErrorField, hasDataField, readBoundsLiteral } from "./relay-type-gua
  * Shared handler for page-understanding actions that follow the pattern:
  * DOM/content-script → call local handler; service worker → forward to content script.
  *
+ * F12: When payload.frameId is present (SW context only), this function resolves
+ * the numeric Chrome frameId and routes the action to the correct iframe via
+ * forwardToFrame. Cross-origin iframes return relay error "iframe-cross-origin".
+ *
  * @param request - The relay action request
  * @param localHandler - Optional function for DOM/content-script context
  * @param saveToStore - Whether to save the result to defaultStore (for diff_snapshots)
@@ -49,11 +53,18 @@ async function handlePageUnderstandingAction(
     return { requestId: request.requestId, success: true, data: result };
   }
 
-  // Service worker context — forward to content script
+  // Service worker context
   const tabId = await resolveTargetTabId(request.payload);
   if (!tabId) {
     return actionFailed(request);
   }
+
+  // F12: If frameId is provided, resolve the iframe and forward to it
+  const frameId = request.payload.frameId as string | undefined;
+  if (frameId !== undefined) {
+    return handleFrameIdRequest(request, tabId, frameId, saveToStore);
+  }
+
   const data = await forwardToContentScript(tabId, request.action, request.payload);
   if (data === null) {
     return actionFailed(request);
@@ -63,6 +74,133 @@ async function handlePageUnderstandingAction(
     await defaultStore.save((data as { pageId: string }).pageId, data as Parameters<typeof defaultStore.save>[1]);
   }
   return { requestId: request.requestId, success: true, data };
+}
+
+/**
+ * F12: Handle frameId-targeted page-understanding requests.
+ *
+ * Resolves the numeric Chrome frameId from the iframe metadata (via traverseFrames),
+ * then forwards the action to the correct child frame.
+ *
+ * - If the iframe is not found → action-failed
+ * - If the iframe is cross-origin (sameOrigin === false) → iframe-cross-origin
+ * - If the iframe is same-origin → forward to child frame via forwardToFrame
+ */
+async function handleFrameIdRequest(
+  request: RelayActionRequest,
+  tabId: number,
+  frameId: string,
+  saveToStore: boolean,
+): Promise<RelayActionResponse> {
+  // Fetch top-frame page map with iframe metadata.
+  // Must target frame 0 explicitly — without frameId, Chrome delivers the message
+  // to all frames and the first to respond wins (often an inner iframe), which
+  // returns iframes:[] because it has no child frames itself.
+  const pageMapData = await forwardToFrame(tabId, 0, "get_page_map", {
+    traverseFrames: true,
+  });
+  if (pageMapData === null) {
+    return actionFailed(request);
+  }
+
+  const pageMap = pageMapData as Record<string, unknown>;
+  const iframes = Array.isArray(pageMap.iframes) ? pageMap.iframes as Array<Record<string, unknown>> : [];
+
+  // Find the matching iframe entry by frameId
+  const iframe = iframes.find((f) => f.frameId === frameId);
+  if (!iframe) {
+    // Frame not found — keep minimal failure behavior
+    return actionFailed(request);
+  }
+
+  if (iframe.sameOrigin === false) {
+    // Cross-origin iframe — cannot access
+    return actionFailed(request, "iframe-cross-origin");
+  }
+
+  // Same-origin iframe — resolve numeric frameId and forward
+  const numericFrameId = await resolveNumericFrameId(tabId, iframe);
+  if (numericFrameId === null) {
+    return actionFailed(request);
+  }
+
+  // Forward to the child frame (strip frameId from payload to avoid recursion)
+  const { frameId: _frameId, ...forwardPayload } = request.payload as Record<string, unknown>;
+  const data = await forwardToFrame(tabId, numericFrameId, request.action, forwardPayload);
+  if (data === null) {
+    return actionFailed(request);
+  }
+  if (saveToStore && isVersionedSnapshot(data)) {
+    await defaultStore.save((data as { pageId: string }).pageId, data as Parameters<typeof defaultStore.save>[1]);
+  }
+  return { requestId: request.requestId, success: true, data };
+}
+
+/**
+ * F12: Resolve the numeric Chrome frameId for a same-origin iframe metadata entry.
+ *
+ * Uses chrome.webNavigation.getAllFrames() to find the matching child frame,
+ * applying the same URL-matching logic as handleGetPageMap for consistency.
+ */
+async function resolveNumericFrameId(
+  tabId: number,
+  iframe: Record<string, unknown>,
+): Promise<number | null> {
+  const frames = await chrome.webNavigation.getAllFrames({ tabId }).catch(() => []);
+  if (!Array.isArray(frames) || frames.length === 0) {
+    return null;
+  }
+
+  const childFrames = frames.filter((frame) => frame.frameId !== 0 && frame.parentFrameId === 0);
+  const iframeSrc = typeof iframe.src === "string" ? iframe.src : "";
+  const inheritedOriginFrame = iframeSrc === "" || iframeSrc === "about:blank" || iframeSrc.startsWith("about:srcdoc");
+  const normalizedIframeSrc = iframeSrc ? normalizeUrl(iframeSrc) : null;
+
+  // Match using same logic as handleGetPageMap
+  let matchingFrame: chrome.webNavigation.GetAllFrameResultDetails | undefined;
+
+  if (!inheritedOriginFrame && iframeSrc.length > 0) {
+    const exactMatches = childFrames.filter((frame) => frame.url === iframeSrc);
+    if (exactMatches.length === 1) {
+      matchingFrame = exactMatches[0];
+    }
+  }
+
+  if (!matchingFrame && normalizedIframeSrc !== null) {
+    const normalizedMatches = childFrames.filter((frame) => {
+      if (!frame.url) return false;
+      return normalizeUrl(frame.url) === normalizedIframeSrc;
+    });
+    if (normalizedMatches.length === 1) {
+      matchingFrame = normalizedMatches[0];
+    }
+  }
+
+  if (!matchingFrame && inheritedOriginFrame) {
+    const inheritedCandidates = childFrames.filter((frame) => {
+      if (!frame.url) return false;
+      return frame.url === "about:blank" || frame.url === "";
+    });
+    if (inheritedCandidates.length === 1) {
+      matchingFrame = inheritedCandidates[0];
+    }
+  }
+
+  if (!matchingFrame && normalizedIframeSrc !== null) {
+    const sameOriginCandidates = childFrames.filter((frame) => {
+      if (!frame.url) return false;
+      try {
+        return new URL(frame.url).origin === new URL(iframeSrc).origin;
+      } catch {
+        return false;
+      }
+    });
+    if (sameOriginCandidates.length === 1) {
+      matchingFrame = sameOriginCandidates[0];
+    }
+  }
+
+  return matchingFrame?.frameId ?? null;
 }
 
 // ── Page-map payload narrowing ───────────────────────────────────────────────

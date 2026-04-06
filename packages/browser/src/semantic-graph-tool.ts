@@ -41,6 +41,8 @@ export interface GetSemanticGraphArgs {
   maxDepth?: number;
   /** Exclude hidden elements (default: true). B2-SG-009. */
   visibleOnly?: boolean;
+  /** F12: Target a specific iframe by its frameId from get_page_map iframes[]. */
+  frameId?: string;
   /** I1-text: When true, scan text for PII and replace with [REDACTED]. */
   redactPII?: boolean;
   /** I2-001: Allowed origins for this request. Overrides global policy. */
@@ -142,7 +144,7 @@ export interface SemanticGraphResponse extends SnapshotEnvelopeFields {
  */
 export interface SemanticGraphToolError {
   success: false;
-  error: "browser-not-connected" | "timeout" | "action-failed";
+  error: "browser-not-connected" | "timeout" | "action-failed" | "iframe-cross-origin";
 }
 
 // ── Runtime type guards ──────────────────────────────────────────────────────
@@ -166,6 +168,9 @@ function narrowArgs(raw: unknown): GetSemanticGraphArgs {
   }
   if (typeof obj["visibleOnly"] === "boolean") {
     result.visibleOnly = obj["visibleOnly"];
+  }
+  if (typeof obj["frameId"] === "string") {
+    result.frameId = obj["frameId"];
   }
   if (typeof obj["redactPII"] === "boolean") {
     result.redactPII = obj["redactPII"];
@@ -246,6 +251,10 @@ export function buildSemanticGraphTool(
             "Maximum depth for the accessibility tree (default: 8, max: 16).",
           minimum: 1,
           maximum: 16,
+        },
+        frameId: {
+          type: "string",
+          description: "F12: Target a specific iframe by its frameId from get_page_map iframes[]",
         },
         visibleOnly: {
           type: "boolean",
@@ -328,6 +337,7 @@ async function handleGetSemanticGraph(
     if (args.maxDepth !== undefined) payload["maxDepth"] = args.maxDepth;
     if (args.visibleOnly !== undefined) payload["visibleOnly"] = args.visibleOnly;
     if (args.tabId !== undefined) payload["tabId"] = args.tabId;
+    if (args.frameId !== undefined) payload["frameId"] = args.frameId;
 
     const response = await relay.request(
       "get_semantic_graph",
@@ -340,6 +350,7 @@ async function handleGetSemanticGraph(
       const mappedError: SemanticGraphToolError["error"] =
         errCode === "browser-not-connected" ? "browser-not-connected"
         : errCode === "timeout" ? "timeout"
+        : errCode === "iframe-cross-origin" ? "iframe-cross-origin"
         : "action-failed";
       security.auditLog.completeEntry(auditEntry, {
         action: "blocked",

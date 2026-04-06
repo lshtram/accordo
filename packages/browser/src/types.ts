@@ -112,7 +112,7 @@ export interface BrowserRelayResponse {
    */
   snapshotId?: string;
   data?: unknown;
-  error?: "browser-not-connected" | "unauthorized" | "timeout" | "action-failed" | "invalid-request" | "navigation-interrupted" | "page-closed";
+  error?: "browser-not-connected" | "unauthorized" | "timeout" | "action-failed" | "invalid-request" | "navigation-interrupted" | "page-closed" | "iframe-cross-origin";
 }
 
 export interface BrowserRelayLike {

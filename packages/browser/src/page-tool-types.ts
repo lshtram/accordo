@@ -99,6 +99,8 @@ export interface InspectElementArgs {
   selector?: string;
   /** B2-SV-006: Stable node ID from a page map snapshot (alternative to ref/selector) */
   nodeId?: number;
+  /** F12: Target a specific iframe by its frameId from the page map's iframes[]. */
+  frameId?: string;
   /** I2-001: Allowed origins for this request. Overrides global policy. */
   allowedOrigins?: string[];
   /** I2-001: Denied origins for this request. Overrides global policy. */
@@ -117,6 +119,8 @@ export interface GetDomExcerptArgs {
   maxDepth?: number;
   /** Maximum character length of the HTML output (default: 2000) */
   maxLength?: number;
+  /** F12: Target a specific iframe by its frameId from the page map's iframes[]. */
+  frameId?: string;
   /** I2-001: Allowed origins for this request. Overrides global policy. */
   allowedOrigins?: string[];
   /** I2-001: Denied origins for this request. Overrides global policy. */
@@ -166,6 +170,8 @@ export interface GetTextMapArgs {
   /** B2-CTX-001: Optional tab ID to target; omit for active tab */
   tabId?: number;
   maxSegments?: number;
+  /** F12: Target a specific iframe by its frameId from the page map's iframes[]. */
+  frameId?: string;
   /** I1-text: When true, scan text for PII and replace with [REDACTED]. */
   redactPII?: boolean;
   /** I2-001: Allowed origins for this request. Overrides global policy. */
@@ -180,6 +186,8 @@ export interface GetSemanticGraphArgs {
   tabId?: number;
   maxDepth?: number;
   visibleOnly?: boolean;
+  /** F12: Target a specific iframe by its frameId from the page map's iframes[]. */
+  frameId?: string;
   /** I1-text: When true, scan text for PII and replace with [REDACTED]. */
   redactPII?: boolean;
   /** I2-001: Allowed origins for this request. Overrides global policy. */
@@ -431,6 +439,10 @@ export type RelayError =
   | "timeout"
   | "action-failed";
 
+/** Frame-targeting errors (permanent — not retryable). */
+export type FrameError =
+  | "iframe-cross-origin";
+
 /** Security-related errors (permanent — not retryable). */
 export type SecurityError =
   | "origin-blocked"
@@ -442,7 +454,7 @@ export type SpatialError =
   | "no-bounds";
 
 /** All possible browser tool error codes. MCP-ER-001. */
-export type BrowserToolErrorCode = CaptureError | RelayError | SecurityError | SpatialError;
+export type BrowserToolErrorCode = CaptureError | RelayError | SecurityError | SpatialError | FrameError;
 
 // ── Tool Timeouts ────────────────────────────────────────────────────────────
 

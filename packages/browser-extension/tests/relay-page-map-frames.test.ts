@@ -46,7 +46,7 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
         };
       }
 
-      if (options?.frameId === 7) {
+      if (options?.frameId === 7 && (message as { action?: string }).action === "get_page_map") {
         return {
           data: {
             pageId: "p2",
@@ -175,7 +175,7 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
           },
         };
       }
-      if (options?.frameId === 9) {
+      if (options?.frameId === 9 && (message as { action?: string }).action === "get_page_map") {
         return {
           data: {
             nodes: [{ ref: "c2", tag: "input", nodeId: 0, text: "about blank child" }],
@@ -370,5 +370,441 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
     const data = response.data as { iframes: Array<{ nodes?: unknown[] }>; nodes: unknown[] };
     expect(data.nodes).toEqual([]);
     expect(data.iframes[0]?.nodes).toEqual([{ ref: "c3", tag: "div", nodeId: 0, text: "origin fallback child" }]);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Feature 12: iframe-cross-origin contract for frame-targeted page-understanding
+// ════════════════════════════════════════════════════════════════════════════════
+
+describe("Feature 12: iframe-cross-origin contract for frameId-targeted requests", () => {
+  beforeEach(() => {
+    resetChromeMocks();
+  });
+
+  /**
+   * F12: When frameId targets a cross-origin iframe, the relay returns
+   * error "iframe-cross-origin" (not generic "action-failed").
+   */
+  it("F12: inspect_element with cross-origin frameId returns iframe-cross-origin error", async () => {
+    const request = {
+      requestId: "f12-1",
+      action: "inspect_element" as const,
+      payload: { tabId: 1, ref: "btn", frameId: "cross-frame" },
+    };
+
+    // Mock: get_page_map returns cross-origin iframe metadata
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        if (message.action === "get_page_map") {
+          return {
+            data: {
+              pageId: "p1",
+              frameId: "main",
+              snapshotId: "p1:1",
+              capturedAt: "2025-01-01T00:00:00Z",
+              viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+              source: "dom",
+              pageUrl: "https://example.com/parent",
+              title: "Parent",
+              nodes: [],
+              totalElements: 1,
+              truncated: false,
+              iframes: [
+                {
+                  frameId: "cross-frame",
+                  src: "https://other.example/child",
+                  bounds: { x: 0, y: 0, width: 300, height: 200 },
+                  sameOrigin: false,
+                },
+              ],
+            },
+          };
+        }
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleInspectElement } = await import("../src/relay-page-handlers.js");
+      response = await handleInspectElement(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("iframe-cross-origin");
+  });
+
+  /**
+   * F12: When frameId targets a same-origin iframe, the action is forwarded
+   * to the child frame without error.
+   */
+  it("F12: inspect_element with same-origin frameId forwards to child frame", async () => {
+    const request = {
+      requestId: "f12-2",
+      action: "inspect_element" as const,
+      payload: { tabId: 1, ref: "btn", frameId: "child-frame" },
+    };
+
+    (chrome.webNavigation.getAllFrames as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com/parent" },
+      { frameId: 7, parentFrameId: 0, url: "https://example.com/child" },
+    ]);
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        if (message.action === "get_page_map") {
+          return {
+            data: {
+              pageId: "p1",
+              frameId: "main",
+              snapshotId: "p1:1",
+              capturedAt: "2025-01-01T00:00:00Z",
+              viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+              source: "dom",
+              pageUrl: "https://example.com/parent",
+              title: "Parent",
+              nodes: [],
+              totalElements: 1,
+              truncated: false,
+              iframes: [
+                {
+                  frameId: "child-frame",
+                  src: "https://example.com/child",
+                  bounds: { x: 0, y: 0, width: 300, height: 200 },
+                  sameOrigin: true,
+                },
+              ],
+            },
+          };
+        }
+      }
+      if (options?.frameId === 7 && (message as { action?: string }).action === "inspect_element") {
+        return {
+          data: {
+            found: true,
+            anchorKey: "btn:50%x50%",
+            anchorStrategy: "ref",
+            anchorConfidence: "high",
+          },
+        };
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleInspectElement } = await import("../src/relay-page-handlers.js");
+      response = await handleInspectElement(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("found", true);
+  });
+
+  /**
+   * F12: When frameId is not found in iframe metadata, returns action-failed.
+   */
+  it("F12: inspect_element with unknown frameId returns action-failed", async () => {
+    const request = {
+      requestId: "f12-3",
+      action: "inspect_element" as const,
+      payload: { tabId: 1, ref: "btn", frameId: "nonexistent-frame" },
+    };
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        if (message.action === "get_page_map") {
+          return {
+            data: {
+              pageId: "p1",
+              frameId: "main",
+              snapshotId: "p1:1",
+              capturedAt: "2025-01-01T00:00:00Z",
+              viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+              source: "dom",
+              pageUrl: "https://example.com/parent",
+              title: "Parent",
+              nodes: [],
+              totalElements: 1,
+              truncated: false,
+              iframes: [],
+            },
+          };
+        }
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleInspectElement } = await import("../src/relay-page-handlers.js");
+      response = await handleInspectElement(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("action-failed");
+  });
+
+  /**
+   * F12: When frameId is omitted, behavior is unchanged (main frame).
+   */
+  it("F12: inspect_element without frameId targets main frame", async () => {
+    const request = {
+      requestId: "f12-4",
+      action: "inspect_element" as const,
+      payload: { tabId: 1, ref: "btn" },
+    };
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        return {
+          data: {
+            found: true,
+            anchorKey: "btn:50%x50%",
+            anchorStrategy: "ref",
+            anchorConfidence: "high",
+          },
+        };
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleInspectElement } = await import("../src/relay-page-handlers.js");
+      response = await handleInspectElement(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("found", true);
+    // Should NOT call get_page_map (no traverseFrames needed)
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("F12: get_text_map without frameId targets main frame", async () => {
+    const request = {
+      requestId: "f12-4b",
+      action: "get_text_map" as const,
+      payload: { tabId: 1 },
+    };
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        return {
+          data: {
+            segments: [{ text: "main frame", bounds: { x: 0, y: 0, width: 10, height: 10 }, visible: true, role: "main" }],
+          },
+        };
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleGetTextMap } = await import("../src/relay-page-handlers.js");
+      response = await handleGetTextMap(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("segments");
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * F12: get_dom_excerpt with cross-origin frameId returns iframe-cross-origin error.
+   */
+  it("F12: get_dom_excerpt with cross-origin frameId returns iframe-cross-origin error", async () => {
+    const request = {
+      requestId: "f12-5",
+      action: "get_dom_excerpt" as const,
+      payload: { tabId: 1, selector: "body", frameId: "cross-frame" },
+    };
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        if (message.action === "get_page_map") {
+          return {
+            data: {
+              pageId: "p1",
+              frameId: "main",
+              snapshotId: "p1:1",
+              capturedAt: "2025-01-01T00:00:00Z",
+              viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+              source: "dom",
+              pageUrl: "https://example.com/parent",
+              title: "Parent",
+              nodes: [],
+              totalElements: 1,
+              truncated: false,
+              iframes: [
+                {
+                  frameId: "cross-frame",
+                  src: "https://other.example/child",
+                  bounds: { x: 0, y: 0, width: 300, height: 200 },
+                  sameOrigin: false,
+                },
+              ],
+            },
+          };
+        }
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleGetDomExcerpt } = await import("../src/relay-page-handlers.js");
+      response = await handleGetDomExcerpt(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("iframe-cross-origin");
+  });
+
+  /**
+   * F12: get_text_map with same-origin frameId forwards to child frame.
+   */
+  it("F12: get_text_map with same-origin frameId forwards to child frame", async () => {
+    const request = {
+      requestId: "f12-6",
+      action: "get_text_map" as const,
+      payload: { tabId: 1, frameId: "child-frame" },
+    };
+
+    (chrome.webNavigation.getAllFrames as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com/parent" },
+      { frameId: 9, parentFrameId: 0, url: "https://example.com/child" },
+    ]);
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        if (message.action === "get_page_map") {
+          return {
+            data: {
+              pageId: "p1",
+              frameId: "main",
+              snapshotId: "p1:1",
+              capturedAt: "2025-01-01T00:00:00Z",
+              viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+              source: "dom",
+              pageUrl: "https://example.com/parent",
+              title: "Parent",
+              nodes: [],
+              totalElements: 1,
+              truncated: false,
+              iframes: [
+                {
+                  frameId: "child-frame",
+                  src: "https://example.com/child",
+                  bounds: { x: 0, y: 0, width: 300, height: 200 },
+                  sameOrigin: true,
+                },
+              ],
+            },
+          };
+        }
+      }
+      if (options?.frameId === 9 && (message as { action?: string }).action === "get_text_map") {
+        return {
+          data: {
+            segments: [{ text: "Hello from iframe", bounds: { x: 0, y: 0, width: 300, height: 200 }, visible: true, role: "main" }],
+          },
+        };
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleGetTextMap } = await import("../src/relay-page-handlers.js");
+      response = await handleGetTextMap(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("segments");
+  });
+
+  /**
+   * F12: get_semantic_graph with cross-origin frameId returns iframe-cross-origin error.
+   */
+  it("F12: get_semantic_graph with cross-origin frameId returns iframe-cross-origin error", async () => {
+    const request = {
+      requestId: "f12-7",
+      action: "get_semantic_graph" as const,
+      payload: { tabId: 1, frameId: "cross-frame" },
+    };
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        if (message.action === "get_page_map") {
+          return {
+            data: {
+              pageId: "p1",
+              frameId: "main",
+              snapshotId: "p1:1",
+              capturedAt: "2025-01-01T00:00:00Z",
+              viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+              source: "dom",
+              pageUrl: "https://example.com/parent",
+              title: "Parent",
+              nodes: [],
+              totalElements: 1,
+              truncated: false,
+              iframes: [
+                {
+                  frameId: "cross-frame",
+                  src: "https://other.example/child",
+                  bounds: { x: 0, y: 0, width: 300, height: 200 },
+                  sameOrigin: false,
+                },
+              ],
+            },
+          };
+        }
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleGetSemanticGraph } = await import("../src/relay-page-handlers.js");
+      response = await handleGetSemanticGraph(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("iframe-cross-origin");
   });
 });

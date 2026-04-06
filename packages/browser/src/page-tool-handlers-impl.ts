@@ -189,8 +189,23 @@ export async function handleInspectElement(
       args as Record<string, unknown>,
       INSPECT_TIMEOUT_MS,
     );
+    if (!response.success || response.data === undefined) {
+      const errCode = response.error ?? "action-failed";
+      const mappedError = errCode === "iframe-cross-origin"
+        ? "iframe-cross-origin"
+        : errCode === "browser-not-connected"
+          ? "browser-not-connected"
+          : errCode === "timeout"
+            ? "timeout"
+            : "action-failed";
+      security.auditLog.completeEntry(auditEntry, {
+        action: "blocked",
+        redacted: false,
+        durationMs: Date.now() - startTime,
+      });
+      return buildStructuredError(mappedError) as PageToolError;
+    }
     if (
-      response.success &&
       response.data &&
       typeof response.data === "object" &&
       "found" in response.data &&
@@ -293,8 +308,23 @@ export async function handleGetDomExcerpt(
       args as unknown as Record<string, unknown>,
       EXCERPT_TIMEOUT_MS,
     );
+    if (!response.success || response.data === undefined) {
+      const errCode = response.error ?? "action-failed";
+      const mappedError = errCode === "iframe-cross-origin"
+        ? "iframe-cross-origin"
+        : errCode === "browser-not-connected"
+          ? "browser-not-connected"
+          : errCode === "timeout"
+            ? "timeout"
+            : "action-failed";
+      security.auditLog.completeEntry(auditEntry, {
+        action: "blocked",
+        redacted: false,
+        durationMs: Date.now() - startTime,
+      });
+      return buildStructuredError(mappedError) as PageToolError;
+    }
     if (
-      response.success &&
       response.data &&
       typeof response.data === "object" &&
       "found" in response.data &&
@@ -619,6 +649,7 @@ export async function handleGetSemanticGraphInline(
     if (args.tabId !== undefined) payload["tabId"] = args.tabId;
     if (args.maxDepth !== undefined) payload["maxDepth"] = args.maxDepth;
     if (args.visibleOnly !== undefined) payload["visibleOnly"] = args.visibleOnly;
+    if (args.frameId !== undefined) payload["frameId"] = args.frameId;
 
     const response = await relay.request("get_semantic_graph", payload, SEMANTIC_GRAPH_TIMEOUT_MS);
     if (!response.success || response.data === undefined) {

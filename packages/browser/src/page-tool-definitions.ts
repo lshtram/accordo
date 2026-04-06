@@ -246,6 +246,7 @@ export function buildPageUnderstandingTools(
           ref: { type: "string", description: "Element reference from page map" },
           selector: { type: "string", description: "CSS selector to find element" },
           nodeId: { type: "number", description: "B2-SV-006: Stable node ID from a page map snapshot" },
+          frameId: { type: "string", description: "F12: Target a specific iframe by its frameId from get_page_map iframes[]" },
           allowedOrigins: {
             type: "array",
             items: { type: "string" },
@@ -277,6 +278,7 @@ export function buildPageUnderstandingTools(
           selector: { type: "string", description: "CSS selector for the root element" },
           maxDepth: { type: "number", description: "Maximum depth (default 3)" },
           maxLength: { type: "number", description: "Maximum character length (default 2000)" },
+          frameId: { type: "string", description: "F12: Target a specific iframe by its frameId from get_page_map iframes[]" },
           allowedOrigins: {
             type: "array",
             items: { type: "string" },

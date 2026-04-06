@@ -436,6 +436,28 @@ describe("M91-PU handler returns structured stub data", () => {
     expect(result).toHaveProperty("found");
   });
 
+  it("F12: handleInspectElement maps relay iframe-cross-origin to structured iframe-cross-origin", async () => {
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: false, requestId: "test", error: "iframe-cross-origin" as const }),
+      isConnected: vi.fn(() => true),
+    };
+    const result = await handleInspectElement(relay, { ref: "ref-123", frameId: "cross-frame" }, noopStore);
+
+    expect(result.success).toBe(false);
+    expect((result as { error: string }).error).toBe("iframe-cross-origin");
+  });
+
+  it("F12: handleGetDomExcerpt maps relay iframe-cross-origin to structured iframe-cross-origin", async () => {
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: false, requestId: "test", error: "iframe-cross-origin" as const }),
+      isConnected: vi.fn(() => true),
+    };
+    const result = await handleGetDomExcerpt(relay, { selector: "body", frameId: "cross-frame" }, noopStore);
+
+    expect(result.success).toBe(false);
+    expect((result as { error: string }).error).toBe("iframe-cross-origin");
+  });
+
   /**
    * CR-F-01: handleCaptureRegion returns structured CaptureRegionResult
    * B2-SV-003: Response includes SnapshotEnvelope fields (snapshotId, pageId, capturedAt, etc.)
@@ -758,6 +780,13 @@ describe("browser_inspect_element — input contract (PU-F-10)", () => {
     const inspectTool = tools.find((t) => t.name === "accordo_browser_inspect_element");
     expect(inspectTool?.inputSchema.properties).toHaveProperty("selector");
   });
+
+  it("F12: tool accepts frameId parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const inspectTool = tools.find((t) => t.name === "accordo_browser_inspect_element");
+    expect(inspectTool?.inputSchema.properties).toHaveProperty("frameId");
+  });
 });
 
 describe("browser_get_dom_excerpt — input contract (PU-F-30)", () => {
@@ -781,6 +810,13 @@ describe("browser_get_dom_excerpt — input contract (PU-F-30)", () => {
     const excerptTool = tools.find((t) => t.name === "accordo_browser_get_dom_excerpt");
     expect(excerptTool?.inputSchema.properties).toHaveProperty("maxDepth");
     expect(excerptTool?.inputSchema.properties).toHaveProperty("maxLength");
+  });
+
+  it("F12: tool accepts frameId parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const excerptTool = tools.find((t) => t.name === "accordo_browser_get_dom_excerpt");
+    expect(excerptTool?.inputSchema.properties).toHaveProperty("frameId");
   });
 });
 

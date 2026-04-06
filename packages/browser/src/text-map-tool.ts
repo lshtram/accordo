@@ -39,6 +39,8 @@ export interface GetTextMapArgs {
   tabId?: number;
   /** Maximum number of text segments to return (default: 500, max: 2000). B2-TX-008. */
   maxSegments?: number;
+  /** F12: Target a specific iframe by its frameId from get_page_map iframes[]. */
+  frameId?: string;
   /** I1-text: When true, scan text for PII and replace with [REDACTED]. */
   redactPII?: boolean;
   /** I2-001: Allowed origins for this request. Overrides global policy. */
@@ -92,7 +94,7 @@ export interface TextMapResponse extends SnapshotEnvelopeFields {
  */
 export interface TextMapToolError {
   success: false;
-  error: "browser-not-connected" | "timeout" | "action-failed";
+  error: "browser-not-connected" | "timeout" | "action-failed" | "iframe-cross-origin";
 }
 
 // ── Tool Definition ──────────────────────────────────────────────────────────
@@ -131,6 +133,10 @@ export function buildTextMapTool(
             "Maximum number of text segments to return (default: 500, max: 2000).",
           minimum: 1,
           maximum: 2000,
+        },
+        frameId: {
+          type: "string",
+          description: "F12: Target a specific iframe by its frameId from get_page_map iframes[]",
         },
         redactPII: {
           type: "boolean",
@@ -215,6 +221,7 @@ async function handleGetTextMap(
       const mappedError: TextMapToolError["error"] =
         errCode === "browser-not-connected" ? "browser-not-connected"
         : errCode === "timeout" ? "timeout"
+        : errCode === "iframe-cross-origin" ? "iframe-cross-origin"
         : "action-failed";
       security.auditLog.completeEntry(auditEntry, {
         action: "blocked",
