@@ -148,9 +148,17 @@ async function resolvePaddedBounds(
   };
 }
 
-/** Capture the visible tab as JPEG, PNG, or WebP. Returns dataUrl or throws. */
+/** Capture the visible tab as JPEG, PNG, or WebP. Returns dataUrl or throws.
+ *
+ * Note: chrome.tabs.captureVisibleTab only supports "jpeg" and "png".
+ * For "webp" requests we capture as PNG (lossless), then cropImageToBounds
+ * converts the PNG to WebP via OffscreenCanvas.convertToBlob({type:"image/webp"}).
+ */
 async function captureVisibleTab(quality: number, format: "jpeg" | "png" | "webp" = "jpeg"): Promise<string> {
-  return chrome.tabs.captureVisibleTab({ format, quality });
+  // Chrome's captureVisibleTab API only accepts "jpeg" or "png".
+  // Capture as PNG when WebP is requested; the final conversion is done by cropImageToBounds.
+  const captureFormat: "jpeg" | "png" = format === "webp" ? "png" : format;
+  return chrome.tabs.captureVisibleTab({ format: captureFormat, quality });
 }
 
 /** Estimate size in bytes from a data URL base64 string. */

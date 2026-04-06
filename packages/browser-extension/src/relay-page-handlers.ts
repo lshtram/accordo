@@ -468,7 +468,13 @@ export async function handleWaitFor(
 
   if (!waitResponse || hasErrorField(waitResponse)) {
     const errCode = hasErrorField(waitResponse) ? waitResponse.error : undefined;
-    if (errCode === "navigation-interrupted" || errCode === "page-closed") {
+    // Pass through known wait outcomes (including timeout) as structured data so the
+    // Hub handler can surface elapsedMs, retryable, and recoveryHints to the caller.
+    if (
+      errCode === "navigation-interrupted" ||
+      errCode === "page-closed" ||
+      errCode === "timeout"
+    ) {
       return { requestId: request.requestId, success: true, data: waitResponse };
     }
     return actionFailed(request);

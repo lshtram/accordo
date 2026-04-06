@@ -560,6 +560,20 @@ describe("B2-DE-006: snapshot-not-found error for missing snapshots", () => {
     expect(error.details!.eviction!.wasEvicted).toBe(false);
     expect(error.details!.reason).toBeDefined();
   });
+
+  it("B2-DE-006: snapshot-not-found error has recoveryHints at top level (not only nested in details)", async () => {
+    const relay = createMockRelay({ errorAction: "snapshot-not-found" });
+    const store = new SnapshotRetentionStore();
+
+    const result = await handleDiffSnapshots(relay, { fromSnapshotId: "unknown:99", toSnapshotId: "unknown:100" }, store);
+
+    expect(result).toHaveProperty("success", false);
+    const error = result as DiffToolError;
+    expect(error.error).toBe("snapshot-not-found");
+    // recoveryHints must appear at top level so agents can access it without drilling into details
+    expect(typeof error.recoveryHints).toBe("string");
+    expect((error.recoveryHints as string).length).toBeGreaterThan(0);
+  });
 });
 
 // ── B2-DE-007: Diff error for stale snapshot ───────────────────────────────────
@@ -603,6 +617,19 @@ describe("B2-DE-007: snapshot-stale error for pre-navigation snapshots", () => {
     expect(error.details?.reason.length).toBeGreaterThan(0);
     expect(typeof error.details?.recoveryHints).toBe("string");
     expect(error.details?.recoveryHints?.length).toBeGreaterThan(0);
+  });
+
+  it("B2-DE-007: snapshot-stale error has recoveryHints at top level (not only nested in details)", async () => {
+    const relay = createMockRelay({ errorAction: "snapshot-stale" });
+    const store = new SnapshotRetentionStore();
+
+    const result = await handleDiffSnapshots(relay, { fromSnapshotId: "page-006:0", toSnapshotId: "page-006:1" }, store);
+
+    const error = result as DiffToolError;
+    expect(error.error).toBe("snapshot-stale");
+    // recoveryHints must appear at top level so agents can access it without drilling into details
+    expect(typeof error.recoveryHints).toBe("string");
+    expect((error.recoveryHints as string).length).toBeGreaterThan(0);
   });
 });
 

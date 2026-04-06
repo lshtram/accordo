@@ -129,6 +129,12 @@ export interface DiffToolError {
   /** Per MCP-ER-002: suggested backoff for transient errors. */
   retryAfterMs?: number;
   /**
+   * Top-level step-by-step guidance for recovering from this error.
+   * Mirrors details.recoveryHints for convenient agent access without drilling into details.
+   * Present on `snapshot-not-found` and `snapshot-stale` errors.
+   */
+  recoveryHints?: string;
+  /**
    * Structured detail about why the error occurred.
    * Present on `snapshot-not-found` (eviction analysis) and `snapshot-stale`
    * (navigation version boundary or cross-page incompatibility).
@@ -545,39 +551,43 @@ export async function handleDiffSnapshots(
             resolvedToSnapshotId,
           );
           const eviction = analyzeEviction(store, snapshotIdForAnalysis);
+          const recoveryHints = eviction?.wasEvicted
+            ? `The snapshot was evicted because the ${RETENTION_SLOTS}-slot FIFO store is full. ` +
+              "Re-capture a fresh snapshot by calling get_page_map (or another read tool) on the target page, " +
+              "then immediately call diff_snapshots with the new snapshotId before capturing more snapshots."
+            : "The requested snapshot ID does not exist in the retention store. " +
+              "Call get_page_map (or another read tool) to capture a new snapshot, " +
+              "then use the returned snapshotId in diff_snapshots.";
           return {
             success: false,
             error: code,
             retryable: false,
+            recoveryHints,
             details: {
               eviction,
               reason: eviction?.wasEvicted
                 ? `Snapshot '${eviction.requestedSnapshotId}' was evicted from the ${RETENTION_SLOTS}-slot FIFO retention store.`
                 : `Snapshot '${eviction?.requestedSnapshotId ?? snapshotIdForAnalysis}' was not found in the retention store.`,
-              recoveryHints: eviction?.wasEvicted
-                ? `The snapshot was evicted because the ${RETENTION_SLOTS}-slot FIFO store is full. ` +
-                  "Re-capture a fresh snapshot by calling get_page_map (or another read tool) on the target page, " +
-                  "then immediately call diff_snapshots with the new snapshotId before capturing more snapshots."
-                : "The requested snapshot ID does not exist in the retention store. " +
-                  "Call get_page_map (or another read tool) to capture a new snapshot, " +
-                  "then use the returned snapshotId in diff_snapshots.",
+              recoveryHints,
             },
           };
         }
         // B2-DE-007: snapshot-stale — non-retryable; enriched with recovery guidance
         if (code === "snapshot-stale") {
+          const recoveryHints =
+            "Call get_page_map (or another read tool) on the current page to capture a fresh snapshot, " +
+            "then call diff_snapshots with the new snapshotId. " +
+            "To diff two different pages, capture a snapshot on each page separately and use diff_snapshots with explicit fromSnapshotId and toSnapshotId.";
           return {
             success: false,
             error: code,
             retryable: false,
+            recoveryHints,
             details: {
               reason:
                 "The requested snapshot belongs to a previous navigation and cannot be diffed against the current page state. " +
                 "Snapshots are scoped to a single navigation — they become stale when the page navigates away.",
-              recoveryHints:
-                "Call get_page_map (or another read tool) on the current page to capture a fresh snapshot, " +
-                "then call diff_snapshots with the new snapshotId. " +
-                "To diff two different pages, capture a snapshot on each page separately and use diff_snapshots with explicit fromSnapshotId and toSnapshotId.",
+              recoveryHints,
             },
           };
         }

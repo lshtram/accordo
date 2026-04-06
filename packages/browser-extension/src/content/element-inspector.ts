@@ -280,6 +280,42 @@ function buildDetail(element: Element): ElementDetail {
     el instanceof HTMLInputElement || el instanceof HTMLButtonElement ||
     el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement;
 
+  // Wave 5 / ElementStates: typed boolean state fields for actionability
+  const isFocused = document.activeElement === element;
+  const isChecked =
+    (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio"))
+      ? el.checked
+      : el.getAttribute("aria-checked") === "true"
+        ? true
+        : el.getAttribute("aria-checked") === "false"
+          ? false
+          : undefined;
+  const isExpanded =
+    el.getAttribute("aria-expanded") === "true"
+      ? true
+      : el.getAttribute("aria-expanded") === "false"
+        ? false
+        : (el instanceof HTMLDetailsElement ? el.open : undefined);
+  const isSelected =
+    el.getAttribute("aria-selected") === "true"
+      ? true
+      : el.getAttribute("aria-selected") === "false"
+        ? false
+        : (el instanceof HTMLOptionElement ? el.selected : undefined);
+  const isInvalid =
+    el.getAttribute("aria-invalid") === "true"
+      ? true
+      : el.getAttribute("aria-invalid") === "false"
+        ? false
+        : (isFormControl && (el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).validity !== undefined
+          ? !(el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).validity.valid
+          : undefined);
+  const isRequired =
+    el.getAttribute("aria-required") === "true" ||
+    (isFormControl && (el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).required)
+      ? true
+      : undefined;
+
   // GAP-F1: Eventability hints (MCP-INT-001)
   const computedStyle = window.getComputedStyle(element);
   const hasPointerEvents = computedStyle.pointerEvents !== "none";
@@ -315,6 +351,13 @@ function buildDetail(element: Element): ElementDetail {
     // GAP-F1: Always emit disabled/readonly for form controls (MCP-A11Y-002)
     ...(isFormControl ? { disabled: isDisabled } : {}),
     ...(isFormControl && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) ? { readonly: isReadonly } : {}),
+    // Wave 5 / ElementStates: typed boolean state fields
+    ...(isFocused ? { focused: true } : {}),
+    ...(isChecked !== undefined ? { checked: isChecked } : {}),
+    ...(isExpanded !== undefined ? { expanded: isExpanded } : {}),
+    ...(isSelected !== undefined ? { selected: isSelected } : {}),
+    ...(isInvalid !== undefined ? { invalid: isInvalid } : {}),
+    ...(isRequired !== undefined ? { required: isRequired } : {}),
     hasPointerEvents,
     ...(isObstructed !== undefined ? { isObstructed } : {}),
     clickTargetSize,
