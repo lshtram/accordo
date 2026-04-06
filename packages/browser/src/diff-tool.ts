@@ -384,8 +384,27 @@ async function resolveFromSnapshot(
   }
   const pageId = toSnapshotId.slice(0, lastColon);
   const version = parseInt(toSnapshotId.slice(lastColon + 1), 10);
-  if (isNaN(version) || version <= 0) {
+  if (isNaN(version)) {
     return { success: false, error: "action-failed", retryable: false };
+  }
+  if (version <= 0) {
+    // Version 0 is the very first snapshot — there is no prior snapshot to diff against.
+    return {
+      success: false,
+      error: "snapshot-not-found",
+      retryable: false,
+      recoveryHints:
+        "No prior snapshot exists for this page (the current snapshot is the first one). " +
+        "To capture a diff, first call get_page_map to record a baseline, then perform the action " +
+        "you want to observe, then call diff_snapshots again — the second call will have a prior snapshot to compare against.",
+      details: {
+        reason: `Snapshot '${toSnapshotId}' is the first snapshot on this page (version 0). There is no prior snapshot to use as a baseline.`,
+        recoveryHints:
+          "No prior snapshot exists for this page (the current snapshot is the first one). " +
+          "To capture a diff, first call get_page_map to record a baseline, then perform the action " +
+          "you want to observe, then call diff_snapshots again — the second call will have a prior snapshot to compare against.",
+      },
+    };
   }
   return `${pageId}:${version - 1}`;
 }

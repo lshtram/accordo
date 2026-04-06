@@ -424,6 +424,7 @@ export async function handleGetSemanticGraph(
         return collectSemanticGraph({
           maxDepth: typeof p.maxDepth === "number" ? p.maxDepth : undefined,
           visibleOnly: typeof p.visibleOnly === "boolean" ? p.visibleOnly : undefined,
+          piercesShadow: typeof p.piercesShadow === "boolean" ? p.piercesShadow : undefined,
         });
       }
     : null;
