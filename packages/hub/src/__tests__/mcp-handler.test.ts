@@ -462,6 +462,41 @@ describe("McpHandler", () => {
       expect((parsed["details"] as Record<string, unknown>)["reason"]).toContain("evicted");
     });
 
+    it("§6: tools/call — WaitForResult { met: false, error: 'timeout' } is NOT a soft error", async () => {
+      // Regression: WaitForResult has `met` + `error` but no `success` field.
+      // extractSoftError must not treat it as a legacy soft-error object.
+      const { handler: h, bridgeServer } = createHandler([SAMPLE_TOOL]);
+      const s = h.createSession();
+      vi.spyOn(bridgeServer, "isConnected").mockReturnValue(true);
+      vi.spyOn(bridgeServer, "invoke").mockResolvedValue({
+        type: "result",
+        id: "r1",
+        success: true,
+        data: {
+          met: false,
+          error: "timeout",
+          elapsedMs: 2000,
+          retryable: true,
+          retryAfterMs: 1000,
+        },
+      });
+      const req = makeRequest("tools/call", {
+        name: "accordo_editor_open",
+        arguments: {},
+      });
+
+      const response = await h.handleRequest(req, s);
+
+      expect(response?.error).toBeUndefined();
+      const result = response?.result as { content: Array<{ text: string }>; isError?: boolean };
+      // Must NOT be flagged as an error — WaitForResult is a normal structured result
+      expect(result?.isError).toBeUndefined();
+      const parsed = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+      expect(parsed["met"]).toBe(false);
+      expect(parsed["error"]).toBe("timeout");
+      expect(parsed["elapsedMs"]).toBe(2000);
+    });
+
     it("§6: tools/call — bridge invoke times out → error -32001", async () => {
       // req-hub §6: "Tool invocation timed out → { code: -32001 }"
       // RED on stub: bridgeServer.invoke throws "not implemented" (wrong error code)

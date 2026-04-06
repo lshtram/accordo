@@ -40,6 +40,10 @@ function extractSoftError(data: unknown): string | undefined {
   // are only legacy `{ error: "..." }` result objects with no success flag.
   if (typeof d.success === "boolean") return undefined;
   if (!("error" in d)) return undefined;
+  // Domain result objects (e.g. WaitForResult) may carry an `error` field as
+  // part of their normal schema alongside a `met` discriminator. These are not
+  // soft errors — they are structured results that must flow through intact.
+  if ("met" in d) return undefined;
   return typeof d.error === "string" ? d.error : undefined;
 }
 
