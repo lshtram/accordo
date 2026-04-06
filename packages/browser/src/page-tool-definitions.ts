@@ -350,6 +350,11 @@ export function buildPageUnderstandingTools(
             description:
               "G6: Artifact transport mode. 'inline' (default): base64 data URL returned in dataUrl. 'file-ref': screenshot saved to ~/.accordo/screenshots/ and returned by fileUri + filePath instead of inline data.",
           },
+          redactPII: {
+            type: "boolean",
+            description:
+              "I1-text: When true, scan text content for PII and replace with [REDACTED]. When false, suppress PII redaction even if global policy has patterns. When omitted, honour the global redaction policy. MCP-SEC-002.",
+          },
         },
       },
       dangerLevel: "safe",

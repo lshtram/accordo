@@ -490,3 +490,47 @@ describe("handleWaitForInline — H2: retry hints on timeout fallback", () => {
     expect(r.elapsedMs).toBeGreaterThanOrEqual(0);
   });
 });
+
+// ── handleWaitFor — H4: real elapsedMs in standalone handler ──────────────────
+
+/**
+ * H4: handleWaitFor (standalone, in wait-tool.ts) must use real elapsed time,
+ * not the configured timeout value, in the fallback path.
+ *
+ * This tests the bug fix: before the fix, `elapsedMs` was set to `timeoutMs`
+ * (the clamped config value). After the fix, it is `Date.now() - startMs`.
+ */
+describe("handleWaitFor — H4: real elapsed time in timeout fallback", () => {
+  it("H4-1: timeout fallback elapsedMs is a non-negative number (not equal to timeoutMs when relay responds quickly)", async () => {
+    // Relay returns failure with no data — triggers the fallback path.
+    // The relay responds immediately (no artificial delay), so elapsedMs
+    // should be much less than timeoutMs (10000 default).
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: false }),
+      isConnected: vi.fn(() => true),
+    };
+    const result = await handleWaitFor(relay as never, { texts: ["x"] });
+    const r = result as { met?: boolean; error?: string; elapsedMs?: number };
+    // elapsedMs must be a real measured value — not equal to the 10000 ms default timeout
+    expect(typeof r.elapsedMs).toBe("number");
+    expect(r.elapsedMs).toBeGreaterThanOrEqual(0);
+    // A fast relay response will produce elapsedMs far less than the default 10000 ms.
+    // If the old bug (elapsedMs = timeoutMs = 10000) were present, this would fail.
+    expect(r.elapsedMs).toBeLessThan(5000);
+  });
+
+  it("H4-2: timeout fallback elapsedMs is not equal to an explicit timeout value when relay responds immediately", async () => {
+    // Use a recognizable timeout value. If bugged, elapsedMs === 5000.
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: false }),
+      isConnected: vi.fn(() => true),
+    };
+    const result = await handleWaitFor(relay as never, { texts: ["x"], timeout: 5000 });
+    const r = result as { elapsedMs?: number };
+    expect(typeof r.elapsedMs).toBe("number");
+    // Real elapsed with an immediate relay response will be < 100 ms,
+    // not the configured 5000 ms timeout value.
+    expect(r.elapsedMs).not.toBe(5000);
+    expect(r.elapsedMs).toBeLessThan(1000);
+  });
+});

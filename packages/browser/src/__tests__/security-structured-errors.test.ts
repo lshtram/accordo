@@ -259,6 +259,54 @@ describe("MCP-ER-001: All error codes produce structured response", () => {
   }
 });
 
+// ── H2: recoveryHints on buildStructuredError ────────────────────────────────
+
+describe("H2: buildStructuredError includes recoveryHints", () => {
+  // These are the transient error codes from TRANSIENT_ERRORS in page-tool-types.ts.
+  const transientCodes = [
+    "browser-not-connected",
+    "timeout",
+    "action-failed",
+    "detached-node",
+    "capture-failed",
+    "element-off-screen",
+  ] as const;
+
+  for (const code of transientCodes) {
+    it(`H2-1: '${code}' (transient) includes a non-empty recoveryHints string`, () => {
+      const err = buildStructuredError(code) as PageToolError;
+      expect(err.recoveryHints).toBeDefined();
+      expect(typeof err.recoveryHints).toBe("string");
+      expect((err.recoveryHints as string).length).toBeGreaterThan(0);
+    });
+  }
+
+  it("H2-2: 'origin-blocked' (non-transient, known) includes recoveryHints and retryable:false", () => {
+    const err = buildStructuredError("origin-blocked") as PageToolError;
+    expect(err.recoveryHints).toBeDefined();
+    expect(typeof err.recoveryHints).toBe("string");
+    expect((err.recoveryHints as string).length).toBeGreaterThan(0);
+    expect(err.retryable).toBe(false);
+  });
+
+  it("H2-3: unknown error code omits recoveryHints (undefined)", () => {
+    const err = buildStructuredError("some-unknown-code") as PageToolError;
+    expect(err.recoveryHints).toBeUndefined();
+  });
+
+  it("H3-1: PageToolError type accepts recoveryHints field (type-level)", () => {
+    // Construct a PageToolError with recoveryHints — must compile without type assertion.
+    const err: PageToolError = {
+      success: false,
+      error: "timeout",
+      retryable: true,
+      retryAfterMs: 1000,
+      recoveryHints: "Retry with a longer timeout.",
+    };
+    expect(err.recoveryHints).toBe("Retry with a longer timeout.");
+  });
+});
+
 // ── Error code type exports ─────────────────────────────────────────────────
 
 describe("MCP-ER-001: Error type exports are valid unions", () => {

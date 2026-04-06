@@ -521,3 +521,85 @@ describe("MCP-A11Y-001: get_semantic_graph states exposure", () => {
     expect((nodeWithout as any).states).toBeUndefined();
   });
 });
+
+// ── F2: InspectElementResponse.element typed field access ─────────────────────
+
+describe("F2: InspectElementResponse.element exposes typed actionability fields", () => {
+  it("F2-1: element.disabled is accessible as a typed boolean without type assertion", async () => {
+    const mockWithDisabled = {
+      ...MOCK_INSPECT_DISABLED_BUTTON,
+      element: {
+        ...MOCK_INSPECT_DISABLED_BUTTON.element,
+        disabled: true,
+        states: ["disabled"],
+      },
+    };
+    const relay = createMockRelay({
+      response: { success: true, requestId: "test", data: mockWithDisabled },
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tools = buildPageUnderstandingTools(relay, store, security);
+    const inspectTool = tools.find((t) => t.name === "accordo_browser_inspect_element");
+    expect(inspectTool).toBeDefined();
+
+    const result = await (inspectTool!.handler as any)({ selector: "button.submit-btn" });
+
+    // F2: element.disabled is a typed boolean accessible without `as any` cast.
+    // InspectElementResponse.element is typed as Record<string,unknown> & Partial<ElementStates>
+    // so result.element?.disabled should be true.
+    expect(result.element).toBeDefined();
+    expect(result.element.disabled).toBe(true);
+  });
+
+  it("F2-2: element.readonly is accessible as a typed boolean without type assertion", async () => {
+    const mockWithReadonly = {
+      ...MOCK_INSPECT_PLAIN_INPUT,
+      element: {
+        ...MOCK_INSPECT_PLAIN_INPUT.element,
+        readonly: true,
+        states: ["readonly"],
+      },
+    };
+    const relay = createMockRelay({
+      response: { success: true, requestId: "test", data: mockWithReadonly },
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tools = buildPageUnderstandingTools(relay, store, security);
+    const inspectTool = tools.find((t) => t.name === "accordo_browser_inspect_element");
+    expect(inspectTool).toBeDefined();
+
+    const result = await (inspectTool!.handler as any)({ selector: "input.username" });
+
+    expect(result.element).toBeDefined();
+    expect(result.element.readonly).toBe(true);
+  });
+
+  it("F2-3: element preserves arbitrary extra fields alongside typed fields", async () => {
+    const mockWithExtra = {
+      ...MOCK_INSPECT_DISABLED_BUTTON,
+      element: {
+        ...MOCK_INSPECT_DISABLED_BUTTON.element,
+        disabled: true,
+        customProp: 42,
+        states: ["disabled"],
+      },
+    };
+    const relay = createMockRelay({
+      response: { success: true, requestId: "test", data: mockWithExtra },
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tools = buildPageUnderstandingTools(relay, store, security);
+    const inspectTool = tools.find((t) => t.name === "accordo_browser_inspect_element");
+    expect(inspectTool).toBeDefined();
+
+    const result = await (inspectTool!.handler as any)({ selector: "button.submit-btn" });
+
+    expect(result.element).toBeDefined();
+    // Both the typed field and the arbitrary extra field must be accessible.
+    expect(result.element.disabled).toBe(true);
+    expect(result.element.customProp).toBe(42);
+  });
+});

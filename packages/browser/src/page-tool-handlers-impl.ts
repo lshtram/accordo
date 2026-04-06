@@ -435,9 +435,11 @@ export async function handleCaptureRegion(
     // GAP-I1: When redactPatterns are configured, embed them in the payload so the
     // extension can apply bbox-based redaction to the screenshot. The warning is
     // always shown when patterns exist (MCP-VC-005), regardless of args.redact.
+    // I1: args.redactPII=false explicitly suppresses redaction even if global patterns exist.
     const payload: Record<string, unknown> = { ...args };
     const hasRedactPatterns = security.redactionPolicy.redactPatterns.length > 0;
-    if (hasRedactPatterns) {
+    const shouldRedact = args.redactPII !== false && hasRedactPatterns;
+    if (shouldRedact) {
       payload.redactPatterns = security.redactionPolicy.redactPatterns.map((p: { pattern: string }) => p.pattern);
     }
 

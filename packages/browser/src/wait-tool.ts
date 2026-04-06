@@ -231,6 +231,7 @@ export async function handleWaitFor(
   const rawTimeout = args.timeout ?? WAIT_DEFAULT_TIMEOUT_MS;
   const timeoutMs = Math.min(rawTimeout, WAIT_MAX_TIMEOUT_MS);
 
+  const startMs = Date.now();
   try {
     const response = await relay.request("wait_for", args as Record<string, unknown>, RELAY_TIMEOUT_MS);
 
@@ -246,7 +247,7 @@ export async function handleWaitFor(
     }
 
     // Timeout or other relay-level failure — pass through as WaitForResult
-    return response.data as WaitForResult ?? { met: false, error: "timeout", elapsedMs: timeoutMs, retryable: true, retryAfterMs: 1000 };
+    return response.data as WaitForResult ?? { met: false, error: "timeout", elapsedMs: Date.now() - startMs, retryable: true, retryAfterMs: 1000 };
   } catch (err: unknown) {
     // Relay threw (e.g. browser not connected)
     const code = classifyRelayError(err);

@@ -14,7 +14,7 @@
  * They will fail until Phase C implementation.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   redactText,
   redactTextMapResponse,
@@ -23,7 +23,10 @@ import {
   RedactionPolicy,
   RedactionResult,
   DEFAULT_REDACTION_PATTERNS,
+  BrowserAuditLog,
 } from "../security/index.js";
+import { handleCaptureRegion } from "../page-tool-handlers-impl.js";
+import { SnapshotRetentionStore } from "../snapshot-retention.js";
 
 // ── redactText: B2-PS-004 (pattern-based replacement) ────────────────────────
 
@@ -370,5 +373,111 @@ describe("DEFAULT_REDACTION_PATTERNS: built-in pattern coverage", () => {
     expect("(555) 123-4567").toMatch(regex);
     expect("+1 555 123 4567").toMatch(regex);
     expect("555.123.4567").toMatch(regex);
+  });
+});
+
+// ── I1: capture_region redactPII gate ─────────────────────────────────────────
+
+/**
+ * I1: The capture_region handler must honour a per-call `redactPII` flag.
+ *
+ * Behaviour matrix:
+ *   redactPII=undefined + patterns exist → forward patterns (backward-compat)
+ *   redactPII=true      + patterns exist → forward patterns
+ *   redactPII=false     + patterns exist → suppress patterns
+ *   redactPII=true      + no patterns    → no patterns to forward
+ */
+describe("I1 / MCP-SEC-002: capture_region redactPII gate", () => {
+  const MOCK_CAPTURE_DATA = {
+    success: true,
+    dataUrl: "data:image/jpeg;base64,mock",
+    width: 100,
+    height: 100,
+    sizeBytes: 1000,
+    anchorSource: "rect",
+    pageId: "page",
+    frameId: "main",
+    snapshotId: "page:0",
+    capturedAt: "2025-01-01T00:00:00.000Z",
+    viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+    source: "dom" as const,
+  };
+
+  function createRecordingRelay() {
+    let lastPayload: Record<string, unknown> = {};
+    return {
+      relay: {
+        request: vi.fn().mockImplementation(async (_action: string, payload?: Record<string, unknown>) => {
+          lastPayload = { ...(payload ?? {}) };
+          return { success: true, requestId: "test", data: MOCK_CAPTURE_DATA };
+        }),
+        isConnected: vi.fn(() => true),
+      },
+      getPayload: () => lastPayload,
+    };
+  }
+
+  function createSecurityWithPatterns() {
+    return {
+      originPolicy: { allowedOrigins: [], deniedOrigins: [], defaultAction: "allow" as const },
+      redactionPolicy: { redactPatterns: DEFAULT_REDACTION_PATTERNS, replacement: "[REDACTED]" },
+      auditLog: new BrowserAuditLog(),
+    };
+  }
+
+  function createSecurityNoPatterns() {
+    return {
+      originPolicy: { allowedOrigins: [], deniedOrigins: [], defaultAction: "allow" as const },
+      redactionPolicy: { redactPatterns: [], replacement: "[REDACTED]" },
+      auditLog: new BrowserAuditLog(),
+    };
+  }
+
+  it("I1-1: forwards redactPatterns when redactPII is undefined and global patterns exist", async () => {
+    const { relay, getPayload } = createRecordingRelay();
+    const store = new SnapshotRetentionStore();
+    const security = createSecurityWithPatterns();
+
+    await handleCaptureRegion(relay as never, { tabId: 1 }, store, security);
+
+    const payload = getPayload();
+    expect(payload).toHaveProperty("redactPatterns");
+    expect(Array.isArray(payload.redactPatterns)).toBe(true);
+    expect((payload.redactPatterns as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it("I1-2: forwards redactPatterns when redactPII is true and global patterns exist", async () => {
+    const { relay, getPayload } = createRecordingRelay();
+    const store = new SnapshotRetentionStore();
+    const security = createSecurityWithPatterns();
+
+    await handleCaptureRegion(relay as never, { tabId: 1, redactPII: true }, store, security);
+
+    const payload = getPayload();
+    expect(payload).toHaveProperty("redactPatterns");
+    expect(Array.isArray(payload.redactPatterns)).toBe(true);
+    expect((payload.redactPatterns as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it("I1-3: suppresses redactPatterns when redactPII is false (even with global patterns)", async () => {
+    const { relay, getPayload } = createRecordingRelay();
+    const store = new SnapshotRetentionStore();
+    const security = createSecurityWithPatterns();
+
+    await handleCaptureRegion(relay as never, { tabId: 1, redactPII: false }, store, security);
+
+    const payload = getPayload();
+    expect(payload).not.toHaveProperty("redactPatterns");
+  });
+
+  it("I1-4: does not forward redactPatterns when no global patterns exist (regardless of redactPII)", async () => {
+    const { relay, getPayload } = createRecordingRelay();
+    const store = new SnapshotRetentionStore();
+    const security = createSecurityNoPatterns();
+
+    await handleCaptureRegion(relay as never, { tabId: 1, redactPII: true }, store, security);
+
+    const payload = getPayload();
+    expect(payload).not.toHaveProperty("redactPatterns");
   });
 });

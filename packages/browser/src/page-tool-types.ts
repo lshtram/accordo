@@ -162,6 +162,12 @@ export interface CaptureRegionArgs {
   /** I2-001: Denied origins for this request. Overrides global policy. */
   deniedOrigins?: string[];
   /**
+   * I1-text: When true, scan text content for PII and replace with [REDACTED].
+   * When false, suppress PII redaction even if global policy has patterns.
+   * When omitted, honour the global redaction policy. MCP-SEC-002.
+   */
+  redactPII?: boolean;
+  /**
    * G6: Artifact transport mode for the captured screenshot.
    * "inline" (default) — returns base64 data URL in `dataUrl`.
    * "file-ref" — writes the screenshot to disk and returns `fileUri` + `filePath` instead.
@@ -344,6 +350,8 @@ export interface PageToolError {
   retryAfterMs?: number;
   /** Human-readable detail for diagnostics. */
   details?: string;
+  /** Human-readable recovery guidance for the caller. MCP-ER-002. */
+  recoveryHints?: string;
   /** Preserved for backward compatibility on specific tools. */
   pageUrl?: null;
   found?: false;
@@ -352,12 +360,38 @@ export interface PageToolError {
 /**
  * B2-SV-003: Typed response for element inspection — includes SnapshotEnvelope.
  */
+
+/**
+ * F2: Typed actionability states for interactive elements.
+ * Agents can check disabled/readonly without parsing untyped string arrays.
+ */
+export interface ElementStates {
+  /** Raw state strings from the browser extension (e.g. "disabled", "readonly", "required"). */
+  states?: string[];
+  /** Whether the element is disabled (non-interactive). */
+  disabled?: boolean;
+  /** Whether the element is read-only (visible but not editable). */
+  readonly?: boolean;
+  /** Whether the element is required in a form context. */
+  required?: boolean;
+  /** Whether the element is checked (checkboxes, radio buttons). */
+  checked?: boolean;
+  /** Whether the element is expanded (details, comboboxes). */
+  expanded?: boolean;
+  /** Whether the element currently has keyboard focus. */
+  focused?: boolean;
+  /** Whether the element is selected (listbox options, tabs). */
+  selected?: boolean;
+  /** Whether the element is in an invalid/error state (form validation). */
+  invalid?: boolean;
+}
+
 export interface InspectElementResponse extends SnapshotEnvelopeFields {
   found: boolean;
   anchorKey?: string;
   anchorStrategy?: string;
   anchorConfidence?: string;
-  element?: Record<string, unknown>;
+  element?: Record<string, unknown> & Partial<ElementStates>;
   context?: Record<string, unknown>;
   visibilityConfidence?: string;
   /** Unique audit ID for this invocation (UUIDv4). MCP-SEC-004. Set by MCP handler. */
@@ -578,6 +612,26 @@ const TRANSIENT_ERRORS: Record<string, number> = {
   "element-off-screen": 1000, // MCP-ER-002: element may scroll into view after retry
 };
 
+/** Human-readable recovery hints per error code. MCP-ER-002. */
+const RECOVERY_HINTS: Record<string, string> = {
+  "browser-not-connected":
+    "Check that the browser relay is running and the Chrome extension is connected.",
+  "timeout":
+    "The operation timed out. Retry with a longer timeout or verify the page has loaded.",
+  "action-failed":
+    "The browser action failed. The element may have changed — take a fresh snapshot and retry.",
+  "detached-node":
+    "The target element was removed from the DOM. Take a new snapshot to find the updated element.",
+  "capture-failed":
+    "Screenshot capture failed. The tab may still be loading — wait briefly and retry.",
+  "element-off-screen":
+    "The element is outside the visible viewport. Scroll it into view before retrying.",
+  "origin-blocked":
+    "This origin is blocked by the security policy. Check allowedOrigins/deniedOrigins.",
+  "invalid-request":
+    "The request parameters are invalid. Check required fields and value constraints.",
+};
+
 /**
  * Build a structured error response from an error code.
  *
@@ -598,12 +652,14 @@ export function buildStructuredError(
 ): PageToolError {
   const retryable = errorCode in TRANSIENT_ERRORS;
   const retryAfterMs = retryable ? TRANSIENT_ERRORS[errorCode] : undefined;
+  const recoveryHints = RECOVERY_HINTS[errorCode];
 
   return {
     success: false,
     error: errorCode,
     ...(retryable ? { retryable: true, retryAfterMs } : { retryable: false }),
     ...(details !== undefined ? { details } : {}),
+    ...(recoveryHints !== undefined ? { recoveryHints } : {}),
     pageUrl: null,
     found: false,
   };
