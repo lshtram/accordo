@@ -63,32 +63,67 @@ async function resolveElementCoords(
 
 type WaitUntil = "load" | "domcontentloaded" | "networkidle";
 
+export function toLifecycleEventName(waitUntil: WaitUntil): string {
+  switch (waitUntil) {
+    case "load":
+      return "load";
+    case "networkidle":
+      return "networkIdle";
+    case "domcontentloaded":
+    default:
+      return "DOMContentLoaded";
+  }
+}
+
 /**
  * Wait for a Page.lifecycleEvent with the given name.
  */
-function waitForLifecycleEvent(tabId: number, eventName: string): Promise<void> {
-  const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error(`waitUntil ${eventName} timed out`)), 30000)
-  );
+function createLifecycleWaiter(tabId: number, eventName: string): { promise: Promise<void>; cancel: () => void } {
+  let settled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const waitForEvent = new Promise<void>((resolve) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const listener = (source: unknown, _method: string, params?: Record<string, unknown>) => {
-      if (
-        _method === "Page.lifecycleEvent" &&
-        (source as { tabId?: number }).tabId === tabId &&
-        params?.name === eventName
-      ) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        chrome.debugger.onEvent.removeListener(listener as any);
-        resolve();
-      }
-    };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const listener = (source: unknown, method: string, params?: Record<string, unknown>) => {
+    if (
+      !settled &&
+      method === "Page.lifecycleEvent" &&
+      (source as { tabId?: number }).tabId === tabId &&
+      params?.name === eventName
+    ) {
+      settled = true;
+      if (timer) clearTimeout(timer);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      chrome.debugger.onEvent.removeListener(listener as any);
+      resolveRef?.();
+    }
+  };
+
+  let resolveRef: (() => void) | undefined;
+
+  const promise = new Promise<void>((resolve, reject) => {
+    resolveRef = resolve;
+    timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      chrome.debugger.onEvent.removeListener(listener as any);
+      reject(new Error(`waitUntil ${eventName} timed out`));
+    }, 30000);
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     chrome.debugger.onEvent.addListener(listener as any);
   });
 
-  return Promise.race([waitForEvent, timeout]);
+  return {
+    promise,
+    cancel: () => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      chrome.debugger.onEvent.removeListener(listener as any);
+    },
+  };
 }
 
 export async function handleNavigate(request: RelayActionRequest): Promise<RelayActionResponse> {
@@ -103,33 +138,56 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
     }
 
     await ensureAttached(tabId);
+    await sendCommand(tabId, "Page.enable");
 
     const type = (payload.type as string) || "url";
+    const waitUntil = (payload.waitUntil as WaitUntil) || "domcontentloaded";
+    const eventName = toLifecycleEventName(waitUntil);
 
     if (type === "url") {
       const url = payload.url as string;
       if (!url) {
         return actionFailed(request, "invalid-request");
       }
-      const waitUntil = (payload.waitUntil as WaitUntil) || "domcontentloaded";
-
-      if (waitUntil === "load" || waitUntil === "networkidle") {
-        // Wait for the page to reach the requested lifecycle state
-        const eventName = waitUntil === "load" ? "load" : "networkIdle";
-        await sendCommand(tabId, "Page.setLifecycleEventsEnabled", { enabled: true });
-        const lifecyclePromise = waitForLifecycleEvent(tabId, eventName);
+      await sendCommand(tabId, "Page.setLifecycleEventsEnabled", { enabled: true });
+      const lifecycle = createLifecycleWaiter(tabId, eventName);
+      try {
         await sendCommand(tabId, "Page.navigate", { url });
-        await lifecyclePromise;
-      } else {
-        // domcontentloaded (default): immediate return after navigation
-        await sendCommand(tabId, "Page.navigate", { url });
+        await lifecycle.promise;
+      } catch (error) {
+        lifecycle.cancel();
+        throw error;
       }
     } else if (type === "back") {
-      await sendCommand(tabId, "Page.goBackInHistory");
+      await sendCommand(tabId, "Page.setLifecycleEventsEnabled", { enabled: true });
+      const lifecycle = createLifecycleWaiter(tabId, eventName);
+      try {
+        await sendCommand(tabId, "Page.goBackInHistory");
+        await lifecycle.promise;
+      } catch (error) {
+        lifecycle.cancel();
+        throw error;
+      }
     } else if (type === "forward") {
-      await sendCommand(tabId, "Page.goForwardInHistory");
+      await sendCommand(tabId, "Page.setLifecycleEventsEnabled", { enabled: true });
+      const lifecycle = createLifecycleWaiter(tabId, eventName);
+      try {
+        await sendCommand(tabId, "Page.goForwardInHistory");
+        await lifecycle.promise;
+      } catch (error) {
+        lifecycle.cancel();
+        throw error;
+      }
     } else if (type === "reload") {
-      await sendCommand(tabId, "Page.reload");
+      await sendCommand(tabId, "Page.setLifecycleEventsEnabled", { enabled: true });
+      const lifecycle = createLifecycleWaiter(tabId, eventName);
+      try {
+        await sendCommand(tabId, "Page.reload");
+        await lifecycle.promise;
+      } catch (error) {
+        lifecycle.cancel();
+        throw error;
+      }
     }
 
     // GAP-A1: Get document.readyState after navigation
@@ -139,12 +197,17 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
     });
     const readyState = (readyStateResult?.result?.value ?? "interactive") as "loading" | "interactive" | "complete";
 
-    // Get frame tree for title
+    // Prefer document.title after the requested lifecycle state has fired.
+    const titleEval = await sendCommand<{ result: { value: string } }>(tabId, "Runtime.evaluate", {
+      expression: "document.title",
+      returnByValue: true,
+    });
     const frameTree = await sendCommand<{ frameTree: { frame: { title: string } } }>(tabId, "Page.getFrameTree");
-    const title = frameTree?.frameTree?.frame?.title ?? "";
+    const title = (titleEval?.result?.value as string | undefined) ?? frameTree?.frameTree?.frame?.title ?? "";
 
-    // Return the URL that was navigated to
-    const url = payload.url as string;
+    // Return the actual current tab URL after navigation settles.
+    const currentTab = await chrome.tabs.get(tabId);
+    const url = currentTab.url ?? (payload.url as string | undefined);
 
     return {
       requestId: request.requestId,

@@ -15,14 +15,14 @@
  * - navigate type:back → Page.goBackInHistory CDP
  * - navigate type:forward → Page.goForwardInHistory CDP
  * - navigate type:reload → Page.reload CDP
- * - navigate waits for Page.loadEventFired after navigation command
+ * - navigate waits for lifecycle settle after navigation command
  * - navigate returns success:true with url and title on successful navigation
  * - navigate returns unsupported-page error on chrome:// pages
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { resetChromeMocks, setMockTabUrl } from "./setup/chrome-mock.js";
-import { handleNavigate } from "../src/relay-control-handlers.js";
+import { handleNavigate, toLifecycleEventName } from "../src/relay-control-handlers.js";
 import type { RelayActionRequest } from "../src/relay-definitions.js";
 
 function makeRequest(payload: Record<string, unknown> = {}): RelayActionRequest {
@@ -68,6 +68,12 @@ describe("handleNavigate — CDP commands", () => {
   it("REQ-TC-004: type:url sends Page.navigate CDP command", async () => {
     const request = makeRequest({ tabId: 1, type: "url", url: "https://example.com/new" });
     await handleNavigate(request);
+
+    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 1 }),
+      "Page.enable",
+      undefined
+    );
 
     expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
       expect.objectContaining({ tabId: 1 }),
@@ -154,7 +160,7 @@ describe("handleNavigate — tab targeting", () => {
   });
 });
 
-describe("handleNavigate — Page.loadEventFired wait", () => {
+describe("handleNavigate — lifecycle wait", () => {
   beforeEach(() => {
     grantedTabs.length = 0;
     resetChromeMocks();
@@ -162,19 +168,67 @@ describe("handleNavigate — Page.loadEventFired wait", () => {
     grantPermission(1);
   });
 
-  it("REQ-TC-004: waits for Page.loadEventFired after Page.navigate", async () => {
+  it("REQ-TC-004: waits for lifecycle event after Page.navigate", async () => {
     const request = makeRequest({ tabId: 1, url: "https://example.com/new" });
     await handleNavigate(request);
 
-    // The handler should await Page.loadEventFired
-    // We verify that Page.navigate was called and then the wait occurred
+    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 1 }),
+      "Page.setLifecycleEventsEnabled",
+      { enabled: true }
+    );
     const navigateCall = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls
       .find(([, method]) => method === "Page.navigate");
     expect(navigateCall).toBeDefined();
+  });
 
-    // Page.loadEventFired should be awaited (not necessarily called, but the handler
-    // should wait for it as part of the navigation flow)
-    // Since the mock returns {} immediately, we just verify the navigate call was made
+  it("MCP-NAV-001: default navigate waits for DOMContentLoaded lifecycle event", async () => {
+    const request = makeRequest({ tabId: 1, url: "https://example.com/dom-ready" });
+    await handleNavigate(request);
+
+    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 1 }),
+      "Page.setLifecycleEventsEnabled",
+      { enabled: true }
+    );
+  });
+
+  it("MCP-NAV-001: maps waitUntil values to the correct lifecycle event names", () => {
+    expect(toLifecycleEventName("domcontentloaded")).toBe("DOMContentLoaded");
+    expect(toLifecycleEventName("load")).toBe("load");
+    expect(toLifecycleEventName("networkidle")).toBe("networkIdle");
+  });
+
+  it("MCP-NAV-001: reload also enables lifecycle events before waiting", async () => {
+    const request = makeRequest({ tabId: 1, type: "reload" });
+    await handleNavigate(request);
+
+    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 1 }),
+      "Page.setLifecycleEventsEnabled",
+      { enabled: true }
+    );
+    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 1 }),
+      "Page.reload",
+      undefined
+    );
+  });
+
+  it("MCP-NAV-001: back navigation also enables lifecycle events before waiting", async () => {
+    const request = makeRequest({ tabId: 1, type: "back" });
+    await handleNavigate(request);
+
+    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 1 }),
+      "Page.setLifecycleEventsEnabled",
+      { enabled: true }
+    );
+    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 1 }),
+      "Page.goBackInHistory",
+      undefined
+    );
   });
 });
 
@@ -188,8 +242,27 @@ describe("handleNavigate — success response", () => {
 
   it("REQ-TC-004: returns success:true with url and title on successful navigation", async () => {
     // Mock CDP responses for navigation + title fetch
-    (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mockImplementation(async (target, method) => {
-      if (method === "Page.navigate") return {};
+    (globalThis.chrome.tabs.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 1,
+      url: "https://example.com/new",
+      active: true,
+      index: 0,
+      windowId: 1,
+      highlighted: false,
+      pinned: false,
+      incognito: false,
+    });
+    const defaultSendCommand = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).getMockImplementation();
+    (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mockImplementation(async (target, method, params, callback) => {
+      if (method === "Page.navigate") {
+        return defaultSendCommand?.(target, method, params, callback) ?? {};
+      }
+      if (method === "Runtime.evaluate" && (params as { expression?: string }).expression === "document.readyState") {
+        return { result: { value: "complete" } };
+      }
+      if (method === "Runtime.evaluate" && (params as { expression?: string }).expression === "document.title") {
+        return { result: { value: "New Page Title" } };
+      }
       if (method === "Page.getFrameTree") return { frameTree: { frame: { title: "New Page Title" } } };
       return {};
     });
@@ -206,6 +279,30 @@ describe("handleNavigate — success response", () => {
       "title",
       "New Page Title"
     );
+  });
+
+  it("MCP-NAV-001: returns readyState from Runtime.evaluate after navigation settles", async () => {
+    const defaultSendCommand = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).getMockImplementation();
+    (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mockImplementation(async (target, method, params, callback) => {
+      if (method === "Page.navigate") {
+        return defaultSendCommand?.(target, method, params, callback) ?? {};
+      }
+      if (method === "Runtime.evaluate" && (params as { expression?: string }).expression === "document.readyState") {
+        return { result: { value: "interactive" } };
+      }
+      if (method === "Runtime.evaluate" && (params as { expression?: string }).expression === "document.title") {
+        return { result: { value: "Settled Title" } };
+      }
+      if (method === "Page.getFrameTree") return { frameTree: { frame: { title: "FrameTree Title" } } };
+      return {};
+    });
+
+    const request = makeRequest({ tabId: 1, url: "https://example.com/nav-ready" });
+    const response = await handleNavigate(request);
+
+    expect(response.success).toBe(true);
+    expect((response as { data?: { readyState?: string; title?: string } }).data?.readyState).toBe("interactive");
+    expect((response as { data?: { readyState?: string; title?: string } }).data?.title).toBe("Settled Title");
   });
 });
 
