@@ -15,6 +15,7 @@ import { defaultStore, isVersionedSnapshot, actionFailed } from "./relay-definit
 import {
   resolveTargetTabId,
   forwardToContentScript,
+  forwardToFrame,
 } from "./relay-forwarder.js";
 import { hasErrorField, hasDataField, readBoundsLiteral } from "./relay-type-guards.js";
 
@@ -91,30 +92,79 @@ function toInspectPayload(raw: Record<string, unknown>): InspectPayload {
 export async function handleGetPageMap(
   request: RelayActionRequest,
 ): Promise<RelayActionResponse> {
-  const localHandler = typeof document !== "undefined"
-    ? async (): Promise<unknown> => {
-        const { collectPageMap } = await import("./content/page-map-collector.js");
-        const p = request.payload;
-        const regionFilter = readBoundsLiteral(p.regionFilter);
-        return collectPageMap({
-          maxDepth: typeof p.maxDepth === "number" ? p.maxDepth : undefined,
-          maxNodes: typeof p.maxNodes === "number" ? p.maxNodes : undefined,
-          includeBounds: typeof p.includeBounds === "boolean" ? p.includeBounds : undefined,
-          viewportOnly: typeof p.viewportOnly === "boolean" ? p.viewportOnly : undefined,
-          visibleOnly: typeof p.visibleOnly === "boolean" ? p.visibleOnly : undefined,
-          interactiveOnly: typeof p.interactiveOnly === "boolean" ? p.interactiveOnly : undefined,
-          roles: Array.isArray(p.roles)
-            ? p.roles.filter((r): r is string => typeof r === "string")
-            : undefined,
-          textMatch: typeof p.textMatch === "string" ? p.textMatch : undefined,
-          selector: typeof p.selector === "string" ? p.selector : undefined,
-          regionFilter,
-          piercesShadow: typeof p.piercesShadow === "boolean" ? p.piercesShadow : undefined,
-          traverseFrames: typeof p.traverseFrames === "boolean" ? p.traverseFrames : undefined,
-        });
-      }
-    : null;
-  return handlePageUnderstandingAction(request, localHandler, /* saveToStore */ true);
+  // Content-script context: delegate to collectPageMap directly
+  if (typeof document !== "undefined") {
+    const { collectPageMap } = await import("./content/page-map-collector.js");
+    const p = request.payload;
+    const regionFilter = readBoundsLiteral(p.regionFilter);
+    const result = await collectPageMap({
+      maxDepth: typeof p.maxDepth === "number" ? p.maxDepth : undefined,
+      maxNodes: typeof p.maxNodes === "number" ? p.maxNodes : undefined,
+      includeBounds: typeof p.includeBounds === "boolean" ? p.includeBounds : undefined,
+      viewportOnly: typeof p.viewportOnly === "boolean" ? p.viewportOnly : undefined,
+      visibleOnly: typeof p.visibleOnly === "boolean" ? p.visibleOnly : undefined,
+      interactiveOnly: typeof p.interactiveOnly === "boolean" ? p.interactiveOnly : undefined,
+      roles: Array.isArray(p.roles)
+        ? p.roles.filter((r): r is string => typeof r === "string")
+        : undefined,
+      textMatch: typeof p.textMatch === "string" ? p.textMatch : undefined,
+      selector: typeof p.selector === "string" ? p.selector : undefined,
+      regionFilter,
+      piercesShadow: typeof p.piercesShadow === "boolean" ? p.piercesShadow : undefined,
+      traverseFrames: typeof p.traverseFrames === "boolean" ? p.traverseFrames : undefined,
+    });
+    if (isVersionedSnapshot(result)) {
+      await defaultStore.save(result.pageId, result);
+    }
+    return { requestId: request.requestId, success: true, data: result };
+  }
+
+  // Service-worker context — forward to main frame content script first
+  const tabId = await resolveTargetTabId(request.payload);
+  if (!tabId) {
+    return actionFailed(request);
+  }
+
+  // B2-VD-007: For traverseFrames requests, also refresh same-origin child
+  // frame data via SW-level frame forwarding (forwardToFrame) to ensure the
+  // SW has the freshest per-frame data. Cross-origin frames are left unchanged.
+  const traverseFrames = request.payload.traverseFrames === true;
+
+  const data = await forwardToContentScript(tabId, request.action, request.payload);
+  if (data === null) {
+    return actionFailed(request);
+  }
+
+  const result = data as Record<string, unknown>;
+
+  // SW-level frame refresh: for each same-origin iframe with numericFrameId,
+  // fetch fresh data via forwardToFrame and update the nodes in-place.
+  if (traverseFrames && Array.isArray(result.iframes)) {
+    await Promise.all(
+      (result.iframes as Array<Record<string, unknown>>).map(async (iframe) => {
+        if (iframe.sameOrigin === true && typeof iframe.numericFrameId === "number") {
+          const fresh = await forwardToFrame(
+            tabId,
+            iframe.numericFrameId as number,
+            "get_page_map",
+            { traverseFrames: false, includeBounds: false },
+          );
+          if (fresh && typeof fresh === "object" && !hasErrorField(fresh as Record<string, unknown>) && hasDataField(fresh as Record<string, unknown>)) {
+            const freshData = (fresh as { data: Record<string, unknown> }).data;
+            if (Array.isArray(freshData.nodes)) {
+              iframe.nodes = freshData.nodes;
+            }
+          }
+        }
+      }),
+    );
+  }
+
+  // SW is the authoritative store — save after receiving from CS.
+  if (isVersionedSnapshot(result)) {
+    await defaultStore.save((result as { pageId: string }).pageId, result as Parameters<typeof defaultStore.save>[1]);
+  }
+  return { requestId: request.requestId, success: true, data: result };
 }
 
 export async function handleInspectElement(

@@ -182,6 +182,16 @@ export interface IframeMetadata {
    * `id` attribute, or a generated `iframe-{index}` fallback. Used to route
    * `browser_inspect_element` and other frame-aware requests. */
   frameId: string;
+  /**
+   * B2-VD-007: Numeric Chrome frameId for SW-level message routing.
+   * This is the actual `frameId` from `chrome.webNavigation` — used by
+   * `forwardToFrame(tabId, numericFrameId, ...)` to target a specific frame.
+   *
+   * Present only for same-origin iframes where the child's `__frameId__`
+   * property (set at content-script init) was accessible. Cross-origin
+   * iframes do not expose this field (opaque per Same-Origin Policy).
+   */
+  numericFrameId?: number;
   /** The iframe's `src` attribute — may be empty for srcdoc or about:blank frames. */
   src: string;
   /** Bounding box of the iframe element in parent viewport coordinates. */
@@ -197,6 +207,19 @@ export interface IframeMetadata {
    * such as `about:blank` and `srcdoc`.
    */
   sameOrigin: boolean;
+  /**
+   * B2-VD-005: Child frame page-map nodes (same-origin iframes only).
+   * Present only when `traverseFrames: true` AND the iframe is same-origin
+   * AND the child-frame DOM was successfully accessed.
+   *
+   * Cross-origin iframes do NOT include `nodes` — they are opaque per
+   * Same-Origin Policy (B2-VD-007).
+   *
+   * These nodes are NOT merged into the parent top-level `nodes` array
+   * (B2-VD-005: "Do not merge child nodes into the parent top-level `nodes`").
+   * They live under the `iframes[]` entry for the frame that contains them.
+   */
+  nodes?: PageNode[];
 }
 
 /** Result of page map collection — includes full SnapshotEnvelope (B2-SV-003) */
@@ -219,14 +242,16 @@ export interface PageMapResult extends SnapshotEnvelope {
   filterSummary?: FilterSummary;
 
   /**
-   * B2-VD-005..009: Iframe metadata array.
+   * B2-VD-005..009: Iframe metadata and child-frame page-map data.
    * Present only when `traverseFrames: true` was passed to collectPageMap.
    *
    * Each entry describes an `<iframe>` element found in the top-level document.
-   * Same-origin entries have `sameOrigin: true`; cross-origin entries have
-   * `sameOrigin: false`. Child-frame DOM content is NOT included at this stage —
-   * full same-origin iframe DOM traversal requires manifest `all_frames: true`
-   * and is planned for a future feature.
+   * Same-origin entries have `sameOrigin: true` and include `nodes` with the
+   * child frame's DOM content. Cross-origin entries have `sameOrigin: false`
+   * and no `nodes` — they are opaque due to Same-Origin Policy (B2-VD-007).
+   *
+   * Child-frame `nodes` are NOT merged into the parent top-level `nodes` array.
+   * They live under the `iframes[]` entry for the frame that contains them.
    */
   iframes?: IframeMetadata[];
 }
@@ -286,21 +311,49 @@ export function clearRefIndex(): void {
   _clearRefIndex();
 }
 
-// ── Iframe enumeration helper ──────────────────────────────────────────────────
+// ── Iframe enumeration and child-frame traversal ─────────────────────────────────
 
 /**
- * B2-VD-006: Enumerate top-level `<iframe>` elements in the current document
- * and return their metadata.
+ * B2-VD-005: Collect a page-map from a same-origin child frame's content document.
  *
- * This is a metadata-only pass — it does NOT traverse into child-frame DOMs.
- * Same-origin determination is conservative: explicit URL origins are classified
- * by origin comparison, while inherited-origin cases (`about:blank`, `srcdoc`,
- * empty `src`) also require DOM accessibility. Cross-origin frames are marked
- * `sameOrigin: false` (opaque due to
- * Same-Origin Policy — a hard browser security boundary, not a design choice).
+ * Called from `enumerateIframesWithChildNodes` when `traverseFrames: true`.
+ * The child frame's content script (injected via `all_frames: true` in the
+ * manifest) provides `collectPageMap` in its own document context. We access it
+ * via `iframe.contentWindow.collectPageMap` for the parent-initiated collection
+ * pattern described in browser2.0-architecture.md §6.2.
  *
- * B2-VD-005: When `traverseFrames: true`, this is called from collectPageMap
- * to populate the `iframes` array in the response.
+ * Only same-origin iframes with accessible contentDocument are attempted.
+ * Cross-origin iframes remain metadata-only (B2-VD-007).
+ *
+ * @param iframe - The same-origin HTMLIFrameElement to collect from
+ * @returns The child's PageNode[] array, or undefined if collection failed
+ */
+function collectChildFramePageMap(iframe: HTMLIFrameElement): PageNode[] | undefined {
+  try {
+    const win = iframe.contentWindow;
+    if (!win) return undefined;
+    // Access collectPageMap injected into the child frame by all_frames: true
+    // Cast to Record to satisfy TypeScript's strict index signature rules
+    const winRecord = win as unknown as Record<string, unknown>;
+    const childCollect = winRecord["collectPageMap"];
+    if (typeof childCollect !== "function") return undefined;
+    // Collect without re-applying traverseFrames on the child (no deep nesting)
+    const result = childCollect({ traverseFrames: false, includeBounds: false }) as PageMapResult;
+    return result.nodes ?? undefined;
+  } catch {
+    // DOM access failure, security error, or child not fully loaded — skip
+    return undefined;
+  }
+}
+
+/**
+ * B2-VD-005..009: Enumerate top-level `<iframe>` elements in the current document,
+ * collect child-frame page-map nodes for same-origin frames, and return metadata
+ * with optional `nodes` attached.
+ *
+ * This is called from `collectPageMap` when `traverseFrames: true`. Each same-origin
+ * iframe entry receives `nodes` from the child frame's `collectPageMap`. Cross-origin
+ * entries remain metadata-only (B2-VD-007).
  *
  * Note: This helper is exported for direct use in tests.
  *
@@ -362,7 +415,34 @@ export function enumerateIframes(): IframeMetadata[] {
         // ignore and leave zero bounds only if the browser cannot provide them
       }
 
-      return { frameId, src, bounds, sameOrigin };
+      // B2-VD-005: For same-origin iframes, collect child frame page-map nodes.
+      // Cross-origin iframes have no child nodes (opaque per Same-Origin Policy).
+      const nodes = sameOrigin ? collectChildFramePageMap(iframe) : undefined;
+
+      // B2-VD-007: Try to read the numeric Chrome frameId from the child frame's
+      // window object. Each frame's content script sets window.__frameId__ at init
+      // time (via content-entry.ts) using chrome.webNavigation.getAllFrames.
+      // This is only accessible for same-origin iframes.
+      let numericFrameId: number | undefined;
+      if (sameOrigin) {
+        try {
+          const win = iframe.contentWindow;
+          if (win && "__frameId__" in win && typeof (win as Record<string, unknown>).__frameId__ === "number") {
+            numericFrameId = (win as Record<string, unknown>).__frameId__ as number;
+          }
+        } catch {
+          // Not accessible — cross-origin security error
+        }
+      }
+
+      return {
+        frameId,
+        src,
+        bounds,
+        sameOrigin,
+        ...(nodes ? { nodes } : {}),
+        ...(numericFrameId !== undefined ? { numericFrameId } : {}),
+      };
     });
   } catch {
     // document.querySelectorAll can throw in environments without DOM access

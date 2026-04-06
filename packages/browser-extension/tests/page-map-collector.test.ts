@@ -1900,7 +1900,7 @@ describe("B2-VD-006: enumerateIframes helper — unit-level", () => {
    */
   it("enumerateIframes: no iframes → empty array", () => {
     document.body.innerHTML = `<div>content</div>`;
-    expect(enumerateIframes(false)).toEqual([]);
+    expect(enumerateIframes()).toEqual([]);
   });
 
   /**
@@ -1991,5 +1991,152 @@ describe("B2-VD-006: enumerateIframes helper — unit-level", () => {
     const result = enumerateIframes();
     expect(Array.isArray(result)).toBe(true);
     expect(result.length).toBe(1);
+  });
+});
+
+describe("B2-VD-005: same-origin iframe child-frame page-map nodes", () => {
+  /**
+   * B2-VD-005: Same-origin iframe with a child collectPageMap gets `nodes`
+   * attached to its IframeMetadata entry.
+   */
+  it("B2-VD-005: same-origin iframe with accessible child contentDocument includes nodes", () => {
+    document.body.innerHTML = `<iframe id="same-frame"></iframe>`;
+    const iframe = document.getElementById("same-frame") as HTMLIFrameElement;
+
+    // Simulate same-origin: accessible contentDocument + child collectPageMap
+    const childDoc = document.implementation.createHTMLDocument("child");
+    childDoc.body.innerHTML = `<div id="child-div">child content</div>`;
+    Object.defineProperty(iframe, "contentDocument", {
+      value: childDoc,
+      configurable: true,
+    });
+    Object.defineProperty(iframe, "contentWindow", {
+      value: {
+        collectPageMap: ({ traverseFrames: _tf }: { traverseFrames?: boolean }) => ({
+          nodes: [
+            { ref: "c-ref-0", tag: "div", nodeId: 0, id: "child-div", text: "child content" },
+          ],
+        }),
+      },
+      configurable: true,
+    });
+
+    const result = collectPageMap({ traverseFrames: true });
+    expect(result.iframes).toBeDefined();
+    expect(result.iframes!.length).toBe(1);
+    expect(result.iframes![0].sameOrigin).toBe(true);
+    expect(result.iframes![0].nodes).toBeDefined();
+    expect(result.iframes![0].nodes!.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * B2-VD-005: Same-origin iframe where child collectPageMap is unavailable
+   * does NOT throw — `nodes` is simply absent.
+   */
+  it("B2-VD-005: same-origin iframe without child collectPageMap — nodes absent (no throw)", () => {
+    document.body.innerHTML = `<iframe id="same-frame"></iframe>`;
+    const iframe = document.getElementById("same-frame") as HTMLIFrameElement;
+
+    const childDoc = document.implementation.createHTMLDocument("child");
+    Object.defineProperty(iframe, "contentDocument", {
+      value: childDoc,
+      configurable: true,
+    });
+    // contentWindow without collectPageMap
+    Object.defineProperty(iframe, "contentWindow", {
+      value: {},
+      configurable: true,
+    });
+
+    const result = collectPageMap({ traverseFrames: true });
+    expect(result.iframes).toBeDefined();
+    expect(result.iframes![0].sameOrigin).toBe(true);
+    expect(result.iframes![0].nodes).toBeUndefined();
+  });
+
+  /**
+   * B2-VD-007: Cross-origin iframe NEVER gets `nodes` — same-origin policy
+   * is a hard browser security boundary.
+   */
+  it("B2-VD-007: cross-origin iframe has no nodes even with accessible contentDocument", () => {
+    document.body.innerHTML = `<iframe id="cross-frame" src="https://other-domain.example.com/"></iframe>`;
+    const iframe = document.getElementById("cross-frame") as HTMLIFrameElement;
+
+    // Even if contentDocument happens to be accessible in jsdom, the URL origin
+    // is cross-origin so sameOrigin=false and collectChildFramePageMap is skipped.
+    const childDoc = document.implementation.createHTMLDocument("child");
+    childDoc.body.innerHTML = `<div>should not appear</div>`;
+    Object.defineProperty(iframe, "contentDocument", {
+      value: childDoc,
+      configurable: true,
+    });
+    Object.defineProperty(iframe, "contentWindow", {
+      value: {
+        collectPageMap: () => ({ nodes: [{ ref: "x", tag: "div", nodeId: 0 }] }),
+      },
+      configurable: true,
+    });
+
+    const result = collectPageMap({ traverseFrames: true });
+    expect(result.iframes).toBeDefined();
+    expect(result.iframes![0].sameOrigin).toBe(false);
+    expect(result.iframes![0].nodes).toBeUndefined();
+  });
+
+  /**
+   * B2-VD-005: Same-origin iframe with child collectPageMap returning empty nodes.
+   */
+  it("B2-VD-005: same-origin iframe with empty child nodes array", () => {
+    document.body.innerHTML = `<iframe id="empty-child"></iframe>`;
+    const iframe = document.getElementById("empty-child") as HTMLIFrameElement;
+
+    const childDoc = document.implementation.createHTMLDocument("child");
+    Object.defineProperty(iframe, "contentDocument", { value: childDoc, configurable: true });
+    Object.defineProperty(iframe, "contentWindow", {
+      value: {
+        collectPageMap: () => ({ nodes: [] }),
+      },
+      configurable: true,
+    });
+
+    const result = collectPageMap({ traverseFrames: true });
+    expect(result.iframes![0].sameOrigin).toBe(true);
+    expect(result.iframes![0].nodes).toEqual([]);
+  });
+
+  /**
+   * B2-VD-005: Parent top-level `nodes` are NOT merged with child-frame `nodes`.
+   * They remain separate — child nodes live under `iframes[]`.
+   */
+  it("B2-VD-005: parent top-level nodes remain separate from child-frame nodes", () => {
+    document.body.innerHTML = `<div id="parent-div">parent content</div><iframe id="child-frame"></iframe>`;
+    const iframe = document.getElementById("child-frame") as HTMLIFrameElement;
+
+    const childDoc = document.implementation.createHTMLDocument("child");
+    childDoc.body.innerHTML = `<span id="child-span">child text</span>`;
+    Object.defineProperty(iframe, "contentDocument", { value: childDoc, configurable: true });
+    Object.defineProperty(iframe, "contentWindow", {
+      value: {
+        collectPageMap: () => ({
+          nodes: [
+            { ref: "c-0", tag: "span", nodeId: 0, id: "child-span", text: "child text" },
+          ],
+        }),
+      },
+      configurable: true,
+    });
+
+    const result = collectPageMap({ traverseFrames: true });
+
+    // Parent nodes contain the parent div
+    const parentNodeTags = result.nodes.map((n) => n.tag);
+    expect(parentNodeTags).toContain("div");
+
+    // Child nodes are inside iframes[], not in parent top-level nodes
+    const childNodesTags = result.iframes![0].nodes!.map((n) => n.tag);
+    expect(childNodesTags).toContain("span");
+
+    // Verify separation: parent nodes should not contain the child's span
+    expect(parentNodeTags).not.toContain("span");
   });
 });

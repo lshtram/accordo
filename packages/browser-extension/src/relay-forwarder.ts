@@ -112,3 +112,33 @@ export async function forwardToContentScript(
   }
   return hasDataField(response) ? response.data : response;
 }
+
+/**
+ * Forward a page-understanding action to a specific frame via chrome.tabs.sendMessage.
+ *
+ * Uses the `frameId` option to target a specific child frame's content script.
+ * This is the Chrome API primitive for frame-level message routing.
+ *
+ * B2-VD-007: Frame IDs for same-origin iframe entries line up with targeted
+ * child frame identity for routing — the numeric frameId from chrome's frame
+ * navigation API is used for SW-level forwarding.
+ *
+ * Returns the response data on success, or null if the frame is unreachable
+ * or returns an error.
+ */
+export async function forwardToFrame(
+  tabId: number,
+  frameId: number,
+  action: string,
+  payload: Record<string, unknown>,
+): Promise<unknown | null> {
+  const response = await chrome.tabs.sendMessage(
+    tabId,
+    { type: "PAGE_UNDERSTANDING_ACTION", action, payload },
+    { frameId },
+  );
+  if (!response || hasErrorField(response)) {
+    return null;
+  }
+  return hasDataField(response) ? response.data : response;
+}
