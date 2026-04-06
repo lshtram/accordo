@@ -17,6 +17,7 @@ import {
   forwardToContentScript,
   forwardToFrame,
 } from "./relay-forwarder.js";
+import { normalizeUrl } from "./store.js";
 import { hasErrorField, hasDataField, readBoundsLiteral } from "./relay-type-guards.js";
 
 // ── Shared forwarding helper ─────────────────────────────────────────────────
@@ -125,35 +126,85 @@ export async function handleGetPageMap(
     return actionFailed(request);
   }
 
-  // B2-VD-007: For traverseFrames requests, also refresh same-origin child
-  // frame data via SW-level frame forwarding (forwardToFrame) to ensure the
-  // SW has the freshest per-frame data. Cross-origin frames are left unchanged.
   const traverseFrames = request.payload.traverseFrames === true;
 
-  const data = await forwardToContentScript(tabId, request.action, request.payload);
+  const data = await forwardToFrame(tabId, 0, request.action, request.payload)
+    ?? await forwardToContentScript(tabId, request.action, request.payload);
   if (data === null) {
     return actionFailed(request);
   }
 
   const result = data as Record<string, unknown>;
 
-  // SW-level frame refresh: for each same-origin iframe with numericFrameId,
-  // fetch fresh data via forwardToFrame and update the nodes in-place.
+  // SW-level frame refresh: for each same-origin iframe, locate the corresponding
+  // child frame via chrome.webNavigation.getAllFrames() and fetch child nodes via
+  // frame-targeted messaging. Cross-origin frames remain metadata-only.
   if (traverseFrames && Array.isArray(result.iframes)) {
+    const frames = await chrome.webNavigation.getAllFrames({ tabId }).catch(() => []);
+    const childFrames = Array.isArray(frames)
+      ? frames.filter((frame) => frame.frameId !== 0 && frame.parentFrameId === 0)
+      : [];
+
+    const usedFrameIds = new Set<number>();
     await Promise.all(
       (result.iframes as Array<Record<string, unknown>>).map(async (iframe) => {
-        if (iframe.sameOrigin === true && typeof iframe.numericFrameId === "number") {
+        if (iframe.sameOrigin === true) {
+          const iframeSrc = typeof iframe.src === "string" ? iframe.src : "";
+          const inheritedOriginFrame = iframeSrc === "" || iframeSrc === "about:blank" || iframeSrc.startsWith("about:srcdoc");
+          const normalizedIframeSrc = iframeSrc ? normalizeUrl(iframeSrc) : null;
+
+          let matchingFrame = childFrames.find((frame) => {
+            if (inheritedOriginFrame) return false;
+            if (usedFrameIds.has(frame.frameId) || !frame.url || iframeSrc.length === 0) return false;
+            return frame.url === iframeSrc;
+          });
+
+          if (!matchingFrame && normalizedIframeSrc !== null) {
+            const normalizedMatches = childFrames.filter((frame) => {
+              if (usedFrameIds.has(frame.frameId) || !frame.url) return false;
+              return normalizeUrl(frame.url) === normalizedIframeSrc;
+            });
+            if (normalizedMatches.length === 1) {
+              matchingFrame = normalizedMatches[0];
+            }
+          }
+
+          if (!matchingFrame && inheritedOriginFrame) {
+            const inheritedCandidates = childFrames.filter((frame) => {
+              if (usedFrameIds.has(frame.frameId) || !frame.url) return false;
+              return frame.url === "about:blank" || frame.url === "";
+            });
+            if (inheritedCandidates.length === 1) {
+              matchingFrame = inheritedCandidates[0];
+            }
+          }
+
+          if (!matchingFrame && normalizedIframeSrc !== null) {
+            const sameOriginCandidates = childFrames.filter((frame) => {
+              if (usedFrameIds.has(frame.frameId) || !frame.url) return false;
+              try {
+                return new URL(frame.url).origin === new URL(iframeSrc).origin;
+              } catch {
+                return false;
+              }
+            });
+            if (sameOriginCandidates.length === 1) {
+              matchingFrame = sameOriginCandidates[0];
+            }
+          }
+
+          if (!matchingFrame) return;
+          usedFrameIds.add(matchingFrame.frameId);
+
           const fresh = await forwardToFrame(
             tabId,
-            iframe.numericFrameId as number,
+            matchingFrame.frameId,
             "get_page_map",
-            { traverseFrames: false, includeBounds: false },
+            { ...request.payload, traverseFrames: false },
           );
-          if (fresh && typeof fresh === "object" && !hasErrorField(fresh as Record<string, unknown>) && hasDataField(fresh as Record<string, unknown>)) {
-            const freshData = (fresh as { data: Record<string, unknown> }).data;
-            if (Array.isArray(freshData.nodes)) {
-              iframe.nodes = freshData.nodes;
-            }
+
+          if (fresh && typeof fresh === "object" && Array.isArray((fresh as { nodes?: unknown }).nodes)) {
+            iframe.nodes = (fresh as { nodes: unknown[] }).nodes;
           }
         }
       }),
