@@ -291,7 +291,7 @@ export function buildPageUnderstandingTools(
     },
     {
       name: "accordo_browser_capture_region",
-      description: "Capture a cropped screenshot of a specific element or region. Supports viewport mode (mode='viewport'), full-page mode (mode='fullPage'), and region mode (default — requires anchorKey, nodeRef, or rect).",
+      description: "Capture a cropped screenshot of a specific element or region. Supports viewport mode (mode='viewport'), full-page mode (mode='fullPage'), and region mode (default — requires anchorKey, nodeRef, or rect). Screenshots are returned inline as base64 data URLs. Successful responses include artifactMode: \"inline\" in the response to advertise this contract (MCP checklist §3.1). Use format='png' for lossless output.",
       inputSchema: {
         type: "object",
         properties: {

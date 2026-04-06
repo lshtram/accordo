@@ -32,6 +32,7 @@ import { handleCaptureRegion } from "../page-tool-handlers-impl.js";
 import type { CaptureRegionArgs } from "../page-tool-types.js";
 import type { BrowserRelayLike } from "../types.js";
 import { SnapshotRetentionStore } from "../snapshot-retention.js";
+import { BrowserAuditLog } from "../security/audit-log.js";
 
 // ── Recording Relay ────────────────────────────────────────────────────────────
 
@@ -73,6 +74,14 @@ function createRecordingRelay() {
   };
 
   return relay;
+}
+
+function createSecurityFixture() {
+  return {
+    originPolicy: { allowedOrigins: [], deniedOrigins: [], defaultAction: "allow" as const },
+    redactionPolicy: { redactPatterns: [] },
+    auditLog: new BrowserAuditLog(),
+  };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -370,5 +379,137 @@ describe("GAP-E2: capture_region no-target viewport behavior", () => {
 
     expect(result).toHaveProperty("success", false);
     expect((result as Record<string, unknown>).error).toBe("no-target");
+  });
+});
+
+// ── Feature 5: artifactMode inline for screenshot-producing flows ───────────────
+
+describe("Feature 5: artifactMode: 'inline' on successful screenshot responses", () => {
+  let relay: ReturnType<typeof createRecordingRelay>;
+  let store: SnapshotRetentionStore;
+
+  beforeEach(() => {
+    relay = createRecordingRelay();
+    relay.resetRecordedPayload();
+    store = new SnapshotRetentionStore();
+  });
+
+  /**
+   * Feature 5 / MCP checklist §3.1: Successful region capture must include
+   * artifactMode: "inline" to advertise that screenshots are returned as
+   * inline base64 data URLs (no file-ref or remote-ref yet).
+   */
+  it("Feature 5: region capture (rect) returns artifactMode: 'inline'", async () => {
+    const args: CaptureRegionArgs = { tabId: 1, rect: { x: 0, y: 0, width: 200, height: 100 } };
+
+    const result = await handleCaptureRegion(relay, args, store);
+
+    expect(result).toHaveProperty("success", true);
+    expect((result as Record<string, unknown>).artifactMode).toBe("inline");
+  });
+
+  /**
+   * Feature 5: viewport capture also returns artifactMode: "inline".
+   */
+  it("Feature 5: viewport capture returns artifactMode: 'inline'", async () => {
+    const args: CaptureRegionArgs = { tabId: 1, mode: "viewport" };
+
+    const result = await handleCaptureRegion(relay, args, store);
+
+    expect(result).toHaveProperty("success", true);
+    expect((result as Record<string, unknown>).artifactMode).toBe("inline");
+  });
+
+  /**
+   * Feature 5: full-page capture also returns artifactMode: "inline".
+   */
+  it("Feature 5: fullPage capture returns artifactMode: 'inline'", async () => {
+    const args: CaptureRegionArgs = { tabId: 1, mode: "fullPage" };
+
+    const result = await handleCaptureRegion(relay, args, store);
+
+    expect(result).toHaveProperty("success", true);
+    expect((result as Record<string, unknown>).artifactMode).toBe("inline");
+  });
+
+  /**
+   * Feature 5: Failed captures (e.g. no-target) must NOT include artifactMode,
+   * since no binary output was produced. This keeps the contract clean — only
+   * successful responses carry artifactMode.
+   */
+  it("Feature 5: no-target error response does NOT include artifactMode", async () => {
+    const noTargetRelay = {
+      request: vi.fn().mockResolvedValue({
+        success: true,
+        requestId: "test",
+        data: {
+          success: false,
+          error: "no-target",
+          pageId: "page",
+          frameId: "main",
+          snapshotId: "page:0",
+          capturedAt: "2025-01-01T00:00:00.000Z",
+          viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+          source: "dom" as const,
+        },
+      }),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    const result = await handleCaptureRegion(noTargetRelay, { tabId: 1 }, store);
+
+    expect(result).toHaveProperty("success", false);
+    expect(result as Record<string, unknown>).not.toHaveProperty("artifactMode");
+  });
+
+  it("Feature 5: browser-not-connected transport error does NOT include artifactMode", async () => {
+    const disconnectedRelay = {
+      request: vi.fn().mockResolvedValue({
+        success: false,
+        requestId: "test",
+        error: "browser-not-connected",
+      }),
+      isConnected: vi.fn(() => false),
+    } as unknown as BrowserRelayLike;
+
+    const result = await handleCaptureRegion(disconnectedRelay, { tabId: 1, mode: "viewport" }, store);
+
+    expect(result).toHaveProperty("success", false);
+    expect((result as Record<string, unknown>).error).toBe("browser-not-connected");
+    expect(result as Record<string, unknown>).not.toHaveProperty("artifactMode");
+  });
+
+  it("Feature 5: origin-blocked policy error does NOT include artifactMode", async () => {
+    const blockedRelay = {
+      request: vi.fn().mockResolvedValue({
+        success: true,
+        requestId: "test",
+        data: {
+          success: true,
+          dataUrl: "data:image/jpeg;base64,abc",
+          width: 100,
+          height: 80,
+          sizeBytes: 3,
+          pageId: "page",
+          frameId: "main",
+          snapshotId: "page:1",
+          capturedAt: "2025-01-01T00:00:00.000Z",
+          viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+          source: "visual" as const,
+          pageUrl: "https://blocked.example/path",
+        },
+      }),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    const localStore = new SnapshotRetentionStore();
+    const security = createSecurityFixture();
+    security.originPolicy.deniedOrigins = ["https://blocked.example"];
+
+    const result = await handleCaptureRegion(blockedRelay, { tabId: 1, mode: "viewport" }, localStore, security);
+
+    expect(result).toHaveProperty("success", false);
+    expect((result as Record<string, unknown>).error).toBe("origin-blocked");
+    expect(result as Record<string, unknown>).not.toHaveProperty("artifactMode");
   });
 });

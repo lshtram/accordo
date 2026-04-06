@@ -453,6 +453,9 @@ export async function handleCaptureRegion(
         if (hasRedactPatterns) {
           (result as CaptureRegionResponse).redactionWarning = "screenshots-not-subject-to-redaction-policy";
         }
+        // Feature 5: Explicitly advertise inline artifact transport (MCP checklist §3.1).
+        // Current screenshots are always returned as base64 data URLs — no file-ref or remote-ref yet.
+        (result as CaptureRegionResponse).artifactMode = "inline";
         // Return a shallow copy so subsequent calls don't overwrite auditId on the same object
         return { ...result };
       }

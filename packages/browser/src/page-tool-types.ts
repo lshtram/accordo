@@ -296,6 +296,15 @@ export interface CaptureRegionResponse extends SnapshotEnvelopeFields {
   screenshotRedactionApplied?: boolean;
   /** GAP-I1: Number of text regions that were covered by redaction rectangles. */
   redactedSegmentCount?: number;
+  /**
+   * Feature 5: Artifact transport mode for binary screenshot output.
+   * "inline" — screenshot returned as a base64 data URL in `dataUrl` (current, default).
+   * "file-ref" — future: screenshot stored to a file and returned by reference.
+   * "remote-ref" — future: screenshot uploaded to remote storage and returned by URL.
+   * Present only on successful responses. Errors never include this field.
+   * MCP checklist §3.1: `artifactMode` must be present when binary output exists.
+   */
+  artifactMode?: "inline" | "file-ref" | "remote-ref";
 }
 
 /** Response from browser_list_pages (B2-CTX-001) */

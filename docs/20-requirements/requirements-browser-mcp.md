@@ -92,6 +92,11 @@ When a `RedactionPolicy` is configured (i.e., `redactPatterns` is non-empty), AL
 **Acceptance:** With a `RedactionPolicy` containing at least one pattern, `capture_region(mode: "viewport")` response includes `redactionWarning: "screenshots-not-subject-to-redaction-policy"`. Without a policy, the field is absent.  
 **Cross-reference:** B2-PS-007 (screenshot redaction deferred), B2-PS-004 (text redaction).
 
+**MCP-VC-006: artifactMode metadata on successful screenshot responses**  
+All successful screenshot responses from `browser_capture_region` (in any `mode`: region, viewport, or fullPage) MUST include an `artifactMode` field with value `"inline"`. This advertises to agents that screenshots are returned as base64 data URLs embedded in `dataUrl`, not stored to files or remote references. The value `"file-ref"` and `"remote-ref"` are reserved for future storage subsystems and MUST NOT be used until those subsystems are implemented. Error responses MUST NOT include `artifactMode`.  
+**Acceptance:** `capture_region(mode: "viewport")`, `capture_region(mode: "fullPage")`, and region capture all return `artifactMode: "inline"` on success. A failed capture (e.g. `no-target` error) does not include the field.  
+**Cross-reference:** MCP checklist §3.1 (`artifactMode` field in canonical object model).
+
 ### 4.2 Error Handling Enrichment (MCP-ER)
 
 > **Context:** The M110-TC evaluation scored Robustness at 3/5. H3 (retry/backoff hints) is missing entirely. H4 (error taxonomy) is partial — error responses are bare strings, not structured objects.
@@ -235,7 +240,7 @@ These requirements are fully specified in other documents and are not duplicated
 | B. Text Extraction | 5 | 5 | — | B2-TX-001..010 | None — production-ready |
 | C. Semantic Structure | 4 | 5 | MCP-A11Y-001 | B2-SG-001..015 | Actionability states, form labels |
 | D. Layout/Geometry | 3 | 3 | — | B2-FI-006, B2-VD-010..013 | Geometry helpers deferred |
-| E. Visual Capture | 3 | 4 | MCP-VC-001..005 | CR-F-01..12 | Viewport/full-page screenshot; redaction warning |
+| E. Visual Capture | 3 | 4 | MCP-VC-001..006 | CR-F-01..12 | Viewport/full-page screenshot; redaction warning; artifact transport metadata |
 | F. Interaction Model | 3 | 4 | — (bug fix) | B2-FI-002 | `interactiveOnly` depth bug |
 | G. Deltas/Efficiency | 4 | 4 | — | B2-SV/DE/FI-* | Cross-nav diff deferred (B2-SV-002/005 unchanged) |
 | H. Robustness | 3 | 4 | MCP-ER-001..004 | B2-WA-*, B2-ER-* | Retry hints, structured errors, capture error taxonomy |
@@ -268,7 +273,7 @@ All `accordo_browser_*` tools MUST return responses conforming to the `SnapshotE
 | Phase 1 (Quick wins) | B2-FI-002 bug fix, MCP-ER-001..004 | 2d | F: 3→4, H: 3→4 |
 | Phase 2 (Security) | B2-PS-001..007, B2-ER-007..008, MCP-SEC-001..005 | 4.5d | I: 0→2 (conservative), 0→3 (stretch) |
 | Phase 3 (Visual) | MCP-VC-001..003, MCP-VC-005 | 1.5d | E: 3→4 |
-| Phase 4 (Polish) | MCP-A11Y-001, MCP-NAV-001, MCP-VC-004 | 3.25d | C: 4→5 |
+| Phase 4 (Polish) | MCP-A11Y-001, MCP-NAV-001, MCP-VC-004, MCP-VC-006 | 3.25d | C: 4→5 |
 
 ---
 
