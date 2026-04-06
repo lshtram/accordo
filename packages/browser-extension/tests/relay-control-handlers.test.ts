@@ -30,7 +30,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { resetChromeMocks, setMockTabUrl } from "./setup/chrome-mock.js";
+import { resetChromeMocks, setMockTabUrl, fireLifecycleEvents } from "./setup/chrome-mock.js";
 import {
   handleNavigate,
   handleClick,
@@ -187,9 +187,15 @@ describe("handleNavigate", () => {
 
   it("REQ-TC-004: returns success:true with url and title on successful navigation", async () => {
     (globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({ controlGrantedTabs: [1] });
-    // Mock Page.getFrameTree to return a title
-    (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mockImplementation(async (target, method) => {
-      if (method === "Page.navigate") return {};
+    // Mock Page.getFrameTree to return a title; fire lifecycle events after Page.navigate
+    (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mockImplementation(async (target, method, params) => {
+      if (method === "Page.navigate") {
+        // Simulate the tab URL updating after navigation
+        setMockTabUrl(1, (params as { url?: string })?.url ?? "https://example.com/new");
+        // Fire lifecycle events so the waiter resolves
+        fireLifecycleEvents((target as { tabId?: number }).tabId ?? 1);
+        return {};
+      }
       if (method === "Page.getFrameTree") return { frameTree: { frame: { title: "New Page Title" } } };
       return {};
     });

@@ -284,11 +284,26 @@ function createTabsMock() {
     sendMessage: vi.fn(
       (
         _tabId: number,
-        _message: unknown,
+        message: unknown,
         callback?: (response: unknown) => void
       ): Promise<unknown> => {
-        if (callback) callback(undefined);
-        return Promise.resolve(undefined);
+        // Return sensible defaults based on message type so handlers can succeed
+        let response: unknown = undefined;
+        const msg = message as Record<string, unknown> | undefined;
+        if (msg?.type === "RESOLVE_ANCHOR_BOUNDS") {
+          response = { bounds: { x: 10, y: 10, width: 100, height: 50 } };
+        } else if (msg?.type === "CAPTURE_SNAPSHOT_ENVELOPE") {
+          response = {
+            snapshotId: "mock-page:1",
+            pageId: "mock-page",
+            frameId: "main",
+            capturedAt: new Date().toISOString(),
+            source: msg.source ?? "dom",
+            viewport: { width: 1280, height: 720, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+          };
+        }
+        if (callback) callback(response);
+        return Promise.resolve(response);
       }
     ),
   };
@@ -644,4 +659,17 @@ export function dispatchRuntimeMessage(
  */
 export function setMockBytesInUse(bytes: number): void {
   (chrome.storage.local.getBytesInUse as ReturnType<typeof vi.fn>).mockResolvedValue(bytes);
+}
+
+/**
+ * Helper to fire Page.lifecycleEvent debugger events for a tab.
+ * Used to unblock handleNavigate's lifecycle waiter in tests that override
+ * debugger.sendCommand but still need the lifecycle promise to resolve.
+ */
+export function fireLifecycleEvents(tabId: number): void {
+  for (const listener of debuggerEventListeners) {
+    listener({ tabId }, "Page.lifecycleEvent", { name: "DOMContentLoaded" });
+    listener({ tabId }, "Page.lifecycleEvent", { name: "load" });
+    listener({ tabId }, "Page.lifecycleEvent", { name: "networkIdle" });
+  }
 }
