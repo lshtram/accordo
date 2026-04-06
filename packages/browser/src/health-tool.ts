@@ -28,6 +28,36 @@ export interface HealthResponse {
   recentErrors: string[];
   /** Seconds since the relay server started. */
   uptimeSeconds: number;
+  /**
+   * Telemetry policy disclosure.
+   *
+   * I4: Agents and users can inspect this field to understand what data
+   * is collected and how to opt out. Accordo does not send telemetry to
+   * external services; all captured data (snapshots, screenshots, page maps)
+   * stays on-device and is subject to the configured retention policy.
+   */
+  telemetryPolicy: {
+    /** Whether any telemetry is collected. */
+    enabled: boolean;
+    /** What is collected (or empty string if disabled). */
+    scope: string;
+    /** How to disable telemetry collection. */
+    optOut: string;
+  };
+  /**
+   * Session and storage isolation information.
+   *
+   * I3: Describes the browser profile and isolation model in use.
+   * The relay operates against the user's active Chrome profile — no
+   * automatic session sandboxing is applied. Use separate Chrome profiles
+   * or Incognito mode for isolated sessions.
+   */
+  sessionIsolation: {
+    /** Profile isolation model. */
+    model: "shared-profile" | "incognito" | "separate-profile";
+    /** Human-readable description of the current isolation mode. */
+    description: string;
+  };
 }
 
 /** Maximum number of recent errors to retain. */
@@ -66,13 +96,28 @@ export function buildHealthTool(
       debuggerUrl,
       recentErrors: recentErrors.slice(0, MAX_RECENT_ERRORS),
       uptimeSeconds,
+      telemetryPolicy: {
+        enabled: false,
+        scope: "",
+        optOut:
+          "No action required — Accordo does not transmit telemetry to external services. " +
+          "All captured data (snapshots, screenshots, page maps) remains on-device and is " +
+          "managed by the snapshot retention policy (accordo_browser_manage_snapshots).",
+      },
+      sessionIsolation: {
+        model: "shared-profile",
+        description:
+          "The relay operates against the user's active Chrome profile. " +
+          "No automatic session sandboxing is applied. " +
+          "For isolated sessions, use a separate Chrome profile or launch Chrome with --incognito.",
+      },
     };
   };
 
   return {
     name: "accordo_browser_health",
     description:
-      "Reports browser relay connection health, recent errors, and uptime. Use before attempting browser operations to verify the connection is functional.",
+      "Reports browser relay connection health, recent errors, and uptime. Use before attempting browser operations to verify the connection is functional. Also surfaces telemetry policy and session isolation model.",
     inputSchema: {
       type: "object",
       properties: {},

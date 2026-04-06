@@ -254,6 +254,32 @@ describe("accordo_browser_health handler behavior", () => {
     expect(result).toHaveProperty("recentErrors");
   });
 
+  it("I4: Handler returns telemetryPolicy with enabled/scope/optOut fields", async () => {
+    const relay = createMockRelay({ connected: true });
+    const tool = buildHealthTool(relay);
+
+    const result = await (tool.handler as () => Promise<HealthResponse>)();
+
+    expect(result).toHaveProperty("telemetryPolicy");
+    expect(typeof result.telemetryPolicy.enabled).toBe("boolean");
+    expect(typeof result.telemetryPolicy.scope).toBe("string");
+    expect(typeof result.telemetryPolicy.optOut).toBe("string");
+    expect(result.telemetryPolicy.enabled).toBe(false);
+  });
+
+  it("I3: Handler returns sessionIsolation with model and description fields", async () => {
+    const relay = createMockRelay({ connected: true });
+    const tool = buildHealthTool(relay);
+
+    const result = await (tool.handler as () => Promise<HealthResponse>)();
+
+    expect(result).toHaveProperty("sessionIsolation");
+    expect(typeof result.sessionIsolation.model).toBe("string");
+    expect(typeof result.sessionIsolation.description).toBe("string");
+    // Default model should be shared-profile (user's active Chrome profile)
+    expect(result.sessionIsolation.model).toBe("shared-profile");
+  });
+
   it("Handler returns HealthResponse shape when disconnected", async () => {
     const relay = createMockRelay({ connected: false });
     const tool = buildHealthTool(relay);

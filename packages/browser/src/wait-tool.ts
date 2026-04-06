@@ -89,10 +89,18 @@ export interface WaitForResult {
 
 /**
  * Error response from the wait tool (relay-level failures).
+ *
+ * MCP-ER-002: All relay-level errors include retryable + optional retryAfterMs.
  */
 export interface WaitToolError {
   success: false;
   error: "browser-not-connected" | "timeout" | "action-failed" | "invalid-request";
+  /** MCP-ER-002: Whether this error is transient and a retry is likely to succeed. */
+  retryable: boolean;
+  /** MCP-ER-002: Suggested wait before retrying, in milliseconds. Present when retryable. */
+  retryAfterMs?: number;
+  /** Human-readable recovery guidance for the caller. */
+  recoveryHints?: string;
 }
 
 // ── Tool Definition ──────────────────────────────────────────────────────────
@@ -191,12 +199,22 @@ export async function handleWaitFor(
     args.stableLayoutMs !== undefined;
 
   if (!hasCondition) {
-    return { success: false, error: "invalid-request" };
+    return {
+      success: false,
+      error: "invalid-request",
+      retryable: false,
+      recoveryHints: "Provide at least one of: texts, selector, or stableLayoutMs.",
+    };
   }
 
   // B2-WA-004: Reject negative timeouts immediately
   if (args.timeout !== undefined && args.timeout < 0) {
-    return { success: false, error: "invalid-request" };
+    return {
+      success: false,
+      error: "invalid-request",
+      retryable: false,
+      recoveryHints: "timeout must be a non-negative number.",
+    };
   }
 
   // B2-WA-004: Clamp timeout to [0, WAIT_MAX_TIMEOUT_MS], default to WAIT_DEFAULT_TIMEOUT_MS
@@ -221,6 +239,22 @@ export async function handleWaitFor(
     return response.data as WaitForResult ?? { met: false, error: "timeout", elapsedMs: timeoutMs };
   } catch (err: unknown) {
     // Relay threw (e.g. browser not connected)
-    return { success: false, error: classifyRelayError(err) };
+    const code = classifyRelayError(err);
+    if (code === "browser-not-connected") {
+      return {
+        success: false,
+        error: code,
+        retryable: true,
+        retryAfterMs: 2000,
+        recoveryHints: "Check that the browser relay is running and the extension is connected.",
+      };
+    }
+    return {
+      success: false,
+      error: code,
+      retryable: true,
+      retryAfterMs: 1000,
+      recoveryHints: "The wait operation timed out at the relay level. Retry after a short delay.",
+    };
   }
 }

@@ -588,6 +588,22 @@ describe("B2-DE-007: snapshot-stale error for pre-navigation snapshots", () => {
     const error = result as DiffToolError;
     expect(error.error).toBe("snapshot-stale");
   });
+
+  it("B2-DE-007: snapshot-stale response includes details.reason and details.recoveryHints", async () => {
+    const relay = createMockRelay({ errorAction: "snapshot-stale" });
+    const store = new SnapshotRetentionStore();
+
+    const result = await handleDiffSnapshots(relay, { fromSnapshotId: "page-006:0", toSnapshotId: "page-006:1" }, store);
+
+    const error = result as DiffToolError;
+    expect(error.error).toBe("snapshot-stale");
+    expect(error.retryable).toBe(false);
+    expect(error.details).toBeDefined();
+    expect(typeof error.details?.reason).toBe("string");
+    expect(error.details?.reason.length).toBeGreaterThan(0);
+    expect(typeof error.details?.recoveryHints).toBe("string");
+    expect(error.details?.recoveryHints?.length).toBeGreaterThan(0);
+  });
 });
 
 // ── B2-DE-002: Explicit from/to — diff between two specific snapshots ─────────

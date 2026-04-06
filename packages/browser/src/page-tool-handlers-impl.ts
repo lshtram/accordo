@@ -518,7 +518,13 @@ export async function handleWaitForInline(
   args: WaitForArgs,
 ): Promise<unknown> {
   if (!relay.isConnected()) {
-    return { success: false, error: "browser-not-connected" };
+    return {
+      success: false,
+      error: "browser-not-connected",
+      retryable: true,
+      retryAfterMs: 2000,
+      recoveryHints: "Check that the browser relay is running and the extension is connected.",
+    };
   }
   try {
     const response = await relay.request("wait_for", args as Record<string, unknown>, WAIT_FOR_RELAY_TIMEOUT_MS);
@@ -531,7 +537,23 @@ export async function handleWaitForInline(
     }
     return response.data ?? { met: false, error: "timeout", elapsedMs: 0 };
   } catch (err: unknown) {
-    return { success: false, error: classifyRelayError(err) };
+    const code = classifyRelayError(err);
+    if (code === "browser-not-connected") {
+      return {
+        success: false,
+        error: code,
+        retryable: true,
+        retryAfterMs: 2000,
+        recoveryHints: "Check that the browser relay is running and the extension is connected.",
+      };
+    }
+    return {
+      success: false,
+      error: code,
+      retryable: true,
+      retryAfterMs: 1000,
+      recoveryHints: "The wait operation timed out at the relay level. Retry after a short delay.",
+    };
   }
 }
 

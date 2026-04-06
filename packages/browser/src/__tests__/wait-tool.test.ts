@@ -374,6 +374,25 @@ describe("handleWaitFor — edge cases", () => {
     expect(result.error).toBe("browser-not-connected");
   });
 
+  it("MCP-ER-002: browser-not-connected error includes retryable:true and retryAfterMs", async () => {
+    const relay = makeRelayNotConnected();
+    const result = await handleWaitFor(relay as unknown as ReturnType<typeof makeRelayNotConnected>, { texts: ["test"] });
+    expect(result).toHaveProperty("success", false);
+    const err = result as { success: false; error: string; retryable: boolean; retryAfterMs?: number; recoveryHints?: string };
+    expect(err.retryable).toBe(true);
+    expect(err.retryAfterMs).toBeGreaterThan(0);
+    expect(typeof err.recoveryHints).toBe("string");
+  });
+
+  it("MCP-ER-002: invalid-request error includes retryable:false", async () => {
+    const relay = makeRelayResolve({ met: false, error: "timeout", elapsedMs: 0 });
+    // @ts-expect-error — intentionally passing empty args
+    const result = await handleWaitFor(relay, {});
+    expect(result).toHaveProperty("success", false);
+    const err = result as { success: false; error: string; retryable: boolean };
+    expect(err.retryable).toBe(false);
+  });
+
   it("accepts a combined condition (texts + selector) — first condition met wins", async () => {
     const relay = makeRelayResolve({ met: true, matchedCondition: "Found", elapsedMs: 100 });
     const result = await expectHandleWaitFor(relay, { texts: ["Found"], selector: ".missing" }, "EDGE:combined-conditions");

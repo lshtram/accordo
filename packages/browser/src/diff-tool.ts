@@ -131,7 +131,7 @@ export interface DiffToolError {
   /**
    * Structured detail about why the error occurred.
    * Present on `snapshot-not-found` (eviction analysis) and `snapshot-stale`
-   * (navigation version boundary).
+   * (navigation version boundary or cross-page incompatibility).
    */
   details?: {
     /** Present when the error is `snapshot-not-found` and eviction is inferred. */
@@ -140,6 +140,8 @@ export interface DiffToolError {
     navigationBoundary?: { currentVersion: number };
     /** Human-readable description of the failure cause. */
     reason: string;
+    /** Step-by-step guidance for recovering from this error. */
+    recoveryHints?: string;
   };
 }
 
@@ -555,9 +557,22 @@ export async function handleDiffSnapshots(
             },
           };
         }
-        // B2-DE-007: snapshot-stale — non-retryable
+        // B2-DE-007: snapshot-stale — non-retryable; enriched with recovery guidance
         if (code === "snapshot-stale") {
-          return { success: false, error: code, retryable: false };
+          return {
+            success: false,
+            error: code,
+            retryable: false,
+            details: {
+              reason:
+                "The requested snapshot belongs to a previous navigation and cannot be diffed against the current page state. " +
+                "Snapshots are scoped to a single navigation — they become stale when the page navigates away.",
+              recoveryHints:
+                "Call get_page_map (or another read tool) on the current page to capture a fresh snapshot, " +
+                "then call diff_snapshots with the new snapshotId. " +
+                "To diff two different pages, capture a snapshot on each page separately and use diff_snapshots with explicit fromSnapshotId and toSnapshotId.",
+            },
+          };
         }
         return { success: false, error: code, retryable: false };
       }
