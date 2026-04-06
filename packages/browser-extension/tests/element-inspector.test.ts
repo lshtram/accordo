@@ -159,7 +159,7 @@ describe("M90-INS inspectElement behavioral output", () => {
     target.id = "selector-target";
     document.body.appendChild(target);
 
-    const result = inspectElement({ selector: "#selector-target", nodeId: 0 } as InspectElementArgs);
+    const result = inspectElement({ selector: "#selector-target", nodeId: 0 } as unknown as InspectElementArgs);
 
     expect(result.found).toBe(true);
     expect(result.element?.id).toBe("selector-target");

@@ -25,7 +25,7 @@
  * @module
  */
 
-import type { VersionedSnapshot } from "../snapshot-versioning.js";
+import type { VersionedSnapshot } from "./snapshot-versioning.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
