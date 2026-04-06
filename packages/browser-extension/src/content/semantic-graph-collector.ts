@@ -79,11 +79,14 @@ export function collectSemanticGraph(options?: SemanticGraphOptions): SemanticGr
   // B2-SG-009: default visibleOnly to true
   const visibleOnly = options?.visibleOnly ?? true;
 
+  // B2-VD-001: shadow DOM traversal
+  const piercesShadow = options?.piercesShadow ?? false;
+
   // B2-SG-006: shared node ID registry across all sub-trees
   const registry = new NodeIdRegistry();
 
   // Build all four sub-trees — visibleOnly applied consistently to all. B2-SG-009.
-  const a11yTree = buildA11yTree(registry, effectiveMaxDepth, visibleOnly);
+  const a11yTree = buildA11yTree(registry, effectiveMaxDepth, visibleOnly, piercesShadow);
   const landmarks = extractLandmarks(registry, visibleOnly);
   const outline = extractOutline(registry, visibleOnly);
   const forms = extractForms(registry, visibleOnly);

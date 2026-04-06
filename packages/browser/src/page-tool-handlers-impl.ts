@@ -535,7 +535,7 @@ export async function handleWaitForInline(
     if (errCode === "navigation-interrupted" || errCode === "page-closed") {
       return { met: false, error: errCode, elapsedMs: 0 };
     }
-    return response.data ?? { met: false, error: "timeout", elapsedMs: 0 };
+    return response.data ?? { met: false, error: "timeout", elapsedMs: 0, retryable: true, retryAfterMs: 1000 };
   } catch (err: unknown) {
     const code = classifyRelayError(err);
     if (code === "browser-not-connected") {
@@ -666,6 +666,7 @@ export async function handleGetSemanticGraphInline(
     if (args.tabId !== undefined) payload["tabId"] = args.tabId;
     if (args.maxDepth !== undefined) payload["maxDepth"] = args.maxDepth;
     if (args.visibleOnly !== undefined) payload["visibleOnly"] = args.visibleOnly;
+    if (args.piercesShadow !== undefined) payload["piercesShadow"] = args.piercesShadow;
     if (args.frameId !== undefined) payload["frameId"] = args.frameId;
 
     const response = await relay.request("get_semantic_graph", payload, SEMANTIC_GRAPH_TIMEOUT_MS);

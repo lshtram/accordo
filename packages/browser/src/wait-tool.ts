@@ -85,6 +85,16 @@ export interface WaitForResult {
   elapsedMs: number;
   /** Error code if condition was not met. */
   error?: WaitError;
+  /**
+   * MCP-ER-002: Whether the failure is transient and a retry is likely to succeed.
+   * Present only when met is false and error is a transient code.
+   */
+  retryable?: boolean;
+  /**
+   * MCP-ER-002: Suggested wait before retrying in milliseconds.
+   * Present when retryable is true.
+   */
+  retryAfterMs?: number;
 }
 
 /**
@@ -236,7 +246,7 @@ export async function handleWaitFor(
     }
 
     // Timeout or other relay-level failure — pass through as WaitForResult
-    return response.data as WaitForResult ?? { met: false, error: "timeout", elapsedMs: timeoutMs };
+    return response.data as WaitForResult ?? { met: false, error: "timeout", elapsedMs: timeoutMs, retryable: true, retryAfterMs: 1000 };
   } catch (err: unknown) {
     // Relay threw (e.g. browser not connected)
     const code = classifyRelayError(err);

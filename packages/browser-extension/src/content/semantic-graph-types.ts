@@ -33,6 +33,16 @@ export interface SemanticA11yNode {
    * Only present when non-empty. MCP-A11Y-002.
    */
   states?: string[];
+  /**
+   * B2-VD-001: True when this node lives inside an open shadow DOM tree.
+   * Present only when piercesShadow traversal is active.
+   */
+  inShadowRoot?: true;
+  /**
+   * B2-VD-002: The nodeId of the shadow host element that contains this node.
+   * Present only when inShadowRoot is true.
+   */
+  shadowHostId?: number;
 }
 
 /**
@@ -120,6 +130,12 @@ export interface SemanticGraphOptions {
   maxDepth?: number;
   /** Exclude hidden elements from all sub-trees (default: true). B2-SG-009. */
   visibleOnly?: boolean;
+  /**
+   * B2-VD-001..004: Traverse open shadow DOM trees and annotate shadow nodes.
+   * Shadow children are marked with `inShadowRoot: true` and `shadowHostId`
+   * referencing the host element's nodeId. Default: false.
+   */
+  piercesShadow?: boolean;
 }
 
 /**

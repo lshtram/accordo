@@ -186,6 +186,12 @@ export interface GetSemanticGraphArgs {
   tabId?: number;
   maxDepth?: number;
   visibleOnly?: boolean;
+  /**
+   * B2-VD-001..004: Traverse open shadow DOM trees and annotate shadow nodes.
+   * Shadow children are marked with `inShadowRoot: true` and `shadowHostId`.
+   * Default: false.
+   */
+  piercesShadow?: boolean;
   /** F12: Target a specific iframe by its frameId from the page map's iframes[]. */
   frameId?: string;
   /** I1-text: When true, scan text for PII and replace with [REDACTED]. */
@@ -497,6 +503,8 @@ const TRANSIENT_ERRORS: Record<string, number> = {
   "timeout": 1000,
   "action-failed": 1000,
   "detached-node": 1000,  // MCP-ER-006: retryable — node may reappear after re-render
+  "capture-failed": 2000, // MCP-ER-002: screenshot failure may be transient (tab not ready)
+  "element-off-screen": 1000, // MCP-ER-002: element may scroll into view after retry
 };
 
 /**
@@ -522,6 +530,8 @@ export function buildStructuredError(
     "timeout": 1000,
     "action-failed": 1000,
     "detached-node": 1000,  // MCP-ER-006: retryable — node may reappear after re-render
+    "capture-failed": 2000, // MCP-ER-002: screenshot failure may be transient (tab not ready)
+    "element-off-screen": 1000, // MCP-ER-002: element may scroll into view after retry
   };
 
   const retryable = errorCode in TRANSIENT_ERRORS;

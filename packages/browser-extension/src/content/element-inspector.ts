@@ -88,6 +88,16 @@ export interface ElementDetail {
    */
   states?: string[];
   /**
+   * Whether the element is disabled (disabled attribute or aria-disabled).
+   * Always present for form controls and buttons. GAP-F1 / MCP-A11Y-002.
+   */
+  disabled?: boolean;
+  /**
+   * Whether the element is read-only (readOnly attribute or aria-readonly).
+   * Always present for input/textarea elements. GAP-F1 / MCP-A11Y-002.
+   */
+  readonly?: boolean;
+  /**
    * Whether pointer events are enabled (getComputedStyle pointerEvents !== "none").
    * GAP-F1 / MCP-INT-001.
    */
@@ -257,6 +267,19 @@ function buildDetail(element: Element): ElementDetail {
   // GAP-F1: Collect accessibility/actionability states (MCP-A11Y-002)
   const states = collectElementStates(element as HTMLElement);
 
+  // GAP-F1: Explicit disabled/readonly taxonomy for form controls and buttons (MCP-A11Y-002)
+  const el = element as HTMLElement;
+  const isDisabled =
+    el.getAttribute("aria-disabled") === "true" ||
+    ((el instanceof HTMLInputElement || el instanceof HTMLButtonElement ||
+      el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) && el.disabled);
+  const isReadonly =
+    el.getAttribute("aria-readonly") === "true" ||
+    ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && el.readOnly);
+  const isFormControl =
+    el instanceof HTMLInputElement || el instanceof HTMLButtonElement ||
+    el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement;
+
   // GAP-F1: Eventability hints (MCP-INT-001)
   const computedStyle = window.getComputedStyle(element);
   const hasPointerEvents = computedStyle.pointerEvents !== "none";
@@ -289,6 +312,9 @@ function buildDetail(element: Element): ElementDetail {
     accessibleName,
     testIds: Object.keys(testIds).length > 0 ? testIds : undefined,
     ...(states.length > 0 ? { states } : {}),
+    // GAP-F1: Always emit disabled/readonly for form controls (MCP-A11Y-002)
+    ...(isFormControl ? { disabled: isDisabled } : {}),
+    ...(isFormControl && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) ? { readonly: isReadonly } : {}),
     hasPointerEvents,
     ...(isObstructed !== undefined ? { isObstructed } : {}),
     clickTargetSize,

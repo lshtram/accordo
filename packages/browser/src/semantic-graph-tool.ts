@@ -41,6 +41,12 @@ export interface GetSemanticGraphArgs {
   maxDepth?: number;
   /** Exclude hidden elements (default: true). B2-SG-009. */
   visibleOnly?: boolean;
+  /**
+   * B2-VD-001..004: Traverse open shadow DOM trees and annotate shadow nodes.
+   * Shadow children are marked with `inShadowRoot: true` and `shadowHostId`.
+   * Default: false.
+   */
+  piercesShadow?: boolean;
   /** F12: Target a specific iframe by its frameId from get_page_map iframes[]. */
   frameId?: string;
   /** I1-text: When true, scan text for PII and replace with [REDACTED]. */
@@ -65,6 +71,16 @@ export interface SemanticA11yNode {
   children: SemanticA11yNode[];
   /** Accessibility/actionability states (disabled, checked, expanded, etc.). Only present when non-empty. MCP-A11Y-001. */
   states?: string[];
+  /**
+   * B2-VD-001: True when this node lives inside an open shadow DOM tree.
+   * Present only when piercesShadow traversal is active.
+   */
+  inShadowRoot?: true;
+  /**
+   * B2-VD-002: The nodeId of the shadow host element that contains this node.
+   * Present only when inShadowRoot is true.
+   */
+  shadowHostId?: number;
 }
 
 /**
@@ -169,6 +185,9 @@ function narrowArgs(raw: unknown): GetSemanticGraphArgs {
   if (typeof obj["visibleOnly"] === "boolean") {
     result.visibleOnly = obj["visibleOnly"];
   }
+  if (typeof obj["piercesShadow"] === "boolean") {
+    result.piercesShadow = obj["piercesShadow"];
+  }
   if (typeof obj["frameId"] === "string") {
     result.frameId = obj["frameId"];
   }
@@ -261,6 +280,12 @@ export function buildSemanticGraphTool(
           description:
             "Exclude hidden elements from all sub-trees (default: true).",
         },
+        piercesShadow: {
+          type: "boolean",
+          description:
+            "B2-VD-001..004: Traverse open shadow DOM trees and annotate shadow nodes with " +
+            "inShadowRoot: true and shadowHostId. Default: false.",
+        },
         redactPII: {
           type: "boolean",
           description:
@@ -336,6 +361,7 @@ async function handleGetSemanticGraph(
     const payload: Record<string, unknown> = {};
     if (args.maxDepth !== undefined) payload["maxDepth"] = args.maxDepth;
     if (args.visibleOnly !== undefined) payload["visibleOnly"] = args.visibleOnly;
+    if (args.piercesShadow !== undefined) payload["piercesShadow"] = args.piercesShadow;
     if (args.tabId !== undefined) payload["tabId"] = args.tabId;
     if (args.frameId !== undefined) payload["frameId"] = args.frameId;
 

@@ -83,6 +83,8 @@ describe("MCP-ER-002: retryable classification", () => {
       { code: "browser-not-connected", expectedRetryAfterMs: 2000 },
       { code: "timeout", expectedRetryAfterMs: 1000 },
       { code: "action-failed", expectedRetryAfterMs: 1000 },
+      { code: "capture-failed", expectedRetryAfterMs: 2000 },  // MCP-ER-002: transient — tab may not be ready
+      { code: "element-off-screen", expectedRetryAfterMs: 1000 }, // MCP-ER-002: transient — element may scroll into view
     ];
 
     for (const { code, expectedRetryAfterMs } of transientErrors) {
@@ -99,9 +101,7 @@ describe("MCP-ER-002: retryable classification", () => {
   describe("MCP-ER-002: Permanent errors → retryable: false", () => {
     const permanentErrors = [
       "element-not-found",
-      "element-off-screen",
       "image-too-large",
-      "capture-failed",
       "no-target",
       "origin-blocked",
       "redaction-failed",

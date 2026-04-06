@@ -4,6 +4,7 @@
  * Recursively walks the DOM and produces an array of SemanticA11yNode.
  *
  * B2-SG-001, B2-SG-002, B2-SG-008, B2-SG-009.
+ * B2-VD-001..002: Shadow DOM traversal when piercesShadow is true.
  *
  * @module
  */
@@ -31,6 +32,8 @@ function buildA11yChildren(
   depth: number,
   maxDepth: number,
   visibleOnly: boolean,
+  piercesShadow: boolean,
+  shadowHostId?: number,
 ): SemanticA11yNode[] {
   const children: SemanticA11yNode[] = [];
 
@@ -43,14 +46,67 @@ function buildA11yChildren(
 
     const childRole = getRole(child);
     if (childRole !== undefined) {
-      const childNode = buildA11yNode(child, registry, depth + 1, maxDepth, visibleOnly);
+      const childNode = buildA11yNode(child, registry, depth + 1, maxDepth, visibleOnly, piercesShadow, shadowHostId);
       if (childNode !== null) {
         children.push(childNode);
       }
     } else {
       // Child has no role — flatten its children up into the current node
       if (depth < maxDepth) {
-        const grandchildren = buildA11yChildren(child, registry, depth, maxDepth, visibleOnly);
+        const grandchildren = buildA11yChildren(child, registry, depth, maxDepth, visibleOnly, piercesShadow, shadowHostId);
+        children.push(...grandchildren);
+      }
+    }
+
+    // B2-VD-001: If piercesShadow and child has an open shadow root, traverse it
+    if (piercesShadow && child.shadowRoot) {
+      const hostNodeId = registry.idFor(child);
+      const shadowChildren = buildA11yChildrenFromRoot(child.shadowRoot, registry, depth, maxDepth, visibleOnly, true, hostNodeId);
+      children.push(...shadowChildren);
+    }
+  }
+
+  return children;
+}
+
+/**
+ * Build SemanticA11yNode array from a ShadowRoot or DocumentFragment.
+ * B2-VD-001: Annotates all shadow nodes with inShadowRoot + shadowHostId.
+ */
+function buildA11yChildrenFromRoot(
+  root: ShadowRoot | DocumentFragment,
+  registry: NodeIdRegistry,
+  depth: number,
+  maxDepth: number,
+  visibleOnly: boolean,
+  inShadowRoot: boolean,
+  shadowHostId: number,
+): SemanticA11yNode[] {
+  const children: SemanticA11yNode[] = [];
+
+  for (const child of Array.from(root.children)) {
+    if (!(child instanceof HTMLElement)) continue;
+
+    const childTag = child.tagName.toLowerCase();
+    if (EXCLUDED_TAGS.has(childTag)) continue;
+    if (visibleOnly && isHidden(child)) continue;
+
+    const childRole = getRole(child);
+    if (childRole !== undefined) {
+      const childNode = buildA11yNode(child, registry, depth + 1, maxDepth, visibleOnly, true, shadowHostId);
+      if (childNode !== null) {
+        if (inShadowRoot) {
+          childNode.inShadowRoot = true;
+          childNode.shadowHostId = shadowHostId;
+        }
+        children.push(childNode);
+      }
+    } else {
+      if (depth < maxDepth) {
+        const grandchildren = buildA11yChildrenFromRoot(
+          { children: child.children } as unknown as ShadowRoot,
+          registry, depth, maxDepth, visibleOnly, inShadowRoot, shadowHostId,
+        );
         children.push(...grandchildren);
       }
     }
@@ -67,6 +123,7 @@ function buildA11yChildren(
  * B2-SG-002: role/name/nodeId/children.
  * B2-SG-008: maxDepth limiting.
  * B2-SG-009: visibleOnly filtering.
+ * B2-VD-001..002: Shadow DOM annotation.
  */
 function buildA11yNode(
   el: HTMLElement,
@@ -74,6 +131,8 @@ function buildA11yNode(
   depth: number,
   maxDepth: number,
   visibleOnly: boolean,
+  piercesShadow: boolean,
+  shadowHostId?: number,
 ): SemanticA11yNode | null {
   const tag = el.tagName.toLowerCase();
 
@@ -97,6 +156,12 @@ function buildA11yNode(
 
   if (name !== undefined) node.name = name;
 
+  // B2-VD-001..002: Annotate shadow nodes
+  if (shadowHostId !== undefined) {
+    node.inShadowRoot = true;
+    node.shadowHostId = shadowHostId;
+  }
+
   // MCP-A11Y-002: Collect accessibility/actionability states
   const states = collectElementStates(el);
   if (states.length > 0) node.states = states;
@@ -110,7 +175,7 @@ function buildA11yNode(
   }
 
   if (depth < maxDepth) {
-    node.children = buildA11yChildren(el, registry, depth, maxDepth, visibleOnly);
+    node.children = buildA11yChildren(el, registry, depth, maxDepth, visibleOnly, piercesShadow, shadowHostId);
   }
 
   return node;
@@ -121,11 +186,13 @@ function buildA11yNode(
 /**
  * Build the full a11y tree from document.body.
  * B2-SG-001, B2-SG-002, B2-SG-008, B2-SG-009.
+ * B2-VD-001..002: piercesShadow traverses open shadow roots.
  */
 export function buildA11yTree(
   registry: NodeIdRegistry,
   maxDepth: number,
   visibleOnly: boolean,
+  piercesShadow = false,
 ): SemanticA11yNode[] {
   if (!document.body) return [];
 
@@ -140,11 +207,18 @@ export function buildA11yTree(
 
     const childRole = getRole(child);
     if (childRole !== undefined) {
-      const node = buildA11yNode(child, registry, 1, maxDepth, visibleOnly);
+      const node = buildA11yNode(child, registry, 1, maxDepth, visibleOnly, piercesShadow);
       if (node !== null) roots.push(node);
     } else {
-      const flattened = buildA11yChildren(child, registry, 0, maxDepth, visibleOnly);
+      const flattened = buildA11yChildren(child, registry, 0, maxDepth, visibleOnly, piercesShadow);
       roots.push(...flattened);
+    }
+
+    // B2-VD-001: If piercesShadow and child has an open shadow root, traverse it
+    if (piercesShadow && child.shadowRoot) {
+      const hostNodeId = registry.idFor(child);
+      const shadowChildren = buildA11yChildrenFromRoot(child.shadowRoot, registry, 0, maxDepth, visibleOnly, true, hostNodeId);
+      roots.push(...shadowChildren);
     }
   }
 
