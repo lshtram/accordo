@@ -513,25 +513,46 @@ export async function handleDiffSnapshots(
     return { success: false, error: "browser-not-connected", retryable: true, retryAfterMs: 2000 };
   }
 
-  // ── B2-DE-003: Resolve implicit toSnapshotId ─────────────────────────────
-  // When toSnapshotId is omitted, capture a fresh snapshot and use it as `to`.
-  // The handler MUST resolve this before calling diff_snapshots.
-  let resolvedToSnapshotId = normalizeSnapshotId(args.toSnapshotId);
-  if (resolvedToSnapshotId === undefined) {
-    const resolved = await resolveFreshSnapshot(relay, args.tabId);
-    if (typeof resolved !== "string") return resolved; // propagate error
-    resolvedToSnapshotId = resolved;
-  }
+  // ── B2-DE-003 + B2-DE-004: Resolve implicit snapshot IDs ─────────────────
+  // Strategy depends on which IDs are omitted:
+  //
+  // Case A: Both omitted → capture TWO fresh snapshots (from first, to second).
+  //   This guarantees both are in the Chrome extension's SnapshotStore (just saved).
+  //   Using version arithmetic (N-1) is unreliable because N-1 may have been
+  //   evicted from the 5-slot FIFO by earlier page_map calls in the session.
+  //
+  // Case B: Only toSnapshotId omitted → capture a fresh `to`; `from` is explicit.
+  //
+  // Case C: Only fromSnapshotId omitted → derive `from` from explicit `to` via
+  //   version arithmetic (existing B2-DE-004 behavior). The explicit `to` was
+  //   recently captured so `to-1` is likely still in the store.
+  //
+  // Case D: Both explicit → pass through unchanged.
 
-  // ── B2-DE-004: Resolve implicit fromSnapshotId ────────────────────────────
-  // When fromSnapshotId is omitted, derive the previous snapshot from toSnapshotId.
-  // The handler MUST resolve this before calling diff_snapshots.
+  let resolvedToSnapshotId = normalizeSnapshotId(args.toSnapshotId);
   let resolvedFromSnapshotId = normalizeSnapshotId(args.fromSnapshotId);
-  if (resolvedFromSnapshotId === undefined) {
-    const resolved = await resolveFromSnapshot(relay, resolvedToSnapshotId, args.tabId);
-    // Propagate DiffToolError (which has retryable: false)
-    if (typeof resolved !== "string") return resolved;
-    resolvedFromSnapshotId = resolved;
+
+  if (resolvedFromSnapshotId === undefined && resolvedToSnapshotId === undefined) {
+    // Case A: Both omitted — capture two consecutive snapshots.
+    const from = await resolveFreshSnapshot(relay, args.tabId);
+    if (typeof from !== "string") return from;
+    const to = await resolveFreshSnapshot(relay, args.tabId);
+    if (typeof to !== "string") return to;
+    resolvedFromSnapshotId = from;
+    resolvedToSnapshotId = to;
+  } else {
+    // Case B: Only toSnapshotId omitted — capture a fresh `to`.
+    if (resolvedToSnapshotId === undefined) {
+      const resolved = await resolveFreshSnapshot(relay, args.tabId);
+      if (typeof resolved !== "string") return resolved;
+      resolvedToSnapshotId = resolved;
+    }
+    // Case C: Only fromSnapshotId omitted — derive from explicit `to`.
+    if (resolvedFromSnapshotId === undefined) {
+      const resolved = await resolveFromSnapshot(relay, resolvedToSnapshotId, args.tabId);
+      if (typeof resolved !== "string") return resolved;
+      resolvedFromSnapshotId = resolved;
+    }
   }
 
   try {
