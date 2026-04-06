@@ -521,6 +521,36 @@ describe("M102-FILT collector integration — B2-FI-001..008", () => {
     expect(ids).not.toContain("normal");
   });
 
+  /**
+   * B2-FI-003: roles filter must find deeply nested elements (beyond maxDepth).
+   * Regression: without flat-list mode, <a> links buried >4 levels deep were
+   * silently omitted even though they match the "link" role. This test uses
+   * a 6-level nesting (table > tbody > tr > td > span > a) to confirm the fix.
+   */
+  it("B2-FI-003: roles=['link'] finds <a> elements nested deeper than default maxDepth", () => {
+    // 6 levels: center > table > tbody > tr > td > span > a
+    document.body.innerHTML = `
+      <center>
+        <table>
+          <tbody>
+            <tr>
+              <td>
+                <span>
+                  <a id="deep-link" href="/item?id=1">Deep Link</a>
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </center>
+    `;
+    // maxDepth defaults to 4 — the <a> is at depth 6, so without flat-list mode it
+    // would be silently pruned.
+    const result = collectPageMap({ roles: ["link"] });
+    const ids = result.nodes.map((n) => n.id).filter(Boolean);
+    expect(ids).toContain("deep-link");
+  });
+
   // ── B2-FI-004: textMatch filter ───────────────────────────────────────────
 
   /**

@@ -523,7 +523,11 @@ export function collectPageMap(options?: PageMapOptions): PageMapResult {
     // B2-FI-002: when interactiveOnly is set, enable flat-list mode so that
     // interactive elements at any DOM depth are collected regardless of maxDepth.
     // Non-matching ancestors are traversed beyond maxDepth without being included.
-    flatListMode: options?.interactiveOnly === true,
+    // B2-FI-003: same flat-list treatment for roles filter — role-matched elements
+    // may be arbitrarily deep (e.g. <a> links buried in nested table cells on HN).
+    flatListMode: options?.interactiveOnly === true || (
+      Array.isArray(options?.roles) && options.roles.length > 0
+    ),
     // B2-VD-001..003: pass piercesShadow flag to traversal
     piercesShadow: options?.piercesShadow ?? false,
   };
