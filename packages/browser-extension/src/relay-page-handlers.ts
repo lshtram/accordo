@@ -128,8 +128,7 @@ export async function handleGetPageMap(
 
   const traverseFrames = request.payload.traverseFrames === true;
 
-  const data = await forwardToFrame(tabId, 0, request.action, request.payload)
-    ?? await forwardToContentScript(tabId, request.action, request.payload);
+  const data = await forwardToContentScript(tabId, request.action, request.payload);
   if (data === null) {
     return actionFailed(request);
   }

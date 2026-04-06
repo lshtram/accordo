@@ -20,7 +20,7 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
     ]);
 
     (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
-      if (options?.frameId === 0) {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
         return {
           data: {
             pageId: "p1",
@@ -68,10 +68,13 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
     });
 
     const originalDocument = globalThis.document;
-    // Force service-worker branch (no document in SW context).
     vi.stubGlobal("document", undefined);
-    const response = await handleGetPageMap(request);
-    vi.stubGlobal("document", originalDocument);
+    let response;
+    try {
+      response = await handleGetPageMap(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
 
     expect(response.success).toBe(true);
     const data = response.data as { iframes: Array<{ nodes?: unknown[] }>; nodes: unknown[] };
@@ -91,8 +94,8 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
       { frameId: 8, parentFrameId: 0, url: "https://other.example/child" },
     ]);
 
-    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, _message, options) => {
-      if (options?.frameId === 0) {
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
         return {
           data: {
             pageId: "p1",
@@ -122,8 +125,12 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
 
     const originalDocument = globalThis.document;
     vi.stubGlobal("document", undefined);
-    const response = await handleGetPageMap(request);
-    vi.stubGlobal("document", originalDocument);
+    let response;
+    try {
+      response = await handleGetPageMap(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
 
     expect(response.success).toBe(true);
     const data = response.data as { iframes: Array<{ nodes?: unknown[] }> };
@@ -142,8 +149,8 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
       { frameId: 9, parentFrameId: 0, url: "about:blank" },
     ]);
 
-    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, _message, options) => {
-      if (options?.frameId === 0) {
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
         return {
           data: {
             pageId: "p1",
@@ -180,8 +187,12 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
 
     const originalDocument = globalThis.document;
     vi.stubGlobal("document", undefined);
-    const response = await handleGetPageMap(request);
-    vi.stubGlobal("document", originalDocument);
+    let response;
+    try {
+      response = await handleGetPageMap(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
 
     expect(response.success).toBe(true);
     const data = response.data as { iframes: Array<{ nodes?: unknown[] }> };
@@ -201,8 +212,8 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
       { frameId: 11, parentFrameId: 0, url: "https://example.com/child?id=2" },
     ]);
 
-    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, _message, options) => {
-      if (options?.frameId === 0) {
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
         return {
           data: {
             pageId: "p1",
@@ -232,8 +243,12 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
 
     const originalDocument = globalThis.document;
     vi.stubGlobal("document", undefined);
-    const response = await handleGetPageMap(request);
-    vi.stubGlobal("document", originalDocument);
+    let response;
+    try {
+      response = await handleGetPageMap(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
 
     expect(response.success).toBe(true);
     const data = response.data as { iframes: Array<{ nodes?: unknown[] }>; nodes: unknown[] };
@@ -254,8 +269,8 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
       { frameId: 13, parentFrameId: 0, url: "about:blank" },
     ]);
 
-    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, _message, options) => {
-      if (options?.frameId === 0) {
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
         return {
           data: {
             pageId: "p1",
@@ -285,8 +300,12 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
 
     const originalDocument = globalThis.document;
     vi.stubGlobal("document", undefined);
-    const response = await handleGetPageMap(request);
-    vi.stubGlobal("document", originalDocument);
+    let response;
+    try {
+      response = await handleGetPageMap(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
 
     expect(response.success).toBe(true);
     const data = response.data as { iframes: Array<{ nodes?: unknown[] }>; nodes: unknown[] };
@@ -306,8 +325,8 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
       { frameId: 14, parentFrameId: 0, url: "https://example.com/redirected-child?x=1" },
     ]);
 
-    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, _message, options) => {
-      if (options?.frameId === 0) {
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
         return {
           data: {
             pageId: "p1",
@@ -340,8 +359,12 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
 
     const originalDocument = globalThis.document;
     vi.stubGlobal("document", undefined);
-    const response = await handleGetPageMap(request);
-    vi.stubGlobal("document", originalDocument);
+    let response;
+    try {
+      response = await handleGetPageMap(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
 
     expect(response.success).toBe(true);
     const data = response.data as { iframes: Array<{ nodes?: unknown[] }>; nodes: unknown[] };
