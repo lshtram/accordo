@@ -66,6 +66,9 @@ export interface GetPageMapArgs {
    */
   regionFilter?: { x: number; y: number; width: number; height: number };
 
+  /** B2-VD-001..004: Traverse open shadow roots and annotate closed hosts. Default: false. */
+  piercesShadow?: boolean;
+
   // ── MCP-SEC: Security Parameters ──────────────────────────────────────────
 
   /** I2-001: Allowed origins for this request. Overrides global policy. */

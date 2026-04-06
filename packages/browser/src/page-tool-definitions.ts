@@ -208,6 +208,10 @@ export function buildPageUnderstandingTools(
             },
             required: ["x", "y", "width", "height"],
           },
+          piercesShadow: {
+            type: "boolean",
+            description: "B2-VD-001..004: Traverse open shadow roots and annotate closed hosts. Default: false",
+          },
           allowedOrigins: {
             type: "array",
             items: { type: "string" },

@@ -72,6 +72,21 @@ export interface PageNode {
    * Only present when `includeBounds: true` and the element has non-zero size.
    */
   occluded?: boolean;
+  /**
+   * B2-VD-001..002: True when this node lives inside an open shadow DOM tree.
+   * The `shadowHostId` field holds the host element's nodeId.
+   */
+  inShadowRoot?: true;
+  /**
+   * B2-VD-002: The nodeId of the shadow host element that contains this node.
+   * Present only when `inShadowRoot: true`.
+   */
+  shadowHostId?: number;
+  /**
+   * B2-VD-003: Present on a shadow host element when its shadow root is closed.
+   * The host element is included in the page map but its shadow content is not traversed.
+   */
+  shadowRoot?: 'closed';
   /** Child nodes (recursive, up to maxDepth) */
   children?: PageNode[];
 }
@@ -122,6 +137,18 @@ export interface PageMapOptions {
    * B2-FI-006: Filter by bounding box region (viewport coordinates).
    */
   regionFilter?: { x: number; y: number; width: number; height: number };
+
+  // ── B2-VD-001..003: Shadow DOM Piercing ─────────────────────────────────
+
+  /**
+   * B2-VD-001: When true, traverse open shadow DOM trees and include shadow
+   * children in the page map. Shadow children are marked with `inShadowRoot: true`
+   * and `shadowHostId` referencing the host element's nodeId.
+   * B2-VD-003: Closed shadow roots are annotated on the host as `shadowRoot: 'closed'`
+   * and are not traversed.
+   * Default: false (B2-VD-004).
+   */
+  piercesShadow?: boolean;
 }
 
 /** Result of page map collection — includes full SnapshotEnvelope (B2-SV-003) */
@@ -234,6 +261,8 @@ export function collectPageMap(options?: PageMapOptions): PageMapResult {
     // interactive elements at any DOM depth are collected regardless of maxDepth.
     // Non-matching ancestors are traversed beyond maxDepth without being included.
     flatListMode: options?.interactiveOnly === true,
+    // B2-VD-001..003: pass piercesShadow flag to traversal
+    piercesShadow: options?.piercesShadow ?? false,
   };
 
   const pageUrl = document.location?.href ?? "https://localhost/";

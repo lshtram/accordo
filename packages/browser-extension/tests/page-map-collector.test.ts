@@ -1055,6 +1055,14 @@ function findNodeDeep(nodes: PageNode[], predicate: (n: PageNode) => boolean): P
   return undefined;
 }
 
+function findAllNodesDeep(nodes: PageNode[], predicate: (n: PageNode) => boolean, acc: PageNode[] = []): PageNode[] {
+  for (const node of nodes) {
+    if (predicate(node)) acc.push(node);
+    if (node.children) findAllNodesDeep(node.children, predicate, acc);
+  }
+  return acc;
+}
+
 /**
  * Mock getBoundingClientRect for a DOM element by ID to return specific bounds.
  * jsdom does not compute CSS layout, so layout-dependent tests must mock this.
@@ -1383,5 +1391,277 @@ describe("GAP-D1: Combined viewportRatio and containerId", () => {
       expect(offscreenSpan.containerId).toBe(sec1.nodeId);
       expect(offscreenSpan.viewportRatio).toBe(0.0);
     }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// B2-VD-001..003: Shadow DOM Traversal
+//
+// Validates that open shadow roots are traversed when piercesShadow: true,
+// closed shadow roots are annotated on the host but not traversed,
+// and non-shadow behavior is unaffected.
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("B2-VD-001..003: Shadow DOM traversal", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  /**
+   * Helper: attach a mock open shadow root to an element.
+   * jsdom supports open shadow roots via attachShadow({ mode: "open" }).
+   */
+  function attachOpenShadowRoot(hostEl: Element, shadowHtml: string): void {
+    const shadowRoot = hostEl.attachShadow({ mode: "open" });
+    shadowRoot.innerHTML = shadowHtml;
+  }
+
+  /**
+   * Helper: attach a mock closed shadow root to an element.
+   * jsdom's Element.shadowRoot is a getter, so we use Object.defineProperty.
+   */
+  function attachClosedShadowRoot(hostEl: Element): void {
+    hostEl.attachShadow({ mode: "closed" });
+  }
+
+  // ── B2-VD-004: piercesShadow defaults to false ───────────────────────────
+
+  /**
+   * B2-VD-004: piercesShadow defaults to false — without the flag, shadow
+   * content must not be traversed.
+   */
+  it("B2-VD-004: without piercesShadow, shadow content is not traversed (default=false)", () => {
+    document.body.innerHTML = `<div id="shadow-host">host</div>`;
+    const host = document.getElementById("shadow-host")!;
+    attachOpenShadowRoot(host, `<button id="shadow-btn">Shadow</button>`);
+
+    const result = collectPageMap({ maxDepth: 8 });
+    const hostNode = findNodeDeep(result.nodes, (n) => n.id === "shadow-host");
+    const shadowBtnNode = findNodeDeep(result.nodes, (n) => n.id === "shadow-btn");
+
+    // Shadow host should appear
+    expect(hostNode).toBeDefined();
+    // Shadow button should NOT appear (shadow not pierced by default)
+    expect(shadowBtnNode).toBeUndefined();
+  });
+
+  // ── B2-VD-001: Open shadow root traversal ──────────────────────────────────
+
+  /**
+   * B2-VD-001: When piercesShadow: true, open shadow DOM children appear in
+   * the page map with inShadowRoot: true.
+   */
+  it("B2-VD-001: piercesShadow=true exposes shadow children with inShadowRoot:true", () => {
+    document.body.innerHTML = `<div id="shadow-host">host</div>`;
+    const host = document.getElementById("shadow-host")!;
+    attachOpenShadowRoot(host, `<button id="shadow-btn">Shadow</button>`);
+
+    const result = collectPageMap({ piercesShadow: true, maxDepth: 8 });
+    const shadowBtnNode = findNodeDeep(result.nodes, (n) => n.id === "shadow-btn");
+
+    expect(shadowBtnNode).toBeDefined();
+    expect(shadowBtnNode!.inShadowRoot).toBe(true);
+  });
+
+  /**
+   * B2-VD-002: Shadow DOM nodes include shadowHostId referencing the host's nodeId.
+   */
+  it("B2-VD-002: shadow children have shadowHostId pointing to the host element's nodeId", () => {
+    document.body.innerHTML = `<div id="shadow-host">host</div>`;
+    const host = document.getElementById("shadow-host")!;
+    attachOpenShadowRoot(host, `<button id="shadow-btn">Shadow</button>`);
+
+    const result = collectPageMap({ piercesShadow: true, maxDepth: 8 });
+    const hostNode = findNodeDeep(result.nodes, (n) => n.id === "shadow-host");
+    const shadowBtnNode = findNodeDeep(result.nodes, (n) => n.id === "shadow-btn");
+
+    expect(shadowBtnNode).toBeDefined();
+    expect(hostNode).toBeDefined();
+    expect(shadowBtnNode!.shadowHostId).toBe(hostNode!.nodeId);
+  });
+
+  /**
+   * B2-VD-001: Multiple shadow children in an open shadow root are all exposed.
+   */
+  it("B2-VD-001: all shadow children in open shadow root are exposed", () => {
+    document.body.innerHTML = `<div id="host"></div>`;
+    const host = document.getElementById("host")!;
+    attachOpenShadowRoot(host, `
+      <button id="btn1">One</button>
+      <span id="span1">Two</span>
+      <div id="div1">Three</div>
+    `);
+
+    const result = collectPageMap({ piercesShadow: true, maxDepth: 8 });
+    const btn1 = findNodeDeep(result.nodes, (n) => n.id === "btn1");
+    const span1 = findNodeDeep(result.nodes, (n) => n.id === "span1");
+    const div1 = findNodeDeep(result.nodes, (n) => n.id === "div1");
+
+    expect(btn1).toBeDefined();
+    expect(btn1!.inShadowRoot).toBe(true);
+    expect(span1).toBeDefined();
+    expect(span1!.inShadowRoot).toBe(true);
+    expect(div1).toBeDefined();
+    expect(div1!.inShadowRoot).toBe(true);
+  });
+
+  // ── B2-VD-002: Shadow host identification ───────────────────────────────────
+
+  /**
+   * B2-VD-002: Deep shadow children (nested inside shadow DOM elements)
+   * also have shadowHostId pointing to the original shadow host.
+   */
+  it("B2-VD-002: deep shadow descendants have shadowHostId pointing to original host", () => {
+    document.body.innerHTML = `<div id="host"></div>`;
+    const host = document.getElementById("host")!;
+    attachOpenShadowRoot(host, `<div id="shadow-parent"><span id="deep-span">deep</span></div>`);
+
+    const result = collectPageMap({ piercesShadow: true, maxDepth: 8 });
+    const hostNode = findNodeDeep(result.nodes, (n) => n.id === "host");
+    const deepSpanNode = findNodeDeep(result.nodes, (n) => n.id === "deep-span");
+
+    expect(deepSpanNode).toBeDefined();
+    expect(deepSpanNode!.inShadowRoot).toBe(true);
+    expect(deepSpanNode!.shadowHostId).toBe(hostNode!.nodeId);
+  });
+
+  it("B2-VD-002: nested shadow roots rebase shadowHostId to the nested host element", () => {
+    document.body.innerHTML = `<div id="outer-host"></div>`;
+    const outerHost = document.getElementById("outer-host")!;
+    attachOpenShadowRoot(outerHost, `<div id="inner-host"></div>`);
+    const innerHost = outerHost.shadowRoot!.getElementById("inner-host")!;
+    attachOpenShadowRoot(innerHost, `<button id="deep-shadow-btn">Deep</button>`);
+
+    const result = collectPageMap({ piercesShadow: true, maxDepth: 8 });
+    const innerHostNode = findNodeDeep(result.nodes, (n) => n.id === "inner-host");
+    const deepShadowBtn = findNodeDeep(result.nodes, (n) => n.id === "deep-shadow-btn");
+
+    expect(innerHostNode).toBeDefined();
+    expect(deepShadowBtn).toBeDefined();
+    expect(deepShadowBtn!.shadowHostId).toBe(innerHostNode!.nodeId);
+  });
+
+  // ── B2-VD-003: Closed shadow root reporting ───────────────────────────────
+
+  /**
+   * B2-VD-003: When a closed shadow root is encountered, the host element
+   * is annotated with shadowRoot: 'closed' and its content is not traversed.
+   */
+  it("B2-VD-003: closed shadow root host is annotated with shadowRoot:'closed'", () => {
+    document.body.innerHTML = `<div id="closed-host">host</div>`;
+    const host = document.getElementById("closed-host")!;
+    attachClosedShadowRoot(host);
+
+    const result = collectPageMap({ piercesShadow: true, maxDepth: 8 });
+    const hostNode = findNodeDeep(result.nodes, (n) => n.id === "closed-host");
+
+    expect(hostNode).toBeDefined();
+    expect(hostNode!.shadowRoot).toBe("closed");
+  });
+
+  /**
+   * B2-VD-003: Closed shadow root content is not traversed (no shadow children appear).
+   */
+  it("B2-VD-003: closed shadow root content is NOT traversed", () => {
+    document.body.innerHTML = `<div id="closed-host">host</div>`;
+    const host = document.getElementById("closed-host")!;
+    attachClosedShadowRoot(host);
+
+    const result = collectPageMap({ piercesShadow: true, maxDepth: 8 });
+    // The closed host itself should appear
+    const hostNode = findNodeDeep(result.nodes, (n) => n.id === "closed-host");
+    expect(hostNode).toBeDefined();
+    expect(hostNode!.shadowRoot).toBe("closed");
+    // No emitted shadow descendants should reference the closed host.
+    const descendantsForClosedHost = findAllNodesDeep(result.nodes, (n) => n.shadowHostId === hostNode!.nodeId);
+    expect(descendantsForClosedHost).toHaveLength(0);
+  });
+
+  it("B2-VD-001: shadow children remain discoverable when the host fails filters", () => {
+    document.body.innerHTML = `<div id="shadow-host"></div>`;
+    const host = document.getElementById("shadow-host")!;
+    attachOpenShadowRoot(host, `<button id="shadow-btn">Shadow</button>`);
+
+    const result = collectPageMap({ piercesShadow: true, interactiveOnly: true, maxDepth: 8 });
+    const hostNode = findNodeDeep(result.nodes, (n) => n.id === "shadow-host");
+    const shadowBtnNode = findNodeDeep(result.nodes, (n) => n.id === "shadow-btn");
+
+    expect(hostNode).toBeUndefined();
+    expect(shadowBtnNode).toBeDefined();
+    expect(shadowBtnNode!.inShadowRoot).toBe(true);
+    expect(typeof shadowBtnNode!.shadowHostId).toBe("number");
+  });
+
+  // ── Non-shadow behavior unchanged ─────────────────────────────────────────
+
+  /**
+   * Non-shadow elements are unaffected by piercesShadow: true.
+   */
+  it("Non-shadow elements appear normally with piercesShadow:true", () => {
+    document.body.innerHTML = `
+      <div id="normal-div">normal</div>
+      <button id="normal-btn">button</button>
+    `;
+
+    const result = collectPageMap({ piercesShadow: true, maxDepth: 8 });
+    const divNode = findNodeDeep(result.nodes, (n) => n.id === "normal-div");
+    const btnNode = findNodeDeep(result.nodes, (n) => n.id === "normal-btn");
+
+    expect(divNode).toBeDefined();
+    expect(divNode!.inShadowRoot).toBeUndefined();
+    expect(btnNode).toBeDefined();
+    expect(btnNode!.inShadowRoot).toBeUndefined();
+  });
+
+  /**
+   * Without piercesShadow, normal (non-shadow) page works exactly as before.
+   * containerId requires includeBounds:true to be computed (B2-FI-006).
+   */
+  it("Without piercesShadow, non-shadow page map is unchanged", () => {
+    document.body.innerHTML = `
+      <section id="container">
+        <button id="btn">Click</button>
+      </section>
+    `;
+
+    const result = collectPageMap({ maxDepth: 8, includeBounds: true });
+    const containerNode = findNodeDeep(result.nodes, (n) => n.id === "container");
+    const btnNode = findNodeDeep(result.nodes, (n) => n.id === "btn");
+
+    expect(containerNode).toBeDefined();
+    expect(btnNode).toBeDefined();
+    expect(btnNode!.containerId).toBe(containerNode!.nodeId);
+    expect(btnNode!.inShadowRoot).toBeUndefined();
+    expect(btnNode!.shadowHostId).toBeUndefined();
+  });
+
+  // ── B2-VD-001: PageNode type fields ───────────────────────────────────────
+
+  /**
+   * B2-VD-001/002: PageNode interface supports inShadowRoot and shadowHostId fields.
+   */
+  it("B2-VD-001/002: PageNode type allows inShadowRoot and shadowHostId fields", () => {
+    const node: PageNode = {
+      ref: "ref-1",
+      tag: "span",
+      nodeId: 5,
+      inShadowRoot: true,
+      shadowHostId: 2,
+    };
+    expect(node.inShadowRoot).toBe(true);
+    expect(node.shadowHostId).toBe(2);
+  });
+
+  /**
+   * B2-VD-003: PageNode interface supports shadowRoot:'closed' field.
+   */
+  it("B2-VD-003: PageNode type allows shadowRoot:'closed' field", () => {
+    const node: PageNode = {
+      ref: "ref-2",
+      tag: "div",
+      nodeId: 3,
+      shadowRoot: "closed",
+    };
+    expect(node.shadowRoot).toBe("closed");
   });
 });

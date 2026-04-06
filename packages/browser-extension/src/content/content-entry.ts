@@ -9,8 +9,10 @@
 
 import { dbg, showFloatingBar, hideFloatingBar, isCommentsModeActive } from "./comment-ui.js";
 import { runBootstrap } from "./message-handlers.js";
+import { ensureShadowTrackingInstalled } from "./shadow-root-tracker.js";
 
 dbg(`Content script injected on ${window.location.href}`);
+ensureShadowTrackingInstalled();
 
 // ── Keyboard shortcuts ───────────────────────────────────────────────────────────
 

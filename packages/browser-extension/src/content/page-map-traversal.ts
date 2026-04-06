@@ -18,6 +18,7 @@ import {
   MAX_TEXT_LENGTH,
 } from "./page-map-collector.js";
 import { viewportIntersectionRatio, findNearestContainer } from "./spatial-helpers.js";
+import { ensureShadowTrackingInstalled, getShadowRootState } from "./shadow-root-tracker.js";
 
 // ── Module-level ref index ────────────────────────────────────────────────────
 
@@ -29,6 +30,15 @@ let refIndex: Map<string, Element> = new Map();
  * Enables O(1) `containerId` resolution (avoids O(n) scan per node).
  */
 let elementToNodeId: Map<Element, number> = new Map();
+let nextSyntheticNodeId = -1;
+
+function ensureSyntheticNodeId(element: Element, refCounter: { count: number }): number {
+  const existing = elementToNodeId.get(element);
+  if (existing !== undefined) return existing;
+  const nodeId = nextSyntheticNodeId--;
+  elementToNodeId.set(element, nodeId);
+  return nodeId;
+}
 
 /** Look up an element by its ref from the most recent page map */
 export function getElementByRef(ref: string): Element | null {
@@ -47,7 +57,10 @@ export function getNodeIdByElement(element: Element): number | undefined {
 export function clearRefIndex(): void {
   refIndex = new Map();
   elementToNodeId = new Map();
+  nextSyntheticNodeId = -1;
 }
+
+ensureShadowTrackingInstalled();
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -113,6 +126,11 @@ export interface TraversalOptions {
    * flat promoted list (no wrapper parent node).
    */
   flatListMode?: boolean;
+  /**
+   * B2-VD-001..003: When true, traverse open shadow DOM trees and annotate
+   * closed shadow roots on their hosts. Default: false.
+   */
+  piercesShadow?: boolean;
 }
 
 // ── Core buildNode ────────────────────────────────────────────────────────────
@@ -240,18 +258,176 @@ function buildPassedNode(
     }
   }
 
+  if (opts.piercesShadow) {
+    const shadowRootState = getShadowRootState(element);
+    if (shadowRootState === "closed") {
+      node.shadowRoot = "closed";
+    }
+  }
+
   if (depth < opts.maxDepth) {
     const children: PageNode[] = [];
     for (const child of Array.from(element.children)) {
       const childNodes = buildNode(child, refCounter, depth + 1, opts, truncated);
       for (const cn of childNodes) children.push(cn);
     }
+
+    // B2-VD-001..003: traverse open shadow DOM if piercesShadow is enabled
+    if (opts.piercesShadow) {
+      const shadowRootState = getShadowRootState(element);
+      if (shadowRootState && shadowRootState !== "closed") {
+          // Traverse open shadow root children, annotating each with inShadowRoot + shadowHostId
+          for (const shadowChild of Array.from(shadowRootState.children)) {
+            const shadowChildNodes = buildShadowNode(shadowChild, refCounter, depth + 1, opts, truncated, nodeId);
+            for (const scn of shadowChildNodes) children.push(scn);
+          }
+      }
+    }
+
     if (children.length > 0) node.children = children;
   } else if (element.children.length > 0) {
     truncated.value = true;
   }
 
   return node;
+}
+
+/**
+ * B2-VD-001..002: Build shadow DOM nodes recursively.
+ * Annotates each node with inShadowRoot + shadowHostId and recurses into
+ * both light-DOM children (via buildShadowNode) and shadow-DOM children
+ * (nested shadow roots — also via buildShadowNode) within the shadow subtree.
+ */
+function buildShadowNode(
+  element: Element,
+  refCounter: { count: number },
+  depth: number,
+  opts: TraversalOptions,
+  truncated: { value: boolean },
+  shadowHostId: number,
+): PageNode[] {
+  if (refCounter.count >= opts.maxNodes) {
+    truncated.value = true;
+    return [];
+  }
+
+  const tag = element.tagName.toLowerCase();
+  if (EXCLUDED_TAGS.has(tag)) return [];
+  if (isHidden(element)) return [];
+  if (opts.viewportOnly && !isInViewport(element)) return [];
+
+  opts.totalBeforeFilter.count++;
+
+  const passesFilter =
+    !opts.filterPipeline.hasFilters || applyFilters(opts.filterPipeline, element);
+
+  if (!passesFilter) {
+    // Fails filter — skip this node but recurse into its children (shadow + light)
+    if (depth >= opts.maxDepth && !opts.flatListMode) {
+      if (element.children.length > 0) truncated.value = true;
+      return [];
+    }
+    const promoted: PageNode[] = [];
+    const hostNodeId = ensureSyntheticNodeId(element, refCounter);
+    // Light DOM children
+    for (const child of Array.from(element.children)) {
+      const childNodes = buildShadowNode(child, refCounter, depth + 1, opts, truncated, shadowHostId);
+      for (const cn of childNodes) promoted.push(cn);
+    }
+    // Nested shadow DOM children
+    if (opts.piercesShadow) {
+      const nestedShadowRoot = getShadowRootState(element);
+      if (nestedShadowRoot && nestedShadowRoot !== "closed") {
+        for (const nestedShadowChild of Array.from(nestedShadowRoot.children)) {
+          const nestedNodes = buildShadowNode(nestedShadowChild, refCounter, depth + 1, opts, truncated, hostNodeId);
+          for (const nscn of nestedNodes) promoted.push(nscn);
+        }
+      }
+    }
+    return promoted;
+  }
+
+  // Element passes — build it with shadow annotations
+  const ref = `ref-${refCounter.count}`;
+  const nodeId = refCounter.count;
+  refCounter.count++;
+  refIndex.set(ref, element);
+  elementToNodeId.set(element, nodeId);
+
+  const node: PageNode = { ref, tag, nodeId, inShadowRoot: true, shadowHostId };
+
+  // Stable persistent ID
+  const directTextForId = Array.from(element.childNodes)
+    .filter((n) => n.nodeType === Node.TEXT_NODE)
+    .map((n) => n.textContent ?? "")
+    .join("")
+    .trim();
+  node.persistentId = computePersistentId(tag, element.id || undefined, directTextForId || undefined);
+
+  if (element.id) node.id = element.id;
+  const role = element.getAttribute("role");
+  if (role) node.role = role;
+  const name = getAccessibleName(element);
+  if (name) node.name = name;
+  const directText = Array.from(element.childNodes)
+    .filter((n) => n.nodeType === Node.TEXT_NODE)
+    .map((n) => n.textContent ?? "")
+    .join("")
+    .trim();
+  if (directText) {
+    node.text = directText.length > MAX_TEXT_LENGTH
+      ? directText.slice(0, MAX_TEXT_LENGTH)
+      : directText;
+  }
+  const attrs = buildAttrs(element);
+  if (attrs) node.attrs = attrs;
+
+  if (opts.includeBounds) {
+    const rect = element.getBoundingClientRect();
+    node.bounds = {
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    };
+    const viewport = {
+      width: window.innerWidth || document.documentElement.clientWidth,
+      height: window.innerHeight || document.documentElement.clientHeight,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+    };
+    node.viewportRatio = viewportIntersectionRatio(node.bounds, viewport);
+    const containerEl = findNearestContainer(element);
+    if (containerEl !== null) {
+      const containerNodeId = getNodeIdByElement(containerEl);
+      if (containerNodeId !== undefined) node.containerId = containerNodeId;
+    }
+  }
+
+  // Recurse into children (both light DOM and nested shadow DOM)
+  if (depth < opts.maxDepth) {
+    const children: PageNode[] = [];
+    // Light DOM children
+    for (const child of Array.from(element.children)) {
+      const childNodes = buildShadowNode(child, refCounter, depth + 1, opts, truncated, shadowHostId);
+      for (const cn of childNodes) children.push(cn);
+    }
+    // Nested shadow DOM children
+    if (opts.piercesShadow) {
+      const nestedShadowRoot = getShadowRootState(element);
+      if (nestedShadowRoot && nestedShadowRoot !== "closed") {
+        for (const nestedShadowChild of Array.from(nestedShadowRoot.children)) {
+          const nestedNodes = buildShadowNode(nestedShadowChild, refCounter, depth + 1, opts, truncated, nodeId);
+          for (const nscn of nestedNodes) children.push(nscn);
+        }
+      }
+    }
+    if (children.length > 0) node.children = children;
+  } else if (element.children.length > 0) {
+    truncated.value = true;
+  }
+
+  return [node];
 }
 
 /**
@@ -309,6 +485,16 @@ export function buildNode(
   for (const child of Array.from(element.children)) {
     const childNodes = buildNode(child, refCounter, depth + 1, opts, truncated);
     for (const cn of childNodes) promoted.push(cn);
+  }
+  if (opts.piercesShadow) {
+    const shadowRootState = getShadowRootState(element);
+    if (shadowRootState && shadowRootState !== "closed") {
+      const hostNodeId = ensureSyntheticNodeId(element, refCounter);
+      for (const shadowChild of Array.from(shadowRootState.children)) {
+        const shadowChildNodes = buildShadowNode(shadowChild, refCounter, depth + 1, opts, truncated, hostNodeId);
+        for (const scn of shadowChildNodes) promoted.push(scn);
+      }
+    }
   }
   return promoted;
 }

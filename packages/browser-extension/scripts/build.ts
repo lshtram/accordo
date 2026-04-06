@@ -2,12 +2,13 @@
  * M80-MANIFEST — Build Script
  *
  * esbuild configuration for the Accordo browser extension.
- * Produces 3 JS entry points + copies manifest.json, CSS, and popup.html.
+ * Produces 4 JS entry points + copies manifest.json, CSS, and popup.html.
  *
  * Entry points:
  *   dist/service-worker.js  — background service worker
  *   dist/content-script.js  — combined content script (pins + input)
  *   dist/popup.js           — extension popup
+ *   dist/shadow-tracker.js  — early closed-shadow tracker bootstrap
  *
  * Usage:
  *   npx tsx scripts/build.ts          # single build
@@ -118,7 +119,16 @@ async function build(): Promise<void> {
     plugins: [monorepoSdkPlugin],
   });
 
-  // --- 3. Popup ---
+  // --- 3. Early Shadow Tracker ---
+  const shadowTrackerBuild = await esbuild.context({
+    ...sharedOptions,
+    format: "iife",
+    entryPoints: [path.join(SRC, "content", "shadow-tracker-entry.ts")],
+    outfile: path.join(DIST, "shadow-tracker.js"),
+    treeShaking: false,
+  });
+
+  // --- 4. Popup ---
   const popupBuild = await esbuild.context({
     ...sharedOptions,
     entryPoints: [path.join(SRC, "popup.ts")],
@@ -127,11 +137,11 @@ async function build(): Promise<void> {
 
   // Run all builds
   if (isWatch) {
-    await Promise.all([swBuild.watch(), contentBuild.watch(), popupBuild.watch()]);
+    await Promise.all([swBuild.watch(), contentBuild.watch(), shadowTrackerBuild.watch(), popupBuild.watch()]);
     console.log("\nWatching for changes... (Ctrl+C to stop)\n");
   } else {
-    await Promise.all([swBuild.rebuild(), contentBuild.rebuild(), popupBuild.rebuild()]);
-    await Promise.all([swBuild.dispose(), contentBuild.dispose(), popupBuild.dispose()]);
+    await Promise.all([swBuild.rebuild(), contentBuild.rebuild(), shadowTrackerBuild.rebuild(), popupBuild.rebuild()]);
+    await Promise.all([swBuild.dispose(), contentBuild.dispose(), shadowTrackerBuild.dispose(), popupBuild.dispose()]);
 
     // Copy static assets after JS build completes
     console.log("\nCopying static assets:");

@@ -690,6 +690,14 @@ describe("browser_get_page_map — filter parameter schema (B2-FI-001..008)", ()
     expect(rf.required).toContain("height");
   });
 
+  it("B2-VD-001..004: tool accepts piercesShadow parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
+    expect(pageMapTool?.inputSchema.properties).toHaveProperty("piercesShadow");
+    expect(pageMapTool?.inputSchema.properties.piercesShadow.type).toBe("boolean");
+  });
+
   /**
    * B2-FI-007: Filter combination — all filter parameters are present for AND composition
    */
