@@ -53,7 +53,7 @@ export interface GetSemanticGraphArgs {
 
 /**
  * A node in the accessibility tree (mirrors content-script type).
- * B2-SG-002.
+ * B2-SG-002. MCP-A11Y-001: states field added for actionability indicators.
  */
 export interface SemanticA11yNode {
   role: string;
@@ -61,6 +61,8 @@ export interface SemanticA11yNode {
   level?: number;
   nodeId: number;
   children: SemanticA11yNode[];
+  /** Accessibility/actionability states (disabled, checked, expanded, etc.). Only present when non-empty. MCP-A11Y-001. */
+  states?: string[];
 }
 
 /**

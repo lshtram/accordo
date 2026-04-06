@@ -1,7 +1,7 @@
 /**
  * a11y-states.test.ts
  *
- * Tests for GAP-C1 + MCP-A11Y-002 — Accessibility states array in SemanticA11yNode
+ * Tests for MCP-A11Y-001 — Accessibility states array in SemanticA11yNode
  *
  * Tests validate:
  * - collectElementStates() maps DOM/ARIA properties to state strings
@@ -16,16 +16,21 @@
  * - Returns 'expanded' when aria-expanded='true'
  * - Returns 'collapsed' when aria-expanded='false'
  * - Returns 'selected' when aria-selected='true'
- * - Returns 'pressed' when aria-pressed='true'
- * - Returns 'focused' when document.activeElement === element
- * - Returns 'hidden' when element.hasAttribute('hidden')
+ * - Returns 'disabled' when aria-disabled='true' on generic elements
+ * - Returns 'readonly' when aria-readonly='true' on generic elements
+ * - Returns 'required' when aria-required='true' on generic elements
+ * - Returns 'checked' when aria-checked='true' on generic elements
+ * - Returns 'selected' when HTMLOptionElement.selected === true
+ * - Returns 'hidden' when aria-hidden='true'
+ * - Returns 'expanded' when <details open>
+ * - Does NOT return non-spec states like 'pressed' or 'focused'
  * - Returns [] when no states apply
  * - Returns multiple states when multiple apply
  * - Is deterministic (same order every time)
  *
  * API checklist (buildA11yNode → SemanticA11yNode):
- * - MCP-A11Y-002: a11y node includes states array when element has states
- * - MCP-A11Y-002: a11y node omits states field when no states apply
+ * - MCP-A11Y-001: a11y node includes states array when element has states
+ * - MCP-A11Y-001: a11y node omits states field when no states apply
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -94,30 +99,61 @@ describe("collectElementStates", () => {
     expect(states).toContain("selected");
   });
 
-  it("returns 'pressed' when aria-pressed='true'", () => {
+  it("returns 'disabled' when aria-disabled='true' on a generic element", () => {
+    const el = makeMockHTMLElement({});
+    el.setAttribute("aria-disabled", "true");
+    const states = collectElementStates(el);
+    expect(states).toContain("disabled");
+  });
+
+  it("returns 'readonly' when aria-readonly='true' on a generic element", () => {
+    const el = makeMockHTMLElement({});
+    el.setAttribute("aria-readonly", "true");
+    const states = collectElementStates(el);
+    expect(states).toContain("readonly");
+  });
+
+  it("returns 'required' when aria-required='true' on a generic element", () => {
+    const el = makeMockHTMLElement({});
+    el.setAttribute("aria-required", "true");
+    const states = collectElementStates(el);
+    expect(states).toContain("required");
+  });
+
+  it("returns 'checked' when aria-checked='true' on a generic element", () => {
+    const el = makeMockHTMLElement({});
+    el.setAttribute("aria-checked", "true");
+    const states = collectElementStates(el);
+    expect(states).toContain("checked");
+  });
+
+  it("returns 'selected' when option.selected is true", () => {
+    const el = document.createElement("option");
+    el.selected = true;
+    const states = collectElementStates(el);
+    expect(states).toContain("selected");
+  });
+
+  it("returns 'hidden' when aria-hidden='true'", () => {
+    const el = makeMockHTMLElement({});
+    el.setAttribute("aria-hidden", "true");
+    const states = collectElementStates(el);
+    expect(states).toContain("hidden");
+  });
+
+  it("returns 'expanded' when <details open>", () => {
+    const el = document.createElement("details");
+    el.open = true;
+    const states = collectElementStates(el);
+    expect(states).toContain("expanded");
+  });
+
+  it("does not return non-spec states like 'pressed' or 'focused'", () => {
     const el = makeMockHTMLElement({});
     el.setAttribute("aria-pressed", "true");
     const states = collectElementStates(el);
-    expect(states).toContain("pressed");
-  });
-
-  it("returns 'focused' when element is activeElement", () => {
-    const el = makeMockHTMLElement({});
-    // Simulate element being the activeElement
-    Object.defineProperty(document, "activeElement", {
-      value: el,
-      writable: true,
-      configurable: true,
-    });
-    const states = collectElementStates(el);
-    expect(states).toContain("focused");
-  });
-
-  it("returns 'hidden' when element has hidden attribute", () => {
-    const el = makeMockHTMLElement({});
-    el.setAttribute("hidden", "");
-    const states = collectElementStates(el);
-    expect(states).toContain("hidden");
+    expect(states).not.toContain("pressed");
+    expect(states).not.toContain("focused");
   });
 
   it("returns [] when no states apply", () => {
@@ -148,7 +184,7 @@ describe("SemanticA11yNode states field", () => {
   // We test buildA11yNode by importing the a11y tree builder
   // Since the builder walks document.body, we set up DOM elements
 
-  it("MCP-A11Y-002: a11y node includes states array when element has states", async () => {
+  it("MCP-A11Y-001: a11y node includes states array when element has states", async () => {
     // Set up a button with disabled state
     const btn = document.createElement("button");
     btn.id = "disabled-btn";
@@ -185,7 +221,7 @@ describe("SemanticA11yNode states field", () => {
     }
   });
 
-  it("MCP-A11Y-002: a11y node omits states field when no states apply", async () => {
+  it("MCP-A11Y-001: a11y node omits states field when no states apply", async () => {
     // Set up a plain div with no states
     const div = document.createElement("div");
     div.id = "plain-div";

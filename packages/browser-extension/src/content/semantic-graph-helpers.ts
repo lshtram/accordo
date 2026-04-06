@@ -81,53 +81,60 @@ export function isHidden(el: HTMLElement): boolean {
  * Used by both the a11y tree builder (GAP-C1) and element inspector (GAP-F1)
  * to provide a shared, consistent state representation.
  *
- * MCP-A11Y-002.
+ * MCP-A11Y-001.
  */
 export function collectElementStates(el: HTMLElement): string[] {
   const states: string[] = [];
 
+  const hasAriaDisabled = el.getAttribute("aria-disabled") === "true";
+  const hasAriaReadonly = el.getAttribute("aria-readonly") === "true";
+  const hasAriaRequired = el.getAttribute("aria-required") === "true";
+  const hasAriaChecked = el.getAttribute("aria-checked") === "true";
+  const hasAriaSelected = el.getAttribute("aria-selected") === "true";
+  const hasAriaHidden = el.getAttribute("aria-hidden") === "true";
+
+  if (hasAriaDisabled) states.push("disabled");
+  if (hasAriaReadonly) states.push("readonly");
+  if (hasAriaRequired) states.push("required");
+  if (hasAriaChecked) states.push("checked");
+  if (hasAriaSelected) states.push("selected");
+  if (hasAriaHidden) states.push("hidden");
+
   // HTMLInputElement — has disabled, readOnly, required, checked
   if (el instanceof HTMLInputElement) {
-    if (el.disabled) states.push("disabled");
-    if (el.readOnly) states.push("readonly");
-    if (el.required) states.push("required");
-    if (el.checked) states.push("checked");
+    if (el.disabled && !states.includes("disabled")) states.push("disabled");
+    if (el.readOnly && !states.includes("readonly")) states.push("readonly");
+    if (el.required && !states.includes("required")) states.push("required");
+    if (el.checked && !states.includes("checked")) states.push("checked");
   }
 
   // HTMLTextAreaElement — has disabled, readOnly, required (no checked)
   if (el instanceof HTMLTextAreaElement) {
-    if (el.disabled) states.push("disabled");
-    if (el.readOnly) states.push("readonly");
-    if (el.required) states.push("required");
+    if (el.disabled && !states.includes("disabled")) states.push("disabled");
+    if (el.readOnly && !states.includes("readonly")) states.push("readonly");
+    if (el.required && !states.includes("required")) states.push("required");
   }
 
   // HTMLSelectElement — has disabled, required (no readOnly, no checked)
   if (el instanceof HTMLSelectElement) {
-    if (el.disabled) states.push("disabled");
-    if (el.required) states.push("required");
+    if (el.disabled && !states.includes("disabled")) states.push("disabled");
+    if (el.required && !states.includes("required")) states.push("required");
   }
 
   // HTMLButtonElement — only has disabled (no readOnly/required/checked)
-  if (el instanceof HTMLButtonElement && el.disabled) {
-    states.push("disabled");
+  if (el instanceof HTMLButtonElement) {
+    if (el.disabled && !states.includes("disabled")) states.push("disabled");
   }
 
-  // ARIA attribute states
+  if (el instanceof HTMLOptionElement && el.selected && !states.includes("selected")) {
+    states.push("selected");
+  }
+
+  // Expanded/collapsed from ARIA or native disclosure widgets.
   const ariaExpanded = el.getAttribute("aria-expanded");
   if (ariaExpanded === "true") states.push("expanded");
   else if (ariaExpanded === "false") states.push("collapsed");
-
-  const ariaSelected = el.getAttribute("aria-selected");
-  if (ariaSelected === "true") states.push("selected");
-
-  const ariaPressed = el.getAttribute("aria-pressed");
-  if (ariaPressed === "true") states.push("pressed");
-
-  // Focus state
-  if (document.activeElement === el) states.push("focused");
-
-  // Hidden attribute
-  if (el.hasAttribute("hidden")) states.push("hidden");
+  else if (el instanceof HTMLDetailsElement) states.push(el.open ? "expanded" : "collapsed");
 
   return states;
 }
