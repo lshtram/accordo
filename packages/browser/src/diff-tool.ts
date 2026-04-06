@@ -332,14 +332,42 @@ async function resolveFreshSnapshot(
  *
  * B2-DE-004: When `fromSnapshotId` is omitted, the handler resolves it locally
  * from the explicit `toSnapshotId` format by deriving `pageId:(version - 1)`.
- * This avoids side effects from extra captures while keeping the contract
- * deterministic for callers.
+ *
+ * B2-CTX-003: A preflight `get_page_map` call is made to verify the page context
+ * on the correct tab. When `tabId` is provided it is forwarded in the payload;
+ * when absent the relay uses the active tab.
  *
  * @returns The derived fromSnapshotId string, or a DiffToolError to propagate.
  */
 async function resolveFromSnapshot(
+  relay: BrowserRelayLike,
   toSnapshotId: string,
+  tabId?: number,
 ): Promise<string | DiffToolError> {
+  // B2-CTX-003: preflight get_page_map to verify page context on the correct tab
+  const preflightPayload: Record<string, unknown> = {};
+  if (tabId !== undefined) {
+    preflightPayload.tabId = tabId;
+  }
+  try {
+    const preflightResponse = await relay.request("get_page_map", preflightPayload, DIFF_TIMEOUT_MS);
+    if (!preflightResponse.success) {
+      const code = extractRelayErrorCode(preflightResponse.data, preflightResponse.error);
+      if (code !== undefined) return { success: false, error: code, retryable: false };
+      const transient = buildTransientRelayError(preflightResponse.error);
+      if (transient !== undefined) return transient;
+      return { success: false, error: "action-failed", retryable: false };
+    }
+  } catch (err: unknown) {
+    const error = classifyRelayError(err);
+    return {
+      success: false,
+      error,
+      retryable: true,
+      retryAfterMs: error === "browser-not-connected" ? 2000 : 1000,
+    };
+  }
+
   // Compute previous snapshot via version arithmetic on toSnapshotId.
   // Format: "{pageId}:{version}" — derive "{pageId}:{version - 1}".
   const lastColon = toSnapshotId.lastIndexOf(":");
@@ -473,7 +501,7 @@ export async function handleDiffSnapshots(
   // The handler MUST resolve this before calling diff_snapshots.
   let resolvedFromSnapshotId = normalizeSnapshotId(args.fromSnapshotId);
   if (resolvedFromSnapshotId === undefined) {
-    const resolved = await resolveFromSnapshot(resolvedToSnapshotId);
+    const resolved = await resolveFromSnapshot(relay, resolvedToSnapshotId, args.tabId);
     // Propagate DiffToolError (which has retryable: false)
     if (typeof resolved !== "string") return resolved;
     resolvedFromSnapshotId = resolved;

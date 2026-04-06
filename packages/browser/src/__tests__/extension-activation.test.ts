@@ -2,6 +2,33 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { activate } from "../extension.js";
 import { createExtensionContextMock, extensions } from "./mocks/vscode.js";
 
+// Mock node:net so findFreePort always resolves the base port (40111) as free,
+// regardless of what is actually bound on the test host.
+vi.mock("node:net", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:net")>();
+  return {
+    ...actual,
+    createServer: vi.fn(() => {
+      const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+      const server = {
+        once: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+          listeners[event] = listeners[event] ?? [];
+          listeners[event].push(cb);
+          // Immediately simulate "listening" so findFreePort resolves the first port tried
+          if (event === "listening") {
+            Promise.resolve().then(() => cb());
+          }
+          return server;
+        }),
+        listen: vi.fn((_port: number, _host: string) => server),
+        close: vi.fn((cb?: () => void) => { if (cb) cb(); return server; }),
+        address: vi.fn(() => ({ port: 40111 })),
+      };
+      return server;
+    }),
+  };
+});
+
 const startMock = vi.fn().mockResolvedValue(undefined);
 const stopMock = vi.fn().mockResolvedValue(undefined);
 const isConnectedMock = vi.fn(() => false);
