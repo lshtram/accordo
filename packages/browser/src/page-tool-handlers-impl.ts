@@ -527,15 +527,17 @@ export async function handleWaitForInline(
     };
   }
   try {
+    const startMs = Date.now();
     const response = await relay.request("wait_for", args as Record<string, unknown>, WAIT_FOR_RELAY_TIMEOUT_MS);
     if (response.success && response.data !== undefined) {
       return response.data;
     }
     const errCode = response.error ?? "timeout";
+    const elapsedMs = Date.now() - startMs;
     if (errCode === "navigation-interrupted" || errCode === "page-closed") {
-      return { met: false, error: errCode, elapsedMs: 0 };
+      return { met: false, error: errCode, elapsedMs };
     }
-    return response.data ?? { met: false, error: "timeout", elapsedMs: 0, retryable: true, retryAfterMs: 1000 };
+    return response.data ?? { met: false, error: "timeout", elapsedMs, retryable: true, retryAfterMs: 1000 };
   } catch (err: unknown) {
     const code = classifyRelayError(err);
     if (code === "browser-not-connected") {

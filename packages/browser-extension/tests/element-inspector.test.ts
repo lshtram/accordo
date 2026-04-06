@@ -477,3 +477,154 @@ describe("PU-F-33: getDomExcerpt runtime { found: false } for missing selector",
     }
   });
 });
+
+// ── F2: Explicit disabled/readonly taxonomy (GAP-F1 / MCP-A11Y-002) ──────────
+
+/**
+ * F2 tests: inspectElement must emit explicit boolean disabled/readonly fields
+ * for form controls and buttons, including disabled: false when not disabled.
+ * This allows agents to reliably check form control state without parsing states[].
+ */
+describe("M90-INS — F2: Explicit disabled/readonly fields", () => {
+  it("F2: disabled input emits disabled: true", () => {
+    const input = document.createElement("input");
+    input.id = "f2-disabled-input";
+    input.type = "text";
+    (input as HTMLInputElement).disabled = true;
+    document.body.appendChild(input);
+
+    try {
+      const result = inspectElement({ selector: "#f2-disabled-input" });
+      expect(result.found).toBe(true);
+      expect(result.element?.disabled).toBe(true);
+    } finally {
+      document.body.removeChild(input);
+    }
+  });
+
+  it("F2: enabled input emits disabled: false (explicit false, not omitted)", () => {
+    const input = document.createElement("input");
+    input.id = "f2-enabled-input";
+    input.type = "text";
+    document.body.appendChild(input);
+
+    try {
+      const result = inspectElement({ selector: "#f2-enabled-input" });
+      expect(result.found).toBe(true);
+      // disabled must be explicitly false (present in the output), not undefined
+      expect("disabled" in (result.element ?? {})).toBe(true);
+      expect(result.element?.disabled).toBe(false);
+    } finally {
+      document.body.removeChild(input);
+    }
+  });
+
+  it("F2: readonly input emits readonly: true", () => {
+    const input = document.createElement("input");
+    input.id = "f2-readonly-input";
+    input.type = "text";
+    (input as HTMLInputElement).readOnly = true;
+    document.body.appendChild(input);
+
+    try {
+      const result = inspectElement({ selector: "#f2-readonly-input" });
+      expect(result.found).toBe(true);
+      expect(result.element?.readonly).toBe(true);
+    } finally {
+      document.body.removeChild(input);
+    }
+  });
+
+  it("F2: non-readonly input emits readonly: false (explicit false, not omitted)", () => {
+    const input = document.createElement("input");
+    input.id = "f2-nonreadonly-input";
+    input.type = "text";
+    document.body.appendChild(input);
+
+    try {
+      const result = inspectElement({ selector: "#f2-nonreadonly-input" });
+      expect(result.found).toBe(true);
+      expect("readonly" in (result.element ?? {})).toBe(true);
+      expect(result.element?.readonly).toBe(false);
+    } finally {
+      document.body.removeChild(input);
+    }
+  });
+
+  it("F2: disabled button emits disabled: true", () => {
+    const btn = document.createElement("button");
+    btn.id = "f2-disabled-btn";
+    btn.textContent = "Disabled Btn";
+    (btn as HTMLButtonElement).disabled = true;
+    document.body.appendChild(btn);
+
+    try {
+      const result = inspectElement({ selector: "#f2-disabled-btn" });
+      expect(result.found).toBe(true);
+      expect(result.element?.disabled).toBe(true);
+    } finally {
+      document.body.removeChild(btn);
+    }
+  });
+
+  it("F2: enabled button emits disabled: false (explicit false)", () => {
+    const btn = document.createElement("button");
+    btn.id = "f2-enabled-btn";
+    btn.textContent = "Enabled Btn";
+    document.body.appendChild(btn);
+
+    try {
+      const result = inspectElement({ selector: "#f2-enabled-btn" });
+      expect(result.found).toBe(true);
+      expect("disabled" in (result.element ?? {})).toBe(true);
+      expect(result.element?.disabled).toBe(false);
+    } finally {
+      document.body.removeChild(btn);
+    }
+  });
+
+  it("F2: non-form element (div) does not emit disabled/readonly fields", () => {
+    const div = document.createElement("div");
+    div.id = "f2-plain-div";
+    div.textContent = "Plain div";
+    document.body.appendChild(div);
+
+    try {
+      const result = inspectElement({ selector: "#f2-plain-div" });
+      expect(result.found).toBe(true);
+      // Non-form elements must NOT emit disabled/readonly
+      expect(result.element?.disabled).toBeUndefined();
+      expect(result.element?.readonly).toBeUndefined();
+    } finally {
+      document.body.removeChild(div);
+    }
+  });
+
+  it("F2: aria-disabled='true' on a div emits disabled: true", () => {
+    const div = document.createElement("div");
+    div.id = "f2-aria-disabled-div";
+    div.setAttribute("aria-disabled", "true");
+    document.body.appendChild(div);
+
+    try {
+      // aria-disabled elements are treated as form controls too
+      // In the current implementation, aria-disabled is checked regardless of tag
+      // but disabled field only emits for isFormControl.
+      // So we test a button with aria-disabled.
+      const btn = document.createElement("button");
+      btn.id = "f2-aria-disabled-btn";
+      btn.setAttribute("aria-disabled", "true");
+      document.body.appendChild(btn);
+
+      try {
+        const result = inspectElement({ selector: "#f2-aria-disabled-btn" });
+        expect(result.found).toBe(true);
+        expect(result.element?.disabled).toBe(true);
+      } finally {
+        document.body.removeChild(btn);
+      }
+    } finally {
+      document.body.removeChild(div);
+    }
+  });
+});

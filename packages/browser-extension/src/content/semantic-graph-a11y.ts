@@ -61,7 +61,7 @@ function buildA11yChildren(
     // B2-VD-001: If piercesShadow and child has an open shadow root, traverse it
     if (piercesShadow && child.shadowRoot) {
       const hostNodeId = registry.idFor(child);
-      const shadowChildren = buildA11yChildrenFromRoot(child.shadowRoot, registry, depth, maxDepth, visibleOnly, true, hostNodeId);
+      const shadowChildren = buildA11yChildrenInShadow(child.shadowRoot, registry, depth, maxDepth, visibleOnly, hostNodeId);
       children.push(...shadowChildren);
     }
   }
@@ -70,21 +70,21 @@ function buildA11yChildren(
 }
 
 /**
- * Build SemanticA11yNode array from a ShadowRoot or DocumentFragment.
+ * Build SemanticA11yNode array from an element collection that lives inside a shadow tree.
  * B2-VD-001: Annotates all shadow nodes with inShadowRoot + shadowHostId.
+ * B2-VD-002: Handles nested shadow roots by updating shadowHostId at each host boundary.
  */
-function buildA11yChildrenFromRoot(
-  root: ShadowRoot | DocumentFragment,
+function buildA11yChildrenInShadow(
+  parentEl: HTMLElement | ShadowRoot,
   registry: NodeIdRegistry,
   depth: number,
   maxDepth: number,
   visibleOnly: boolean,
-  inShadowRoot: boolean,
   shadowHostId: number,
 ): SemanticA11yNode[] {
   const children: SemanticA11yNode[] = [];
 
-  for (const child of Array.from(root.children)) {
+  for (const child of Array.from(parentEl.children)) {
     if (!(child instanceof HTMLElement)) continue;
 
     const childTag = child.tagName.toLowerCase();
@@ -93,21 +93,58 @@ function buildA11yChildrenFromRoot(
 
     const childRole = getRole(child);
     if (childRole !== undefined) {
-      const childNode = buildA11yNode(child, registry, depth + 1, maxDepth, visibleOnly, true, shadowHostId);
-      if (childNode !== null) {
-        if (inShadowRoot) {
-          childNode.inShadowRoot = true;
-          childNode.shadowHostId = shadowHostId;
+      const nodeId = registry.idFor(child);
+      const name = getAccessibleName(child);
+
+      const node: SemanticA11yNode = {
+        role: childRole,
+        nodeId,
+        children: [],
+        inShadowRoot: true,
+        shadowHostId,
+      };
+
+      if (name !== undefined) node.name = name;
+
+      // Heading level
+      const childTagLower = child.tagName.toLowerCase();
+      if (childRole === "heading") {
+        const levelMatch = childTagLower.match(/^h([1-6])$/);
+        if (levelMatch !== null) {
+          node.level = parseInt(levelMatch[1] ?? "1", 10);
         }
-        children.push(childNode);
       }
-    } else {
+
+      // MCP-A11Y-002: Collect states
+      const states = collectElementStates(child);
+      if (states.length > 0) node.states = states;
+
       if (depth < maxDepth) {
-        const grandchildren = buildA11yChildrenFromRoot(
-          { children: child.children } as unknown as ShadowRoot,
-          registry, depth, maxDepth, visibleOnly, inShadowRoot, shadowHostId,
-        );
+        // Recurse into this shadow child's regular children
+        node.children = buildA11yChildrenInShadow(child, registry, depth + 1, maxDepth, visibleOnly, shadowHostId);
+
+        // B2-VD-002: If this child itself is a shadow host, traverse its shadow root
+        // The new shadow host ID is this child's nodeId
+        if (child.shadowRoot) {
+          const nestedHostId = nodeId;
+          const nestedShadowChildren = buildA11yChildrenInShadow(child.shadowRoot, registry, depth + 1, maxDepth, visibleOnly, nestedHostId);
+          node.children.push(...nestedShadowChildren);
+        }
+      }
+
+      children.push(node);
+    } else {
+      // No role — flatten: recurse into children
+      if (depth < maxDepth) {
+        const grandchildren = buildA11yChildrenInShadow(child, registry, depth, maxDepth, visibleOnly, shadowHostId);
         children.push(...grandchildren);
+      }
+
+      // B2-VD-002: Even a role-less element may be a shadow host — traverse it
+      if (child.shadowRoot) {
+        const nestedHostId = registry.idFor(child);
+        const nestedShadowChildren = buildA11yChildrenInShadow(child.shadowRoot, registry, depth, maxDepth, visibleOnly, nestedHostId);
+        children.push(...nestedShadowChildren);
       }
     }
   }
@@ -217,7 +254,7 @@ export function buildA11yTree(
     // B2-VD-001: If piercesShadow and child has an open shadow root, traverse it
     if (piercesShadow && child.shadowRoot) {
       const hostNodeId = registry.idFor(child);
-      const shadowChildren = buildA11yChildrenFromRoot(child.shadowRoot, registry, 0, maxDepth, visibleOnly, true, hostNodeId);
+      const shadowChildren = buildA11yChildrenInShadow(child.shadowRoot, registry, 0, maxDepth, visibleOnly, hostNodeId);
       roots.push(...shadowChildren);
     }
   }

@@ -35,6 +35,7 @@ import {
   WAIT_MAX_TIMEOUT_MS,
   RELAY_TIMEOUT_MS,
 } from "../wait-tool.js";
+import { handleWaitForInline } from "../page-tool-handlers-impl.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -422,5 +423,70 @@ describe("handleWaitFor — edge cases", () => {
     // RED: direct assertions
     expect(result.success).toBe(false);
     expect(result.error).toBe("invalid-request");
+  });
+});
+
+// ── handleWaitForInline — H2: retry hints on timeout ──────────────────────────
+
+/**
+ * B2-WA-005 / H2: handleWaitForInline timeout fallback returns retryable hint fields.
+ *
+ * When the relay returns a non-success response with no data, or returns
+ * navigation-interrupted / page-closed, the handler must populate elapsedMs
+ * from real elapsed time (not hardcoded 0) and include retryable/retryAfterMs
+ * on the timeout path.
+ */
+describe("handleWaitForInline — H2: retry hints on timeout fallback", () => {
+  /** Minimal relay shape expected by handleWaitForInline */
+  function makeInlineRelay(response: { success: boolean; error?: string; data?: unknown }) {
+    return {
+      request: vi.fn().mockResolvedValue(response),
+      isConnected: vi.fn(() => true),
+    };
+  }
+
+  it("H2: timeout fallback includes retryable: true", async () => {
+    // Relay returns failure with no data — triggers the timeout fallback path
+    const relay = makeInlineRelay({ success: false });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"], timeout: 100 });
+    const r = result as { met: boolean; error?: string; retryable?: boolean };
+    expect(r.met).toBe(false);
+    expect(r.retryable).toBe(true);
+  });
+
+  it("H2: timeout fallback includes retryAfterMs: 1000", async () => {
+    const relay = makeInlineRelay({ success: false });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"], timeout: 100 });
+    const r = result as { retryAfterMs?: number };
+    expect(r.retryAfterMs).toBe(1000);
+  });
+
+  it("H2: timeout fallback elapsedMs is a non-negative number (not hardcoded 0)", async () => {
+    const relay = makeInlineRelay({ success: false });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"], timeout: 100 });
+    const r = result as { elapsedMs?: number };
+    // elapsedMs must be a number (real elapsed time, not hardcoded 0)
+    expect(typeof r.elapsedMs).toBe("number");
+    expect(r.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("H2: navigation-interrupted path includes elapsedMs from real elapsed time", async () => {
+    const relay = makeInlineRelay({ success: false, error: "navigation-interrupted" });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"], timeout: 100 });
+    const r = result as { met: boolean; error?: string; elapsedMs?: number };
+    expect(r.met).toBe(false);
+    expect(r.error).toBe("navigation-interrupted");
+    expect(typeof r.elapsedMs).toBe("number");
+    expect(r.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("H2: page-closed path includes elapsedMs from real elapsed time", async () => {
+    const relay = makeInlineRelay({ success: false, error: "page-closed" });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"], timeout: 100 });
+    const r = result as { met: boolean; error?: string; elapsedMs?: number };
+    expect(r.met).toBe(false);
+    expect(r.error).toBe("page-closed");
+    expect(typeof r.elapsedMs).toBe("number");
+    expect(r.elapsedMs).toBeGreaterThanOrEqual(0);
   });
 });

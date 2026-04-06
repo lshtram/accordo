@@ -525,15 +525,6 @@ export function buildStructuredError(
   details?: string,
   extra?: { pageUrl?: null; found?: false },
 ): PageToolError {
-  const TRANSIENT_ERRORS: Record<string, number> = {
-    "browser-not-connected": 2000,
-    "timeout": 1000,
-    "action-failed": 1000,
-    "detached-node": 1000,  // MCP-ER-006: retryable — node may reappear after re-render
-    "capture-failed": 2000, // MCP-ER-002: screenshot failure may be transient (tab not ready)
-    "element-off-screen": 1000, // MCP-ER-002: element may scroll into view after retry
-  };
-
   const retryable = errorCode in TRANSIENT_ERRORS;
   const retryAfterMs = retryable ? TRANSIENT_ERRORS[errorCode] : undefined;
 
