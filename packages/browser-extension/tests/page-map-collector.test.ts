@@ -1691,6 +1691,10 @@ describe("B2-VD-005..009: Iframe metadata — type exports", () => {
       src: "https://example.com/child.html",
       bounds: { x: 0, y: 0, width: 400, height: 300 },
       sameOrigin: true,
+      parentFrameId: null,
+      depth: 1,
+      classification: "content",
+      visible: true,
     };
     expect(entry.frameId).toBe("iframe-0");
     expect(entry.src).toBe("https://example.com/child.html");
@@ -1707,6 +1711,10 @@ describe("B2-VD-005..009: Iframe metadata — type exports", () => {
       src: "https://other-domain.com/",
       bounds: { x: 0, y: 0, width: 400, height: 300 },
       sameOrigin: false,
+      parentFrameId: null,
+      depth: 1,
+      classification: "unknown",
+      visible: true,
     };
     expect(entry.sameOrigin).toBe(false);
   });
@@ -1720,6 +1728,10 @@ describe("B2-VD-005..009: Iframe metadata — type exports", () => {
       src: "",
       bounds: { x: 10, y: 20, width: 800, height: 600 },
       sameOrigin: true,
+      parentFrameId: null,
+      depth: 1,
+      classification: "content",
+      visible: true,
     };
     expect(entry.bounds.x).toBe(10);
     expect(entry.bounds.y).toBe(20);

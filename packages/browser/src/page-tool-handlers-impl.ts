@@ -37,6 +37,7 @@ import type {
   GetPageMapArgs,
   GetSemanticGraphArgs,
   GetTextMapArgs,
+  IframeMetadata,
   InspectElementArgs,
   InspectElementResponse,
   ListPagesArgs,
@@ -125,6 +126,13 @@ export async function handleGetPageMap(
       const result = response.data as PageMapResponse;
       // F4: Add auditId to response
       result.auditId = auditEntry.auditId;
+
+      // A4: Apply frameFilter if provided and iframes are present
+      if (args.frameFilter && args.frameFilter.length > 0 && result.iframes) {
+        const allowed = new Set<IframeMetadata["classification"]>(args.frameFilter);
+        (result as PageMapResponse & { iframes: IframeMetadata[] }).iframes =
+          result.iframes.filter((f) => allowed.has(f.classification ?? "unknown"));
+      }
 
       // F2: Apply redaction if requested (fail-closed)
       if (args.redactPII) {
@@ -507,6 +515,11 @@ export async function handleCaptureRegion(
             (result as CaptureRegionResponse).transportFallback = true;
           }
         }
+        security.auditLog.completeEntry(auditEntry, {
+          action: "allowed",
+          redacted: !!(result as CaptureRegionResponse).screenshotRedactionApplied,
+          durationMs: Date.now() - startTime,
+        });
         // Return a shallow copy so subsequent calls don't overwrite auditId on the same object
         return { ...result };
       }

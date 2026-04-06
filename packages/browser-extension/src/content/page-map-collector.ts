@@ -196,6 +196,41 @@ export interface IframeMetadata {
    * such as `about:blank` and `srcdoc`.
    */
   sameOrigin: boolean;
+
+  // ── A4: Frame lineage fields ──────────────────────────────────────────────
+
+  /**
+   * A4: Frame ID of the parent frame.
+   * `null` for top-level iframes (parent is the main document).
+   */
+  parentFrameId: string | null;
+
+  /**
+   * A4: The iframe's `title` attribute, if present.
+   */
+  title?: string;
+
+  /**
+   * A4: Nesting depth relative to the top document.
+   * `1` for direct children of the main document.
+   */
+  depth: number;
+
+  /**
+   * A4: Heuristic classification of the iframe's likely purpose.
+   * - `"content"` — same-origin or blank/inherited-origin iframe.
+   * - `"ad"` — matches known ad/tracker URL patterns.
+   * - `"widget"` — social media embeds, reCAPTCHA, payment forms, etc.
+   * - `"unknown"` — unclassified cross-origin iframe.
+   */
+  classification: "content" | "ad" | "widget" | "unknown";
+
+  /**
+   * A4: Whether this iframe is visible in the viewport.
+   * `false` when display:none, zero dimensions, or entirely off-screen.
+   */
+  visible: boolean;
+
   /**
    * B2-VD-005: Child frame page-map nodes (same-origin iframes only).
    * Present only on the SW-assembled MCP response when `traverseFrames: true`
@@ -304,6 +339,60 @@ export function clearRefIndex(): void {
 // ── Iframe enumeration helper ──────────────────────────────────────────────────
 
 /**
+ * A4: Known ad/tracker URL patterns (inline copy — browser-extension has no
+ * dependency on packages/browser, so we duplicate from frame-classifier.ts).
+ */
+const AD_PATTERNS: readonly RegExp[] = [
+  /doubleclick\.net/i, /googlesyndication\.com/i, /adservice\.google\./i,
+  /amazon-adsystem\.com/i, /media\.net/i, /adnxs\.com/i, /rubiconproject\.com/i,
+  /openx\.net/i, /pubmatic\.com/i, /criteo\.com/i, /taboola\.com/i,
+  /outbrain\.com/i, /revcontent\.com/i, /sharethrough\.com/i,
+  /smartadserver\.com/i, /33across\.com/i, /advertising\.com/i,
+  /adroll\.com/i, /moatads\.com/i, /scorecardresearch\.com/i,
+  /quantserve\.com/i, /chartbeat\.com/i, /adsafeprotected\.com/i,
+  /ib\.adnxs\.com/i,
+];
+
+/**
+ * A4: Known widget/social/payment URL patterns (inline copy).
+ */
+const WIDGET_PATTERNS: readonly RegExp[] = [
+  /facebook\.com\/plugins/i, /platform\.twitter\.com/i, /syndication\.twitter\.com/i,
+  /instagram\.com\/embed/i, /youtube\.com\/embed/i, /youtu\.be\//i,
+  /player\.vimeo\.com/i, /open\.spotify\.com\/embed/i, /soundcloud\.com\/player/i,
+  /google\.com\/recaptcha/i, /recaptcha\.net/i,
+  /paypal\.com\/(sdk|button|webapps)/i, /js\.stripe\.com/i,
+  /appleid\.apple\.com/i, /accounts\.google\.com/i,
+  /disqus\.com\/embed/i, /staticxx\.facebook\.com/i,
+  /platform\.linkedin\.com/i, /assets\.pinterest\.com/i,
+  /tiktok\.com\/embed/i, /twitch\.tv\/embed/i,
+  /maps\.google\.com/i, /google\.com\/maps/i, /maps\.googleapis\.com/i,
+  /calendar\.google\.com/i, /docs\.google\.com/i,
+];
+
+/**
+ * A4: Classify an iframe src URL using heuristics.
+ * Returns "content" for same-origin or blank frames, "ad", "widget", or "unknown".
+ */
+function classifyIframeInline(
+  src: string,
+  sameOrigin: boolean,
+): "content" | "ad" | "widget" | "unknown" {
+  // Inherited-origin or blank frames are treated as content
+  if (src === "" || src === "about:blank" || src.startsWith("data:") || src.startsWith("javascript:")) {
+    return "content";
+  }
+  for (const pattern of AD_PATTERNS) {
+    if (pattern.test(src)) return "ad";
+  }
+  for (const pattern of WIDGET_PATTERNS) {
+    if (pattern.test(src)) return "widget";
+  }
+  if (sameOrigin) return "content";
+  return "unknown";
+}
+
+/**
  * B2-VD-005..009: Enumerate top-level `<iframe>` elements in the current document
  * and return metadata only. Same-origin child-frame DOM stitching is performed
  * later by the service worker using frame-targeted messaging.
@@ -352,6 +441,7 @@ export function enumerateIframes(): IframeMetadata[] {
       let bounds: { x: number; y: number; width: number; height: number } = {
         x: 0, y: 0, width: 0, height: 0,
       };
+      let visible = false;
       try {
         const rect = iframe.getBoundingClientRect();
         bounds = {
@@ -360,15 +450,37 @@ export function enumerateIframes(): IframeMetadata[] {
           width: rect.width,
           height: rect.height,
         };
+        // A4: visible = not hidden via CSS and at least partially in viewport
+        const style = window.getComputedStyle(iframe);
+        const inViewport =
+          rect.width > 0 &&
+          rect.height > 0 &&
+          rect.bottom > 0 &&
+          rect.right > 0 &&
+          rect.top < window.innerHeight &&
+          rect.left < window.innerWidth;
+        visible =
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          inViewport;
       } catch {
-        // ignore and leave zero bounds only if the browser cannot provide them
+        // ignore and leave zero bounds / visible:false if the browser cannot provide them
       }
+
+      // A4: iframe title (empty string → undefined)
+      const title = iframe.title !== "" ? iframe.title : undefined;
 
       return {
         frameId,
         src,
         bounds,
         sameOrigin,
+        // A4 fields
+        parentFrameId: null,
+        title,
+        depth: 1,
+        classification: classifyIframeInline(src, sameOrigin),
+        visible,
       };
     });
   } catch {

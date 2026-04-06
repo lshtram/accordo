@@ -216,6 +216,14 @@ export function buildPageUnderstandingTools(
             type: "boolean",
             description: "B2-VD-005..009: Enumerate top-level iframes and return metadata (frameId, src, bounds, sameOrigin). Child-frame DOM traversal NOT included — this feature only. Default: false",
           },
+          frameFilter: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["content", "ad", "widget", "unknown"],
+            },
+            description: "A4: Filter iframes by classification. Only iframes matching one of the specified types are returned. Requires traverseFrames: true.",
+          },
           allowedOrigins: {
             type: "array",
             items: { type: "string" },

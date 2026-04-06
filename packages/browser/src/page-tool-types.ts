@@ -74,6 +74,14 @@ export interface GetPageMapArgs {
    * Default: false. */
   traverseFrames?: boolean;
 
+  /**
+   * A4: Filter returned iframes by classification.
+   * When provided, only iframes matching one of the specified classifications
+   * are included in the `iframes[]` array. Requires `traverseFrames: true`.
+   * Example: `["content", "widget"]` to exclude ad frames.
+   */
+  frameFilter?: Array<"content" | "ad" | "widget" | "unknown">;
+
   // ── MCP-SEC: Security Parameters ──────────────────────────────────────────
 
   /** I2-001: Allowed origins for this request. Overrides global policy. */
@@ -262,7 +270,7 @@ export interface PageMapResponse extends SnapshotEnvelopeFields {
 }
 
 /**
- * B2-VD-006: Metadata for a single `<iframe>` element in the page.
+ * B2-VD-006 / A4: Metadata for a single `<iframe>` element in the page.
  * Emitted in the `iframes` array of `PageMapResponse` when `traverseFrames: true`.
  */
 export interface IframeMetadata {
@@ -278,6 +286,47 @@ export interface IframeMetadata {
    * - `false`: child-frame DOM is opaque due to Same-Origin Policy.
    */
   sameOrigin: boolean;
+
+  // ── A4: Frame lineage fields ───────────────────────────────────────────────
+
+  /**
+   * A4: Frame ID of this iframe's parent frame.
+   * - `null` for top-level iframes (parent is the main document).
+   * - A `frameId` string for nested iframes.
+   * Enables tree reconstruction from the flat `iframes[]` array.
+   */
+  parentFrameId: string | null;
+
+  /**
+   * A4: The iframe's `title` attribute, if present.
+   * Useful for accessibility identification of frame purpose.
+   */
+  title?: string;
+
+  /**
+   * A4: Nesting depth relative to the top document.
+   * - `1` for direct children of the main document.
+   * - `2` for iframes nested inside another iframe.
+   * Agents can use this to prioritize shallow frames.
+   */
+  depth: number;
+
+  /**
+   * A4: Heuristic classification of the iframe's likely purpose.
+   * Helps agents skip ad/tracker frames and focus on content frames.
+   * - `"content"` — appears to contain meaningful page content.
+   * - `"ad"` — matches known ad/tracker URL patterns.
+   * - `"widget"` — social media embeds, reCAPTCHA, payment forms, etc.
+   * - `"unknown"` — could not be classified.
+   */
+  classification: "content" | "ad" | "widget" | "unknown";
+
+  /**
+   * A4: Whether this iframe is visible in the viewport.
+   * Iframes with `display: none`, zero dimensions, or entirely off-screen
+   * position are marked `false`. Agents can filter to visible-only frames.
+   */
+  visible: boolean;
 }
 
 /**
