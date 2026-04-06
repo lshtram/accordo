@@ -30,6 +30,7 @@ export {
   handleGetDomExcerpt,
   handleGetTextMap,
   handleGetSemanticGraph,
+  handleGetSpatialRelations,
   handleWaitFor,
 } from "./relay-page-handlers.js";
 

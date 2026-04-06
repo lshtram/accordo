@@ -218,6 +218,10 @@ export function buildPageUnderstandingTools(
             items: { type: "string" },
             description: "Block data from these origins. Takes precedence over allowedOrigins.",
           },
+          redactPII: {
+            type: "boolean",
+            description: "I1-text: When true, scan text content for PII and replace with [REDACTED].",
+          },
         },
       },
       dangerLevel: "safe",
@@ -243,6 +247,10 @@ export function buildPageUnderstandingTools(
             type: "array",
             items: { type: "string" },
             description: "Block data from these origins. Takes precedence over allowedOrigins.",
+          },
+          redactPII: {
+            type: "boolean",
+            description: "I1-text: When true, scan text content for PII and replace with [REDACTED].",
           },
         },
       },
@@ -271,6 +279,10 @@ export function buildPageUnderstandingTools(
             items: { type: "string" },
             description: "Block data from these origins. Takes precedence over allowedOrigins.",
           },
+          redactPII: {
+            type: "boolean",
+            description: "I1-text: When true, scan text content for PII and replace with [REDACTED].",
+          },
         },
       },
       dangerLevel: "safe",
@@ -279,7 +291,7 @@ export function buildPageUnderstandingTools(
     },
     {
       name: "accordo_browser_capture_region",
-      description: "Capture a cropped screenshot of a specific element or region",
+      description: "Capture a cropped screenshot of a specific element or region. Supports viewport mode (mode='viewport'), full-page mode (mode='fullPage'), and region mode (default — requires anchorKey, nodeRef, or rect).",
       inputSchema: {
         type: "object",
         properties: {
@@ -298,7 +310,12 @@ export function buildPageUnderstandingTools(
           },
           padding: { type: "number", description: "Padding around element (default 8)" },
           quality: { type: "number", description: "JPEG quality 1-100 (default 70)" },
-          format: { type: "string", enum: ["jpeg", "png"], description: "GAP-E1: Output image format — 'jpeg' (default) or 'png'" },
+          mode: {
+            type: "string",
+            enum: ["viewport", "fullPage"],
+            description: "GAP-E2 / MCP-VC-001..003: Capture mode. 'viewport' captures the visible area; 'fullPage' captures the entire scrollable page. Default (omitted) = region capture — requires anchorKey, nodeRef, or rect.",
+          },
+          format: { type: "string", enum: ["jpeg", "png"], description: "GAP-E1 / MCP-VC-004: Output image format — 'jpeg' (default) or 'png'" },
           allowedOrigins: {
             type: "array",
             items: { type: "string" },

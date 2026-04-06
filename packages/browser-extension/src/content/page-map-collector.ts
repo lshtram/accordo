@@ -41,6 +41,37 @@ export interface PageNode {
   attrs?: Record<string, string>;
   /** Bounding box relative to viewport (if includeBounds=true) */
   bounds?: { x: number; y: number; width: number; height: number };
+  /**
+   * GAP-D1 / D4: Ratio of this element's bounding box that intersects the
+   * visible viewport (0–1). Only present when `includeBounds: true`.
+   * 0 = fully off-screen, 1 = fully visible.
+   */
+  viewportRatio?: number;
+  /**
+   * GAP-D1 / D5: nodeId of the nearest semantic container ancestor
+   * (article, section, aside, main, dialog, details, nav, header, footer, form).
+   * Only present when `includeBounds: true` and a container is found.
+   */
+  containerId?: number;
+  /**
+   * GAP-D2: Computed z-index from getComputedStyle(el).zIndex.
+   * Only present when `includeBounds: true` and zIndex is not "auto".
+   * Positive values indicate stacking above normal flow; negative values below.
+   */
+  zIndex?: number;
+  /**
+   * GAP-D2: True when this element creates a new stacking context
+   * (position !== "static" + zIndex !== "auto", or opacity < 1, or
+   * transform/filter/opacity creating a new context).
+   * Only present when `includeBounds: true`.
+   */
+  isStacked?: boolean;
+  /**
+   * GAP-D2: True when another element is stacked above this element at its
+   * center point (detected via document.elementFromPoint).
+   * Only present when `includeBounds: true` and the element has non-zero size.
+   */
+  occluded?: boolean;
   /** Child nodes (recursive, up to maxDepth) */
   children?: PageNode[];
 }

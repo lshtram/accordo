@@ -408,3 +408,283 @@ UML convention renders initial/final pseudostates as small filled circles (~15-3
 - (+) Edge connectivity preserved — transitions from `[*]` work correctly
 - (+) No type changes — `NodeShape` already accepts `string`
 - (-) Two new shape-map entries to maintain (trivial cost)
+
+---
+
+## DEC-017 — Browser security: cached origin for pre-relay origin check
+
+**Date:** 2026-04-04  
+**Module:** `packages/browser` (security — origin policy)
+
+**Context:** B2-ER-007 requires that `origin-blocked` errors are returned "before any DOM access occurs." However, the MCP handler doesn't know the page origin until after making a relay call (the content script returns `pageUrl`). Two approaches were considered:
+
+1. **Pre-flight relay action** — add a lightweight `get_origin` relay action to the Chrome extension that returns only `document.location.origin` without touching the DOM.
+2. **Cached origin** — use the `pageUrl` from the most recent successful response in the `SnapshotRetentionStore` to determine the origin. Skip the check on cold cache (first call ever).
+
+**Decision:** Cached origin from the retention store (option 2).
+
+**Rationale:**
+- Adding a new relay action requires Chrome extension changes, which are out of scope for Phase 2 (the extension is separately versioned and deployed).
+- The retention store already has `pageUrl` from the last successful call, providing origin info with zero additional latency.
+- Cold cache behavior (skip check on first-ever call) is consistent with `defaultAction: "allow"` — the first call is allowed, and subsequent calls use the cached origin.
+- Post-hoc validation: after the relay response, the handler also validates the actual origin from the response data, providing defense-in-depth.
+
+**Alternatives considered:**
+1. *Pre-flight relay action* — most correct (checks before DOM access), but requires Chrome extension code changes. ❌ scope creep.
+2. *Always allow first call, then check* — partial protection but misses the first call. Acceptable trade-off.
+3. *Require agent to provide origin* — agent doesn't know the origin before calling. ❌ broken contract.
+
+**Consequences:**
+- (+) Zero Chrome extension changes required
+- (+) Zero additional latency (no extra relay round-trip)
+- (+) Works with existing `SnapshotRetentionStore` infrastructure
+- (-) First call to a new page bypasses origin check (mitigated by defaultAction: "allow")
+- (-) If the user navigates to a blocked origin after a previous successful call, one call may succeed before the cache updates
+
+---
+
+## DEC-018 — Browser security: handler-level redaction over content-script-level
+
+**Date:** 2026-04-04  
+**Module:** `packages/browser` (security — PII redaction)
+
+**Context:** PII redaction can be applied at two levels:
+1. **Content script** — redact text in the Chrome extension before sending via relay. This is closer to "before data leaves core" (B2-PS-005).
+2. **MCP handler** — redact text after receiving the relay response but before returning to the agent.
+
+**Decision:** Handler-level redaction (option 2).
+
+**Rationale:**
+- The content script runs in the Chrome extension, which is separately versioned and deployed. Adding redaction logic there requires Chrome extension changes and creates a versioning dependency.
+- Handler-level redaction still satisfies B2-PS-005: data is redacted before it reaches the agent (the MCP response boundary is "leaving core" from the agent's perspective).
+- The relay transport is over a loopback WebSocket with token auth (CR-NF-02, PU-NF-06), so the un-redacted data only traverses localhost — not an external network.
+- Handler-level redaction is easier to test (pure function tests, no Chrome extension mocking).
+- The `redactPII` parameter is agent-controlled (per-request), which is naturally handled at the handler level.
+
+**Consequences:**
+- (+) Zero Chrome extension changes
+- (+) Easy to unit test (pure functions)
+- (+) Per-request `redactPII` parameter naturally handled
+- (+) Consistent with existing handler pattern (all enrichment happens at handler level)
+- (-) Un-redacted text traverses the loopback WebSocket (acceptable — localhost only, token-auth'd)
+- (-) If a malicious extension intercepts the WebSocket, it sees un-redacted text (mitigated by token auth)
+
+---
+
+## DEC-019 — Browser security: separate audit log from Hub audit
+
+**Date:** 2026-04-04  
+**Module:** `packages/browser` (security — audit trail)
+
+**Context:** The Hub already has an audit log at `~/.accordo/audit.jsonl` (architecture.md §7.4) that tracks all MCP tool calls. The browser security audit trail (B2-PS-006) needs additional browser-specific fields: `origin`, `action` (allowed/blocked), `redacted`, `pageId`.
+
+**Decision:** Create a separate `BrowserAuditLog` in `packages/browser/src/security/audit-log.ts` that writes to `~/.accordo/browser-audit.jsonl`. The browser log supplements (does not replace) the Hub audit log.
+
+**Rationale:**
+- The Hub audit log uses arg hashing (no cleartext) and records generic tool metadata. It doesn't know about browser-specific security concepts.
+- Adding browser-specific fields to the Hub audit format would couple the Hub to browser internals — violating architecture principle "Hub is editor-agnostic."
+- The browser audit log is focused on security-relevant metadata, not general tool usage.
+- Both logs use the same rotation policy (10MB, 2 files) for consistency.
+
+**Consequences:**
+- (+) Hub remains editor/modality-agnostic
+- (+) Browser audit captures security-specific metadata not available at Hub level
+- (+) Same rotation policy as Hub — ops consistency
+- (-) Two audit files for browser tool calls (minor — different purposes)
+- (-) `auditId` in responses must be generated by the browser handler, not the Hub
+
+---
+
+## DEC-020 — Element states as `string[]` (not `Record<string, boolean>`)
+
+**Date:** 2026-04-04  
+**Module:** `packages/browser-extension` (semantic-graph, element-inspector)
+
+**Context:** GAP-C1 and GAP-F1 both need a `states` field on a11y tree nodes and element inspection results. Two representations were considered: `string[]` (sparse list of active states) or `Record<string, boolean>` (all states with explicit true/false values).
+
+**Decision:** Use `states?: string[]`.
+
+**Rationale:**
+- Sparse representation — only non-default states included (e.g., no `"disabled"` entry if not disabled)
+- Smaller payload — empty array omitted entirely from output (optional field)
+- Consistent with 45/45 plan specification which uses "states array" terminology
+- Easier for agents to scan: `states.includes("disabled")` vs `states.disabled === true`
+- Consistent with how ARIA state values are typically communicated (named states, not booleans)
+
+**Alternatives considered:**
+1. *`Record<string, boolean>`* — explicit about all states, but bloats payload with `false` values and is harder to scan
+2. *Enum-based type* — coding guidelines prohibit enums in favor of union types
+
+**Consequences:**
+- (+) Smaller payloads (no false entries)
+- (+) Natural for agent consumption
+- (-) No explicit "not disabled" signal — absence of `"disabled"` implies enabled
+
+---
+
+## DEC-021 — Shared `collectElementStates()` helper
+
+**Date:** 2026-04-04  
+**Module:** `packages/browser-extension` (semantic-graph-helpers)
+
+**Context:** Both the a11y tree builder (GAP-C1) and element inspector (GAP-F1) need identical state collection logic. Duplicating the code in both modules would create a maintenance burden and risk divergence.
+
+**Decision:** Place `collectElementStates()` in `semantic-graph-helpers.ts` and import from both consumers.
+
+**Rationale:**
+- `semantic-graph-helpers.ts` already contains shared DOM inspection utilities (`getRole()`, `isHidden()`, `getAccessibleName()`)
+- `semantic-graph-a11y.ts` already imports from `semantic-graph-helpers.ts`
+- `element-inspector.ts` adds a new import — acceptable since the helper has no circular dependency risk
+
+**Consequences:**
+- (+) Single source of truth for state collection logic
+- (+) No code duplication
+- (-) `element-inspector.ts` gains a new import dependency on `semantic-graph-helpers.ts`
+
+---
+
+## DEC-022 — `browser_health` queries relay directly, not through relay
+
+**Date:** 2026-04-04  
+**Module:** `packages/browser` (health-tool)
+
+**Context:** The `browser_health` tool needs to report whether the browser relay is connected. Two approaches: (1) send a relay message to the Chrome extension asking for status, or (2) call `relay.isConnected()` locally.
+
+**Decision:** Local query via `relay.isConnected()`.
+
+**Rationale:** If the relay is disconnected, a relay message would fail — making it impossible to report the disconnected state. Local-only access is the only correct approach for health checks. The health tool exists precisely to diagnose connectivity issues.
+
+**Consequences:**
+- (+) Always works, even when relay is disconnected
+- (+) No additional latency (no WebSocket round-trip)
+- (-) `debuggerUrl` requires a separate mechanism (deferred to implementation)
+
+---
+
+## DEC-023 — Error ring buffer on tool builder closure
+
+**Date:** 2026-04-04  
+**Module:** `packages/browser` (health-tool)
+
+**Context:** The `browser_health` tool needs to report recent errors. Options: (1) a dedicated class/singleton, (2) a closure-scoped array in `buildHealthTool()`.
+
+**Decision:** Closure-scoped array (max 10 entries) captured in the `buildHealthTool()` closure.
+
+**Rationale:** Follows the existing builder-closure pattern used by `buildWaitForTool`, `buildTextMapTool`, and other tool builders. No new class or global state needed. The error buffer is only relevant to the health tool's lifetime, which matches the closure scope.
+
+**Consequences:**
+- (+) Consistent with existing tool builder patterns
+- (+) No global mutable state
+- (+) Simple implementation
+- (-) Error buffer is lost if the extension reloads (acceptable — only recent errors matter)
+
+---
+
+## DEC-024 — Reconnect-first Hub lifecycle (reload survival)
+
+**Date:** 2026-04-05  
+**Module:** `packages/bridge` (hub-manager, extension-composition), `packages/hub` (server-routing, bridge-connection)
+
+**Context:** When VS Code reloads, the Bridge spawns a new Hub even though the old one is still alive on the same port with the same credentials. This kills all active MCP sessions, wastes 2–3 seconds, and churns `opencode.json`. Additionally, `cleanupExtension()` never calls `hubManager.deactivate()`, leaving orphan processes.
+
+**Decision:** (1) New `softDisconnect()` method on HubManager sends `POST /bridge/disconnect` to Hub, starting a 10-second grace timer, then disconnects the WsClient without killing the process. (2) `activate()` probes the last-known port/PID via `/health` before spawning — if the Hub is alive, it reconnects without spawn. (3) `killHub()` gets a 2-second SIGKILL fallback after SIGTERM. Full ADR: `docs/10-architecture/adr-reload-reconnect.md`.
+
+**Rationale:** Tokens and secrets in SecretStorage survive VS Code reloads. The Hub is already alive on the same port. Probing `/health` (public, no auth) confirms liveness. The grace timer lets the Hub self-terminate on true close without the Bridge needing to explicitly kill it.
+
+**Consequences:**
+- (+) Hub survives reloads — no session disruption, no config churn
+- (+) Reload drops from ~3s to ~100ms
+- (+) Orphan processes eliminated (explicit disconnect + grace timer)
+- (-) Hub lives up to 10s longer on true close
+- (-) New endpoint and grace timer state increase Hub complexity
+
+---
+
+## DEC-025 — Spatial relations: separate MCP tool vs page map enrichment
+
+**Date:** 2026-04-05  
+**Module:** `packages/browser` (spatial-relations-tool), `packages/browser-extension` (spatial-helpers, page-map-collector)
+
+**Context:** The M110-TC checklist requires D2 (relative geometry helpers: leftOf, above, contains, overlap, distance), D4 (viewport intersection ratios), and D5 (container/semantic-group membership). We need to decide whether to expose geometry as (a) computed fields on every page map node, (b) query params on `get_page_map`, or (c) a separate tool.
+
+**Decision:** Hybrid approach — three components:
+
+1. **Page map enrichment** — When `includeBounds: true`, each `PageNode` gains `viewportRatio` (0–1 viewport intersection ratio, fixes D4) and `containerId` (nearest semantic container's nodeId, fixes D5). These are cheap to compute during traversal (O(n)).
+
+2. **Separate `browser_get_spatial_relations` MCP tool** — Takes `nodeIds: number[]` (max 50), returns pairwise relationships (leftOf, above, contains, overlap as IoU, distance in px). This satisfies D2 without bloating every page map response with O(n²) data.
+
+3. **Content script `spatial-helpers.ts`** — Pure geometry functions shared by both the page map enrichment and the spatial relations handler. No DOM access except `findNearestContainer()`.
+
+**Alternatives considered:**
+1. *All pairwise in page map* — O(n²) pairs in every response is prohibitive for 200+ nodes
+2. *Agent-side computation from bboxes* — Shifts burden to every agent; checklist explicitly tests for tool-provided geometry
+3. *Query params on get_page_map (e.g., relativeToNodeId)* — Awkward API, doesn't scale to N-way comparisons
+4. *Single tool that returns both enriched page map + pairwise* — Violates single-responsibility; agents may only need one or the other
+
+**Consequences:**
+- (+) Page map responses stay O(n) — only 2 new scalar fields per node
+- (+) Pairwise geometry is opt-in via a separate tool call — agents choose their cost
+- (+) Capped at 50 node IDs (1,225 pairs) — bounded response time
+- (+) Pure geometry functions are independently testable
+- (-) Agents need two tool calls for full geometry: `get_page_map` + `get_spatial_relations`
+- (-) Node IDs are per-call scoped — agents must use the same page map snapshot's IDs
+
+---
+
+## DEC-026 — Semantic container resolution: tag-based + role-based matching
+
+**Date:** 2026-04-05  
+**Module:** `packages/browser-extension/src/content/spatial-helpers.ts`
+
+**Context:** D5 (container/semantic-group membership) requires assigning each node to its nearest semantic container. We need to define what counts as a "semantic container."
+
+**Decision:** Use a dual-match strategy:
+- **Tag-based:** `article`, `section`, `aside`, `main`, `dialog`, `details`, `nav`, `header`, `footer`, `form`
+- **Role-based:** `dialog`, `region`, `navigation`, `main`, `complementary`, `banner`, `contentinfo`, `form`
+
+Walk `element.parentElement` up the tree, stop at `document.body`. First match wins.
+
+**Rationale:** HTML5 semantic tags cover most cases, but SPAs often use `role` attributes on generic `<div>` elements. Checking both ensures container detection works on both static HTML and modern SPA markup. The tag set aligns with `LANDMARK_TAGS` already used in `element-inspector.ts` (extended with `dialog`, `details`, `form`).
+
+---
+
+## DEC-027 — Browser snapshot identity: opaque content-script-owned `pageId`
+
+**Date:** 2026-04-05  
+**Module:** `packages/browser-extension` + `packages/browser` (page understanding / snapshot versioning)
+
+**Context:** The browser MCP stack currently hardcodes `pageId = "page"` in the content script snapshot envelope. That works only for single-tab assumptions. Once multiple tabs or multiple document sessions are active, snapshots from distinct pages share the same page namespace and can collide in the service-worker/browser retention stores. A prior review explicitly logged this as a follow-up design limitation.
+
+Three approaches were considered:
+
+1. **Service-worker page registry** — service worker assigns page IDs per tab/navigation and injects them into content-script requests.
+2. **URL-derived page IDs** — derive `pageId` from normalized URL.
+3. **Content-script-owned opaque page-session ID** — mint a random safe ID once per document session in the content script and keep snapshot sequencing local to that session.
+
+**Decision:** Use **content-script-owned opaque page-session IDs** (option 3).
+
+**Rationale:**
+- Preserves the current ownership model: the content script remains the single authoritative source for `pageId` and `snapshotId` sequencing.
+- Fixes cross-tab collisions without introducing a second state registry in the service worker.
+- Avoids leaking URL/title/tab information through `pageId`.
+- Keeps `tabId` and `pageId` responsibilities cleanly separated: `tabId` routes the request; `pageId` namespaces the returned artifacts.
+- Fits the existing `snapshotId = {pageId}:{version}` contract with minimal surface change.
+
+**Chosen contract:**
+- `pageId` is opaque and MUST NOT contain `:`.
+- Generated once per top-level document session at content-script bootstrap.
+- Stable for repeated calls while that document stays loaded.
+- Replaced on top-level navigation or full reload, at the same time snapshot version resets to `0`.
+- Distinct across concurrently open tabs, including tabs at the same URL.
+
+**Alternatives considered:**
+1. *Service-worker page registry* — more centralized, but adds a new cross-context sync problem and duplicates state already local to the content script. Rejected as unnecessary complexity.
+2. *URL-derived IDs* — readable, but not unique across same-URL tabs and leaks page metadata into what should be an opaque session handle. Rejected.
+3. *TabId-derived IDs* — unique across tabs but not across reloads/document sessions, and couples storage identity to routing. Rejected.
+
+**Consequences:**
+- (+) Eliminates page namespace collisions across tabs and reloads
+- (+) Requires no new browser permissions or service-worker registry
+- (+) Keeps diff/retention semantics page-local and transport-agnostic
+- (-) `pageId` is no longer human-meaningful for debugging
+- (-) Same-document SPA navigations keep the same `pageId` unless a reload/new document occurs; if stricter URL-level identity is needed later, that will require an explicit follow-up design

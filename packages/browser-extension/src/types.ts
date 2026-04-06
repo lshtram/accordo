@@ -170,6 +170,8 @@ export interface CaptureRegionArgs {
   padding?: number;
   /** JPEG quality 1–100 (default: 70, clamped to 30–85) */
   quality?: number;
+  /** GAP-I1: Redaction patterns to apply to screenshot (bbox-based). */
+  redactPatterns?: string[];
 }
 
 /** Result from the capture_region relay action.
@@ -195,4 +197,8 @@ export interface CaptureRegionResult {
     | "image-too-large"
     | "capture-failed"
     | "no-target";
+  /** GAP-I1: True when screenshot redaction was applied */
+  screenshotRedactionApplied?: boolean;
+  /** GAP-I1: Number of text regions that were redacted */
+  redactedSegmentCount?: number;
 }

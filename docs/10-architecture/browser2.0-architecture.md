@@ -200,7 +200,29 @@ interface SnapshotEnvelope {
 
 ### 4.2 Snapshot ID Format
 
-`snapshotId` is a string: `{pageId}:{monotonicVersion}` where `monotonicVersion` is an auto-incrementing integer per page, reset on navigation. Example: `page-3:17`.
+`snapshotId` is a string: `{pageId}:{monotonicVersion}` where `monotonicVersion` is an auto-incrementing integer per page session, reset on navigation. Example: `pg_7f4a1c2e:17`.
+
+### 4.2a Stable `pageId` Contract
+
+`pageId` is an **opaque page-session identifier**, not a URL key and not a tab-routing handle.
+
+- Minted once per top-level document session in the content script at bootstrap.
+- Stable across repeated read/inspection/capture calls while that document session remains loaded.
+- Changes on top-level navigation or full reload, at the same time the snapshot version counter resets.
+- Unique across concurrently open tabs, including tabs showing the same URL.
+- Safe for snapshot parsing: `pageId` MUST NOT contain `:` because `snapshotId` parsing relies on the final colon separator.
+
+Recommended implementation shape:
+
+```typescript
+const pageId = `pg_${crypto.randomUUID().replace(/-/g, "")}`;
+```
+
+This keeps the identifier:
+- opaque to callers,
+- collision-resistant across tabs,
+- independent from URL/title privacy concerns,
+- compatible with the existing `{pageId}:{version}` snapshot format.
 
 ### 4.3 Node Identity
 
@@ -242,7 +264,15 @@ interface VisibilityInfo {
 
 ### 5.1 Version Tracking
 
-The content script maintains a per-page monotonic counter. Every data-producing relay request increments the counter and includes the `snapshotId` in the response. The `SnapshotStore` retains the last N snapshots (default: 5) for diffing.
+The content script maintains a per-page-session monotonic counter. Every data-producing relay request increments the counter and includes the `snapshotId` in the response. The `SnapshotStore` retains the last N snapshots (default: 5) for diffing.
+
+**Ownership model:**
+
+- The content script is the single owner of both `pageId` and `snapshotId` version sequencing.
+- The service worker and `packages/browser` relay layer treat the returned envelope as authoritative and MUST NOT rewrite `pageId`.
+- `tabId` remains the routing selector for MCP calls; `pageId` is the storage/diff namespace for the returned artifacts.
+
+This split avoids cross-tab collisions without introducing a second page-identity registry in the service worker.
 
 ### 5.2 Diff Engine
 
@@ -298,8 +328,10 @@ interface DiffChange {
 
 - Snapshots are stored in-memory in the content script (Chrome extension context).
 - Default retention: 5 snapshots per page. Configurable via `SnapshotStore.prune()`.
-- On navigation (URL change or reload), the counter resets and old snapshots are discarded.
+- On navigation (URL change or reload), a new `pageId` is minted, the counter resets, and old snapshots for the prior page session are discarded.
 - For the standalone MCP adapter, snapshots are stored in the server process memory (not persisted to disk).
+
+**Non-goal:** `pageId` is not intended to be human-meaningful or reconstructable from URL/tab metadata. Agents should treat it as an opaque handle carried by the envelope.
 
 ---
 

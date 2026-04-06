@@ -86,6 +86,7 @@ chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown
           else if (action === "wait_for") { const { handleWaitForAction } = await import("./wait-provider.js"); data = await handleWaitForAction(payload); }
           else if (action === "get_text_map") { const { collectTextMap } = await import("./text-map-collector.js"); data = collectTextMap(payload as Parameters<typeof collectTextMap>[0]); }
           else if (action === "get_semantic_graph") { const { collectSemanticGraph } = await import("./semantic-graph-collector.js"); data = collectSemanticGraph(payload as Parameters<typeof collectSemanticGraph>[0]); }
+          else if (action === "get_spatial_relations") { const { handleGetSpatialRelationsAction } = await import("./spatial-relations-handler.js"); const result = handleGetSpatialRelationsAction(payload); if ("error" in result) { _sendResponse({ error: result["error"] }); return; } data = result["data"]; }
           else { _sendResponse({ error: "unsupported-action" }); return; }
           _sendResponse({ data });
         } catch { _sendResponse({ error: "action-failed" }); }
@@ -102,9 +103,13 @@ chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown
       void (async () => {
         try {
           const { resolveAnchorKey } = await import("./enhanced-anchor.js");
-          const ref = anchorKey ?? nodeRef;
-          if (!ref) { _sendResponse({ error: "no-ref" }); return; }
-          const element = resolveAnchorKey(ref);
+          const { getElementByRef } = await import("./page-map-traversal.js");
+          if (!anchorKey && !nodeRef) { _sendResponse({ error: "no-ref" }); return; }
+          const element = nodeRef
+            ? getElementByRef(nodeRef)
+            : anchorKey
+              ? resolveAnchorKey(anchorKey)
+              : null;
           if (!element) { _sendResponse({ error: "not-found" }); return; }
           const rect = element.getBoundingClientRect();
           // CR-F-12: Detect element-off-screen — bounding box is entirely outside viewport

@@ -23,7 +23,7 @@ export {
 
 export { checkOrigin, extractOrigin, mergeOriginPolicy } from "./security-policy.js";
 
-export { redactText, redactTextMapResponse, redactSemanticGraphResponse, compileRedactionPatterns } from "./redaction.js";
+export { redactText, redactTextMapResponse, redactSemanticGraphResponse, redactPageMapResponse, redactInspectElementResponse, redactDomExcerptResponse, compileRedactionPatterns } from "./redaction.js";
 
 export { BrowserAuditLog } from "./audit-log.js";
 export type { BrowserAuditLogOptions } from "./audit-log.js";

@@ -12,6 +12,7 @@ import { buildDiffSnapshotsTool } from "./diff-tool.js";
 import { buildHealthTool } from "./health-tool.js";
 import { buildManageSnapshotsTool } from "./manage-snapshots-tool.js";
 import { buildControlTools } from "./control-tool-types.js";
+import { buildSpatialRelationsTool } from "./spatial-relations-tool.js";
 import { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { BrowserBridgeAPI, BrowserRelayAction } from "./types.js";
 import { BrowserAuditLog } from "./security/audit-log.js";
@@ -270,16 +271,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // These tools forward requests through the relay to the Chrome extension content script.
   // B2-SV-004: A single shared store ensures all 4 data-producing paths use coherent
   // 5-slot per-page FIFO retention semantics.
-  const snapshotStore = new SnapshotRetentionStore();
-
-  // Security configuration: origin policy, redaction, and audit log.
+  // GAP-I1: maxAgeMs is read from securityConfig.snapshotRetention (default 0 = no TTL).
   const securityConfig: SecurityConfig = {
     originPolicy: { allowedOrigins: [], deniedOrigins: [], defaultAction: "allow" },
     redactionPolicy: { redactPatterns: DEFAULT_REDACTION_PATTERNS, replacement: "[REDACTED]" },
     auditLog: new BrowserAuditLog({
       filePath: path.join(os.homedir(), ".accordo", "browser-audit.jsonl"),
     }),
+    snapshotRetention: { maxAgeMs: 0 },
   };
+
+  const snapshotStore = new SnapshotRetentionStore(
+    securityConfig.snapshotRetention?.maxAgeMs ?? 0,
+  );
 
   const pageUnderstandingTools = buildPageUnderstandingTools(relay, snapshotStore, securityConfig);
 
@@ -305,7 +309,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // GAP-G1: browser_manage_snapshots tool for retention control
   const manageSnapshotsTool = buildManageSnapshotsTool(relay, snapshotStore);
 
-  const allBrowserTools = [...pageUnderstandingTools, waitTool, textMapTool, semanticGraphTool, diffTool, healthTool, manageSnapshotsTool, ...buildControlTools(relay)];
+  // GAP-D1: browser_get_spatial_relations tool for pairwise geometry
+  const spatialRelationsTool = buildSpatialRelationsTool(relay, snapshotStore, securityConfig);
+
+  const allBrowserTools = [...pageUnderstandingTools, waitTool, textMapTool, semanticGraphTool, diffTool, healthTool, manageSnapshotsTool, spatialRelationsTool, ...buildControlTools(relay)];
 
   const toolsDisposable = bridge.registerTools(EXTENSION_ID, allBrowserTools);
   context.subscriptions.push(toolsDisposable);

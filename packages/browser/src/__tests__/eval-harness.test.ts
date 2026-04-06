@@ -188,7 +188,7 @@ function makeEvidenceItem(
   itemId: string,
   category: EvalCategory,
   status: EvidenceStatus = "pass",
-  toolCalls: string[] = ["browser_get_page_map"],
+  toolCalls: string[] = ["accordo_browser_get_page_map"],
   summary: string = "Evidence summary",
 ): EvidenceItem {
   return Object.freeze({
@@ -544,7 +544,7 @@ describe("B2-EV-006: JSON evidence emitter", () => {
       surface: "accordo-mcp" as EvalSurface,
       scorecard: VALID_SCORECARD,
       evidenceTable: [
-        makeEvidenceItem("A1", "session-context", "pass", ["browser_get_page_map"], "Test"),
+        makeEvidenceItem("A1", "session-context", "pass", ["accordo_browser_get_page_map"], "Test"),
       ],
       gateResult: "none" as const,
     };
@@ -567,7 +567,7 @@ describe("B2-EV-006: JSON evidence emitter", () => {
       surface: "playwright-mcp" as EvalSurface,
       scorecard: VALID_SCORECARD,
       evidenceTable: [
-        makeEvidenceItem("B1", "text-extraction", "partial", ["browser_get_page_map"], "Partial"),
+        makeEvidenceItem("B1", "text-extraction", "partial", ["accordo_browser_get_page_map"], "Partial"),
       ],
       gateResult: "G1" as const,
     };
@@ -999,9 +999,9 @@ describe("B2-EV-009: Gate checking", () => {
 describe("B2-EV-010: Deterministic scoring", () => {
   it("same evidence items produce the same score on repeated calls", () => {
     const evidence = [
-      makeEvidenceItem("A1", "session-context", "pass", ["browser_get_page_map"]),
-      makeEvidenceItem("A2", "session-context", "partial", ["browser_get_page_map", "browser_inspect_element"]),
-      makeEvidenceItem("A3", "session-context", "fail", ["browser_get_dom_excerpt"]),
+      makeEvidenceItem("A1", "session-context", "pass", ["accordo_browser_get_page_map"]),
+      makeEvidenceItem("A2", "session-context", "partial", ["accordo_browser_get_page_map", "accordo_browser_inspect_element"]),
+      makeEvidenceItem("A3", "session-context", "fail", ["accordo_browser_get_dom_excerpt"]),
     ];
 
     const result1 = scoreSessionContext(evidence);

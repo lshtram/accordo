@@ -37,6 +37,7 @@ export type RelayAction =
   | "get_semantic_graph"
   | "list_pages"
   | "select_page"
+  | "get_spatial_relations"
   | "navigate"
   | "click"
   | "type"
@@ -88,6 +89,8 @@ export interface CapturePayload {
   mode?: "viewport" | "fullPage";
   /** GAP-E1: Output image format — "jpeg" (default) or "png" */
   format?: "jpeg" | "png";
+  /** GAP-I1: Redaction regex patterns to apply to screenshot (bbox-based). */
+  redactPatterns?: string[];
 }
 
 // ── Module-level Singleton ───────────────────────────────────────────────────
@@ -96,10 +99,12 @@ export interface CapturePayload {
  * B2-SV-004: Module-level SnapshotStore singleton for runtime snapshot retention.
  * Persists capture_region results (5-slot FIFO per page).
  * B2-SV-005: Cleared on navigation via handleNavigationReset().
+ * GAP-I1: Default TTL of 1 hour — setMaxAgeMs() can be called to adjust.
  *
  * Exported for direct use in tests (diff_snapshots boundary tests).
  */
 export const defaultStore: SnapshotStore = new SnapshotStore();
+defaultStore.setMaxAgeMs(3600000); // 1 hour default TTL
 
 // ── Shared Response Helpers ──────────────────────────────────────────────────
 

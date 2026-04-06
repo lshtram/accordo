@@ -423,6 +423,45 @@ describe("McpHandler", () => {
       expect(result?.content[0]?.text).toContain("No active editor");
     });
 
+    it("§6: tools/call — structured tool error payload in success data is preserved as JSON result", async () => {
+      const { handler: h, bridgeServer } = createHandler([SAMPLE_TOOL]);
+      const s = h.createSession();
+      vi.spyOn(bridgeServer, "isConnected").mockReturnValue(true);
+      vi.spyOn(bridgeServer, "invoke").mockResolvedValue({
+        type: "result",
+        id: "r1",
+        success: true,
+        data: {
+          success: false,
+          error: "snapshot-not-found",
+          retryable: false,
+          details: {
+            reason: "Snapshot 'page:1' was evicted from the 10-slot FIFO retention store.",
+            eviction: {
+              requestedSnapshotId: "page:1",
+              retentionWindow: 10,
+              wasEvicted: true,
+              suggestedAction: "Capture a fresh snapshot and retry the diff.",
+            },
+          },
+        },
+      });
+      const req = makeRequest("tools/call", {
+        name: "accordo_editor_open",
+        arguments: { path: "/foo.ts" },
+      });
+
+      const response = await h.handleRequest(req, s);
+
+      expect(response?.error).toBeUndefined();
+      const result = response?.result as { content: Array<{ text: string }>; isError?: boolean };
+      expect(result?.isError).toBeUndefined();
+      const parsed = JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+      expect(parsed["success"]).toBe(false);
+      expect(parsed["error"]).toBe("snapshot-not-found");
+      expect((parsed["details"] as Record<string, unknown>)["reason"]).toContain("evicted");
+    });
+
     it("§6: tools/call — bridge invoke times out → error -32001", async () => {
       // req-hub §6: "Tool invocation timed out → { code: -32001 }"
       // RED on stub: bridgeServer.invoke throws "not implemented" (wrong error code)
@@ -1055,4 +1094,3 @@ describe("McpHandler — DEC-005: Hub-native tool short-circuit", () => {
     );
   });
 });
-

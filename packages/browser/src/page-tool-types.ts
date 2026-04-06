@@ -72,6 +72,8 @@ export interface GetPageMapArgs {
   allowedOrigins?: string[];
   /** I2-001: Denied origins for this request. Overrides global policy. */
   deniedOrigins?: string[];
+  /** I1-text: When true, scan text for PII and replace with [REDACTED]. MCP-SEC-002. */
+  redactPII?: boolean;
 }
 
 /**
@@ -93,6 +95,8 @@ export interface InspectElementArgs {
   allowedOrigins?: string[];
   /** I2-001: Denied origins for this request. Overrides global policy. */
   deniedOrigins?: string[];
+  /** I1-text: When true, scan text for PII and replace with [REDACTED]. MCP-SEC-002. */
+  redactPII?: boolean;
 }
 
 /** Input for browser_get_dom_excerpt */
@@ -109,6 +113,8 @@ export interface GetDomExcerptArgs {
   allowedOrigins?: string[];
   /** I2-001: Denied origins for this request. Overrides global policy. */
   deniedOrigins?: string[];
+  /** I1-text: When true, scan text for PII and replace with [REDACTED]. MCP-SEC-002. */
+  redactPII?: boolean;
 }
 
 /** Input for browser_capture_region (M91-CR) */
@@ -125,8 +131,9 @@ export interface CaptureRegionArgs {
   padding?: number;
   /** JPEG quality 1–100 (default: 70, clamped to 30–85) */
   quality?: number;
-  /** P4-CR: Capture mode — "viewport" (default) captures visible area, "fullPage" captures entire scrollable page.
-   * When mode is "fullPage", rect, anchorKey, and nodeRef are ignored. */
+  /** P4-CR: Capture mode — "viewport" captures visible area, "fullPage" captures entire scrollable page.
+   * When omitted, capture behaves as region mode and requires rect, anchorKey, or nodeRef.
+   * When mode is "viewport" or "fullPage", rect, anchorKey, and nodeRef are ignored. */
   mode?: "viewport" | "fullPage";
   /** GAP-E1: Output format for the captured image — "jpeg" (default) or "png". */
   format?: "jpeg" | "png";
@@ -285,6 +292,10 @@ export interface CaptureRegionResponse extends SnapshotEnvelopeFields {
   redactionWarning?: string;
   /** GAP-E2: Links this visual capture to the most recent DOM snapshot for this page. */
   relatedSnapshotId?: string;
+  /** GAP-I1: True when PII redaction was applied to the screenshot (bbox-based). */
+  screenshotRedactionApplied?: boolean;
+  /** GAP-I1: Number of text regions that were covered by redaction rectangles. */
+  redactedSegmentCount?: number;
 }
 
 /** Response from browser_list_pages (B2-CTX-001) */
@@ -297,6 +308,53 @@ export interface SelectPageResponse {
   success: boolean;
   error?: string;
 }
+
+// ── Spatial Relations Types (GAP-D1) ─────────────────────────────────────────
+
+/**
+ * Input for `browser_get_spatial_relations`.
+ *
+ * GAP-D1: Takes node IDs from a prior `get_page_map` call (with `includeBounds: true`)
+ * and returns pairwise spatial relationships. Maximum 50 node IDs per request.
+ */
+export interface GetSpatialRelationsArgs {
+  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
+  tabId?: number;
+  /**
+   * Node IDs from a prior `get_page_map` call (with `includeBounds: true`).
+   * Maximum 50 IDs — pairwise computation is O(n²).
+   */
+  nodeIds: number[];
+  /** I2-001: Allowed origins for this request. Overrides global policy. */
+  allowedOrigins?: string[];
+  /** I2-001: Denied origins for this request. Overrides global policy. */
+  deniedOrigins?: string[];
+}
+
+/**
+ * Successful response from `browser_get_spatial_relations`.
+ * GAP-D1: Pairwise geometry for requested nodes.
+ */
+export interface SpatialRelationsResponse extends SnapshotEnvelopeFields {
+  pageUrl: string;
+  relations: readonly {
+    sourceNodeId: number;
+    targetNodeId: number;
+    leftOf: boolean;
+    above: boolean;
+    contains: boolean;
+    containedBy: boolean;
+    overlap: number;
+    distance: number;
+  }[];
+  nodeCount: number;
+  pairCount: number;
+  missingNodeIds?: number[];
+  auditId?: string;
+}
+
+/** Relay timeout for spatial relations computation. */
+export const SPATIAL_RELATIONS_TIMEOUT_MS = 10_000;
 
 // ── Capture Result Types ─────────────────────────────────────────────────────
 
@@ -325,8 +383,13 @@ export type SecurityError =
   | "origin-blocked"
   | "redaction-failed";
 
+/** Spatial-relations-specific errors (permanent — not retryable). GAP-D1. */
+export type SpatialError =
+  | "too-many-nodes"
+  | "no-bounds";
+
 /** All possible browser tool error codes. MCP-ER-001. */
-export type BrowserToolErrorCode = CaptureError | RelayError | SecurityError;
+export type BrowserToolErrorCode = CaptureError | RelayError | SecurityError | SpatialError;
 
 // ── Tool Timeouts ────────────────────────────────────────────────────────────
 

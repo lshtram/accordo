@@ -299,6 +299,18 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | BR-F-142 | Periodic sync rehydration: `checkAndSync()` loads comments-mode map from `chrome.storage.local` before iterating tabs, ensuring SW restart recovery detects tabs with Comments Mode ON | After SW restart, periodic sync refreshes tabs that have Comments Mode enabled in storage |
 | BR-F-143 | Fallback pin stacking stability: `_fallbackStackIndex` is only reset at the start of `loadThreads`, not mid-render when anchored pins resolve, preventing overlapping fallback pins in mixed anchor sets | Mixed anchored + unanchored threads render with non-overlapping fallback pin positions |
 
+### 3.17 Stable Page Identity (M114-PID)
+
+| ID | Requirement | Acceptance Criteria |
+|---|---|---|
+| BR-F-150 | Every top-level document session exposes an opaque `pageId` in the `SnapshotEnvelope`; the value MUST be safe for `snapshotId` formatting (`{pageId}:{version}`), so it MUST NOT contain `:` | `pageId` is a non-empty string with no `:`; `snapshotId` continues to parse via the last-colon split contract |
+| BR-F-151 | `pageId` is stable for repeated data-producing calls within the same document session | Sequential calls to `get_page_map`, `get_text_map`, `get_semantic_graph`, `get_dom_excerpt`, `inspect_element`, and `capture_region` on the same loaded page return the same `pageId` while `snapshotId` version increments |
+| BR-F-152 | Different open tabs MUST NOT collide on `pageId`, even when they show the same URL | Two tabs opened to the same URL produce different `pageId` values; snapshots do not overwrite or interleave in extension/browser retention stores |
+| BR-F-153 | A top-level navigation or full reload creates a new `pageId` and resets the snapshot version counter to `0` for the new page session | Call on page A returns `snapshotId` `x:0`; after reload/navigation the first data-producing call returns `snapshotId` `y:0` where `x !== y` |
+| BR-F-154 | `pageId` is an internal page-session identity, not a routing handle; MCP tool routing continues to use `tabId`, while retention/diff logic keys by `pageId` from the response envelope | No public MCP tool replaces `tabId` with `pageId`; `SnapshotStore` and `SnapshotRetentionStore` store entries under the envelope's `pageId` |
+| BR-F-155 | Implicit diff resolution (`browser_diff_snapshots`) MUST remain page-local: auto-resolved `from`/`to` snapshots are selected only within the matching `pageId` namespace | With snapshots from two tabs in memory, implicit diff on tab A never resolves a snapshot from tab B |
+| BR-F-156 | `pageId` is opaque: callers MUST NOT infer URL, title, or tab identity from its format | Documentation and tests treat `pageId` as opaque; changing its internal generation strategy remains backward-compatible |
+
 ### 3.18 Region Capture (`browser_capture_region`) (M92-CR / M91-CR)
 
 > **Status:** Phase A — interfaces and stubs only. Implementation in Phase C.  

@@ -108,11 +108,18 @@ async function resolvePaddedBounds(
   payload: CapturePayload,
   padding: number,
   targetTabId?: number,
-): Promise<{ x: number; y: number; width: number; height: number }> {
+): Promise<{ x: number; y: number; width: number; height: number } | null> {
   let bounds: { x: number; y: number; width: number; height: number } | null = null;
 
-  if (payload.rect) {
-    bounds = { ...payload.rect };
+  const hasUsableRect = payload.rect !== undefined && payload.rect.width > 0 && payload.rect.height > 0;
+
+  if (hasUsableRect) {
+    bounds = {
+      x: payload.rect!.x,
+      y: payload.rect!.y,
+      width: payload.rect!.width,
+      height: payload.rect!.height,
+    };
   } else if (payload.anchorKey !== undefined || payload.nodeRef !== undefined) {
     // B2-CTX-003: Use targetTabId if provided, otherwise query for active tab
     const tabId = targetTabId ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
@@ -131,9 +138,7 @@ async function resolvePaddedBounds(
     }
   }
 
-  if (!bounds) {
-    bounds = { x: 0, y: 0, width: 1920, height: 1080 };
-  }
+  if (!bounds) return null;
 
   return {
     x: Math.max(0, bounds.x - padding),
@@ -162,6 +167,7 @@ async function buildCaptureSuccess(
   sizeBytes: number,
   anchorSource: string,
   targetTabId?: number,
+  originalBounds?: { x: number; y: number; width: number; height: number },
 ): Promise<Record<string, unknown>> {
   const envelope = await requestContentScriptEnvelope("visual", targetTabId);
   return {
@@ -171,6 +177,7 @@ async function buildCaptureSuccess(
     height,
     sizeBytes,
     anchorSource,
+    ...(originalBounds ? { originalBounds } : {}),
     ...envelope,
   };
 }
@@ -199,6 +206,7 @@ async function retryCaptureAtReducedQuality(
       retrySize,
       anchorSource,
       targetTabId,
+      paddedBounds,
     );
   } catch {
     return { success: false, error: "image-too-large", ...envelope };
@@ -239,44 +247,20 @@ async function executeCaptureRegion(
     }
   }
 
-  // GAP-E2: Check if a target is provided — if not in viewport mode, skip cropping
+  // GAP-E2: Default omitted mode remains region-only.
   const hasTarget = payload.anchorKey !== undefined || payload.nodeRef !== undefined || payload.rect !== undefined;
 
   if (!hasTarget) {
-    // GAP-E2: No target provided in viewport mode — return raw full-viewport capture without cropping
-    let fullDataUrl: string;
-    try {
-      fullDataUrl = await captureVisibleTab(quality, format);
-    } catch {
-      if (swapped && originalTabId !== undefined) {
-        await chrome.tabs.update(originalTabId, { active: true });
-      }
-      const envelope = await requestContentScriptEnvelope("visual", targetTabId);
-      return { success: false, error: "capture-failed", ...envelope };
-    }
-
-    const envelope = await requestContentScriptEnvelope("visual", targetTabId);
-    const sizeBytes = estimateSizeBytes(fullDataUrl);
-
     if (swapped && originalTabId !== undefined) {
       await chrome.tabs.update(originalTabId, { active: true });
     }
-
-    return {
-      success: true,
-      dataUrl: fullDataUrl,
-      width: 1920, // raw viewport width
-      height: 1080, // raw viewport height
-      sizeBytes,
-      anchorSource: "viewport",
-      mode: "viewport",
-      ...envelope,
-    };
+    const envelope = await requestContentScriptEnvelope("visual", targetTabId);
+    return { success: false, error: "no-target", ...envelope };
   }
 
   const paddedBounds = await resolvePaddedBounds(payload, padding, targetTabId);
 
-  if (paddedBounds.width < MIN_CAPTURE_DIMENSION || paddedBounds.height < MIN_CAPTURE_DIMENSION) {
+  if (!paddedBounds || paddedBounds.width < MIN_CAPTURE_DIMENSION || paddedBounds.height < MIN_CAPTURE_DIMENSION) {
     // Restore tab before returning if we swapped
     if (swapped && originalTabId !== undefined) {
       await chrome.tabs.update(originalTabId, { active: true });
@@ -286,13 +270,21 @@ async function executeCaptureRegion(
   }
 
   let fullDataUrl: string;
-  try {
-    fullDataUrl = await captureVisibleTab(quality, format);
-  } catch {
-    // Restore tab before returning if we swapped
-    if (swapped && originalTabId !== undefined) {
-      await chrome.tabs.update(originalTabId, { active: true });
-    }
+    try {
+      fullDataUrl = await captureVisibleTab(quality, format);
+    } catch {
+      console.error("[Accordo SW] executeCaptureRegion captureVisibleTab failed", {
+        targetTabId,
+        format,
+        quality,
+        hasRect: payload.rect !== undefined,
+        anchorKey: payload.anchorKey,
+        nodeRef: payload.nodeRef,
+      });
+      // Restore tab before returning if we swapped
+      if (swapped && originalTabId !== undefined) {
+        await chrome.tabs.update(originalTabId, { active: true });
+      }
     const envelope = await requestContentScriptEnvelope("visual", targetTabId);
     return { success: false, error: "capture-failed", ...envelope };
   }
@@ -306,6 +298,12 @@ async function executeCaptureRegion(
     width = cropped.width;
     height = cropped.height;
   } catch {
+    console.error("[Accordo SW] executeCaptureRegion cropImageToBounds failed", {
+      targetTabId,
+      format,
+      quality,
+      paddedBounds,
+    });
     dataUrl = fullDataUrl;
     width = Math.min(MAX_CAPTURE_DIMENSION, paddedBounds.width);
     height = Math.min(MAX_CAPTURE_DIMENSION, paddedBounds.height);
@@ -322,7 +320,7 @@ async function executeCaptureRegion(
     return retryCaptureAtReducedQuality(fullDataUrl, paddedBounds, quality, anchorSource, targetTabId, format);
   }
 
-  return buildCaptureSuccess(dataUrl, width, height, sizeBytes, anchorSource, targetTabId);
+  return buildCaptureSuccess(dataUrl, width, height, sizeBytes, anchorSource, targetTabId, paddedBounds);
 }
 
 // ── Full-Page Capture (P4-CR) ───────────────────────────────────────────────
@@ -339,28 +337,29 @@ async function executeCaptureRegion(
 async function executeCaptureFullPage(
   payload: CapturePayload,
 ): Promise<Record<string, unknown>> {
-  const targetTabId = payload.tabId;
-  let originalTabId: number | undefined;
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const originalTabId = activeTab?.id;
+  const targetTabId = payload.tabId ?? originalTabId;
   let swapped = false;
-  if (targetTabId !== undefined) {
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    originalTabId = activeTab?.id;
-    if (originalTabId !== targetTabId) {
-      await chrome.tabs.update(targetTabId, { active: true });
-      swapped = true;
-    }
+  if (targetTabId !== undefined && originalTabId !== targetTabId) {
+    await chrome.tabs.update(targetTabId, { active: true });
+    swapped = true;
   }
 
-  const envelope = await requestContentScriptEnvelope("visual", targetTabId);
-
-  if (targetTabId === undefined) {
+  const restoreOriginalTab = async (): Promise<void> => {
     if (swapped && originalTabId !== undefined) {
       await chrome.tabs.update(originalTabId, { active: true });
     }
-    return { success: false, error: "browser-not-connected", ...envelope };
+  };
+
+  if (targetTabId === undefined) {
+    await restoreOriginalTab();
+    return { success: false, error: "browser-not-connected" };
   }
 
   try {
+    const envelope = await requestContentScriptEnvelope("visual", targetTabId);
+
     // Ensure debugger is attached to the target tab
     await ensureAttached(targetTabId);
 
@@ -377,9 +376,7 @@ async function executeCaptureFullPage(
     const dataUrl = `data:${mimeType};base64,${cdpResult.data}`;
     const sizeBytes = Math.round((cdpResult.data.length * 3) / 4);
 
-    if (swapped && originalTabId !== undefined) {
-      await chrome.tabs.update(originalTabId, { active: true });
-    }
+    await restoreOriginalTab();
 
     return {
       success: true,
@@ -389,21 +386,120 @@ async function executeCaptureFullPage(
       sizeBytes,
       anchorSource: "fullPage",
       mode: "fullPage",
+      // originalBounds for full-page: use viewport CSS dimensions (from envelope).
+      // Bboxes from text map are in CSS/viewport pixel coordinates.
+      // Scale factor = cdpResult.width / envelope.viewport.width (= DPR * pageWidth/viewportWidth).
+      originalBounds: {
+        x: 0,
+        y: 0,
+        width: envelope.viewport.width > 0 ? envelope.viewport.width : cdpResult.width,
+        height: envelope.viewport.height > 0 ? envelope.viewport.height : cdpResult.height,
+      },
       ...envelope,
     };
   } catch (err) {
-    if (swapped && originalTabId !== undefined) {
-      await chrome.tabs.update(originalTabId, { active: true });
+    await restoreOriginalTab();
+    let envelope: Awaited<ReturnType<typeof requestContentScriptEnvelope>> | undefined;
+    try {
+      envelope = await requestContentScriptEnvelope("visual", targetTabId);
+    } catch {
+      envelope = undefined;
     }
     const errorMsg = err instanceof Error ? err.message : "capture-failed";
     // Classify common CDP errors
     if (errorMsg.includes("not attached") || errorMsg.includes("disconnected")) {
-      return { success: false, error: "browser-not-connected", ...envelope };
+      return { success: false, error: "browser-not-connected", ...(envelope ?? {}) };
     }
     if (errorMsg.includes("unsupported-page")) {
-      return { success: false, error: "unsupported-page", ...envelope };
+      return { success: false, error: "unsupported-page", ...(envelope ?? {}) };
     }
-    return { success: false, error: "capture-failed", ...envelope };
+    return { success: false, error: "capture-failed", ...(envelope ?? {}) };
+  }
+}
+
+async function executeCaptureViewport(
+  payload: CapturePayload,
+): Promise<Record<string, unknown>> {
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const originalTabId = activeTab?.id;
+  const targetTabId = payload.tabId ?? originalTabId;
+  let swapped = false;
+  if (targetTabId !== undefined && originalTabId !== targetTabId) {
+    await chrome.tabs.update(targetTabId, { active: true });
+    swapped = true;
+  }
+
+  const restoreOriginalTab = async (): Promise<void> => {
+    if (swapped && originalTabId !== undefined) {
+      await chrome.tabs.update(originalTabId, { active: true });
+    }
+  };
+
+  if (targetTabId === undefined) {
+    await restoreOriginalTab();
+    return { success: false, error: "browser-not-connected" };
+  }
+
+  try {
+    const envelope = await requestContentScriptEnvelope("visual", targetTabId);
+
+    await ensureAttached(targetTabId);
+
+    const format: "jpeg" | "png" = payload.format ?? "jpeg";
+    const quality = Math.min(MAX_QUALITY, Math.max(MIN_QUALITY, payload.quality ?? DEFAULT_QUALITY));
+    const screenshotParams: Record<string, unknown> = { captureBeyondViewport: false, format };
+    if (format === "jpeg") {
+      screenshotParams.quality = quality;
+    }
+    const cdpResult = await sendCommand<{ data: string; width: number; height: number }>(
+      targetTabId,
+      "Page.captureScreenshot",
+      screenshotParams,
+    );
+
+    const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
+    const dataUrl = `data:${mimeType};base64,${cdpResult.data}`;
+    const sizeBytes = Math.round((cdpResult.data.length * 3) / 4);
+
+    await restoreOriginalTab();
+
+    const cssViewportWidth = envelope.viewport.width > 0 ? envelope.viewport.width : cdpResult.width;
+    const cssViewportHeight = envelope.viewport.height > 0 ? envelope.viewport.height : cdpResult.height;
+
+    return {
+      success: true,
+      dataUrl,
+      width: cdpResult.width,
+      height: cdpResult.height,
+      sizeBytes,
+      anchorSource: "viewport",
+      mode: "viewport",
+      originalBounds: {
+        x: 0,
+        y: 0,
+        width: cssViewportWidth,
+        height: cssViewportHeight,
+      },
+      ...envelope,
+    };
+  } catch (err) {
+    await restoreOriginalTab();
+
+    let envelope: Awaited<ReturnType<typeof requestContentScriptEnvelope>> | undefined;
+    try {
+      envelope = await requestContentScriptEnvelope("visual", targetTabId);
+    } catch {
+      envelope = undefined;
+    }
+
+    const errorMsg = err instanceof Error ? err.message : "capture-failed";
+    if (errorMsg.includes("not attached") || errorMsg.includes("disconnected")) {
+      return { success: false, error: "browser-not-connected", ...(envelope ?? {}) };
+    }
+    if (errorMsg.includes("unsupported-page")) {
+      return { success: false, error: "unsupported-page", ...(envelope ?? {}) };
+    }
+    return { success: false, error: "capture-failed", ...(envelope ?? {}) };
   }
 }
 
@@ -424,6 +520,26 @@ async function persistCaptureResult(captureResult: Record<string, unknown>): Pro
   }
 }
 
+/**
+ * GAP-I1: Collect text map from the content script for the given tab.
+ * Returns null if the text map cannot be collected.
+ */
+async function collectTextMapForTab(tabId: number): Promise<unknown> {
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: "PAGE_UNDERSTANDING_ACTION",
+      action: "get_text_map",
+      payload: {},
+    });
+    // Response format: { data: TextMapResult }
+    const typedResponse = response as { data?: unknown; error?: string };
+    if (typedResponse.error) return null;
+    return typedResponse.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function handleCaptureRegion(
   request: RelayActionRequest,
 ): Promise<RelayActionResponse> {
@@ -433,8 +549,57 @@ export async function handleCaptureRegion(
   let captureResult: Record<string, unknown>;
   if (capturePayload.mode === "fullPage") {
     captureResult = await executeCaptureFullPage(capturePayload);
+  } else if (capturePayload.mode === "viewport") {
+    captureResult = await executeCaptureViewport(capturePayload);
   } else {
     captureResult = await executeCaptureRegion(capturePayload);
+  }
+
+  // GAP-I1: Apply screenshot redaction if redactPatterns are provided
+  if (
+    capturePayload.redactPatterns !== undefined &&
+    capturePayload.redactPatterns.length > 0 &&
+    captureResult.success === true &&
+    captureResult.dataUrl !== undefined
+  ) {
+    const targetTabId = capturePayload.tabId ??
+      (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+
+    if (targetTabId !== undefined) {
+      const textMapResult = await collectTextMapForTab(targetTabId);
+      const originalBounds = captureResult.originalBounds as
+        | { x: number; y: number; width: number; height: number }
+        | undefined;
+
+      if (textMapResult && originalBounds) {
+        // Dynamic import to avoid circular dependency
+        const { applyScreenshotRedaction } = await import("./screenshot-redaction.js");
+        const textMap = textMapResult as { segments?: Array<{ textRaw: string; textNormalized: string; bbox: { x: number; y: number; width: number; height: number } }> };
+
+        if (textMap?.segments) {
+          const redactionResult = await applyScreenshotRedaction(
+            {
+              dataUrl: captureResult.dataUrl as string,
+              width: captureResult.width as number,
+              height: captureResult.height as number,
+              originalBounds,
+            },
+            capturePayload.redactPatterns,
+            { segments: textMap.segments, pageUrl: "" },
+          );
+
+          captureResult = {
+            ...captureResult,
+            dataUrl: redactionResult.redactedDataUrl,
+            width: redactionResult.width,
+            height: redactionResult.height,
+            sizeBytes: Math.round((redactionResult.redactedDataUrl.length * 3) / 4),
+            screenshotRedactionApplied: redactionResult.screenshotRedactionApplied,
+            redactedSegmentCount: redactionResult.redactedSegmentCount,
+          };
+        }
+      }
+    }
   }
 
   // B2-SV-004: persist successful captures in the store for retention.

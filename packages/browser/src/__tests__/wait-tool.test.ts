@@ -103,7 +103,7 @@ describe("buildWaitForTool", () => {
   it("B2-WA-001..007: returns browser_wait_for tool definition", () => {
     const relay = makeRelayResolve({ met: true, elapsedMs: 0 });
     const tool = buildWaitForTool(relay);
-    expect(tool.name).toBe("browser_wait_for");
+    expect(tool.name).toBe("accordo_browser_wait_for");
   });
 
   it("B2-WA-001: tool description mentions text wait capability", () => {

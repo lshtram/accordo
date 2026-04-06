@@ -11,7 +11,7 @@ import type { BrowserRelayLike, SnapshotEnvelopeFields } from "./types.js";
 import { hasSnapshotEnvelope } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
-import { checkOrigin, extractOrigin, mergeOriginPolicy, DEFAULT_SECURITY_CONFIG } from "./security/index.js";
+import { checkOrigin, extractOrigin, mergeOriginPolicy, redactPageMapResponse, redactInspectElementResponse, redactDomExcerptResponse, redactTextMapResponse, redactSemanticGraphResponse, DEFAULT_SECURITY_CONFIG } from "./security/index.js";
 import { buildStructuredError } from "./page-tool-types.js";
 
 import type {
@@ -110,6 +110,31 @@ export async function handleGetPageMap(
       const result = response.data as PageMapResponse;
       // F4: Add auditId to response
       (result as any).auditId = auditEntry.auditId;
+
+      // F2: Apply redaction if requested (fail-closed)
+      if (args.redactPII) {
+        try {
+          const redactionOccurred = redactPageMapResponse(result as any, security.redactionPolicy);
+          (result as any).redactionApplied = redactionOccurred;
+        } catch {
+          security.auditLog.completeEntry(auditEntry, {
+            action: "blocked",
+            redacted: false,
+            durationMs: Date.now() - startTime,
+          });
+          return buildStructuredError("redaction-failed") as PageToolError;
+        }
+      } else {
+        // F5: Redaction warning when redactPII is not set
+        (result as any).redactionWarning = "PII may be present in response";
+      }
+
+      security.auditLog.completeEntry(auditEntry, {
+        action: "allowed",
+        redacted: !!(result as any).redactionApplied,
+        durationMs: Date.now() - startTime,
+      });
+
       // Return a shallow copy so subsequent calls don't overwrite auditId on the same object
       return { ...result };
     }
@@ -191,6 +216,31 @@ export async function handleInspectElement(
       const result = response.data as InspectElementResponse;
       // F4: Add auditId to response
       (result as any).auditId = auditEntry.auditId;
+
+      // F2: Apply redaction if requested (fail-closed)
+      if (args.redactPII) {
+        try {
+          const redactionOccurred = redactInspectElementResponse(result as any, security.redactionPolicy);
+          (result as any).redactionApplied = redactionOccurred;
+        } catch {
+          security.auditLog.completeEntry(auditEntry, {
+            action: "blocked",
+            redacted: false,
+            durationMs: Date.now() - startTime,
+          });
+          return buildStructuredError("redaction-failed") as PageToolError;
+        }
+      } else {
+        // F5: Redaction warning when redactPII is not set
+        (result as any).redactionWarning = "PII may be present in response";
+      }
+
+      security.auditLog.completeEntry(auditEntry, {
+        action: "allowed",
+        redacted: !!(result as any).redactionApplied,
+        durationMs: Date.now() - startTime,
+      });
+
       // Return a shallow copy so subsequent calls don't overwrite auditId on the same object
       return { ...result };
     }
@@ -270,6 +320,31 @@ export async function handleGetDomExcerpt(
       const result = response.data as DomExcerptResponse;
       // F4: Add auditId to response
       (result as any).auditId = auditEntry.auditId;
+
+      // F2: Apply redaction if requested (fail-closed)
+      if (args.redactPII) {
+        try {
+          const redactionOccurred = redactDomExcerptResponse(result as any, security.redactionPolicy);
+          (result as any).redactionApplied = redactionOccurred;
+        } catch {
+          security.auditLog.completeEntry(auditEntry, {
+            action: "blocked",
+            redacted: false,
+            durationMs: Date.now() - startTime,
+          });
+          return buildStructuredError("redaction-failed") as PageToolError;
+        }
+      } else {
+        // F5: Redaction warning when redactPII is not set
+        (result as any).redactionWarning = "PII may be present in response";
+      }
+
+      security.auditLog.completeEntry(auditEntry, {
+        action: "allowed",
+        redacted: !!(result as any).redactionApplied,
+        durationMs: Date.now() - startTime,
+      });
+
       // Return a shallow copy so subsequent calls don't overwrite auditId on the same object
       return { ...result };
     }
@@ -320,9 +395,18 @@ export async function handleCaptureRegion(
   const startTime = Date.now();
 
   try {
+    // GAP-I1: When redactPatterns are configured, embed them in the payload so the
+    // extension can apply bbox-based redaction to the screenshot. The warning is
+    // always shown when patterns exist (MCP-VC-005), regardless of args.redact.
+    const payload: Record<string, unknown> = { ...args };
+    const hasRedactPatterns = security.redactionPolicy.redactPatterns.length > 0;
+    if (hasRedactPatterns) {
+      payload.redactPatterns = security.redactionPolicy.redactPatterns.map((p: { pattern: string }) => p.pattern);
+    }
+
     const response = await relay.request(
       "capture_region",
-      args as Record<string, unknown>,
+      payload,
       CAPTURE_REGION_TIMEOUT_MS,
     );
     if (response.success && response.data && typeof response.data === "object" && hasSnapshotEnvelope(response.data)) {
@@ -353,13 +437,21 @@ export async function handleCaptureRegion(
         const result = data as CaptureRegionResponse;
         // F4: Add auditId to response
         (result as any).auditId = auditEntry.auditId;
-        // F5: Redaction warning for screenshots (only when policy is configured)
-        if (security.redactionPolicy.redactPatterns.length > 0) {
-          (result as any).redactionWarning = "screenshots are not subject to redaction policy.";
+        // GAP-I1: screenshotRedactionApplied and redactedSegmentCount are returned from the extension
+        const relayData = data as Record<string, unknown>;
+        if (relayData.screenshotRedactionApplied !== undefined) {
+          (result as CaptureRegionResponse).screenshotRedactionApplied = relayData.screenshotRedactionApplied as boolean;
+        }
+        if (relayData.redactedSegmentCount !== undefined) {
+          (result as CaptureRegionResponse).redactedSegmentCount = relayData.redactedSegmentCount as number;
         }
         // GAP-E2: Attach relatedSnapshotId linking this capture to the previous DOM snapshot
         if (relatedSnapshotId !== undefined) {
           (result as CaptureRegionResponse).relatedSnapshotId = relatedSnapshotId;
+        }
+        // MCP-VC-005: Always warn when redactPatterns are configured (screenshots are not fully subject to PII redaction)
+        if (hasRedactPatterns) {
+          (result as CaptureRegionResponse).redactionWarning = "screenshots-not-subject-to-redaction-policy";
         }
         // Return a shallow copy so subsequent calls don't overwrite auditId on the same object
         return { ...result };
@@ -466,14 +558,28 @@ export async function handleGetTextMapInline(
     const result = response.data as Record<string, unknown>;
     // F4: Add auditId to response
     result.auditId = auditEntry.auditId;
-    // F5: Redaction warning when redactPII not set (unconditional per MCP-VC-005)
-    if (!args.redactPII) {
+
+    // F2: Apply redaction if requested (fail-closed)
+    if (args.redactPII) {
+      try {
+        const redactionOccurred = redactTextMapResponse(result as any, security.redactionPolicy);
+        result.redactionApplied = redactionOccurred;
+      } catch {
+        security.auditLog.completeEntry(auditEntry, {
+          action: "blocked",
+          redacted: false,
+          durationMs: Date.now() - startTime,
+        });
+        return { success: false, error: "redaction-failed" };
+      }
+    } else {
+      // F5: Redaction warning when redactPII not set
       result.redactionWarning = "PII may be present in response";
     }
 
     security.auditLog.completeEntry(auditEntry, {
       action: "allowed",
-      redacted: false,
+      redacted: !!(result as any).redactionApplied,
       durationMs: Date.now() - startTime,
     });
 
@@ -544,14 +650,28 @@ export async function handleGetSemanticGraphInline(
     const result = response.data as Record<string, unknown>;
     // F4: Add auditId to response
     result.auditId = auditEntry.auditId;
-    // F5: Redaction warning when redactPII not set (unconditional per MCP-VC-005)
-    if (!args.redactPII) {
+
+    // F2: Apply redaction if requested (fail-closed)
+    if (args.redactPII) {
+      try {
+        const redactionOccurred = redactSemanticGraphResponse(result as any, security.redactionPolicy);
+        result.redactionApplied = redactionOccurred;
+      } catch {
+        security.auditLog.completeEntry(auditEntry, {
+          action: "blocked",
+          redacted: false,
+          durationMs: Date.now() - startTime,
+        });
+        return { success: false, error: "redaction-failed" };
+      }
+    } else {
+      // F5: Redaction warning when redactPII not set
       result.redactionWarning = "PII may be present in response";
     }
 
     security.auditLog.completeEntry(auditEntry, {
       action: "allowed",
-      redacted: false,
+      redacted: !!(result as any).redactionApplied,
       durationMs: Date.now() - startTime,
     });
 

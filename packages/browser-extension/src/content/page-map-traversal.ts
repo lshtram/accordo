@@ -17,19 +17,36 @@ import {
   INCLUDED_ATTRS,
   MAX_TEXT_LENGTH,
 } from "./page-map-collector.js";
+import { viewportIntersectionRatio, findNearestContainer } from "./spatial-helpers.js";
 
 // ── Module-level ref index ────────────────────────────────────────────────────
 
 let refIndex: Map<string, Element> = new Map();
+
+/**
+ * GAP-D1 / D5: Reverse lookup from DOM element to its nodeId.
+ * Populated alongside `refIndex` in `buildPassedNode()`.
+ * Enables O(1) `containerId` resolution (avoids O(n) scan per node).
+ */
+let elementToNodeId: Map<Element, number> = new Map();
 
 /** Look up an element by its ref from the most recent page map */
 export function getElementByRef(ref: string): Element | null {
   return refIndex.get(ref) ?? null;
 }
 
+/**
+ * GAP-D1 / D5: Look up a nodeId by its DOM element.
+ * Returns undefined if the element was not included in the most recent page map.
+ */
+export function getNodeIdByElement(element: Element): number | undefined {
+  return elementToNodeId.get(element);
+}
+
 /** Clear the ref index (called at the start of each collection) */
 export function clearRefIndex(): void {
   refIndex = new Map();
+  elementToNodeId = new Map();
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
@@ -117,6 +134,7 @@ function buildPassedNode(
   const nodeId = refCounter.count;
   refCounter.count++;
   refIndex.set(ref, element);
+  elementToNodeId.set(element, nodeId);
 
   const node: PageNode = { ref, tag, nodeId };
 
@@ -158,6 +176,68 @@ function buildPassedNode(
       width: Math.round(rect.width),
       height: Math.round(rect.height),
     };
+
+    // GAP-D1 / D4: Viewport intersection ratio
+    const viewport = {
+      width: window.innerWidth || document.documentElement.clientWidth,
+      height: window.innerHeight || document.documentElement.clientHeight,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+    };
+    node.viewportRatio = viewportIntersectionRatio(node.bounds, viewport);
+
+    // GAP-D1 / D5: Nearest semantic container (resolved to nodeId)
+    const containerEl = findNearestContainer(element);
+    if (containerEl !== null) {
+      const containerNodeId = getNodeIdByElement(containerEl);
+      if (containerNodeId !== undefined) {
+        node.containerId = containerNodeId;
+      }
+    }
+
+    // GAP-D2: z-index, stacking context, and occlusion detection
+    const computedStyle = window.getComputedStyle(element);
+    const zIndexStr = computedStyle.zIndex;
+    const parsedZIndex = parseInt(zIndexStr, 10);
+    if (!isNaN(parsedZIndex)) {
+      node.zIndex = parsedZIndex;
+    }
+
+    // isStacked: element creates a new stacking context when:
+    // - position is not static AND zIndex is not auto, OR
+    // - opacity < 1, OR
+    // - transform/filter/etc. are not none
+    const position = computedStyle.position;
+    const opacity = parseFloat(computedStyle.opacity);
+    const transform = computedStyle.transform;
+    const filter = computedStyle.filter;
+    const isStackingContext =
+      (position !== "static" && zIndexStr !== "auto") ||
+      opacity < 1 ||
+      transform !== "none" ||
+      filter !== "none" ||
+      computedStyle.mixBlendMode !== "normal" ||
+      computedStyle.isolation === "isolate" ||
+      computedStyle.webkitMaskImage !== "none" ||
+      computedStyle.webkitMask !== "none";
+    if (isStackingContext) {
+      node.isStacked = true;
+    }
+
+    // occluded: use elementFromPoint at center to detect if another element is on top
+    if (rect.width > 0 && rect.height > 0 && typeof document.elementFromPoint === "function") {
+      const centerX = rect.x + rect.width / 2;
+      const centerY = rect.y + rect.height / 2;
+      try {
+        const top = document.elementFromPoint(centerX, centerY);
+        // element is occluded if the top element at center is not this element
+        // and is not a descendant of this element
+        node.occluded = top !== null && !element.contains(top);
+      } catch {
+        // elementFromPoint can throw on certain elements (e.g., outside the document)
+        node.occluded = undefined;
+      }
+    }
   }
 
   if (depth < opts.maxDepth) {

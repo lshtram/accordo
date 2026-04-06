@@ -150,6 +150,21 @@ describe("M90-INS type exports", () => {
 });
 
 describe("M90-INS inspectElement behavioral output", () => {
+  it("prefers selector over placeholder nodeId when both are present", () => {
+    const fallback = document.createElement("div");
+    fallback.id = "fallback-node";
+    document.body.appendChild(fallback);
+
+    const target = document.createElement("input");
+    target.id = "selector-target";
+    document.body.appendChild(target);
+
+    const result = inspectElement({ selector: "#selector-target", nodeId: 0 } as InspectElementArgs);
+
+    expect(result.found).toBe(true);
+    expect(result.element?.id).toBe("selector-target");
+  });
+
   it("PU-F-10b: selector resolution prefers visible match when multiple elements match", () => {
     const hidden = document.createElement("button");
     hidden.className = "dup-target";

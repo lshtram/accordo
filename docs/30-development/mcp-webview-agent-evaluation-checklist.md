@@ -17,15 +17,16 @@ Use this status legend during review:
 | Capability | Primary tools today | Status |
 |---|---|---|
 | Structured page map | `accordo_browser_get_page_map` | ✅ |
+| Visible text map | `accordo_browser_get_text_map` | ✅ |
+| Semantic graph / a11y structure | `accordo_browser_get_semantic_graph`, `chrome-devtools_take_snapshot` | ✅ |
 | Deep element inspection | `accordo_browser_inspect_element` | ✅ |
 | DOM excerpt retrieval | `accordo_browser_get_dom_excerpt` | ✅ |
 | Region screenshot | `accordo_browser_capture_region` | ✅ |
 | Viewport/full-page screenshot | `chrome-devtools_take_screenshot` | ✅ |
-| A11y snapshot | `chrome-devtools_take_snapshot` | 🟡 |
-| Wait primitives | `chrome-devtools_wait_for` | 🟡 |
-| Change deltas between snapshots | (none) | ❌ |
-| Snapshot versioning contract | (none explicit) | ❌ |
-| Privacy redaction controls | (none explicit) | ❌ |
+| Wait primitives | `accordo_browser_wait_for`, `chrome-devtools_wait_for` | ✅ |
+| Change deltas between snapshots | `accordo_browser_diff_snapshots` | ✅ |
+| Snapshot versioning contract | implicit snapshot IDs + actionable eviction hints | ✅ |
+| Privacy redaction controls | `redactPII`, `allowedOrigins`, `deniedOrigins` on read tools | 🟡 |
 
 ---
 
@@ -41,6 +42,7 @@ An agent should be able to answer, reliably and quickly:
 6. **What changed since last step?** (DOM/text/layout deltas)
 7. **What does it look like visually?** (viewport/full-page and element screenshots)
 8. **Can I inspect deeply only when needed?** (progressive detail)
+9. **Can I reason across frames and shadow roots without losing identity?**
 
 ---
 
@@ -63,6 +65,7 @@ For each item, fill:
   - Suggested tools: `chrome-devtools_list_pages`, `chrome-devtools_select_page`
 - [ ] **Handle iframes** with explicit frame relationships (if required by product scope).
   - Suggested tools: validate via snapshot/inspection evidence
+- [ ] **Handle shadow DOM** without forcing CSS/XPath fallbacks for common cases.
 
 ### B. Text extraction quality
 
@@ -76,6 +79,8 @@ For each item, fill:
 
 - [ ] **DOM snapshot API** with stable node IDs.
 - [ ] **Accessibility tree snapshot** (roles, names, states, descriptions).
+- [ ] **Cross-frame model** with explicit frame lineage for nodes returned from snapshots.
+- [ ] **Shadow-root aware model** so semantic traversal does not silently drop content.
 - [ ] **Landmark extraction** (header/nav/main/aside/footer).
 - [ ] **Document outline extraction** (H1..H6 hierarchy).
 - [ ] **Form model extraction** (labels, controls, required, validation, current values).
@@ -113,6 +118,7 @@ For each item, fill:
 - [ ] **Incremental retrieval** (paging/chunking large pages).
 - [ ] **Server-side filtering** (by role, visibility, text match, region).
 - [ ] **Deterministic ordering** for stable agent reasoning.
+- [ ] **Artifact indirection**: screenshots/traces returned by reference, not huge inline/base64 blobs, unless explicitly requested.
 
 ### H. Robustness and operability
 
@@ -132,6 +138,8 @@ For each item, fill:
 
 - [ ] **Redaction hooks** for PII/secrets in text and screenshots.
 - [ ] **Origin allow/deny policies**.
+- [ ] **Session/storage isolation controls** (fresh profile vs persistent profile must be explicit).
+- [ ] **Telemetry disclosure / opt-out** when tool usage or page artifacts are reported upstream.
 - [ ] **Audit trail** of tool calls and artifacts generated.
 - [ ] **Data-retention controls** for snapshots/images.
 
@@ -153,6 +161,7 @@ Every data-producing call should include:
 - `capturedAt` (ISO timestamp)
 - `viewport` (`width`, `height`, `scrollX`, `scrollY`, `dpr`)
 - `source` (`dom`, `a11y`, `visual`, `layout`, `network`)
+- `artifactMode` (`inline`, `file-ref`, `remote-ref`) when binary output exists
 
 ### 3.2 Node identity rules
 
@@ -167,6 +176,9 @@ Every data-producing call should include:
 1. **Summary layer**: page outline, main sections, key actions.
 2. **Focused layer**: only relevant subtree/region.
 3. **Deep layer**: full DOM/a11y/layout details.
+
+Rule:
+- Text-first and structure-first responses should be preferred over screenshots for routine reasoning. Visual artifacts should be additive, not the default transport.
 
 ### 3.4 Text model shape
 
@@ -229,6 +241,7 @@ Review rule: score against **4.1** for current implementation review. Use **4.2*
 - [ ] Agent can request “only visible text in viewport” quickly.
 - [ ] Agent can request “only changed elements since last check”.
 - [ ] Tool outputs are compact and reference-linked (no duplicate blobs).
+- [ ] Screenshots and traces are not embedded inline by default when a file/reference response would do.
 
 Measurable targets (recommended):
 - Page map request returns first useful response in ≤ 2.5s on medium pages (~1k nodes).
@@ -253,6 +266,7 @@ Measurable targets (recommended):
 - [ ] Occlusion and visibility quality
 - [ ] Progressive detail retrieval
 - [ ] Privacy/redaction controls
+- [ ] Cross-frame + shadow-DOM continuity
 
 ### Nice-to-have
 

@@ -122,6 +122,92 @@ describe("B2-CTX-003: toCapturePayload extracts tabId from relay payload", () =>
   });
 });
 
+describe("CR-F-03: RESOLVE_ANCHOR_BOUNDS resolves nodeRef via page-map ref index", () => {
+  beforeEach(() => {
+    resetChromeMocks();
+  });
+
+  it("looks up nodeRef with getElementByRef instead of treating it as an anchorKey", async () => {
+    document.body.innerHTML = `<button id="capture-target">Capture me</button>`;
+
+    const target = document.getElementById("capture-target")!;
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({
+      x: 120,
+      y: 240,
+      width: 80,
+      height: 30,
+      top: 240,
+      left: 120,
+      bottom: 270,
+      right: 200,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    const { collectPageMap } = await import("../src/content/page-map-collector.js");
+    await import("../src/content/message-handlers.js");
+    collectPageMap({ includeBounds: true });
+
+    const listener = (chrome.runtime.onMessage.addListener as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+    expect(typeof listener).toBe("function");
+
+    const response = await new Promise<unknown>((resolve) => {
+      listener(
+        { type: "RESOLVE_ANCHOR_BOUNDS", nodeRef: "ref-0", padding: 0 },
+        {},
+        resolve,
+      );
+    });
+
+    expect(response).toEqual({
+      bounds: { x: 120, y: 240, width: 80, height: 30 },
+    });
+  });
+
+  it("ignores zero-sized rect and still resolves nodeRef bounds", async () => {
+    const { handleCaptureRegion } = await import("../src/relay-capture-handler.js");
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_tabId: number, message: unknown) => {
+        const typed = message as Record<string, unknown>;
+        if (typed.type === "RESOLVE_ANCHOR_BOUNDS") {
+          return { bounds: { x: 65, y: 222, width: 200, height: 35 } };
+        }
+        if (typed.type === "CAPTURE_SNAPSHOT_ENVELOPE") {
+          return {
+            pageId: "page",
+            frameId: "main",
+            snapshotId: "page:0",
+            capturedAt: "2025-01-01T00:00:00.000Z",
+            viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+            source: "visual" as const,
+          };
+        }
+        return undefined;
+      }
+    );
+    (chrome.tabs.captureVisibleTab as ReturnType<typeof vi.fn>).mockResolvedValue("data:image/png;base64,AAAA");
+
+    const response = await handleCaptureRegion({
+      requestId: "test-node-ref-with-empty-rect",
+      action: "capture_region",
+      payload: {
+        tabId: 1,
+        nodeRef: "ref-2",
+        rect: { x: 0, y: 0, width: 0, height: 0 },
+        padding: 0,
+        quality: 80,
+        format: "png",
+      },
+    });
+
+    expect(response.success).toBe(true);
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ type: "RESOLVE_ANCHOR_BOUNDS", nodeRef: "ref-2" }),
+    );
+  });
+});
+
 // ── Tests: requestContentScriptEnvelope ───────────────────────────────────────
 
 describe("B2-CTX-005: requestContentScriptEnvelope uses explicit tabId when provided", () => {
@@ -198,6 +284,16 @@ describe("B2-CTX-005: requestContentScriptEnvelope uses explicit tabId when prov
 
     // Should use active tab (tab 1)
     expect(capturedTabId).toBe(1);
+  });
+
+  it("M114: requestContentScriptEnvelope throws when content script is unavailable", async () => {
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("Could not establish connection. Receiving end does not exist."),
+    );
+
+    await expect(requestContentScriptEnvelope("visual", 42)).rejects.toThrow(
+      "Receiving end does not exist.",
+    );
   });
 });
 

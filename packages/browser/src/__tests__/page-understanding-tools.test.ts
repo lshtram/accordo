@@ -307,7 +307,7 @@ describe("M91-PU + M91-CR tool registration", () => {
     const tools = buildPageUnderstandingTools(relay, noopStore);
     expect(Array.isArray(tools)).toBe(true);
     const toolNames = tools.map((t) => t.name);
-    expect(toolNames).toContain("browser_get_page_map");
+    expect(toolNames).toContain("accordo_browser_get_page_map");
   });
 
   /**
@@ -317,7 +317,7 @@ describe("M91-PU + M91-CR tool registration", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
     const toolNames = tools.map((t) => t.name);
-    expect(toolNames).toContain("browser_inspect_element");
+    expect(toolNames).toContain("accordo_browser_inspect_element");
   });
 
   /**
@@ -327,7 +327,7 @@ describe("M91-PU + M91-CR tool registration", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
     const toolNames = tools.map((t) => t.name);
-    expect(toolNames).toContain("browser_get_dom_excerpt");
+    expect(toolNames).toContain("accordo_browser_get_dom_excerpt");
   });
 
   /**
@@ -337,7 +337,7 @@ describe("M91-PU + M91-CR tool registration", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
     const toolNames = tools.map((t) => t.name);
-    expect(toolNames).toContain("browser_capture_region");
+    expect(toolNames).toContain("accordo_browser_capture_region");
   });
 
   /**
@@ -371,7 +371,7 @@ describe("M91-PU + M91-CR tool registration", () => {
   it("PU-F-54: browser_get_page_map tool has inputSchema with maxDepth, maxNodes, includeBounds, viewportOnly", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("maxDepth");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("maxNodes");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("includeBounds");
@@ -384,7 +384,7 @@ describe("M91-PU + M91-CR tool registration", () => {
   it("PU-F-55: browser_inspect_element tool accepts ref and selector parameters", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const inspectTool = tools.find((t) => t.name === "browser_inspect_element");
+    const inspectTool = tools.find((t) => t.name === "accordo_browser_inspect_element");
     expect(inspectTool?.inputSchema.properties).toHaveProperty("ref");
     expect(inspectTool?.inputSchema.properties).toHaveProperty("selector");
   });
@@ -571,7 +571,7 @@ describe("browser_get_page_map — input contract (PU-F-02, PU-F-03)", () => {
   it("PU-F-02: tool accepts maxDepth parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("maxDepth");
   });
 
@@ -581,7 +581,7 @@ describe("browser_get_page_map — input contract (PU-F-02, PU-F-03)", () => {
   it("PU-F-03: tool accepts maxNodes parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("maxNodes");
   });
 
@@ -591,7 +591,7 @@ describe("browser_get_page_map — input contract (PU-F-02, PU-F-03)", () => {
   it("PU-F-06: tool accepts includeBounds parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("includeBounds");
   });
 
@@ -602,7 +602,7 @@ describe("browser_get_page_map — input contract (PU-F-02, PU-F-03)", () => {
   it("PU-F-03: maxNodes has maximum value constraint in schema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties.maxNodes).toHaveProperty("maximum", 500);
   });
 });
@@ -614,7 +614,7 @@ describe("browser_get_page_map — filter parameter schema (B2-FI-001..008)", ()
   it("B2-FI-001: tool accepts visibleOnly parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("visibleOnly");
     expect(pageMapTool?.inputSchema.properties.visibleOnly.type).toBe("boolean");
   });
@@ -625,7 +625,7 @@ describe("browser_get_page_map — filter parameter schema (B2-FI-001..008)", ()
   it("B2-FI-002: tool accepts interactiveOnly parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("interactiveOnly");
     expect(pageMapTool?.inputSchema.properties.interactiveOnly.type).toBe("boolean");
   });
@@ -636,7 +636,7 @@ describe("browser_get_page_map — filter parameter schema (B2-FI-001..008)", ()
   it("B2-FI-003: tool accepts roles parameter in inputSchema (array of strings)", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("roles");
     expect(pageMapTool?.inputSchema.properties.roles.type).toBe("array");
     expect(pageMapTool?.inputSchema.properties.roles.items).toEqual({ type: "string" });
@@ -648,7 +648,7 @@ describe("browser_get_page_map — filter parameter schema (B2-FI-001..008)", ()
   it("B2-FI-004: tool accepts textMatch parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("textMatch");
     expect(pageMapTool?.inputSchema.properties.textMatch.type).toBe("string");
   });
@@ -659,7 +659,7 @@ describe("browser_get_page_map — filter parameter schema (B2-FI-001..008)", ()
   it("B2-FI-005: tool accepts selector parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("selector");
     expect(pageMapTool?.inputSchema.properties.selector.type).toBe("string");
   });
@@ -670,7 +670,7 @@ describe("browser_get_page_map — filter parameter schema (B2-FI-001..008)", ()
   it("B2-FI-006: tool accepts regionFilter parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     expect(pageMapTool?.inputSchema.properties).toHaveProperty("regionFilter");
     expect(pageMapTool?.inputSchema.properties.regionFilter.type).toBe("object");
   });
@@ -678,7 +678,7 @@ describe("browser_get_page_map — filter parameter schema (B2-FI-001..008)", ()
   it("B2-FI-006: regionFilter has x, y, width, height properties (all required)", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     const rf = pageMapTool?.inputSchema.properties.regionFilter;
     expect(rf.properties).toHaveProperty("x");
     expect(rf.properties).toHaveProperty("y");
@@ -696,7 +696,7 @@ describe("browser_get_page_map — filter parameter schema (B2-FI-001..008)", ()
   it("B2-FI-007: tool accepts all six filter parameters simultaneously", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     const props = pageMapTool?.inputSchema.properties;
     expect(props).toHaveProperty("visibleOnly");
     expect(props).toHaveProperty("interactiveOnly");
@@ -714,7 +714,7 @@ describe("browser_inspect_element — input contract (PU-F-10)", () => {
   it("PU-F-10: tool accepts ref parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const inspectTool = tools.find((t) => t.name === "browser_inspect_element");
+    const inspectTool = tools.find((t) => t.name === "accordo_browser_inspect_element");
     expect(inspectTool?.inputSchema.properties).toHaveProperty("ref");
   });
 
@@ -724,7 +724,7 @@ describe("browser_inspect_element — input contract (PU-F-10)", () => {
   it("PU-F-10: tool accepts selector parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const inspectTool = tools.find((t) => t.name === "browser_inspect_element");
+    const inspectTool = tools.find((t) => t.name === "accordo_browser_inspect_element");
     expect(inspectTool?.inputSchema.properties).toHaveProperty("selector");
   });
 });
@@ -736,7 +736,7 @@ describe("browser_get_dom_excerpt — input contract (PU-F-30)", () => {
   it("PU-F-30: tool accepts selector parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const excerptTool = tools.find((t) => t.name === "browser_get_dom_excerpt");
+    const excerptTool = tools.find((t) => t.name === "accordo_browser_get_dom_excerpt");
     expect(excerptTool?.inputSchema.properties).toHaveProperty("selector");
     expect(excerptTool?.inputSchema.required).toContain("selector");
   });
@@ -747,7 +747,7 @@ describe("browser_get_dom_excerpt — input contract (PU-F-30)", () => {
   it("PU-F-31: tool accepts maxDepth and maxLength parameters in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const excerptTool = tools.find((t) => t.name === "browser_get_dom_excerpt");
+    const excerptTool = tools.find((t) => t.name === "accordo_browser_get_dom_excerpt");
     expect(excerptTool?.inputSchema.properties).toHaveProperty("maxDepth");
     expect(excerptTool?.inputSchema.properties).toHaveProperty("maxLength");
   });
@@ -760,7 +760,7 @@ describe("browser_capture_region — input contract (CR-F-02..CR-F-06)", () => {
   it("CR-F-02: tool accepts anchorKey parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const captureTool = tools.find((t) => t.name === "browser_capture_region");
+    const captureTool = tools.find((t) => t.name === "accordo_browser_capture_region");
     expect(captureTool?.inputSchema.properties).toHaveProperty("anchorKey");
   });
 
@@ -770,7 +770,7 @@ describe("browser_capture_region — input contract (CR-F-02..CR-F-06)", () => {
   it("CR-F-03: tool accepts nodeRef parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const captureTool = tools.find((t) => t.name === "browser_capture_region");
+    const captureTool = tools.find((t) => t.name === "accordo_browser_capture_region");
     expect(captureTool?.inputSchema.properties).toHaveProperty("nodeRef");
   });
 
@@ -780,7 +780,7 @@ describe("browser_capture_region — input contract (CR-F-02..CR-F-06)", () => {
   it("CR-F-04: tool accepts rect parameter with x, y, width, height in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const captureTool = tools.find((t) => t.name === "browser_capture_region");
+    const captureTool = tools.find((t) => t.name === "accordo_browser_capture_region");
     expect(captureTool?.inputSchema.properties).toHaveProperty("rect");
     expect(captureTool?.inputSchema.properties.rect.properties).toHaveProperty("x");
     expect(captureTool?.inputSchema.properties.rect.properties).toHaveProperty("y");
@@ -794,7 +794,7 @@ describe("browser_capture_region — input contract (CR-F-02..CR-F-06)", () => {
   it("CR-F-05: tool accepts padding parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const captureTool = tools.find((t) => t.name === "browser_capture_region");
+    const captureTool = tools.find((t) => t.name === "accordo_browser_capture_region");
     expect(captureTool?.inputSchema.properties).toHaveProperty("padding");
   });
 
@@ -804,7 +804,7 @@ describe("browser_capture_region — input contract (CR-F-02..CR-F-06)", () => {
   it("CR-F-06: tool accepts quality parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const captureTool = tools.find((t) => t.name === "browser_capture_region");
+    const captureTool = tools.find((t) => t.name === "accordo_browser_capture_region");
     expect(captureTool?.inputSchema.properties).toHaveProperty("quality");
   });
 
@@ -815,7 +815,7 @@ describe("browser_capture_region — input contract (CR-F-02..CR-F-06)", () => {
   it("CR-NF-03: capture_region tool is marked safe and idempotent", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const captureTool = tools.find((t) => t.name === "browser_capture_region");
+    const captureTool = tools.find((t) => t.name === "accordo_browser_capture_region");
     expect(captureTool?.dangerLevel).toBe("safe");
     expect(captureTool?.idempotent).toBe(true);
   });
@@ -842,10 +842,10 @@ describe("M91-PU context-budget policy — anti-pattern guardrails", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
     const toolNames = tools.map((t) => t.name);
-    expect(toolNames).toContain("browser_get_page_map");
-    expect(toolNames).toContain("browser_inspect_element");
-    expect(toolNames).toContain("browser_get_dom_excerpt");
-    expect(toolNames).toContain("browser_capture_region");
+    expect(toolNames).toContain("accordo_browser_get_page_map");
+    expect(toolNames).toContain("accordo_browser_inspect_element");
+    expect(toolNames).toContain("accordo_browser_get_dom_excerpt");
+    expect(toolNames).toContain("accordo_browser_capture_region");
   });
 });
 
@@ -1568,7 +1568,7 @@ describe("B2-CTX-001: browser_list_pages tool registration", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
     const toolNames = tools.map((t) => t.name);
-    expect(toolNames).toContain("browser_list_pages");
+    expect(toolNames).toContain("accordo_browser_list_pages");
   });
 
   /**
@@ -1588,7 +1588,7 @@ describe("B2-CTX-001: browser_list_pages tool registration", () => {
   it("B2-CTX-001: browser_list_pages has tabId?: number in inputSchema (optional)", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const listPagesTool = tools.find((t) => t.name === "browser_list_pages");
+    const listPagesTool = tools.find((t) => t.name === "accordo_browser_list_pages");
     expect(listPagesTool?.inputSchema.properties).toHaveProperty("tabId");
     expect(listPagesTool?.inputSchema.properties.tabId.type).toBe("number");
     // tabId is optional — not in required array
@@ -1601,7 +1601,7 @@ describe("B2-CTX-001: browser_list_pages tool registration", () => {
   it("B2-CTX-001: browser_list_pages dangerLevel is safe", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const listPagesTool = tools.find((t) => t.name === "browser_list_pages");
+    const listPagesTool = tools.find((t) => t.name === "accordo_browser_list_pages");
     expect(listPagesTool?.dangerLevel).toBe("safe");
   });
 });
@@ -1618,7 +1618,7 @@ describe("B2-CTX-001: browser_select_page tool registration", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
     const toolNames = tools.map((t) => t.name);
-    expect(toolNames).toContain("browser_select_page");
+    expect(toolNames).toContain("accordo_browser_select_page");
   });
 
   /**
@@ -1627,7 +1627,7 @@ describe("B2-CTX-001: browser_select_page tool registration", () => {
   it("B2-CTX-001: browser_select_page has tabId as required number parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const selectPageTool = tools.find((t) => t.name === "browser_select_page");
+    const selectPageTool = tools.find((t) => t.name === "accordo_browser_select_page");
     expect(selectPageTool?.inputSchema.properties).toHaveProperty("tabId");
     expect(selectPageTool?.inputSchema.properties.tabId.type).toBe("number");
     expect(selectPageTool?.inputSchema.required || []).toContain("tabId");
@@ -1639,7 +1639,7 @@ describe("B2-CTX-001: browser_select_page tool registration", () => {
   it("B2-CTX-001: browser_select_page dangerLevel is safe", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
-    const selectPageTool = tools.find((t) => t.name === "browser_select_page");
+    const selectPageTool = tools.find((t) => t.name === "accordo_browser_select_page");
     expect(selectPageTool?.dangerLevel).toBe("safe");
   });
 });
@@ -1652,9 +1652,9 @@ describe("B2-CTX-001: browser_select_page tool registration", () => {
 describe("B2-CTX-001: all existing tools accept optional tabId in inputSchema", () => {
   // Tools from buildPageUnderstandingTools
   const pageUnderstandingToolNames = [
-    "browser_get_page_map",
-    "browser_inspect_element",
-    "browser_get_dom_excerpt",
+    "accordo_browser_get_page_map",
+    "accordo_browser_inspect_element",
+    "accordo_browser_get_dom_excerpt",
   ] as const;
 
   pageUnderstandingToolNames.forEach((toolName) => {

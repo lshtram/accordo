@@ -34,6 +34,7 @@ import {
   handleWaitFor,
   handleGetTextMap,
   handleGetSemanticGraph,
+  handleGetSpatialRelations,
   handleListPages,
   handleSelectPage,
 } from "./relay-handlers.js";
@@ -117,6 +118,8 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
         return await handleGetTextMap(request);
       case "get_semantic_graph":
         return await handleGetSemanticGraph(request);
+      case "get_spatial_relations":
+        return await handleGetSpatialRelations(request);
 
       // ── Capture and diff ──
       case "capture_region":

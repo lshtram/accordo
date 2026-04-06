@@ -10,7 +10,6 @@
  */
 
 import { normalizeUrl } from "./store.js";
-import { captureSnapshotEnvelope } from "./snapshot-versioning.js";
 import type { SnapshotEnvelope } from "./snapshot-versioning.js";
 import { isSnapshotEnvelope, hasErrorField, hasDataField, readOptionalString, readOptionalNumber } from "./relay-type-guards.js";
 
@@ -51,29 +50,26 @@ export async function resolveRequestedUrl(payload: Record<string, unknown>): Pro
  * B2-CTX-005: When tabId is provided, the message is sent to that tab directly
  * instead of querying for the active tab.
  *
- * Falls back to a service-worker-local envelope only when no content script
- * is available (e.g., chrome:// pages, test environments).
+ * If no content script is available, this function throws. The service worker
+ * must not mint page identity or snapshot versions locally.
  */
 export async function requestContentScriptEnvelope(
   source: "dom" | "visual",
   tabId?: number,
 ): Promise<SnapshotEnvelope> {
-  try {
-    const targetTabId = tabId ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
-    if (targetTabId !== undefined) {
-      const response = await chrome.tabs.sendMessage(targetTabId, {
-        type: "CAPTURE_SNAPSHOT_ENVELOPE",
-        source,
-      });
-      if (isSnapshotEnvelope(response)) {
-        return response;
-      }
-    }
-  } catch {
-    // Content script not available — fall through to local fallback
+  const targetTabId = tabId ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+  if (targetTabId === undefined) {
+    throw new Error("no-active-tab");
   }
-  // Fallback: service-worker-local envelope (degraded — counter may diverge)
-  return captureSnapshotEnvelope(source);
+
+  const response = await chrome.tabs.sendMessage(targetTabId, {
+    type: "CAPTURE_SNAPSHOT_ENVELOPE",
+    source,
+  });
+  if (isSnapshotEnvelope(response)) {
+    return response;
+  }
+  throw new Error("content-script-envelope-unavailable");
 }
 
 // ── Tab ID Resolution ────────────────────────────────────────────────────────

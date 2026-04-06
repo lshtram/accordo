@@ -10,7 +10,7 @@
  * - B2-SG-012: Backward compatibility — purely additive, no existing tools modified
  *
  * API checklist (buildSemanticGraphTool):
- * - name: "browser_get_semantic_graph"
+ * - name: "accordo_browser_get_semantic_graph"
  * - description: mentions accessibility tree, landmark regions, document outline, form models
  * - inputSchema.maxDepth: integer, minimum 1, maximum 16
  * - inputSchema.visibleOnly: boolean
@@ -190,7 +190,7 @@ describe("B2-SG-011: Tool registration", () => {
     const relay = createMockRelay();
     const store = new SnapshotRetentionStore();
     const tool = buildSemanticGraphTool(relay, store);
-    expect(tool.name).toBe("browser_get_semantic_graph");
+    expect(tool.name).toBe("accordo_browser_get_semantic_graph");
   });
 
   it("B2-SG-011: Tool description mentions accessibility tree, landmarks, outline, and forms", () => {
@@ -470,14 +470,14 @@ describe("B2-SG-012: Backward compatibility", () => {
     const toolNames = allTools.map((t) => t.name);
 
     // All previously-existing tools are still present
-    expect(toolNames).toContain("browser_get_page_map");
-    expect(toolNames).toContain("browser_inspect_element");
-    expect(toolNames).toContain("browser_get_dom_excerpt");
-    expect(toolNames).toContain("browser_capture_region");
-    expect(toolNames).toContain("browser_wait_for");
-    expect(toolNames).toContain("browser_get_text_map");
+    expect(toolNames).toContain("accordo_browser_get_page_map");
+    expect(toolNames).toContain("accordo_browser_inspect_element");
+    expect(toolNames).toContain("accordo_browser_get_dom_excerpt");
+    expect(toolNames).toContain("accordo_browser_capture_region");
+    expect(toolNames).toContain("accordo_browser_wait_for");
+    expect(toolNames).toContain("accordo_browser_get_text_map");
     // New tool is present
-    expect(toolNames).toContain("browser_get_semantic_graph");
+    expect(toolNames).toContain("accordo_browser_get_semantic_graph");
     // Total: 6 page + 1 wait + 1 text + 1 sg = 9
     expect(allTools.length).toBe(9);
   });

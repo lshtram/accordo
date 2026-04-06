@@ -29,7 +29,7 @@ export type SnapshotSource = "dom" | "a11y" | "visual" | "layout" | "network";
  * Canonical metadata envelope included in all data-producing tool responses.
  */
 export interface SnapshotEnvelope {
-  /** Stable page identifier (matches chrome-devtools page ID). */
+  /** Opaque page-session identifier minted by the content script. */
   pageId: string;
   /** Frame identifier. Top-level frame = "main". */
   frameId: string;
@@ -97,6 +97,21 @@ export interface VersionedSnapshot extends SnapshotEnvelope {
  */
 export type PageMapSnapshot = VersionedSnapshot;
 
+// ── Page session ID generation ─────────────────────────────────────────────────
+
+/**
+ * Generate an opaque per-document-session pageId.
+ *
+ * Uses crypto.randomUUID() stripped of hyphens, prefixed with "pg_" to avoid
+ * collision with any legacy "page" IDs and to make the format obvious.
+ *
+ * Must NOT contain ":" since that is the snapshotId separator (BR-F-150).
+ * Format: `pg_` + 32 hex chars (no hyphens, no colons).
+ */
+function createPageSessionId(): string {
+  return `pg_${crypto.randomUUID().replace(/-/g, "")}`;
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /**
@@ -155,12 +170,23 @@ function findNodeByTag(nodes: readonly NodeIdentity[], tag: string): NodeIdentit
  * `resetOnNavigation` resets the counter back to 0.
  */
 export class SnapshotManager {
-  private readonly pageId: string;
+  private readonly _pageId: string;
   private version: number;
 
   constructor(pageId: string) {
-    this.pageId = pageId;
+    if (pageId.length === 0 || pageId.includes(":")) {
+      throw new Error("pageId must be non-empty and must not contain ':'");
+    }
+    this._pageId = pageId;
     this.version = 0;
+  }
+
+  /**
+   * The pageId for this manager's document session.
+   * Exposed for use by captureSnapshotEnvelope() to mint stable envelopes.
+   */
+  get pageId(): string {
+    return this._pageId;
   }
 
   /**
@@ -234,16 +260,11 @@ export class SnapshotManager {
  * Module-level SnapshotManager singleton used by collectPageMap, inspectElement,
  * and getDomExcerpt to inject snapshotId into their responses (B2-SV-001).
  *
- * Uses a simple "page" identifier to avoid URL-derived IDs that contain colons
- * and would break the {pageId}:{version} format regex /^[^:]+:\d+$/.
+ * The pageId is generated once per document session via createPageSessionId().
+ * resetDefaultManager() is called on top-level navigation to mint a new pageId
+ * and reset the snapshot version counter (BR-F-153).
  */
-const DEFAULT_PAGE_ID = "page";
-
-/**
- * Default singleton — created once at module load time.
- * Reset via resetDefaultManager() for testing or navigation events.
- */
-let defaultManager: SnapshotManager = new SnapshotManager(DEFAULT_PAGE_ID);
+let defaultManager: SnapshotManager = new SnapshotManager(createPageSessionId());
 
 /**
  * Get the next snapshotId from the default manager, incrementing the version.
@@ -277,7 +298,7 @@ export function getCurrentSnapshotId(): string {
 export function captureSnapshotEnvelope(source: SnapshotSource = "dom"): SnapshotEnvelope {
   const snapshotId = defaultManager.nextId();
   return {
-    pageId: DEFAULT_PAGE_ID,
+    pageId: defaultManager.pageId,
     frameId: "main",
     snapshotId,
     capturedAt: new Date().toISOString(),
@@ -288,9 +309,10 @@ export function captureSnapshotEnvelope(source: SnapshotSource = "dom"): Snapsho
 
 /**
  * Reset the default manager (called on navigation or in tests).
+ * Mints a NEW pageId for the new document session (BR-F-153).
  */
 export function resetDefaultManager(): void {
-  defaultManager = new SnapshotManager(DEFAULT_PAGE_ID);
+  defaultManager = new SnapshotManager(createPageSessionId());
 }
 
 /**

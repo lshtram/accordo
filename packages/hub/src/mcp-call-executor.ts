@@ -35,6 +35,10 @@ import { isHubTool } from "./hub-tool-types.js";
 function extractSoftError(data: unknown): string | undefined {
   if (typeof data !== "object" || data === null) return undefined;
   const d = data as Record<string, unknown>;
+  // Structured tool error payloads use `{ success: false, error: "...", ... }`
+  // and must flow back to the caller intact as normal tool data. Soft errors
+  // are only legacy `{ error: "..." }` result objects with no success flag.
+  if (typeof d.success === "boolean") return undefined;
   if (!("error" in d)) return undefined;
   return typeof d.error === "string" ? d.error : undefined;
 }

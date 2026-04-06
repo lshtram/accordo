@@ -143,10 +143,19 @@ export interface SecurityConfig {
   redactionPolicy: RedactionPolicy;
   /** Audit log sink. Any implementation of AuditSink (e.g. BrowserAuditLog). */
   auditLog: AuditSink;
+  /**
+   * GAP-I1: Snapshot retention policy.
+   * Default: no TTL (snapshots retained until FIFO slot is reclaimed).
+   */
+  snapshotRetention?: {
+    /** Maximum age in milliseconds before a snapshot is considered stale. 0 = no TTL. */
+    maxAgeMs: number;
+  };
 }
 
 /**
  * Default security configuration (permissive — all origins allowed, no redaction).
+ * GAP-I1: snapshotRetention defaults to maxAgeMs=0 (no TTL).
  */
 export const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
   originPolicy: {
@@ -159,4 +168,5 @@ export const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
     replacement: "[REDACTED]",
   },
   auditLog: new BrowserAuditLog(),
+  snapshotRetention: { maxAgeMs: 0 },
 };

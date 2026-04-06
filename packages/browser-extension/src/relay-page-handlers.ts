@@ -71,16 +71,19 @@ type InspectPayload =
   | { selector: string };
 
 function toInspectPayload(raw: Record<string, unknown>): InspectPayload {
-  if (typeof raw.nodeId === "number") {
-    return { nodeId: raw.nodeId };
-  }
   if (typeof raw.ref === "string") {
     return {
       ref: raw.ref,
       selector: typeof raw.selector === "string" ? raw.selector : undefined,
     };
   }
-  return { selector: typeof raw.selector === "string" ? raw.selector : "" };
+  if (typeof raw.selector === "string" && raw.selector !== "") {
+    return { selector: raw.selector };
+  }
+  if (typeof raw.nodeId === "number") {
+    return { nodeId: raw.nodeId };
+  }
+  return { selector: "" };
 }
 
 // ── Page Understanding Handlers ──────────────────────────────────────────────
@@ -172,6 +175,20 @@ export async function handleGetSemanticGraph(
           maxDepth: typeof p.maxDepth === "number" ? p.maxDepth : undefined,
           visibleOnly: typeof p.visibleOnly === "boolean" ? p.visibleOnly : undefined,
         });
+      }
+    : null;
+  return handlePageUnderstandingAction(request, localHandler, /* saveToStore */ false);
+}
+
+// ── Spatial Relations Handler ─────────────────────────────────────────────────
+
+export async function handleGetSpatialRelations(
+  request: RelayActionRequest,
+): Promise<RelayActionResponse> {
+  const localHandler = typeof document !== "undefined"
+    ? async (): Promise<unknown> => {
+        const { handleGetSpatialRelationsAction } = await import("./content/spatial-relations-handler.js");
+        return handleGetSpatialRelationsAction(request.payload);
       }
     : null;
   return handlePageUnderstandingAction(request, localHandler, /* saveToStore */ false);

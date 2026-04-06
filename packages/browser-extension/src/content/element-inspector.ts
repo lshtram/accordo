@@ -318,22 +318,6 @@ function resolveElementByNodeId(nodeId: number): Element | null {
 }
 
 function resolveElement(args: InspectElementArgs): Element | null {
-  // B2-SV-006: Support lookup by nodeId from page map snapshot
-  if (args.nodeId !== undefined) {
-    const el = resolveElementByNodeId(args.nodeId);
-    if (!el) return null;
-    if (!isElementVisible(el)) {
-      const parent = el.parentElement;
-      if (parent) {
-        const siblings = Array.from(parent.children);
-        const visibleSibling = siblings.find(
-          (s) => s !== el && isElementVisible(s),
-        );
-        if (visibleSibling) return visibleSibling;
-      }
-    }
-    return el;
-  }
   if (args.ref) {
     const el = getElementByRef(args.ref);
     if (!el) return null;
@@ -360,6 +344,24 @@ function resolveElement(args: InspectElementArgs): Element | null {
     } catch {
       return null;
     }
+  }
+  // B2-SV-006: Support lookup by nodeId from page map snapshot.
+  // Selector/ref take precedence when present because MCP callers may include
+  // placeholder nodeId values alongside the real target handle.
+  if (args.nodeId !== undefined) {
+    const el = resolveElementByNodeId(args.nodeId);
+    if (!el) return null;
+    if (!isElementVisible(el)) {
+      const parent = el.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children);
+        const visibleSibling = siblings.find(
+          (s) => s !== el && isElementVisible(s),
+        );
+        if (visibleSibling) return visibleSibling;
+      }
+    }
+    return el;
   }
   return null;
 }

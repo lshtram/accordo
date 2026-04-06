@@ -54,10 +54,10 @@ describe("M83-BTOOLS extension activation", () => {
     expect(extensionId).toBe("accordo.accordo-browser");
 
     const toolNames = tools.map((t) => t.name);
-    expect(toolNames).toContain("browser_get_page_map");
-    expect(toolNames).toContain("browser_inspect_element");
-    expect(toolNames).toContain("browser_get_dom_excerpt");
-    expect(toolNames).toContain("browser_capture_region");
+    expect(toolNames).toContain("accordo_browser_get_page_map");
+    expect(toolNames).toContain("accordo_browser_inspect_element");
+    expect(toolNames).toContain("accordo_browser_get_dom_excerpt");
+    expect(toolNames).toContain("accordo_browser_capture_region");
   });
 
   it("M101-DIFF-REG: registerTools includes browser_diff_snapshots in allBrowserTools", async () => {
@@ -73,7 +73,7 @@ describe("M83-BTOOLS extension activation", () => {
 
     const [, tools] = bridge.registerTools.mock.calls[0] as [string, Array<{ name: string }>];
     const toolNames = tools.map((t) => t.name);
-    expect(toolNames).toContain("browser_diff_snapshots");
+    expect(toolNames).toContain("accordo_browser_diff_snapshots");
   });
 
   it("PU-REG-02: registerTools disposable is added to context.subscriptions", async () => {
@@ -133,7 +133,7 @@ describe("M83-BTOOLS extension activation", () => {
 
     // Get the registered handler for browser_get_page_map
     const [, tools] = bridge.registerTools.mock.calls[0] as [string, Array<{ name: string; handler: (args: Record<string, unknown>) => Promise<unknown> }>];
-    const pageMapTool = tools.find((t) => t.name === "browser_get_page_map");
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
     expect(pageMapTool).toBeDefined();
 
     // Invoke the handler directly — simulating an MCP agent call

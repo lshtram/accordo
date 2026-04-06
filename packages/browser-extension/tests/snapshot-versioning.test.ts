@@ -54,6 +54,10 @@ import {
   PageMapSnapshot,
   NodeIdentity,
   DEFAULT_RETENTION_SIZE,
+  getCurrentSnapshotId,
+  captureSnapshotEnvelope,
+  resetDefaultManager,
+  getDefaultManager,
 } from "../src/snapshot-versioning.js";
 
 // Real implementations for gap-testing (P1-5)
@@ -402,6 +406,15 @@ describe("M100-SNAP — Snapshot Versioning", () => {
      * at runtime via handleRelayAction. Validates full envelope structure.
      */
     it("B2-SV-003: capture_region returns full SnapshotEnvelope with all required fields", async () => {
+      (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
+        pageId: "pg_test_capture",
+        frameId: "main",
+        snapshotId: "pg_test_capture:0",
+        capturedAt: "2025-01-01T00:00:00.000Z",
+        viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+        source: "visual" as const,
+      });
+
       const response = await handleRelayAction({
         requestId: "test-capture-envelope",
         action: "capture_region",
@@ -1131,6 +1144,15 @@ describe("M100-SNAP — Snapshot Versioning", () => {
      * B2-SV-001 requires ALL data-producing browser tools to include snapshotId.
      */
     it("P0-1 + B2-SV-001: captureRegion response includes snapshotId (runtime)", async () => {
+      (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
+        pageId: "pg_test_capture",
+        frameId: "main",
+        snapshotId: "pg_test_capture:0",
+        capturedAt: "2025-01-01T00:00:00.000Z",
+        viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+        source: "visual" as const,
+      });
+
       const response = await handleRelayAction({
         requestId: "test-capture-snapshotid",
         action: "capture_region",
@@ -1238,6 +1260,143 @@ describe("M100-SNAP — Snapshot Versioning", () => {
   describe("DEFAULT_RETENTION_SIZE constant", () => {
     it("DEFAULT_RETENTION_SIZE equals 5", () => {
       expect(DEFAULT_RETENTION_SIZE).toBe(5);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // M114: Stable Page Identity (BR-F-150..BR-F-156)
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  describe("M114: Stable pageId — module-level singleton", () => {
+    // BR-F-150: pageId must not contain ":" (safe for {pageId}:{version} snapshotId format)
+    it("BR-F-150: pageId contains no colon character", () => {
+      const envelope = captureSnapshotEnvelope();
+      expect(envelope.pageId).not.toMatch(/:/);
+    });
+
+    it("BR-F-150: getCurrentSnapshotId() pageId portion contains no colon", () => {
+      const snapshotId = getCurrentSnapshotId();
+      // snapshotId format is {pageId}:{version} — the pageId is everything before the last colon
+      const lastColonIdx = snapshotId.lastIndexOf(":");
+      const pageId = snapshotId.slice(0, lastColonIdx);
+      expect(pageId).not.toMatch(/:/);
+    });
+
+    it("BR-F-150: SnapshotManager.pageId getter returns a string without colon", () => {
+      const manager = new SnapshotManager("anything");
+      expect(typeof manager.pageId).toBe("string");
+      expect(manager.pageId).not.toMatch(/:/);
+    });
+
+    it("BR-F-150: SnapshotManager rejects empty pageId", () => {
+      expect(() => new SnapshotManager("")).toThrow("pageId must be non-empty");
+    });
+
+    it("BR-F-150: SnapshotManager rejects pageId containing colon", () => {
+      expect(() => new SnapshotManager("bad:page")).toThrow("pageId must be non-empty and must not contain ':'");
+    });
+
+    // BR-F-151: pageId is stable within the same document session
+    it("BR-F-151: pageId is stable across repeated captureSnapshotEnvelope calls in one session", () => {
+      // Use a fresh manager to ensure controlled state
+      resetDefaultManager();
+
+      const envelope1 = captureSnapshotEnvelope();
+      const envelope2 = captureSnapshotEnvelope();
+      const envelope3 = captureSnapshotEnvelope();
+
+      expect(envelope1.pageId).toBe(envelope2.pageId);
+      expect(envelope2.pageId).toBe(envelope3.pageId);
+      // SnapshotId versions should still be incrementing
+      expect(envelope1.snapshotId).not.toBe(envelope2.snapshotId);
+      expect(envelope2.snapshotId).not.toBe(envelope3.snapshotId);
+    });
+
+    it("BR-F-151: pageId is stable across repeated getCurrentSnapshotId calls in one session", () => {
+      resetDefaultManager();
+
+      const snap1 = getCurrentSnapshotId();
+      const snap2 = getCurrentSnapshotId();
+      const snap3 = getCurrentSnapshotId();
+
+      // pageId portion should be identical
+      const pageId1 = snap1.slice(0, snap1.lastIndexOf(":"));
+      const pageId2 = snap2.slice(0, snap2.lastIndexOf(":"));
+      const pageId3 = snap3.slice(0, snap3.lastIndexOf(":"));
+      expect(pageId1).toBe(pageId2);
+      expect(pageId2).toBe(pageId3);
+      // versions should differ
+      expect(snap1).not.toBe(snap2);
+      expect(snap2).not.toBe(snap3);
+    });
+
+    // BR-F-153: resetDefaultManager() creates a new pageId
+    it("BR-F-153: resetDefaultManager() mints a NEW pageId different from the previous one", () => {
+      resetDefaultManager();
+
+      const envelopeBefore = captureSnapshotEnvelope();
+      const pageIdBefore = envelopeBefore.pageId;
+
+      resetDefaultManager();
+
+      const envelopeAfter = captureSnapshotEnvelope();
+      const pageIdAfter = envelopeAfter.pageId;
+
+      expect(pageIdAfter).not.toBe(pageIdBefore);
+      // New session should restart version at 0 (snapshotId ends with :0)
+      const versionAfter = parseInt(envelopeAfter.snapshotId.split(":").at(-1)!, 10);
+      expect(versionAfter).toBe(0);
+    });
+
+    it("BR-F-153: after reset, snapshot version counter starts at 0", () => {
+      resetDefaultManager();
+
+      // Advance the counter a bit
+      getCurrentSnapshotId();
+      getCurrentSnapshotId();
+      getCurrentSnapshotId();
+
+      // Capture the snapshotId before reset
+      const before = getCurrentSnapshotId();
+      const beforeVersion = parseInt(before.split(":").at(-1)!, 10);
+
+      resetDefaultManager();
+
+      // After reset, version should start at 0
+      const after = getCurrentSnapshotId();
+      const afterVersion = parseInt(after.split(":").at(-1)!, 10);
+      expect(afterVersion).toBeLessThan(beforeVersion);
+    });
+
+    // BR-F-152: distinct pageIds across separately-created sessions.
+    // Simulated by resetDefaultManager() creating a new manager with a new pageId.
+    it("BR-F-152: resetDefaultManager() creates a manager with a different pageId", () => {
+      resetDefaultManager();
+      const pageIdBefore = getDefaultManager().pageId;
+
+      resetDefaultManager();
+      const pageIdAfter = getDefaultManager().pageId;
+
+      expect(pageIdAfter).not.toBe(pageIdBefore);
+    });
+
+    // BR-F-154 / BR-F-156: SnapshotManager.pageId is opaque — the module-level singleton
+    // auto-generates via createPageSessionId(), callers who use new SnapshotManager(...)
+    // pass their own pageId (opaque to them too). Routing stays on tabId.
+    it("BR-F-154: SnapshotManager.pageId reflects what was passed to the constructor", () => {
+      const manager = new SnapshotManager("my-custom-page");
+      expect(manager.pageId).toBe("my-custom-page");
+    });
+
+    // BR-F-156: pageId is opaque — callers must not infer identity from format
+    it("BR-F-156: pageId is non-empty and does not contain URL characters", () => {
+      resetDefaultManager();
+      const envelope = captureSnapshotEnvelope();
+      expect(envelope.pageId.length).toBeGreaterThan(0);
+      // Opaque — no URL structure detectable
+      expect(envelope.pageId).not.toMatch(/\//);  // no path chars
+      expect(envelope.pageId).not.toMatch(/:/);  // no colon (format separator)
+      expect(envelope.pageId).not.toMatch(/https?/); // no scheme hints
     });
   });
 });

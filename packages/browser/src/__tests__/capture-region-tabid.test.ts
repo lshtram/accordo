@@ -151,10 +151,10 @@ describe("P4-CR: capture_region mode parameter", () => {
   });
 
   /**
-   * P4-CR: Default mode is "viewport" — mode field is absent from payload
+   * P4-CR: Default mode is region — mode field is absent from payload
    * when not specified (backward compatibility).
    */
-  it("P4-CR: handleCaptureRegion omits mode from relay payload when not specified (default: viewport)", async () => {
+  it("P4-CR: handleCaptureRegion omits mode from relay payload when not specified (default: region)", async () => {
     const args: CaptureRegionArgs = { anchorKey: "btn_1" };
 
     await handleCaptureRegion(relay, args, store);
@@ -313,8 +313,7 @@ describe("GAP-E2: capture_region no-target viewport behavior", () => {
   });
 
   /**
-   * GAP-E2: When no target is provided in viewport mode, the relay returns
-   * raw full-viewport capture (mode: "viewport").
+   * GAP-E2: Viewport mode returns relatedSnapshotId from the most recent DOM snapshot.
    */
   it("GAP-E2: handleCaptureRegion returns relatedSnapshotId from the store after successful capture", async () => {
     // Pre-populate the store with a DOM snapshot
@@ -327,7 +326,7 @@ describe("GAP-E2: capture_region no-target viewport behavior", () => {
       source: "dom",
     });
 
-    const args: CaptureRegionArgs = { tabId: 1 };
+    const args: CaptureRegionArgs = { tabId: 1, mode: "viewport" };
 
     const result = await handleCaptureRegion(relay, args, store);
 
@@ -340,11 +339,36 @@ describe("GAP-E2: capture_region no-target viewport behavior", () => {
    * GAP-E2: When no previous snapshot exists, relatedSnapshotId is not present.
    */
   it("GAP-E2: handleCaptureRegion omits relatedSnapshotId when no previous snapshot exists", async () => {
-    const args: CaptureRegionArgs = { tabId: 1 };
+    const args: CaptureRegionArgs = { tabId: 1, mode: "viewport" };
 
     const result = await handleCaptureRegion(relay, args, store);
 
     // No previous snapshot — relatedSnapshotId should not be set
     expect(result).not.toHaveProperty("relatedSnapshotId");
+  });
+
+  it("GAP-E2: omitted mode with no target preserves region semantics and returns no-target", async () => {
+    const noTargetRelay = {
+      request: vi.fn().mockResolvedValue({
+        success: true,
+        requestId: "test",
+        data: {
+          success: false,
+          error: "no-target",
+          pageId: "page",
+          frameId: "main",
+          snapshotId: "page:0",
+          capturedAt: "2025-01-01T00:00:00.000Z",
+          viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+          source: "dom" as const,
+        },
+      }),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    const result = await handleCaptureRegion(noTargetRelay, { tabId: 1 }, store);
+
+    expect(result).toHaveProperty("success", false);
+    expect((result as Record<string, unknown>).error).toBe("no-target");
   });
 });

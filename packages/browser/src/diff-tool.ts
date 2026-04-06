@@ -17,7 +17,29 @@
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { BrowserRelayLike, SnapshotEnvelopeFields } from "./types.js";
 import { hasSnapshotEnvelope } from "./types.js";
-import type { SnapshotRetentionStore } from "./snapshot-retention.js";
+import { SnapshotRetentionStore, RETENTION_SLOTS } from "./snapshot-retention.js";
+
+/**
+ * B2-SV-004 / GAP-G1: Eviction hint carried in `snapshot-not-found` errors
+ * when the local retention store can infer that the snapshot was retained
+ * once (therefore was evicted due to FIFO overflow) vs never existed.
+ *
+ * This makes diff failures actionable: the agent knows whether to
+ * re-capture and retry, or to check the snapshot ID spelling.
+ */
+export interface EvictionHint {
+  /** The snapshot ID the agent requested. */
+  requestedSnapshotId: string;
+  /** How many snapshots are retained per page (FIFO window size). */
+  retentionWindow: number;
+  /**
+   * Whether the requested ID falls within the retention window but was
+   * not found — strongly suggests it was evicted.
+   */
+  wasEvicted: boolean;
+  /** Human-readable suggested next action for the agent. */
+  suggestedAction: string;
+}
 
 // ── Tool Input Type ──────────────────────────────────────────────────────────
 
@@ -86,16 +108,45 @@ export interface DiffSnapshotsResponse extends SnapshotEnvelopeFields {
 }
 
 /**
- * Error response from the diff tool.
+ * B2-DE-006 / B2-DE-007 / F-4: Structured diff error response.
  *
- * B2-DE-006: `"snapshot-not-found"` when a snapshot ID doesn't exist.
- * B2-DE-007: `"snapshot-stale"` when a snapshot is from a previous navigation.
- * B2-DE-003/004: `"implicit-snapshot-resolution-required"` propagated from relay when
- *   the relay itself requires explicit snapshot IDs (strict relay contract).
+ * On `snapshot-not-found`, the `details` field carries an `EvictionHint`
+ * when the local retention store can determine that the snapshot ID was
+ * within the retention window at some point — implying FIFO eviction rather
+ * than a never-existed ID. This makes eviction actionable for agents.
+ *
+ * On `snapshot-stale`, `details` carries the navigation version boundary
+ * so the agent knows how far the snapshot drifted.
+ *
+ * Per MCP-ER-002, `snapshot-not-found` and `snapshot-stale` are
+ * non-retryable: the agent must re-capture or check the snapshot ID.
  */
 export interface DiffToolError {
   success: false;
   error: "snapshot-not-found" | "snapshot-stale" | "browser-not-connected" | "timeout" | "action-failed" | "implicit-snapshot-resolution-required";
+  /** Per MCP-ER-002: retryable is true for transient errors, false for permanent ones */
+  retryable: boolean;
+  /** Per MCP-ER-002: suggested backoff for transient errors. */
+  retryAfterMs?: number;
+  /**
+   * Structured detail about why the error occurred.
+   * Present on `snapshot-not-found` (eviction analysis) and `snapshot-stale`
+   * (navigation version boundary).
+   */
+  details?: {
+    /** Present when the error is `snapshot-not-found` and eviction is inferred. */
+    eviction?: EvictionHint;
+    /** Present when the error is `snapshot-stale`: the version after navigation. */
+    navigationBoundary?: { currentVersion: number };
+    /** Human-readable description of the failure cause. */
+    reason: string;
+  };
+}
+
+function normalizeSnapshotId(id: string | undefined): string | undefined {
+  if (id === undefined) return undefined;
+  const trimmed = id.trim();
+  return trimmed === "" ? undefined : trimmed;
 }
 
 // ── Tool Timeout ─────────────────────────────────────────────────────────────
@@ -129,7 +180,7 @@ export function buildDiffSnapshotsTool(
   store: SnapshotRetentionStore,
 ): ExtensionToolDefinition {
   return {
-    name: "browser_diff_snapshots",
+    name: "accordo_browser_diff_snapshots",
     description:
       "Compare two page snapshots and return what changed — added nodes, removed nodes, and changed text/attributes. " +
       "If toSnapshotId is omitted, captures a fresh snapshot. If fromSnapshotId is omitted, uses the previous snapshot.",
@@ -209,6 +260,26 @@ function extractRelayErrorCode(
   return undefined;
 }
 
+function buildTransientRelayError(topLevelError?: unknown): DiffToolError | undefined {
+  if (topLevelError === "browser-not-connected") {
+    return {
+      success: false,
+      error: "browser-not-connected",
+      retryable: true,
+      retryAfterMs: 2000,
+    };
+  }
+  if (topLevelError === "timeout") {
+    return {
+      success: false,
+      error: "timeout",
+      retryable: true,
+      retryAfterMs: 1000,
+    };
+  }
+  return undefined;
+}
+
 /**
  * Resolve the `toSnapshotId` by capturing a fresh page snapshot via the relay.
  *
@@ -232,75 +303,128 @@ async function resolveFreshSnapshot(
   try {
     freshResponse = await relay.request("get_page_map", payload, DIFF_TIMEOUT_MS);
   } catch (err: unknown) {
-    return { success: false, error: classifyRelayError(err) };
+    const error = classifyRelayError(err);
+    return {
+      success: false,
+      error,
+      retryable: true,
+      retryAfterMs: error === "browser-not-connected" ? 2000 : 1000,
+    };
   }
 
   if (!freshResponse.success) {
     const code = extractRelayErrorCode(freshResponse.data, freshResponse.error);
-    if (code !== undefined) return { success: false, error: code };
-    return { success: false, error: "action-failed" };
+    if (code !== undefined) return { success: false, error: code, retryable: false };
+    const transient = buildTransientRelayError(freshResponse.error);
+    if (transient !== undefined) return transient;
+    return { success: false, error: "action-failed", retryable: false };
   }
 
   if (hasSnapshotEnvelope(freshResponse.data)) {
     return freshResponse.data.snapshotId;
   }
 
-  return { success: false, error: "action-failed" };
+  return { success: false, error: "action-failed", retryable: false };
 }
 
 /**
  * Derive the implicit `fromSnapshotId` (previous snapshot) from `toSnapshotId`.
  *
- * B2-DE-004: When `fromSnapshotId` is omitted, the handler MUST resolve it before
- * calling `diff_snapshots`. Resolution strategy:
- *   1. Verify the current page is accessible via a `get_page_map` preflight.
- *      This allows a strict relay (or any relay that rejects undefined IDs) to
- *      return "implicit-snapshot-resolution-required" on the preflight call,
- *      which the handler then propagates as the structured error code.
- *   2. Compute the previous snapshotId as `pageId:(version - 1)` from `toSnapshotId`.
- *
- * B2-CTX-003: When tabId is provided, it MUST be included in the get_page_map
- * payload so the preflight check is performed on the correct tab.
+ * B2-DE-004: When `fromSnapshotId` is omitted, the handler resolves it locally
+ * from the explicit `toSnapshotId` format by deriving `pageId:(version - 1)`.
+ * This avoids side effects from extra captures while keeping the contract
+ * deterministic for callers.
  *
  * @returns The derived fromSnapshotId string, or a DiffToolError to propagate.
  */
 async function resolveFromSnapshot(
-  relay: BrowserRelayLike,
   toSnapshotId: string,
-  tabId?: number,
 ): Promise<string | DiffToolError> {
-  // Preflight: verify relay accessibility. Strict relays reject this call
-  // (no fromSnapshotId/toSnapshotId in payload) and return the
-  // "implicit-snapshot-resolution-required" error, which we propagate.
-  const payload: Record<string, unknown> = {};
-  if (tabId !== undefined) {
-    payload.tabId = tabId;
-  }
-  let preflightResponse: Awaited<ReturnType<BrowserRelayLike["request"]>>;
-  try {
-    preflightResponse = await relay.request("get_page_map", payload, DIFF_TIMEOUT_MS);
-  } catch (err: unknown) {
-    return { success: false, error: classifyRelayError(err) };
-  }
-
-  if (!preflightResponse.success) {
-    const code = extractRelayErrorCode(preflightResponse.data, preflightResponse.error);
-    if (code !== undefined) return { success: false, error: code };
-    return { success: false, error: "action-failed" };
-  }
-
   // Compute previous snapshot via version arithmetic on toSnapshotId.
   // Format: "{pageId}:{version}" — derive "{pageId}:{version - 1}".
   const lastColon = toSnapshotId.lastIndexOf(":");
   if (lastColon === -1) {
-    return { success: false, error: "action-failed" };
+    return { success: false, error: "action-failed", retryable: false };
   }
   const pageId = toSnapshotId.slice(0, lastColon);
   const version = parseInt(toSnapshotId.slice(lastColon + 1), 10);
   if (isNaN(version) || version <= 0) {
-    return { success: false, error: "action-failed" };
+    return { success: false, error: "action-failed", retryable: false };
   }
   return `${pageId}:${version - 1}`;
+}
+
+function findMissingSnapshotId(
+  store: SnapshotRetentionStore,
+  fromSnapshotId: string,
+  toSnapshotId: string,
+): string {
+  const hasFrom = store.get(fromSnapshotId) !== undefined;
+  const hasTo = store.get(toSnapshotId) !== undefined;
+
+  if (!hasFrom && hasTo) return fromSnapshotId;
+  if (!hasTo && hasFrom) return toSnapshotId;
+  return fromSnapshotId;
+}
+
+// ── Eviction Analysis ─────────────────────────────────────────────────────────
+
+/**
+ * B2-DE-006 / F-4: Analyze a missing snapshot ID against the local retention
+ * store to determine whether it was likely evicted (vs never existed).
+ *
+ * Strategy: parse the requested version from `snapshotId`, compare against
+ * the newest and oldest currently-retained versions for the same pageId.
+ * If the missing version is older than the oldest retained AND the store is
+ * at capacity, the snapshot was almost certainly evicted.
+ *
+ * @param store - The local retention store
+ * @param requestedId - The snapshot ID that was not found
+ * @returns An EvictionHint if analysis is possible, otherwise undefined
+ */
+function analyzeEviction(
+  store: SnapshotRetentionStore,
+  requestedId: string,
+): EvictionHint | undefined {
+  const lastColon = requestedId.lastIndexOf(":");
+  if (lastColon === -1) return undefined;
+  const pageId = requestedId.slice(0, lastColon);
+  const requestedVersion = parseInt(requestedId.slice(lastColon + 1), 10);
+  if (isNaN(requestedVersion)) return undefined;
+
+  const slots = store.list(pageId);
+  if (slots.length === 0) return undefined;
+
+  const versions = slots
+    .map((s) => {
+      const lc = s.snapshotId.lastIndexOf(":");
+      return lc === -1 ? -1 : parseInt(s.snapshotId.slice(lc + 1), 10);
+    })
+    .filter((v) => v >= 0);
+
+  if (versions.length === 0) return undefined;
+
+  const newestVersion = Math.max(...versions);
+  const oldestVersion = Math.min(...versions);
+
+  // The snapshot was likely evicted if:
+  // 1. The store is at (or near) capacity — only true when it has been accumulating
+  // 2. The missing version is older than the oldest retained version
+  const wasEvicted =
+    slots.length >= RETENTION_SLOTS && requestedVersion < oldestVersion;
+
+  const suggestedAction = wasEvicted
+    ? `Snapshot ${requestedId} was evicted (retention window: ${RETENTION_SLOTS} snapshots). ` +
+      `Capture a fresh snapshot and retry the diff.`
+    : `Snapshot ${requestedId} was not found in retention store. ` +
+      `Check the snapshot ID spelling, or capture a fresh snapshot.`;
+
+  return {
+    requestedSnapshotId: requestedId,
+    retentionWindow: RETENTION_SLOTS,
+    wasEvicted,
+    suggestedAction,
+  };
 }
 
 // ── Tool Handler ─────────────────────────────────────────────────────────────
@@ -331,13 +455,13 @@ export async function handleDiffSnapshots(
   store: SnapshotRetentionStore,
 ): Promise<DiffSnapshotsResponse | DiffToolError> {
   if (!relay.isConnected()) {
-    return { success: false, error: "browser-not-connected" };
+    return { success: false, error: "browser-not-connected", retryable: true, retryAfterMs: 2000 };
   }
 
   // ── B2-DE-003: Resolve implicit toSnapshotId ─────────────────────────────
   // When toSnapshotId is omitted, capture a fresh snapshot and use it as `to`.
   // The handler MUST resolve this before calling diff_snapshots.
-  let resolvedToSnapshotId = args.toSnapshotId;
+  let resolvedToSnapshotId = normalizeSnapshotId(args.toSnapshotId);
   if (resolvedToSnapshotId === undefined) {
     const resolved = await resolveFreshSnapshot(relay, args.tabId);
     if (typeof resolved !== "string") return resolved; // propagate error
@@ -347,10 +471,11 @@ export async function handleDiffSnapshots(
   // ── B2-DE-004: Resolve implicit fromSnapshotId ────────────────────────────
   // When fromSnapshotId is omitted, derive the previous snapshot from toSnapshotId.
   // The handler MUST resolve this before calling diff_snapshots.
-  let resolvedFromSnapshotId = args.fromSnapshotId;
+  let resolvedFromSnapshotId = normalizeSnapshotId(args.fromSnapshotId);
   if (resolvedFromSnapshotId === undefined) {
-    const resolved = await resolveFromSnapshot(relay, resolvedToSnapshotId, args.tabId);
-    if (typeof resolved !== "string") return resolved; // propagate error
+    const resolved = await resolveFromSnapshot(resolvedToSnapshotId);
+    // Propagate DiffToolError (which has retryable: false)
+    if (typeof resolved !== "string") return resolved;
     resolvedFromSnapshotId = resolved;
   }
 
@@ -381,11 +506,45 @@ export async function handleDiffSnapshots(
     // Check for known diff error codes (B2-DE-006, B2-DE-007 and relay-level)
     if (!response.success) {
       const code = extractRelayErrorCode(response.data, response.error);
-      if (code !== undefined) return { success: false, error: code };
+      if (code !== undefined) {
+        // B2-DE-006 / F-4: Enrich snapshot-not-found with eviction hint
+        if (code === "snapshot-not-found") {
+          const snapshotIdForAnalysis = findMissingSnapshotId(
+            store,
+            resolvedFromSnapshotId,
+            resolvedToSnapshotId,
+          );
+          const eviction = analyzeEviction(store, snapshotIdForAnalysis);
+          return {
+            success: false,
+            error: code,
+            retryable: false,
+            details: {
+              eviction,
+              reason: eviction?.wasEvicted
+                ? `Snapshot '${eviction.requestedSnapshotId}' was evicted from the ${RETENTION_SLOTS}-slot FIFO retention store.`
+                : `Snapshot '${eviction?.requestedSnapshotId ?? snapshotIdForAnalysis}' was not found in the retention store.`,
+            },
+          };
+        }
+        // B2-DE-007: snapshot-stale — non-retryable
+        if (code === "snapshot-stale") {
+          return { success: false, error: code, retryable: false };
+        }
+        return { success: false, error: code, retryable: false };
+      }
+      const transient = buildTransientRelayError(response.error);
+      if (transient !== undefined) return transient;
     }
 
-    return { success: false, error: "action-failed" };
+    return { success: false, error: "action-failed", retryable: false };
   } catch (err: unknown) {
-    return { success: false, error: classifyRelayError(err) };
+    const error = classifyRelayError(err);
+    return {
+      success: false,
+      error,
+      retryable: true,
+      retryAfterMs: error === "browser-not-connected" ? 2000 : 1000,
+    };
   }
 }

@@ -10,7 +10,7 @@
  * - B2-TX-010: Backward compatibility — purely additive, no existing tools modified
  *
  * API checklist (buildTextMapTool):
- * - name: "browser_get_text_map"
+ * - name: "accordo_browser_get_text_map"
  * - description: mentions raw/normalized text, bbox, visibility, semantic context, reading order
  * - inputSchema.maxSegments: integer, minimum 1, maximum 2000
  * - dangerLevel: "safe"
@@ -122,7 +122,7 @@ describe("B2-TX-009: Tool registration", () => {
     const relay = createMockRelay();
     const store = new SnapshotRetentionStore();
     const tool = buildTextMapTool(relay, store);
-    expect(tool.name).toBe("browser_get_text_map");
+    expect(tool.name).toBe("accordo_browser_get_text_map");
   });
 
   it("B2-TX-009: Tool description mentions key capabilities", () => {
@@ -425,13 +425,13 @@ describe("B2-TX-010: Backward compatibility", () => {
     const toolNames = allTools.map((t) => t.name);
 
     // All previously-existing tools are still present
-    expect(toolNames).toContain("browser_get_page_map");
-    expect(toolNames).toContain("browser_inspect_element");
-    expect(toolNames).toContain("browser_get_dom_excerpt");
-    expect(toolNames).toContain("browser_capture_region");
-    expect(toolNames).toContain("browser_wait_for");
+    expect(toolNames).toContain("accordo_browser_get_page_map");
+    expect(toolNames).toContain("accordo_browser_inspect_element");
+    expect(toolNames).toContain("accordo_browser_get_dom_excerpt");
+    expect(toolNames).toContain("accordo_browser_capture_region");
+    expect(toolNames).toContain("accordo_browser_wait_for");
     // New tool is present
-    expect(toolNames).toContain("browser_get_text_map");
+    expect(toolNames).toContain("accordo_browser_get_text_map");
     // Exactly 8 tools total (6 page + 1 wait + 1 text)
     expect(allTools.length).toBe(8);
   });

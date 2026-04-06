@@ -110,7 +110,7 @@ export function buildWaitForTool(
   relay: BrowserRelayLike,
 ): ExtensionToolDefinition {
   return {
-    name: "browser_wait_for",
+    name: "accordo_browser_wait_for",
     description:
       "Wait for a condition on the current page — text appearance, CSS selector match, " +
       "or layout stability. Returns when the condition is met or timeout is reached.",

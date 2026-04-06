@@ -24,7 +24,8 @@ export type BrowserRelayAction =
   | "navigate"
   | "click"
   | "type"
-  | "press_key";
+  | "press_key"
+  | "get_spatial_relations";
 
 // ── Snapshot Envelope (shared contract) ──────────────────────────────────────
 

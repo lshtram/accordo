@@ -27,9 +27,9 @@
  * for you when the handler fails to do so. Tests using it for B2-DE-003/004
  * are FALSE-GREEN: they pass even when the handler has no implicit logic.
  *
- * The strict mock (createStrictRelay) returns an error when either ID is
- * undefined, which more closely mirrors real relay behavior where the Chrome
- * service worker expects explicit snapshot IDs.
+ * The strict mock (createStrictRelay) returns an error when `diff_snapshots`
+ * receives an undefined ID, while still allowing `get_page_map` to succeed.
+ * That keeps the harness representative for implicit-resolution flows.
  *
  * Higher-fidelity RED tests use a recording relay (createRecordingRelay) that
  * captures the exact payload sent to the relay and asserts the handler
@@ -123,6 +123,20 @@ function createMockRelay(overrides?: {
           error: "action-failed",
         };
       }
+      if (overrides?.errorAction === "timeout") {
+        return {
+          success: false,
+          requestId: "test",
+          error: "timeout",
+        };
+      }
+      if (overrides?.errorAction === "browser-not-connected") {
+        return {
+          success: false,
+          requestId: "test",
+          error: "browser-not-connected",
+        };
+      }
 
       const diffResponse = makeDiffResponse(
         (payload?.fromSnapshotId as string) ?? "page-auto:9",
@@ -156,7 +170,15 @@ function createMockRelay(overrides?: {
  */
 function createStrictRelay() {
   return {
-    request: vi.fn().mockImplementation(async (_action: string, payload?: Record<string, unknown>) => {
+    request: vi.fn().mockImplementation(async (action: string, payload?: Record<string, unknown>) => {
+      if (action === "get_page_map") {
+        return {
+          success: true,
+          requestId: "test",
+          data: makeEnvelope("page-strict", 1),
+        };
+      }
+
       const fromId = payload?.fromSnapshotId as string | undefined;
       const toId = payload?.toSnapshotId as string | undefined;
 
@@ -256,7 +278,7 @@ describe("B2-DE-001: browser_diff_snapshots tool registration", () => {
 
     expect(Array.isArray(tools)).toBe(true);
     expect(tools).toHaveLength(1);
-    expect(tools[0]!.name).toBe("browser_diff_snapshots");
+    expect(tools[0]!.name).toBe("accordo_browser_diff_snapshots");
   });
 
   /**
@@ -354,28 +376,32 @@ describe("B2-DE-003: implicit `to` snapshot — RED test: handler must resolve t
   });
 
   /**
-   * B2-DE-003 RED (strict mock path): When handler fails to resolve implicit
-   * toSnapshotId and passes undefined to relay, the strict relay returns
-   * "implicit-snapshot-resolution-required".
-   *
-   * Current behavior FAILS this test because the handler converts the specific
-   * error to generic "action-failed" at line 229 of diff-tool.ts.
-   *
-   * Assertion: error.error === "implicit-snapshot-resolution-required"
-   */
-  it("B2-DE-003 RED: strict mock — error must preserve 'implicit-snapshot-resolution-required' not 'action-failed'", async () => {
+    * B2-DE-003 strict-path: a strict relay should succeed once the handler has
+    * resolved the implicit `toSnapshotId` before calling `diff_snapshots`.
+    */
+  it("B2-DE-003 strict mock: succeeds after resolving implicit toSnapshotId", async () => {
     const strictRelay = createStrictRelay();
     const store = new SnapshotRetentionStore();
 
     const result = await handleDiffSnapshots(strictRelay, { fromSnapshotId: "page-strict:0" }, store);
 
-    expect(result).toHaveProperty("success", false);
-    const error = result as DiffToolError;
+    expect(result).not.toHaveProperty("success", false);
+    const diffResult = result as DiffSnapshotsResponse;
 
-    // The handler must preserve the specific error from the strict relay,
-    // not collapse it into generic "action-failed".
-    // Currently FAILS: handler returns "action-failed" (line 229 catch-all)
-    expect(error.error).toBe("implicit-snapshot-resolution-required");
+    expect(diffResult.fromSnapshotId).toBe("page-strict:0");
+    expect(diffResult.toSnapshotId).toBe("page-strict:1");
+  });
+
+  it("treats blank toSnapshotId as omitted and resolves a fresh snapshot", async () => {
+    const relay = createRecordingRelay();
+    const store = new SnapshotRetentionStore();
+
+    await handleDiffSnapshots(relay, { fromSnapshotId: "page-blank:0", toSnapshotId: "   " }, store);
+
+    const payload = (relay as ReturnType<typeof createRecordingRelay>).getRecordedPayload();
+    expect(typeof payload.toSnapshotId).toBe("string");
+    expect((payload.toSnapshotId as string).length).toBeGreaterThan(0);
+    expect(payload.toSnapshotId).not.toBe("   ");
   });
 });
 
@@ -388,14 +414,9 @@ describe("B2-DE-003: implicit `to` snapshot — RED test: handler must resolve t
 
 describe("B2-DE-004: implicit `from` snapshot — RED test: handler must resolve fromSnapshotId before calling relay", () => {
   /**
-   * B2-DE-004 RED: When fromSnapshotId is omitted, the handler MUST call relay
-   * with an EXPLICITLY RESOLVED fromSnapshotId — not undefined.
-   *
-   * Current behavior FAILS this test because the handler passes
-   * { fromSnapshotId: undefined } directly to relay instead of resolving it.
-   *
-   * Assertion: recordedPayload.fromSnapshotId !== undefined
-   */
+    * B2-DE-004 RED: When fromSnapshotId is omitted, the handler MUST call relay
+    * with an EXPLICITLY RESOLVED fromSnapshotId — not undefined.
+    */
   it("B2-DE-004 RED: handler calls relay with resolved fromSnapshotId (not undefined) when omitted", async () => {
     const relay = createRecordingRelay();
     const store = new SnapshotRetentionStore();
@@ -405,7 +426,6 @@ describe("B2-DE-004: implicit `from` snapshot — RED test: handler must resolve
 
     // RECORDING RELAY ASSERTION: The handler must have called relay with
     // an explicitly resolved fromSnapshotId, not undefined.
-    // Currently FAILS because handler passes args directly without resolution.
     const payload = (relay as ReturnType<typeof createRecordingRelay>).getRecordedPayload();
     expect(payload.fromSnapshotId).not.toBeUndefined();
     expect(typeof payload.fromSnapshotId).toBe("string");
@@ -413,11 +433,9 @@ describe("B2-DE-004: implicit `from` snapshot — RED test: handler must resolve
   });
 
   /**
-   * B2-DE-004 RED: When fromSnapshotId is omitted, the resolved fromSnapshotId
-   * must be semantically older than toSnapshotId (version ordering).
-   *
-   * Current behavior FAILS because handler passes undefined.
-   */
+    * B2-DE-004 RED: When fromSnapshotId is omitted, the resolved fromSnapshotId
+    * must be semantically older than toSnapshotId (version ordering).
+    */
   it("B2-DE-004 RED: resolved fromSnapshotId must be older than toSnapshotId", async () => {
     const relay = createRecordingRelay();
     const store = new SnapshotRetentionStore();
@@ -438,55 +456,109 @@ describe("B2-DE-004: implicit `from` snapshot — RED test: handler must resolve
   });
 
   /**
-   * B2-DE-004 RED (strict mock path): When handler fails to resolve implicit
-   * fromSnapshotId and passes undefined to relay, the strict relay returns
-   * "implicit-snapshot-resolution-required".
-   *
-   * Current behavior FAILS this test because the handler converts the specific
-   * error to generic "action-failed" at line 229 of diff-tool.ts.
-   *
-   * Assertion: error.error === "implicit-snapshot-resolution-required"
-   */
-  it("B2-DE-004 RED: strict mock — error must preserve 'implicit-snapshot-resolution-required' not 'action-failed'", async () => {
+    * B2-DE-004 strict-path: a strict relay should succeed once the handler has
+    * resolved the implicit `fromSnapshotId` before calling `diff_snapshots`.
+    */
+  it("B2-DE-004 strict mock: succeeds after resolving implicit fromSnapshotId", async () => {
     const strictRelay = createStrictRelay();
     const store = new SnapshotRetentionStore();
 
     const result = await handleDiffSnapshots(strictRelay, { toSnapshotId: "page-strict:5" }, store);
 
-    expect(result).toHaveProperty("success", false);
-    const error = result as DiffToolError;
+    expect(result).not.toHaveProperty("success", false);
+    const diffResult = result as DiffSnapshotsResponse;
 
-    // The handler must preserve the specific error from the strict relay,
-    // not collapse it into generic "action-failed".
-    // Currently FAILS: handler returns "action-failed" (line 229 catch-all)
-    expect(error.error).toBe("implicit-snapshot-resolution-required");
+    expect(diffResult.fromSnapshotId).toBe("page-strict:4");
+    expect(diffResult.toSnapshotId).toBe("page-strict:5");
+  });
+
+  it("treats blank fromSnapshotId as omitted and resolves the previous snapshot", async () => {
+    const relay = createRecordingRelay();
+    const store = new SnapshotRetentionStore();
+
+    await handleDiffSnapshots(relay, { fromSnapshotId: "", toSnapshotId: "page-blank:3" }, store);
+
+    const payload = (relay as ReturnType<typeof createRecordingRelay>).getRecordedPayload();
+    expect(payload.fromSnapshotId).toBe("page-blank:2");
   });
 });
 
 // ── B2-DE-006: Diff error for missing snapshot ─────────────────────────────────
 
 describe("B2-DE-006: snapshot-not-found error for missing snapshots", () => {
-  it("B2-DE-006: returns { success: false, error: 'snapshot-not-found' } for unknown snapshot", async () => {
+  it("B2-DE-006: snapshot-not-found for unknown snapshot without eviction hint (store is empty)", async () => {
     const relay = createMockRelay({ errorAction: "snapshot-not-found" });
-    const store = new SnapshotRetentionStore();
+    const store = new SnapshotRetentionStore(); // empty — no eviction analysis possible
 
     const result = await handleDiffSnapshots(relay, { fromSnapshotId: "unknown:99", toSnapshotId: "unknown:100" }, store);
 
     expect(result).toHaveProperty("success", false);
     const error = result as DiffToolError;
     expect(error.error).toBe("snapshot-not-found");
+    expect(error.details).toBeDefined();
+    // No eviction hint because the store has no snapshots for this pageId
+    expect(error.details!.eviction).toBeUndefined();
+    expect(error.details!.reason).toBeDefined();
   });
 
-  it("B2-DE-006: snapshot-not-found error for pruned snapshot (evicted from 5-slot store)", async () => {
+  it("B2-DE-006: snapshot-not-found error for pruned snapshot — includes eviction hint when store is at capacity", async () => {
     const relay = createMockRelay({ errorAction: "snapshot-not-found" });
     const store = new SnapshotRetentionStore();
 
-    // Simulate calling with a snapshot that was evicted (pruned)
-    const result = await handleDiffSnapshots(relay, { fromSnapshotId: "page-005:0", toSnapshotId: "page-005:10" }, store);
+    // Pre-populate the store with RETENTION_SLOTS snapshots so it is at capacity
+    for (let i = 0; i < 10; i++) {
+      store.save("page-005", {
+        pageId: "page-005",
+        frameId: "main",
+        snapshotId: `page-005:${i}`,
+        capturedAt: new Date().toISOString(),
+        viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+        source: "dom",
+      });
+    }
+
+    // Request a fromSnapshotId older than any retained version. The handler
+    // should analyze the missing older ID, not the valid newer one.
+    const result = await handleDiffSnapshots(relay, { fromSnapshotId: "page-005:-1", toSnapshotId: "page-005:9" }, store);
 
     expect(result).toHaveProperty("success", false);
     const error = result as DiffToolError;
     expect(error.error).toBe("snapshot-not-found");
+    expect(error.details).toBeDefined();
+    expect(error.details!.eviction).toBeDefined();
+    expect(error.details!.eviction!.wasEvicted).toBe(true);
+    expect(error.details!.eviction!.requestedSnapshotId).toBe("page-005:-1");
+    expect(error.details!.eviction!.retentionWindow).toBe(10);
+    expect(typeof error.details!.eviction!.suggestedAction).toBe("string");
+    expect(error.details!.reason).toContain("evicted");
+  });
+
+  it("B2-DE-006: snapshot-not-found — no eviction hint when store is below capacity (never-existed scenario)", async () => {
+    const relay = createMockRelay({ errorAction: "snapshot-not-found" });
+    const store = new SnapshotRetentionStore();
+
+    // Store has only 3 snapshots — below capacity — so the missing version was
+    // never retained and should not be reported as evicted.
+    for (let i = 0; i < 3; i++) {
+      store.save("page-006", {
+        pageId: "page-006",
+        frameId: "main",
+        snapshotId: `page-006:${i}`,
+        capturedAt: new Date().toISOString(),
+        viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+        source: "dom",
+      });
+    }
+
+    const result = await handleDiffSnapshots(relay, { fromSnapshotId: "page-006:-1", toSnapshotId: "page-006:2" }, store);
+
+    expect(result).toHaveProperty("success", false);
+    const error = result as DiffToolError;
+    expect(error.error).toBe("snapshot-not-found");
+    expect(error.details).toBeDefined();
+    // wasEvicted is false because store is below capacity (never hit eviction)
+    expect(error.details!.eviction!.wasEvicted).toBe(false);
+    expect(error.details!.reason).toBeDefined();
   });
 });
 
@@ -650,7 +722,7 @@ describe("B2-DE-005: diff result includes summary with counts matching arrays", 
 // ── Error handling: browser-not-connected ────────────────────────────────────
 
 describe("browser-not-connected: relay disconnection handling", () => {
-  it("returns { success: false, error: 'browser-not-connected' } when relay is disconnected", async () => {
+  it("returns retry guidance when relay is disconnected", async () => {
     const relay = {
       request: vi.fn(),
       isConnected: vi.fn(() => false),
@@ -662,39 +734,72 @@ describe("browser-not-connected: relay disconnection handling", () => {
     expect(result).toHaveProperty("success", false);
     const error = result as DiffToolError;
     expect(error.error).toBe("browser-not-connected");
+    expect(error.retryable).toBe(true);
+    expect(error.retryAfterMs).toBe(2000);
+  });
+
+  it("preserves retry guidance when relay returns browser-not-connected", async () => {
+    const relay = createMockRelay({ errorAction: "browser-not-connected" });
+    const store = new SnapshotRetentionStore();
+
+    const result = await handleDiffSnapshots(relay, { fromSnapshotId: "page-014:0", toSnapshotId: "page-014:1" }, store);
+
+    expect(result).toHaveProperty("success", false);
+    const error = result as DiffToolError;
+    expect(error.error).toBe("browser-not-connected");
+    expect(error.retryable).toBe(true);
+    expect(error.retryAfterMs).toBe(2000);
+  });
+
+  it("preserves retry guidance when relay returns timeout", async () => {
+    const relay = createMockRelay({ errorAction: "timeout" });
+    const store = new SnapshotRetentionStore();
+
+    const result = await handleDiffSnapshots(relay, { fromSnapshotId: "page-015:0", toSnapshotId: "page-015:1" }, store);
+
+    expect(result).toHaveProperty("success", false);
+    const error = result as DiffToolError;
+    expect(error.error).toBe("timeout");
+    expect(error.retryable).toBe(true);
+    expect(error.retryAfterMs).toBe(1000);
   });
 });
 
 // ── DiffToolError type verification ───────────────────────────────────────────
 
 describe("DiffToolError: structured error response types", () => {
-  it("DiffToolError allows error: 'snapshot-not-found'", () => {
-    const error: DiffToolError = { success: false, error: "snapshot-not-found" };
+  it("DiffToolError allows error: 'snapshot-not-found' with retryable: false", () => {
+    const error: DiffToolError = { success: false, error: "snapshot-not-found", retryable: false };
     expect(error.success).toBe(false);
     expect(error.error).toBe("snapshot-not-found");
+    expect(error.retryable).toBe(false);
   });
 
-  it("DiffToolError allows error: 'snapshot-stale'", () => {
-    const error: DiffToolError = { success: false, error: "snapshot-stale" };
+  it("DiffToolError allows error: 'snapshot-stale' with retryable: false", () => {
+    const error: DiffToolError = { success: false, error: "snapshot-stale", retryable: false };
     expect(error.success).toBe(false);
     expect(error.error).toBe("snapshot-stale");
+    expect(error.retryable).toBe(false);
   });
 
-  it("DiffToolError allows error: 'browser-not-connected'", () => {
-    const error: DiffToolError = { success: false, error: "browser-not-connected" };
+  it("DiffToolError allows error: 'browser-not-connected' with retryable: true", () => {
+    const error: DiffToolError = { success: false, error: "browser-not-connected", retryable: true };
     expect(error.success).toBe(false);
     expect(error.error).toBe("browser-not-connected");
+    expect(error.retryable).toBe(true);
   });
 
-  it("DiffToolError allows error: 'timeout'", () => {
-    const error: DiffToolError = { success: false, error: "timeout" };
+  it("DiffToolError allows error: 'timeout' with retryable: true", () => {
+    const error: DiffToolError = { success: false, error: "timeout", retryable: true };
     expect(error.success).toBe(false);
     expect(error.error).toBe("timeout");
+    expect(error.retryable).toBe(true);
   });
 
-  it("DiffToolError allows error: 'action-failed'", () => {
-    const error: DiffToolError = { success: false, error: "action-failed" };
+  it("DiffToolError allows error: 'action-failed' with retryable: false", () => {
+    const error: DiffToolError = { success: false, error: "action-failed", retryable: false };
     expect(error.success).toBe(false);
     expect(error.error).toBe("action-failed");
+    expect(error.retryable).toBe(false);
   });
 });

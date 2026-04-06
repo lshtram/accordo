@@ -220,6 +220,18 @@ describe("B2-FI-001: isInViewport filter", () => {
   });
 });
 
+describe("B2-FI-006/007: regionFilter pipeline activation", () => {
+  it("ignores zero-sized regionFilter so default MCP payload does not activate filtering", () => {
+    const pipeline = buildFilterPipeline({
+      regionFilter: { x: 0, y: 0, width: 0, height: 0 },
+    } satisfies PageMapOptions);
+
+    expect(pipeline.hasFilters).toBe(false);
+    expect(pipeline.activeFilterNames).toEqual([]);
+    expect(pipeline.filters).toEqual([]);
+  });
+});
+
 // ── B2-FI-002: isInteractive ─────────────────────────────────────────────────
 
 describe("B2-FI-002: isInteractive filter", () => {

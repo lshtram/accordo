@@ -272,6 +272,16 @@ export function intersectsRegion(
   };
 }
 
+/**
+ * Treat zero/negative-size regions as unset rather than filtering everything.
+ * This matches MCP callers that send a default empty region object.
+ */
+function hasUsableRegion(
+  region: { x: number; y: number; width: number; height: number } | undefined,
+): region is { x: number; y: number; width: number; height: number } {
+  return region !== undefined && region.width > 0 && region.height > 0;
+}
+
 // ── Pipeline Builder ─────────────────────────────────────────────────────────
 
 /**
@@ -316,7 +326,7 @@ export function buildFilterPipeline(options: PageMapOptions): FilterPipeline {
     activeFilterNames.push("selector");
   }
 
-  if (options.regionFilter) {
+  if (hasUsableRegion(options.regionFilter)) {
     filters.push(intersectsRegion(options.regionFilter));
     activeFilterNames.push("regionFilter");
   }
