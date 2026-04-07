@@ -256,7 +256,12 @@ export function buildSemanticGraphTool(
     description:
       "Extract the semantic structure of the current page: accessibility tree, " +
       "landmark regions, document heading outline (H1–H6), and form models " +
-      "with field details. Returns all four sub-trees in a single call.",
+      "with field details. Returns all four sub-trees in a single call. " +
+      "The a11y tree includes role, name, states, and parent/child relationships. " +
+      "Landmark regions identify banner, navigation, main, and complementary areas. " +
+      "Form models list every field with its label, type, value, and validation state. " +
+      "Use when you need to audit accessibility, understand page layout by region, " +
+      "or enumerate all form fields. Use get_page_map for interactive element references.",
     inputSchema: {
       type: "object",
       properties: {

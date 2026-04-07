@@ -117,9 +117,13 @@ export function buildTextMapTool(
   return {
     name: "accordo_browser_get_text_map",
     description:
-      "Extract the text content of the current page as structured segments " +
-      "with raw/normalized text, bounding boxes, visibility flags, " +
-      "semantic context (role, accessible name), and reading-order indices.",
+      "Extract the text content of the current page as structured segments with raw/normalized text, " +
+      "bounding boxes, visibility flags, semantic context (role, accessible name), and reading-order indices. " +
+      "Each segment includes: textRaw, textNormalized, readingOrderIndex, role, accessibleName, " +
+      "bounds (x/y/width/height), isVisible, and isInViewport. " +
+      "Use when you need to read page content in natural reading order, verify text presence, " +
+      "or extract link labels and button names with their a11y context. " +
+      "Use get_page_map instead when you need interactive element references (uid) for clicking or typing.",
     inputSchema: {
       type: "object",
       properties: {

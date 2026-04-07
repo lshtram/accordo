@@ -179,7 +179,14 @@ export function buildPageUnderstandingTools(
   return [
     {
       name: "accordo_browser_get_page_map",
-      description: "Collect a structured page map from the current document",
+      description:
+        "Collect a structured page map from the current document. " +
+        "Returns an array of nodes, each with: uid (stable reference for click/type), " +
+        "role (ARIA role), accessibleName, textContent, bounds (x/y/width/height when includeBounds:true), " +
+        "readingOrderIndex, visibility flags, states (disabled/checked/expanded), and containerId. " +
+        "Use this as your primary tool to understand page structure and find interactive elements. " +
+        "Use get_text_map instead when you need reading-order text with per-segment accessible names. " +
+        "Use get_semantic_graph instead when you need the full a11y tree, landmark regions, or form models.",
       inputSchema: {
         type: "object",
         properties: {
@@ -246,7 +253,12 @@ export function buildPageUnderstandingTools(
     },
     {
       name: "accordo_browser_inspect_element",
-      description: "Deep inspection of a specific DOM element",
+      description:
+        "Deep inspection of a specific DOM element. " +
+        "Returns computed styles, full attribute set, states (disabled, readonly, invalid, checked, expanded), " +
+        "interaction properties (hasPointerEvents, isObstructed, clickTargetSize), " +
+        "bounding box, visibility, and accessible name. " +
+        "Use after get_page_map to drill into a specific element by its ref, selector, or stable nodeId.",
       inputSchema: {
         type: "object",
         properties: {
@@ -277,7 +289,12 @@ export function buildPageUnderstandingTools(
     },
     {
       name: "accordo_browser_get_dom_excerpt",
-      description: "Get a sanitized HTML excerpt for a DOM subtree",
+      description:
+        "Get a sanitized HTML excerpt for a DOM subtree rooted at a CSS selector. " +
+        "Returns cleaned HTML (scripts and styles stripped) up to maxDepth levels deep. " +
+        "Use when you need the raw HTML structure of a specific region — " +
+        "e.g. to read a table, a code block, or any element where tag structure matters. " +
+        "Prefer get_page_map or get_text_map for general page understanding.",
       inputSchema: {
         type: "object",
         required: ["selector"],
