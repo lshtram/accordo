@@ -205,16 +205,39 @@ export class HubProcess {
 
   /**
    * Kill the Hub process if running.
+   *
+   * Sends SIGTERM first, then waits up to `timeoutMs` for a clean exit.
+   * If the process is still alive after the timeout, sends SIGKILL to
+   * force termination.
+   *
+   * Requirements: adr-reload-reconnect.md §D3
+   *
+   * @param timeoutMs - Maximum time to wait for SIGTERM exit before SIGKILL. Default: 2000.
    */
-  async killHub(): Promise<void> {
+  async killHub(timeoutMs = 2000): Promise<void> {
     if (this.state.hubProcess === null) {
       return;
     }
     this.state.killRequested = true;
     const proc = this.state.hubProcess;
     await new Promise<void>((resolve) => {
-      proc.once("exit", () => resolve());
-      proc.kill();
+      let sigkillTimer: ReturnType<typeof setTimeout> | null = null;
+
+      proc.once("exit", () => {
+        if (sigkillTimer !== null) {
+          clearTimeout(sigkillTimer);
+          sigkillTimer = null;
+        }
+        resolve();
+      });
+
+      proc.kill(); // SIGTERM
+
+      // SIGKILL fallback: if process hasn't exited within timeoutMs, force kill.
+      sigkillTimer = setTimeout(() => {
+        sigkillTimer = null;
+        try { proc.kill("SIGKILL"); } catch { /* already gone */ }
+      }, timeoutMs);
     });
     this.state.hubProcess = null;
     this.state.killRequested = false;

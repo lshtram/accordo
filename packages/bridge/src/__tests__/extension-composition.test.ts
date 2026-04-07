@@ -851,9 +851,7 @@ describe("buildHubManagerEvents() — reconnect: isReconnect flag (AR-05 to AR-0
     const deps = makeCompositionDeps();
     const events = buildHubManagerEvents(deps);
 
-    // TODO-EXT(AR-05): isReconnect flag not yet in HubManagerEvents.onHubReady interface.
-    // Once implemented, this call should pass true as a third argument.
-    events.onHubReady(3000, "test-token");
+    events.onHubReady(3000, "test-token", true);
 
     expect(mockWriteAgentConfigs).not.toHaveBeenCalled();
   });

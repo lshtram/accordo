@@ -13,9 +13,10 @@
 
 import http from "node:http";
 import * as fs from "node:fs";
-import { ACCORDO_PROTOCOL_VERSION } from "@accordo/bridge-types";
-import type { HealthResponse, IDEState } from "@accordo/bridge-types";
+import { ACCORDO_PROTOCOL_VERSION, DISCONNECT_GRACE_WINDOW_MS } from "@accordo/bridge-types";
+import type { HealthResponse, IDEState, DisconnectResponse } from "@accordo/bridge-types";
 import { BridgeServer } from "./bridge-server.js";
+import { DisconnectHandler } from "./disconnect-handler.js";
 import { McpHandler } from "./mcp-handler.js";
 import { ToolRegistry } from "./tool-registry.js";
 import { StateCache } from "./state-cache.js";
@@ -73,6 +74,7 @@ export class HubServer {
   private token: string;
   private debugLogger: McpDebugLogger | undefined;
   private router: Router;
+  private disconnectHandler: DisconnectHandler;
   /**
    * Fingerprint of the last tool registry snapshot that triggered a
    * notifications/tools/list_changed push. Prevents duplicate notifications.
@@ -88,11 +90,19 @@ export class HubServer {
       console.error(`[hub] MCP debug log → ${this.debugLogger.getLogFile()}`);
     }
 
+    // Create DisconnectHandler first so it can be referenced in BridgeServer callbacks.
+    this.disconnectHandler = new DisconnectHandler({
+      graceWindowMs: DISCONNECT_GRACE_WINDOW_MS,
+      onGraceExpired: (): void => { process.exit(0); },
+      log: (msg): void => { console.error(`[hub:disconnect] ${msg}`); },
+    });
+
     this.bridgeServer = new BridgeServer({
       secret: options.bridgeSecret,
       maxConcurrent: options.maxConcurrent,
       maxQueueDepth: options.maxQueueDepth,
       onGraceExpired: (): void => { this.stateCache.clearModalities(); },
+      onBridgeConnect: (): void => { this.disconnectHandler.cancelGraceTimer(); },
     });
     this.toolRegistry = new ToolRegistry();
     this.stateCache = new StateCache();
@@ -159,6 +169,12 @@ export class HubServer {
       handleMcp: (req, res) => mcpRequestHandler.handleMcp(req, res),
       handleMcpSse: (req, res) => sseManager.handleMcpSse(req, res),
       handleReauth: (req, res) => reauthHandler.handleReauth(req, res),
+      handleDisconnect: (_req, res) => {
+        this.disconnectHandler.startGraceTimer();
+        const body: DisconnectResponse = { ok: true, graceWindowMs: DISCONNECT_GRACE_WINDOW_MS };
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(body));
+      },
       getHealth: () => this.getHealth(),
       getState: () => this.stateCache.getState(),
       getTools: () => this.toolRegistry.list(),

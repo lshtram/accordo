@@ -40,6 +40,12 @@ export interface RouterDeps {
   handleMcpSse: (req: http.IncomingMessage, res: http.ServerResponse) => void;
   /** Handle POST /bridge/reauth — credential rotation. */
   handleReauth: (req: http.IncomingMessage, res: http.ServerResponse) => void;
+  /**
+   * Handle POST /bridge/disconnect — graceful Bridge disconnection.
+   * Starts the grace timer for reload survival.
+   * Requirements: adr-reload-reconnect.md §D1
+   */
+  handleDisconnect: (req: http.IncomingMessage, res: http.ServerResponse) => void;
 
   // ── Data providers for endpoints handled directly by the router ──
   /** Build a HealthResponse from current server state. */
@@ -183,6 +189,17 @@ export function createRouter(deps: RouterDeps): Router {
         return;
       }
       deps.handleReauth(req, res);
+      return;
+    }
+
+    // ADR-reload-reconnect §D1: /bridge/disconnect — bridge secret auth
+    if (url === "/bridge/disconnect" && req.method === "POST") {
+      if (!validateBridgeSecret(req, deps.getBridgeSecret())) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+      deps.handleDisconnect(req, res);
       return;
     }
 

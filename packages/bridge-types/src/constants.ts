@@ -115,3 +115,39 @@ export interface ConcurrencyStats {
   /** Maximum in-flight limit */
   limit: number;
 }
+
+// ─── Disconnect (Reload Survival) ───────────────────────────────────────────
+
+/**
+ * Default grace window for disconnect handler (ms).
+ * After POST /bridge/disconnect, the Hub waits this long for a reconnecting
+ * Bridge before self-terminating.
+ * Source: adr-reload-reconnect.md §D1
+ */
+export const DISCONNECT_GRACE_WINDOW_MS = 10_000;
+
+/**
+ * Default timeout for SIGKILL fallback after SIGTERM (ms).
+ * If the Hub process hasn't exited within this time after SIGTERM,
+ * the Bridge sends SIGKILL.
+ * Source: adr-reload-reconnect.md §D3
+ */
+export const KILL_SIGKILL_TIMEOUT_MS = 2_000;
+
+/**
+ * Timeout for POST /bridge/disconnect request (ms).
+ * If the Hub does not respond within this time, sendDisconnect() returns false.
+ * Source: adr-reload-reconnect.md §D1
+ */
+export const DISCONNECT_REQUEST_TIMEOUT_MS = 2_000;
+
+/**
+ * Response body for POST /bridge/disconnect.
+ * Source: adr-reload-reconnect.md §D1
+ */
+export interface DisconnectResponse {
+  /** Always true on success */
+  ok: true;
+  /** The grace window the Hub will wait (ms) before self-terminating */
+  graceWindowMs: number;
+}

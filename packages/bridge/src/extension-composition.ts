@@ -125,20 +125,23 @@ export function buildHubManagerEvents(
   // inside each callback closure so access is deferred until the callback fires.
 
   return {
-    onHubReady: (port: number, token: string): void => {
+    onHubReady: (port: number, token: string, isReconnect?: boolean): void => {
       deps.state.currentHubPort = port;
       deps.state.currentHubToken = token ?? "";
 
-      // Write agent config files so opencode/claude/copilot MCP clients get the right token
-      writeAgentConfigs({
-        workspaceRoot: deps.bootstrap.config.workspaceRoot ?? "",
-        port,
-        token,
-        configureOpencode: deps.bootstrap.config.wantOpencode,
-        configureClaude: deps.bootstrap.config.wantClaude,
-        configureCopilot: deps.bootstrap.config.wantCopilot,
-        outputChannel: deps.bootstrap.outputChannel,
-      });
+      // Skip writing agent config files on reconnect — tokens are unchanged,
+      // so MCP clients already have the correct config.
+      if (!isReconnect) {
+        writeAgentConfigs({
+          workspaceRoot: deps.bootstrap.config.workspaceRoot ?? "",
+          port,
+          token,
+          configureOpencode: deps.bootstrap.config.wantOpencode,
+          configureClaude: deps.bootstrap.config.wantClaude,
+          configureCopilot: deps.bootstrap.config.wantCopilot,
+          outputChannel: deps.bootstrap.outputChannel,
+        });
+      }
 
       // Get bridge secret asynchronously then create WsClient
       deps.bootstrap.secretStorage.get("accordo.bridgeSecret").then((secret) => {
@@ -450,6 +453,9 @@ export async function cleanupExtension(
   state: ExtensionState,
   services: Services,
 ): Promise<void> {
+  // Send soft disconnect to Hub first (starts grace timer so Hub survives reload).
+  await services.hubManager.softDisconnect().catch(() => {});
+
   // Disconnect WsClient if present
   if (state.wsClient !== null) {
     await state.wsClient.disconnect();

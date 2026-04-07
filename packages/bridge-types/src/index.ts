@@ -107,6 +107,9 @@ export {
   HEARTBEAT_TIMEOUT_MS,
   AUDIT_MAX_FILE_SIZE,
   AUDIT_MAX_FILES,
+  DISCONNECT_GRACE_WINDOW_MS,
+  KILL_SIGKILL_TIMEOUT_MS,
+  DISCONNECT_REQUEST_TIMEOUT_MS,
 } from "./constants.js";
 
 export type {
@@ -114,4 +117,5 @@ export type {
   HealthResponse,
   ReauthRequest,
   ConcurrencyStats,
+  DisconnectResponse,
 } from "./constants.js";

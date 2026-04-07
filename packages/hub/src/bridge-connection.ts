@@ -47,8 +47,10 @@ export interface BridgeConnectionOptions {
   maxMessagesPerSecond: number;
   /** Grace window (ms) after disconnect. Default: 15_000. M31 */
   graceWindowMs: number;
-  /** Called when grace window expires without reconnect. M31 */
+  /** Called when the grace window expires without reconnect. M31 */
   onGraceExpired?: () => void;
+  /** Called when a new Bridge WS connection is established (including reconnect). */
+  onBridgeConnect?: () => void;
   /** Called when a new message arrives (post-rate-limit). */
   onMessage: (raw: string) => void;
   /**
@@ -215,6 +217,9 @@ export class BridgeConnection {
 
       this.state.ws = ws;
       this.state.connected = true;
+
+      // Notify listeners that a Bridge connection is now live (including reconnect).
+      this.opts.onBridgeConnect?.();
 
       // §9.2: Heartbeat — send ping every 30 s
       this.state.pingInterval = setInterval(() => {

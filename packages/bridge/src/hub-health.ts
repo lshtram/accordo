@@ -12,6 +12,7 @@
  */
 
 import http from "node:http";
+import { DISCONNECT_REQUEST_TIMEOUT_MS } from "@accordo/bridge-types";
 
 /**
  * Events emitted by the health layer for HubManager to handle.
@@ -137,5 +138,42 @@ export class HubHealth {
       req.write(body);
       req.end();
     });
+  }
+
+  /**
+   * LCM-11-R: Send POST /bridge/disconnect to notify Hub of graceful shutdown.
+   *
+   * Tells the Hub to start its grace timer. The Hub will self-terminate
+   * after the grace window if no new Bridge WS connection arrives.
+   *
+   * @param bridgeSecret - Current bridge secret for auth header
+   * @returns true if Hub acknowledged the disconnect (200 response)
+   *
+   * Requirements: adr-reload-reconnect.md §D1
+   */
+  async sendDisconnect(bridgeSecret: string): Promise<boolean> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<false>((resolve) => {
+      timeoutId = setTimeout(() => resolve(false), DISCONNECT_REQUEST_TIMEOUT_MS);
+    });
+    try {
+      const fetchPromise: Promise<boolean> = fetch(
+        `http://127.0.0.1:${this.state.port}/bridge/disconnect`,
+        {
+          method: "POST",
+          headers: {
+            "x-accordo-secret": bridgeSecret,
+            "Content-Type": "application/json",
+          },
+          signal: AbortSignal.timeout(DISCONNECT_REQUEST_TIMEOUT_MS),
+        },
+      ).then((resp) => resp.status === 200).catch((): boolean => false);
+      const result = await Promise.race([fetchPromise, timeoutPromise]);
+      return result;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 }

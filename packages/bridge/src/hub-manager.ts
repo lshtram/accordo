@@ -79,7 +79,7 @@ export interface HubManagerConfig {
  */
 export interface HubManagerEvents {
   /** Fired when Hub process is confirmed ready (health check OK) */
-  onHubReady: (port: number, token: string) => void;
+  onHubReady: (port: number, token: string, isReconnect?: boolean) => void;
   /** Fired when Hub process stops unexpectedly or cannot be started */
   onHubError: (error: Error) => void;
   /** Fired when credentials are rotated (reauth or respawn) */
@@ -147,47 +147,61 @@ export class HubManager {
 
   /**
    * LCM-01 + LCM-02 + LCM-03: Activate the Hub manager.
+   *
+   * Reconnect-first logic (adr-reload-reconnect.md §D2):
+   * - If no stored token → first launch: generateHubCredentials() then spawn
+   * - If stored token exists → probeExistingHub():
+   *   - alive → emit onHubReady(port, token, isReconnect=true) and return early
+   *   - dead  → fall through to spawn with stored credentials
    */
   async activate(): Promise<void> {
-    let secret = await this.secretStorage.get("accordo.bridgeSecret");
-    let token = await this.secretStorage.get("accordo.hubToken");
+    const storedSecret = await this.secretStorage.get("accordo.bridgeSecret");
+    const storedToken = await this.secretStorage.get("accordo.hubToken");
 
-    if (!secret) {
-      secret = crypto.randomUUID();
-      await this.secretStorage.store("accordo.bridgeSecret", secret);
+    if (!storedToken || !storedSecret) {
+      // First launch: generate fresh credentials, store them, then spawn below.
+      const creds = await this.generateHubCredentials();
+      await this.secretStorage.store("accordo.bridgeSecret", creds.secret);
+      await this.secretStorage.store("accordo.hubToken", creds.token);
+      if (this.config.autoStart) {
+        this.hubProcess
+          .spawn(creds.secret, creds.token, this.port)
+          .then(() => this._pollAndNotify())
+          .catch((err: unknown) => {
+            this.events.onHubError(err instanceof Error ? err : new Error(String(err)));
+          });
+      }
+      return;
     }
-    if (!token) {
-      token = crypto.randomUUID();
-      await this.secretStorage.store("accordo.hubToken", token);
-    }
 
-    this.processState.secret = secret;
-    this.processState.token = token;
+    // Credentials exist — apply to processState
+    this.processState.secret = storedSecret;
+    this.processState.token = storedToken;
 
-    if (this.config.pidFilePath) {
-      const pid = this.readPidFile(this.config.pidFilePath);
-      if (pid !== null && !this.isProcessAlive(pid)) {
-        if (this.config.autoStart) {
-          await this.hubProcess.spawn(secret, token, this.port);
-          await this._pollAndNotify();
-        }
+    // Reconnect-first: probe existing Hub when autoStart is enabled OR pidFilePath
+    // is configured (to support autoStart=false + pidFilePath edge case in M29)
+    if (this.config.autoStart || this.config.pidFilePath) {
+      const probe = await this.probeExistingHub();
+      if (probe.alive) {
+        this.port = probe.port;
+        this.healthState.port = probe.port;
+        this.events.onHubReady(probe.port, storedToken, true);
         return;
       }
     }
 
-    this._applyPortFile();
-
-    // NOTE: we always spawn — we do not reuse a foreign Hub on the same port,
-    // because a foreign Hub has a different bridge secret and WS auth will fail.
-    // Bridge must own its own Hub instance, port, and token.
-    if (this.config.autoStart) {
-      this.hubProcess
-        .spawn(secret, token, this.port)
-        .then(() => this._pollAndNotify())
-        .catch((err: unknown) => {
-          this.events.onHubError(err instanceof Error ? err : new Error(String(err)));
-        });
+    if (!this.config.autoStart) {
+      return;
     }
+
+    // Hub is dead — spawn a fresh one with existing credentials
+    this._applyPortFile();
+    this.hubProcess
+      .spawn(storedSecret, storedToken, this.port)
+      .then(() => this._pollAndNotify())
+      .catch((err: unknown) => {
+        this.events.onHubError(err instanceof Error ? err : new Error(String(err)));
+      });
   }
 
   /**
@@ -198,6 +212,94 @@ export class HubManager {
     this.deactivated = true;
     this.pollCancelled = true;
     await this.killHub();
+  }
+
+  /**
+   * LCM-11-R: Soft disconnect for reload survival.
+   *
+   * Sends POST /bridge/disconnect to the Hub (starting the grace timer),
+   * then returns. Does NOT kill the Hub process. The Hub will self-terminate
+   * after the grace window (default 10s) if no Bridge reconnects.
+   *
+   * Called by `cleanupExtension()` during deactivation.
+   *
+   * Flow:
+   * 1. Send POST /bridge/disconnect with bridge secret auth
+   * 2. If the request fails (Hub already dead, network error), log and return
+   * 3. Hub starts grace timer — if Bridge reconnects within window, timer cancels
+   *
+   * Requirements: adr-reload-reconnect.md §D1
+   *
+   * @returns true if the disconnect request was acknowledged by the Hub
+   */
+  async softDisconnect(): Promise<boolean> {
+    try {
+      const result = await this.hubHealth.sendDisconnect(this.processState.secret ?? "");
+      this.outputChannel.appendLine(
+        `[accordo-bridge] softDisconnect: Hub acknowledged=${result}`,
+      );
+      return result;
+    } catch {
+      this.outputChannel.appendLine(
+        "[accordo-bridge] softDisconnect: Hub unreachable, skipping",
+      );
+      return false;
+    }
+  }
+
+  /**
+   * LCM-01-R: Probe an existing Hub for reconnection.
+   *
+   * Checks whether a Hub process is alive at the last-known port and whether
+   * it responds to GET /health. Used by the reconnect-first activation logic
+   * in `activate()`.
+   *
+   * Flow:
+   * 1. Read hub.pid from pidFilePath — check if process is alive
+   * 2. Read hub.port from portFilePath — get the actual port
+   * 3. Send GET /health to that port
+   * 4. If health response is 200, return { alive: true, port }
+   * 5. Otherwise return { alive: false }
+   *
+   * Requirements: adr-reload-reconnect.md §D2
+   *
+   * @returns Probe result with alive status and discovered port
+   */
+  async probeExistingHub(): Promise<{ alive: boolean; port: number }> {
+    // Step 1: Check PID is alive
+    if (!this.config.pidFilePath) {
+      return { alive: false, port: 0 };
+    }
+    const pid = this.readPidFile(this.config.pidFilePath);
+    if (pid === null || !this.isProcessAlive(pid)) {
+      return { alive: false, port: 0 };
+    }
+
+    // Step 2: Apply port file to get actual bound port
+    this._applyPortFile();
+
+    // Step 3: Health check
+    const healthy = await this.checkHealth();
+    if (!healthy) {
+      return { alive: false, port: 0 };
+    }
+
+    return { alive: true, port: this.port };
+  }
+
+  /**
+   * AR-08: Generate new Hub credentials (bridgeSecret + hubToken), store them
+   * in SecretStorage, and apply them to processState.
+   *
+   * Called by activate() on first launch (no stored token) and after a forced
+   * respawn that requires fresh credentials.
+   */
+  async generateHubCredentials(): Promise<{ secret: string; token: string }> {
+    const secret = crypto.randomUUID();
+    const token = crypto.randomUUID();
+    this.processState.secret = secret;
+    this.processState.token = token;
+    return { secret, token };
   }
 
   /**

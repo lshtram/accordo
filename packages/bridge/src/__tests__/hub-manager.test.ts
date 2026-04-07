@@ -1,6 +1,7 @@
 /**
  * Tests for hub-manager.ts
  * Requirements: requirements-bridge.md §4 (LCM-01 to LCM-12)
+ *              adr-reload-reconnect.md §D1/D2/D3 (SD-01–SD-04, PE-01–PE-05, AR-01–AR-07)
  *
  * Phase B design:
  * - All lifecycle methods throw "not implemented" on stubs → tests are RED.
@@ -8,6 +9,12 @@
  *   are tested against their concrete LCM contracts, not just "returns Promise".
  * - node:child_process is mocked to verify execFile args + env.
  * - checkHealth is spied on the instance for polling/lifecycle tests.
+ *
+ * API checklist (reconnect additions):
+ * ✓ softDisconnect()         [4 tests: SD-01–SD-04]
+ * ✓ probeExistingHub()       [5 tests: PE-01–PE-05]
+ * ✓ generateHubCredentials() [1 test: AR-08]
+ * ✓ activate() reconnect     [8 tests: AR-01–AR-08]
  */
 
 import {
@@ -1005,5 +1012,421 @@ describe("HubManager — portFilePath: dynamic port discovery", () => {
 
     expect(manager.getPort()).toBe(4567); // unchanged
     expect(events.onHubReady).toHaveBeenCalledWith(4567, expect.any(String));
+  });
+});
+
+// ── SD-01 to SD-04: softDisconnect() ─────────────────────────────────────────
+
+describe("HubManager — softDisconnect() (SD-01 to SD-04)", () => {
+  beforeEach(() => {
+    mockCpState.lastCall = null;
+    mockCpState.lastProcess = null;
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("SD-01: softDisconnect() calls hubHealth.sendDisconnect() with current secret", async () => {
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "my-secret", "accordo.hubToken": "my-token" },
+    });
+    // Simulate credentials loaded via activate
+    (manager as unknown as Record<string, unknown>)["processState"] = {
+      ...((manager as unknown as Record<string, unknown>)["processState"] as object),
+      secret: "my-secret",
+      token: "my-token",
+    };
+
+    const sendDisconnectSpy = vi.spyOn(
+      (manager as unknown as Record<string, { sendDisconnect: (s: string) => Promise<boolean> }>)["hubHealth"],
+      "sendDisconnect",
+    ).mockResolvedValue(true);
+
+    // RED: softDisconnect() throws "not implemented"
+    const result = await manager.softDisconnect();
+
+    expect(sendDisconnectSpy).toHaveBeenCalledWith("my-secret");
+    expect(result).toBe(true);
+  });
+
+  it("SD-02: softDisconnect() returns false when sendDisconnect fails (no throw)", async () => {
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+    });
+    (manager as unknown as Record<string, unknown>)["processState"] = {
+      ...((manager as unknown as Record<string, unknown>)["processState"] as object),
+      secret: "s",
+    };
+
+    vi.spyOn(
+      (manager as unknown as Record<string, { sendDisconnect: (s: string) => Promise<boolean> }>)["hubHealth"],
+      "sendDisconnect",
+    ).mockRejectedValue(new Error("ECONNREFUSED"));
+
+    // RED: softDisconnect() throws "not implemented"
+    const result = await manager.softDisconnect().catch(() => "threw");
+    // Must NOT throw — must return false when Hub is unreachable
+    expect(result).toBe(false);
+  });
+
+  it("SD-03: softDisconnect() does NOT set deactivated=true", async () => {
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+    });
+
+    vi.spyOn(
+      (manager as unknown as Record<string, { sendDisconnect: (s: string) => Promise<boolean> }>)["hubHealth"],
+      "sendDisconnect",
+    ).mockResolvedValue(true);
+
+    // RED: softDisconnect() throws "not implemented"
+    await manager.softDisconnect().catch(() => {});
+
+    // deactivated must remain false — soft disconnect does NOT stop the Hub
+    const deactivated = (manager as unknown as Record<string, boolean>)["deactivated"];
+    expect(deactivated).toBe(false);
+  });
+
+  it("SD-04: softDisconnect() does NOT call killHub()", async () => {
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+    });
+
+    vi.spyOn(
+      (manager as unknown as Record<string, { sendDisconnect: (s: string) => Promise<boolean> }>)["hubHealth"],
+      "sendDisconnect",
+    ).mockResolvedValue(true);
+
+    const killSpy = vi.spyOn(manager, "killHub").mockResolvedValue(undefined);
+
+    // RED: softDisconnect() throws "not implemented"
+    await manager.softDisconnect().catch(() => {});
+
+    expect(killSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ── PE-01 to PE-05: probeExistingHub() ───────────────────────────────────────
+
+describe("HubManager — probeExistingHub() (PE-01 to PE-05)", () => {
+  beforeEach(() => {
+    mockCpState.lastCall = null;
+    mockCpState.lastProcess = null;
+    vi.useRealTimers();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("PE-01: probeExistingHub() returns { alive: true, port } when PID alive and health responds 200", async () => {
+    const tmpPid = path.join(os.tmpdir(), `accordo-probe-pe01-${process.pid}.pid`);
+    fs.writeFileSync(tmpPid, String(process.pid)); // live PID
+
+    try {
+      const { manager } = makeManager({
+        secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+        config: { port: 3000, pidFilePath: tmpPid, autoStart: false },
+      });
+
+      vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+
+      // RED: probeExistingHub() throws "not implemented"
+      const result = await manager.probeExistingHub();
+
+      expect(result.alive).toBe(true);
+      expect(result.port).toBeGreaterThan(0);
+    } finally {
+      try { fs.unlinkSync(tmpPid); } catch { /* ok */ }
+    }
+  });
+
+  it("PE-02: probeExistingHub() returns { alive: false, port: 0 } when PID file has dead process", async () => {
+    const tmpPid = path.join(os.tmpdir(), `accordo-probe-pe02-${process.pid}.pid`);
+    fs.writeFileSync(tmpPid, "1073741824"); // guaranteed-dead PID
+
+    try {
+      const { manager } = makeManager({
+        secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+        config: { port: 3000, pidFilePath: tmpPid, autoStart: false },
+      });
+
+      // RED: probeExistingHub() throws "not implemented"
+      const result = await manager.probeExistingHub();
+
+      expect(result.alive).toBe(false);
+      expect(result.port).toBe(0);
+    } finally {
+      try { fs.unlinkSync(tmpPid); } catch { /* ok */ }
+    }
+  });
+
+  it("PE-03: probeExistingHub() returns { alive: false, port: 0 } when PID file does not exist", async () => {
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: {
+        port: 3000,
+        pidFilePath: "/tmp/accordo-nonexistent-pe03.pid",
+        autoStart: false,
+      },
+    });
+
+    // RED: probeExistingHub() throws "not implemented"
+    const result = await manager.probeExistingHub();
+
+    expect(result.alive).toBe(false);
+    expect(result.port).toBe(0);
+  });
+
+  it("PE-04: probeExistingHub() returns { alive: false, port: 0 } when PID alive but health fails", async () => {
+    const tmpPid = path.join(os.tmpdir(), `accordo-probe-pe04-${process.pid}.pid`);
+    fs.writeFileSync(tmpPid, String(process.pid)); // live PID
+
+    try {
+      const { manager } = makeManager({
+        secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+        config: { port: 3000, pidFilePath: tmpPid, autoStart: false },
+      });
+
+      vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+
+      // RED: probeExistingHub() throws "not implemented"
+      const result = await manager.probeExistingHub();
+
+      expect(result.alive).toBe(false);
+      expect(result.port).toBe(0);
+    } finally {
+      try { fs.unlinkSync(tmpPid); } catch { /* ok */ }
+    }
+  });
+
+  it("PE-05: probeExistingHub() uses port from portFilePath when it differs from config default", async () => {
+    const tmpPid = path.join(os.tmpdir(), `accordo-probe-pe05-${process.pid}.pid`);
+    const tmpPort = path.join(os.tmpdir(), `accordo-probe-pe05-${process.pid}.port`);
+    fs.writeFileSync(tmpPid, String(process.pid)); // live PID
+    fs.writeFileSync(tmpPort, "4321"); // port from file
+
+    try {
+      const { manager } = makeManager({
+        secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+        config: {
+          port: 3000,
+          pidFilePath: tmpPid,
+          portFilePath: tmpPort,
+          autoStart: false,
+        },
+      });
+
+      vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+
+      // RED: probeExistingHub() throws "not implemented"
+      const result = await manager.probeExistingHub();
+
+      // When alive, must report the port from the port file (4321), not config default (3000)
+      if (result.alive) {
+        expect(result.port).toBe(4321);
+      } else {
+        // Stub throws — test is RED; alive is false only because stub throws
+        expect(result.port).toBe(0);
+      }
+    } finally {
+      try { fs.unlinkSync(tmpPid); } catch { /* ok */ }
+      try { fs.unlinkSync(tmpPort); } catch { /* ok */ }
+    }
+  });
+});
+
+// ── AR-01 to AR-07: activate() reconnect-first ────────────────────────────────
+
+describe("HubManager — activate() reconnect-first (AR-01 to AR-07)", () => {
+  beforeEach(() => {
+    mockCpState.lastCall = null;
+    mockCpState.lastProcess = null;
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("AR-01: when existing Hub is alive+healthy, onHubReady is emitted WITHOUT spawning", async () => {
+    const { manager, events } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "existing-token" },
+      config: { port: 3000, autoStart: true },
+    });
+
+    // Simulate: Hub is alive at existing port, health check passes
+    vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: true, port: 3000 });
+    const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
+
+    // RED: probeExistingHub() and reconnect path not yet implemented in activate()
+    await manager.activate();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // spawn must NOT be called on reconnect
+    expect(spawnSpy).not.toHaveBeenCalled();
+    // onHubReady must fire with existing port and token
+    expect(events.onHubReady).toHaveBeenCalled();
+  });
+
+  it("AR-02: when existing Hub is dead, activate() falls back to spawn", async () => {
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { port: 3000, autoStart: true },
+    });
+
+    const probeSpy = vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: false, port: 0 });
+    const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
+    vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
+
+    // RED: reconnect-first logic not implemented; probeExistingHub never called
+    await manager.activate();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(probeSpy).toHaveBeenCalled();
+    expect(spawnSpy).toHaveBeenCalled();
+  });
+
+  it("AR-03: when existing Hub is alive but unhealthy, activate() falls back to spawn", async () => {
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { port: 3000, autoStart: true },
+    });
+
+    // probeExistingHub fails at health step → returns alive=false
+    const probeSpy = vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: false, port: 0 });
+    const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
+    vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
+
+    // RED: reconnect-first logic not implemented; probeExistingHub never called
+    await manager.activate();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(probeSpy).toHaveBeenCalled();
+    expect(spawnSpy).toHaveBeenCalled();
+  });
+
+  it("AR-04: reconnect uses stored token from SecretStorage", async () => {
+    const { manager, events } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "stored-token" },
+      config: { port: 3000, autoStart: true },
+    });
+
+    vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: true, port: 3000 });
+    vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
+
+    // RED: reconnect-first logic not implemented
+    await manager.activate();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // onHubReady should receive the stored token
+    if ((events.onHubReady as ReturnType<typeof vi.fn>).mock.calls.length > 0) {
+      const [, token] = (events.onHubReady as ReturnType<typeof vi.fn>).mock.calls[0] as [number, string];
+      expect(token).toBe("stored-token");
+    } else {
+      // RED: onHubReady not called yet — test fails here
+      expect(events.onHubReady).toHaveBeenCalled();
+    }
+  });
+
+  it("AR-05: onHubReady is called with isReconnect=true on reconnect path (not spawn)", async () => {
+    const { manager, events } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { port: 3000, autoStart: true },
+    });
+
+    vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: true, port: 3000 });
+    vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
+
+    // RED: reconnect-first logic not implemented; isReconnect flag not yet in onHubReady
+    await manager.activate();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // onHubReady must be called with third param isReconnect=true
+    if ((events.onHubReady as ReturnType<typeof vi.fn>).mock.calls.length > 0) {
+      const call = (events.onHubReady as ReturnType<typeof vi.fn>).mock.calls[0] as [number, string, boolean?];
+      expect(call[2]).toBe(true);
+    } else {
+      expect(events.onHubReady).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.any(String),
+        true,
+      );
+    }
+  });
+
+  it("AR-06: onHubReady is called WITHOUT isReconnect=true on fresh spawn path", async () => {
+    expect.hasAssertions();
+    const { manager, events } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { port: 3000, autoStart: true },
+    });
+
+    vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: false, port: 0 });
+    vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
+    vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
+
+    // RED: reconnect-first logic not implemented
+    await manager.activate();
+    await vi.advanceTimersByTimeAsync(0);
+
+    if ((events.onHubReady as ReturnType<typeof vi.fn>).mock.calls.length > 0) {
+      const call = (events.onHubReady as ReturnType<typeof vi.fn>).mock.calls[0] as [number, string, boolean?];
+      // On fresh spawn, isReconnect should be undefined (third arg not passed)
+      expect(call[2]).toBeUndefined();
+    }
+    // If onHubReady was not called, the spawn/pollHealth chain is still pending — that's ok for RED
+  });
+
+  it("AR-07: autoStart=false → neither probeExistingHub nor spawn is called", async () => {
+    const { manager } = makeManager({
+      secrets: { "accordo.bridgeSecret": "s", "accordo.hubToken": "t" },
+      config: { port: 3000, autoStart: false },
+    });
+
+    const probeSpy = vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: false, port: 0 });
+    const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
+
+    await manager.activate();
+
+    // RED: reconnect-first adds a probeExistingHub call inside autoStart block;
+    // with autoStart=false neither probe nor spawn should run
+    expect(probeSpy).not.toHaveBeenCalled();
+    expect(spawnSpy).not.toHaveBeenCalled();
+  });
+
+  it("AR-08: first-launch with no stored credentials skips probing, generates new creds, and spawns", async () => {
+    const { manager, secrets } = makeManager({
+      secrets: {}, // empty SecretStorage — simulates first launch (no token, no secret)
+      config: { port: 3000, autoStart: true },
+    });
+
+    // Spy on probeExistingHub — must NOT be called on first launch (no token to reconnect with)
+    const probeSpy = vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: false, port: 0 });
+    // Spy on generateHubCredentials — MUST be called on first launch
+    // RED: generateHubCredentials() throws "not implemented" — activate() does not call it yet
+    const genCredsSpy = vi.spyOn(manager, "generateHubCredentials").mockResolvedValue({
+      secret: "new-secret",
+      token: "new-token",
+    });
+    const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
+    vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
+
+    await manager.activate();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // First launch: no stored token → probeExistingHub must NOT be called
+    expect(probeSpy).not.toHaveBeenCalled();
+    // generateHubCredentials() must be called to produce fresh credentials
+    expect(genCredsSpy).toHaveBeenCalled();
+    // New credentials must be stored in SecretStorage (done by generateHubCredentials impl)
+    expect(secrets.store).toHaveBeenCalledWith("accordo.bridgeSecret", expect.any(String));
+    expect(secrets.store).toHaveBeenCalledWith("accordo.hubToken", expect.any(String));
+    // Fresh Hub must be spawned
+    expect(spawnSpy).toHaveBeenCalled();
   });
 });

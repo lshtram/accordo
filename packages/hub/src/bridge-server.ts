@@ -34,6 +34,8 @@ export interface BridgeServerOptions {
   graceWindowMs?: number;
   /** Called when the grace window expires without reconnect. M31 */
   onGraceExpired?: () => void;
+  /** Called when a new Bridge WS connection is established (including reconnect). */
+  onBridgeConnect?: () => void;
 }
 
 export class BridgeServer {
@@ -92,6 +94,7 @@ export class BridgeServer {
       maxMessagesPerSecond: this.maxMessagesPerSecond,
       graceWindowMs: this.graceWindowMs,
       onGraceExpired: options.onGraceExpired,
+      onBridgeConnect: options.onBridgeConnect,
       log,
       onMessage: (raw): void => { this.dispatch.routeMessage(raw); },
       onDisconnect: (): void => {
