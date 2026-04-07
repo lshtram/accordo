@@ -80,13 +80,38 @@ chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown
       void (async () => {
         try {
           let data: unknown;
-          if (action === "get_page_map") { const { collectPageMap } = await import("./page-map-collector.js"); data = collectPageMap(payload as Parameters<typeof collectPageMap>[0]); }
+          if (action === "get_page_map") {
+            const { collectPageMap } = await import("./page-map-collector.js");
+            data = await collectPageMap(payload as Parameters<typeof collectPageMap>[0]);
+            // Save to CS-local store so diff_snapshots fallback can access snapshots
+            // even after a service worker restart wipes the SW's in-memory store.
+            const { defaultStore, isVersionedSnapshot } = await import("../relay-definitions.js");
+            if (isVersionedSnapshot(data)) { await defaultStore.save((data as { pageId: string }).pageId, data as Parameters<typeof defaultStore.save>[1]); }
+          }
           else if (action === "inspect_element") { const { inspectElement } = await import("./element-inspector.js"); data = inspectElement(payload as Parameters<typeof inspectElement>[0]); }
           else if (action === "get_dom_excerpt") { const { getDomExcerpt } = await import("./element-inspector.js"); const { selector = "body", maxDepth, maxLength } = payload as { selector?: string; maxDepth?: number; maxLength?: number }; data = getDomExcerpt(selector, maxDepth, maxLength); }
           else if (action === "wait_for") { const { handleWaitForAction } = await import("./wait-provider.js"); data = await handleWaitForAction(payload); }
           else if (action === "get_text_map") { const { collectTextMap } = await import("./text-map-collector.js"); data = collectTextMap(payload as Parameters<typeof collectTextMap>[0]); }
           else if (action === "get_semantic_graph") { const { collectSemanticGraph } = await import("./semantic-graph-collector.js"); data = collectSemanticGraph(payload as Parameters<typeof collectSemanticGraph>[0]); }
           else if (action === "get_spatial_relations") { const { handleGetSpatialRelationsAction } = await import("./spatial-relations-handler.js"); const result = handleGetSpatialRelationsAction(payload); if ("error" in result) { _sendResponse({ error: result["error"] }); return; } data = result["data"]; }
+          else if (action === "diff_snapshots") {
+            const { defaultStore } = await import("../relay-definitions.js");
+            const { computeDiff } = await import("../diff-engine.js");
+            const fromId = typeof payload.fromSnapshotId === "string" ? payload.fromSnapshotId : undefined;
+            const toId = typeof payload.toSnapshotId === "string" ? payload.toSnapshotId : undefined;
+            if (!fromId || !toId) { _sendResponse({ error: "invalid-request" }); return; }
+            const fromResult = await defaultStore.get(fromId);
+            if ("error" in fromResult) {
+              const errCode = defaultStore.isStale(fromId) ? "snapshot-stale" : "snapshot-not-found";
+              _sendResponse({ error: errCode }); return;
+            }
+            const toResult = await defaultStore.get(toId);
+            if ("error" in toResult) {
+              const errCode = defaultStore.isStale(toId) ? "snapshot-stale" : "snapshot-not-found";
+              _sendResponse({ error: errCode }); return;
+            }
+            data = computeDiff(fromResult, toResult);
+          }
           else { _sendResponse({ error: "unsupported-action" }); return; }
           _sendResponse({ data });
         } catch { _sendResponse({ error: "action-failed" }); }

@@ -525,9 +525,14 @@ export function collectPageMap(options?: PageMapOptions): PageMapResult {
     // Non-matching ancestors are traversed beyond maxDepth without being included.
     // B2-FI-003: same flat-list treatment for roles filter — role-matched elements
     // may be arbitrarily deep (e.g. <a> links buried in nested table cells on HN).
-    flatListMode: options?.interactiveOnly === true || (
-      Array.isArray(options?.roles) && options.roles.length > 0
-    ),
+    // B2-FI-004/005: same flat-list treatment for textMatch and selector filters —
+    // matching elements may be at any depth, so traversal must not be capped at maxDepth.
+    // B2-FI-001: same for visibleOnly — all visible elements at any depth should be found.
+    flatListMode: options?.interactiveOnly === true
+      || (Array.isArray(options?.roles) && options.roles.length > 0)
+      || (typeof options?.selector === "string" && options.selector.length > 0)
+      || (typeof options?.textMatch === "string" && options.textMatch.length > 0)
+      || options?.visibleOnly === true,
     // B2-VD-001..003: pass piercesShadow flag to traversal
     piercesShadow: options?.piercesShadow ?? false,
   };

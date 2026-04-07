@@ -846,3 +846,124 @@ describe("DiffToolError: structured error response types", () => {
     expect(error.retryable).toBe(false);
   });
 });
+
+// ── GAP-G2: Pre-flight local store validation (diff ergonomics) ────────────────
+
+describe("GAP-G2: pre-flight store validation for explicit snapshot IDs", () => {
+  it("returns snapshot-not-found with availableSnapshotIds when fromSnapshotId is explicit but stale", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+
+    // Populate the store with some snapshots for the page (simulating prior captures)
+    store.save("page-g2", makeEnvelope("page-g2", 5));
+    store.save("page-g2", makeEnvelope("page-g2", 6));
+    store.save("page-g2", makeEnvelope("page-g2", 7));
+
+    // Agent tries to use a stale fromSnapshotId that was evicted
+    const result = await handleDiffSnapshots(
+      relay,
+      { fromSnapshotId: "page-g2:1", toSnapshotId: "page-g2:7" },
+      store
+    );
+
+    expect(result).toHaveProperty("success", false);
+    const error = result as DiffToolError;
+    expect(error.error).toBe("snapshot-not-found");
+    expect(error.retryable).toBe(false);
+    expect(error.details?.availableSnapshotIds).toBeDefined();
+    expect(error.details?.availableSnapshotIds).toContain("page-g2:5");
+    expect(error.details?.availableSnapshotIds).toContain("page-g2:6");
+    expect(error.details?.availableSnapshotIds).toContain("page-g2:7");
+    // relay was NOT called (pre-flight short-circuits)
+    expect(relay.request).not.toHaveBeenCalled();
+  });
+
+  it("returns snapshot-not-found with availableSnapshotIds when toSnapshotId is explicit but stale", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+
+    store.save("page-g2b", makeEnvelope("page-g2b", 3));
+    store.save("page-g2b", makeEnvelope("page-g2b", 4));
+
+    const result = await handleDiffSnapshots(
+      relay,
+      { fromSnapshotId: "page-g2b:3", toSnapshotId: "page-g2b:0" },
+      store
+    );
+
+    expect(result).toHaveProperty("success", false);
+    const error = result as DiffToolError;
+    // fromSnapshotId IS in store, so we pass that pre-flight; toSnapshotId:0 is NOT
+    expect(error.error).toBe("snapshot-not-found");
+    expect(error.details?.availableSnapshotIds).toBeDefined();
+    expect(error.details?.availableSnapshotIds).toContain("page-g2b:3");
+    expect(error.details?.availableSnapshotIds).toContain("page-g2b:4");
+  });
+
+  it("includes availableSnapshotIds in recoveryHints string", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+
+    store.save("page-g2c", makeEnvelope("page-g2c", 10));
+    store.save("page-g2c", makeEnvelope("page-g2c", 11));
+
+    const result = await handleDiffSnapshots(
+      relay,
+      { fromSnapshotId: "page-g2c:2", toSnapshotId: "page-g2c:11" },
+      store
+    );
+
+    const error = result as DiffToolError;
+    expect(error.error).toBe("snapshot-not-found");
+    // recoveryHints should contain the available IDs
+    expect(error.recoveryHints).toContain("page-g2c:10");
+    expect(error.recoveryHints).toContain("page-g2c:11");
+  });
+
+  it("does NOT trigger pre-flight when store has no snapshots for the page (empty session)", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    // Store is completely empty — relay should still be called
+
+    const result = await handleDiffSnapshots(
+      relay,
+      { fromSnapshotId: "page-fresh:0", toSnapshotId: "page-fresh:1" },
+      store
+    );
+
+    // With empty store, pre-flight is skipped and relay is called → relay returns success
+    expect(relay.request).toHaveBeenCalledWith(
+      "diff_snapshots",
+      expect.objectContaining({ fromSnapshotId: "page-fresh:0", toSnapshotId: "page-fresh:1" }),
+      expect.any(Number)
+    );
+    const diffResult = result as DiffSnapshotsResponse;
+    expect(diffResult.fromSnapshotId).toBe("page-fresh:0");
+  });
+
+  it("relay-level snapshot-not-found includes availableSnapshotIds from store", async () => {
+    // When pre-flight doesn't catch it (IDs in store), but relay still returns snapshot-not-found,
+    // the relay-level handler also includes availableSnapshotIds.
+    const relay = createMockRelay({ errorAction: "snapshot-not-found" });
+    const store = new SnapshotRetentionStore();
+
+    // Populate store — both IDs ARE in the store so pre-flight passes
+    store.save("page-g2d", makeEnvelope("page-g2d", 5));
+    store.save("page-g2d", makeEnvelope("page-g2d", 6));
+
+    const result = await handleDiffSnapshots(
+      relay,
+      { fromSnapshotId: "page-g2d:5", toSnapshotId: "page-g2d:6" },
+      store
+    );
+
+    expect(result).toHaveProperty("success", false);
+    const error = result as DiffToolError;
+    expect(error.error).toBe("snapshot-not-found");
+    expect(error.details?.reason).toBeDefined();
+    // Both IDs are present in the store → relay-level handler can list available IDs
+    expect(error.details?.availableSnapshotIds).toEqual(
+      expect.arrayContaining(["page-g2d:5", "page-g2d:6"]),
+    );
+  });
+});

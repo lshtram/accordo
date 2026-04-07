@@ -236,8 +236,39 @@ export async function handleWaitFor(
     const response = await relay.request("wait_for", args as Record<string, unknown>, RELAY_TIMEOUT_MS);
 
     if (response.success && response.data !== undefined) {
-      // B2-WA-001/002/003: Condition met — relay returns WaitForResult in data
-      return response.data as WaitForResult;
+      // B2-WA-001/002/003: Condition met — relay returns WaitForResult in data.
+      // MCP-ER-002: Enrich timeout results with retryable and recoveryHints so
+      // callers can act on structured recovery metadata without drilling into raw data.
+      const result = response.data as WaitForResult;
+      if (result.met === false && result.error === "timeout") {
+        return {
+          ...result,
+          retryable: true,
+          retryAfterMs: 1000,
+          recoveryHints:
+            "The condition was not met within the timeout. Increase the timeout value or " +
+            "retry after the page has had more time to load. Use wait_for with a larger " +
+            "`timeout` value, or check whether the expected text/selector will ever appear.",
+        };
+      }
+      if (result.met === false && result.error === "navigation-interrupted") {
+        return {
+          ...result,
+          retryable: true,
+          retryAfterMs: 500,
+          recoveryHints:
+            "The page navigated during the wait. Wait for the new page to load, " +
+            "then retry the wait_for on the new page.",
+        };
+      }
+      if (result.met === false && result.error === "page-closed") {
+        return {
+          ...result,
+          retryable: false,
+          recoveryHints: "The tab was closed during the wait. Open a new tab and retry.",
+        };
+      }
+      return result;
     }
 
     // B2-WA-005/006/007: Relay returned a structured failure

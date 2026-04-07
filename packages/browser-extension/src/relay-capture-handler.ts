@@ -606,6 +606,42 @@ export async function handleCaptureRegion(
 
 // ── Diff Snapshots Handler ───────────────────────────────────────────────────
 
+/**
+ * Forward diff_snapshots to the content script's local SnapshotStore.
+ *
+ * Used as fallback when the SW's in-memory defaultStore doesn't have the
+ * requested snapshot IDs (e.g. after a service worker restart). The content
+ * script maintains its own SnapshotStore that persists for the page's lifetime,
+ * so snapshots captured earlier in the session are still available there.
+ *
+ * Returns the relay response from the content script, or null if delivery fails.
+ */
+async function diffViaContentScript(
+  tabId: number,
+  fromSnapshotId: string,
+  toSnapshotId: string,
+  requestId: string,
+): Promise<RelayActionResponse | null> {
+  try {
+    const csResponse = await chrome.tabs.sendMessage(tabId, {
+      type: "PAGE_UNDERSTANDING_ACTION",
+      action: "diff_snapshots",
+      payload: { fromSnapshotId, toSnapshotId },
+    });
+    if (!csResponse) return null;
+    if (typeof csResponse.error === "string") {
+      const err = csResponse.error as RelayActionResponse["error"];
+      return { requestId, success: false, error: err };
+    }
+    if (csResponse.data !== undefined) {
+      return { requestId, success: true, data: csResponse.data };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function handleDiffSnapshots(
   request: RelayActionRequest,
 ): Promise<RelayActionResponse> {
@@ -616,18 +652,32 @@ export async function handleDiffSnapshots(
     return { requestId: request.requestId, success: false, error: "invalid-request" };
   }
 
+  // Fast path: both snapshots found in the SW's in-memory store.
   const fromResult = await defaultStore.get(fromSnapshotId);
+  const toResult = await defaultStore.get(toSnapshotId);
+  if (!("error" in fromResult) && !("error" in toResult)) {
+    const diffResult = computeDiff(fromResult, toResult);
+    return { requestId: request.requestId, success: true, data: diffResult };
+  }
+
+  // Fallback: SW store missed — forward to content script (survives SW restarts).
+  // The content script's SnapshotStore persists for the page's lifetime and is
+  // not cleared when the service worker restarts.
+  const activeTabResult = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => [] as chrome.tabs.Tab[]);
+  const tabId = typeof request.payload.tabId === "number"
+    ? request.payload.tabId
+    : activeTabResult[0]?.id;
+
+  if (tabId !== undefined) {
+    const csResult = await diffViaContentScript(tabId, fromSnapshotId, toSnapshotId, request.requestId);
+    if (csResult !== null) return csResult;
+  }
+
+  // Both paths failed — return the best diagnostic error.
   if ("error" in fromResult) {
     const errorCode = defaultStore.isStale(fromSnapshotId) ? "snapshot-stale" : "snapshot-not-found";
     return { requestId: request.requestId, success: false, error: errorCode };
   }
-
-  const toResult = await defaultStore.get(toSnapshotId);
-  if ("error" in toResult) {
-    const errorCode = defaultStore.isStale(toSnapshotId) ? "snapshot-stale" : "snapshot-not-found";
-    return { requestId: request.requestId, success: false, error: errorCode };
-  }
-
-  const diffResult = computeDiff(fromResult, toResult);
-  return { requestId: request.requestId, success: true, data: diffResult };
+  const errorCode = defaultStore.isStale(toSnapshotId) ? "snapshot-stale" : "snapshot-not-found";
+  return { requestId: request.requestId, success: false, error: errorCode };
 }

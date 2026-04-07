@@ -148,6 +148,12 @@ export interface DiffToolError {
     reason: string;
     /** Step-by-step guidance for recovering from this error. */
     recoveryHints?: string;
+    /**
+     * Snapshot IDs currently in the local retention store for the relevant page.
+     * Present on `snapshot-not-found` so agents can immediately pick a valid ID
+     * without a manage_snapshots round-trip.
+     */
+    availableSnapshotIds?: string[];
   };
 }
 
@@ -429,6 +435,25 @@ function findMissingSnapshotId(
   return fromSnapshotId;
 }
 
+/**
+ * Return all snapshot IDs retained in the local store for the page that owns
+ * `snapshotId`. Used to populate `details.availableSnapshotIds` in
+ * `snapshot-not-found` errors so agents can immediately pick a valid ID
+ * without an additional manage_snapshots round-trip.
+ *
+ * Returns an empty array when the pageId cannot be parsed or the store has
+ * no entries for that page.
+ */
+function listAvailableSnapshotIds(
+  store: SnapshotRetentionStore,
+  snapshotId: string,
+): string[] {
+  const lastColon = snapshotId.lastIndexOf(":");
+  if (lastColon === -1) return [];
+  const pageId = snapshotId.slice(0, lastColon);
+  return store.list(pageId).map((e) => e.snapshotId);
+}
+
 // ── Eviction Analysis ─────────────────────────────────────────────────────────
 
 /**
@@ -538,6 +563,11 @@ export async function handleDiffSnapshots(
 
   let resolvedToSnapshotId = normalizeSnapshotId(args.toSnapshotId);
   let resolvedFromSnapshotId = normalizeSnapshotId(args.fromSnapshotId);
+  // Track whether each ID was explicitly supplied by the caller (after normalisation).
+  // Used by the GAP-G2 pre-flight check below — we only validate IDs the caller
+  // provided, not ones we auto-derived (which are freshly captured and always present).
+  const wasFromExplicit = resolvedFromSnapshotId !== undefined;
+  const wasToExplicit = resolvedToSnapshotId !== undefined;
 
   if (resolvedFromSnapshotId === undefined && resolvedToSnapshotId === undefined) {
     // Case A: Both omitted — capture two consecutive snapshots.
@@ -559,6 +589,70 @@ export async function handleDiffSnapshots(
       const resolved = await resolveFromSnapshot(relay, resolvedToSnapshotId, args.tabId);
       if (typeof resolved !== "string") return resolved;
       resolvedFromSnapshotId = resolved;
+    }
+  }
+
+  // ── GAP-G2: Pre-flight local store validation ─────────────────────────────
+  // When both IDs are now resolved (explicit or derived), check the local
+  // retention store before paying the relay round-trip cost.  If either ID
+  // is not in the local store AND the store has other snapshots for that page
+  // (meaning we've been tracking it), we can return an enriched error
+  // immediately with the list of actually-available snapshot IDs for that page.
+  //
+  // Applies only to IDs that were originally explicit (fromSnapshotId or
+  // toSnapshotId provided by the caller) — implicitly resolved IDs were just
+  // captured so they will be present.
+  //
+  // We skip the pre-flight when the store has NO snapshots for the page at all
+  // (fresh session / store never populated) — in that case the relay error is
+  // more accurate and we avoid masking transient relay errors with a false
+  // snapshot-not-found.
+  if (wasFromExplicit && store.get(resolvedFromSnapshotId) === undefined) {
+    const available = listAvailableSnapshotIds(store, resolvedFromSnapshotId);
+    if (available.length > 0) {
+      const eviction = analyzeEviction(store, resolvedFromSnapshotId);
+      const recoveryHints =
+        `Snapshot '${resolvedFromSnapshotId}' is not in the local retention store. ` +
+        `Available snapshots for this page: [${available.join(", ")}]. ` +
+        "Use one of those as fromSnapshotId, or omit fromSnapshotId to auto-derive the previous snapshot.";
+      return {
+        success: false,
+        error: "snapshot-not-found",
+        retryable: false,
+        recoveryHints,
+        details: {
+          eviction,
+          reason: eviction?.wasEvicted
+            ? `Snapshot '${resolvedFromSnapshotId}' was evicted from the ${RETENTION_SLOTS}-slot FIFO retention store.`
+            : `Snapshot '${resolvedFromSnapshotId}' was not found in the local retention store.`,
+          recoveryHints,
+          availableSnapshotIds: available,
+        },
+      };
+    }
+  }
+  if (wasToExplicit && store.get(resolvedToSnapshotId) === undefined) {
+    const available = listAvailableSnapshotIds(store, resolvedToSnapshotId);
+    if (available.length > 0) {
+      const eviction = analyzeEviction(store, resolvedToSnapshotId);
+      const recoveryHints =
+        `Snapshot '${resolvedToSnapshotId}' is not in the local retention store. ` +
+        `Available snapshots for this page: [${available.join(", ")}]. ` +
+        "Use one of those as toSnapshotId, or omit toSnapshotId to auto-capture a fresh snapshot.";
+      return {
+        success: false,
+        error: "snapshot-not-found",
+        retryable: false,
+        recoveryHints,
+        details: {
+          eviction,
+          reason: eviction?.wasEvicted
+            ? `Snapshot '${resolvedToSnapshotId}' was evicted from the ${RETENTION_SLOTS}-slot FIFO retention store.`
+            : `Snapshot '${resolvedToSnapshotId}' was not found in the local retention store.`,
+          recoveryHints,
+          availableSnapshotIds: available,
+        },
+      };
     }
   }
 
@@ -590,7 +684,7 @@ export async function handleDiffSnapshots(
     if (!response.success) {
       const code = extractRelayErrorCode(response.data, response.error);
       if (code !== undefined) {
-        // B2-DE-006 / F-4: Enrich snapshot-not-found with eviction hint
+        // B2-DE-006 / F-4: Enrich snapshot-not-found with eviction hint + available IDs
         if (code === "snapshot-not-found") {
           const snapshotIdForAnalysis = findMissingSnapshotId(
             store,
@@ -598,13 +692,18 @@ export async function handleDiffSnapshots(
             resolvedToSnapshotId,
           );
           const eviction = analyzeEviction(store, snapshotIdForAnalysis);
+          const available = listAvailableSnapshotIds(store, snapshotIdForAnalysis);
           const recoveryHints = eviction?.wasEvicted
             ? `The snapshot was evicted because the ${RETENTION_SLOTS}-slot FIFO store is full. ` +
               "Re-capture a fresh snapshot by calling get_page_map (or another read tool) on the target page, " +
               "then immediately call diff_snapshots with the new snapshotId before capturing more snapshots."
-            : "The requested snapshot ID does not exist in the retention store. " +
-              "Call get_page_map (or another read tool) to capture a new snapshot, " +
-              "then use the returned snapshotId in diff_snapshots.";
+            : available.length > 0
+              ? `Snapshot '${snapshotIdForAnalysis}' does not exist. ` +
+                `Available snapshots for this page: [${available.join(", ")}]. ` +
+                "Use one of those as fromSnapshotId, or omit fromSnapshotId to auto-derive the previous snapshot."
+              : "The requested snapshot ID does not exist in the retention store. " +
+                "Call get_page_map (or another read tool) to capture a new snapshot, " +
+                "then use the returned snapshotId in diff_snapshots.";
           return {
             success: false,
             error: code,
@@ -616,6 +715,7 @@ export async function handleDiffSnapshots(
                 ? `Snapshot '${eviction.requestedSnapshotId}' was evicted from the ${RETENTION_SLOTS}-slot FIFO retention store.`
                 : `Snapshot '${eviction?.requestedSnapshotId ?? snapshotIdForAnalysis}' was not found in the retention store.`,
               recoveryHints,
+              availableSnapshotIds: available.length > 0 ? available : undefined,
             },
           };
         }
