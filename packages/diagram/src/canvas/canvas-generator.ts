@@ -25,13 +25,45 @@
 import { randomUUID } from "crypto";
 import type {
   ParsedDiagram,
+  ParsedNodeStyle,
+  NodeStyle,
   LayoutStore,
   CanvasScene,
   ExcalidrawElement,
 } from "../types.js";
 import { placeNodes } from "../reconciler/placement.js";
 import { getShapeProps } from "./shape-map.js";
-import { routeEdge, type EdgeInfo } from "./edge-router.js";
+import type { CompositeKind } from "./shape-map.js";
+import { routeEdge } from "./edge-router.js";
+
+/**
+ * Merge parsed Mermaid node style (from `style` / `classDef` directives) with
+ * the layout-store style (user overrides via accordo_diagram_patch).
+ *
+ * Priority (highest wins): layoutStyle > parsedStyle > nothing
+ *
+ * Returns a merged NodeStyle where only the explicitly-set layout fields
+ * override the parsed-source fields. This lets Mermaid style directives
+ * supply sensible defaults while user layout overrides remain authoritative.
+ */
+function mergeNodeStyle(parsedStyle: ParsedNodeStyle | undefined, layoutStyle: NodeStyle): NodeStyle {
+  if (!parsedStyle) return layoutStyle;
+  return {
+    backgroundColor:  layoutStyle.backgroundColor  ?? parsedStyle.backgroundColor,
+    strokeColor:      layoutStyle.strokeColor       ?? parsedStyle.strokeColor,
+    strokeWidth:      layoutStyle.strokeWidth       ?? parsedStyle.strokeWidth,
+    strokeStyle:      layoutStyle.strokeStyle       ?? parsedStyle.strokeStyle,
+    strokeDash:       layoutStyle.strokeDash,
+    fillStyle:        layoutStyle.fillStyle,
+    shape:            layoutStyle.shape,
+    fontSize:         layoutStyle.fontSize,
+    fontColor:        layoutStyle.fontColor         ?? parsedStyle.fontColor,
+    fontWeight:       layoutStyle.fontWeight,
+    opacity:          layoutStyle.opacity,
+    roughness:        layoutStyle.roughness,
+    fontFamily:       layoutStyle.fontFamily,
+  };
+}
 
 /**
  * Small perpendicular shift applied to each parallel edge's label to prevent
@@ -42,6 +74,40 @@ const LABEL_OFFSET_PX = 15;
 /** Build the EdgeKey string for a given edge. */
 function edgeKey(from: string, to: string, ordinal: number): string {
   return `${from}->${to}:${ordinal}`;
+}
+
+// ── Arrowhead mapping ─────────────────────────────────────────────────────────
+
+type ExcalidrawArrowhead = "arrow" | "triangle" | "dot" | "bar";
+
+/**
+ * Map a ParsedEdge type to Excalidraw arrowhead codes.
+ * Returns [startArrowhead, endArrowhead] where null means no arrowhead.
+ *
+ * UML conventions:
+ *   inheritance  → open triangle at target (parent end)
+ *   composition  → filled diamond at source + open triangle at target
+ *   aggregation  → open diamond at source + arrow at target
+ *   realization  → open triangle at target (same as inheritance but dashed)
+ *   dependency   → open arrow at target
+ *   association  → open arrow at target
+ *   arrow        → plain arrow at target
+ */
+function edgeArrowheads(type: string): [ExcalidrawArrowhead | null, ExcalidrawArrowhead | null] {
+  switch (type) {
+    case "inheritance":
+    case "realization":
+      return [null, "triangle"];
+    case "composition":
+      return ["bar", "triangle"];   // bar = filled diamond (closest available)
+    case "aggregation":
+      return ["dot", "arrow"];      // dot = open diamond (closest available)
+    case "dependency":
+    case "association":
+    case "arrow":
+    default:
+      return [null, "arrow"];
+  }
 }
 
 // ── Obstacle detection for arrow routing ───────────────────────────────────────
@@ -231,6 +297,294 @@ function computeLabelWaypoint(
   ] as [number, number];
 }
 
+// ── Composite shape rendering ─────────────────────────────────────────────────
+
+/**
+ * Build all Excalidraw elements required to render a composite node shape.
+ *
+ * Composite shapes cannot be represented by a single Excalidraw primitive.
+ * They are rendered as a collection of `line` segments forming a polygon
+ * outline, with a separate `text` element for the label.
+ *
+ * Skew offset used for parallelogram/trapezoid shapes: 20px.
+ *
+ * Returns the array of ExcalidrawElement objects to push into the scene.
+ * The first element in the returned array is the "main" element that text
+ * is bound to (containerId).  Remaining elements are decorations.
+ *
+ * @param kind      CompositeKind discriminator from ShapeProps
+ * @param nodeId    Mermaid node ID (used for mermaidId back-links)
+ * @param elemId    Pre-generated Excalidraw ID for the main element
+ * @param x, y      Top-left position
+ * @param w, h      Width and height
+ * @param label     Node label text (may be undefined/empty)
+ * @param roughness Rough.js level
+ * @param fontFamily Font family string
+ * @param textFontSize Font size in px
+ * @param style     Optional node style overrides
+ */
+function buildCompositeElements(
+  kind: CompositeKind,
+  nodeId: string,
+  elemId: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string | undefined,
+  roughness: number,
+  fontFamily: string,
+  textFontSize: number,
+  style?: {
+    roughness?: number;
+    fontFamily?: string;
+    fontColor?: string;
+    strokeColor?: string;
+    strokeWidth?: number;
+    strokeStyle?: "solid" | "dashed" | "dotted";
+    strokeDash?: boolean;
+    backgroundColor?: string;
+    fillStyle?: string;
+    opacity?: number;
+  },
+): ExcalidrawElement[] {
+  const textId = label ? randomUUID() : null;
+  const lineRoughness = style?.roughness ?? roughness;
+  const strokeColor = style?.strokeColor;
+  const strokeWidth = style?.strokeWidth;
+  const strokeStyle = style?.strokeStyle ?? (style?.strokeDash ? "dashed" : undefined);
+
+  /** Helper: build a `line` segment with absolute positions as relative points. */
+  function makeLine(
+    id: string,
+    mId: string,
+    lx: number, ly: number,
+    pts: Array<[number, number]>,
+  ): ExcalidrawElement {
+    return {
+      id,
+      mermaidId: mId,
+      kind: "node" as const,
+      type: "line" as const,
+      x: lx,
+      y: ly,
+      width: 0,
+      height: 0,
+      roughness: lineRoughness,
+      fontFamily,
+      points: pts,
+      startBinding: null,
+      endBinding: null,
+      arrowheadStart: null,
+      arrowheadEnd: null,
+      strokeColor,
+      strokeWidth,
+      strokeStyle,
+      backgroundColor: style?.backgroundColor,
+      fillStyle: style?.fillStyle,
+      opacity: style?.opacity,
+      boundElements: null,
+    };
+  }
+
+  const SKEW = 20; // parallelogram horizontal skew in px
+
+  let outlineElements: ExcalidrawElement[];
+
+  if (kind === "subroutine") {
+    // Subroutine: outer rectangle + 2 inner vertical lines
+    // The outer rectangle acts as the main "container" for the text.
+    const mainEl: ExcalidrawElement = {
+      id: elemId,
+      mermaidId: nodeId,
+      kind: "node",
+      type: "rectangle",
+      x,
+      y,
+      width: w,
+      height: h,
+      roughness: lineRoughness,
+      fontFamily,
+      roundness: null,
+      strokeColor,
+      strokeWidth,
+      strokeStyle,
+      backgroundColor: style?.backgroundColor,
+      fillStyle: style?.fillStyle,
+      opacity: style?.opacity,
+      boundElements: textId ? [{ id: textId, type: "text" }] : null,
+    };
+    const innerPad = Math.min(10, Math.floor(w * 0.08));
+    const leftLine = makeLine(
+      randomUUID(),
+      `${nodeId}:subroutine-left`,
+      x + innerPad, y,
+      [[0, 0], [0, h]],
+    );
+    const rightLine = makeLine(
+      randomUUID(),
+      `${nodeId}:subroutine-right`,
+      x + w - innerPad, y,
+      [[0, 0], [0, h]],
+    );
+    outlineElements = [mainEl, leftLine, rightLine];
+
+  } else if (kind === "double_circle") {
+    // Double circle: outer ellipse (main, contains text) + inner ellipse (decoration, ~5px inset)
+    const inset = Math.round(Math.min(w, h) * 0.055); // ~5px for 90×90
+    const mainEl: ExcalidrawElement = {
+      id: elemId,
+      mermaidId: nodeId,
+      kind: "node",
+      type: "ellipse",
+      x,
+      y,
+      width: w,
+      height: h,
+      roughness: lineRoughness,
+      fontFamily,
+      roundness: null,
+      strokeColor,
+      strokeWidth,
+      strokeStyle,
+      backgroundColor: style?.backgroundColor,
+      fillStyle: style?.fillStyle,
+      opacity: style?.opacity,
+      boundElements: textId ? [{ id: textId, type: "text" }] : null,
+    };
+    const innerEl: ExcalidrawElement = {
+      id: randomUUID(),
+      mermaidId: `${nodeId}:inner`,
+      kind: "node",
+      type: "ellipse",
+      x: x + inset,
+      y: y + inset,
+      width: w - inset * 2,
+      height: h - inset * 2,
+      roughness: lineRoughness,
+      fontFamily,
+      roundness: null,
+      strokeColor,
+      strokeWidth,
+      strokeStyle,
+      backgroundColor: undefined,
+      fillStyle: undefined,
+      opacity: style?.opacity,
+      boundElements: null,
+    };
+    outlineElements = [mainEl, innerEl];
+
+  } else {
+    // Polygon shapes: 4 line segments forming the outline.
+    // The first line segment (top edge) serves as the main element for text binding.
+    // We compute the 4 corner points, then emit 4 line segments: top, right, bottom, left.
+
+    let tl: [number, number];  // top-left
+    let tr: [number, number];  // top-right
+    let br: [number, number];  // bottom-right
+    let bl: [number, number];  // bottom-left
+
+    switch (kind) {
+      case "parallelogram":
+        // Lean right: top edge shifted right by SKEW, bottom edge flush
+        // TL=(x+SKEW, y) TR=(x+w+SKEW, y) BR=(x+w, y+h) BL=(x, y+h)
+        tl = [x + SKEW, y];
+        tr = [x + w + SKEW, y];
+        br = [x + w, y + h];
+        bl = [x, y + h];
+        break;
+      case "parallelogram_alt":
+        // Lean left: top edge flush, bottom edge shifted right by SKEW
+        // TL=(x, y) TR=(x+w, y) BR=(x+w+SKEW, y+h) BL=(x+SKEW, y+h)
+        tl = [x, y];
+        tr = [x + w, y];
+        br = [x + w + SKEW, y + h];
+        bl = [x + SKEW, y + h];
+        break;
+      case "trapezoid":
+        // Wider at bottom, narrower at top (Mermaid [/...])
+        // TL=(x+SKEW, y) TR=(x+w-SKEW, y) BR=(x+w, y+h) BL=(x, y+h)
+        tl = [x + SKEW, y];
+        tr = [x + w - SKEW, y];
+        br = [x + w, y + h];
+        bl = [x, y + h];
+        break;
+      case "trapezoid_alt":
+      default:
+        // Wider at top, narrower at bottom (Mermaid [\.../])
+        // TL=(x, y) TR=(x+w, y) BR=(x+w-SKEW, y+h) BL=(x+SKEW, y+h)
+        tl = [x, y];
+        tr = [x + w, y];
+        br = [x + w - SKEW, y + h];
+        bl = [x + SKEW, y + h];
+        break;
+    }
+
+    // For a "filled" polygon we use a single line element with a closed path.
+    // Excalidraw `line` with points forming a closed polygon renders filled
+    // when backgroundColor is set. We emit points relative to tl.
+    // The closed polygon: tl → tr → br → bl → tl
+    const ox = tl[0];
+    const oy = tl[1];
+    const polygonPts: Array<[number, number]> = [
+      [0,                0],
+      [tr[0] - ox,       tr[1] - oy],
+      [br[0] - ox,       br[1] - oy],
+      [bl[0] - ox,       bl[1] - oy],
+      [0,                0],  // close the path
+    ];
+
+    const polyWidth  = Math.max(tr[0], br[0], bl[0]) - Math.min(tl[0], bl[0]);
+    const polyHeight = Math.max(bl[1], br[1]) - Math.min(tl[1], tr[1]);
+
+    const mainEl: ExcalidrawElement = {
+      id: elemId,
+      mermaidId: nodeId,
+      kind: "node",
+      type: "line",
+      x: ox,
+      y: oy,
+      width: polyWidth,
+      height: polyHeight,
+      roughness: lineRoughness,
+      fontFamily,
+      points: polygonPts,
+      startBinding: null,
+      endBinding: null,
+      arrowheadStart: null,
+      arrowheadEnd: null,
+      strokeColor,
+      strokeWidth,
+      strokeStyle,
+      backgroundColor: style?.backgroundColor,
+      fillStyle: style?.fillStyle ?? "hachure",
+      opacity: style?.opacity,
+      boundElements: textId ? [{ id: textId, type: "text" }] : null,
+    };
+    outlineElements = [mainEl];
+  }
+
+  // Text label element (if the node has a label)
+  const textElements: ExcalidrawElement[] = textId && label ? [{
+    id: textId,
+    mermaidId: `${nodeId}:text`,
+    kind: "label",
+    type: "text",
+    x,
+    y: y + Math.floor((h - textFontSize * 1.25) / 2),
+    width: w,
+    height: Math.ceil(textFontSize * 1.25),
+    roughness: lineRoughness,
+    fontFamily: style?.fontFamily ?? fontFamily,
+    fontSize: textFontSize,
+    label: normalizeLabel(label),
+    strokeColor: style?.fontColor,
+    containerId: elemId,
+  }] : [];
+
+  return [...outlineElements, ...textElements];
+}
+
 /**
  * Generate an Excalidraw canvas scene from a parsed diagram and its layout.
  *
@@ -330,47 +684,191 @@ export function generateCanvas(
     const shapeProps = getShapeProps(node.shape);
     const elemId = randomUUID();
     nodeElementIds.set(nodeId, elemId);
-    const textId = node.label ? randomUUID() : null;
-    pushElement({
-      id: elemId,
-      mermaidId: nodeId,
-      kind: "node",
-      type: shapeProps.elementType,
-      x: nl.x,
-      y: nl.y,
-      width: nl.w,
-      height: nl.h,
-      roughness: nl.style?.roughness ?? roughness,
-      fontFamily,
-      roundness: shapeProps.roundness ?? undefined,
-      backgroundColor: nl.style?.backgroundColor,
-      strokeColor: nl.style?.strokeColor,
-      strokeWidth: nl.style?.strokeWidth,
-      // strokeStyle: prefer explicit strokeStyle; fall back to strokeDash boolean.
-      strokeStyle: nl.style?.strokeStyle ?? (nl.style?.strokeDash ? "dashed" : undefined),
-      fillStyle: nl.style?.fillStyle,
-      opacity: nl.style?.opacity,
-      boundElements: textId ? [{ id: textId, type: "text" }] : null,
-    });
-    if (textId && node.label) {
-      const textFontSize = nl.style?.fontSize ?? 16;
+
+    // Merge parsed Mermaid style (classDef / inline style) with layout overrides.
+    // Layout-file values take precedence; parsed style supplies the defaults.
+    const effectiveStyle = mergeNodeStyle(node.style, nl.style);
+
+    const hasMembers = node.members && node.members.length > 0;
+    const textFontSize = effectiveStyle?.fontSize ?? 14;
+    const lineH = textFontSize * 1.25;
+
+    if (hasMembers && node.members) {
+      // ── Class node: title box + divider line + members text ──────────────
+      // Title compartment: class name + vertical padding on both sides
+      const titlePad = 8;                                          // px above and below name text
+      const titleH = Math.ceil(lineH + titlePad * 2);             // total name compartment height
+      const memberLineH = textFontSize - 2;                        // members use smaller font
+      const memberLineSpacing = (textFontSize - 2) * 1.35;        // 1.35× line-height for members
+      const membersTextH = Math.ceil(node.members.length * memberLineSpacing + titlePad * 2);
+      const totalH = titleH + membersTextH;
+
+      // Always expand the box to at least totalH (layout height may be too small
+      // for the number of members).
+      const boxH = Math.max(nl.h, totalH);
+
+      // Title text id, divider line id, and members text id
+      const titleTextId = randomUUID();
+      const dividerId = randomUUID();
+      const membersTextId = randomUUID();
+
       pushElement({
-        id: textId,
+        id: elemId,
+        mermaidId: nodeId,
+        kind: "node",
+        type: shapeProps.elementType,
+        x: nl.x,
+        y: nl.y,
+        width: nl.w,
+        height: boxH,
+        roughness: effectiveStyle?.roughness ?? roughness,
+        fontFamily,
+        roundness: shapeProps.roundness ?? undefined,
+        backgroundColor: effectiveStyle?.backgroundColor,
+        strokeColor: effectiveStyle?.strokeColor,
+        strokeWidth: effectiveStyle?.strokeWidth,
+        strokeStyle: effectiveStyle?.strokeStyle ?? (effectiveStyle?.strokeDash ? "dashed" : undefined),
+        fillStyle: effectiveStyle?.fillStyle,
+        opacity: effectiveStyle?.opacity,
+        boundElements: [
+          { id: titleTextId, type: "text" },
+          { id: dividerId, type: "arrow" },
+          { id: membersTextId, type: "text" },
+        ],
+      });
+
+      // Title text (bold class name, vertically centered in title compartment)
+      pushElement({
+        id: titleTextId,
         mermaidId: `${nodeId}:text`,
         kind: "label",
         type: "text",
         x: nl.x,
-        y: nl.y + Math.floor((nl.h - textFontSize * 1.25) / 2),
+        y: nl.y + titlePad,
         width: nl.w,
-        height: Math.ceil(textFontSize * 1.25),
-        roughness: nl.style?.roughness ?? roughness,
-        fontFamily: nl.style?.fontFamily ?? fontFamily,
+        height: Math.ceil(lineH),
+        roughness: effectiveStyle?.roughness ?? roughness,
+        fontFamily: effectiveStyle?.fontFamily ?? fontFamily,
         fontSize: textFontSize,
         label: normalizeLabel(node.label),
-        strokeColor: nl.style?.fontColor,
+        strokeColor: effectiveStyle?.fontColor,
         containerId: elemId,
       });
-    }
+
+      // Horizontal divider line between name compartment and members compartment
+      pushElement({
+        id: dividerId,
+        mermaidId: `${nodeId}:divider`,
+        kind: "label",
+        type: "line",
+        x: nl.x,
+        y: nl.y + titleH,
+        width: nl.w,
+        height: 0,
+        roughness: effectiveStyle?.roughness ?? roughness,
+        fontFamily,
+        points: [[0, 0], [nl.w, 0]] as Array<[number, number]>,
+        startBinding: null,
+        endBinding: null,
+        arrowheadStart: null,
+        arrowheadEnd: null,
+        strokeColor: effectiveStyle?.strokeColor,
+        strokeWidth: effectiveStyle?.strokeWidth,
+      });
+
+      // Members text (attributes + methods joined by newlines)
+      // Starts 4px below the divider line (titleH + 4), left-inset 6px.
+      const membersText = node.members.join("\n");
+      pushElement({
+        id: membersTextId,
+        mermaidId: `${nodeId}:members`,
+        kind: "label",
+        type: "text",
+        x: nl.x + 6,
+        y: nl.y + titleH + 4,
+        width: nl.w - 12,
+        height: membersTextH - titlePad,
+        roughness: effectiveStyle?.roughness ?? roughness,
+        fontFamily: effectiveStyle?.fontFamily ?? fontFamily,
+        fontSize: memberLineH,  // slightly smaller than title
+        label: membersText,
+        strokeColor: effectiveStyle?.fontColor,
+        containerId: elemId,
+      });
+      } else {
+        // ── Standard node: single text label centered ────────────────────────
+        if (shapeProps.composite) {
+          // Composite shape: emit multiple line segments + text via helper.
+          const compositeEls = buildCompositeElements(
+            shapeProps.composite,
+            nodeId,
+            elemId,
+            nl.x,
+            nl.y,
+            nl.w,
+            nl.h,
+            node.label,
+            roughness,
+            fontFamily,
+            textFontSize,
+            effectiveStyle,
+          );
+          for (const el of compositeEls) {
+            pushElement(el);
+          }
+        } else {
+          // Simple primitive: single shape element + optional text label.
+          const textId = node.label ? randomUUID() : null;
+          // FC-02: circle nodes must be true circles — enforce width === height
+          // using the larger of layout w/h so the circle fully contains its label.
+          let elemW = nl.w;
+          let elemH = nl.h;
+          if (node.shape === "circle") {
+            const size = Math.max(nl.w, nl.h);
+            elemW = size;
+            elemH = size;
+          }
+          pushElement({
+            id: elemId,
+            mermaidId: nodeId,
+            kind: "node",
+            type: shapeProps.elementType,
+            x: nl.x,
+            y: nl.y,
+            width: elemW,
+            height: elemH,
+            roughness: effectiveStyle?.roughness ?? roughness,
+            fontFamily,
+            roundness: shapeProps.roundness ?? undefined,
+            backgroundColor: effectiveStyle?.backgroundColor,
+            strokeColor: effectiveStyle?.strokeColor,
+            strokeWidth: effectiveStyle?.strokeWidth,
+            // strokeStyle: prefer explicit strokeStyle; fall back to strokeDash boolean.
+            strokeStyle: effectiveStyle?.strokeStyle ?? (effectiveStyle?.strokeDash ? "dashed" : undefined),
+            fillStyle: effectiveStyle?.fillStyle,
+            opacity: effectiveStyle?.opacity,
+            boundElements: textId ? [{ id: textId, type: "text" }] : null,
+          });
+          if (textId && node.label) {
+            pushElement({
+              id: textId,
+              mermaidId: `${nodeId}:text`,
+              kind: "label",
+              type: "text",
+              x: nl.x,
+              y: nl.y + Math.floor((nl.h - textFontSize * 1.25) / 2),
+              width: nl.w,
+              height: Math.ceil(textFontSize * 1.25),
+              roughness: effectiveStyle?.roughness ?? roughness,
+              fontFamily: effectiveStyle?.fontFamily ?? fontFamily,
+              fontSize: textFontSize,
+              label: normalizeLabel(node.label),
+              strokeColor: effectiveStyle?.fontColor,
+              containerId: elemId,
+            });
+          }
+        }
+      }
   }
 
   // ── 3. Edges ────────────────────────────────────────────────────────────────
@@ -404,8 +902,6 @@ export function generateCanvas(
       waypoints,
       sourceBB,
       targetBB,
-      { from: edge.from, to: edge.to, ordinal: edge.ordinal },
-      parsed.edges as readonly EdgeInfo[],
     );
 
     // Excalidraw arrow points must be relative to the element's x,y.
@@ -452,6 +948,21 @@ export function generateCanvas(
     const fromElemId = nodeElementIds.get(edge.from);
     const toElemId = nodeElementIds.get(edge.to);
 
+    // Use explicit arrowheads from parser if present; fall back to type-based derivation
+    // for class diagram edge types (inheritance, composition, etc.)
+    const [defaultStart, defaultEnd] = edgeArrowheads(edge.type);
+    const arrowheadStart = edge.arrowheadStart !== undefined ? edge.arrowheadStart : defaultStart;
+    const arrowheadEnd   = edge.arrowheadEnd   !== undefined ? edge.arrowheadEnd   : defaultEnd;
+
+    // Stroke style: classDef layout overrides first, then parser-derived, then default.
+    const resolvedStrokeWidth =
+      edgeL?.style?.strokeWidth ??
+      edge.strokeWidth;
+    const resolvedStrokeStyle =
+      edgeL?.style?.strokeStyle ??
+      (edgeL?.style?.strokeDash ? "dashed" : undefined) ??
+      edge.strokeStyle;
+
     elements.push({
       id: arrowId,
       mermaidId: key,
@@ -470,11 +981,13 @@ export function generateCanvas(
       endBinding: toElemId && routeResult.endBinding
         ? { elementId: toElemId, ...routeResult.endBinding }
         : null,
+      arrowheadStart,
+      arrowheadEnd,
       label: edge.label ? normalizeLabel(edge.label) : undefined,
       // Stroke properties for edge elements.
       strokeColor: edgeL?.style?.strokeColor,
-      strokeWidth: edgeL?.style?.strokeWidth,
-      strokeStyle: edgeL?.style?.strokeStyle ?? (edgeL?.style?.strokeDash ? "dashed" : undefined),
+      strokeWidth: resolvedStrokeWidth,
+      strokeStyle: resolvedStrokeStyle,
     });
   }
 

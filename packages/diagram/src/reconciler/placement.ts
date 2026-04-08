@@ -19,12 +19,8 @@
  * When dagre is unavailable (e.g. unsupported diagram type), falls back to the
  * original neighbour-adjacent heuristic.
  *
- * Node dimensions default to shape-specific sizes:
- *   rectangle/rounded/stadium/parallelogram → 180 × 60
- *   diamond/hexagon → 140 × 80
- *   circle/ellipse  → 80 × 80
- *   cylinder        → 120 × 80
- *   unknown         → 180 × 60  (fallback)
+ * Node dimensions come from getShapeDimensions() in shape-map.ts (single source
+ * of truth). Unknown shapes fall back to the rectangle default (180 × 60).
  *
  * @param unplacedIds     Node IDs to position (must exist in parsed.nodes;
  *                        IDs absent from parsed.nodes are silently skipped).
@@ -40,27 +36,7 @@
  */
 import type { ParsedDiagram, LayoutStore } from "../types.js";
 import { computeInitialLayout } from "../layout/auto-layout.js";
-
-// ── Shape dimensions (independent of A8 shape-map — no cross-module import) ──
-
-/** Default node dimensions by shape. Unknown shapes fall back to FALLBACK_DIMS. */
-const SHAPE_DIMS: Record<string, { w: number; h: number }> = {
-  rectangle:    { w: 180, h: 60 },
-  rounded:      { w: 180, h: 60 },
-  stadium:      { w: 180, h: 60 },
-  parallelogram:{ w: 180, h: 60 },
-  diamond:      { w: 140, h: 80 },
-  hexagon:      { w: 140, h: 80 },
-  circle:       { w: 80,  h: 80 },
-  ellipse:      { w: 80,  h: 80 },
-  cylinder:     { w: 120, h: 80 },
-  subgraph:     { w: 200, h: 120 },
-};
-const FALLBACK_DIMS = { w: 180, h: 60 };
-
-function dimForShape(shape: string): { w: number; h: number } {
-  return SHAPE_DIMS[shape] ?? FALLBACK_DIMS;
-}
+import { getShapeDimensions } from "../canvas/shape-map.js";
 
 function rectsOverlap(
   a: { x: number; y: number; w: number; h: number },
@@ -120,7 +96,7 @@ export function placeNodes(
     const parsedNode = parsed.nodes.get(nodeId);
     if (!parsedNode) continue; // silently skip absent IDs
 
-    const { w, h } = dimForShape(parsedNode.shape as string);
+    const { w, h } = getShapeDimensions(parsedNode.shape);
 
     // ── Step 2: Compute candidate position ──────────────────────────────────
     let candX = 0;

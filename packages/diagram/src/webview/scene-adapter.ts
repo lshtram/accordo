@@ -135,7 +135,8 @@ export function toExcalidrawPayload(
   elements: ExcalidrawElement[],
 ): ExcalidrawAPIElement[] {
   const now = Date.now();
-  return elements.map((el) => {
+  const out: ExcalidrawAPIElement[] = [];
+  for (const el of elements) {
     const { mermaidId, fontFamily, roundness, label, boundElements, containerId, ...rest } = el;
 
     const base: ExcalidrawAPIElement = {
@@ -148,7 +149,7 @@ export function toExcalidrawPayload(
       fillStyle: rest.fillStyle ?? ("hachure" as const),
       strokeWidth: rest.strokeWidth ?? 1,
       strokeStyle: rest.strokeStyle ?? ("solid" as const),
-      opacity: 100,
+      opacity: el.opacity ?? 100,
       angle: 0,
       seed: fnv1a32(mermaidId ?? el.id),
       groupIds: [],
@@ -186,10 +187,90 @@ export function toExcalidrawPayload(
     // Arrow elements need explicit arrowhead fields.
     if (el.type === "arrow") {
       const b = base as unknown as Record<string, unknown>;
-      b.startArrowhead = null;
-      b.endArrowhead = "arrow";
+      // Use arrowheadStart/arrowheadEnd from the element if set; otherwise default.
+      // null means no arrowhead; undefined means use default ("arrow" at end).
+      b.startArrowhead = "arrowheadStart" in el
+        ? (el.arrowheadStart !== undefined ? el.arrowheadStart : null)
+        : null;
+      b.endArrowhead = "arrowheadEnd" in el
+        ? (el.arrowheadEnd !== undefined ? el.arrowheadEnd : "arrow")
+        : "arrow";
+      if (label) {
+        b.label = {
+          text: label,
+          fontSize: el.fontSize ?? 16,
+        };
+
+        // Excalidraw persists visible arrow text as a bound text element
+        // (`containerId` on text + `boundElements` on arrow). The `label`
+        // object alone is not sufficient for all export/render paths.
+        const textId = `${base.id}:label`;
+        const textSize = el.fontSize ?? 16;
+        const textW = Math.max(8, label.length * textSize * 0.5);
+        const textH = Math.ceil(textSize * 1.25);
+
+        const relPoints = el.points ?? [];
+        let midX = base.x + base.width / 2;
+        let midY = base.y + base.height / 2;
+        if (relPoints.length >= 2) {
+          const lo = Math.floor((relPoints.length - 1) / 2);
+          const hi = Math.ceil((relPoints.length - 1) / 2);
+          const p1 = relPoints[lo];
+          const p2 = relPoints[hi];
+          if (p1 !== undefined && p2 !== undefined) {
+            midX = base.x + (p1[0] + p2[0]) / 2;
+            midY = base.y + (p1[1] + p2[1]) / 2;
+          }
+        }
+
+        const existingBounds = base.boundElements ?? [];
+        base.boundElements = [...existingBounds, { id: textId, type: "text" }];
+
+        const textEl = {
+          id: textId,
+          type: "text",
+          x: midX - textW / 2,
+          y: midY - textH / 2,
+          width: textW,
+          height: textH,
+          version: 1,
+          versionNonce: fnv1a32(`${textId}:nonce`),
+          isDeleted: false,
+          fillStyle: "hachure",
+          strokeWidth: 1,
+          strokeStyle: "solid",
+          roughness: 1,
+          opacity: el.opacity ?? 100,
+          angle: 0,
+          seed: fnv1a32(textId),
+          groupIds: [],
+          frameId: null,
+          boundElements: null,
+          updated: now,
+          link: null,
+          locked: false,
+          fontFamily: FONT_FAMILY_MAP[fontFamily] ?? 1,
+          strokeColor: rest.strokeColor ?? "#1e1e1e",
+          backgroundColor: "transparent",
+          roundness: null,
+          containerId: base.id,
+          customData: { mermaidId: `${mermaidId}:label`, kind: "label" },
+        } as ExcalidrawAPIElement & Record<string, unknown>;
+
+        // Text payload fields expected by Excalidraw for bound labels.
+        textEl.text = label;
+        textEl.fontSize = textSize;
+        textEl.textAlign = "center";
+        textEl.verticalAlign = "middle";
+        textEl.originalText = label;
+        textEl.lineHeight = 1.25;
+
+        out.push(textEl as ExcalidrawAPIElement);
+      }
     }
 
-    return base;
-  });
+    out.push(base);
+  }
+
+  return out;
 }

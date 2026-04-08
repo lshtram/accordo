@@ -174,12 +174,25 @@ export async function parseMermaid(source: string): Promise<ParseResult> {
   try {
     diag = await mermaidApi.getDiagramFromText(source);
   } catch (e: unknown) {
-    const err = e as { message?: string; hash?: { line?: number } };
+    // Guard-first narrowing: check for Error first, then mermaid-specific shape
+    if (e instanceof Error) {
+      // Error & { hash?: {...} } preserves both the standard Error.message
+      // and the mermaid-specific hash property.
+      const err = e as Error & { hash?: { line?: number } };
+      return {
+        valid: false,
+        error: {
+          line: err.hash?.line ?? 0,
+          message: err.message,
+        },
+      };
+    }
+    // Non-Error throws (string, number, null, undefined) — contain with String(e).
     return {
       valid: false,
       error: {
-        line: err.hash?.line ?? 0,
-        message: err.message ?? String(e),
+        line: 0,
+        message: String(e),
       },
     };
   }
@@ -208,7 +221,18 @@ export async function parseMermaid(source: string): Promise<ParseResult> {
     };
   }
 
-  const parsed = parser(db);
+  let parsed: ParsedDiagram;
+  try {
+    parsed = parser(db);
+  } catch (e: unknown) {
+    return {
+      valid: false,
+      error: {
+        line: 0,
+        message: String(e),
+      },
+    };
+  }
   return {
     valid: true,
     diagram: { ...parsed, type, renames },

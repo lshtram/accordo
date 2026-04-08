@@ -9,7 +9,7 @@
 
 // API checklist:
 // ✓ FONT_FAMILY_MAP — structural (allowed to pass on stub)
-// ✓ toExcalidrawPayload — 7 tests (SA-01..SA-07)
+// ✓ toExcalidrawPayload — 7 tests (SA-01..SA-07) + 3 tests (H0-05a..H0-05c)
 
 import { describe, it, expect } from "vitest";
 import { toExcalidrawPayload, FONT_FAMILY_MAP } from "../webview/scene-adapter.js";
@@ -84,6 +84,31 @@ describe("toExcalidrawPayload", () => {
     expect(el.customData.mermaidId).toBe("A->B:0");
   });
 
+  it("SA-05b: arrow label is serialized and materialized as bound text", () => {
+    const arrow: ExcalidrawElement = {
+      ...BASE,
+      mermaidId: "A->B:0",
+      type: "arrow",
+      points: [[0, 0], [100, 50]],
+      label: "start",
+    };
+    const payload = toExcalidrawPayload([arrow]);
+
+    const arrowEl = payload.find((e) => e.type === "arrow");
+    const textEl = payload.find(
+      (e) => e.type === "text" && e.containerId === "exc-1",
+    ) as (ExcalidrawElement & { text?: string }) | undefined;
+
+    expect(arrowEl).toBeDefined();
+    expect((arrowEl as unknown as { label?: { text?: string } }).label?.text).toBe("start");
+    expect(arrowEl?.boundElements).toEqual([
+      { id: "exc-1:label", type: "text" },
+    ]);
+    expect(textEl).toBeDefined();
+    expect(textEl?.text).toBe("start");
+    expect(textEl?.containerId).toBe("exc-1");
+  });
+
   it("SA-06: fillStyle solid on element passes through toExcalidrawPayload (not hardcoded to hachure)", () => {
     const el: ExcalidrawElement = {
       id: "exc-1",
@@ -115,5 +140,98 @@ describe("toExcalidrawPayload", () => {
     };
     const [result] = toExcalidrawPayload([el]);
     expect(result.fillStyle).toBe("hachure");
+  });
+});
+
+// ── H0-05: Opacity passthrough ────────────────────────────────────────────────
+// H0-05a: toExcalidrawPayload reads el.opacity; output equals el.opacity when
+//         set; defaults to 100 when absent/undefined.
+// H0-05b: Zero opacity is not clobbered — el.opacity === 0 → output === 0.
+// H0-05c: At least 3 test cases: absent → 100, explicit 50 → 50, explicit 0 → 0.
+
+describe("H0-05: opacity passthrough in toExcalidrawPayload", () => {
+  it("H0-05a: element without opacity field → output opacity defaults to 100", () => {
+    const el: ExcalidrawElement = {
+      id: "exc-1",
+      mermaidId: "auth",
+      type: "rectangle",
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 50,
+      roughness: 1,
+      fontFamily: "Excalifont",
+      // opacity is absent
+    };
+    const [result] = toExcalidrawPayload([el]);
+    expect(result.opacity).toBe(100);
+  });
+
+  it("H0-05a: element with opacity: 50 → output opacity === 50", () => {
+    const el: ExcalidrawElement = {
+      id: "exc-1",
+      mermaidId: "auth",
+      type: "rectangle",
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 50,
+      roughness: 1,
+      fontFamily: "Excalifont",
+      opacity: 50,
+    };
+    const [result] = toExcalidrawPayload([el]);
+    expect(result.opacity).toBe(50);
+  });
+
+  it("H0-05b: element with opacity: 0 → output opacity === 0 (zero not clobbered by default)", () => {
+    const el: ExcalidrawElement = {
+      id: "exc-1",
+      mermaidId: "auth",
+      type: "rectangle",
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 50,
+      roughness: 1,
+      fontFamily: "Excalifont",
+      opacity: 0,
+    };
+    const [result] = toExcalidrawPayload([el]);
+    expect(result.opacity).toBe(0);
+  });
+
+  it("H0-05c: element with opacity: 75 → output opacity === 75", () => {
+    const el: ExcalidrawElement = {
+      id: "exc-1",
+      mermaidId: "auth",
+      type: "rectangle",
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 50,
+      roughness: 1,
+      fontFamily: "Excalifont",
+      opacity: 75,
+    };
+    const [result] = toExcalidrawPayload([el]);
+    expect(result.opacity).toBe(75);
+  });
+
+  it("H0-05c: element with opacity: 100 → output opacity === 100", () => {
+    const el: ExcalidrawElement = {
+      id: "exc-1",
+      mermaidId: "auth",
+      type: "rectangle",
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 50,
+      roughness: 1,
+      fontFamily: "Excalifont",
+      opacity: 100,
+    };
+    const [result] = toExcalidrawPayload([el]);
+    expect(result.opacity).toBe(100);
   });
 });

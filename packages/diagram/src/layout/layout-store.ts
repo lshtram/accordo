@@ -48,11 +48,63 @@ export function layoutPathFor(mmdPath: string, workspaceRoot: string): string {
   return join(workspaceRoot, ".accordo", "diagrams", rel).replace(/\\/g, "/");
 }
 
+// ── Structural validators (H0-04) ─────────────────────────────────────────────
+
+function isPlainObject(val: unknown): val is Record<string, unknown> {
+  return typeof val === "object" && val !== null && !Array.isArray(val);
+}
+
+function isValidNodeEntry(val: unknown): val is NodeLayout {
+  if (!isPlainObject(val)) return false;
+  const entry = val as Record<string, unknown>;
+  if (typeof entry.x !== "number" || !Number.isFinite(entry.x)) return false;
+  if (typeof entry.y !== "number" || !Number.isFinite(entry.y)) return false;
+  if (typeof entry.w !== "number" || !Number.isFinite(entry.w)) return false;
+  if (typeof entry.h !== "number" || !Number.isFinite(entry.h)) return false;
+  if (!isPlainObject(entry.style)) return false;
+  return true;
+}
+
+function isValidEdgeEntry(val: unknown): val is EdgeLayout {
+  if (!isPlainObject(val)) return false;
+  const entry = val as Record<string, unknown>;
+  if (typeof entry.routing !== "string") return false;
+  if (!Array.isArray(entry.waypoints)) return false;
+  for (const wp of entry.waypoints) {
+    if (!isPlainObject(wp)) return false;
+    const waypoint = wp as Record<string, unknown>;
+    if (typeof waypoint.x !== "number" || !Number.isFinite(waypoint.x)) return false;
+    if (typeof waypoint.y !== "number" || !Number.isFinite(waypoint.y)) return false;
+  }
+  if (!isPlainObject(entry.style)) return false;
+  return true;
+}
+
+function isValidClusterEntry(val: unknown): val is ClusterLayout {
+  if (!isPlainObject(val)) return false;
+  const entry = val as Record<string, unknown>;
+  if (typeof entry.x !== "number" || !Number.isFinite(entry.x)) return false;
+  if (typeof entry.y !== "number" || !Number.isFinite(entry.y)) return false;
+  if (typeof entry.w !== "number" || !Number.isFinite(entry.w)) return false;
+  if (typeof entry.h !== "number" || !Number.isFinite(entry.h)) return false;
+  if (typeof entry.label !== "string") return false;
+  if (!isPlainObject(entry.style)) return false;
+  return true;
+}
+
+function isValidUnplaced(val: unknown): val is string[] {
+  if (!Array.isArray(val)) return false;
+  for (const item of val) {
+    if (typeof item !== "string") return false;
+  }
+  return true;
+}
+
 /**
  * Read and parse a *.layout.json file from disk.
- * Returns null if the file does not exist, is corrupt, or has an
- * unrecognised version or diagram_type. Never throws on expected
- * filesystem conditions.
+ * Returns null if the file does not exist, is corrupt, has an
+ * unrecognised version or diagram_type, or fails structural validation.
+ * Never throws on expected filesystem conditions.
  */
 export async function readLayout(filePath: string): Promise<LayoutStore | null> {
   try {
@@ -62,6 +114,31 @@ export async function readLayout(filePath: string): Promise<LayoutStore | null> 
     const parsed = candidate as LayoutStore;
     if (parsed.version !== "1.0") return null;
     if (!SPATIAL_TYPES.has(parsed.diagram_type)) return null;
+
+    // H0-04a: validate nodes
+    if (!isPlainObject(parsed.nodes)) return null;
+    for (const entry of Object.values(parsed.nodes)) {
+      if (!isValidNodeEntry(entry)) return null;
+    }
+
+    // H0-04b: validate edges
+    if (!isPlainObject(parsed.edges)) return null;
+    for (const entry of Object.values(parsed.edges)) {
+      if (!isValidEdgeEntry(entry)) return null;
+    }
+
+    // H0-04c: validate clusters
+    if (!isPlainObject(parsed.clusters)) return null;
+    for (const entry of Object.values(parsed.clusters)) {
+      if (!isValidClusterEntry(entry)) return null;
+    }
+
+    // H0-04d: validate unplaced
+    if (!isValidUnplaced(parsed.unplaced)) return null;
+
+    // H0-04e: validate aesthetics
+    if (!isPlainObject(parsed.aesthetics)) return null;
+
     return parsed;
   } catch {
     return null;
