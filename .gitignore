@@ -22,6 +22,7 @@ package-lock.json
 # Test/debug scratch outputs
 **/test-output.txt
 **/test-result.txt
+test-fixtures/
 logs/session-diagnostics/
 .accordo/comments.json
 .accordo/test-runs.log
