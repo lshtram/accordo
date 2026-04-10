@@ -175,19 +175,10 @@ export function updateBadgeCount(container: HTMLElement, count: number): void {
   badge.textContent = String(count);
 }
 
-// ── Private helpers ─────────────────────────────────────────────────────────────
+// ── Public API for tests ────────────────────────────────────────────────────────
 
-/** Gets current Comments Mode state for a tab from storage. */
-async function getCommentsModeState(tabId: number): Promise<boolean> {
-  const result = await chrome.storage.local.get(STORAGE_KEY);
-  const stored = result[STORAGE_KEY] as Record<number, boolean> | undefined;
-  const isOn = stored?.[tabId] ?? false;
-  dbg(`getCommentsModeState: tabId=${tabId} → isOn=${isOn} (raw storage:`, stored, `)`);
-  return isOn;
-}
-
-/** Sets Comments Mode state and notifies the content script directly. */
-async function setCommentsModeState(tabId: number, enabled: boolean): Promise<void> {
+/** Sets Comments Mode state and notifies the content script directly. Exported for unit testing. */
+export async function setCommentsModeState(tabId: number, enabled: boolean): Promise<void> {
   dbg(`setCommentsModeState: tabId=${tabId} enabled=${enabled}`);
   const result = await chrome.storage.local.get(STORAGE_KEY);
   const stored = (result[STORAGE_KEY] as Record<number, boolean> | undefined) ?? {};
@@ -206,12 +197,64 @@ async function setCommentsModeState(tabId: number, enabled: boolean): Promise<vo
     dbg(`setCommentsModeState: tabs.sendMessage succeeded`);
   } catch (err) {
     if (isNoReceiverError(err)) {
-      dbg(`setCommentsModeState: no content-script receiver yet for tab ${tabId}`);
+      dbg(`setCommentsModeState: no content-script receiver yet for tab ${tabId}, attempting injection recovery`);
+      try {
+        await ensureContentScriptInjected(tabId);
+        // Retry once after injection
+        await chrome.tabs.sendMessage(tabId, { type: msgType });
+        dbg(`setCommentsModeState: tabs.sendMessage succeeded after injection retry`);
+      } catch (injectErr) {
+        dbg(`setCommentsModeState: injection recovery failed for tab ${tabId} — keeping graceful behavior`);
+      }
     } else {
       dbgErr(`setCommentsModeState: tabs.sendMessage FAILED — ${(err as Error)?.message ?? err}`);
+      dbg(`setCommentsModeState: content script may not be injected yet; storage.onChanged will trigger sync on next injection`);
     }
-    dbg(`setCommentsModeState: content script may not be injected yet; storage.onChanged will trigger sync on next injection`);
   }
+}
+
+// ── Private helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Injects content-script.js and content-styles.css into a tab via chrome.scripting.
+ * Used as a recovery step when setCommentsModeState finds no content-script receiver.
+ *
+ * Restricted tabs (e.g., chrome:// URLs) will throw; caller must handle gracefully.
+ */
+async function ensureContentScriptInjected(tabId: number): Promise<void> {
+  dbg(`ensureContentScriptInjected: injecting into tabId=${tabId}`);
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["content-script.js"],
+    });
+    dbg(`ensureContentScriptInjected: executeScript succeeded for tabId=${tabId}`);
+  } catch (err) {
+    // e.g. restricted URL scheme — debug log and fail silently per constraints
+    dbgErr(`ensureContentScriptInjected: executeScript failed for tabId=${tabId} — ${(err as Error)?.message ?? err}`);
+    throw err;
+  }
+
+  try {
+    await chrome.scripting.insertCSS({
+      target: { tabId },
+      files: ["content-styles.css"],
+    });
+    dbg(`ensureContentScriptInjected: insertCSS succeeded for tabId=${tabId}`);
+  } catch (err) {
+    // CSS injection failure is non-fatal but log for debug visibility
+    dbgErr(`ensureContentScriptInjected: insertCSS failed for tabId=${tabId} — ${(err as Error)?.message ?? err}`);
+    // Do NOT throw — CSS is secondary; the JS injection succeeded
+  }
+}
+
+/** Gets current Comments Mode state for a tab from storage. */
+async function getCommentsModeState(tabId: number): Promise<boolean> {
+  const result = await chrome.storage.local.get(STORAGE_KEY);
+  const stored = result[STORAGE_KEY] as Record<number, boolean> | undefined;
+  const isOn = stored?.[tabId] ?? false;
+  dbg(`getCommentsModeState: tabId=${tabId} → isOn=${isOn} (raw storage:`, stored, `)`);
+  return isOn;
 }
 
 /** Shows a brief toast at the bottom of the popup. */

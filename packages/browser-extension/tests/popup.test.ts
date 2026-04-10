@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { resetChromeMocks } from "./setup/chrome-mock.js";
+import { resetChromeMocks, setPendingSendMessageRejection } from "./setup/chrome-mock.js";
 import type { BrowserCommentThread } from "../src/types.js";
 import {
   renderThreadList,
@@ -24,6 +24,7 @@ import {
   sendToggleMessage,
   updateBadgeCount,
   initPopup,
+  setCommentsModeState,
 } from "../src/popup.js";
 
 /** Factory for a minimal thread */
@@ -196,6 +197,55 @@ describe("M80-POP — Popup UI", () => {
       const toggleBtn = container.querySelector("#accordo-toggle");
       expect(exportBtn).not.toBeNull();
       expect(toggleBtn).not.toBeNull();
+    });
+  });
+
+  describe("setCommentsModeState — content script injection fallback", () => {
+    it("when first tabs.sendMessage rejects with no receiver, attempts injection and retries", async () => {
+      // Arrange: simulate "no receiver" on first sendMessage call, then succeed on retry
+      setPendingSendMessageRejection(new Error("Receiving end does not exist"));
+
+      // Act: call setCommentsModeState with the mock rejecting once then succeeding
+      await setCommentsModeState(1, true);
+
+      // Assert: scripting.executeScript was called to inject content script
+      expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: { tabId: 1 },
+          files: ["content-script.js"],
+        })
+      );
+      // Assert: scripting.insertCSS was called to inject styles
+      expect(chrome.scripting.insertCSS).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: { tabId: 1 },
+          files: ["content-styles.css"],
+        })
+      );
+      // Assert: tabs.sendMessage was called twice (initial + retry)
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(2);
+      // Assert: storage was updated
+      const storageResult = await chrome.storage.local.get("commentsMode");
+      expect((storageResult["commentsMode"] as Record<number, boolean>)[1]).toBe(true);
+      // Assert: badge was updated
+      expect(chrome.action.setBadgeText).toHaveBeenCalledWith({ text: "ON", tabId: 1 });
+    });
+
+    it("when injection throws (restricted tab), popup does not crash and keeps graceful behavior", async () => {
+      // Arrange: first sendMessage rejects, and injection also rejects (restricted tab)
+      setPendingSendMessageRejection(new Error("Receiving end does not exist"));
+      (chrome.scripting.executeScript as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error("Cannot access tab with id 999")
+      );
+
+      // Act & Assert: should not throw — recovery failure is silent
+      await expect(setCommentsModeState(999, true)).resolves.toBeUndefined();
+
+      // Assert: tabs.sendMessage was called only once (initial, not retried after injection failure)
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
+      // Assert: storage was still updated (graceful degradation — state is saved)
+      const storageResult = await chrome.storage.local.get("commentsMode");
+      expect((storageResult["commentsMode"] as Record<number, boolean>)[999]).toBe(true);
     });
   });
 });

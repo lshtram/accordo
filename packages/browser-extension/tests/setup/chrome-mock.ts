@@ -211,6 +211,18 @@ function createStorageMock() {
 export const mockTabUrls = new Map<number, string>();
 
 /**
+ * When set, tabs.sendMessage will reject with this error on the next call.
+ * Tests use this to simulate "no receiver" conditions.
+ * After the next call, the ref is cleared automatically.
+ */
+let pendingSendMessageRejection: Error | undefined = undefined;
+
+/** Sets the pending sendMessage rejection for tests. */
+export function setPendingSendMessageRejection(err: Error | undefined): void {
+  pendingSendMessageRejection = err;
+}
+
+/**
  * Register a URL for a mock tab so captureScreenshot can look it up.
  * Call this in tests before calling captureScreenshot(tabId).
  */
@@ -287,6 +299,13 @@ function createTabsMock() {
         message: unknown,
         callback?: (response: unknown) => void
       ): Promise<unknown> => {
+        // Support test-injected rejection to simulate "no receiver" errors
+        if (pendingSendMessageRejection !== undefined) {
+          const err = pendingSendMessageRejection;
+          pendingSendMessageRejection = undefined; // auto-clear after one use
+          if (callback) callback(undefined);
+          return Promise.reject(err);
+        }
         // Return sensible defaults based on message type so handlers can succeed
         let response: unknown = undefined;
         const msg = message as Record<string, unknown> | undefined;
@@ -451,6 +470,12 @@ function createScriptingMock() {
         return Promise.resolve([]);
       }
     ),
+
+    insertCSS: vi.fn(
+      (_injection: chrome.scripting.CSSInjection): Promise<void> => {
+        return Promise.resolve();
+      }
+    ),
   };
 }
 
@@ -606,6 +631,7 @@ export function resetChromeMocks(): void {
   mockTabUrls.clear();
   debuggerAttachedTabs.clear();
   debuggerDetachListeners.length = 0;
+  setPendingSendMessageRejection(undefined);
 
   // Default: tab 1 points to example.com/page (covers most test scenarios)
   mockTabUrls.set(1, "https://example.com/page");
