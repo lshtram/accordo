@@ -57,6 +57,11 @@ export interface SpawnArgs {
   secret: string;
   token: string;
   port: number;
+  /** Optional registry args for the Hub process */
+  registryArgs?: {
+    projectId: string;
+    registryPath: string;
+  };
 }
 
 /**
@@ -139,7 +144,6 @@ export class HubProcess {
     private readonly config: {
       readonly executablePath: string;
       readonly hubEntryPoint: string;
-      readonly pidFilePath?: string;
     },
     private readonly outputChannel: OutputChannel,
     private readonly events: HubProcessEvents,
@@ -153,17 +157,31 @@ export class HubProcess {
    * @param secret - Bridge secret to pass in env
    * @param token  - Bearer token to pass in env
    * @param port   - Hub HTTP port for --port argument and ACCORDO_HUB_PORT env var
+   * @param registryArgs - projectId and registry path for Hub's hubs.json entry
    */
-  async spawn(secret: string, token: string, port: number): Promise<void> {
+  async spawn(
+    secret: string,
+    token: string,
+    port: number,
+    registryArgs?: { projectId: string; registryPath: string },
+  ): Promise<void> {
     this.state.secret = secret;
     this.state.token = token;
     this.state.restartAttempted = false;
     this.state.killRequested = false;
 
     const execPath = resolveHubExecPath(this.config.executablePath);
+
+    // Build spawn arguments — Hub receives project identity for registry entry
+    const spawnArgs = [this.config.hubEntryPoint, "--port", String(port)];
+    if (registryArgs) {
+      spawnArgs.push("--project-id", registryArgs.projectId);
+      spawnArgs.push("--registry", registryArgs.registryPath);
+    }
+
     const proc = execFile(
       execPath,
-      [this.config.hubEntryPoint, "--port", String(port)],
+      spawnArgs,
       {
         env: {
           ...process.env,
@@ -171,18 +189,12 @@ export class HubProcess {
           ACCORDO_BRIDGE_SECRET: secret,
           ACCORDO_TOKEN: token,
           ACCORDO_HUB_PORT: String(port),
+          // Hub reads ACCORDO_REGISTRY_PATH from env to locate hubs.json
+          ...(registryArgs ? { ACCORDO_REGISTRY_PATH: registryArgs.registryPath } : {}),
         },
       },
     );
     this.state.hubProcess = proc;
-
-    // M29: write PID from the parent as soon as the child is forked
-    if (this.config.pidFilePath && proc.pid !== undefined) {
-      try {
-        fs.mkdirSync(path.dirname(this.config.pidFilePath), { recursive: true });
-        fs.writeFileSync(this.config.pidFilePath, String(proc.pid), { mode: 0o600 });
-      } catch { /* best-effort */ }
-    }
 
     proc.stdout?.on("data", (data: Buffer) => {
       this.outputChannel.appendLine(data.toString());
@@ -192,10 +204,6 @@ export class HubProcess {
     });
 
     proc.on("exit", (code: number | null) => {
-      // M29: clean up PID file when Hub process exits
-      if (this.config.pidFilePath) {
-        try { fs.unlinkSync(this.config.pidFilePath); } catch { /* already gone */ }
-      }
       if (!this.state.killRequested) {
         this.state.hubProcess = null;
         this.events.onUnexpectedExit(code);

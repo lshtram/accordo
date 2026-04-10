@@ -22,6 +22,7 @@ import { McpHandler } from "./mcp-handler.js";
 import { ToolRegistry } from "./tool-registry.js";
 import { BridgeServer } from "./bridge-server.js";
 import { StdioTransport } from "./stdio-transport.js";
+import { ACCORDO_REGISTRY_PATH } from "./hub-registry.js";
 
 // ---------------------------------------------------------------------------
 // Dynamic port selection
@@ -73,6 +74,8 @@ export interface CliArgs {
   host: string;
   stdio: boolean;
   logLevel: "debug" | "info" | "warn" | "error";
+  projectId: string;
+  registry: string;
 }
 
 /**
@@ -83,6 +86,9 @@ export function parseArgs(argv: string[]): CliArgs {
   let host = "127.0.0.1";
   let stdio = false;
   let logLevel: CliArgs["logLevel"] = "info";
+  let projectId = "";
+  // Registry path: env var fallback, then default. CLI --registry overrides both.
+  let registry = process.env[ACCORDO_REGISTRY_PATH] ?? path.join(os.homedir(), ".accordo", "hubs.json");
 
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
@@ -107,10 +113,22 @@ export function parseArgs(argv: string[]): CliArgs {
         logLevel = v as CliArgs["logLevel"];
         break;
       }
+      case "--project-id": {
+        const v = argv[++i];
+        if (!v) throw new Error("--project-id requires a value");
+        projectId = v;
+        break;
+      }
+      case "--registry": {
+        const v = argv[++i];
+        if (!v) throw new Error("--registry requires a value");
+        registry = v;
+        break;
+      }
     }
   }
 
-  return { port, host, stdio, logLevel };
+  return { port, host, stdio, logLevel, projectId, registry };
 }
 
 /**
@@ -212,21 +230,30 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       console.error(`[hub] Port ${config.port} in use — using ${actualPort}`);
     }
 
+    // Register this Hub in hubs.json BEFORE starting the server, so the Bridge
+    // can read the actual bound port from the registry immediately after
+    // the health check succeeds. Only in HTTP mode (stdio mode is standalone).
+    const registryPath = args.registry;
+
+    if (args.projectId) {
+      const { writeEntry } = await import("./hub-registry.js");
+      writeEntry(registryPath, args.projectId, {
+        pid: process.pid,
+        port: actualPort,
+        startedAt: new Date().toISOString(),
+      });
+      console.error(`[hub] Registered in ${registryPath} under "${args.projectId}"`);
+    }
+
     const server = new HubServer({
       ...config,
       port: actualPort,
-      // M30-hub: path where updateToken() writes the rotated token on reauth
+      // M30-hub: path where updateToken() writes the rotated token on reauth.
+      // Legacy token file — separate from hubs.json registry.
       tokenFilePath: path.join(accordoDir, "token"),
     });
     await server.start();
 
-    // §4.2 + §8: Write token, PID, and actual port to ~/.accordo/
-    // (mode 0700 dir, 0600 files). The Bridge reads hub.port to discover the
-    // actual bound port when it differs from the configured default.
-    fs.mkdirSync(accordoDir, { recursive: true, mode: 0o700 });
-    fs.writeFileSync(path.join(accordoDir, "token"), config.token, { mode: 0o600 });
-    fs.writeFileSync(path.join(accordoDir, "hub.pid"), String(process.pid), { mode: 0o600 });
-    fs.writeFileSync(path.join(accordoDir, "hub.port"), String(actualPort), { mode: 0o600 });
     console.error(`[hub] Listening on ${config.host}:${actualPort}`);
 
     // ── Parent-exit tracking ────────────────────────────────────────────────
@@ -251,15 +278,18 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     }, 5_000);
 
     // Keep alive until signal
+    // Capture removeEntry synchronously so it is available in the shutdown callback.
+    const { removeEntry } = await import("./hub-registry.js");
     await new Promise<void>((resolve) => {
       const shutdown = (): void => {
         clearInterval(parentCheckInterval);
         server.stop().catch(() => {}).finally(() => {
-          // Remove PID and port files on clean shutdown
-          const pidFile = path.join(os.homedir(), ".accordo", "hub.pid");
-          const portFile = path.join(os.homedir(), ".accordo", "hub.port");
-          try { fs.unlinkSync(pidFile); } catch { /* ignore */ }
-          try { fs.unlinkSync(portFile); } catch { /* ignore */ }
+          // Remove this Hub's entry from the registry on clean shutdown.
+          if (args.projectId) {
+            try {
+              removeEntry(registryPath, args.projectId);
+            } catch { /* ignore — best-effort cleanup */ }
+          }
           resolve();
         });
       };

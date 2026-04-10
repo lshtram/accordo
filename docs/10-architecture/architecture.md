@@ -105,7 +105,7 @@ The Hub is the **central control plane**. It has zero VSCode dependency.
 - **Process model:** Standalone. Bridge auto-starts it, or it runs manually via `npx accordo-hub`
 - **Port:** `3000` (configurable via `--port` / `ACCORDO_HUB_PORT`)
 - **Loopback only:** Binds to `127.0.0.1` by default. Flag `--host 0.0.0.0` for explicit opt-in to external access.
-- **Reconnect-first model:** Hub is still normally bridge-managed, but reload/restart no longer assumes immediate termination. Bridge persists and reuses `hub.pid`, `hub.port`, and bearer token state under `~/.accordo/` so a fresh extension host can reconnect to a live Hub after VS Code reload. See `adr-reload-reconnect.md` for the lifecycle contract.
+- **Reconnect-first model:** Hub is still normally bridge-managed, but reload/restart no longer assumes immediate termination. Bridge computes a stable `projectId` per workspace, keeps credentials in project-scoped SecretStorage keys, and uses a machine-global registry file at `~/.accordo/hubs.json` to discover the running Hub for that project. A fresh extension host can therefore reconnect to the correct live Hub after VS Code reload, while a different project spawns its own Hub. See `adr-reload-reconnect.md` for the lifecycle contract.
 
 ### 3.3 Server Endpoints
 
@@ -203,7 +203,7 @@ Updated via `stateUpdate` WebSocket messages from Bridge. Merges patches (partia
 ```
 accordo-hub/
 ├── src/
-│   ├── index.ts             — CLI entry, arg parsing, process signals
+│   ├── index.ts             — CLI entry, arg parsing, process signals, registry registration
 │   ├── server.ts            — HubServer class (thin delegation shell), HubServerOptions
 │   ├── server-routing.ts    — createRouter(): URL switch, auth middleware, /health, /state, /instructions
 │   ├── server-sse.ts        — createSseManager(): SSE connections, keep-alive, tool-list-changed push
@@ -216,7 +216,8 @@ accordo-hub/
 │   ├── prompt-engine.ts     — Template rendering, token budget enforcement
 │   ├── security.ts          — Origin validation, bearer token, secret management
 │   ├── protocol.ts          — Shared message types (Hub ↔ Bridge)
-│   └── health.ts            — /health endpoint
+│   ├── health.ts            — /health endpoint
+│   └── hub-registry.ts      — `~/.accordo/hubs.json` read/write helpers
 ├── package.json
 ├── tsconfig.json
 └── README.md
@@ -277,17 +278,18 @@ The Bridge is the **only VSCode-specific core component**. It is the nervous sys
 
 ```
 On activation:
-1. Read stored `accordo.bridgeSecret` and `accordo.hubToken` from VS Code SecretStorage.
-2. If either is absent, generate fresh credentials, persist them, and use them for first launch.
-3. If `autoStart` is enabled, or a persisted pid file exists, probe for an existing Hub:
-   a. Read `hub.pid` and verify the process is alive.
-   b. Read `hub.port` to discover the actual bound port.
-   c. Call `GET /health`.
-   d. If healthy, emit reconnect-ready state and skip spawn.
-4. If no healthy Hub is found and `autoStart` is true:
-   a. Spawn Hub: `execFile(nodePath, [hubEntry, '--port', port], { env })`
-   b. `env` includes `ACCORDO_BRIDGE_SECRET`, `ACCORDO_TOKEN`, `ACCORDO_HUB_PORT`.
-   c. Persist pid/port/token artifacts under `~/.accordo/`.
+1. Compute a stable `projectId` from the current workspace identity.
+2. Read stored `accordo.<projectId>.bridgeSecret` and `accordo.<projectId>.hubToken` from VS Code SecretStorage.
+3. If either is absent, generate fresh credentials, persist them, and use them for first launch for that project.
+4. If `autoStart` is enabled, probe `~/.accordo/hubs.json` for the current `projectId`:
+   a. If an entry exists, verify the recorded PID is alive.
+   b. Call `GET /health` on the recorded port.
+   c. If healthy, emit reconnect-ready state and skip spawn.
+   d. If stale or unhealthy, ignore the entry and continue to spawn.
+5. If no healthy Hub is found and `autoStart` is true:
+   a. Spawn Hub: `execFile(nodePath, [hubEntry, '--port', port, '--project-id', projectId, '--registry', ~/.accordo/hubs.json], { env })`
+   b. `env` includes `ACCORDO_BRIDGE_SECRET`, `ACCORDO_TOKEN`, `ACCORDO_HUB_PORT`, `ACCORDO_REGISTRY_PATH`.
+   c. Hub picks the first free port and writes/updates its own `~/.accordo/hubs.json` entry for `projectId`.
    d. Poll `/health` at 500ms intervals (max 10s).
 5. Connect WebSocket to `ws://127.0.0.1:{port}/bridge` with `x-accordo-secret`.
 6. On connect: send full IDE state snapshot and current tool registry.
@@ -449,7 +451,7 @@ Bridge registers the already-running Hub as a native MCP server with VSCode usin
 vscode.lm.registerMcpServerDefinitionProvider('accordo', {
   provideMcpServerDefinitions(): vscode.McpServerDefinition[] {
     const port = config.get('accordo.hub.port', 3000);
-    const token = await secretStorage.get('accordo.hubToken');
+    const token = await secretStorage.get(`accordo.${projectId}.hubToken`);
     return [
       new vscode.McpHttpServerDefinition(
         'accordo-hub',
@@ -641,7 +643,7 @@ Same topology as SSH. The Codespace VM runs the workspace extension host + Hub. 
 |---|---|
 | **Loopback binding** | `127.0.0.1` by default. Explicit `--host` flag required for any other interface. |
 | **Origin validation** | All HTTP requests must have either no `Origin` header (non-browser) or an `Origin` of `localhost`/`127.0.0.1`. Reject all other origins. Prevents DNS rebinding. |
-| **Bearer token** | `Authorization: Bearer <token>` required on `/mcp` and `/instructions`. Token originates from Bridge: generated on Hub spawn, stored in VSCode `SecretStorage` (key: `accordo.hubToken`), passed to Hub as `ACCORDO_TOKEN` env var. Hub holds the token in memory only — no file is written. Token is workspace-local (written to workspace config files by Bridge). Never committed to workspace (config files are in `.gitignore`). |
+| **Bearer token** | `Authorization: Bearer <token>` required on `/mcp` and `/instructions`. Token originates from Bridge: generated on Hub spawn, stored in VSCode `SecretStorage` (key: `accordo.<projectId>.hubToken`), passed to Hub as `ACCORDO_TOKEN` env var. Hub holds the token in memory only — no file is written. Token is workspace-local (written to workspace config files by Bridge). Never committed to workspace (config files are in `.gitignore`). |
 | **CORS** | No CORS headers served by default. Agents use same-origin or non-browser requests. |
 
 ### 7.2 WebSocket Security

@@ -20,6 +20,8 @@ function baseArgs(overrides: Partial<CliArgs> = {}): CliArgs {
     host: "127.0.0.1",
     stdio: false,
     logLevel: "info",
+    projectId: "test-project",
+    registry: "/home/test/.accordo/hubs.json",
     ...overrides,
   };
 }

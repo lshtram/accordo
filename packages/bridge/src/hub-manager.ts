@@ -18,6 +18,16 @@ import { HubProcess } from "./hub-process.js";
 import type { HubProcessSharedState } from "./hub-process.js";
 import { HubHealth } from "./hub-health.js";
 import type { HubHealthSharedState } from "./hub-health.js";
+import {
+  scopedSecretKey,
+  BRIDGE_SECRET_KEY,
+  HUB_TOKEN_KEY,
+} from "./project-identity.js";
+import {
+  probeRegistryEntry,
+  resolveRegistryPath,
+  ACCORDO_REGISTRY_PATH,
+} from "./hub-registry.js";
 
 // Re-export types from hub-process.ts for backwards compatibility
 export type { ChildProcess } from "node:child_process";
@@ -60,18 +70,17 @@ export interface HubManagerConfig {
   /** Filesystem path to the Hub entry point JS file */
   hubEntryPoint: string;
   /**
-   * Absolute path to the Hub PID file for stale-PID detection on activation.
-   * Default: ~/.accordo/hub.pid. Override in tests to avoid touching the filesystem.
-   * requirements-hub.md §8
+   * Stable per-workspace identifier used to scope reconnect state.
+   * Passed from extension-bootstrap via BridgeConfig.projectId.
+   * Used to derive project-scoped SecretStorage keys and registry entries.
    */
-  pidFilePath?: string;
+  projectId: string;
   /**
-   * Absolute path to the hub.port file Hub writes after binding.
-   * When set, activate() and pollHealth() read this file to discover the
-   * actual bound port (which may differ from `port` when dynamic selection
-   * picked a different one). Override in tests to avoid touching the filesystem.
+   * Absolute path to the hubs.json registry file.
+   * Default: ~/.accordo/hubs.json. Override in tests.
+   * The Hub also writes to this file on spawn.
    */
-  portFilePath?: string;
+  registryPath?: string;
 }
 
 /**
@@ -131,11 +140,12 @@ export class HubManager {
     this.port = config.port;
     this.healthState.port = this.port;
 
+    // HubProcess no longer writes per-project PID files — the Hub writes to
+    // the registry (hubs.json) directly. pidFilePath is no longer needed.
     this.hubProcess = new HubProcess(
       {
         executablePath: config.executablePath,
         hubEntryPoint: config.hubEntryPoint,
-        pidFilePath: config.pidFilePath,
       },
       outputChannel,
       { onUnexpectedExit: (code): void => { this._onProcessExit(code); } },
@@ -155,21 +165,19 @@ export class HubManager {
    *   - dead  → fall through to spawn with stored credentials
    */
   async activate(): Promise<void> {
-    const storedSecret = await this.secretStorage.get("accordo.bridgeSecret");
-    const storedToken = await this.secretStorage.get("accordo.hubToken");
+    const bridgeSecretKey = scopedSecretKey(BRIDGE_SECRET_KEY, this.config.projectId);
+    const hubTokenKey = scopedSecretKey(HUB_TOKEN_KEY, this.config.projectId);
+
+    const storedSecret = await this.secretStorage.get(bridgeSecretKey);
+    const storedToken = await this.secretStorage.get(hubTokenKey);
 
     if (!storedToken || !storedSecret) {
       // First launch: generate fresh credentials, store them, then spawn below.
       const creds = await this.generateHubCredentials();
-      await this.secretStorage.store("accordo.bridgeSecret", creds.secret);
-      await this.secretStorage.store("accordo.hubToken", creds.token);
+      await this.secretStorage.store(bridgeSecretKey, creds.secret);
+      await this.secretStorage.store(hubTokenKey, creds.token);
       if (this.config.autoStart) {
-        this.hubProcess
-          .spawn(creds.secret, creds.token, this.port)
-          .then(() => this._pollAndNotify())
-          .catch((err: unknown) => {
-            this.events.onHubError(err instanceof Error ? err : new Error(String(err)));
-          });
+        await this._spawnHub(creds.secret, creds.token);
       }
       return;
     }
@@ -178,9 +186,8 @@ export class HubManager {
     this.processState.secret = storedSecret;
     this.processState.token = storedToken;
 
-    // Reconnect-first: probe existing Hub when autoStart is enabled OR pidFilePath
-    // is configured (to support autoStart=false + pidFilePath edge case in M29)
-    if (this.config.autoStart || this.config.pidFilePath) {
+    // Reconnect-first: check registry for an existing Hub for this project
+    if (this.config.autoStart) {
       const probe = await this.probeExistingHub();
       if (probe.alive) {
         this.port = probe.port;
@@ -194,14 +201,8 @@ export class HubManager {
       return;
     }
 
-    // Hub is dead — spawn a fresh one with existing credentials
-    this._applyPortFile();
-    this.hubProcess
-      .spawn(storedSecret, storedToken, this.port)
-      .then(() => this._pollAndNotify())
-      .catch((err: unknown) => {
-        this.events.onHubError(err instanceof Error ? err : new Error(String(err)));
-      });
+    // Hub is dead or not in registry — spawn a fresh one with existing credentials
+    await this._spawnHub(storedSecret, storedToken);
   }
 
   /**
@@ -248,43 +249,39 @@ export class HubManager {
   }
 
   /**
-   * LCM-01-R: Probe an existing Hub for reconnection.
+   * LCM-01-R: Probe an existing Hub for reconnection via registry.
    *
-   * Checks whether a Hub process is alive at the last-known port and whether
-   * it responds to GET /health. Used by the reconnect-first activation logic
-   * in `activate()`.
+   * Checks the hubs.json registry for a live entry for this projectId,
+   * validates the PID is alive, then performs an HTTP health check.
    *
    * Flow:
-   * 1. Read hub.pid from pidFilePath — check if process is alive
-   * 2. Read hub.port from portFilePath — get the actual port
-   * 3. Send GET /health to that port
-   * 4. If health response is 200, return { alive: true, port }
+   * 1. Read entry from registry for this projectId
+   * 2. Validate PID is alive (removes stale entry if dead)
+   * 3. Send GET /health to the registered port
+   * 4. If health response is 200 → return { alive: true, port }
    * 5. Otherwise return { alive: false }
-   *
-   * Requirements: adr-reload-reconnect.md §D2
    *
    * @returns Probe result with alive status and discovered port
    */
   async probeExistingHub(): Promise<{ alive: boolean; port: number }> {
-    // Step 1: Check PID is alive
-    if (!this.config.pidFilePath) {
-      return { alive: false, port: 0 };
-    }
-    const pid = this.readPidFile(this.config.pidFilePath);
-    if (pid === null || !this.isProcessAlive(pid)) {
+    const registryPath = this.config.registryPath ?? resolveRegistryPath();
+
+    // Step 1: Read registry entry + validate PID liveness (removes stale entry if dead)
+    const entry = probeRegistryEntry(registryPath, this.config.projectId);
+    if (!entry) {
       return { alive: false, port: 0 };
     }
 
-    // Step 2: Apply port file to get actual bound port
-    this._applyPortFile();
+    // Step 2: Health check at the registered port
+    this.port = entry.port;
+    this.healthState.port = entry.port;
 
-    // Step 3: Health check
     const healthy = await this.checkHealth();
     if (!healthy) {
       return { alive: false, port: 0 };
     }
 
-    return { alive: true, port: this.port };
+    return { alive: true, port: entry.port };
   }
 
   /**
@@ -321,15 +318,19 @@ export class HubManager {
    * LCM-02: Check if Hub is alive via GET /health.
    */
   async checkHealth(): Promise<boolean> {
-    this._applyPortFile();
     return this.hubHealth.checkHealth();
   }
 
   /**
-   * LCM-05 + LCM-06: Spawn Hub as a child process.
+   * LCM-05 + LCM-06: Spawn Hub as a child process with registry args.
+   * Passes --project-id and --registry so the Hub can write its own entry.
    */
   async spawn(secret: string, token: string): Promise<void> {
-    return this.hubProcess.spawn(secret, token, this.port);
+    const registryPath = this.config.registryPath ?? resolveRegistryPath();
+    return this.hubProcess.spawn(secret, token, this.port, {
+      projectId: this.config.projectId,
+      registryPath,
+    });
   }
 
   /**
@@ -344,7 +345,6 @@ export class HubManager {
           resolve(false);
           return;
         }
-        this._applyPortFile();
         this.checkHealth()
           .then((healthy) => {
             if (this.pollCancelled) { resolve(false); return; }
@@ -428,6 +428,8 @@ export class HubManager {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   private async _doRestart(): Promise<void> {
+    const bridgeSecretKey = scopedSecretKey(BRIDGE_SECRET_KEY, this.config.projectId);
+    const hubTokenKey = scopedSecretKey(HUB_TOKEN_KEY, this.config.projectId);
     const newSecret = crypto.randomUUID();
     const newToken = crypto.randomUUID();
     const reauthOk = await this.attemptReauth(
@@ -438,8 +440,8 @@ export class HubManager {
     if (reauthOk) {
       this.processState.secret = newSecret;
       this.processState.token = newToken;
-      await this.secretStorage.store("accordo.bridgeSecret", newSecret);
-      await this.secretStorage.store("accordo.hubToken", newToken);
+      await this.secretStorage.store(bridgeSecretKey, newSecret);
+      await this.secretStorage.store(hubTokenKey, newToken);
       this.events.onCredentialsRotated(newToken, newSecret);
       return;
     }
@@ -449,8 +451,8 @@ export class HubManager {
       .then(() => {
         this.processState.secret = newSecret;
         this.processState.token = newToken;
-        void this.secretStorage.store("accordo.bridgeSecret", newSecret);
-        void this.secretStorage.store("accordo.hubToken", newToken);
+        void this.secretStorage.store(bridgeSecretKey, newSecret);
+        void this.secretStorage.store(hubTokenKey, newToken);
         this.events.onCredentialsRotated(newToken, newSecret);
       })
       .catch(() => {});
@@ -459,8 +461,33 @@ export class HubManager {
   private async _pollAndNotify(): Promise<void> {
     const ready = await this.pollHealth();
     if (ready) {
+      // Re-read the registry after health check succeeds — the Hub may have
+      // selected a different port than the preferred one (free-port logic).
+      // The registry always has the authoritative port.
+      const registryPath = this.config.registryPath ?? resolveRegistryPath();
+      const entry = probeRegistryEntry(registryPath, this.config.projectId);
+      if (entry) {
+        this.port = entry.port;
+        this.healthState.port = entry.port;
+      }
       this.events.onHubReady(this.port, this.processState.token!);
     }
+  }
+
+  /**
+   * Spawn a new Hub and wait for it to become healthy.
+   * Used both on first launch and when reconnecting to a dead Hub.
+   */
+  private async _spawnHub(secret: string, token: string): Promise<void> {
+    this.hubProcess
+      .spawn(secret, token, this.port, {
+        projectId: this.config.projectId,
+        registryPath: this.config.registryPath ?? resolveRegistryPath(),
+      })
+      .then(() => this._pollAndNotify())
+      .catch((err: unknown) => {
+        this.events.onHubError(err instanceof Error ? err : new Error(String(err)));
+      });
   }
 
   private _onProcessExit(code: number | null): void {
@@ -476,15 +503,4 @@ export class HubManager {
     }
   }
 
-  private _applyPortFile(): void {
-    if (!this.config.portFilePath) return;
-    try {
-      const raw = fs.readFileSync(this.config.portFilePath, "utf8").trim();
-      const p = Number(raw);
-      if (Number.isInteger(p) && p > 0 && p < 65536) {
-        this.port = p;
-        this.healthState.port = p;
-      }
-    } catch { /* file not written yet */ }
-  }
 }

@@ -289,6 +289,8 @@ interface ToolRegistration {
 | `--host` | `127.0.0.1` | Bind address. Only `0.0.0.0` or `127.0.0.1` accepted. |
 | `--stdio` | (off) | stdio-only mode. No HTTP server. |
 | `--log-level` | `info` | `debug`, `info`, `warn`, `error` |
+| `--project-id` | (none) | Identifier for this Hub's slot in the `hubs.json` registry. Written by Hub on startup; used by Bridge to discover the running Hub. |
+| `--registry` | `~/.accordo/hubs.json` | Filesystem path to the `hubs.json` registry. Overrides `ACCORDO_REGISTRY_PATH` env var when specified. |
 
 ### 4.2 Environment Variables
 
@@ -297,6 +299,7 @@ interface ToolRegistration {
 | `ACCORDO_HUB_PORT` | Override for `--port`. CLI flag wins. |
 | `ACCORDO_TOKEN` | Bearer token for HTTP auth. Set by Bridge on Hub spawn. Hub holds it in memory only — does NOT write to `~/.accordo/token` or any file. Token lifetime matches Hub lifetime. |
 | `ACCORDO_BRIDGE_SECRET` | Shared secret for WS auth. Set by Bridge on spawn. Rotates every time Hub is (re)spawned or when `/bridge/reauth` is called. |
+| `ACCORDO_REGISTRY_PATH` | Override for `--registry`. Path to `hubs.json`. `--registry` CLI flag wins when both are set. |
 | `ACCORDO_LOG_DIR` | Directory for log files. Default: `~/.accordo/logs/` |
 | `ACCORDO_AUDIT_FILE` | Audit log path. Default: `~/.accordo/audit.jsonl` |
 | `ACCORDO_MAX_CONCURRENT_INVOCATIONS` | Maximum in-flight tool invocations Hub-wide across all agents. Default: `16`. |

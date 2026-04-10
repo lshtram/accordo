@@ -44,11 +44,12 @@ Introduce a two-phase deactivation:
 
 Modify `HubManager.activate()` to attempt reconnection before spawning:
 
-1. Read `hub.port` and `hub.pid` files from `~/.accordo/`.
-2. Check if the PID is alive (`kill(pid, 0)`).
-3. If alive, probe `GET /health` on the stored port.
-4. If health responds `200`, emit `onHubReady(port, token)` — **skip spawn entirely**.
-5. If probe fails → fall through to normal spawn path.
+1. Compute a stable `projectId` from the current workspace identity.
+2. Read the entry for that `projectId` from `~/.accordo/hubs.json`.
+3. Check if the recorded PID is alive (`kill(pid, 0)`); if not, delete the stale entry.
+4. If the PID is alive, probe `GET /health` on the registered port.
+5. If health responds `200`, emit `onHubReady(port, token)` — **skip spawn entirely**.
+6. If probe fails → fall through to normal spawn path.
 
 **Token/secret handling:** Tokens are preserved in `SecretStorage` across VS Code reloads — they are stable UUIDs generated once and reused. No rotation on reconnect. `opencode.json` and other agent config files are **not rewritten** during a reconnect (only on fresh spawn).
 
@@ -71,7 +72,7 @@ Add a 2-second timeout to `HubProcess.killHub()`. If the process hasn't exited a
 ### Negative / Risks
 
 - (-) Hub lives 10 seconds longer than necessary after a true close (grace timer)
-- (-) Race condition: if two VS Code windows share `~/.accordo/` files, the second window's `activate()` might probe the first window's Hub (mitigated: bridge secret will differ, WS auth fails → falls through to spawn)
+- (-) Registry correctness now depends on `~/.accordo/hubs.json` remaining writable and on stale PID cleanup being reliable.
 - (-) New endpoint (`/bridge/disconnect`) increases Hub API surface
 - (-) Grace timer adds mutable state to the Hub that must be carefully tested
 
@@ -97,6 +98,10 @@ Already partially exists (grace window in `BridgeConnection`), but that timer cl
 ### A3 — File-based coordination (write a "shutting down" flag)
 
 Rejected: race-prone, requires file watching, harder to test.
+
+### A4 — Per-project folders under `~/.accordo/`
+
+Rejected: workable but awkward to inspect and unnecessarily spreads process ownership across many small files. A single `~/.accordo/hubs.json` registry is easier to debug and reason about while still allowing per-project Hub reuse.
 
 ---
 

@@ -179,6 +179,7 @@ function makeServiceFactoryDeps(overrides: Partial<{
       autoStart: true,
       executablePath: "",
       hubEntryPoint: "/tmp/accordo-hub/index.js",
+      projectId: "test-project",
     },
     hubManagerEvents: makeMockHubManagerEvents(),
     secretStorage: makeMockSecretStorage(),
@@ -258,6 +259,7 @@ describe("createServices", () => {
       autoStart: false,
       executablePath: "/custom/node",
       hubEntryPoint: "/custom/hub.js",
+      projectId: "custom-project",
     };
     const deps = makeServiceFactoryDeps({ hubManagerConfig: customConfig });
 

@@ -25,6 +25,7 @@ import { writeAgentConfigs } from "./agent-config.js";
 import { StatePublisher } from "./state-publisher.js";
 import type { IDEState } from "@accordo/bridge-types";
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
+import { scopedSecretKey, BRIDGE_SECRET_KEY } from "./project-identity.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -143,8 +144,10 @@ export function buildHubManagerEvents(
         });
       }
 
-      // Get bridge secret asynchronously then create WsClient
-      deps.bootstrap.secretStorage.get("accordo.bridgeSecret").then((secret) => {
+      // Get bridge secret asynchronously then create WsClient.
+      // Use project-scoped key so different workspaces use distinct credentials.
+      const secretKey = scopedSecretKey(BRIDGE_SECRET_KEY, deps.bootstrap.config.projectId);
+      deps.bootstrap.secretStorage.get(secretKey).then((secret) => {
         const wsClientEvents = makeWsClientEvents(deps);
         const wsClient = new WsClient(
           port,

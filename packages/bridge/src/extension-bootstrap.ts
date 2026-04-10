@@ -28,6 +28,8 @@ import * as path from "node:path";
 import * as os from "node:os";
 import type { HubManagerConfig } from "./hub-manager.js";
 import { removeWorkspaceThreshold } from "./agent-config.js";
+import { getProjectId } from "./project-identity.js";
+import { DEFAULT_REGISTRY_PATH } from "./hub-registry.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,6 +62,8 @@ export interface BridgeConfig {
   readonly wantClaude: boolean;
   /** Absolute path to the first workspace folder root, or empty string if none */
   readonly workspaceRoot: string;
+  /** Stable per-workspace identifier used to scope reconnect state */
+  readonly projectId: string;
 }
 
 /**
@@ -123,12 +127,15 @@ export async function bootstrapExtension(
   // Step 2: Derive mcpConfigPath (user-level .vscode/mcp.json)
   const mcpConfigPath = path.join(os.homedir(), ".vscode", "mcp.json");
 
-  // Step 3: Read configuration
+  // Step 3: Read configuration and compute project identity
   const cfg = vscode.workspace.getConfiguration("accordo");
   const workspaceFolders = vscode.workspace.workspaceFolders;
   const workspaceRoot = workspaceFolders && workspaceFolders.length > 0
     ? workspaceFolders[0].uri.fsPath
     : "";
+  // Stable per-workspace ID — same project window reconnects correctly;
+  // different project windows get different IDs and do not collide.
+  const projectId = getProjectId(workspaceRoot);
   const config: BridgeConfig = {
     port: cfg.get<number>("hub.port") ?? 3000,
     autoStart: cfg.get<boolean>("hub.autoStart") ?? true,
@@ -137,6 +144,7 @@ export async function bootstrapExtension(
     wantOpencode: cfg.get<boolean>("agent.configureOpencode") ?? true,
     wantClaude: cfg.get<boolean>("agent.configureClaude") ?? true,
     workspaceRoot,
+    projectId,
   };
 
   // Step 4: Enforce Copilot virtualTools threshold (CFG-11) — remove stale workspace setting
@@ -144,7 +152,7 @@ export async function bootstrapExtension(
     removeWorkspaceThreshold(workspaceFolders[0].uri.fsPath, outputChannel);
   }
 
-  // Step 5: Build HubManagerConfig
+  // Step 5: Build HubManagerConfig with single registry path
   const hubEntryPoint = path.join(
     context.extensionUri.fsPath,
     "node_modules",
@@ -152,14 +160,14 @@ export async function bootstrapExtension(
     "dist",
     "index.js",
   );
-  const accordoDir = path.join(os.homedir(), ".accordo");
-  const hubManagerConfig = {
+  const registryPath = DEFAULT_REGISTRY_PATH;
+  const hubManagerConfig: HubManagerConfig = {
     port: config.port,
     autoStart: config.autoStart,
     executablePath: config.executablePath,
     hubEntryPoint,
-    portFilePath: path.join(accordoDir, "hub.port"),
-    pidFilePath: path.join(accordoDir, "hub.pid"),
+    projectId,
+    registryPath,
   };
 
   // Step 6: Create SecretStorageAdapter wrapping context.secrets

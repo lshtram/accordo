@@ -216,12 +216,12 @@ The Bridge constructs `ToolRegistration` from `ExtensionToolDefinition` by:
 
 | ID | Requirement |
 |---|---|
-| LCM-01 | On activation, read `ACCORDO_BRIDGE_SECRET` from `context.secrets.get('accordo.bridgeSecret')` and `ACCORDO_TOKEN` from `context.secrets.get('accordo.hubToken')`. If either value is absent (first launch), generate a UUID for it and persist it immediately via `context.secrets.store()`. Bridge owns the credentials — Hub accepts whatever it receives at spawn time. |
+| LCM-01 | On activation, compute a stable `projectId` from the current workspace identity. Read `ACCORDO_BRIDGE_SECRET` from `context.secrets.get('accordo.<projectId>.bridgeSecret')` and `ACCORDO_TOKEN` from `context.secrets.get('accordo.<projectId>.hubToken')`. If either value is absent (first launch for that project), generate a UUID for it and persist it immediately via `context.secrets.store()`. Bridge owns the credentials — Hub accepts whatever it receives at spawn time. |
 | LCM-02 | Check Hub liveness via `GET http://localhost:{port}/health` with 2s timeout. |
 | LCM-03 | If Hub is healthy, fire `onHubReady` unconditionally with the stored credentials (Bridge always has credentials after LCM-01). If the secret turns out to be wrong, WS close code 4001 triggers LCM-04 recovery. |
 | LCM-04 | If WS upgrade is rejected with close code 4001 (Hub is running but has an unknown secret — it was externally restarted): Bridge does **not** know the Hub's current secret and cannot use `/bridge/reauth`. Generate new secret + token, persist to `context.secrets`, kill the existing Hub process, then spawn a new Hub. This is the only recovery path when Hub and Bridge secrets are out of sync. |
-| LCM-05 | Spawn uses `child_process.execFile` (NOT `exec` or `spawn` with shell:true). Node executable: `accordo.hub.executablePath` setting (machine-scoped) or `process.execPath` as fallback. Arguments: `[hubEntryPoint, '--port', port]`. No shell string parsing. |
-| LCM-06 | Spawn environment: `{ ACCORDO_BRIDGE_SECRET: secret, ACCORDO_TOKEN: token, ACCORDO_HUB_PORT: port }`. |
+| LCM-05 | Spawn uses `child_process.execFile` (NOT `exec` or `spawn` with shell:true). Node executable: `accordo.hub.executablePath` setting (machine-scoped) or `process.execPath` as fallback. Arguments: `[hubEntryPoint, '--port', port, '--project-id', projectId, '--registry', ~/.accordo/hubs.json]`. No shell string parsing. |
+| LCM-06 | Spawn environment: `{ ACCORDO_BRIDGE_SECRET: secret, ACCORDO_TOKEN: token, ACCORDO_HUB_PORT: port, ACCORDO_REGISTRY_PATH: ~/.accordo/hubs.json }`. |
 | LCM-07 | After spawn, poll `/health` at 500ms intervals. Max 10s. |
 | LCM-08 | If health check times out, show `vscode.window.showErrorMessage` with "Accordo Hub failed to start" and offer "Retry" and "Show Log" actions. |
 | LCM-09 | Stream Hub stdout/stderr to an `OutputChannel` named "Accordo Hub". |
@@ -234,25 +234,32 @@ The Bridge constructs `ToolRegistration` from `ExtensionToolDefinition` by:
 ```
 activate()
   │
-  ├── Read secret + token from context.secrets
+  ├── Compute projectId from workspace identity
   │
-  ├── GET /health ──► Hub alive?
-  │   │ yes                │ no (connection refused)
-  │   │                    ├── autoStart? ──► no → show warning, return
-  │   │                    │ yes
-  │   │                    ├── Generate fresh credentials (secret + token)
-  │   │                    ├── Persist to SecretStorage
-  │   │                    ├── execFile(nodePath, [hubEntry, '--port', port], {env})
-  │   │                    │   (env: ACCORDO_BRIDGE_SECRET, ACCORDO_TOKEN, ACCORDO_HUB_PORT)
-  │   │                    ├── Parse Hub stderr for actual port
-  │   │                    ├── poll /health (500ms × 20 = 10s max)
-  │   │                    │   └── timeout → show error, return
-  │   │                    │
-  │   ├── Attempt WS connect with stored secret
-  │   │   ├── WS OK → session resumes, skip to state snapshot
-  │   │   └── WS close code 4001 (auth fail) → Hub is orphaned/foreign
-  │   │       ├── Kill existing Hub process (SIGTERM + SIGKILL fallback)
-  │   │       └── Generate fresh credentials, spawn new Hub (same as "no" path)
+  ├── Read project-scoped secret + token from context.secrets
+  │
+  ├── Read ~/.accordo/hubs.json for this projectId
+  │   ├── entry absent/stale ──► continue to spawn path
+  │   └── entry present ──► GET /health on registered port
+  │       ├── 200 → reuse existing Hub
+  │       └── fail → continue to spawn path
+  │
+  ├── autoStart? ──► no → show warning, return
+  │        yes
+  │
+  ├── Generate fresh credentials if missing
+  ├── Persist to SecretStorage if first launch for project
+  ├── execFile(nodePath, [hubEntry, '--port', port, '--project-id', projectId, '--registry', ~/.accordo/hubs.json], {env})
+  │   (env: ACCORDO_BRIDGE_SECRET, ACCORDO_TOKEN, ACCORDO_HUB_PORT, ACCORDO_REGISTRY_PATH)
+  ├── Hub picks first free port and updates ~/.accordo/hubs.json
+  ├── poll /health (500ms × 20 = 10s max)
+  │   └── timeout → show error, return
+  │
+  ├── Attempt WS connect with stored secret
+  │   ├── WS OK → session resumes, skip to state snapshot
+  │   └── WS close code 4001 (auth fail) → Hub is orphaned/foreign
+  │       ├── Kill existing Hub process (SIGTERM + SIGKILL fallback)
+  │       └── Generate fresh credentials, spawn new Hub (same as spawn path above)
   │   │
   │   ├── Connect WS (ws://localhost:{port}/bridge)
   │   │   headers: { "x-accordo-secret": secret }
@@ -454,7 +461,7 @@ export interface OpenTab {
 | CFG-04 | Include `"instructions_url": "http://localhost:{port}/instructions"` in opencode config. |
 | CFG-05 | Respect existing entries in `.claude/mcp.json` — merge, never clobber. |
 | CFG-06 | After writing config files, append their paths to `.gitignore` (workspace root). These files contain credentials and must not be committed. Write config files with mode `0600` (owner read/write only). |
-| CFG-07 | Token is read from `context.secrets.get('accordo.hubToken')` at write time. If Hub is restarted (new token), Bridge rewrites the config files. |
+| CFG-07 | Token is read from `context.secrets.get('accordo.<projectId>.hubToken')` at write time. If Hub is restarted (new token), Bridge rewrites the config files for that project. |
 
 ### 8.3 opencode.json format
 
