@@ -153,6 +153,40 @@
 
 ---
 
+### Priority P — Browser Relay Auth Hardening (Phase 1)
+
+**Status:** Implemented and validated locally on 2026-04-10. Ready for commit/push.
+
+**Problem:** Auth assessment identified multiple gaps in browser relay token handling: non-timing-safe comparison, hardcoded dev token fallback, unencrypted token storage (globalState instead of SecretStorage), and inconsistent auth validation paths between relay servers.
+
+**Plan:** Phase 1 hardening module covering AUTH-01 through AUTH-06.  
+**Requirements:** `docs/20-requirements/requirements-browser-relay-auth.md`  
+**Source of truth:** requirements doc above + architecture decision `DECISION-SBR-07`.
+
+**Completed work:**
+1. ~~AUTH-01: Timing-safe token comparison in `relay-auth.ts`~~ ✅ Done
+2. ~~AUTH-02: Remove hardcoded dev token fallback from `extension.ts`~~ ✅ Done
+3. ~~AUTH-03: Migrate token storage from globalState to SecretStorage~~ ✅ Done
+4. ~~AUTH-04: Unify auth validation path (SharedBrowserRelayServer → `isAuthorizedToken()`)~~ ✅ Done
+5. ~~AUTH-05: Dedicated auth test coverage~~ ✅ Done for Phase 1 scope
+6. ~~AUTH-06: Fail-closed guardrail against predictable fallback tokens~~ ✅ Done
+
+**Validation evidence:**
+- `packages/browser`: auth-focused tests passing, typecheck passing, lint passing
+- `packages/browser`: full suite passed locally during auth hardening
+- `packages/browser-extension`: suite passed locally; relay bridge assertions updated for current Phase 1 contract
+
+**Out of scope (Phase 2):** Chrome token discovery via native messaging, query-string transport, token rotation.
+
+**Success criteria:**
+- All token comparisons use `timingSafeEqual`
+- No hardcoded dev token in VS Code extension
+- Token stored in SecretStorage with one-time migration from globalState
+- Single `isAuthorizedToken()` used by all relay servers
+- Dedicated tests for all 5 requirements
+
+---
+
 ---
 
 ## 3) Guardrails

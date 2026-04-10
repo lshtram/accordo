@@ -553,6 +553,15 @@ This allows users to opt out if the shared model causes issues.
 **Rationale:** The shared relay binds to `127.0.0.1` only. Any process that can read `~/.accordo/shared-relay.json` (permissions `0600`) already has localhost access. Separate per-client tokens add API complexity (token registration, validation sets) without meaningful security benefit in the loopback-only model. A single token written to the discovery file is simple, coherent, and sufficient.  
 **Consequence:** All connections (Chrome + Hub clients) use the same token from `shared-relay.json`. Token rotation requires restarting the shared relay (Owner generates a new token, all clients reconnect with it from the updated file).
 
+### DECISION-SBR-07 — Auth hardening: timing-safe comparison, SecretStorage, unified path
+
+**Date:** 2026-04-10  
+**Context:** Auth assessment found gaps in browser relay token handling: `===` comparison (timing side-channel), hardcoded dev token fallback, globalState (unencrypted) storage, inconsistent validation between `BrowserRelayServer` and `SharedBrowserRelayServer`.  
+**Decision:** Phase 1 hardening — `isAuthorizedToken()` uses `timingSafeEqual`, both relay servers delegate to it, token stored in VS Code `SecretStorage`, dev token fallback removed. Chrome extension token discovery deferred to Phase 2 (native messaging).  
+**Rationale:** Aligns browser relay security with Hub security (`hub/security.ts` already uses `timingSafeEqual`). Eliminates the lowest-effort attack vectors without requiring Chrome extension changes.  
+**Consequence:** Chrome extension cannot connect until Phase 2 implements native-messaging token discovery. `resolveRelayToken()` provides migration path from globalState to SecretStorage.  
+**Requirements:** `docs/20-requirements/requirements-browser-relay-auth.md` AUTH-01 through AUTH-05.
+
 ---
 
 ## 13. Files to Create/Modify

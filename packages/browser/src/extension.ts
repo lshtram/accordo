@@ -30,10 +30,10 @@ import {
 } from "./relay-discovery.js";
 import type { SharedRelayInfo } from "./shared-relay-types.js";
 import { randomUUID } from "node:crypto";
+import { generateRelayToken } from "./relay-auth.js";
 
 const EXTENSION_ID = "accordo.accordo-browser";
 const TOKEN_KEY = "browserRelayToken";
-const DEV_RELAY_TOKEN = "accordo-local-dev-token";
 const RELAY_BASE_PORT = 40111;
 const RELAY_HOST = "127.0.0.1";
 
@@ -94,6 +94,85 @@ function findFreePort(startPort: number, host: string, maxTries = 10): Promise<n
     };
     tryPort(startPort);
   });
+}
+
+/**
+ * AUTH-03 / AUTH-06: Resolve the relay token with SecretStorage primary storage
+ * and globalState migration.
+ *
+ * Resolution order (AUTH-03):
+ *  1. secrets.get(TOKEN_KEY) succeeds → return it.
+ *  2. secrets returns undefined AND globalState has a token → migrate to SecretStorage,
+ *     clean up globalState, return the token.
+ *  3. Both absent → generate a fresh cryptographically random token, store in
+ *     SecretStorage, return it.
+ *
+ * Failure semantics (AUTH-03-ERR):
+ *  - secrets.get() throws → generate ephemeral token, warn. Do NOT fall back to globalState.
+ *  - secrets.store() throws during migration → keep using globalState token, warn. No cleanup.
+ *  - globalState.update() throws after successful store → warn. Token now in both stores
+ *    (harmless; next activation finds it in SecretStorage).
+ *  - secrets.store() throws for fresh token → return the fresh token anyway, warn.
+ *
+ * @param context - The VS Code extension context
+ * @returns A valid non-empty token string. Never throws. Never returns a hardcoded value.
+ */
+async function resolveRelayToken(context: vscode.ExtensionContext): Promise<string> {
+  // Helper to safely unwrap VS Code thenables and native promises into Promise<T>.
+  const toPromise = <T>(v: T | Promise<T> | { then(onfulfilled: (val: T) => void): void }): Promise<T> =>
+    Promise.resolve(v as T);
+
+  // Step 1: Try SecretStorage first.
+  try {
+    const stored = await toPromise(context.secrets.get(TOKEN_KEY));
+    if (typeof stored === "string" && stored.trim().length > 0) {
+      return stored.trim();
+    }
+    // Step 2: Fall through to migration / fresh generation.
+  } catch (err) {
+    // AUTH-03-ERR Step 1: SecretStorage unavailable.
+    // Generate ephemeral token — never fall back to globalState.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[accordo-browser] WARN: SecretStorage unavailable — using ephemeral relay token (${msg})`);
+    return generateRelayToken();
+  }
+
+  // Step 2: SecretStorage absent — check globalState for migration.
+  const fromGlobal = context.globalState.get<string>(TOKEN_KEY);
+  if (typeof fromGlobal === "string" && fromGlobal.trim().length > 0) {
+    // Migration path: move token from globalState to SecretStorage.
+    try {
+      await toPromise(context.secrets.store(TOKEN_KEY, fromGlobal.trim()));
+    } catch (err) {
+      // AUTH-03-ERR Step 2a: SecretStorage write failed during migration.
+      // Keep using the globalState token — it was already in unencrypted storage.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[accordo-browser] WARN: SecretStorage store failed during migration — using globalState token (${msg})`);
+      return fromGlobal.trim();
+    }
+    // Cleanup globalState after successful migration.
+    try {
+      await toPromise(context.globalState.update(TOKEN_KEY, undefined));
+    } catch (err) {
+      // AUTH-03-ERR Step 2b: globalState cleanup failed — harmless, next activation
+      // will find token in SecretStorage (step 1).
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[accordo-browser] WARN: globalState cleanup failed after migration (${msg})`);
+    }
+    return fromGlobal.trim();
+  }
+
+  // Step 3: Neither store has a token — generate a fresh one.
+  const fresh = generateRelayToken();
+  try {
+    await toPromise(context.secrets.store(TOKEN_KEY, fresh));
+  } catch (err) {
+    // AUTH-03-ERR Step 3: Cannot persist fresh token — return ephemeral.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[accordo-browser] WARN: SecretStorage unavailable for fresh token — using ephemeral token (${msg})`);
+    return fresh;
+  }
+  return fresh;
 }
 
 /**
@@ -289,8 +368,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return;
   }
 
-  const token = (context.globalState.get<string>(TOKEN_KEY) ?? DEV_RELAY_TOKEN).trim();
-  await context.globalState.update(TOKEN_KEY, token);
+  const token = await resolveRelayToken(context);
 
   // SBR-F-050: Check the sharedRelay feature flag
   const sharedRelayEnabled = vscode.workspace

@@ -16,6 +16,7 @@ import type { BrowserRelayAction, BrowserRelayRequest, BrowserRelayResponse } fr
 import type { SharedRelayServerOptions, HubClientInfo, ChromeStatusEvent } from "./shared-relay-types.js";
 import { WriteLeaseManager } from "./write-lease.js";
 import { MUTATING_ACTIONS } from "./shared-relay-types.js";
+import { isAuthorizedToken } from "./relay-auth.js";
 
 interface HubSocket {
   socket: WebSocket;
@@ -63,7 +64,8 @@ export class SharedBrowserRelayServer {
       const url = new URL(req.url ?? "/", `http://${this.options.host}:${this.options.port}`);
       const token = url.searchParams.get("token");
 
-      if (token !== this.options.token) {
+      // AUTH-04: Unified auth validation — delegate to isAuthorizedToken()
+      if (!isAuthorizedToken(token, this.options.token)) {
         this.emit("relay-unauthorized", { remote: req.socket.remoteAddress ?? "unknown" });
         socket.close(1008, "unauthorized");
         return;

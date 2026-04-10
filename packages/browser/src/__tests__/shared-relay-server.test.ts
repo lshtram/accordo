@@ -11,54 +11,61 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SharedBrowserRelayServer } from "../shared-relay-server.js";
 import type { SharedRelayServerOptions, HubClientInfo } from "../shared-relay-types.js";
 
-// Mock node:http so SharedBrowserRelayServer.start() does not bind real port 40111.
-// This prevents EADDRINUSE errors when tests run in parallel/full-suite.
-vi.mock("node:http", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:http")>();
-  return {
-    ...actual,
-    __esModule: true,
-    createServer: vi.fn(() => {
-      const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
-      return {
-        on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
-          listeners[event] = listeners[event] ?? [];
-          listeners[event].push(cb);
-          return this as unknown;
-        }),
-        once: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
-          listeners[event] = listeners[event] ?? [];
-          listeners[event].push(cb);
-          return this as unknown;
-        }),
-        listen: vi.fn((_port: number, _host: string, cb?: () => void) => {
-          // Fire 'listening' asynchronously so event handlers can be registered first
-          Promise.resolve().then(() => {
-            const l = listeners["listening"] ?? [];
-            l.forEach((handler) => handler());
-            cb?.();
-          });
-          return this as unknown;
-        }),
-        close: vi.fn((cb?: () => void) => {
-          if (cb) Promise.resolve().then(() => cb());
-          return this as unknown;
-        }),
-        address: vi.fn(() => ({ port: 40111 })),
-      };
+// NOTE: vi.mock factories are hoisted above module-scope code.
+// All mock state must be created inside the factory to avoid undefined refs.
+// Use vi.hoisted() so state is initialized at the same time as vi.mock factories.
+
+// Module-level state populated by the ws mock factory.
+// wsMockState is set when vi.mock("ws") runs (hoisted), before tests execute.
+interface WsMockState {
+  captured: Array<(socket: unknown, request: unknown) => void>;
+  wsServer: unknown;
+}
+const wsMockState = vi.hoisted<WsMockState>(() => ({
+  captured: [] as Array<(socket: unknown, request: unknown) => void>,
+  wsServer: null as unknown,
+}));
+
+vi.mock("node:http", () => {
+  const mockHttpServer = {
+    on: vi.fn(),
+    once: vi.fn(),
+    off: vi.fn(),
+    listen: vi.fn((_port: number, _host: string, cb?: () => void) => {
+      Promise.resolve().then(() => cb?.());
     }),
+    close: vi.fn((cb?: () => void) => { if (cb) Promise.resolve().then(() => cb()); }),
+    address: vi.fn(() => ({ port: 40111 })),
+  };
+  return {
+    __esModule: true,
+    createServer: vi.fn(() => mockHttpServer),
+    default: { createServer: vi.fn(() => mockHttpServer) },
   };
 });
 
-// Mock ws so WebSocketServer/WebSocket don't try to use real network state.
-vi.mock("ws", () => ({
-  WebSocketServer: vi.fn().mockImplementation(() => ({
-    on: vi.fn(),
+vi.mock("ws", () => {
+  const mockWsServer = {
+    on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+      if (event === "connection") {
+        wsMockState.captured.push(cb as (socket: unknown, request: unknown) => void);
+      }
+      return mockWsServer as unknown;
+    }),
     once: vi.fn(),
     close: vi.fn(),
-  })),
-  WebSocket: vi.fn(),
-}));
+  };
+  wsMockState.wsServer = mockWsServer;
+  const MockWsClass = Object.assign(
+    () => ({ /* client WebSocket — not used in SBR server */ }),
+    { OPEN: 1, CLOSED: 3, CONNECTING: 0 }
+  );
+  return {
+    __esModule: true,
+    WebSocketServer: vi.fn(() => mockWsServer),
+    WebSocket: MockWsClass,
+  };
+});
 
 const FIXED_PORT = 40111;
 const FIXED_TOKEN = "test-shared-token-abc123";
@@ -68,9 +75,21 @@ function makeOptions(): SharedRelayServerOptions {
   return { host: TEST_HOST, port: FIXED_PORT, token: FIXED_TOKEN };
 }
 
+// Harness accessors for the ws mock — use module-level wsMockState directly.
+function getWsHarness(): WsMockState {
+  return wsMockState;
+}
+
+function clearWsHandlers(): void {
+  wsMockState.captured.length = 0;
+}
+
 // ── SBR-F-001: Multiple Hub client connections ─────────────────────────────────
 
 describe("SBR-F-001: Multiple simultaneous Hub client connections", () => {
+  beforeEach(() => { clearWsHandlers(); });
+  afterEach(() => { clearWsHandlers(); });
+
   it("SBR-F-001: start() resolves successfully and begins accepting connections", async () => {
     const server = new SharedBrowserRelayServer(makeOptions());
     await server.start(); // Fails: throws "not implemented (Phase A stub)"
@@ -93,6 +112,9 @@ describe("SBR-F-001: Multiple simultaneous Hub client connections", () => {
 // ── SBR-F-002: Exactly one Chrome client on /chrome ───────────────────────────────────
 
 describe("SBR-F-002: Exactly one Chrome client on /chrome; new replaces previous", () => {
+  beforeEach(() => { clearWsHandlers(); });
+  afterEach(() => { clearWsHandlers(); });
+
   it("SBR-F-002: isChromeConnected() returns false before Chrome connects", async () => {
     const server = new SharedBrowserRelayServer(makeOptions());
     await server.start();
@@ -113,6 +135,9 @@ describe("SBR-F-002: Exactly one Chrome client on /chrome; new replaces previous
 // ── SBR-F-002a: Shared token auth ─────────────────────────────────────────────
 
 describe("SBR-F-002a: Both /hub and /chrome authenticate with same shared token", () => {
+  beforeEach(() => { clearWsHandlers(); });
+  afterEach(() => { clearWsHandlers(); });
+
   it("SBR-F-002a: server constructed with shared token rejects connections with wrong token (Phase C)", async () => {
     const server = new SharedBrowserRelayServer(makeOptions());
     await server.start();
@@ -126,6 +151,9 @@ describe("SBR-F-002a: Both /hub and /chrome authenticate with same shared token"
 // ── SBR-F-003: Hub client identified by hubId ─────────────────────────────────
 
 describe("SBR-F-003: Hub client identified by hubId at connection time", () => {
+  beforeEach(() => { clearWsHandlers(); });
+  afterEach(() => { clearWsHandlers(); });
+
   it("SBR-F-003: getConnectedHubs() returns a Map keyed by hubId (UUID)", async () => {
     const server = new SharedBrowserRelayServer(makeOptions());
     await server.start();
@@ -141,6 +169,9 @@ describe("SBR-F-003: Hub client identified by hubId at connection time", () => {
 // ── SBR-F-004: Response routing by requestId → hubId ──────────────────────────
 
 describe("SBR-F-004: Responses routed back to originating Hub via requestId mapping", () => {
+  beforeEach(() => { clearWsHandlers(); });
+  afterEach(() => { clearWsHandlers(); });
+
   it("SBR-F-004: Hub A sends request → server stores requestId→HubA mapping → Chrome responds → server routes back to Hub A", async () => {
     // This is an integration-level behavior test.
     // At stub level: start() throws → the routing table never gets populated.
@@ -178,6 +209,9 @@ describe("SBR-F-005: hubId stripped from requests before forwarding to Chrome", 
 // ── SBR-F-006: Chrome→Hub event routing ────────────────────────────────────────
 
 describe("SBR-F-006: Chrome→Hub events routed to appropriate Hub or broadcast", () => {
+  beforeEach(() => { clearWsHandlers(); });
+  afterEach(() => { clearWsHandlers(); });
+
   it("SBR-F-006: server routes Chrome→Hub event to the correct Hub client (by hubId routing)", async () => {
     const server = new SharedBrowserRelayServer(makeOptions());
     await server.start();
@@ -191,6 +225,9 @@ describe("SBR-F-006: Chrome→Hub events routed to appropriate Hub or broadcast"
 // ── SBR-F-007: Hub disconnect cleanup ─────────────────────────────────────────
 
 describe("SBR-F-007: Hub disconnect removes from routing table and releases write lease", () => {
+  beforeEach(() => { clearWsHandlers(); });
+  afterEach(() => { clearWsHandlers(); });
+
   it("SBR-F-007: stop() removes all Hub clients from routing table", async () => {
     const server = new SharedBrowserRelayServer(makeOptions());
     await server.start();
@@ -213,6 +250,9 @@ describe("SBR-F-007: Hub disconnect removes from routing table and releases writ
 // ── SBR-F-008: Chrome disconnect resolves pending requests ─────────────────────
 
 describe("SBR-F-008: Chrome disconnect resolves pending requests with browser-not-connected", () => {
+  beforeEach(() => { clearWsHandlers(); });
+  afterEach(() => { clearWsHandlers(); });
+
   it("SBR-F-008: when Chrome disconnects, isChromeConnected() returns false", async () => {
     const server = new SharedBrowserRelayServer(makeOptions());
     await server.start();
@@ -234,6 +274,9 @@ describe("SBR-F-008: Chrome disconnect resolves pending requests with browser-no
 // ── SBR-F-009: ChromeStatusEvent broadcast ────────────────────────────────────
 
 describe("SBR-F-009: ChromeStatusEvent broadcast to all Hub clients on Chrome connect/disconnect", () => {
+  beforeEach(() => { clearWsHandlers(); });
+  afterEach(() => { clearWsHandlers(); });
+
   it("SBR-F-009: isChromeConnected() returns false when Chrome is disconnected", async () => {
     const server = new SharedBrowserRelayServer(makeOptions());
     await server.start();
@@ -257,6 +300,9 @@ describe("SBR-F-009: ChromeStatusEvent broadcast to all Hub clients on Chrome co
 // ── SBR-F-040: Ownership transfer ─────────────────────────────────────────────
 
 describe("SBR-F-040: When Owner window closes, Hub clients detect and attempt ownership transfer", () => {
+  beforeEach(() => { clearWsHandlers(); });
+  afterEach(() => { clearWsHandlers(); });
+
   it("SBR-F-040: server disconnect causes Hub clients to detect WS close and attempt reconnection as Owner", async () => {
     // Hub clients detect Owner death via WS 'close' event.
     // They then call acquireRelayLock() — first to succeed becomes new Owner.
@@ -271,6 +317,9 @@ describe("SBR-F-040: When Owner window closes, Hub clients detect and attempt ow
 // ── DECISION-SBR-05: Fixed port 40111 ────────────────────────────────────────
 
 describe("DECISION-SBR-05: Fixed canonical port 40111 — no dynamic fallback", () => {
+  beforeEach(() => { clearWsHandlers(); });
+  afterEach(() => { clearWsHandlers(); });
+
   it("DECISION-SBR-05: server port is always 40111", () => {
     const opts = makeOptions();
     expect(opts.port).toBe(40111);
@@ -290,12 +339,139 @@ describe("DECISION-SBR-05: Fixed canonical port 40111 — no dynamic fallback", 
 // ── DECISION-SBR-06: Shared token ─────────────────────────────────────────────
 
 describe("DECISION-SBR-06: Single shared authentication token for all connections", () => {
+  beforeEach(() => { clearWsHandlers(); });
+  afterEach(() => { clearWsHandlers(); });
+
   it("DECISION-SBR-06: token written to shared-relay.json is used by both server and clients", async () => {
     // Integration: server uses token from shared-relay.json for ?token= auth.
     // Phase A: start() throws.
     const server = new SharedBrowserRelayServer(makeOptions());
     await server.start();
     expect(server.isChromeConnected()).toBe(false);
+    await server.stop();
+  });
+});
+
+// ── AUTH-01: Shared relay auth handshake ─────────────────────────────────────
+
+/**
+ * Helpers to simulate WS connection events on the mock wsServer.
+ * Accesses the captured handlers via the ws mock's __getHarness().
+ */
+function makeMockSocket() {
+  const sent: string[] = [];
+  const socket = {
+    readyState: 1,
+    closeCode: null as number | null,
+    closeMessage: null as string,
+    sent,
+    on: vi.fn(),
+    send: (data: string) => sent.push(data),
+    close: (code?: number, msg?: string) => {
+      socket.readyState = 3;
+      socket.closeCode = code ?? null;
+      socket.closeMessage = msg ?? null;
+    },
+  };
+  return socket;
+}
+
+function makeMockRequest(url: string) {
+  return {
+    url,
+    socket: { remoteAddress: "127.0.0.1" },
+  };
+}
+
+describe("AUTH-01: SharedBrowserRelayServer rejects wrong token, accepts correct token", () => {
+  const SERVER_TOKEN = "shared-secret-xyz";
+
+  beforeEach(() => { clearWsHandlers(); });
+  afterEach(() => { clearWsHandlers(); });
+
+  it("AUTH-01 /chrome: rejects connection with wrong token on /chrome path", async () => {
+    const server = new SharedBrowserRelayServer({ host: "127.0.0.1", port: 40111, token: SERVER_TOKEN });
+    await server.start();
+
+    const harness = getWsHarness();
+    expect(harness.captured.length).toBeGreaterThanOrEqual(1);
+    const handler = harness.captured[harness.captured.length - 1];
+    const mockSocket = makeMockSocket();
+
+    handler(mockSocket, makeMockRequest("/chrome?token=wrong-token"));
+
+    expect(mockSocket.closeCode).toBe(1008);
+    expect(mockSocket.closeMessage).toBe("unauthorized");
+    expect(server.isChromeConnected()).toBe(false);
+    await server.stop();
+  });
+
+  it("AUTH-01 /chrome: accepts connection with correct token on /chrome path", async () => {
+    const server = new SharedBrowserRelayServer({ host: "127.0.0.1", port: 40111, token: SERVER_TOKEN });
+    await server.start();
+
+    const harness = getWsHarness();
+    expect(harness.captured.length).toBeGreaterThanOrEqual(1);
+    const handler = harness.captured[harness.captured.length - 1];
+    const mockSocket = makeMockSocket();
+
+    handler(mockSocket, makeMockRequest(`/chrome?token=${SERVER_TOKEN}`));
+
+    expect(mockSocket.closeCode).toBeNull();
+    expect(server.isChromeConnected()).toBe(true);
+    await server.stop();
+  });
+
+  it("AUTH-01 /hub: rejects connection with wrong token on /hub path", async () => {
+    const server = new SharedBrowserRelayServer({ host: "127.0.0.1", port: 40111, token: SERVER_TOKEN });
+    await server.start();
+
+    const harness = getWsHarness();
+    expect(harness.captured.length).toBeGreaterThanOrEqual(1);
+    const handler = harness.captured[harness.captured.length - 1];
+    const mockSocket = makeMockSocket();
+    const HUB_ID = "550e8400-e29b-41d4-a716-446655440000";
+
+    handler(mockSocket, makeMockRequest(`/hub?hubId=${HUB_ID}&token=wrong-token`));
+
+    expect(mockSocket.closeCode).toBe(1008);
+    expect(mockSocket.closeMessage).toBe("unauthorized");
+    await server.stop();
+  });
+
+  it("AUTH-01 /hub: accepts connection with correct token and valid hubId on /hub path", async () => {
+    const server = new SharedBrowserRelayServer({ host: "127.0.0.1", port: 40111, token: SERVER_TOKEN });
+    await server.start();
+
+    const harness = getWsHarness();
+    expect(harness.captured.length).toBeGreaterThanOrEqual(1);
+    const handler = harness.captured[harness.captured.length - 1];
+    const mockSocket = makeMockSocket();
+    const HUB_ID = "550e8400-e29b-41d4-a716-446655440000";
+
+    handler(mockSocket, makeMockRequest(`/hub?hubId=${HUB_ID}&token=${SERVER_TOKEN}`));
+
+    // /hub connection must not be closed — it registers successfully
+    expect(mockSocket.closeCode).toBeNull();
+    // Chrome is not connected (only /hub sockets are)
+    expect(server.isChromeConnected()).toBe(false);
+    await server.stop();
+  });
+
+  it("AUTH-01 /hub: rejects connection with missing hubId even if token is correct", async () => {
+    const server = new SharedBrowserRelayServer({ host: "127.0.0.1", port: 40111, token: SERVER_TOKEN });
+    await server.start();
+
+    const harness = getWsHarness();
+    expect(harness.captured.length).toBeGreaterThanOrEqual(1);
+    const handler = harness.captured[harness.captured.length - 1];
+    const mockSocket = makeMockSocket();
+
+    // Correct token but no hubId
+    handler(mockSocket, makeMockRequest(`/hub?token=${SERVER_TOKEN}`));
+
+    expect(mockSocket.closeCode).toBe(1008);
+    expect(mockSocket.closeMessage).toBe("missing hubId");
     await server.stop();
   });
 });

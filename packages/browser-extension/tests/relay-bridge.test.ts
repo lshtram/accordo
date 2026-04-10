@@ -45,6 +45,29 @@ describe("M82-RELAY — browser-extension relay client", () => {
     expect(String(ctor.mock.calls[0][0])).toContain("ws://127.0.0.1:40111/");
   });
 
+  it("BR-F-120 + AUTH-chrome: WS URL uses /chrome path with ?token= query parameter (non-empty)", () => {
+    // The Chrome extension (relay-bridge.ts) always connects to /chrome?token=<token>.
+    // Chrome's hardcoded token is out of scope (Phase 2). This test verifies the
+    // URL is well-formed with a non-empty token value.
+    const ctor = vi.fn((url: string) => new FakeSocket(url));
+    (ctor as unknown as { OPEN: number; CONNECTING: number }).OPEN = FakeSocket.OPEN;
+    (ctor as unknown as { OPEN: number; CONNECTING: number }).CONNECTING = FakeSocket.CONNECTING;
+    globalThis.WebSocket = ctor as unknown as typeof WebSocket;
+
+    const bridge = new RelayBridgeClient(async () => ({
+      requestId: "r1",
+      success: true,
+    }));
+    bridge.start();
+
+    const constructedUrl = String(ctor.mock.calls[0][0]);
+    expect(constructedUrl).toMatch(/^\ws:\/\/127\.0\.0\.1:40111\/chrome\?token=.+$/);
+    // Extract token value from URL
+    const tokenMatch = constructedUrl.match(/token=([^&]+)/);
+    expect(tokenMatch).not.toBeNull();
+    expect(tokenMatch![1].length).toBeGreaterThan(0);
+  });
+
   it("BR-F-123: incoming relay request is handled and responded with same requestId", async () => {
     const socket = new FakeSocket("ws://127.0.0.1:40111");
     const ctor = vi.fn(() => socket);
