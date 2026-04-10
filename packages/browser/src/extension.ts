@@ -29,6 +29,7 @@ import {
   removeSharedRelayInfo,
 } from "./relay-discovery.js";
 import type { SharedRelayInfo } from "./shared-relay-types.js";
+import type { CommentThread } from "@accordo/bridge-types";
 import { randomUUID } from "node:crypto";
 import { generateRelayToken } from "./relay-auth.js";
 
@@ -36,6 +37,328 @@ const EXTENSION_ID = "accordo.accordo-browser";
 const TOKEN_KEY = "browserRelayToken";
 const RELAY_BASE_PORT = 40111;
 const RELAY_HOST = "127.0.0.1";
+
+// ── Browser Comment Sync ───────────────────────────────────────────────────────
+
+const SYNC_INTERVAL_MS = 30_000;
+
+/**
+ * Remote browser thread data returned by Chrome relay get_comments action.
+ */
+interface RemoteBrowserThread {
+  id: string;
+  anchorKey: string;
+  anchorContext?: {
+    tagName?: string;
+    textSnippet?: string;
+    ariaLabel?: string;
+    pageTitle?: string;
+  };
+  pageUrl: string;
+  status: "open" | "resolved";
+  comments: RemoteBrowserComment[];
+  createdAt: string;
+  lastActivity: string;
+  deletedAt?: string;
+}
+
+interface RemoteBrowserComment {
+  id: string;
+  threadId: string;
+  createdAt: string;
+  author: { kind: "user"; name: string };
+  body: string;
+  anchorKey: string;
+  pageUrl: string;
+  status: "open" | "resolved";
+  resolutionNote?: string;
+  deletedAt?: string;
+}
+
+interface GetCommentsResponse {
+  url: string;
+  threads: RemoteBrowserThread[];
+}
+
+/**
+ * Maps a remote Chrome BrowserCommentThread to the args for comment_create.
+ */
+function remoteThreadToCreateArgs(
+  thread: RemoteBrowserThread,
+): Record<string, unknown> {
+  const firstComment = thread.comments[0];
+  return {
+    scope: { modality: "browser", url: thread.pageUrl },
+    anchor: { kind: "browser", anchorKey: thread.anchorKey },
+    body: firstComment?.body ?? "",
+    threadId: thread.id,
+    commentId: firstComment?.id,
+    context: thread.anchorContext
+      ? {
+          surfaceMetadata: {
+            anchorKey: thread.anchorKey,
+            tagName: thread.anchorContext.tagName,
+            textSnippet: thread.anchorContext.textSnippet,
+            ariaLabel: thread.anchorContext.ariaLabel,
+            pageTitle: thread.anchorContext.pageTitle,
+          },
+        }
+      : { surfaceMetadata: { anchorKey: thread.anchorKey } },
+    authorKind: firstComment?.author?.kind === "user" ? "user" : "agent",
+    authorName: firstComment?.author?.name,
+  };
+}
+
+/**
+ * Maps a remote Chrome BrowserComment to the args for comment_reply.
+ */
+function remoteCommentToReplyArgs(
+  comment: RemoteBrowserComment,
+): Record<string, unknown> {
+  return {
+    threadId: comment.threadId,
+    body: comment.body,
+    commentId: comment.id,
+    authorKind: comment.author?.kind === "user" ? "user" : "agent",
+    authorName: comment.author?.name,
+  };
+}
+
+/**
+ * Synchronizes browser comments from Chrome extension storage into the local VSCode
+ * comment store, and cleans up local threads that no longer exist remotely.
+ *
+ * Sync algorithm:
+ * 1. Pull all remote pages via relay.request("get_all_comments")
+ * 2. Pull remote threads for each page via relay.request("get_comments", { url })
+ * 3. Pull all local browser threads via bridge.invokeTool("comment_list", ...)
+ * 4. Upsert: create missing threads, add missing replies, sync resolve/reopen status
+ * 5. Delete: remove local threads not present in remote (only if full remote fetch succeeded)
+ */
+export async function syncBrowserComments(
+  relay: BrowserRelayLike,
+  bridge: BrowserBridgeAPI,
+  out: vscode.OutputChannel,
+): Promise<"success" | "partial"> {
+  // Step 1: Pull remote page list
+  const pagesResult = await relay.request("get_all_comments", {}, 5000);
+  if (!pagesResult.success) {
+    out.appendLine("[accordo-browser:comment-sync] get_all_comments failed — skipping sync");
+    return "partial";
+  }
+
+  const pagesData = pagesResult.data as { pages: Array<{ url: string }> };
+  const pages = pagesData.pages ?? [];
+  if (pages.length === 0) {
+    out.appendLine("[accordo-browser:comment-sync] no remote browser pages returned");
+  }
+
+  // Step 2: Pull threads for each page (collect all remote threads)
+  const remoteThreads: RemoteBrowserThread[] = [];
+  let anyPageFailed = false;
+
+  for (const page of pages) {
+    const pageResult = await relay.request("get_comments", { url: page.url }, 5000);
+    if (!pageResult.success) {
+      out.appendLine(
+        `[accordo-browser:comment-sync] get_comments failed for ${page.url} — continuing`,
+      );
+      anyPageFailed = true;
+      continue;
+    }
+    const pageData = pageResult.data as GetCommentsResponse;
+    if (pageData.threads) {
+      remoteThreads.push(...pageData.threads);
+    }
+  }
+
+  // Build set of remote thread IDs (only non-deleted)
+  const remoteThreadIds = new Set<string>(
+    remoteThreads
+      .filter((t) => !t.deletedAt)
+      .map((t) => t.id),
+  );
+
+  // Step 3: Pull all local browser threads
+  let localThreads: CommentThread[];
+  try {
+    const localResult = await bridge.invokeTool(
+      "comment_list",
+      { scope: { modality: "browser" }, detail: true },
+    );
+    localThreads = (localResult as CommentThread[]) ?? [];
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    out.appendLine(`[accordo-browser:comment-sync] comment_list failed: ${msg} — skipping sync`);
+    return "partial";
+  }
+
+  // Step 4: Upsert remote threads into local store
+  for (const remoteThread of remoteThreads) {
+    if (remoteThread.deletedAt) continue;
+
+    const existingThread = localThreads.find((t) => t.id === remoteThread.id);
+    let localStatus: "open" | "resolved" = existingThread?.status ?? "open";
+    const localCommentIds = new Set<string>(existingThread?.comments.map((c) => c.id) ?? []);
+
+    if (!existingThread) {
+      // Create missing thread
+      try {
+        await bridge.invokeTool("comment_create", remoteThreadToCreateArgs(remoteThread));
+        const firstCommentId = remoteThread.comments[0]?.id;
+        if (firstCommentId) localCommentIds.add(firstCommentId);
+        out.appendLine(
+          `[accordo-browser:comment-sync] created thread ${remoteThread.id} on ${remoteThread.pageUrl}`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        out.appendLine(
+          `[accordo-browser:comment-sync] comment_create failed for ${remoteThread.id}: ${msg}`,
+        );
+      }
+    }
+
+    // Sync status if needed (covers both existing + newly created threads)
+    const remoteStatus = remoteThread.status;
+    if (localStatus !== remoteStatus) {
+      try {
+        if (remoteStatus === "resolved") {
+          await bridge.invokeTool("comment_resolve", {
+            threadId: remoteThread.id,
+            resolutionNote: "Synced from browser",
+          });
+        } else {
+          await bridge.invokeTool("comment_reopen", { threadId: remoteThread.id });
+        }
+        localStatus = remoteStatus;
+        out.appendLine(
+          `[accordo-browser:comment-sync] synced status for thread ${remoteThread.id} → ${remoteStatus}`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        out.appendLine(
+          `[accordo-browser:comment-sync] status sync failed for ${remoteThread.id}: ${msg}`,
+        );
+      }
+    }
+
+    // Sync replies: add missing comments (covers both existing + newly created)
+    for (const remoteComment of remoteThread.comments) {
+      if (remoteComment.deletedAt) continue;
+      if (!localCommentIds.has(remoteComment.id)) {
+        try {
+          await bridge.invokeTool("comment_reply", remoteCommentToReplyArgs(remoteComment));
+          localCommentIds.add(remoteComment.id);
+          out.appendLine(
+            `[accordo-browser:comment-sync] added reply ${remoteComment.id} to thread ${remoteThread.id}`,
+          );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          out.appendLine(
+            `[accordo-browser:comment-sync] comment_reply failed for ${remoteComment.id}: ${msg}`,
+          );
+        }
+      }
+    }
+  }
+
+  // Step 5: Delete local-only threads (only if no page fetch failed)
+  if (anyPageFailed) {
+    out.appendLine(
+      "[accordo-browser:comment-sync] partial remote fetch — skipping deletions",
+    );
+    return "partial";
+  }
+
+  for (const localThread of localThreads) {
+    if (!remoteThreadIds.has(localThread.id)) {
+      try {
+        await bridge.invokeTool("comment_delete", { threadId: localThread.id });
+        out.appendLine(
+          `[accordo-browser:comment-sync] deleted local-only thread ${localThread.id}`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        out.appendLine(
+          `[accordo-browser:comment-sync] comment_delete failed for ${localThread.id}: ${msg}`,
+        );
+      }
+    }
+  }
+
+  return anyPageFailed ? "partial" : "success";
+}
+
+/**
+ * Scheduler that runs periodic browser comment sync.
+ * Runs every SYNC_INTERVAL_MS milliseconds, with an in-flight guard
+ * to prevent overlapping sync runs.
+ */
+export class BrowserCommentSyncScheduler {
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private syncing = false;
+  private readonly relay: BrowserRelayLike;
+  private readonly bridge: BrowserBridgeAPI;
+  private readonly out: vscode.OutputChannel;
+
+  constructor(relay: BrowserRelayLike, bridge: BrowserBridgeAPI, out: vscode.OutputChannel) {
+    this.relay = relay;
+    this.bridge = bridge;
+    this.out = out;
+  }
+
+  /**
+   * Schedule the periodic sync loop.
+   */
+  start(): void {
+    if (this.timer !== null) return;
+    this.out.appendLine(
+      `[accordo-browser:comment-sync] starting periodic sync every ${SYNC_INTERVAL_MS / 1000}s`,
+    );
+    this.timer = setInterval(() => {
+      void this.runSync();
+    }, SYNC_INTERVAL_MS);
+  }
+
+  /**
+   * Immediately trigger a sync (no-op if one is already in-flight).
+   */
+  async syncNow(): Promise<void> {
+    await this.runSync();
+  }
+
+  private async runSync(): Promise<void> {
+    if (this.syncing) {
+      this.out.appendLine("[accordo-browser:comment-sync] sync already in-flight — skipping");
+      return;
+    }
+    this.syncing = true;
+    try {
+      this.out.appendLine("[accordo-browser:comment-sync] starting sync...");
+      const result = await syncBrowserComments(this.relay, this.bridge, this.out);
+      this.out.appendLine(
+        `[accordo-browser:comment-sync] sync complete: ${result}`,
+      );
+    } catch (err) {
+      // Never throw from periodic task — log and continue
+      const msg = err instanceof Error ? err.message : String(err);
+      this.out.appendLine(`[accordo-browser:comment-sync] unexpected error: ${msg}`);
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  /**
+   * Stop the scheduler and clear the timer.
+   */
+  stop(): void {
+    if (this.timer !== null) {
+      clearInterval(this.timer);
+      this.timer = null;
+      this.out.appendLine("[accordo-browser:comment-sync] scheduler stopped");
+    }
+  }
+}
 
 /**
  * Build security config once — used in both shared and per-window activation paths.
@@ -440,6 +763,11 @@ async function activateSharedRelay(
     // SUB-01: Register browser notifier so agent comment mutations trigger Chrome popup refresh
     registerBrowserNotifier(context, out, client);
 
+    // SBR-SYNC-01: Start periodic browser comment sync (shared relay path)
+    const sharedSyncScheduler = new BrowserCommentSyncScheduler(client, bridge, out);
+    sharedSyncScheduler.start();
+    context.subscriptions.push({ dispose: () => sharedSyncScheduler.stop() });
+
     // SBR-F-050: shared mode — register browser tools with the SharedRelayClient (BrowserRelayLike)
     const snapshotStore = new SnapshotRetentionStore(0);
     const securityConfig = getSecurityConfig();
@@ -522,6 +850,11 @@ async function activateSharedRelay(
 
       // SUB-01: Register browser notifier so agent comment mutations trigger Chrome popup refresh
       registerBrowserNotifier(context, out, ownerClient);
+
+      // SBR-SYNC-01: Start periodic browser comment sync (owner relay path)
+      const ownerSyncScheduler = new BrowserCommentSyncScheduler(ownerClient, bridge, out);
+      ownerSyncScheduler.start();
+      context.subscriptions.push({ dispose: () => ownerSyncScheduler.stop() });
 
       const ownerSnapshotStore = new SnapshotRetentionStore(0);
       const ownerSecurityConfig = getSecurityConfig();
@@ -661,6 +994,11 @@ async function activatePerWindowRelay(
 
   // SUB-01: Register browser notifier so agent comment mutations trigger Chrome popup refresh
   registerBrowserNotifier(context, out, relay);
+
+  // SBR-SYNC-01: Start periodic browser comment sync (per-window relay path)
+  const perWindowSyncScheduler = new BrowserCommentSyncScheduler(relay, bridge, out);
+  perWindowSyncScheduler.start();
+  context.subscriptions.push({ dispose: () => perWindowSyncScheduler.stop() });
 
   bridge.publishState(EXTENSION_ID, {
     connected: relay.isConnected(),
