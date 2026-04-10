@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#fff}
+</style>
+</head>
+<body>
+<script src="/lib/excalidraw-with-preact.production.min.js"></script>
+<script>
+const elements = [{"id":"eaf501d3-2f73-4628-9b11-2a5cf873fd30","mermaidId":"c1","kind":"node","type":"rectangle","x":40,"y":40,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"b708237a-2b0c-4b0c-b092-2c55b72bddd4","type":"text"},{"id":"2ca564ed-4ec4-45da-ab83-cbe9fddebbd3","type":"arrow"},{"id":"a89a74e9-641f-4521-abff-ef0efcd296b0","type":"arrow"}]},{"id":"b708237a-2b0c-4b0c-b092-2c55b72bddd4","mermaidId":"c1:text","kind":"label","type":"text","x":40,"y":61,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"c1","containerId":"eaf501d3-2f73-4628-9b11-2a5cf873fd30"},{"id":"243b0b3e-6ba6-4061-bff0-1ba7deb483f4","mermaidId":"a2","kind":"node","type":"rectangle","x":395,"y":340,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"7d00b8ba-3eb7-415d-b99c-5204562869ab","type":"text"},{"id":"2ca564ed-4ec4-45da-ab83-cbe9fddebbd3","type":"arrow"},{"id":"fb9cc12b-3e14-44da-a52b-bfe8790c0ebe","type":"arrow"}]},{"id":"7d00b8ba-3eb7-415d-b99c-5204562869ab","mermaidId":"a2:text","kind":"label","type":"text","x":395,"y":361,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"a2","containerId":"243b0b3e-6ba6-4061-bff0-1ba7deb483f4"},{"id":"b800538e-c3f5-4f6e-a559-682c7386faed","mermaidId":"a1","kind":"node","type":"rectangle","x":395,"y":40,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"d1c57cfd-a130-4080-9e0a-cf7cc3be9d52","type":"text"},{"id":"fb9cc12b-3e14-44da-a52b-bfe8790c0ebe","type":"arrow"}]},{"id":"d1c57cfd-a130-4080-9e0a-cf7cc3be9d52","mermaidId":"a1:text","kind":"label","type":"text","x":395,"y":61,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"a1","containerId":"b800538e-c3f5-4f6e-a559-682c7386faed"},{"id":"dc32808e-1c6d-4c86-84de-96a021df31ec","mermaidId":"b1","kind":"node","type":"rectangle","x":395,"y":640,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"1eb274f6-e371-4e70-8cd8-0910a25bfdc2","type":"text"},{"id":"bb774fbd-f4c0-450e-a8b5-5d65718fb8c4","type":"arrow"}]},{"id":"1eb274f6-e371-4e70-8cd8-0910a25bfdc2","mermaidId":"b1:text","kind":"label","type":"text","x":395,"y":661,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"b1","containerId":"dc32808e-1c6d-4c86-84de-96a021df31ec"},{"id":"4cd758e2-862d-4360-b1b7-78edf85647f4","mermaidId":"b2","kind":"node","type":"rectangle","x":320,"y":940,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"13e00bf0-2826-49fd-9860-dbecd1b5cbab","type":"text"},{"id":"bb774fbd-f4c0-450e-a8b5-5d65718fb8c4","type":"arrow"}]},{"id":"13e00bf0-2826-49fd-9860-dbecd1b5cbab","mermaidId":"b2:text","kind":"label","type":"text","x":320,"y":961,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"b2","containerId":"4cd758e2-862d-4360-b1b7-78edf85647f4"},{"id":"b9390cb4-495d-4e7b-be23-f5d25b0498fa","mermaidId":"c2","kind":"node","type":"rectangle","x":40,"y":1240,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"d2aa7fb6-d0cf-4358-b283-8c57a63a2a61","type":"text"},{"id":"a89a74e9-641f-4521-abff-ef0efcd296b0","type":"arrow"},{"id":"70271b2f-a03b-4748-806c-9fbbbcaf05fa","type":"arrow"}]},{"id":"d2aa7fb6-d0cf-4358-b283-8c57a63a2a61","mermaidId":"c2:text","kind":"label","type":"text","x":40,"y":1261,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"c2","containerId":"b9390cb4-495d-4e7b-be23-f5d25b0498fa"},{"id":"ef30a1a2-e759-49da-9804-14f2df123a98","mermaidId":"one","kind":"node","type":"rectangle","x":395,"y":190,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"75b16eac-eb82-4a41-8862-a3284e55dc92","type":"text"},{"id":"e23b91a0-ae72-4afc-8e3e-87ea0fdf75d4","type":"arrow"}]},{"id":"75b16eac-eb82-4a41-8862-a3284e55dc92","mermaidId":"one:text","kind":"label","type":"text","x":395,"y":211,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"one","containerId":"ef30a1a2-e759-49da-9804-14f2df123a98"},{"id":"9e3dc437-8d5f-444d-9f94-8f8ff747e993","mermaidId":"two","kind":"node","type":"rectangle","x":357.5,"y":790,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"23f3939b-6150-4fe2-be10-e5c5ee9a626f","type":"text"},{"id":"e23b91a0-ae72-4afc-8e3e-87ea0fdf75d4","type":"arrow"},{"id":"bc551f25-3662-4bf1-9810-0210533d8cb4","type":"arrow"},{"id":"70271b2f-a03b-4748-806c-9fbbbcaf05fa","type":"arrow"}]},{"id":"23f3939b-6150-4fe2-be10-e5c5ee9a626f","mermaidId":"two:text","kind":"label","type":"text","x":357.5,"y":811,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"two","containerId":"9e3dc437-8d5f-444d-9f94-8f8ff747e993"},{"id":"b5e20969-fcc5-484d-90d2-4be4350ff3f7","mermaidId":"three","kind":"node","type":"rectangle","x":40,"y":640,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"ad38aeed-c4e1-4f72-a4b3-78b5dd482de4","type":"text"},{"id":"bc551f25-3662-4bf1-9810-0210533d8cb4","type":"arrow"}]},{"id":"ad38aeed-c4e1-4f72-a4b3-78b5dd482de4","mermaidId":"three:text","kind":"label","type":"text","x":40,"y":661,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"three","containerId":"b5e20969-fcc5-484d-90d2-4be4350ff3f7"},{"id":"2ca564ed-4ec4-45da-ab83-cbe9fddebbd3","mermaidId":"c1->a2:0","kind":"edge","type":"arrow","x":171.61035345916284,"y":105.16367897957423,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[271.77929308167427,229.67264204085154]],"startBinding":{"elementId":"eaf501d3-2f73-4628-9b11-2a5cf873fd30","focus":0,"gap":8},"endBinding":{"elementId":"243b0b3e-6ba6-4061-bff0-1ba7deb483f4","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"fb9cc12b-3e14-44da-a52b-bfe8790c0ebe","mermaidId":"a1->a2:0","kind":"edge","type":"arrow","x":485,"y":70,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[0,300],[0,300]],"startBinding":{"elementId":"b800538e-c3f5-4f6e-a559-682c7386faed","focus":0,"gap":8},"endBinding":{"elementId":"243b0b3e-6ba6-4061-bff0-1ba7deb483f4","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"bb774fbd-f4c0-450e-a8b5-5d65718fb8c4","mermaidId":"b1->b2:0","kind":"edge","type":"arrow","x":485,"y":670,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[0,300],[-75,300]],"startBinding":{"elementId":"dc32808e-1c6d-4c86-84de-96a021df31ec","focus":0,"gap":8},"endBinding":{"elementId":"4cd758e2-862d-4360-b1b7-78edf85647f4","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"a89a74e9-641f-4521-abff-ef0efcd296b0","mermaidId":"c1->c2:0","kind":"edge","type":"arrow","x":130,"y":70,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[0,1200],[0,1200]],"startBinding":{"elementId":"eaf501d3-2f73-4628-9b11-2a5cf873fd30","focus":0,"gap":8},"endBinding":{"elementId":"b9390cb4-495d-4e7b-be23-f5d25b0498fa","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"e23b91a0-ae72-4afc-8e3e-87ea0fdf75d4","mermaidId":"one->two:0","kind":"edge","type":"arrow","x":485,"y":220,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[0,600],[-37.5,600]],"startBinding":{"elementId":"ef30a1a2-e759-49da-9804-14f2df123a98","focus":0,"gap":8},"endBinding":{"elementId":"9e3dc437-8d5f-444d-9f94-8f8ff747e993","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"bc551f25-3662-4bf1-9810-0210533d8cb4","mermaidId":"three->two:0","kind":"edge","type":"arrow","x":200.73337817661377,"y":703.4173440204474,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[176.03324364677246,83.16531195910511]],"startBinding":{"elementId":"b5e20969-fcc5-484d-90d2-4be4350ff3f7","focus":0,"gap":8},"endBinding":{"elementId":"9e3dc437-8d5f-444d-9f94-8f8ff747e993","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"70271b2f-a03b-4748-806c-9fbbbcaf05fa","mermaidId":"two->c2:0","kind":"edge","type":"arrow","x":447.5,"y":820,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[0,450],[-317.5,450]],"startBinding":{"elementId":"9e3dc437-8d5f-444d-9f94-8f8ff747e993","focus":0,"gap":8},"endBinding":{"elementId":"b9390cb4-495d-4e7b-be23-f5d25b0498fa","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"}];
+const offsetX = 10;
+const offsetY = 10;
+const width = 635;
+const height = 1360;
+
+// Adjust element positions to center them
+const adjustedElements = elements.map(el => ({
+  ...el,
+  x: (el.x || 0) + offsetX,
+  y: (el.y || 0) + offsetY,
+}));
+
+// Wait for ExcalidrawLib to be available
+function waitForExcalidraw() {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const check = () => {
+      attempts++;
+      if (window.ExcalidrawLib && window.ExcalidrawLib.exportToBlob) {
+        resolve();
+      } else if (attempts > 50) {
+        reject(new Error('ExcalidrawLib not available'));
+      } else {
+        setTimeout(check, 100);
+      }
+    };
+    check();
+  });
+}
+
+waitForExcalidraw()
+  .then(async () => {
+    const { exportToBlob } = window.ExcalidrawLib;
+    
+    const blob = await exportToBlob({
+      elements: adjustedElements,
+      files: null,
+      mimeType: 'image/png',
+      appState: {
+        exportBackground: true,
+        viewBackgroundColor: '#ffffff',
+        width: width,
+        height: height,
+      }
+    });
+    
+    const reader = new FileReader();
+    reader.onload = () => {
+      window.__PNG__ = reader.result;
+      window.__READY__ = true;
+    };
+    reader.onerror = (err) => {
+      window.__ERROR__ = 'FileReader error: ' + err;
+    };
+    reader.readAsDataURL(blob);
+  })
+  .catch(err => {
+    window.__ERROR__ = err.message || String(err);
+  });
+</script>
+</body>
+</html>

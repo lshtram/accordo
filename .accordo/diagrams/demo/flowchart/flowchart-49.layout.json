@@ -1,0 +1,263 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "Entity1": {
+      "x": 260,
+      "y": 780,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity2": {
+      "x": 0,
+      "y": 540,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity3": {
+      "x": 0,
+      "y": 660,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity4": {
+      "x": 520,
+      "y": 360,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity5": {
+      "x": 0,
+      "y": 780,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity6": {
+      "x": 0,
+      "y": 900,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity7": {
+      "x": 0,
+      "y": 1020,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity8": {
+      "x": 520,
+      "y": 0,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity9": {
+      "x": 520,
+      "y": 120,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity10": {
+      "x": 520,
+      "y": 240,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity11": {
+      "x": 520,
+      "y": 480,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity12": {
+      "x": 520,
+      "y": 600,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity13": {
+      "x": 520,
+      "y": 720,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity14": {
+      "x": 520,
+      "y": 840,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity15": {
+      "x": 520,
+      "y": 960,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity16": {
+      "x": 520,
+      "y": 1080,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity17": {
+      "x": 520,
+      "y": 1200,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity18": {
+      "x": 520,
+      "y": 1320,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Entity19": {
+      "x": 520,
+      "y": 1440,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    }
+  },
+  "edges": {
+    "Entity2->Entity1:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity3->Entity1:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity4->Entity1:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity3->Entity1:1": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity5->Entity1:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity5->Entity1:1": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity6->Entity1:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity7->Entity1:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity8:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity9:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity10:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity4:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity11:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity12:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity13:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity14:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity15:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity16:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity17:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity17:1": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity17:2": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity18:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Entity1->Entity19:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  }
+}

@@ -1,0 +1,313 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "sequence-09.mmd",
+  "elements": [
+    {
+      "id": "Alice-top",
+      "type": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Alice",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Alice-bottom",
+      "type": "rectangle",
+      "x": 0,
+      "y": 230,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Alice",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "John-top",
+      "type": "rectangle",
+      "x": 214,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "John",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "John-bottom",
+      "type": "rectangle",
+      "x": 214,
+      "y": 230,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "John",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "type": "line",
+      "x": 75,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          165
+        ]
+      ],
+      "width": 0,
+      "height": 165,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "line",
+      "x": 289,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          165
+        ]
+      ],
+      "width": 0,
+      "height": 165,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "arrow",
+      "x": 76,
+      "y": 101,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          212,
+          0
+        ]
+      ],
+      "width": 212,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": null,
+      "startArrowhead": null,
+      "label": {
+        "text": "Hi John, how are you?",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "John-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 288,
+      "y": 190,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -212,
+          0
+        ]
+      ],
+      "width": -212,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "endArrowhead": null,
+      "startArrowhead": null,
+      "label": {
+        "text": "Great!",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "John-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      }
+    },
+    {
+      "type": "line",
+      "x": 64,
+      "y": 121,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          236,
+          0
+        ]
+      ],
+      "width": 236,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 300,
+      "y": 121,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          89
+        ]
+      ],
+      "width": 0,
+      "height": 89,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 64,
+      "y": 210,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          236,
+          0
+        ]
+      ],
+      "width": 236,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 64,
+      "y": 121,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          89
+        ]
+      ],
+      "width": 0,
+      "height": 89,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "text",
+      "x": 155.84537887573242,
+      "y": 139,
+      "width": 102.30924224853516,
+      "height": 17.015756607055664,
+      "text": "[Every minute]",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": null
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 64,
+      "y": 121,
+      "width": null,
+      "height": 20,
+      "label": {
+        "text": "loop",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#adb5bd",
+      "backgroundColor": "#e9ecef",
+      "fillStyle": "solid"
+    }
+  ],
+  "files": {}
+}

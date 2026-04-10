@@ -700,6 +700,63 @@ describe("B2-DE-002: explicit from/to — diff between two specific snapshots", 
   });
 });
 
+// ── BUG-B: Reversed explicit snapshot IDs produce a warning ───────────────────
+
+describe("BUG-B: reversed explicit snapshot IDs produce a warning in the result", () => {
+  it("BUG-B: reversed explicit snapshot IDs (from newer, to older) produce orderingWarning in result", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+
+    const result = await handleDiffSnapshots(
+      relay,
+      { fromSnapshotId: "pg_abc:3", toSnapshotId: "pg_abc:1" },
+      store
+    );
+
+    // Relay was still called (not blocked)
+    expect(relay.request).toHaveBeenCalledWith(
+      "diff_snapshots",
+      expect.objectContaining({ fromSnapshotId: "pg_abc:3", toSnapshotId: "pg_abc:1" }),
+      expect.any(Number)
+    );
+
+    // Result includes orderingWarning
+    const diffResult = result as DiffSnapshotsResponse;
+    expect(diffResult.orderingWarning).toBeDefined();
+    expect(typeof diffResult.orderingWarning).toBe("string");
+    expect(diffResult.orderingWarning).toContain("fromSnapshotId (version 3)");
+    expect(diffResult.orderingWarning).toContain("toSnapshotId (version 1)");
+  });
+
+  it("BUG-B: same-page correct-order IDs (from older, to newer) produce no orderingWarning", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+
+    const result = await handleDiffSnapshots(
+      relay,
+      { fromSnapshotId: "pg_abc:1", toSnapshotId: "pg_abc:3" },
+      store
+    );
+
+    const diffResult = result as DiffSnapshotsResponse;
+    expect(diffResult.orderingWarning).toBeUndefined();
+  });
+
+  it("BUG-B: cross-page IDs (different pageId) produce no orderingWarning even if versions are reversed", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+
+    const result = await handleDiffSnapshots(
+      relay,
+      { fromSnapshotId: "page-x:10", toSnapshotId: "page-y:1" },
+      store
+    );
+
+    const diffResult = result as DiffSnapshotsResponse;
+    expect(diffResult.orderingWarning).toBeUndefined();
+  });
+});
+
 // ── B2-DE-005: Diff summary ───────────────────────────────────────────────────
 
 describe("B2-DE-005: diff result includes summary with counts matching arrays", () => {
@@ -847,77 +904,116 @@ describe("DiffToolError: structured error response types", () => {
   });
 });
 
-// ── GAP-G2: Pre-flight local store validation (diff ergonomics) ────────────────
+// ── GAP-G2: Relay is always called for explicit snapshot IDs ─────────────────
+// The pre-flight Hub-store validation has been removed.  The Hub's
+// SnapshotRetentionStore is in-memory and wiped on VS Code restart, while
+// Chrome's content-script store persists.  A pre-flight check produced false
+// "snapshot-not-found" errors when callers held IDs from before a restart.
+// The relay + content-script path is now always used as the authoritative
+// source of truth.
 
 describe("GAP-G2: pre-flight store validation for explicit snapshot IDs", () => {
-  it("returns snapshot-not-found with availableSnapshotIds when fromSnapshotId is explicit but stale", async () => {
+  it("forwards to relay even when fromSnapshotId is not in the Hub store (relay is authoritative)", async () => {
     const relay = createMockRelay();
     const store = new SnapshotRetentionStore();
 
-    // Populate the store with some snapshots for the page (simulating prior captures)
+    // Populate the store with some snapshots — but NOT page-g2:1
     store.save("page-g2", makeEnvelope("page-g2", 5));
     store.save("page-g2", makeEnvelope("page-g2", 6));
     store.save("page-g2", makeEnvelope("page-g2", 7));
 
-    // Agent tries to use a stale fromSnapshotId that was evicted
+    // Even though page-g2:1 is not in the Hub store, relay is always called
     const result = await handleDiffSnapshots(
       relay,
       { fromSnapshotId: "page-g2:1", toSnapshotId: "page-g2:7" },
       store
     );
 
-    expect(result).toHaveProperty("success", false);
-    const error = result as DiffToolError;
-    expect(error.error).toBe("snapshot-not-found");
-    expect(error.retryable).toBe(false);
-    expect(error.details?.availableSnapshotIds).toBeDefined();
-    expect(error.details?.availableSnapshotIds).toContain("page-g2:5");
-    expect(error.details?.availableSnapshotIds).toContain("page-g2:6");
-    expect(error.details?.availableSnapshotIds).toContain("page-g2:7");
-    // relay was NOT called (pre-flight short-circuits)
-    expect(relay.request).not.toHaveBeenCalled();
+    // Relay was called (no early short-circuit)
+    expect(relay.request).toHaveBeenCalledWith(
+      "diff_snapshots",
+      expect.objectContaining({ fromSnapshotId: "page-g2:1", toSnapshotId: "page-g2:7" }),
+      expect.any(Number)
+    );
+    // Default mock relay returns a successful diff response (has pageId, not error)
+    const diffResult = result as DiffSnapshotsResponse;
+    expect(diffResult.pageId).toBeDefined();
+    expect((result as DiffToolError).error).toBeUndefined();
   });
 
-  it("returns snapshot-not-found with availableSnapshotIds when toSnapshotId is explicit but stale", async () => {
+  it("forwards to relay even when toSnapshotId is not in the Hub store (relay is authoritative)", async () => {
     const relay = createMockRelay();
     const store = new SnapshotRetentionStore();
 
     store.save("page-g2b", makeEnvelope("page-g2b", 3));
     store.save("page-g2b", makeEnvelope("page-g2b", 4));
 
+    // page-g2b:0 is not in Hub store — should still reach relay
     const result = await handleDiffSnapshots(
       relay,
       { fromSnapshotId: "page-g2b:3", toSnapshotId: "page-g2b:0" },
       store
     );
 
-    expect(result).toHaveProperty("success", false);
-    const error = result as DiffToolError;
-    // fromSnapshotId IS in store, so we pass that pre-flight; toSnapshotId:0 is NOT
-    expect(error.error).toBe("snapshot-not-found");
-    expect(error.details?.availableSnapshotIds).toBeDefined();
-    expect(error.details?.availableSnapshotIds).toContain("page-g2b:3");
-    expect(error.details?.availableSnapshotIds).toContain("page-g2b:4");
+    expect(relay.request).toHaveBeenCalledWith(
+      "diff_snapshots",
+      expect.objectContaining({ fromSnapshotId: "page-g2b:3", toSnapshotId: "page-g2b:0" }),
+      expect.any(Number)
+    );
+    // Default mock relay returns a successful diff response
+    const diffResult = result as DiffSnapshotsResponse;
+    expect(diffResult.pageId).toBeDefined();
+    expect((result as DiffToolError).error).toBeUndefined();
   });
 
-  it("includes availableSnapshotIds in recoveryHints string", async () => {
-    const relay = createMockRelay();
+  it("when relay returns snapshot-not-found, result propagates that error (relay is authoritative)", async () => {
+    const relay = createMockRelay({ errorAction: "snapshot-not-found" });
     const store = new SnapshotRetentionStore();
 
     store.save("page-g2c", makeEnvelope("page-g2c", 10));
     store.save("page-g2c", makeEnvelope("page-g2c", 11));
 
+    // Relay says not found — that error is returned
     const result = await handleDiffSnapshots(
       relay,
       { fromSnapshotId: "page-g2c:2", toSnapshotId: "page-g2c:11" },
       store
     );
 
+    expect(relay.request).toHaveBeenCalled();
     const error = result as DiffToolError;
     expect(error.error).toBe("snapshot-not-found");
-    // recoveryHints should contain the available IDs
-    expect(error.recoveryHints).toContain("page-g2c:10");
-    expect(error.recoveryHints).toContain("page-g2c:11");
+  });
+
+  it("GAP-G2: top-level response.error is propagated for explicit-ID diff (no data wrapper)", async () => {
+    // Mock relay that returns snapshot-not-found at the TOP LEVEL (response.error)
+    // rather than nested in response.data.error — this is the form the real relay
+    // server produces when Chrome extension returns { success: false, error: "..." }.
+    const relay = {
+      request: vi.fn().mockResolvedValue({
+        success: false,
+        requestId: "test",
+        error: "snapshot-not-found",
+      }),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+    const store = new SnapshotRetentionStore();
+
+    // Explicit IDs — both provided so no implicit resolution needed
+    const result = await handleDiffSnapshots(
+      relay,
+      { fromSnapshotId: "page-toplevel:1", toSnapshotId: "page-toplevel:2" },
+      store
+    );
+
+    expect(relay.request).toHaveBeenCalledWith(
+      "diff_snapshots",
+      expect.objectContaining({ fromSnapshotId: "page-toplevel:1", toSnapshotId: "page-toplevel:2" }),
+      expect.any(Number)
+    );
+    expect(result).toHaveProperty("success", false);
+    const error = result as DiffToolError;
+    expect(error.error).toBe("snapshot-not-found");
   });
 
   it("does NOT trigger pre-flight when store has no snapshots for the page (empty session)", async () => {

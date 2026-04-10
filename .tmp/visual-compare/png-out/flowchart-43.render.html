@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#fff}
+</style>
+</head>
+<body>
+<script src="/lib/excalidraw-with-preact.production.min.js"></script>
+<script>
+const elements = [{"id":"7040eb62-7226-4df3-a98b-8e65778a3344","mermaidId":"Node01","kind":"node","type":"rectangle","x":40,"y":40,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","backgroundColor":"#ff5252","strokeColor":"#b71c1c","boundElements":[{"id":"cc1b573a-5048-40d6-b752-45027685a18d","type":"text"}]},{"id":"cc1b573a-5048-40d6-b752-45027685a18d","mermaidId":"Node01:text","kind":"label","type":"text","x":40,"y":61,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"Important Service","strokeColor":"#fff","containerId":"7040eb62-7226-4df3-a98b-8e65778a3344"},{"id":"aa7cdd4f-0cb0-4168-be82-5a591d949e62","mermaidId":"Node02","kind":"node","type":"rectangle","x":320,"y":40,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"a30cc8d7-7863-461d-a8a5-5bb75344a14d","type":"text"}]},{"id":"a30cc8d7-7863-461d-a8a5-5bb75344a14d","mermaidId":"Node02:text","kind":"label","type":"text","x":320,"y":61,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"Feature Module","containerId":"aa7cdd4f-0cb0-4168-be82-5a591d949e62"},{"id":"b0b2a8fc-c769-47d4-83a9-6bb0a963fc27","mermaidId":"SG_RED","kind":"node","type":"rectangle","x":520,"y":40,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","backgroundColor":"#ffebee","strokeColor":"#c62828","strokeWidth":3,"boundElements":[{"id":"4c46f617-2b69-4bb4-9481-92c4c727bafa","type":"text"}]},{"id":"4c46f617-2b69-4bb4-9481-92c4c727bafa","mermaidId":"SG_RED:text","kind":"label","type":"text","x":520,"y":61,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"SG_RED","containerId":"b0b2a8fc-c769-47d4-83a9-6bb0a963fc27"},{"id":"f439aa53-3054-4a1a-bea5-e089366f4791","mermaidId":"SG_BLUE","kind":"node","type":"rectangle","x":800,"y":40,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","backgroundColor":"#e3f2fd","strokeColor":"#1565c0","strokeWidth":2,"strokeStyle":"dashed","boundElements":[{"id":"60a21450-5a42-48ca-9220-f9c46c5256b4","type":"text"}]},{"id":"60a21450-5a42-48ca-9220-f9c46c5256b4","mermaidId":"SG_BLUE:text","kind":"label","type":"text","x":800,"y":61,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"SG_BLUE","containerId":"f439aa53-3054-4a1a-bea5-e089366f4791"}];
+const offsetX = 10;
+const offsetY = 10;
+const width = 1040;
+const height = 300;
+
+// Adjust element positions to center them
+const adjustedElements = elements.map(el => ({
+  ...el,
+  x: (el.x || 0) + offsetX,
+  y: (el.y || 0) + offsetY,
+}));
+
+// Wait for ExcalidrawLib to be available
+function waitForExcalidraw() {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const check = () => {
+      attempts++;
+      if (window.ExcalidrawLib && window.ExcalidrawLib.exportToBlob) {
+        resolve();
+      } else if (attempts > 50) {
+        reject(new Error('ExcalidrawLib not available'));
+      } else {
+        setTimeout(check, 100);
+      }
+    };
+    check();
+  });
+}
+
+waitForExcalidraw()
+  .then(async () => {
+    const { exportToBlob } = window.ExcalidrawLib;
+    
+    const blob = await exportToBlob({
+      elements: adjustedElements,
+      files: null,
+      mimeType: 'image/png',
+      appState: {
+        exportBackground: true,
+        viewBackgroundColor: '#ffffff',
+        width: width,
+        height: height,
+      }
+    });
+    
+    const reader = new FileReader();
+    reader.onload = () => {
+      window.__PNG__ = reader.result;
+      window.__READY__ = true;
+    };
+    reader.onerror = (err) => {
+      window.__ERROR__ = 'FileReader error: ' + err;
+    };
+    reader.readAsDataURL(blob);
+  })
+  .catch(err => {
+    window.__ERROR__ = err.message || String(err);
+  });
+</script>
+</body>
+</html>

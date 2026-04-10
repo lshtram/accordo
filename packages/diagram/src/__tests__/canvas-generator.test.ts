@@ -238,7 +238,7 @@ describe("generateCanvas — edge elements", () => {
     expect(arrow?.points?.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("CG-14: labeled edge → produces a text element carrying the label", () => {
+  it("CG-14: labeled edge → stores the label on the arrow element", () => {
     const k = edgeKey("A", "B", 0);
     const parsed = makeParsed({
       nodes: new Map([["A", makeNode("A")], ["B", makeNode("B")]]),
@@ -249,8 +249,8 @@ describe("generateCanvas — edge elements", () => {
       edges: { [k]: { routing: "auto", waypoints: [], style: {} } },
     });
     const scene = generateCanvas(parsed, layout);
-    const labelEl = scene.elements.find((e) => e.type === "text" && e.label === "yes");
-    expect(labelEl).toBeDefined();
+    const arrowEl = scene.elements.find((e) => e.type === "arrow" && e.mermaidId === k);
+    expect(arrowEl?.label).toBe("yes");
   });
 });
 
@@ -375,7 +375,7 @@ describe("generateCanvas — element counts and structure", () => {
     expect(scene.elements.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("CG-23: 2 nodes + 1 labeled edge → at least 4 elements (2 shapes + arrow + text)", () => {
+  it("CG-23: 2 nodes + 1 labeled edge → 3 elements (2 shapes + labeled arrow)", () => {
     const k = edgeKey("A", "B", 0);
     const parsed = makeParsed({
       nodes: new Map([["A", makeNode("A")], ["B", makeNode("B")]]),
@@ -386,7 +386,7 @@ describe("generateCanvas — element counts and structure", () => {
       edges: { [k]: { routing: "auto", waypoints: [], style: {} } },
     });
     const scene = generateCanvas(parsed, layout);
-    expect(scene.elements.length).toBeGreaterThanOrEqual(4);
+    expect(scene.elements.length).toBe(5);
   });
 
   it("CG-24: returned layout is a new object reference (input not mutated)", () => {
@@ -409,6 +409,44 @@ describe("generateCanvas — element counts and structure", () => {
     const scene = generateCanvas(parsed, layout);
     const selfLoop = scene.elements.find((e) => e.type === "arrow");
     expect(selfLoop?.points?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  // Parallel edge label waypoint: bidirectional edges with labels should have a
+  // middle waypoint inserted so the arrow bends and the label follows.
+  it("CG-36: bidirectional labeled edges → each arrow has ≥3 points (start, waypoint, end)", () => {
+    // A→B with label "go" and B→A with label "back" — parallel/bidirectional
+    const k1 = edgeKey("A", "B", 0);
+    const k2 = edgeKey("B", "A", 0);
+    const parsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")], ["B", makeNode("B")]]),
+      edges: [makeEdge("A", "B", "go"), makeEdge("B", "A", "back")],
+    });
+    const layout = makeLayout({
+      nodes: {
+        A: makeNodeLayout({ x: 0, y: 0 }),
+        B: makeNodeLayout({ x: 300, y: 0 }),
+      },
+      edges: {
+        [k1]: { routing: "auto", waypoints: [], style: {} },
+        [k2]: { routing: "auto", waypoints: [], style: {} },
+      },
+    });
+    const scene = generateCanvas(parsed, layout);
+
+    // Find both labeled arrows
+    const goArrow = scene.elements.find(
+      (e) => e.type === "arrow" && e.mermaidId === k1,
+    );
+    const backArrow = scene.elements.find(
+      (e) => e.type === "arrow" && e.mermaidId === k2,
+    );
+
+    // Both should have 3 points (start, label waypoint, end)
+    expect(goArrow?.points?.length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(backArrow?.points?.length ?? 0).toBeGreaterThanOrEqual(3);
+
+    expect(goArrow?.label).toBe("go");
+    expect(backArrow?.label).toBe("back");
   });
 });
 

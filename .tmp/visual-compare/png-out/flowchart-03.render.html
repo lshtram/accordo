@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#fff}
+</style>
+</head>
+<body>
+<script src="/lib/excalidraw-with-preact.production.min.js"></script>
+<script>
+const elements = [{"id":"82c39482-8253-45a7-95a5-1a0a95b41954","mermaidId":"id1","kind":"node","type":"rectangle","x":0,"y":0,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","roundness":32,"boundElements":[{"id":"cf94d263-d2c5-4ddb-be7d-7e8547989452","type":"text"}]},{"id":"cf94d263-d2c5-4ddb-be7d-7e8547989452","mermaidId":"id1:text","kind":"label","type":"text","x":0,"y":21,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"This is the text in the box","containerId":"82c39482-8253-45a7-95a5-1a0a95b41954"}];
+const offsetX = 50;
+const offsetY = 50;
+const width = 400;
+const height = 300;
+
+// Adjust element positions to center them
+const adjustedElements = elements.map(el => ({
+  ...el,
+  x: (el.x || 0) + offsetX,
+  y: (el.y || 0) + offsetY,
+}));
+
+// Wait for ExcalidrawLib to be available
+function waitForExcalidraw() {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const check = () => {
+      attempts++;
+      if (window.ExcalidrawLib && window.ExcalidrawLib.exportToBlob) {
+        resolve();
+      } else if (attempts > 50) {
+        reject(new Error('ExcalidrawLib not available'));
+      } else {
+        setTimeout(check, 100);
+      }
+    };
+    check();
+  });
+}
+
+waitForExcalidraw()
+  .then(async () => {
+    const { exportToBlob } = window.ExcalidrawLib;
+    
+    const blob = await exportToBlob({
+      elements: adjustedElements,
+      files: null,
+      mimeType: 'image/png',
+      appState: {
+        exportBackground: true,
+        viewBackgroundColor: '#ffffff',
+        width: width,
+        height: height,
+      }
+    });
+    
+    const reader = new FileReader();
+    reader.onload = () => {
+      window.__PNG__ = reader.result;
+      window.__READY__ = true;
+    };
+    reader.onerror = (err) => {
+      window.__ERROR__ = 'FileReader error: ' + err;
+    };
+    reader.readAsDataURL(blob);
+  })
+  .catch(err => {
+    window.__ERROR__ = err.message || String(err);
+  });
+</script>
+</body>
+</html>

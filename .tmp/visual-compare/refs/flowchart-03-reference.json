@@ -1,0 +1,24 @@
+{
+  "elements": [
+    {
+      "id": "id1",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 8,
+      "y": 8,
+      "width": 233.7114715576172,
+      "height": 75,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "This is the text in the box",
+        "fontSize": 20
+      },
+      "link": null,
+      "roundness": {
+        "type": 3
+      }
+    }
+  ],
+  "files": {}
+}

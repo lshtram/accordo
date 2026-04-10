@@ -1,0 +1,599 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "sequence-16.mmd",
+  "elements": [
+    {
+      "id": "UqSJJSUEJbPSdIITG350h",
+      "type": "rectangle",
+      "x": -5,
+      "y": 12,
+      "width": 347,
+      "height": 364.6153507232666,
+      "label": {
+        "text": "",
+        "fontSize": null,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000",
+        "groupIds": [
+          "3UzZ2YxmLDt_q0bH9aHB8"
+        ]
+      },
+      "strokeStyle": null,
+      "strokeWidth": 1,
+      "strokeColor": "#1f1f1f",
+      "backgroundColor": "rgb(252, 194, 215)",
+      "fillStyle": "solid",
+      "groupIds": [
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ]
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 69,
+      "y": 102,
+      "width": 260,
+      "height": 159,
+      "label": {
+        "text": "",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000",
+        "groupIds": [
+          "3UzZ2YxmLDt_q0bH9aHB8"
+        ]
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": null,
+      "backgroundColor": "rgb(191, 223, 255)",
+      "fillStyle": "solid",
+      "groupIds": [
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ]
+    },
+    {
+      "id": "Alice-top",
+      "type": "rectangle",
+      "x": 5,
+      "y": 27,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Alice",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000",
+        "groupIds": [
+          "3UzZ2YxmLDt_q0bH9aHB8"
+        ]
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid",
+      "groupIds": [
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ]
+    },
+    {
+      "id": "Alice-bottom",
+      "type": "rectangle",
+      "x": 5,
+      "y": 281,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Alice",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000",
+        "groupIds": [
+          "3UzZ2YxmLDt_q0bH9aHB8"
+        ]
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid",
+      "groupIds": [
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ]
+    },
+    {
+      "type": "line",
+      "x": 314,
+      "y": 52,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          20
+        ]
+      ],
+      "width": 0,
+      "height": 20,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "h9hfffUAtgqp7YpTfQN21",
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ],
+      "id": "John-top-0"
+    },
+    {
+      "type": "line",
+      "x": 296,
+      "y": 60,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          36,
+          0
+        ]
+      ],
+      "width": 36,
+      "height": 0,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "h9hfffUAtgqp7YpTfQN21",
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ],
+      "id": "John-top-1"
+    },
+    {
+      "type": "line",
+      "x": 296,
+      "y": 87,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          18,
+          -15
+        ]
+      ],
+      "width": 18,
+      "height": -15,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "h9hfffUAtgqp7YpTfQN21",
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ],
+      "id": "John-top-2"
+    },
+    {
+      "type": "line",
+      "x": 314,
+      "y": 72,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          16,
+          15
+        ]
+      ],
+      "width": 16,
+      "height": 15,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "h9hfffUAtgqp7YpTfQN21",
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ],
+      "id": "John-top-3"
+    },
+    {
+      "id": "John-top-4",
+      "type": "ellipse",
+      "x": 299,
+      "y": 22,
+      "width": 30,
+      "height": 30,
+      "label": {
+        "text": "",
+        "fontSize": null,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000",
+        "groupIds": [
+          "h9hfffUAtgqp7YpTfQN21",
+          "3UzZ2YxmLDt_q0bH9aHB8"
+        ]
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": null,
+      "backgroundColor": null,
+      "fillStyle": "solid",
+      "groupIds": [
+        "h9hfffUAtgqp7YpTfQN21",
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ]
+    },
+    {
+      "type": "text",
+      "x": 296.6694755554199,
+      "y": 94.5,
+      "width": 34.661048889160156,
+      "height": 18.1153507232666,
+      "text": "John",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": null,
+      "groupIds": [
+        "h9hfffUAtgqp7YpTfQN21",
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ],
+      "id": "John-top-5"
+    },
+    {
+      "type": "line",
+      "x": 314,
+      "y": 306,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          20
+        ]
+      ],
+      "width": 0,
+      "height": 20,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "34og6trS6kxZvsl5cfNg0",
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ],
+      "id": "John-bottom-0"
+    },
+    {
+      "type": "line",
+      "x": 296,
+      "y": 314,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          36,
+          0
+        ]
+      ],
+      "width": 36,
+      "height": 0,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "34og6trS6kxZvsl5cfNg0",
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ],
+      "id": "John-bottom-1"
+    },
+    {
+      "type": "line",
+      "x": 296,
+      "y": 341,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          18,
+          -15
+        ]
+      ],
+      "width": 18,
+      "height": -15,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "34og6trS6kxZvsl5cfNg0",
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ],
+      "id": "John-bottom-2"
+    },
+    {
+      "type": "line",
+      "x": 314,
+      "y": 326,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          16,
+          15
+        ]
+      ],
+      "width": 16,
+      "height": 15,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "34og6trS6kxZvsl5cfNg0",
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ],
+      "id": "John-bottom-3"
+    },
+    {
+      "id": "John-bottom-4",
+      "type": "ellipse",
+      "x": 299,
+      "y": 276,
+      "width": 30,
+      "height": 30,
+      "label": {
+        "text": "",
+        "fontSize": null,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000",
+        "groupIds": [
+          "34og6trS6kxZvsl5cfNg0",
+          "3UzZ2YxmLDt_q0bH9aHB8"
+        ]
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": null,
+      "backgroundColor": null,
+      "fillStyle": "solid",
+      "groupIds": [
+        "34og6trS6kxZvsl5cfNg0",
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ]
+    },
+    {
+      "type": "text",
+      "x": 296.6694755554199,
+      "y": 348.5,
+      "width": 34.661048889160156,
+      "height": 18.1153507232666,
+      "text": "John",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": null,
+      "groupIds": [
+        "34og6trS6kxZvsl5cfNg0",
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ],
+      "id": "John-bottom-5"
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 105,
+      "y": 122,
+      "width": 150,
+      "height": 37,
+      "label": {
+        "text": "Alice calls John.",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000",
+        "groupIds": [
+          "3UzZ2YxmLDt_q0bH9aHB8"
+        ]
+      },
+      "strokeStyle": "dashed",
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#EDF2AE",
+      "fillStyle": "solid",
+      "groupIds": [
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ]
+    },
+    {
+      "type": "line",
+      "x": 80,
+      "y": 92,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          189
+        ]
+      ],
+      "width": 0,
+      "height": 189,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1,
+      "groupIds": [
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ]
+    },
+    {
+      "type": "line",
+      "x": 314,
+      "y": 107,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          169
+        ]
+      ],
+      "width": 0,
+      "height": 169,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1,
+      "groupIds": [
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ]
+    },
+    {
+      "type": "arrow",
+      "x": 81,
+      "y": 195,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          225,
+          0
+        ]
+      ],
+      "width": 225,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "Hello John, how are you?",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null,
+        "groupIds": [
+          "3UzZ2YxmLDt_q0bH9aHB8"
+        ]
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      },
+      "end": {
+        "type": "ellipse",
+        "id": "John-top-4"
+      },
+      "groupIds": [
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ]
+    },
+    {
+      "type": "arrow",
+      "x": 309,
+      "y": 241,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -225,
+          0
+        ]
+      ],
+      "width": -225,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "I feel great!",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null,
+        "groupIds": [
+          "3UzZ2YxmLDt_q0bH9aHB8"
+        ]
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "ellipse",
+        "id": "John-top-4"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      },
+      "groupIds": [
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ]
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 309,
+      "y": 205,
+      "width": 10,
+      "height": 46,
+      "label": {
+        "text": "",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000",
+        "groupIds": [
+          "3UzZ2YxmLDt_q0bH9aHB8"
+        ]
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#e9ecef",
+      "fillStyle": "solid",
+      "groupIds": [
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ]
+    },
+    {
+      "type": "text",
+      "x": -1,
+      "y": -12,
+      "width": 134,
+      "height": 24,
+      "text": "Alice and John",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": "#1f1f1f",
+      "groupIds": [
+        "3UzZ2YxmLDt_q0bH9aHB8"
+      ],
+      "id": "gLjOdDrpkF-SiHKfHEKY3"
+    }
+  ],
+  "files": {}
+}

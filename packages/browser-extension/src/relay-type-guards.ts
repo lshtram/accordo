@@ -38,6 +38,22 @@ export function readOptionalString(
 }
 
 /**
+ * Read an optional string array field from an unknown record.
+ * Returns undefined if the field is absent or not an array of strings.
+ */
+export function readOptionalStringArray(
+  payload: Record<string, unknown>,
+  field: string,
+): string[] | undefined {
+  const val = payload[field];
+  if (!Array.isArray(val)) return undefined;
+  if (val.every((item) => typeof item === "string")) {
+    return val as string[];
+  }
+  return undefined;
+}
+
+/**
  * Read an optional number field from an unknown record.
  * Returns undefined if the field is absent or not a number.
  */
@@ -115,6 +131,7 @@ export function toCapturePayload(payload: Record<string, unknown>): CapturePaylo
     rect: typedRect,
     mode: typedMode,
     format: typedFormat,
+    redactPatterns: readOptionalStringArray(payload, "redactPatterns"),
   };
 }
 
@@ -197,14 +214,32 @@ export function toCaptureStoreRecord(
 }
 
 /**
+ * Result of resolving bounds from a content script message.
+ * - `{ bounds: Bounds }` — valid bounds resolved
+ * - `{ error: string }` — content script returned a named error (e.g. element-not-found)
+ * - `null` — response was not a valid object or had no usable bounds/error
+ */
+export type ResolveBoundsResult =
+  | { bounds: { x: number; y: number; width: number; height: number } }
+  | { error: string }
+  | null;
+
+/**
  * Type guard: value is an object with a `bounds` field of the expected shape.
+ * Also returns `{ error: string }` when the message contains an error field,
+ * preserving structured failure codes instead of collapsing them to null.
  */
 export function resolveBoundsFromMessage(
   val: unknown,
-): { x: number; y: number; width: number; height: number } | null {
+): ResolveBoundsResult {
   if (val === null || typeof val !== "object") return null;
   const v = val as Record<string, unknown>;
-  if (hasErrorField(val)) return null;
+  // Direct error field check — avoids type-narrowing edge cases with hasErrorField.
+  // Accessing the property directly avoids the type-predicate narrowing issue.
+  const raw = v["error"];
+  if (typeof raw === "string") {
+    return { error: raw };
+  }
   const b = v.bounds;
   if (b === null || typeof b !== "object") return null;
   const bounds = b as Record<string, unknown>;
@@ -214,7 +249,7 @@ export function resolveBoundsFromMessage(
     typeof bounds.width === "number" &&
     typeof bounds.height === "number"
   ) {
-    return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    return { bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height } };
   }
   return null;
 }

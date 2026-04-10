@@ -27,13 +27,22 @@ export type ClassDiagramDb = Record<string, unknown>;
 // ── Internal shapes matching mermaid 11.x classDiagram db ─────────────────────
 
 interface MermaidClassMember {
+  /** Raw member name (no visibility prefix, no parens/return for methods) */
   id: string;
   memberType: "method" | "attribute";
+  /** Visibility character: "+", "-", "#", "~", or "" */
   visibility: string;
+  /**
+   * Full formatted display text built by mermaid — contains escaped visibility
+   * prefix ("\\+" etc.) and HTML-encoded generics ("&lt;" / "&gt;").
+   * Do NOT use this field for display. Use `visibility` + `id` + `parameters` + `returnType`.
+   */
   text: string;
   cssStyle: string;
   classifier: string;
+  /** Raw parameter string (no parens), e.g. "Animal" for addAnimal(Animal) */
   parameters: string;
+  /** Return type string, e.g. "string" for bark() string */
   returnType: string;
 }
 
@@ -99,6 +108,17 @@ const EDGE_TYPE_MAP: Readonly<Record<number, EdgeType>> = {
 };
 
 /**
+ * Decode mermaid's generic-type notation: ~TypeArg~ → <TypeArg>
+ *
+ * Mermaid uses tildes for generics in classDiagram source (e.g. `List~Animal~`).
+ * When reading `m.id` directly from the parser, the raw tilde notation is preserved.
+ * This helper converts it to standard angle-bracket form for display.
+ */
+function decodeGenerics(s: string): string {
+  return s.replace(/~([^~]+)~/g, "<$1>");
+}
+
+/**
  * Convert a mermaid classDiagram parser `db` object into a stable ParsedDiagram.
  *
  * Called only from adapter.ts after `mermaid.mermaidAPI.getDiagramFromText()`
@@ -133,11 +153,28 @@ export function parseClassDiagram(db: ClassDiagramDb): ParsedDiagram {
     // Merge annotations into classes
     const allClasses = [...classes, ...(cn.annotations ?? [])];
 
+    // Build member strings: attributes first, then methods.
+    // Use m.id (processed name with generics resolved to <>) and m.visibility
+    // directly — m.text is mermaid's internal display string that escapes the
+    // visibility prefix ("\\+") and HTML-encodes generics, so it must NOT be used.
+    const memberStrings: string[] = [];
+    for (const m of (cn.members ?? [])) {
+      if (m.memberType === "attribute") {
+        memberStrings.push(`${m.visibility}${decodeGenerics(m.id)}`);
+      }
+    }
+    for (const m of (cn.methods ?? [])) {
+      const params = m.parameters ? `(${decodeGenerics(m.parameters)})` : "()";
+      const ret = m.returnType ? ` ${decodeGenerics(m.returnType)}` : "";
+      memberStrings.push(`${m.visibility}${decodeGenerics(m.id)}${params}${ret}`);
+    }
+
     nodes.set(cn.id, {
       id: cn.id,
       label: cn.label ?? cn.text ?? "",
       shape: "rectangle" as NodeShape, // class nodes default to rectangle
       classes: allClasses,
+      members: memberStrings,
     });
   }
 

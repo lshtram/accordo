@@ -21,13 +21,19 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { resetChromeMocks, setMockTabUrl } from "./setup/chrome-mock.js";
+import { resetChromeMocks, setMockTabUrl, fireFrameNavigatedEvent } from "./setup/chrome-mock.js";
 import { handleNavigate, toLifecycleEventName } from "../src/relay-control-handlers.js";
 import type { RelayActionRequest } from "../src/relay-definitions.js";
 
+// Shared deterministic request counter — ensures consistent IDs across test files
+let requestCounter = 0;
+function nextRequestId(): string {
+  return `test-req-${++requestCounter}`;
+}
+
 function makeRequest(payload: Record<string, unknown> = {}): RelayActionRequest {
   return {
-    requestId: `req-${Math.random().toString(36).slice(2)}`,
+    requestId: nextRequestId(),
     action: "navigate",
     payload,
   };
@@ -82,25 +88,55 @@ describe("handleNavigate — CDP commands", () => {
     );
   });
 
-  it("REQ-TC-004: type:back sends Page.goBackInHistory CDP command", async () => {
+  it("REQ-TC-004: type:back sends Page.navigateToHistoryEntry CDP command", async () => {
+    // Mock the back navigation command sequence
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method, params) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        return { currentIndex: 1, entries: [{ id: 10 }, { id: 20 }] };
+      }
+      if (method === "Page.navigateToHistoryEntry") {
+        // Fire frameNavigated so the waiter resolves
+        fireFrameNavigatedEvent((target as { tabId?: number }).tabId ?? 1);
+        return undefined;
+      }
+      return {};
+    });
+
     const request = makeRequest({ tabId: 1, type: "back" });
     await handleNavigate(request);
 
-    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
+    expect(mockSendCommand).toHaveBeenCalledWith(
       expect.objectContaining({ tabId: 1 }),
-      "Page.goBackInHistory",
-      undefined
+      "Page.navigateToHistoryEntry",
+      expect.objectContaining({ entryId: 10 })
     );
   });
 
-  it("REQ-TC-004: type:forward sends Page.goForwardInHistory CDP command", async () => {
+  it("REQ-TC-004: type:forward sends Page.navigateToHistoryEntry CDP command", async () => {
+    // Mock the forward navigation command sequence
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method, params) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        return { currentIndex: 0, entries: [{ id: 10 }, { id: 20 }] };
+      }
+      if (method === "Page.navigateToHistoryEntry") {
+        // Fire frameNavigated so the waiter resolves
+        fireFrameNavigatedEvent((target as { tabId?: number }).tabId ?? 1);
+        return undefined;
+      }
+      return {};
+    });
+
     const request = makeRequest({ tabId: 1, type: "forward" });
     await handleNavigate(request);
 
-    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
+    expect(mockSendCommand).toHaveBeenCalledWith(
       expect.objectContaining({ tabId: 1 }),
-      "Page.goForwardInHistory",
-      undefined
+      "Page.navigateToHistoryEntry",
+      expect.objectContaining({ entryId: 20 })
     );
   });
 
@@ -215,20 +251,118 @@ describe("handleNavigate — lifecycle wait", () => {
     );
   });
 
-  it("MCP-NAV-001: back navigation also enables lifecycle events before waiting", async () => {
+  it("MCP-NAV-001: back navigation uses frameNavigated waiter (not lifecycle events)", async () => {
+    // Mock the back navigation command sequence
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method, params) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        return { currentIndex: 1, entries: [{ id: 10 }, { id: 20 }] };
+      }
+      if (method === "Page.navigateToHistoryEntry") {
+        fireFrameNavigatedEvent((target as { tabId?: number }).tabId ?? 1);
+        return undefined;
+      }
+      return {};
+    });
+
     const request = makeRequest({ tabId: 1, type: "back" });
     await handleNavigate(request);
 
-    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
+    // Back navigation does NOT use Page.setLifecycleEventsEnabled (that's for url/reload)
+    expect(mockSendCommand).not.toHaveBeenCalledWith(
       expect.objectContaining({ tabId: 1 }),
       "Page.setLifecycleEventsEnabled",
       { enabled: true }
     );
-    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
+    // Back navigation uses Page.navigateToHistoryEntry via frameNavigated waiter
+    expect(mockSendCommand).toHaveBeenCalledWith(
       expect.objectContaining({ tabId: 1 }),
-      "Page.goBackInHistory",
-      undefined
+      "Page.navigateToHistoryEntry",
+      expect.objectContaining({ entryId: 10 })
     );
+  });
+});
+
+describe("handleNavigate — history bounds", () => {
+  beforeEach(() => {
+    grantedTabs.length = 0;
+    resetChromeMocks();
+    setMockTabUrl(1, "https://example.com");
+    grantPermission(1);
+  });
+
+  it("returns action-failed when no back history available (currentIndex === 0)", async () => {
+    // Mock getNavigationHistory to return currentIndex === 0 (at earliest entry)
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method, params) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        // At the beginning of history — cannot go back
+        return { currentIndex: 0, entries: [{ id: 10 }, { id: 20 }] };
+      }
+      return {};
+    });
+
+    const request = makeRequest({ tabId: 1, type: "back" });
+    const response = await handleNavigate(request);
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("action-failed");
+    // Should NOT have called navigateToHistoryEntry since there's no back entry
+    expect(mockSendCommand).not.toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 1 }),
+      "Page.navigateToHistoryEntry",
+      expect.anything()
+    );
+  });
+
+  it("returns action-failed when no forward history available (currentIndex at end)", async () => {
+    // Mock getNavigationHistory to return currentIndex at the last entry
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method, params) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        // At the end of history — cannot go forward
+        return { currentIndex: 1, entries: [{ id: 10 }, { id: 20 }] };
+      }
+      return {};
+    });
+
+    const request = makeRequest({ tabId: 1, type: "forward" });
+    const response = await handleNavigate(request);
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("action-failed");
+    // Should NOT have called navigateToHistoryEntry since there's no forward entry
+    expect(mockSendCommand).not.toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 1 }),
+      "Page.navigateToHistoryEntry",
+      expect.anything()
+    );
+  });
+
+  it("frameNavigated waiter resolves on successful back navigation", async () => {
+    // This test verifies the waiter is set up and resolves when frameNavigated fires
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method, params) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        return { currentIndex: 1, entries: [{ id: 10 }, { id: 20 }] };
+      }
+      if (method === "Page.navigateToHistoryEntry") {
+        // Simulate the frameNavigated event firing after navigation
+        fireFrameNavigatedEvent((target as { tabId?: number }).tabId ?? 1);
+        return undefined;
+      }
+      return {};
+    });
+
+    const request = makeRequest({ tabId: 1, type: "back" });
+    const response = await handleNavigate(request);
+
+    // If the waiter resolved correctly, we get a successful response
+    expect(response.success).toBe(true);
   });
 });
 
@@ -263,7 +397,7 @@ describe("handleNavigate — success response", () => {
       if (method === "Runtime.evaluate" && (params as { expression?: string }).expression === "document.title") {
         return { result: { value: "New Page Title" } };
       }
-      if (method === "Page.getFrameTree") return { frameTree: { frame: { title: "New Page Title" } } };
+      if (method === "Page.getFrameTree") return { frameTree: { frame: { id: "main", title: "New Page Title" } } };
       return {};
     });
 
@@ -293,7 +427,7 @@ describe("handleNavigate — success response", () => {
       if (method === "Runtime.evaluate" && (params as { expression?: string }).expression === "document.title") {
         return { result: { value: "Settled Title" } };
       }
-      if (method === "Page.getFrameTree") return { frameTree: { frame: { title: "FrameTree Title" } } };
+      if (method === "Page.getFrameTree") return { frameTree: { frame: { id: "main", title: "FrameTree Title" } } };
       return {};
     });
 
@@ -325,5 +459,125 @@ describe("handleNavigate — error handling", () => {
 
     expect(response.success).toBe(false);
     expect(response.error).toBe("unsupported-page");
+  });
+});
+
+describe("handleNavigate — back/forward edge cases", () => {
+  beforeEach(() => {
+    grantedTabs.length = 0;
+    resetChromeMocks();
+    setMockTabUrl(1, "https://example.com");
+    setMockTabUrl(2, "https://example.com/other");
+    grantPermission(1);
+    grantPermission(2);
+  });
+
+  it("frame-navigated waiter timeout returns action-failed for type:back", async () => {
+    // Mock getNavigationHistory to return valid history, but the waiter will timeout
+    // because frameNavigated is never fired. We advance fake timers to trigger the timeout.
+    vi.useFakeTimers();
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        return { currentIndex: 1, entries: [{ id: 10 }, { id: 20 }] };
+      }
+      if (method === "Page.navigateToHistoryEntry") {
+        // Do NOT fire frameNavigated — simulate timeout scenario
+        return undefined;
+      }
+      return {};
+    });
+
+    const request = makeRequest({ tabId: 1, type: "back" });
+    const navigatePromise = handleNavigate(request);
+
+    // Advance time past the 10-second waiter timeout
+    await vi.advanceTimersByTimeAsync(11000);
+    const response = await navigatePromise;
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("action-failed");
+    vi.useRealTimers();
+  });
+
+  it("frame-navigated waiter ignores events from a different tabId", async () => {
+    vi.useFakeTimers();
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        return { currentIndex: 1, entries: [{ id: 10 }, { id: 20 }] };
+      }
+      if (method === "Page.navigateToHistoryEntry") {
+        // Do NOT fire frameNavigated here — we will fire it manually below
+        // to properly test the waiter's tabId filtering.
+        return undefined;
+      }
+      return {};
+    });
+
+    const request = makeRequest({ tabId: 1, type: "back" });
+    const navigatePromise = handleNavigate(request);
+
+    // Step 1: Fire wrong-tab event — waiter should NOT resolve (filtered by tabId)
+    fireFrameNavigatedEvent(1 + 999); // wrong tabId
+    await vi.advanceTimersByTimeAsync(100); // process any pending callbacks
+
+    // Step 2: Fire correct-tab event — waiter should NOW resolve
+    fireFrameNavigatedEvent(1); // correct tabId
+    await vi.advanceTimersByTimeAsync(100); // process waiter resolution
+
+    const response = await navigatePromise;
+
+    expect(response.success).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("malformed navigation history (missing entries) returns action-failed for type:back", async () => {
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        // Return history with missing entries array
+        return { currentIndex: 1 };
+      }
+      return {};
+    });
+
+    const request = makeRequest({ tabId: 1, type: "back" });
+    const response = await handleNavigate(request);
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("action-failed");
+  });
+
+  it("malformed navigation history (undefined id on entry) returns action-failed for type:back", async () => {
+    vi.useFakeTimers();
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        // Return entries with undefined id
+        return { currentIndex: 1, entries: [{ id: undefined }, { id: 20 }] };
+      }
+      if (method === "Page.navigateToHistoryEntry") {
+        // Do NOT fire frameNavigated — Chrome would likely reject the undefined
+        // entryId in reality; simulate this by letting the waiter time out.
+        return undefined;
+      }
+      return {};
+    });
+
+    const request = makeRequest({ tabId: 1, type: "back" });
+    const navigatePromise = handleNavigate(request);
+
+    // Advance time past the 10-second waiter timeout
+    await vi.advanceTimersByTimeAsync(11000);
+    const response = await navigatePromise;
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("action-failed");
+    vi.useRealTimers();
   });
 });

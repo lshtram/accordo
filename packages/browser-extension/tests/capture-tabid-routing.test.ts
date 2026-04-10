@@ -534,3 +534,274 @@ describe("B2-CTX-003: handleCaptureRegion routes to correct tabId via full chain
 // - B2-CTX-003 RED: with tabId=42, sendMessage is called with tabId=42 (not active tab)
 // - B2-CTX-003: without tabId, falls back to chrome.tabs.query({ active: true })
 // - B2-CTX-003: with rect, does NOT call sendMessage (rect bypass path)
+
+// ── Tests: redactPatterns preservation ─────────────────────────────────────────
+
+describe("toCapturePayload preserves redactPatterns from relay payload", () => {
+  /**
+   * GAP-I1 / MCP-VC-005: redactPatterns MUST be extracted from the relay payload
+   * and included in the returned CapturePayload so handleCaptureRegion can apply
+   * screenshot redaction.
+   */
+  it("toCapturePayload extracts redactPatterns when present as string array", () => {
+    const payload: Record<string, unknown> = {
+      tabId: 1,
+      anchorKey: "btn_1",
+      redactPatterns: ["email", "phone", "\\d{4}"],
+    };
+
+    const capturePayload = toCapturePayload(payload);
+
+    expect(capturePayload.redactPatterns).toBeDefined();
+    expect(capturePayload.redactPatterns).toHaveLength(3);
+    expect(capturePayload.redactPatterns).toEqual(["email", "phone", "\\d{4}"]);
+  });
+
+  /**
+   * When redactPatterns is absent, the field should be undefined (not an empty array).
+   */
+  it("toCapturePayload returns redactPatterns: undefined when absent", () => {
+    const payload: Record<string, unknown> = {
+      tabId: 1,
+      anchorKey: "btn_1",
+    };
+
+    const capturePayload = toCapturePayload(payload);
+
+    expect(capturePayload.redactPatterns).toBeUndefined();
+  });
+
+  /**
+   * When redactPatterns is present but not an array, it should be ignored
+   * (type guard returns undefined).
+   */
+  it("toCapturePayload ignores redactPatterns when not an array", () => {
+    const payload: Record<string, unknown> = {
+      tabId: 1,
+      redactPatterns: "not-an-array",
+    };
+
+    const capturePayload = toCapturePayload(payload);
+
+    expect(capturePayload.redactPatterns).toBeUndefined();
+  });
+
+  /**
+   * redactPatterns works alongside all other CapturePayload fields.
+   */
+  it("toCapturePayload extracts redactPatterns alongside all other fields", () => {
+    const payload: Record<string, unknown> = {
+      tabId: 5,
+      anchorKey: "node_x",
+      nodeRef: "ref_x",
+      padding: 16,
+      quality: 80,
+      rect: { x: 10, y: 20, width: 300, height: 200 },
+      mode: "viewport",
+      format: "png",
+      redactPatterns: ["pattern1", "pattern2"],
+    };
+
+    const capturePayload = toCapturePayload(payload);
+
+    expect(capturePayload.tabId).toBe(5);
+    expect(capturePayload.anchorKey).toBe("node_x");
+    expect(capturePayload.nodeRef).toBe("ref_x");
+    expect(capturePayload.padding).toBe(16);
+    expect(capturePayload.quality).toBe(80);
+    expect(capturePayload.rect).toEqual({ x: 10, y: 20, width: 300, height: 200 });
+    expect(capturePayload.mode).toBe("viewport");
+    expect(capturePayload.format).toBe("png");
+    expect(capturePayload.redactPatterns).toEqual(["pattern1", "pattern2"]);
+  });
+});
+
+// ── Tests: resolveBoundsFromMessage unit test ─────────────────────────────────────────
+
+describe("resolveBoundsFromMessage handles error-field responses", () => {
+  it("returns { error: string } when val has error: string", async () => {
+    const { resolveBoundsFromMessage } = await import("../src/relay-type-guards.js");
+    const result = resolveBoundsFromMessage({ error: "element-not-found" } as unknown);
+    expect(result).not.toBeNull();
+    if (result !== null) {
+      expect("error" in result).toBe(true);
+      expect((result as { error: string }).error).toBe("element-not-found");
+    }
+  });
+
+  it("returns { error: string } for element-off-screen", async () => {
+    const { resolveBoundsFromMessage } = await import("../src/relay-type-guards.js");
+    const result = resolveBoundsFromMessage({ error: "element-off-screen" } as unknown);
+    expect(result).not.toBeNull();
+    if (result !== null) {
+      expect("error" in result).toBe(true);
+      expect((result as { error: string }).error).toBe("element-off-screen");
+    }
+  });
+
+  it("returns null for undefined input", async () => {
+    const { resolveBoundsFromMessage } = await import("../src/relay-type-guards.js");
+    const result = resolveBoundsFromMessage(undefined);
+    expect(result).toBeNull();
+  });
+
+  it("returns null for response with no error or bounds", async () => {
+    const { resolveBoundsFromMessage } = await import("../src/relay-type-guards.js");
+    const result = resolveBoundsFromMessage({} as unknown);
+    expect(result).toBeNull();
+  });
+
+  it("returns { bounds } for valid bounds response", async () => {
+    const { resolveBoundsFromMessage } = await import("../src/relay-type-guards.js");
+    const result = resolveBoundsFromMessage({ bounds: { x: 10, y: 20, width: 100, height: 50 } } as unknown);
+    expect(result).not.toBeNull();
+    if (result !== null && "bounds" in result) {
+      expect(result.bounds).toEqual({ x: 10, y: 20, width: 100, height: 50 });
+    }
+  });
+});
+
+// ── Tests: structured error code propagation ─────────────────────────────────────
+
+describe("handleCaptureRegion propagates RESOLVE_ANCHOR_BOUNDS error codes", () => {
+  beforeEach(() => {
+    resetChromeMocks();
+    setMockTabUrl(1, "https://example.com/active");
+    setMockTabUrl(42, "https://example.com/target");
+  });
+
+  /**
+   * CR-F-12: When RESOLVE_ANCHOR_BOUNDS returns { error: "element-not-found" },
+   * the capture result error should be "element-not-found" — NOT "no-target".
+   *
+   * Previously resolveBoundsFromMessage returned null for error-field responses,
+   * collapsing all failures to "no-target". Now the named error is propagated.
+   */
+  it("CR-F-12: propagate element-not-found error code from content script", async () => {
+    const { handleCaptureRegion } = await import("../src/relay-capture-handler.js");
+
+    // Track what sendMessage returns
+    let sendMessageCalls: unknown[] = [];
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_tabId: number, message: unknown) => {
+        sendMessageCalls.push(message);
+        if ((message as Record<string, unknown>)["type"] === "RESOLVE_ANCHOR_BOUNDS") {
+          // Content script explicitly returns element-not-found
+          return { error: "element-not-found" };
+        }
+        if ((message as Record<string, unknown>)["type"] === "CAPTURE_SNAPSHOT_ENVELOPE") {
+          return {
+            pageId: "page",
+            frameId: "main",
+            snapshotId: "page:0",
+            capturedAt: "2025-01-01T00:00:00.000Z",
+            viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+            source: "visual" as const,
+          };
+        }
+        return undefined;
+      }
+    );
+
+    const response = await handleCaptureRegion({
+      requestId: "test-error-propagation-not-found",
+      action: "capture_region",
+      payload: {
+        tabId: 1,
+        anchorKey: "missing_element",
+        padding: 8,
+        quality: 70,
+      },
+    });
+
+    expect(response.success).toBe(true);
+    expect((response.data as Record<string, unknown>)["success"]).toBe(false);
+    // Must NOT be "no-target" — the specific error from content script is preserved
+    expect((response.data as Record<string, unknown>)["error"]).toBe("element-not-found");
+  });
+
+  /**
+   * CR-F-12: When RESOLVE_ANCHOR_BOUNDS returns { error: "element-off-screen" },
+   * the capture result error should be "element-off-screen" — NOT "no-target".
+   */
+  it("CR-F-12: propagate element-off-screen error code from content script", async () => {
+    const { handleCaptureRegion } = await import("../src/relay-capture-handler.js");
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_tabId: number, message: unknown) => {
+        if ((message as Record<string, unknown>)["type"] === "RESOLVE_ANCHOR_BOUNDS") {
+          return { error: "element-off-screen" };
+        }
+        if ((message as Record<string, unknown>)["type"] === "CAPTURE_SNAPSHOT_ENVELOPE") {
+          return {
+            pageId: "page",
+            frameId: "main",
+            snapshotId: "page:0",
+            capturedAt: "2025-01-01T00:00:00.000Z",
+            viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+            source: "visual" as const,
+          };
+        }
+        return undefined;
+      }
+    );
+
+    const response = await handleCaptureRegion({
+      requestId: "test-error-propagation-off-screen",
+      action: "capture_region",
+      payload: {
+        tabId: 1,
+        anchorKey: "off_screen_element",
+        padding: 8,
+        quality: 70,
+      },
+    });
+
+    expect(response.success).toBe(true);
+    expect((response.data as Record<string, unknown>)["success"]).toBe(false);
+    expect((response.data as Record<string, unknown>)["error"]).toBe("element-off-screen");
+  });
+
+  /**
+   * Verify that the error code propagation works correctly through the full chain:
+   * handleCaptureRegion → toCapturePayload → executeCaptureRegion → resolvePaddedBounds
+   */
+  it("error code is preserved through the full handleCaptureRegion chain", async () => {
+    const { handleCaptureRegion } = await import("../src/relay-capture-handler.js");
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_tabId: number, message: unknown) => {
+        if ((message as Record<string, unknown>)["type"] === "RESOLVE_ANCHOR_BOUNDS") {
+          return { error: "element-not-found" };
+        }
+        if ((message as Record<string, unknown>)["type"] === "CAPTURE_SNAPSHOT_ENVELOPE") {
+          return {
+            pageId: "page",
+            frameId: "main",
+            snapshotId: "page:0",
+            capturedAt: "2025-01-01T00:00:00.000Z",
+            viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+            source: "visual" as const,
+          };
+        }
+        return undefined;
+      }
+    );
+
+    const response = await handleCaptureRegion({
+      requestId: "test-error-full-chain",
+      action: "capture_region",
+      payload: {
+        tabId: 42, // non-active tab
+        anchorKey: "element_x",
+        redactPatterns: ["pattern"], // also verify redactPatterns is preserved
+        padding: 8,
+        quality: 70,
+      },
+    });
+
+    expect(response.success).toBe(true);
+    expect((response.data as Record<string, unknown>)["success"]).toBe(false);
+    expect((response.data as Record<string, unknown>)["error"]).toBe("element-not-found");
+  });
+});

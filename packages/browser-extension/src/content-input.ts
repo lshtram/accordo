@@ -115,25 +115,27 @@ export function showCommentForm(
   submitBtn.type = "button";
   submitBtn.className = "accordo-btn";
   submitBtn.textContent = "Add Comment";
-  submitBtn.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    const body = textarea.value.trim();
-    if (!body) return;
-    hideCommentForm();
-    try {
-      if (onSubmit) {
-        await onSubmit(anchorKey, body);
-      } else {
-        // Fallback: send directly (used when called outside the SDK flow)
-        const pageUrl = window.location.href;
-        await chrome.runtime.sendMessage({
-          type: "CREATE_THREAD",
-          payload: { url: pageUrl, anchorKey, body, author: { kind: "user", name: "Guest" } },
-        });
+  submitBtn.addEventListener("click", (e) => {
+    void (async (): Promise<void> => {
+      e.stopPropagation();
+      const body = textarea.value.trim();
+      if (!body) return;
+      hideCommentForm();
+      try {
+        if (onSubmit) {
+          await onSubmit(anchorKey, body);
+        } else {
+          // Fallback: send directly (used when called outside the SDK flow)
+          const pageUrl = window.location.href;
+          await chrome.runtime.sendMessage({
+            type: "CREATE_THREAD",
+            payload: { url: pageUrl, anchorKey, body, author: { kind: "user", name: "Guest" } },
+          });
+        }
+      } catch (err) {
+        console.error("[Accordo] Failed to create comment:", err);
       }
-    } catch (err) {
-      console.error("[Accordo] Failed to create comment:", err);
-    }
+    })();
   });
   actions.appendChild(submitBtn);
   form.appendChild(actions);
@@ -226,18 +228,20 @@ export function showThreadPopover(thread: BrowserCommentThread, anchorEl?: Eleme
     deleteBtn.textContent = "Delete";
     deleteBtn.setAttribute("data-action", "delete");
     deleteBtn.style.cssText = "margin-top:4px;background:none;border:1px solid #ddd;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;color:#c00;";
-    deleteBtn.addEventListener("click", async () => {
-      try {
-        await chrome.runtime.sendMessage({
-          type: "SOFT_DELETE_COMMENT",
-          payload: { threadId: thread.id, commentId: comment.id, deletedBy: "Guest" },
-        });
-        deleteBtn.textContent = "Deleted";
-        deleteBtn.disabled = true;
-        commentEl.style.opacity = "0.4";
-      } catch (err) {
-        console.error("[Accordo] delete comment failed:", err);
-      }
+    deleteBtn.addEventListener("click", () => {
+      void (async (): Promise<void> => {
+        try {
+          await chrome.runtime.sendMessage({
+            type: "SOFT_DELETE_COMMENT",
+            payload: { threadId: thread.id, commentId: comment.id, deletedBy: "Guest" },
+          });
+          deleteBtn.textContent = "Deleted";
+          deleteBtn.disabled = true;
+          commentEl.style.opacity = "0.4";
+        } catch (err) {
+          console.error("[Accordo] delete comment failed:", err);
+        }
+      })();
     });
     commentEl.appendChild(deleteBtn);
     popover.appendChild(commentEl);
@@ -252,18 +256,20 @@ export function showThreadPopover(thread: BrowserCommentThread, anchorEl?: Eleme
   const replyBtn = document.createElement("button");
   replyBtn.textContent = "Reply";
   replyBtn.style.cssText = "margin-top:6px;background:#4a90d9;color:white;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:13px;";
-  replyBtn.addEventListener("click", async () => {
-    const body = replyInput.value.trim();
-    if (!body) return;
-    try {
-      await chrome.runtime.sendMessage({
-        type: "ADD_COMMENT",
-        payload: { threadId: thread.id, body, author: { kind: "user", name: "Guest" } },
-      });
-      hideThreadPopover();
-    } catch (err) {
-      console.error("[Accordo] reply failed:", err);
-    }
+  replyBtn.addEventListener("click", () => {
+    void (async (): Promise<void> => {
+      const body = replyInput.value.trim();
+      if (!body) return;
+      try {
+        await chrome.runtime.sendMessage({
+          type: "ADD_COMMENT",
+          payload: { threadId: thread.id, body, author: { kind: "user", name: "Guest" } },
+        });
+        hideThreadPopover();
+      } catch (err) {
+        console.error("[Accordo] reply failed:", err);
+      }
+    })();
   });
   popover.appendChild(replyBtn);
 
@@ -273,18 +279,20 @@ export function showThreadPopover(thread: BrowserCommentThread, anchorEl?: Eleme
   actionBtn.textContent = isResolved ? "Reopen" : "Resolve";
   actionBtn.setAttribute("data-action", isResolved ? "reopen" : "resolve");
   actionBtn.style.cssText = `margin-top:6px;margin-left:6px;background:${isResolved ? "#4a90d9" : "#2e7d32"};color:white;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:13px;`;
-  actionBtn.addEventListener("click", async () => {
-    try {
-      await chrome.runtime.sendMessage({
-        type: isResolved ? "ADD_COMMENT" : "SOFT_DELETE_THREAD",
-        payload: isResolved
-          ? { threadId: thread.id, body: "Reopened", author: { kind: "user", name: "Guest" } }
-          : { threadId: thread.id, deletedBy: "Guest" },
-      });
-      hideThreadPopover();
-    } catch (err) {
-      console.error("[Accordo] resolve/reopen failed:", err);
-    }
+  actionBtn.addEventListener("click", () => {
+    void (async (): Promise<void> => {
+      try {
+        await chrome.runtime.sendMessage({
+          type: isResolved ? "ADD_COMMENT" : "SOFT_DELETE_THREAD",
+          payload: isResolved
+            ? { threadId: thread.id, body: "Reopened", author: { kind: "user", name: "Guest" } }
+            : { threadId: thread.id, deletedBy: "Guest" },
+        });
+        hideThreadPopover();
+      } catch (err) {
+        console.error("[Accordo] resolve/reopen failed:", err);
+      }
+    })();
   });
   popover.appendChild(actionBtn);
 

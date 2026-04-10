@@ -124,11 +124,17 @@ describe("diagram leaf integration", () => {
   });
 
   it("normalizes 'curved' routing alias to auto behavior", () => {
+    // FC-06: "curved" was previously aliased to "auto" (bug). Now curved produces
+    // a proper curved path (≥3 points) distinct from auto (2 points).
     const source = { x: 0, y: 0, w: 180, h: 60 };
     const target = { x: 300, y: 0, w: 180, h: 60 };
     const auto = routeEdge("auto", [], source, target);
     const curved = routeEdge("curved", [], source, target);
-    expect(curved).toEqual(auto);
+    // auto: 2-point straight line; curved: ≥3 point curved path
+    expect(auto.points).toHaveLength(2);
+    expect(curved.points.length).toBeGreaterThanOrEqual(3);
+    // Curved must not equal auto (FC-06e: not aliased)
+    expect(curved).not.toEqual(auto);
   });
 
   it("A11 protocol unions remain assignable for both directions", () => {

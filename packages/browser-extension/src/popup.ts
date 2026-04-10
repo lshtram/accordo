@@ -13,11 +13,15 @@ const STORAGE_KEY = "commentsMode";
 
 // ── Debug logger ─────────────────────────────────────────────────────────────────
 
+/** Set DEBUG=true to enable verbose popup logging in the browser console. */
+const DEBUG = false;
+
 function dbg(msg: string, ...args: unknown[]): void {
-  console.log(`[Accordo POP] ${msg}`, ...args);
+  if (DEBUG) console.warn(`[Accordo POP] ${msg}`, ...args);
 }
 function dbgErr(msg: string, ...args: unknown[]): void {
-  console.error(`[Accordo POP ERROR] ${msg}`, ...args);
+  // dbgErr is for real failures — always log in debug mode only (noisy in normal paths)
+  if (DEBUG) console.error(`[Accordo POP ERROR] ${msg}`, ...args);
 }
 
 function isNoReceiverError(err: unknown): boolean {
@@ -121,25 +125,27 @@ export function renderThreadList(
       background: none; border: none; color: #c0392b; cursor: pointer;
       font-size: 16px; padding: 0 4px; margin-left: 8px;
     `;
-    deleteBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      if (confirm(`Delete thread #${thread.id.slice(0, 8)} and all its comments?`)) {
-        try {
-          await chrome.runtime.sendMessage({
-            type: "SOFT_DELETE_THREAD",
-            payload: { threadId: thread.id, deletedBy: "User" },
-          });
-          // Refresh the thread list
-          const response = await chrome.runtime.sendMessage({
-            type: MESSAGE_TYPES.GET_THREADS,
-            payload: { url: pageUrl },
-          });
-          const updatedThreads: BrowserCommentThread[] = response?.success ? (response.data ?? []) : [];
-          renderThreadList(container, updatedThreads, tabId, pageUrl);
-        } catch (err) {
-          console.error("Failed to delete thread:", err);
+    deleteBtn.addEventListener("click", (e) => {
+      void (async (): Promise<void> => {
+        e.stopPropagation();
+        if (confirm(`Delete thread #${thread.id.slice(0, 8)} and all its comments?`)) {
+          try {
+            await chrome.runtime.sendMessage({
+              type: "SOFT_DELETE_THREAD",
+              payload: { threadId: thread.id, deletedBy: "User" },
+            });
+            // Refresh the thread list
+            const response = await chrome.runtime.sendMessage({
+              type: MESSAGE_TYPES.GET_THREADS,
+              payload: { url: pageUrl },
+            });
+            const updatedThreads: BrowserCommentThread[] = response?.success ? (response.data ?? []) : [];
+            renderThreadList(container, updatedThreads, tabId, pageUrl);
+          } catch (err) {
+            console.error("Failed to delete thread:", err);
+          }
         }
-      }
+      })();
     });
 
     item.appendChild(threadInfo);
@@ -189,8 +195,8 @@ async function setCommentsModeState(tabId: number, enabled: boolean): Promise<vo
   await chrome.storage.local.set({ [STORAGE_KEY]: stored });
   dbg(`setCommentsModeState: storage written`, stored);
 
-  chrome.action.setBadgeText({ text: enabled ? "ON" : "", tabId });
-  chrome.action.setBadgeBackgroundColor({ color: enabled ? "#4a90d9" : "#888", tabId });
+  void chrome.action.setBadgeText({ text: enabled ? "ON" : "", tabId });
+  void chrome.action.setBadgeBackgroundColor({ color: enabled ? "#4a90d9" : "#888", tabId });
   dbg(`setCommentsModeState: badge updated`);
 
   const msgType = enabled ? "comments-mode-on" : "comments-mode-off";
@@ -261,12 +267,14 @@ export async function initPopup(container: HTMLElement): Promise<void> {
     dbg(`renderState: displayed isOn=${isOn}`);
   };
 
-  toggleBtn.addEventListener("click", async () => {
-    const currentState = await getCommentsModeState(tabId);
-    const newState = !currentState;
-    dbg(`toggleBtn click: currentState=${currentState} → newState=${newState}`);
-    await setCommentsModeState(tabId, newState);
-    await renderState();
+  toggleBtn.addEventListener("click", () => {
+    void (async (): Promise<void> => {
+      const currentState = await getCommentsModeState(tabId);
+      const newState = !currentState;
+      dbg(`toggleBtn click: currentState=${currentState} → newState=${newState}`);
+      await setCommentsModeState(tabId, newState);
+      await renderState();
+    })();
   });
 
   header.appendChild(stateLabel);
@@ -301,16 +309,18 @@ export async function initPopup(container: HTMLElement): Promise<void> {
     dbg(`renderControlState: isGranted=${isGranted}`);
   };
 
-  controlBtn.addEventListener("click", async () => {
-    const isGranted = await hasPermission(tabId);
-    if (isGranted) {
-      dbg(`controlBtn click: revoking control for tabId=${tabId}`);
-      await revoke(tabId);
-    } else {
-      dbg(`controlBtn click: granting control for tabId=${tabId}`);
-      await grant(tabId);
-    }
-    await renderControlState();
+  controlBtn.addEventListener("click", () => {
+    void (async (): Promise<void> => {
+      const isGranted = await hasPermission(tabId);
+      if (isGranted) {
+        dbg(`controlBtn click: revoking control for tabId=${tabId}`);
+        await revoke(tabId);
+      } else {
+        dbg(`controlBtn click: granting control for tabId=${tabId}`);
+        await grant(tabId);
+      }
+      await renderControlState();
+    })();
   });
 
   controlSection.appendChild(controlLabel);
@@ -371,48 +381,54 @@ export async function initPopup(container: HTMLElement): Promise<void> {
   `;
   container.appendChild(btnRow);
 
-  document.getElementById("accordo-export-md")!.addEventListener("click", async () => {
-    dbg(`export-md click: tabId=${tabId} url=${pageUrl}`);
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: MESSAGE_TYPES.EXPORT,
-        payload: { format: "markdown", tabId, url: pageUrl },
-      });
-      dbg(`export-md: SW response =`, response);
-      if (response?.success && response.data?.text) {
-        await navigator.clipboard.writeText(response.data.text as string);
-        dbg(`export-md: clipboard write succeeded`);
+  const exportMdBtn = document.getElementById("accordo-export-md");
+  exportMdBtn?.addEventListener("click", () => {
+    void (async (): Promise<void> => {
+      dbg(`export-md click: tabId=${tabId} url=${pageUrl}`);
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: MESSAGE_TYPES.EXPORT,
+          payload: { format: "markdown", tabId, url: pageUrl },
+        });
+        dbg(`export-md: SW response =`, response);
+        if (response?.success && response.data?.text) {
+          await navigator.clipboard.writeText(response.data.text as string);
+          dbg(`export-md: clipboard write succeeded`);
+        }
+        showToast("Markdown copied!");
+      } catch (err) {
+        dbgErr(`export-md: failed — ${err}`);
+        showToast("Export failed");
       }
-      showToast("Markdown copied!");
-    } catch (err) {
-      dbgErr(`export-md: failed — ${err}`);
-      showToast("Export failed");
-    }
+    })();
   });
 
-  document.getElementById("accordo-delete-all")!.addEventListener("click", async () => {
-    if (confirm("Delete ALL threads and comments on this page? This cannot be undone.")) {
-      try {
-        // Get all threads and delete them one by one
-        const response = await chrome.runtime.sendMessage({
-          type: MESSAGE_TYPES.GET_THREADS,
-          payload: { url: pageUrl },
-        });
-        const threads: BrowserCommentThread[] = response?.success ? (response.data ?? []) : [];
-        for (const thread of threads) {
-          await chrome.runtime.sendMessage({
-            type: "SOFT_DELETE_THREAD",
-            payload: { threadId: thread.id, deletedBy: "User" },
+  const deleteAllBtn = document.getElementById("accordo-delete-all");
+  deleteAllBtn?.addEventListener("click", () => {
+    void (async (): Promise<void> => {
+      if (confirm("Delete ALL threads and comments on this page? This cannot be undone.")) {
+        try {
+          // Get all threads and delete them one by one
+          const response = await chrome.runtime.sendMessage({
+            type: MESSAGE_TYPES.GET_THREADS,
+            payload: { url: pageUrl },
           });
+          const threads: BrowserCommentThread[] = response?.success ? (response.data ?? []) : [];
+          for (const thread of threads) {
+            await chrome.runtime.sendMessage({
+              type: "SOFT_DELETE_THREAD",
+              payload: { threadId: thread.id, deletedBy: "User" },
+            });
+          }
+          // Refresh the thread list
+          renderThreadList(listContainer, [], tabId, pageUrl);
+          showToast("All threads deleted");
+        } catch (err) {
+          console.error("Failed to delete all threads:", err);
+          showToast("Delete failed");
         }
-        // Refresh the thread list
-        renderThreadList(listContainer, [], tabId, pageUrl);
-        showToast("All threads deleted");
-      } catch (err) {
-        console.error("Failed to delete all threads:", err);
-        showToast("Delete failed");
       }
-    }
+    })();
   });
 
   // ── Load threads ────────────────────────────────────────────────────────────
@@ -451,7 +467,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const root = document.getElementById("accordo-popup-root");
   if (root) {
     dbg("DOMContentLoaded: root found, calling initPopup");
-    initPopup(root);
+    void initPopup(root);
   } else {
     dbgErr("DOMContentLoaded: #accordo-popup-root NOT FOUND in DOM");
   }

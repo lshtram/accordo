@@ -1,0 +1,157 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "A": {
+      "x": 120,
+      "y": 0,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "B": {
+      "x": 140,
+      "y": 140,
+      "w": 140,
+      "h": 80,
+      "style": {}
+    },
+    "C": {
+      "x": 0,
+      "y": 300,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "D": {
+      "x": 240,
+      "y": 300,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "E": {
+      "x": 140,
+      "y": 440,
+      "w": 140,
+      "h": 80,
+      "style": {}
+    },
+    "F": {
+      "x": 0,
+      "y": 600,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "G": {
+      "x": 240,
+      "y": 600,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "H": {
+      "x": 140,
+      "y": 740,
+      "w": 140,
+      "h": 80,
+      "style": {}
+    },
+    "I": {
+      "x": 0,
+      "y": 900,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "J": {
+      "x": 240,
+      "y": 900,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "K": {
+      "x": 120,
+      "y": 1040,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    }
+  },
+  "edges": {
+    "A->B:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "B->C:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "B->D:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "C->E:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "D->E:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "E->F:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "E->G:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "F->H:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "G->H:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "H->I:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "H->J:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "I->K:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "J->K:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  }
+}

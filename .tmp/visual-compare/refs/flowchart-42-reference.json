@@ -1,0 +1,124 @@
+{
+  "elements": [
+    {
+      "id": "A",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 8,
+      "y": 8,
+      "width": 73.34375,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "A",
+        "fontSize": 20
+      },
+      "link": null,
+      "strokeColor": "#1971c2",
+      "backgroundColor": "#4dabf7",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "B",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 8,
+      "y": 118,
+      "width": 73.34375,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "B",
+        "fontSize": 20
+      },
+      "link": null,
+      "strokeColor": "#d6336c",
+      "backgroundColor": "#f783ac",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "C",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 131.34375,
+      "y": 63,
+      "width": 74.453125,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "C",
+        "fontSize": 20
+      },
+      "link": null,
+      "strokeColor": "#00f"
+    },
+    {
+      "id": "A_C",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 81.344,
+      "y": 38,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          4.166000000000011,
+          0
+        ],
+        [
+          50.287000000000006,
+          22.351
+        ]
+      ],
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "id": "A"
+      },
+      "end": {
+        "id": "C"
+      }
+    },
+    {
+      "id": "B_C",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 81.344,
+      "y": 148,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          4.166000000000011,
+          0
+        ],
+        [
+          50.287000000000006,
+          -22.351
+        ]
+      ],
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "id": "B"
+      },
+      "end": {
+        "id": "C"
+      }
+    }
+  ],
+  "files": {}
+}

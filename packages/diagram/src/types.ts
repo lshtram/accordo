@@ -303,6 +303,23 @@ export interface ParsedDiagram {
   direction?: "TD" | "LR" | "RL" | "BT";
 }
 
+/**
+ * Inline visual style resolved from Mermaid `style` directives and `classDef`
+ * definitions. All fields are optional — absent means "use diagram default".
+ */
+export interface ParsedNodeStyle {
+  /** Fill colour (Excalidraw backgroundColor). E.g. "#f9f" or "#4dabf7". */
+  backgroundColor?: string;
+  /** Stroke/border colour (Excalidraw strokeColor). */
+  strokeColor?: string;
+  /** Stroke width in pixels (Excalidraw strokeWidth). */
+  strokeWidth?: number;
+  /** Stroke line style. */
+  strokeStyle?: "solid" | "dashed";
+  /** Text/label colour (Excalidraw fontColor). */
+  fontColor?: string;
+}
+
 /** Parsed representation of a single node. */
 export interface ParsedNode {
   /** Unique Mermaid node ID (stable identity). */
@@ -318,6 +335,18 @@ export interface ParsedNode {
   classes: readonly string[];
   /** Parent cluster ID if this node is inside a subgraph/namespace. */
   cluster?: ClusterId;
+  /**
+   * Class diagram members (attributes and methods).
+   * Only populated for classDiagram nodes. Each entry is a display string
+   * like "+String name" or "+bark() string". Empty for non-class diagrams.
+   */
+  members?: readonly string[];
+  /**
+   * Resolved visual style from `style` directives and/or `classDef` blocks.
+   * classDef styles are merged first, then inline `style` overrides them.
+   * Absent means no explicit style was declared.
+   */
+  style?: ParsedNodeStyle;
 }
 
 /** Parsed representation of a single edge. */
@@ -335,6 +364,28 @@ export interface ParsedEdge {
   ordinal: number;
   /** Arrow/line style. Default: "arrow". */
   type: EdgeType;
+  /**
+   * Stroke line style derived from the Mermaid edge syntax.
+   * "dashed" for dotted/dashed edges (e.g. `-.->`, `-.-`),
+   * "solid" for normal and thick edges.
+   * Absent = default (solid).
+   */
+  strokeStyle?: "solid" | "dashed";
+  /**
+   * Stroke width multiplier for thick edges (e.g. `==>`).
+   * Absent = default (1).
+   */
+  strokeWidth?: number;
+  /**
+   * Excalidraw arrowhead at the start (tail) of the edge.
+   * null = no arrowhead. Absent = use type-based default.
+   */
+  arrowheadStart?: "arrow" | "triangle" | "dot" | "bar" | null;
+  /**
+   * Excalidraw arrowhead at the end (head) of the edge.
+   * null = no arrowhead. Absent = use type-based default.
+   */
+  arrowheadEnd?: "arrow" | "triangle" | "dot" | "bar" | null;
 }
 
 /** Parsed representation of a cluster (subgraph or namespace). */
@@ -430,6 +481,16 @@ export interface ExcalidrawElement {
   startBinding?: { elementId: string; focus: number; gap: number } | null;
   /** Excalidraw binding for the arrow end.  null for explicit-path arrows. */
   endBinding?: { elementId: string; focus: number; gap: number } | null;
+  /**
+   * Arrowhead style at the start of the arrow.  null = no arrowhead.
+   * Values: "arrow" | "triangle" | "dot" | "bar" (Excalidraw Arrowhead type).
+   */
+  arrowheadStart?: "arrow" | "triangle" | "dot" | "bar" | null;
+  /**
+   * Arrowhead style at the end of the arrow.  null = no arrowhead.
+   * Values: "arrow" | "triangle" | "dot" | "bar" (Excalidraw Arrowhead type).
+   */
+  arrowheadEnd?: "arrow" | "triangle" | "dot" | "bar" | null;
   /** Background fill color (hex or named). */
   backgroundColor?: string;
   /** Stroke/border color. */

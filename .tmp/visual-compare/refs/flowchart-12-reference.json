@@ -1,0 +1,21 @@
+{
+  "elements": [
+    {
+      "id": "A",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 8,
+      "y": 8,
+      "width": 150.015625,
+      "height": 45,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "Christmas",
+        "fontSize": 20
+      },
+      "link": null
+    }
+  ],
+  "files": {}
+}

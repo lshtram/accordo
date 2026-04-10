@@ -111,12 +111,24 @@ export class DiagramPanel {
     const excalidrawAssetsUri = panel.webview
       .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "dist", "webview"))
       .toString();
+    const mermaidLibraryUri = panel.webview
+      .asWebviewUri(
+        vscode.Uri.joinPath(
+          context.extensionUri,
+          "dist",
+          "webview",
+          "excalidraw",
+          "accordo-mermaid-shapes.excalidrawlib",
+        ),
+      )
+      .toString();
     panel.webview.html = getWebviewHtml({
       nonce,
       cspSource: panel.webview.cspSource,
       bundleUri,
       virgilFontUri,
       excalidrawAssetsUri,
+      mermaidLibraryUri,
     });
 
     const instance = new DiagramPanel("", panel, state);

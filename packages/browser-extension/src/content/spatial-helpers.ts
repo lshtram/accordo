@@ -305,8 +305,11 @@ export function computeSpatialRelations(
     for (let j = i + 1; j < nodeIds.length; j++) {
       const idA = nodeIds[i];
       const idB = nodeIds[j];
-      const rectA = nodes.get(idA)!;
-      const rectB = nodes.get(idB)!;
+      // nodeIds comes from nodes.keys() so the keys are guaranteed to exist.
+      // We still check for undefined to satisfy no-non-null-assertion.
+      const rectA = nodes.get(idA);
+      const rectB = nodes.get(idB);
+      if (!rectA || !rectB) continue;
 
       const relation: SpatialRelation = {
         sourceNodeId: idA,

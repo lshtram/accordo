@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#fff}
+</style>
+</head>
+<body>
+<script src="/lib/excalidraw-with-preact.production.min.js"></script>
+<script>
+const elements = [{"id":"3dee8d4d-0983-4184-ad51-b7ddc90ed2b0","mermaidId":"i1","kind":"node","type":"rectangle","x":80,"y":60,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"19e35bd1-0f41-41d3-8a40-2e797e5c8580","type":"text"},{"id":"4dcb06b4-57d9-4767-be3c-dda6bbc93f83","type":"arrow"}]},{"id":"19e35bd1-0f41-41d3-8a40-2e797e5c8580","mermaidId":"i1:text","kind":"label","type":"text","x":80,"y":81,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"i1","containerId":"3dee8d4d-0983-4184-ad51-b7ddc90ed2b0"},{"id":"86ec921e-92eb-4686-a249-0b46810e032f","mermaidId":"f1","kind":"node","type":"rectangle","x":660,"y":60,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"f1eead68-243b-45d8-be17-b1a56df57e7a","type":"text"},{"id":"4dcb06b4-57d9-4767-be3c-dda6bbc93f83","type":"arrow"}]},{"id":"f1eead68-243b-45d8-be17-b1a56df57e7a","mermaidId":"f1:text","kind":"label","type":"text","x":660,"y":81,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"f1","containerId":"86ec921e-92eb-4686-a249-0b46810e032f"},{"id":"9de496bd-0b88-4c80-8e1a-9a8132513cf9","mermaidId":"i2","kind":"node","type":"rectangle","x":1240,"y":60,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"bccfbe76-b186-4ea1-bcaa-4928bfabb931","type":"text"},{"id":"14fe57fd-abc0-48e9-9a94-10ee35b4a617","type":"arrow"}]},{"id":"bccfbe76-b186-4ea1-bcaa-4928bfabb931","mermaidId":"i2:text","kind":"label","type":"text","x":1240,"y":81,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"i2","containerId":"9de496bd-0b88-4c80-8e1a-9a8132513cf9"},{"id":"000f54bd-5f98-4aa1-938b-23021546ab7d","mermaidId":"f2","kind":"node","type":"rectangle","x":1820,"y":60,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"c83fa0bb-8496-4a10-9476-55b9c19a82cf","type":"text"},{"id":"14fe57fd-abc0-48e9-9a94-10ee35b4a617","type":"arrow"}]},{"id":"c83fa0bb-8496-4a10-9476-55b9c19a82cf","mermaidId":"f2:text","kind":"label","type":"text","x":1820,"y":81,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"f2","containerId":"000f54bd-5f98-4aa1-938b-23021546ab7d"},{"id":"64ddf882-6604-49c8-89b0-7fc5b54a3a49","mermaidId":"A","kind":"node","type":"rectangle","x":80,"y":220,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"2f6401de-0790-406f-9b4c-6a23b78b631b","type":"text"},{"id":"3ef4db61-672a-4bbc-804c-f6ed767ae25c","type":"arrow"}]},{"id":"2f6401de-0790-406f-9b4c-6a23b78b631b","mermaidId":"A:text","kind":"label","type":"text","x":80,"y":241,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"A","containerId":"64ddf882-6604-49c8-89b0-7fc5b54a3a49"},{"id":"38d01477-8b07-4d33-bcda-645061871029","mermaidId":"TOP","kind":"node","type":"rectangle","x":950,"y":60,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"7cf3d47f-3822-4128-ad3e-f9b5c994d1bd","type":"text"},{"id":"3ef4db61-672a-4bbc-804c-f6ed767ae25c","type":"arrow"},{"id":"25d805e0-16cb-4e0e-b7ba-4697f45a02cb","type":"arrow"}]},{"id":"7cf3d47f-3822-4128-ad3e-f9b5c994d1bd","mermaidId":"TOP:text","kind":"label","type":"text","x":950,"y":81,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"TOP","containerId":"38d01477-8b07-4d33-bcda-645061871029"},{"id":"81ac364f-44f0-410a-8890-b6da9fb93d98","mermaidId":"B","kind":"node","type":"rectangle","x":80,"y":340,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"b751974f-f688-4541-b8cc-a4af44133ef3","type":"text"},{"id":"25d805e0-16cb-4e0e-b7ba-4697f45a02cb","type":"arrow"}]},{"id":"b751974f-f688-4541-b8cc-a4af44133ef3","mermaidId":"B:text","kind":"label","type":"text","x":80,"y":361,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"B","containerId":"81ac364f-44f0-410a-8890-b6da9fb93d98"},{"id":"a2fdb2ca-18d1-4ee3-ad58-073c8eed935a","mermaidId":"B1","kind":"node","type":"rectangle","x":370,"y":60,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"074ee519-98c8-47af-8125-332786ee2b51","type":"text"},{"id":"a655232e-bc89-43da-80a1-6a8f7aa7ad99","type":"arrow"}]},{"id":"074ee519-98c8-47af-8125-332786ee2b51","mermaidId":"B1:text","kind":"label","type":"text","x":370,"y":81,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"B1","containerId":"a2fdb2ca-18d1-4ee3-ad58-073c8eed935a"},{"id":"2b0dfe5e-f2c1-44f9-a136-3ba545335db5","mermaidId":"B2","kind":"node","type":"rectangle","x":1530,"y":60,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"74123458-7b52-4698-a446-5c81b00f7f9b","type":"text"},{"id":"a655232e-bc89-43da-80a1-6a8f7aa7ad99","type":"arrow"}]},{"id":"74123458-7b52-4698-a446-5c81b00f7f9b","mermaidId":"B2:text","kind":"label","type":"text","x":1530,"y":81,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"B2","containerId":"2b0dfe5e-f2c1-44f9-a136-3ba545335db5"},{"id":"4dcb06b4-57d9-4767-be3c-dda6bbc93f83","mermaidId":"i1->f1:0","kind":"edge","type":"arrow","x":170,"y":90,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[580,0],[580,0]],"startBinding":{"elementId":"3dee8d4d-0983-4184-ad51-b7ddc90ed2b0","focus":0,"gap":8},"endBinding":{"elementId":"86ec921e-92eb-4686-a249-0b46810e032f","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"14fe57fd-abc0-48e9-9a94-10ee35b4a617","mermaidId":"i2->f2:0","kind":"edge","type":"arrow","x":1330,"y":90,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[580,0],[580,0]],"startBinding":{"elementId":"9de496bd-0b88-4c80-8e1a-9a8132513cf9","focus":0,"gap":8},"endBinding":{"elementId":"000f54bd-5f98-4aa1-938b-23021546ab7d","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"3ef4db61-672a-4bbc-804c-f6ed767ae25c","mermaidId":"A->TOP:0","kind":"edge","type":"arrow","x":267.86804919170356,"y":232.00127830957177,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[674.2639016165929,-124.00255661914353]],"startBinding":{"elementId":"64ddf882-6604-49c8-89b0-7fc5b54a3a49","focus":0,"gap":8},"endBinding":{"elementId":"38d01477-8b07-4d33-bcda-645061871029","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"25d805e0-16cb-4e0e-b7ba-4697f45a02cb","mermaidId":"TOP->B:0","kind":"edge","type":"arrow","x":942.3846827783127,"y":121.4164239334166,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[-674.7693655566254,217.16715213316684]],"startBinding":{"elementId":"38d01477-8b07-4d33-bcda-645061871029","focus":0,"gap":8},"endBinding":{"elementId":"81ac364f-44f0-410a-8890-b6da9fb93d98","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"a655232e-bc89-43da-80a1-6a8f7aa7ad99","mermaidId":"B1->B2:0","kind":"edge","type":"arrow","x":460,"y":90,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[1160,0],[1160,0]],"startBinding":{"elementId":"a2fdb2ca-18d1-4ee3-ad58-073c8eed935a","focus":0,"gap":8},"endBinding":{"elementId":"2b0dfe5e-f2c1-44f9-a136-3ba545335db5","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"}];
+const offsetX = -30;
+const offsetY = -10;
+const width = 2020;
+const height = 440;
+
+// Adjust element positions to center them
+const adjustedElements = elements.map(el => ({
+  ...el,
+  x: (el.x || 0) + offsetX,
+  y: (el.y || 0) + offsetY,
+}));
+
+// Wait for ExcalidrawLib to be available
+function waitForExcalidraw() {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const check = () => {
+      attempts++;
+      if (window.ExcalidrawLib && window.ExcalidrawLib.exportToBlob) {
+        resolve();
+      } else if (attempts > 50) {
+        reject(new Error('ExcalidrawLib not available'));
+      } else {
+        setTimeout(check, 100);
+      }
+    };
+    check();
+  });
+}
+
+waitForExcalidraw()
+  .then(async () => {
+    const { exportToBlob } = window.ExcalidrawLib;
+    
+    const blob = await exportToBlob({
+      elements: adjustedElements,
+      files: null,
+      mimeType: 'image/png',
+      appState: {
+        exportBackground: true,
+        viewBackgroundColor: '#ffffff',
+        width: width,
+        height: height,
+      }
+    });
+    
+    const reader = new FileReader();
+    reader.onload = () => {
+      window.__PNG__ = reader.result;
+      window.__READY__ = true;
+    };
+    reader.onerror = (err) => {
+      window.__ERROR__ = 'FileReader error: ' + err;
+    };
+    reader.readAsDataURL(blob);
+  })
+  .catch(err => {
+    window.__ERROR__ = err.message || String(err);
+  });
+</script>
+</body>
+</html>

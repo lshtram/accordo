@@ -131,17 +131,80 @@ function routeSelfLoop(box: BoundingBox): RouteResult {
 
 function routeAuto(
   source: BoundingBox,
-  target: BoundingBox
+  target: BoundingBox,
+  direction?: "TD" | "LR" | "RL" | "BT",
 ): RouteResult {
   const sc = centre(source);
   const tc = centre(target);
-  const start = clampToBorder(sc, tc, source, ARROW_GAP);
-  const end   = clampToBorder(tc, sc, target, ARROW_GAP);
+
+  // Back-edge detection: source is "upstream" of target in the given direction.
+  // If so, fall back to centre-to-centre attachment (no face bias).
+  const isBackEdge =
+    direction === "TD" && source.y >= target.y ||
+    direction === "BT" && source.y <= target.y ||
+    direction === "LR" && source.x >= target.x ||
+    direction === "RL" && source.x <= target.x;
+
+  let start: [number, number];
+  let end: [number, number];
+
+  if (isBackEdge) {
+    // Fall back to centre-to-centre attachment
+    start = clampToBorder(sc, tc, source, ARROW_GAP);
+    end   = clampToBorder(tc, sc, target, ARROW_GAP);
+  } else {
+    // Direction-aware attachment points
+    start = clampToBorder(sc, getDirectionBias(direction, sc, tc, source, true), source, ARROW_GAP);
+    end   = clampToBorder(tc, getDirectionBias(direction, tc, sc, target, false), target, ARROW_GAP);
+  }
+
   return {
     points: [start, end],
     startBinding: { focus: 0, gap: ARROW_GAP },
     endBinding:   { focus: 0, gap: ARROW_GAP },
   };
+}
+
+/**
+ * Get the biased attachment point for direction-aware routing.
+ * For source (isSource=true): exit face centre
+ * For target (isSource=false): entry face centre
+ */
+function getDirectionBias(
+  direction: "TD" | "LR" | "RL" | "BT" | undefined,
+  selfCentre: [number, number],
+  otherCentre: [number, number],
+  box: BoundingBox,
+  isSource: boolean,
+): [number, number] {
+  if (!direction) {
+    return otherCentre; // No direction: bias toward other centre (default)
+  }
+
+  switch (direction) {
+    case "TD":
+      // Source exits bottom, target enters top
+      return isSource
+        ? [selfCentre[0], box.y + box.h]   // exit bottom
+        : [selfCentre[0], box.y];           // enter top
+    case "BT":
+      // Source exits top, target enters bottom
+      return isSource
+        ? [selfCentre[0], box.y]             // exit top
+        : [selfCentre[0], box.y + box.h];   // enter bottom
+    case "LR":
+      // Source exits right, target enters left
+      return isSource
+        ? [box.x + box.w, selfCentre[1]]    // exit right
+        : [box.x, selfCentre[1]];           // enter left
+    case "RL":
+      // Source exits left, target enters right
+      return isSource
+        ? [box.x, selfCentre[1]]             // exit left
+        : [box.x + box.w, selfCentre[1]];   // enter right
+    default:
+      return otherCentre;
+  }
 }
 
 function routeDirect(
@@ -236,31 +299,138 @@ function routeOrthogonal(
       pts = [[sx, sy], [sx, ty], [tx, ty]];
     }
   }
-  return { points: pts, startBinding: null, endBinding: null };
+  // Orthogonal routes have a fully-explicit path; bindings are null (path is not
+  // inferred by Excalidraw but is directly encoded in points).
+  return {
+    points: pts,
+    startBinding: null,
+    endBinding:   null,
+  };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
+
+/**
+ * Compute a curved (Bézier-approximation) path between source and target.
+ * Produces ≥ 3 points with a control point offset perpendicular to the midline.
+ *
+ * The start/end attachment points are clamped toward/away from the curve's
+ * first/last control point (FC-09), not toward the opposite node's centre.
+ *
+ * @param source    Bounding box of the source node.
+ * @param target    Bounding box of the target node.
+ * @param direction Optional diagram flow direction for biased attachment.
+ * @returns         RouteResult with curved point path and bindings.
+ *
+ * @internal — FC-06, FC-09 (Batch 2)
+ */
+export function routeCurved(
+  source: BoundingBox,
+  target: BoundingBox,
+  direction?: "TD" | "LR" | "RL" | "BT",
+): RouteResult {
+  const sc = centre(source);
+  const tc = centre(target);
+
+  // Straight baseline vector.
+  const dx = tc[0] - sc[0];
+  const dy = tc[1] - sc[1];
+  const len = Math.max(1, Math.hypot(dx, dy));
+
+  // Unit perpendicular to baseline.
+  const nx = -dy / len;
+  const ny = dx / len;
+
+  // Subtle curve only: small offset from midpoint.
+  // Keep curves gentle, close to straight-line behavior.
+  const CURVE_OFFSET = Math.min(Math.max(len * 0.12, 10), 22);
+
+  // Deterministic side selection by direction, then geometry fallback.
+  let sign = 1;
+  if (direction === "RL" || direction === "BT") sign = -1;
+  else if (direction === "LR" || direction === "TD") sign = 1;
+  else if (dx < 0 || (dx === 0 && dy < 0)) sign = -1;
+
+  // Compute exit/entry face centres based on direction
+  const exitFaceCentre = getExitFaceCentre(direction, sc, source);
+  const entryFaceCentre = getEntryFaceCentre(direction, tc, target);
+
+  // Clamp to the direction-selected faces
+  const startPt = clampToBorder(sc, exitFaceCentre, source, ARROW_GAP);
+  const endPt = clampToBorder(tc, entryFaceCentre, target, ARROW_GAP);
+
+  // Single gentle control point near baseline midpoint.
+  const midX = (startPt[0] + endPt[0]) / 2;
+  const midY = (startPt[1] + endPt[1]) / 2;
+  const cp: [number, number] = [
+    midX + nx * CURVE_OFFSET * sign,
+    midY + ny * CURVE_OFFSET * sign,
+  ];
+
+  // FC-09: Clamp start point toward curve tangent control point
+  const clampedStart = clampToBorder(sc, cp, source, ARROW_GAP);
+
+  // FC-09: Clamp end point away from curve tangent control point
+  const clampedEnd = clampToBorder(tc, cp, target, ARROW_GAP);
+
+  return {
+    points: [clampedStart, cp, clampedEnd],
+    startBinding: { focus: 0, gap: ARROW_GAP },
+    endBinding: { focus: 0, gap: ARROW_GAP },
+  };
+}
+
+/** Get the exit face centre for direction-aware source attachment. */
+function getExitFaceCentre(
+  direction: "TD" | "LR" | "RL" | "BT" | undefined,
+  sc: [number, number],
+  box: BoundingBox,
+): [number, number] {
+  switch (direction) {
+    case "TD": return [sc[0], box.y + box.h];   // exit bottom
+    case "BT": return [sc[0], box.y];            // exit top
+    case "LR": return [box.x + box.w, sc[1]];   // exit right
+    case "RL": return [box.x, sc[1]];            // exit left
+    default:   return [sc[0] + (box.w / 2), sc[1] + (box.h / 2)];
+  }
+}
+
+/** Get the entry face centre for direction-aware target attachment. */
+function getEntryFaceCentre(
+  direction: "TD" | "LR" | "RL" | "BT" | undefined,
+  tc: [number, number],
+  box: BoundingBox,
+): [number, number] {
+  switch (direction) {
+    case "TD": return [tc[0], box.y];            // enter top
+    case "BT": return [tc[0], box.y + box.h];     // enter bottom
+    case "LR": return [box.x, tc[1]];            // enter left
+    case "RL": return [box.x + box.w, tc[1]];    // enter right
+    default:   return [tc[0] + (box.w / 2), tc[1] + (box.h / 2)];
+  }
+}
 
 export function routeEdge(
   routing: EdgeRouting,
   waypoints: ReadonlyArray<{ readonly x: number; readonly y: number }>,
   source: BoundingBox,
-  target: BoundingBox
+  target: BoundingBox,
+  direction?: "TD" | "LR" | "RL" | "BT",
 ): RouteResult {
   // Self-loop: same geometry regardless of routing mode — handle first.
   if (isSameBox(source, target)) {
     return routeSelfLoop(source);
   }
 
-  // Normalise aliases and unknown values to a canonical mode.
+  // Normalise unknown values to a canonical mode.
   const mode: EdgeRouting =
-    routing === "curved" ? "auto"
-    : routing === "orthogonal" || routing === "direct" ? routing
+    routing === "curved" || routing === "orthogonal" || routing === "direct" ? routing
     : "auto"; // unknown strings fall back to auto
 
   switch (mode) {
     case "direct":      return routeDirect(waypoints, source, target);
     case "orthogonal":  return routeOrthogonal(waypoints, source, target);
-    default:            return routeAuto(source, target);
+    case "curved":      return routeCurved(source, target, direction);
+    default:            return routeAuto(source, target, direction);
   }
 }

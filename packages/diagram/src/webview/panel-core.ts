@@ -23,6 +23,7 @@ import { generateCanvas } from "../canvas/canvas-generator.js";
 import { computeInitialLayout } from "../layout/auto-layout.js";
 import type { LayoutOptions } from "../layout/auto-layout.js";
 import { toExcalidrawPayload } from "./scene-adapter.js";
+import { dumpExcalidrawJson } from "./debug-diagram-json.js";
 import type { LayoutStore, SpatialDiagramType } from "../types.js";
 import type {
   HostLoadSceneMessage,
@@ -110,6 +111,15 @@ export async function loadAndPost(
   state._currentLayout = scene.layout;
 
   const apiElements = toExcalidrawPayload(scene.elements);
+
+  // DEBUG: dump exact Excalidraw JSON before rendering.
+  // Enabled when ACCORDO_DEBUG_DIAGRAM_JSON=1; no-op otherwise (zero cost).
+  await dumpExcalidrawJson({
+    mmdPath: state.mmdPath,
+    workspaceRoot: state._workspaceRoot,
+    source,
+    elements: apiElements,
+  });
 
   const msg: HostLoadSceneMessage = {
     type: "host:load-scene",

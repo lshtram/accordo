@@ -1,0 +1,46 @@
+{
+  "elements": [
+    {
+      "type": "ellipse",
+      "groupIds": [
+        "doublecircle_id1}"
+      ],
+      "x": 13,
+      "y": 13,
+      "width": 220,
+      "height": 220,
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      },
+      "label": {
+        "groupIds": [
+          "doublecircle_id1}"
+        ],
+        "text": "This is the text in the circle",
+        "fontSize": 20
+      }
+    },
+    {
+      "id": "id1",
+      "type": "ellipse",
+      "groupIds": [
+        "doublecircle_id1}"
+      ],
+      "x": 8,
+      "y": 8,
+      "width": 230,
+      "height": 230,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [
+          "doublecircle_id1}"
+        ],
+        "text": "This is the text in the circle",
+        "fontSize": 20
+      },
+      "link": null
+    }
+  ],
+  "files": {}
+}

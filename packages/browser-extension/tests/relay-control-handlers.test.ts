@@ -30,7 +30,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { resetChromeMocks, setMockTabUrl, fireLifecycleEvents } from "./setup/chrome-mock.js";
+import { resetChromeMocks, setMockTabUrl, fireLifecycleEvents, fireFrameNavigatedEvent, fireIframeFrameNavigatedEvent, fireLifecycleEvent, debuggerEventListeners } from "./setup/chrome-mock.js";
 import {
   handleNavigate,
   handleClick,
@@ -41,10 +41,16 @@ import type { RelayActionRequest } from "../src/relay-definitions.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+// Shared deterministic request counter — ensures consistent IDs across test files
+let requestCounter = 0;
+function nextRequestId(): string {
+  return `test-req-${++requestCounter}`;
+}
+
 /** Helper to build a minimal RelayActionRequest for control actions. */
 function makeRequest(action: "navigate" | "click" | "type" | "press_key", payload: Record<string, unknown> = {}): RelayActionRequest {
   return {
-    requestId: `req-${Math.random().toString(36).slice(2)}`,
+    requestId: nextRequestId(),
     action: action as RelayActionRequest["action"],
     payload,
   };
@@ -129,25 +135,87 @@ describe("handleNavigate", () => {
     );
   });
 
-  it("REQ-TC-004: sends Page.goBackInHistory for type:back", async () => {
+  it("REQ-TC-004: sends Page.navigateToHistoryEntry for type:back", async () => {
     (globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({ controlGrantedTabs: [1] });
+
+    // Mock the command sequence for back navigation
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method, params) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        return { currentIndex: 1, entries: [{ id: 10 }, { id: 20 }] };
+      }
+      if (method === "Page.navigateToHistoryEntry") {
+        // Fire frameNavigated so the waiter resolves (main frame — no parentId)
+        const tabId = (target as { tabId?: number }).tabId ?? 1;
+        for (const listener of debuggerEventListeners) {
+          listener({ tabId }, "Page.frameNavigated", { frame: { id: "main-frame" } });
+        }
+        return undefined;
+      }
+      return {};
+    });
+
     const request = makeRequest("navigate", { tabId: 1, type: "back" });
     await handleNavigate(request);
-    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
+
+    // Verify the correct command sequence
+    expect(mockSendCommand).toHaveBeenCalledWith(
       expect.objectContaining({ tabId: 1 }),
-      "Page.goBackInHistory",
+      "Page.enable",
       undefined
+    );
+    expect(mockSendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 1 }),
+      "Page.getNavigationHistory",
+      undefined
+    );
+    expect(mockSendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 1 }),
+      "Page.navigateToHistoryEntry",
+      expect.objectContaining({ entryId: 10 })
     );
   });
 
-  it("REQ-TC-004: sends Page.goForwardInHistory for type:forward", async () => {
+  it("REQ-TC-004: sends Page.navigateToHistoryEntry for type:forward", async () => {
     (globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({ controlGrantedTabs: [1] });
+
+    // Mock the command sequence for forward navigation
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method, params) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        return { currentIndex: 0, entries: [{ id: 10 }, { id: 20 }] };
+      }
+      if (method === "Page.navigateToHistoryEntry") {
+        // Fire frameNavigated so the waiter resolves (main frame — no parentId)
+        const tabId = (target as { tabId?: number }).tabId ?? 1;
+        for (const listener of debuggerEventListeners) {
+          listener({ tabId }, "Page.frameNavigated", { frame: { id: "main-frame" } });
+        }
+        return undefined;
+      }
+      return {};
+    });
+
     const request = makeRequest("navigate", { tabId: 1, type: "forward" });
     await handleNavigate(request);
-    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
+
+    // Verify the correct command sequence
+    expect(mockSendCommand).toHaveBeenCalledWith(
       expect.objectContaining({ tabId: 1 }),
-      "Page.goForwardInHistory",
+      "Page.enable",
       undefined
+    );
+    expect(mockSendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 1 }),
+      "Page.getNavigationHistory",
+      undefined
+    );
+    expect(mockSendCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 1 }),
+      "Page.navigateToHistoryEntry",
+      expect.objectContaining({ entryId: 20 })
     );
   });
 
@@ -196,7 +264,7 @@ describe("handleNavigate", () => {
         fireLifecycleEvents((target as { tabId?: number }).tabId ?? 1);
         return {};
       }
-      if (method === "Page.getFrameTree") return { frameTree: { frame: { title: "New Page Title" } } };
+      if (method === "Page.getFrameTree") return { frameTree: { frame: { id: "main", title: "New Page Title" } } };
       return {};
     });
 
@@ -205,6 +273,85 @@ describe("handleNavigate", () => {
     expect(response.success).toBe(true);
     expect((response as { data?: { url?: string; title?: string } }).data).toHaveProperty("url", "https://example.com/new");
     expect((response as { data?: { url?: string; title?: string } }).data).toHaveProperty("title", "New Page Title");
+  });
+
+  it("BUG-A: Page.frameNavigated from an iframe does NOT resolve the back waiter", async () => {
+    vi.useFakeTimers();
+    (globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({ controlGrantedTabs: [1] });
+
+    const tabId = 1;
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method, params) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        return { currentIndex: 1, entries: [{ id: 10 }, { id: 20 }] };
+      }
+      if (method === "Page.navigateToHistoryEntry") {
+        // Do NOT fire events here — fire them externally to control timing
+        return undefined;
+      }
+      return {};
+    });
+
+    const request = makeRequest("navigate", { tabId, type: "back" });
+    const navPromise = handleNavigate(request);
+
+    // Fire iframe event (should be ignored — has parentId)
+    fireIframeFrameNavigatedEvent(tabId);
+    await vi.advanceTimersByTimeAsync(100);
+
+    // KEY ASSERTION: promise must still be pending after iframe event
+    let settled = false;
+    navPromise.then(() => { settled = true; }).catch(() => { settled = true; });
+    await Promise.resolve(); // flush microtasks
+    expect(settled).toBe(false);
+
+    // Now fire the main-frame event (no parentId) — should resolve
+    fireFrameNavigatedEvent(tabId);
+    await vi.advanceTimersByTimeAsync(100);
+
+    const response = await navPromise;
+    expect(response.success).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("BUG-A: Page.lifecycleEvent from an iframe does NOT resolve the URL navigation waiter", async () => {
+    vi.useFakeTimers();
+    (globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({ controlGrantedTabs: [1] });
+
+    const tabId = 1;
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (target, method, params) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.setLifecycleEventsEnabled") return undefined;
+      if (method === "Page.getFrameTree") return { frameTree: { frame: { id: "main-frame" } } };
+      if (method === "Page.navigate") {
+        // Do NOT fire events here — fire them externally to control timing
+        return {};
+      }
+      return {};
+    });
+
+    const request = makeRequest("navigate", { tabId, type: "url", url: "https://example.com/new" });
+    const navPromise = handleNavigate(request);
+
+    // Fire lifecycleEvent from an iframe (wrong frameId) — should NOT resolve
+    fireLifecycleEvent(tabId, "child-frame", "DOMContentLoaded");
+    await vi.advanceTimersByTimeAsync(100);
+
+    // KEY ASSERTION: promise must still be pending after iframe event
+    let settled = false;
+    navPromise.then(() => { settled = true; }).catch(() => { settled = true; });
+    await Promise.resolve(); // flush microtasks
+    expect(settled).toBe(false);
+
+    // Fire lifecycleEvent from main frame (correct frameId) — should resolve
+    fireLifecycleEvent(tabId, "main-frame", "DOMContentLoaded");
+    await vi.advanceTimersByTimeAsync(100);
+
+    const response = await navPromise;
+    expect(response.success).toBe(true);
+    vi.useRealTimers();
   });
 });
 

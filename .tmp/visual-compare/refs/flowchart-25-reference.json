@@ -1,0 +1,127 @@
+{
+  "elements": [
+    {
+      "id": "A",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 8,
+      "y": 8,
+      "width": 73.34375,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "A",
+        "fontSize": 20
+      },
+      "link": null
+    },
+    {
+      "id": "B",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 163.59375,
+      "y": 8,
+      "width": 73.34375,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "B",
+        "fontSize": 20
+      },
+      "link": null
+    },
+    {
+      "id": "C",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 330.296875,
+      "y": 8,
+      "width": 74.453125,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "C",
+        "fontSize": 20
+      },
+      "link": null
+    },
+    {
+      "id": "A_B",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 81.344,
+      "y": 38,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          6.853999999999999,
+          0
+        ],
+        [
+          78.25,
+          0
+        ]
+      ],
+      "label": {
+        "text": "text",
+        "fontSize": 20,
+        "groupIds": []
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "id": "A"
+      },
+      "end": {
+        "id": "B"
+      }
+    },
+    {
+      "id": "B_C",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 236.938,
+      "y": 38,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          7.779000000000025,
+          0
+        ],
+        [
+          89.35900000000004,
+          0
+        ]
+      ],
+      "label": {
+        "text": "text2",
+        "fontSize": 20,
+        "groupIds": []
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "id": "B"
+      },
+      "end": {
+        "id": "C"
+      }
+    }
+  ],
+  "files": {}
+}

@@ -24,6 +24,18 @@
  *   LS-10  removeNode           — arch §5.8 (remove node by ID, no cascade)
  *   LS-11  removeEdge           — arch §5.9 (remove edge by key)
  *   LS-12  addUnplaced          — arch §5.10 (append to unplaced list with dedup)
+ *
+ * API checklist:
+ *   layoutPathFor — 3 tests
+ *   createEmptyLayout — 8 tests
+ *   readLayout — 7 tests
+ *   writeLayout — 4 tests
+ *   patchNode — 4 tests
+ *   patchEdge — 6 tests
+ *   patchCluster — 5 tests
+ *   removeNode — 6 tests
+ *   removeEdge — 5 tests
+ *   addUnplaced — 7 tests
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -292,6 +304,29 @@ describe("writeLayout", () => {
 
     const result = await readLayout(filePath);
     expect(result).toEqual(original);
+  });
+
+  it("REQ-R4: preserves optional metadata during version 1.0 write/read round-trip", async () => {
+    const filePath = join(tmpDir, "metadata-roundtrip.layout.json");
+    const layoutWithMetadata = {
+      ...makeLayout(),
+      metadata: {
+        parserRegistryVersion: 1,
+        migratedFrom: "phase-a-stub",
+      },
+    };
+
+    await writeLayout(filePath, layoutWithMetadata as LayoutStore);
+
+    const raw = JSON.parse(await readFile(filePath, "utf-8")) as {
+      metadata?: Record<string, unknown>;
+    };
+    const result = await readLayout(filePath);
+
+    expect(raw.metadata).toEqual(layoutWithMetadata.metadata);
+    expect((result as LayoutStore & { metadata?: Record<string, unknown> })?.metadata).toEqual(
+      layoutWithMetadata.metadata
+    );
   });
 });
 

@@ -1,0 +1,21 @@
+{
+  "elements": [
+    {
+      "id": "id1",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 8,
+      "y": 8.000003761862125,
+      "width": 100.625,
+      "height": 78.44876098632812,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "Database",
+        "fontSize": 17
+      },
+      "link": null
+    }
+  ],
+  "files": {}
+}

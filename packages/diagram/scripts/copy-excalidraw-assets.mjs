@@ -8,6 +8,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
 const srcDir = resolve(projectRoot, 'node_modules/@excalidraw/excalidraw/dist/excalidraw-assets');
 const destDir = resolve(projectRoot, 'dist/webview/excalidraw-assets');
+const srcLibraryDir = resolve(projectRoot, 'assets/excalidraw');
+const destLibraryDir = resolve(projectRoot, 'dist/webview/excalidraw');
 
 async function copyAssets() {
   try {
@@ -47,7 +49,18 @@ async function copySdkCss() {
   }
 }
 
-Promise.all([copyAssets(), copyFonts(), copySdkCss()]).catch((error) => {
+async function copyMermaidLibrary() {
+  try {
+    await mkdir(destLibraryDir, { recursive: true });
+    await cp(srcLibraryDir, destLibraryDir, { recursive: true, force: true });
+    console.log('\u2713 Mermaid library copied successfully');
+  } catch (error) {
+    console.error('\u2717 Failed to copy Mermaid library:', error);
+    process.exit(1);
+  }
+}
+
+Promise.all([copyAssets(), copyFonts(), copySdkCss(), copyMermaidLibrary()]).catch((error) => {
   console.error('Build failed:', error);
   process.exit(1);
 });

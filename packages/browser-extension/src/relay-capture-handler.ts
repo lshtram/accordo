@@ -10,10 +10,22 @@
 import { computeDiff } from "./diff-engine.js";
 import type { VersionedSnapshot } from "./snapshot-versioning.js";
 import type { RelayActionRequest, RelayActionResponse, CapturePayload } from "./relay-definitions.js";
-import { defaultStore, isVersionedSnapshot } from "./relay-definitions.js";
+import { defaultStore, getErrorMeta, isVersionedSnapshot } from "./relay-definitions.js";
 import { requestContentScriptEnvelope } from "./relay-forwarder.js";
 import { toCapturePayload, resolveBoundsFromMessage, toCaptureStoreRecord, readOptionalString } from "./relay-type-guards.js";
 import { ensureAttached, sendCommand } from "./debugger-manager.js";
+
+/**
+ * Thrown by resolvePaddedBounds when the content script returns a named error code
+ * (e.g. "element-not-found", "element-off-screen") so executeCaptureRegion can
+ * propagate the structured error instead of collapsing it to "no-target".
+ */
+class ResolveBoundsError extends Error {
+  constructor(public readonly code: string) {
+    super(code);
+    this.name = "ResolveBoundsError";
+  }
+}
 
 // ── Image Capture Constants ──────────────────────────────────────────────────
 
@@ -103,6 +115,10 @@ export async function cropImageToBounds(
  *
  * B2-CTX-003: When targetTabId is provided, RESOLVE_ANCHOR_BOUNDS message is sent
  * to that tab instead of querying for the active tab.
+ *
+ * Returns bounds on success; on failure returns null and sets resolveError to the
+ * specific error code from the content script so executeCaptureRegion can return a
+ * structured error instead of collapsing to "no-target".
  */
 async function resolvePaddedBounds(
   payload: CapturePayload,
@@ -114,11 +130,14 @@ async function resolvePaddedBounds(
   const hasUsableRect = payload.rect !== undefined && payload.rect.width > 0 && payload.rect.height > 0;
 
   if (hasUsableRect) {
+    // hasUsableRect guarantees rect is defined and has positive dimensions.
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- verified by hasUsableRect guard above
+    const rect = payload.rect!;
     bounds = {
-      x: payload.rect!.x,
-      y: payload.rect!.y,
-      width: payload.rect!.width,
-      height: payload.rect!.height,
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
     };
   } else if (payload.anchorKey !== undefined || payload.nodeRef !== undefined) {
     // B2-CTX-003: Use targetTabId if provided, otherwise query for active tab
@@ -131,9 +150,25 @@ async function resolvePaddedBounds(
           nodeRef: payload.nodeRef,
           padding,
         });
-        bounds = resolveBoundsFromMessage(resolved);
-      } catch {
-        // Message delivery failed (no listener) — fall through to full viewport fallback
+        const result = resolveBoundsFromMessage(resolved);
+        if (result === null) {
+          // Response was not a valid bounds object and had no error field.
+          bounds = null;
+        } else if ("error" in result) {
+          // Content script returned a named error — throw to propagate the specific code.
+          // This preserves element-not-found vs element-off-screen distinction.
+          // The cast is safe: "error" in result narrows to { error: string }.
+          throw new ResolveBoundsError((result as { error: string }).error);
+        } else {
+          bounds = result.bounds;
+        }
+      } catch (err) {
+        // If resolveBoundsFromMessage threw ResolveBoundsError (detected via name check),
+        // re-throw it so executeCaptureRegion can propagate the structured error code.
+        // Otherwise, fall through (message delivery failed — no listener).
+        if ((err as Error)?.name === "ResolveBoundsError") {
+          throw err;
+        }
       }
     }
   }
@@ -205,7 +240,7 @@ async function retryCaptureAtReducedQuality(
     const retryCropped = await cropImageToBounds(fullDataUrl, paddedBounds, reducedQuality, format);
     const retrySize = estimateSizeBytes(retryCropped.dataUrl);
     if (retrySize > MAX_CAPTURE_BYTES) {
-      return { success: false, error: "image-too-large", ...envelope };
+      return { success: false, error: "image-too-large", ...getErrorMeta("image-too-large"), ...envelope };
     }
     return await buildCaptureSuccess(
       retryCropped.dataUrl,
@@ -217,7 +252,7 @@ async function retryCaptureAtReducedQuality(
       paddedBounds,
     );
   } catch {
-    return { success: false, error: "image-too-large", ...envelope };
+    return { success: false, error: "image-too-large", ...getErrorMeta("image-too-large"), ...envelope };
   }
 }
 
@@ -263,10 +298,28 @@ async function executeCaptureRegion(
       await chrome.tabs.update(originalTabId, { active: true });
     }
     const envelope = await requestContentScriptEnvelope("visual", targetTabId);
-    return { success: false, error: "no-target", ...envelope };
+    return { success: false, error: "no-target", ...getErrorMeta("no-target"), ...envelope };
   }
 
-  const paddedBounds = await resolvePaddedBounds(payload, padding, targetTabId);
+  let resolveError: string | undefined;
+  let paddedBounds: { x: number; y: number; width: number; height: number } | null = null;
+  try {
+    paddedBounds = await resolvePaddedBounds(payload, padding, targetTabId);
+  } catch (err) {
+    if (err instanceof ResolveBoundsError) {
+      resolveError = err.code;
+    }
+  }
+
+  if (resolveError !== undefined) {
+    // Content script returned a named error (element-not-found, element-off-screen, etc.)
+    // — propagate the specific code instead of collapsing to no-target.
+    if (swapped && originalTabId !== undefined) {
+      await chrome.tabs.update(originalTabId, { active: true });
+    }
+    const envelope = await requestContentScriptEnvelope("visual", targetTabId);
+    return { success: false, error: resolveError, ...getErrorMeta(resolveError), ...envelope };
+  }
 
   if (!paddedBounds || paddedBounds.width < MIN_CAPTURE_DIMENSION || paddedBounds.height < MIN_CAPTURE_DIMENSION) {
     // Restore tab before returning if we swapped
@@ -274,7 +327,7 @@ async function executeCaptureRegion(
       await chrome.tabs.update(originalTabId, { active: true });
     }
     const envelope = await requestContentScriptEnvelope("visual", targetTabId);
-    return { success: false, error: "no-target", ...envelope };
+    return { success: false, error: "no-target", ...getErrorMeta("no-target"), ...envelope };
   }
 
   let fullDataUrl: string;
@@ -287,7 +340,7 @@ async function executeCaptureRegion(
         await chrome.tabs.update(originalTabId, { active: true });
       }
     const envelope = await requestContentScriptEnvelope("visual", targetTabId);
-    return { success: false, error: "capture-failed", ...envelope };
+    return { success: false, error: "capture-failed", ...getErrorMeta("capture-failed"), ...envelope };
   }
 
   let dataUrl: string;
@@ -350,7 +403,7 @@ async function executeCaptureFullPage(
 
   if (targetTabId === undefined) {
     await restoreOriginalTab();
-    return { success: false, error: "browser-not-connected" };
+    return { success: false, error: "browser-not-connected", ...getErrorMeta("browser-not-connected") };
   }
 
   try {
@@ -404,12 +457,12 @@ async function executeCaptureFullPage(
     const errorMsg = err instanceof Error ? err.message : "capture-failed";
     // Classify common CDP errors
     if (errorMsg.includes("not attached") || errorMsg.includes("disconnected")) {
-      return { success: false, error: "browser-not-connected", ...(envelope ?? {}) };
+      return { success: false, error: "browser-not-connected", ...getErrorMeta("browser-not-connected"), ...(envelope ?? {}) };
     }
     if (errorMsg.includes("unsupported-page")) {
-      return { success: false, error: "unsupported-page", ...(envelope ?? {}) };
+      return { success: false, error: "unsupported-page", ...getErrorMeta("unsupported-page"), ...(envelope ?? {}) };
     }
-    return { success: false, error: "capture-failed", ...(envelope ?? {}) };
+    return { success: false, error: "capture-failed", ...getErrorMeta("capture-failed"), ...(envelope ?? {}) };
   }
 }
 
@@ -433,7 +486,7 @@ async function executeCaptureViewport(
 
   if (targetTabId === undefined) {
     await restoreOriginalTab();
-    return { success: false, error: "browser-not-connected" };
+    return { success: false, error: "browser-not-connected", ...getErrorMeta("browser-not-connected") };
   }
 
   try {
@@ -490,12 +543,12 @@ async function executeCaptureViewport(
 
     const errorMsg = err instanceof Error ? err.message : "capture-failed";
     if (errorMsg.includes("not attached") || errorMsg.includes("disconnected")) {
-      return { success: false, error: "browser-not-connected", ...(envelope ?? {}) };
+      return { success: false, error: "browser-not-connected", ...getErrorMeta("browser-not-connected"), ...(envelope ?? {}) };
     }
     if (errorMsg.includes("unsupported-page")) {
-      return { success: false, error: "unsupported-page", ...(envelope ?? {}) };
+      return { success: false, error: "unsupported-page", ...getErrorMeta("unsupported-page"), ...(envelope ?? {}) };
     }
-    return { success: false, error: "capture-failed", ...(envelope ?? {}) };
+    return { success: false, error: "capture-failed", ...getErrorMeta("capture-failed"), ...(envelope ?? {}) };
   }
 }
 
@@ -630,8 +683,17 @@ async function diffViaContentScript(
     });
     if (!csResponse) return null;
     if (typeof csResponse.error === "string") {
-      const err = csResponse.error as RelayActionResponse["error"];
-      return { requestId, success: false, error: err };
+      // The content script error is a string; cast to the expected union type for the response.
+      const err = csResponse.error;
+      const meta = getErrorMeta(err);
+      const response: RelayActionResponse = {
+        requestId,
+        success: false,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- content script error codes are user-defined strings
+        error: err as any,
+        ...meta,
+      };
+      return response;
     }
     if (csResponse.data !== undefined) {
       return { requestId, success: true, data: csResponse.data };
@@ -649,7 +711,7 @@ export async function handleDiffSnapshots(
   const toSnapshotId = readOptionalString(request.payload, "toSnapshotId");
 
   if (fromSnapshotId === undefined || toSnapshotId === undefined) {
-    return { requestId: request.requestId, success: false, error: "invalid-request" };
+    return { requestId: request.requestId, success: false, error: "invalid-request", ...getErrorMeta("invalid-request") };
   }
 
   // Fast path: both snapshots found in the SW's in-memory store.
@@ -676,8 +738,8 @@ export async function handleDiffSnapshots(
   // Both paths failed — return the best diagnostic error.
   if ("error" in fromResult) {
     const errorCode = defaultStore.isStale(fromSnapshotId) ? "snapshot-stale" : "snapshot-not-found";
-    return { requestId: request.requestId, success: false, error: errorCode };
+    return { requestId: request.requestId, success: false, error: errorCode, ...getErrorMeta(errorCode) };
   }
   const errorCode = defaultStore.isStale(toSnapshotId) ? "snapshot-stale" : "snapshot-not-found";
-  return { requestId: request.requestId, success: false, error: errorCode };
+  return { requestId: request.requestId, success: false, error: errorCode, ...getErrorMeta(errorCode) };
 }

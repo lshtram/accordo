@@ -19,7 +19,7 @@ import {
   softDeleteThread,
 } from "./store.js";
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
-import { actionFailed } from "./relay-definitions.js";
+import { actionFailed, getErrorMeta } from "./relay-definitions.js";
 import {
   readString,
   readOptionalString,
@@ -48,7 +48,7 @@ export async function handleGetComments(
 ): Promise<RelayActionResponse> {
   const url = await resolveRequestedUrl(request.payload);
   if (!url) {
-    return { requestId: request.requestId, success: false, error: "invalid-request" };
+    return { requestId: request.requestId, success: false, error: "invalid-request", ...getErrorMeta("invalid-request") };
   }
   const threads = await getActiveThreads(url);
   return {
@@ -82,11 +82,11 @@ export async function handleCreateComment(
 ): Promise<RelayActionResponse> {
   const body = readString(request.payload, "body");
   if (!body || !body.trim()) {
-    return { requestId: request.requestId, success: false, error: "invalid-request" };
+    return { requestId: request.requestId, success: false, error: "invalid-request", ...getErrorMeta("invalid-request") };
   }
   const url = await resolveRequestedUrl(request.payload);
   if (!url) {
-    return { requestId: request.requestId, success: false, error: "invalid-request" };
+    return { requestId: request.requestId, success: false, error: "invalid-request", ...getErrorMeta("invalid-request") };
   }
   const anchorKey = readOptionalString(request.payload, "anchorKey") ?? "body:0:center";
   const authorName = readOptionalString(request.payload, "authorName") ?? "Agent";

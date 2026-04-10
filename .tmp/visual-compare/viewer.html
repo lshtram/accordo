@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Flowchart Visual Comparison — All 51 Cases</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #1a1a1a; color: #eee; padding: 16px; }
+  h1 { font-size: 1.4rem; margin-bottom: 8px; }
+  .legend { display: flex; gap: 16px; margin-bottom: 20px; font-size: 0.85rem; }
+  .legend span { padding: 3px 10px; border-radius: 4px; font-weight: bold; }
+  .pass-tag { background: #1a6b2a; color: #7ee89a; }
+  .fail-tag { background: #6b1a1a; color: #f08080; }
+  .summary { margin-bottom: 24px; font-size: 0.9rem; color: #aaa; }
+  .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; }
+  .filter-bar button { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: bold; }
+  #btn-all  { background: #444; color: #eee; }
+  #btn-pass { background: #1a6b2a; color: #7ee89a; }
+  #btn-fail { background: #6b1a1a; color: #f08080; }
+  .filter-bar button:hover { opacity: 0.8; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(680px, 1fr)); gap: 20px; }
+
+  .case { background: #2a2a2a; border-radius: 8px; overflow: hidden; border: 2px solid #444; }
+  .case.pass { border-color: #2a7a3a; }
+  .case.fail { border-color: #7a2a2a; }
+
+  .case-header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #333; }
+  .case-num { font-size: 1rem; font-weight: bold; color: #ddd; }
+  .verdict { padding: 2px 10px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+  .verdict.pass { background: #1a6b2a; color: #7ee89a; }
+  .verdict.fail { background: #6b1a1a; color: #f08080; }
+  .reason { font-size: 0.78rem; color: #aaa; flex: 1; }
+
+  .imgs { display: flex; gap: 0; }
+  .img-panel { flex: 1; text-align: center; padding: 8px; border-right: 1px solid #333; }
+  .img-panel:last-child { border-right: none; }
+  .img-label { font-size: 0.75rem; color: #888; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .img-panel img { max-width: 100%; max-height: 320px; object-fit: contain; border: 1px solid #555; border-radius: 4px; background: #fff; }
+</style>
+</head>
+<body>
+
+<h1>Flowchart Visual Comparison — All 51 Cases</h1>
+<div class="summary">
+  Independent reviewer verdict · <strong style="color:#7ee89a">9 PASS</strong> · <strong style="color:#f08080">42 FAIL</strong>
+</div>
+<div class="legend">
+  <span class="pass-tag">PASS</span> Diagrams convey the same structure
+  <span class="fail-tag">FAIL</span> Structural or visual mismatch
+</div>
+<div class="filter-bar">
+  <button id="btn-all"  onclick="filter('all')">All 51</button>
+  <button id="btn-pass" onclick="filter('pass')">PASS only (9)</button>
+  <button id="btn-fail" onclick="filter('fail')">FAIL only (42)</button>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<script>
+// verdict: true = PASS, false = FAIL
+// reason: short description of failure (empty for PASS)
+const cases = [
+  { n:"00", pass:false, reason:"strokeWidth=1 (ref=2), font size, text as separate elements" },
+  { n:"01", pass:false, reason:"strokeWidth=1, rounded rect type 2 vs 3, edge label fontSize" },
+  { n:"02", pass:false, reason:"strokeWidth=1, rounded rect type 2 vs 3, text layout" },
+  { n:"03", pass:false, reason:"strokeWidth=1, font size mismatch, text as separate elements" },
+  { n:"04", pass:false, reason:"Wrong shape: [[subroutine]] → extra lines; ref=single rect" },
+  { n:"05", pass:false, reason:"Wrong shape: [(Database)] cylinder → OUR=ellipse, REF=rectangle" },
+  { n:"06", pass:false, reason:"strokeWidth=1, rounded rect type 2 vs 3" },
+  { n:"07", pass:false, reason:"strokeWidth=1, font size, text layout mismatch" },
+  { n:"08", pass:false, reason:"strokeWidth=1, rounded rect, font size mismatch" },
+  { n:"09", pass:false, reason:"Wrong shape: {{hexagon}} → OUR=diamond, REF=hexagon-like" },
+  { n:"10", pass:false, reason:"Wrong shape: parallelogram → OUR=line (invisible), REF=rect" },
+  { n:"11", pass:false, reason:"Wrong shape: parallelogram → OUR=line (invisible), REF=rect" },
+  { n:"12", pass:false, reason:"Wrong shape: trapezoid → OUR=line (invisible), REF=rect" },
+  { n:"13", pass:false, reason:"Wrong shape: trapezoid → OUR=line (invisible), REF=rect" },
+  { n:"14", pass:false, reason:"strokeWidth=1, text layout, font size" },
+  { n:"15", pass:false, reason:"strokeWidth=1, rounded rect type, font size" },
+  { n:"16", pass:false, reason:"strokeWidth=1, rounded rect type, text layout" },
+  { n:"17", pass:false, reason:"strokeWidth=1, font size, text as separate elements" },
+  { n:"18", pass:true,  reason:"" },
+  { n:"19", pass:true,  reason:"" },
+  { n:"20", pass:true,  reason:"" },
+  { n:"21", pass:true,  reason:"" },
+  { n:"22", pass:true,  reason:"" },
+  { n:"23", pass:true,  reason:"" },
+  { n:"24", pass:true,  reason:"" },
+  { n:"25", pass:false, reason:"strokeWidth=1, rounded rect type, font size" },
+  { n:"26", pass:false, reason:"strokeWidth=1, text layout, font size" },
+  { n:"27", pass:false, reason:"strokeWidth=1, rounded rect type, text elements" },
+  { n:"28", pass:false, reason:"strokeWidth=1, font size, rounded rect type" },
+  { n:"29", pass:false, reason:"Wrong arrowhead: OUR=dot, REF=circle/filled-dot" },
+  { n:"30", pass:false, reason:"Wrong arrowhead: OUR=dot, REF=circle/filled-dot" },
+  { n:"31", pass:false, reason:"strokeWidth=1, rounded rect type, font size" },
+  { n:"32", pass:false, reason:"HTML entity decode broken: #quot; #9829; rendered raw" },
+  { n:"33", pass:false, reason:"Reference is image — no structural comparison possible" },
+  { n:"34", pass:false, reason:"Reference is image — no structural comparison possible" },
+  { n:"35", pass:false, reason:"Subgraph duplicate bug + reference is image" },
+  { n:"36", pass:false, reason:"Subgraph duplicate bug + reference is image" },
+  { n:"37", pass:false, reason:"Reference is image — no structural comparison possible" },
+  { n:"38", pass:false, reason:"strokeWidth=1, rounded rect type, font size" },
+  { n:"39", pass:false, reason:"strokeWidth=1, text layout, font size" },
+  { n:"40", pass:false, reason:"strokeWidth=1, rounded rect type, font size" },
+  { n:"41", pass:true,  reason:"" },
+  { n:"42", pass:true,  reason:"" },
+  { n:"43", pass:false, reason:"Subgraph duplicate bug + reference is image" },
+  { n:"44", pass:false, reason:"strokeWidth=1, rounded rect type, font size" },
+  { n:"45", pass:false, reason:"Font Awesome icon prefix fa:fa-* not stripped from label text" },
+  { n:"46", pass:false, reason:"strokeWidth=1, rounded rect type, font size" },
+  { n:"47", pass:false, reason:"strokeWidth=1, text layout, rounded rect type" },
+  { n:"48", pass:false, reason:"strokeWidth=1, rounded rect type, font size" },
+  { n:"49", pass:false, reason:"Font Awesome icon prefix fa:fa-* not stripped from label text" },
+  { n:"50", pass:false, reason:"Subgraph duplicate bug + reference is image" },
+];
+
+function render(list) {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  list.forEach(c => {
+    const refSrc  = `refs/flowchart-${c.n}-reference.png`;
+    const oursSrc = `out/flowchart-${c.n}-ours.png`;
+    const cls = c.pass ? 'pass' : 'fail';
+    const verdictText = c.pass ? 'PASS' : 'FAIL';
+    const reasonHtml = c.reason
+      ? `<span class="reason">${c.reason}</span>`
+      : `<span class="reason" style="color:#2a7a3a">Diagrams match</span>`;
+
+    grid.innerHTML += `
+      <div class="case ${cls}" data-verdict="${cls}">
+        <div class="case-header">
+          <span class="case-num">Case ${c.n}</span>
+          <span class="verdict ${cls}">${verdictText}</span>
+          ${reasonHtml}
+        </div>
+        <div class="imgs">
+          <div class="img-panel">
+            <div class="img-label">Reference (Mermaid)</div>
+            <img src="${refSrc}" alt="Reference ${c.n}" loading="lazy">
+          </div>
+          <div class="img-panel">
+            <div class="img-label">Ours (Excalidraw)</div>
+            <img src="${oursSrc}" alt="Ours ${c.n}" loading="lazy">
+          </div>
+        </div>
+      </div>`;
+  });
+}
+
+function filter(type) {
+  if (type === 'all')  render(cases);
+  if (type === 'pass') render(cases.filter(c => c.pass));
+  if (type === 'fail') render(cases.filter(c => !c.pass));
+}
+
+render(cases);
+</script>
+</body>
+</html>

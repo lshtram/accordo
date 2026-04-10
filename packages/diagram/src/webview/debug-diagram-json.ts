@@ -1,0 +1,87 @@
+/**
+ * Debug: dump the Excalidraw JSON payload to disk, immediately before it is
+ * posted to the webview.  This gives you the exact scene that will be rendered,
+ * with no transforms applied after the fact.
+ *
+ * Enable:   ALWAYS ON during diagram-engine development.
+ *           TODO(diag.debug): restore env-var gate once module is done.
+ * Disable:  flip isDebugEnabled() to check ACCORDO_DEBUG_DIAGRAM_JSON
+ *
+ * Output:   <workspaceRoot>/.accordo/diagrams/debug/<stem>.excalidraw.json
+ *           (overwritten on every render — no timestamp suffix)
+ *
+ * The file is a valid Excalidraw scene document.  Open it at
+ * https://excalidraw.com  or via the VS Code Excalidraw extension to inspect
+ * the rendered output visually.
+ *
+ * Pure Node.js module — NO vscode import.
+ */
+
+import { mkdir, writeFile } from "node:fs/promises";
+import { join, basename, extname } from "node:path";
+import type { ExcalidrawAPIElement } from "./scene-adapter.js";
+
+// ── Debug flag ────────────────────────────────────────────────────────────────
+
+/**
+ * Debug dumps are ON for the duration of diagram-engine development.
+ * TODO(diag.debug): flip to env-var check once the module is complete:
+ *   const v = process.env["ACCORDO_DEBUG_DIAGRAM_JSON"];
+ *   return v !== undefined && v !== "" && v !== "0" && v !== "false";
+ */
+function isDebugEnabled(): boolean {
+  return true;
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export interface DumpOptions {
+  /** Absolute path to the source .mmd file. */
+  mmdPath: string;
+  /** Workspace root — debug files are written relative to this. */
+  workspaceRoot: string;
+  /** Raw Mermaid source text. */
+  source: string;
+  /** The Excalidraw API elements about to be posted to the webview. */
+  elements: ExcalidrawAPIElement[];
+}
+
+// ── dumpExcalidrawJson ────────────────────────────────────────────────────────
+
+/**
+ * Write a `.excalidraw.json` snapshot to `.accordo/diagrams/debug/` using the
+ * elements that are *about to be posted* to the webview.
+ *
+ * The function is a no-op when `ACCORDO_DEBUG_DIAGRAM_JSON` is not set.
+ * Errors are swallowed so a debug-write failure never interrupts rendering.
+ */
+export async function dumpExcalidrawJson(opts: DumpOptions): Promise<void> {
+  if (!isDebugEnabled()) return;
+
+  const { mmdPath, workspaceRoot, source, elements } = opts;
+
+  const stem = basename(mmdPath, extname(mmdPath));
+  const debugDir = join(workspaceRoot, ".accordo", "diagrams", "debug");
+  const outPath = join(debugDir, `${stem}.excalidraw.json`);
+
+  const scene = {
+    type: "excalidraw",
+    version: 2,
+    source: mmdPath,
+    mermaidSource: source,
+    elements,
+    appState: {
+      viewBackgroundColor: "#ffffff",
+    },
+    files: {},
+  };
+
+  try {
+    await mkdir(debugDir, { recursive: true });
+    await writeFile(outPath, JSON.stringify(scene, null, 2), "utf8");
+    process.stderr.write(`[accordo:diag:debug] dumped ${outPath}\n`);
+  } catch (err) {
+    // Debug dumps are non-fatal — never block rendering.
+    process.stderr.write(`[accordo:diag:debug] dump FAILED: ${String(err)}\n`);
+  }
+}

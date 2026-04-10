@@ -14,8 +14,9 @@
 | Feature requirements | [20-requirements/](20-requirements/) |
 | Code standards and patterns | [30-development/](30-development/) |
 | How to test current features | [40-testing/](40-testing/) |
-| Recent code reviews | [50-reviews/](50-reviews/) |
-| Historical docs | [90-archive/](90-archive/) |
+| Current authoritative reviews | [40-reviews/](40-reviews/) |
+| Historical review evidence | [50-reviews/](50-reviews/) |
+| Historical docs and superseded plans | [60-archive/](60-archive/) |
 
 ---
 
@@ -33,10 +34,10 @@
 - **Diagrams** → [10-architecture/diagram-architecture.md](10-architecture/diagram-architecture.md)
 - **Presentations** → [10-architecture/presentation-architecture.md](10-architecture/presentation-architecture.md)
 
-### Current priorities (2026-03-29)
-- Wave 1 Modularity refactor ([00-workplan/workplan-modularity-waves.md](00-workplan/workplan-modularity-waves.md))
+### Current priorities (2026-04-08)
 - Browser continuity for agents (non-active-tab access must work)
-- Documentation reorganization (this structure)
+- DEC-024 reload-reconnect hardening and E2E validation
+- Documentation harmonization and archive cleanup
 
 ---
 
@@ -105,8 +106,11 @@ Testing guides for current/in-progress features.
 | [testing-guide-session-15.md](40-testing/testing-guide-session-15.md) | Page understanding + region capture |
 | [testing-guide-m113-sem.md](40-testing/testing-guide-m113-sem.md) | Semantic graph (browser 2.1 W2) |
 
-### 50-reviews/ — Recent Reviews
-Code reviews and evaluation reports (last 30 days + significant architectural reviews).
+### 40-reviews/ — Current Authoritative Reviews
+Current gate reviews, live evaluations, and recent architecture reviews that still describe the active system.
+
+### 50-reviews/ — Historical Review Evidence
+Older review evidence and planning-era review material that is still useful for traceability but is no longer the primary reference set.
 
 **2026-03-29 Reviews:**
 - [full-project-modularity-plugin-review-2026-03-29.md](50-reviews/full-project-modularity-plugin-review-2026-03-29.md) — Full project modularity review
@@ -121,8 +125,11 @@ Code reviews and evaluation reports (last 30 days + significant architectural re
 - m109-wait-*.md — Wait primitives
 - m10x-* — Browser 2.0 modules
 
-### 90-archive/ — Historical Documents
-Superseded docs kept for reference. Organized by type:
+### 60-archive/ — Historical Documents
+Superseded docs, handoffs, and session notes kept for reference.
+
+### 90-archive/ — Legacy Historical Documents
+Older archived material retained during the ongoing documentation migration.
 
 - **90-archive/testing/** — Old testing guides (completed sessions)
 - **90-archive/reviews/** — Old review documents
@@ -160,8 +167,8 @@ Requirements docs use module IDs (e.g., M90-MAP, M100-SNAP) for traceability:
 
 1. **Update the workplan** when starting new work
 2. **Follow status conventions** on all docs
-3. **Archive, don't delete** — Move superseded docs to 90-archive/
-4. **Keep reviews current** — Only keep last 10 reviews in 50-reviews/
+3. **Archive, don't delete** — Move superseded docs to 60-archive/
+4. **Keep one authoritative review set** — current reviews live in 40-reviews/, older evidence in 50-reviews/
 5. **Maintain this README** — Update navigation when adding/moving docs
 
 ---
@@ -169,7 +176,7 @@ Requirements docs use module IDs (e.g., M90-MAP, M100-SNAP) for traceability:
 ## Stats
 
 - **Active docs:** ~40 (00- through 50-)
-- **Archived docs:** ~50 (90-archive/)
+- **Archived docs:** legacy 90-archive/ plus active migration into 60-archive/
 - **Total reduction:** Consolidated from 79+ scattered files to organized structure
 - **Last reorganization:** 2026-03-29
 

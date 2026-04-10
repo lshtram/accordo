@@ -115,9 +115,16 @@ These apply regardless of which mode you are in:
 
 1. **Follow [`docs/30-development/coding-guidelines.md`](docs/30-development/coding-guidelines.md).** Language style, banned patterns, type safety rules, and the D2 review checklist all live there. The rules are TypeScript/Node.js-specific and take precedence over any generic advice.
 2. **Run tests before committing.** `pnpm test` must be clean in the affected package.
-3. **Conventional commits.** `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
-4. **One module per commit** when in TDD mode. Batch only within the same phase.
-5. **Scan pattern files before any non-trivial task.** There are two:
+3. **MCP tool naming convention.** All tools exposed via the MCP gateway use the `accordo_<modality>_<action>` prefix:
+   - `accordo_editor_open`, `accordo_editor_close`, etc. (editor modality)
+   - `accordo_terminal_open`, `accordo_terminal_run`, etc. (terminal modality)
+   - `accordo_voice_dictation`, `accordo_voice_readAloud`, etc. (voice modality)
+   - `accordo_browser_list_pages`, `accordo_browser_navigate`, `accordo_browser_click`, `accordo_browser_type`, `accordo_browser_press_key`, etc. (browser modality)
+   - `comment_list`, `comment_create`, etc. (comment modality — exception to the rule)
+   When adding new MCP tools, use the `accordo_<modality>_<action>` pattern. Internal relay action strings (between Hub and Chrome extension) are exempt — they use short names like `"get_page_map"`, `"navigate"`.
+4. **Conventional commits.** `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
+5. **One module per commit** when in TDD mode. Batch only within the same phase.
+6. **Scan pattern files before any non-trivial task.** There are two:
    - [`docs/30-development/patterns.md`](docs/30-development/patterns.md) — generic agent tool patterns (all projects)
    - [`docs/30-development/accordo-patterns.md`](docs/30-development/accordo-patterns.md) — Accordo-specific patterns
    Read only the YAML front matter to see what is documented — load the full section
@@ -174,19 +181,21 @@ When modifying VS Code extension code, VS Code in dev mode auto-reloads extensio
 
 ```bash
 # Full restart (rebuilds all packages first)
-./scripts/dev-open.sh
+./scripts/start-session.sh
 
 # Faster: skip rebuild if dist files are already fresh
-./scripts/dev-open.sh --no-build
+./scripts/start-session.sh --no-build
 
 # Or reload just the current window without rebuilding
 # (Cmd+Shift+P → "Developer: Reload Window")
 ```
 
-The `dev-open.sh` script:
+The `start-session.sh` script:
 - Builds all VS Code extensions via `pnpm -r --filter="./packages/*" run build`
 - Launches VS Code with all packages in `extensionDevelopmentPath` mode
 - Uses a separate `--user-data-dir` so multiple instances don't conflict
+
+`scripts/dev-open.sh` has been retired. Use `scripts/start-session.sh` as the canonical launcher in all docs and operator instructions.
 
 ### Iterating on a specific package
 

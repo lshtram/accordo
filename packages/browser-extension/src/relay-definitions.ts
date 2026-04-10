@@ -60,6 +60,16 @@ export interface RelayActionResponse {
    */
   snapshotId?: string;
   data?: unknown;
+  /**
+   * MCP-SEC-004: UUIDv4 audit identifier for this tool invocation.
+   * Present on all responses (success and failure) for traceability.
+   */
+  auditId?: string;
+  /**
+   * MCP-SEC-005: Present when redactPII is false/omitted on text-producing
+   * read tools. Warns callers that PII may be present in the response.
+   */
+  redactionWarning?: string;
   error?:
     | "action-failed"
     | "unsupported-action"
@@ -76,7 +86,16 @@ export interface RelayActionResponse {
     | "element-not-found"
     | "element-off-screen"
     | "iframe-cross-origin"
-    | "no-content-script";
+    | "no-content-script"
+    | "origin-blocked"
+    | "redaction-failed";
+  /**
+   * MCP-ER-002: Whether the error is retryable.
+   * Present on error responses only.
+   */
+  retryable?: boolean;
+  /** Index signature — allows RelayActionResponse to satisfy Record<string, unknown> */
+  [key: string]: unknown;
 }
 
 export interface CapturePayload {
@@ -111,7 +130,32 @@ defaultStore.setMaxAgeMs(3600000); // 1 hour default TTL
 // ── Shared Response Helpers ──────────────────────────────────────────────────
 
 /**
- * Build a standardized action-failed response.
+ * MCP-ER-002: Retry metadata for structured error responses.
+ * Maps error codes to retryable flag and optional retryAfterMs.
+ * Codes not listed default to retryable: true with no retryAfterMs.
+ */
+const ERROR_META: Record<string, { retryable: boolean; retryAfterMs?: number }> = {
+  "browser-not-connected": { retryable: true, retryAfterMs: 2000 },
+  "timeout": { retryable: true, retryAfterMs: 1000 },
+  "element-not-found": { retryable: false },
+  "element-off-screen": { retryable: false },
+  "image-too-large": { retryable: false },
+  "capture-failed": { retryable: false },
+  "origin-blocked": { retryable: false },
+  "snapshot-not-found": { retryable: false },
+  "snapshot-stale": { retryable: false },
+  "redaction-failed": { retryable: false },
+};
+
+/**
+ * Get standardized retry metadata for an error code.
+ */
+export function getErrorMeta(code: string): { retryable: boolean; retryAfterMs?: number } {
+  return ERROR_META[code] ?? { retryable: true };
+}
+
+/**
+ * Build a standardized action-failed response with structured retry metadata (MCP-ER-001/002).
  * Use this instead of inline `{ success: false, error: "action-failed" }` spread
  * across individual handlers.
  */
@@ -119,7 +163,14 @@ export function actionFailed(
   request: { requestId: string },
   code: RelayActionResponse["error"] = "action-failed",
 ): RelayActionResponse {
-  return { requestId: request.requestId, success: false, error: code };
+  const meta = getErrorMeta(code);
+  return {
+    requestId: request.requestId,
+    success: false,
+    error: code,
+    retryable: meta.retryable,
+    ...(meta.retryAfterMs !== undefined ? { retryAfterMs: meta.retryAfterMs } : {}),
+  };
 }
 
 // ── Type Guard ───────────────────────────────────────────────────────────────

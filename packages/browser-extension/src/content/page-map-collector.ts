@@ -420,7 +420,7 @@ export function enumerateIframes(): IframeMetadata[] {
       let sameOrigin = false;
       try {
         const inheritedOriginFrame = src === "" || src === "about:blank" || iframe.hasAttribute("srcdoc");
-        const domAccessible = (() => {
+        const domAccessible = ((): boolean => {
           try {
             return iframe.contentDocument !== null;
           } catch {

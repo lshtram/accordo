@@ -45,7 +45,7 @@ export async function ensureAttached(tabId: number): Promise<void> {
     attachedTabs.add(tabId);
 
     // Register onDetach listener
-    const listener = (source: chrome.debugger.Debuggee, reason: string) => {
+    const listener = (source: chrome.debugger.Debuggee, reason: string): void => {
       if (source.tabId === tabId) {
         // Mark as detached first to prevent re-entrant calls
         attachedTabs.delete(tabId);
@@ -77,7 +77,7 @@ export async function ensureAttached(tabId: number): Promise<void> {
       attachedTabs.add(tabId);
 
       // Still register the onDetach listener
-      const listener = (source: chrome.debugger.Debuggee, reason: string) => {
+      const listener = (source: chrome.debugger.Debuggee, reason: string): void => {
         if (source.tabId === tabId) {
           attachedTabs.delete(tabId);
 

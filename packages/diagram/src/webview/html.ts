@@ -65,6 +65,12 @@ export interface HtmlOptions {
    * panel.webview.asWebviewUri(Uri.joinPath(extensionUri, "dist", "webview", "sdk.css"))
    */
   sdkCssUri?: string;
+  /**
+   * Optional VS Code webview URI string for the Mermaid Excalidraw library.
+   * When provided, window.__accordoMermaidLibraryUri is set so the browser
+   * bundle can fetch and import the library at startup.
+   */
+  mermaidLibraryUri?: string;
 }
 
 // ── getWebviewHtml ─────────────────────────────────────────────────────────────
@@ -74,7 +80,15 @@ export interface HtmlOptions {
  * Build the full HTML document for the Excalidraw canvas webview.
  */
 export function getWebviewHtml(opts: HtmlOptions): string {
-  const { nonce, cspSource, bundleUri, virgilFontUri, excalidrawAssetsUri, sdkCssUri } = opts;
+  const {
+    nonce,
+    cspSource,
+    bundleUri,
+    virgilFontUri,
+    excalidrawAssetsUri,
+    sdkCssUri,
+    mermaidLibraryUri,
+  } = opts;
   // Make the font URI available to webview.ts module-level code via a global.
   // webview.ts injects the @font-face rule via JS AFTER Excalidraw's bundle CSS
   // has already run, so our rule wins the CSS cascade over Excalidraw's rule for
@@ -82,6 +96,9 @@ export function getWebviewHtml(opts: HtmlOptions): string {
   const virgilGlobal = virgilFontUri ? `\n  window.__virgilFontUri = "${virgilFontUri}";` : "";
   // Trailing slash is required — webpack public path must end with /
   const assetPathGlobal = excalidrawAssetsUri ? `\n  window.EXCALIDRAW_ASSET_PATH = "${excalidrawAssetsUri}/";` : "";
+  const mermaidLibraryGlobal = mermaidLibraryUri
+    ? `\n  window.__accordoMermaidLibraryUri = "${mermaidLibraryUri}";`
+    : "";
   const sdkCssLink = sdkCssUri ? `\n  <link rel="stylesheet" href="${sdkCssUri}">` : "";
   return `<!DOCTYPE html>
 <html lang="en">
@@ -102,7 +119,7 @@ export function getWebviewHtml(opts: HtmlOptions): string {
     };
     window.addEventListener('unhandledrejection', function(ev) {
       window.__accordoErrors.push('UnhandledRejection: ' + String(ev.reason));
-    });${assetPathGlobal}${virgilGlobal}
+    });${assetPathGlobal}${virgilGlobal}${mermaidLibraryGlobal}
   </script>
   <script nonce="${nonce}" src="${bundleUri}"></script>
 </body>

@@ -15,7 +15,7 @@
 
 import { resetDefaultManager } from "./snapshot-versioning.js";
 import { defaultStore } from "./relay-definitions.js";
-import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
+import { getErrorMeta, type RelayActionRequest, type RelayActionResponse } from "./relay-definitions.js";
 import {
   handleGetAllComments,
   handleGetComments,
@@ -151,9 +151,9 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
         return await handlePressKey(request);
 
       default:
-        return { requestId: request.requestId, success: false, error: "unsupported-action" };
+        return { requestId: request.requestId, success: false, error: "unsupported-action", ...getErrorMeta("unsupported-action") };
     }
   } catch (error: unknown) {
-    return { requestId: request.requestId, success: false, error: "action-failed" };
+    return { requestId: request.requestId, success: false, error: "action-failed", ...getErrorMeta("action-failed") };
   }
 }

@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "Start": {
+      "x": 0,
+      "y": 0,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Stop": {
+      "x": 260,
+      "y": 0,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    }
+  },
+  "edges": {
+    "Start->Stop:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  }
+}

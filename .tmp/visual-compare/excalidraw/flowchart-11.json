@@ -1,0 +1,116 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "flowchart-11.mmd",
+  "elements": [
+    {
+      "id": "322f1a6a-7dd5-429b-84d2-c0d60765e439",
+      "kind": "node",
+      "type": "line",
+      "x": 0,
+      "y": 0,
+      "width": 200,
+      "height": 60,
+      "roughness": 1,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          180,
+          0
+        ],
+        [
+          200,
+          60
+        ],
+        [
+          20,
+          60
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "startBinding": null,
+      "endBinding": null,
+      "arrowheadStart": null,
+      "arrowheadEnd": null,
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "backgroundColor": "transparent",
+      "fillStyle": "hachure",
+      "opacity": 100,
+      "version": 1,
+      "versionNonce": 3709774954,
+      "isDeleted": false,
+      "angle": 0,
+      "seed": 3201312515,
+      "groupIds": [],
+      "frameId": null,
+      "updated": 1775750606052,
+      "link": null,
+      "locked": false,
+      "fontFamily": 1,
+      "roundness": null,
+      "boundElements": [
+        {
+          "id": "1356c01a-25b7-4e10-892c-b6d8c34730c6",
+          "type": "text"
+        }
+      ],
+      "containerId": null,
+      "customData": {
+        "mermaidId": "id1",
+        "kind": "node"
+      }
+    },
+    {
+      "id": "1356c01a-25b7-4e10-892c-b6d8c34730c6",
+      "kind": "label",
+      "type": "text",
+      "x": 0,
+      "y": 21,
+      "width": 180,
+      "height": 18,
+      "roughness": 1,
+      "fontSize": 14,
+      "strokeColor": "#1e1e1e",
+      "version": 1,
+      "versionNonce": 2386472413,
+      "isDeleted": false,
+      "fillStyle": "hachure",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "angle": 0,
+      "seed": 4028442956,
+      "groupIds": [],
+      "frameId": null,
+      "updated": 1775750606052,
+      "link": null,
+      "locked": false,
+      "backgroundColor": "transparent",
+      "fontFamily": 1,
+      "roundness": null,
+      "boundElements": null,
+      "containerId": "322f1a6a-7dd5-429b-84d2-c0d60765e439",
+      "customData": {
+        "mermaidId": "id1:text",
+        "kind": "label"
+      },
+      "text": "This is the text in the box",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "originalText": "This is the text in the box",
+      "lineHeight": 1.25
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff"
+  },
+  "files": {}
+}

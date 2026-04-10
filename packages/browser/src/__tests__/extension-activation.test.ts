@@ -1,9 +1,56 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { activate } from "../extension.js";
-import { createExtensionContextMock, extensions } from "./mocks/vscode.js";
+
+// Mock vscode at the top of this file so sharedRelay=false is guaranteed
+// before extension.ts evaluates vscode.workspace.getConfiguration(...).
+// This avoids cross-file pollution from extension-push.test.ts which modifies
+// the shared mocks/vscode.js workspace mock at module level.
+// createExtensionContextMock is defined inline so tests can use it without
+// importing from mocks/vscode.js (which conflicts with this vi.mock).
+vi.mock("vscode", () => {
+  const state = new Map<string, unknown>();
+  return {
+    workspace: {
+      getConfiguration: vi.fn(() => ({
+        get: vi.fn(<T>(_key: string, defaultValue: T): T => {
+          if (_key === "sharedRelay") return false as unknown as T;
+          return defaultValue;
+        }),
+      })),
+    },
+    extensions: {
+      getExtension: vi.fn(() => ({ exports: null })),
+    },
+    window: {
+      createOutputChannel: vi.fn(() => ({
+        appendLine: vi.fn(),
+        dispose: vi.fn(),
+      })),
+    },
+    Disposable: class Disposable {
+      constructor(private readonly fn: () => void) {}
+      dispose(): void { this.fn(); }
+    },
+    // Inline createExtensionContextMock to avoid ./mocks/vscode.js import conflict
+    createExtensionContextMock: () => ({
+      subscriptions: [] as Array<{ dispose(): void }>,
+      globalState: {
+        get: vi.fn((k: string) => state.get(k)),
+        update: vi.fn(async (k: string, v: unknown) => { state.set(k, v); }),
+      },
+    }),
+  };
+});
+
+// After vi.mock, import vscode from the mocked module.
+// createExtensionContextMock lives on the mock so tests can call it.
+const vscode = await import("vscode");
+const createExtensionContextMock = (vscode as Record<string, unknown>).createExtensionContextMock as ReturnType<typeof vi.fn> extends () => infer R ? R : never;
 
 // Mock node:net so findFreePort always resolves the base port (40111) as free,
 // regardless of what is actually bound on the test host.
+// Note: findFreePort calls once("listening", cb) BEFORE listen(port, host),
+// so the 'listening' event must fire INSIDE listen(), not inside once().
 vi.mock("node:net", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:net")>();
   return {
@@ -14,13 +61,17 @@ vi.mock("node:net", async (importOriginal) => {
         once: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
           listeners[event] = listeners[event] ?? [];
           listeners[event].push(cb);
-          // Immediately simulate "listening" so findFreePort resolves the first port tried
-          if (event === "listening") {
-            Promise.resolve().then(() => cb());
-          }
           return server;
         }),
-        listen: vi.fn((_port: number, _host: string) => server),
+        listen: vi.fn((_port: number, _host: string) => {
+          // Fire 'listening' listeners asynchronously so findFreePort's
+          // once("listening", cb) has time to register before the event fires.
+          Promise.resolve().then(() => {
+            const l = listeners["listening"] ?? [];
+            l.forEach((cb) => cb());
+          });
+          return server;
+        }),
         close: vi.fn((cb?: () => void) => { if (cb) cb(); return server; }),
         address: vi.fn(() => ({ port: 40111 })),
       };
@@ -70,7 +121,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock,
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);
@@ -93,7 +144,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock,
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);
@@ -110,7 +161,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock,
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);
@@ -145,7 +196,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock,
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);
@@ -184,7 +235,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock.mockResolvedValue({ created: true, threadId: "t1", commentId: "c1" }),
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);
@@ -217,7 +268,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock.mockResolvedValue({ created: true, threadId: "t-local", commentId: "c-local" }),
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);
@@ -258,7 +309,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock.mockResolvedValue({ threads: [], total: 0, hasMore: false }),
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);
@@ -290,7 +341,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock.mockResolvedValue({ threads: [], total: 0, hasMore: false }),
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);
@@ -325,7 +376,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock.mockResolvedValue({ replied: true, commentId: "c2" }),
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);
@@ -361,7 +412,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock.mockResolvedValue({ resolved: true, threadId: "t1" }),
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);
@@ -397,7 +448,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock.mockResolvedValue({ reopened: true, threadId: "t1" }),
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);
@@ -429,7 +480,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock.mockResolvedValue({ deleted: true }),
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);
@@ -465,7 +516,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock.mockResolvedValue({ deleted: true }),
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);
@@ -491,7 +542,7 @@ describe("M83-BTOOLS extension activation", () => {
       publishState: vi.fn(),
       invokeTool: invokeToolMock,
     };
-    (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
     const context = createExtensionContextMock();
     await activate(context as never);

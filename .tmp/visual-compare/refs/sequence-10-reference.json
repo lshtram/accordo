@@ -1,0 +1,529 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "sequence-10.mmd",
+  "elements": [
+    {
+      "id": "Alice-top",
+      "type": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Alice",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Alice-bottom",
+      "type": "rectangle",
+      "x": 0,
+      "y": 424,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Alice",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Bob-top",
+      "type": "rectangle",
+      "x": 231,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Bob",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Bob-bottom",
+      "type": "rectangle",
+      "x": 231,
+      "y": 424,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Bob",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "type": "line",
+      "x": 75,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          359
+        ]
+      ],
+      "width": 0,
+      "height": 359,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "line",
+      "x": 306,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          359
+        ]
+      ],
+      "width": 0,
+      "height": 359,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "arrow",
+      "x": 76,
+      "y": 101,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          226,
+          0
+        ]
+      ],
+      "width": 226,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "Hello Bob, how are you?",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Bob-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 305,
+      "y": 192,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -226,
+          0
+        ]
+      ],
+      "width": -226,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "Not so good :(",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Bob-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 305,
+      "y": 283,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -226,
+          0
+        ]
+      ],
+      "width": -226,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "Feeling fresh like a daisy",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Bob-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 305,
+      "y": 384,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -226,
+          0
+        ]
+      ],
+      "width": -226,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "Thanks for asking",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Bob-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      }
+    },
+    {
+      "type": "line",
+      "x": 64,
+      "y": 121,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          253,
+          0
+        ]
+      ],
+      "width": 253,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 317,
+      "y": 121,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          182
+        ]
+      ],
+      "width": 0,
+      "height": 182,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 64,
+      "y": 303,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          253,
+          0
+        ]
+      ],
+      "width": 253,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 64,
+      "y": 121,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          182
+        ]
+      ],
+      "width": 0,
+      "height": 182,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 64,
+      "y": 217,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          253,
+          0
+        ]
+      ],
+      "width": 253,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 64,
+      "y": 313,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          253,
+          0
+        ]
+      ],
+      "width": 253,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 317,
+      "y": 313,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          91
+        ]
+      ],
+      "width": 0,
+      "height": 91,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 64,
+      "y": 404,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          253,
+          0
+        ]
+      ],
+      "width": 253,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 64,
+      "y": 313,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          91
+        ]
+      ],
+      "width": 0,
+      "height": 91,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "text",
+      "x": 189.11809921264648,
+      "y": 139,
+      "width": 52.76380157470703,
+      "height": 17.638042449951172,
+      "text": "[is sick]",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": null
+    },
+    {
+      "type": "text",
+      "x": 164.11419677734375,
+      "y": 235,
+      "width": 52.7716064453125,
+      "height": 17.638042449951172,
+      "text": "[is well]",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": null
+    },
+    {
+      "type": "text",
+      "x": 157.12182998657227,
+      "y": 331,
+      "width": 116.75634002685547,
+      "height": 17.638042449951172,
+      "text": "[Extra response]",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": null
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 64,
+      "y": 121,
+      "width": null,
+      "height": 20,
+      "label": {
+        "text": "alt",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#adb5bd",
+      "backgroundColor": "#e9ecef",
+      "fillStyle": "solid"
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 64,
+      "y": 313,
+      "width": null,
+      "height": 20,
+      "label": {
+        "text": "opt",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#adb5bd",
+      "backgroundColor": "#e9ecef",
+      "fillStyle": "solid"
+    }
+  ],
+  "files": {}
+}

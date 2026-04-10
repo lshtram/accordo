@@ -1,0 +1,83 @@
+{
+  "elements": [
+    {
+      "id": "id1",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 8,
+      "y": 8,
+      "width": 72.25,
+      "height": 60,
+      "strokeWidth": 4,
+      "label": {
+        "groupIds": [],
+        "text": "Start",
+        "fontSize": 20
+      },
+      "link": null,
+      "backgroundColor": "#f9f",
+      "fillStyle": "solid",
+      "strokeColor": "#333",
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "id": "id2",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 130.25,
+      "y": 8,
+      "width": 71.15625,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "Stop",
+        "fontSize": 20,
+        "strokeColor": "#fff"
+      },
+      "link": null,
+      "backgroundColor": "#bbf",
+      "fillStyle": "solid",
+      "strokeColor": "#f66",
+      "strokeStyle": "dashed",
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "id": "id1_id2",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 80.25,
+      "y": 38,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          4.167000000000002,
+          0
+        ],
+        [
+          46,
+          0
+        ]
+      ],
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "id": "id1"
+      },
+      "end": {
+        "id": "id2"
+      }
+    }
+  ],
+  "files": {}
+}

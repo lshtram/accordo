@@ -1,0 +1,704 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "sequence-19.mmd",
+  "elements": [
+    {
+      "id": "Alice-top",
+      "type": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Alice",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Alice-bottom",
+      "type": "rectangle",
+      "x": 0,
+      "y": 487,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Alice",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Bob-top",
+      "type": "rectangle",
+      "x": 240,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Bob",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Bob-bottom",
+      "type": "rectangle",
+      "x": 240,
+      "y": 402,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Bob",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Carl-top",
+      "type": "rectangle",
+      "x": 515,
+      "y": 168.5,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Carl",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Carl-bottom",
+      "type": "rectangle",
+      "x": 515,
+      "y": 323.5,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Carl",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "type": "line",
+      "x": 865,
+      "y": 270,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          20
+        ]
+      ],
+      "width": 0,
+      "height": 20,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "n5d57tBbq59s-efClgeU8"
+      ],
+      "id": "D-top-0"
+    },
+    {
+      "type": "line",
+      "x": 847,
+      "y": 278,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          36,
+          0
+        ]
+      ],
+      "width": 36,
+      "height": 0,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "n5d57tBbq59s-efClgeU8"
+      ],
+      "id": "D-top-1"
+    },
+    {
+      "type": "line",
+      "x": 847,
+      "y": 305,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          18,
+          -15
+        ]
+      ],
+      "width": 18,
+      "height": -15,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "n5d57tBbq59s-efClgeU8"
+      ],
+      "id": "D-top-2"
+    },
+    {
+      "type": "line",
+      "x": 865,
+      "y": 290,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          16,
+          15
+        ]
+      ],
+      "width": 16,
+      "height": 15,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "n5d57tBbq59s-efClgeU8"
+      ],
+      "id": "D-top-3"
+    },
+    {
+      "id": "D-top-4",
+      "type": "ellipse",
+      "x": 850,
+      "y": 240,
+      "width": 30,
+      "height": 30,
+      "label": {
+        "text": "",
+        "fontSize": null,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000",
+        "groupIds": [
+          "n5d57tBbq59s-efClgeU8"
+        ]
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": null,
+      "backgroundColor": null,
+      "fillStyle": "solid",
+      "groupIds": [
+        "n5d57tBbq59s-efClgeU8"
+      ]
+    },
+    {
+      "type": "text",
+      "x": 838.9212303161621,
+      "y": 312.5,
+      "width": 52.15753936767578,
+      "height": 17.33572769165039,
+      "text": "Donald",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": null,
+      "groupIds": [
+        "n5d57tBbq59s-efClgeU8"
+      ],
+      "id": "D-top-5"
+    },
+    {
+      "type": "line",
+      "x": 865,
+      "y": 512,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          20
+        ]
+      ],
+      "width": 0,
+      "height": 20,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "F5VaJk5sGrH9AcaOIi2d_"
+      ],
+      "id": "D-bottom-0"
+    },
+    {
+      "type": "line",
+      "x": 847,
+      "y": 520,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          36,
+          0
+        ]
+      ],
+      "width": 36,
+      "height": 0,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "F5VaJk5sGrH9AcaOIi2d_"
+      ],
+      "id": "D-bottom-1"
+    },
+    {
+      "type": "line",
+      "x": 847,
+      "y": 547,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          18,
+          -15
+        ]
+      ],
+      "width": 18,
+      "height": -15,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "F5VaJk5sGrH9AcaOIi2d_"
+      ],
+      "id": "D-bottom-2"
+    },
+    {
+      "type": "line",
+      "x": 865,
+      "y": 532,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          16,
+          15
+        ]
+      ],
+      "width": 16,
+      "height": 15,
+      "strokeStyle": "solid",
+      "strokeColor": "#000",
+      "strokeWidth": 1,
+      "groupIds": [
+        "F5VaJk5sGrH9AcaOIi2d_"
+      ],
+      "id": "D-bottom-3"
+    },
+    {
+      "id": "D-bottom-4",
+      "type": "ellipse",
+      "x": 850,
+      "y": 482,
+      "width": 30,
+      "height": 30,
+      "label": {
+        "text": "",
+        "fontSize": null,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000",
+        "groupIds": [
+          "F5VaJk5sGrH9AcaOIi2d_"
+        ]
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": null,
+      "backgroundColor": null,
+      "fillStyle": "solid",
+      "groupIds": [
+        "F5VaJk5sGrH9AcaOIi2d_"
+      ]
+    },
+    {
+      "type": "text",
+      "x": 838.9212303161621,
+      "y": 554.5,
+      "width": 52.15753936767578,
+      "height": 17.33572769165039,
+      "text": "Donald",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": null,
+      "groupIds": [
+        "F5VaJk5sGrH9AcaOIi2d_"
+      ],
+      "id": "D-bottom-5"
+    },
+    {
+      "type": "line",
+      "x": 75,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          422
+        ]
+      ],
+      "width": 0,
+      "height": 422,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "line",
+      "x": 315,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          337
+        ]
+      ],
+      "width": 0,
+      "height": 337,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "line",
+      "x": 590,
+      "y": 233.5,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          90
+        ]
+      ],
+      "width": 0,
+      "height": 90,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "line",
+      "x": 865,
+      "y": 325,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          157
+        ]
+      ],
+      "width": 0,
+      "height": 157,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "arrow",
+      "x": 76,
+      "y": 101,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          235,
+          0
+        ]
+      ],
+      "width": 235,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "Hello Bob, how are you ?",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Bob-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 314,
+      "y": 147,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -235,
+          0
+        ]
+      ],
+      "width": -235,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "Fine, thank you. And you?",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Bob-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 76,
+      "y": 191,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          432,
+          0
+        ]
+      ],
+      "width": 432,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "Hi Carl!",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Carl-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 591,
+      "y": 267.5,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          249,
+          0
+        ]
+      ],
+      "width": 249,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "Hi!",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Carl-top"
+      },
+      "end": {
+        "type": "ellipse",
+        "id": "D-top-4"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 76,
+      "y": 346,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          432,
+          0
+        ]
+      ],
+      "width": 432,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "We are too many",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Carl-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 239,
+      "y": 424.5,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -160,
+          0
+        ]
+      ],
+      "width": -160,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "I agree",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Bob-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      }
+    }
+  ],
+  "files": {}
+}

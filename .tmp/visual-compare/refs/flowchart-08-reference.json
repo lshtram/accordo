@@ -1,0 +1,21 @@
+{
+  "elements": [
+    {
+      "id": "id1",
+      "type": "diamond",
+      "groupIds": [],
+      "x": 8.5,
+      "y": 8,
+      "width": 290,
+      "height": 290,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "This is the text in the box",
+        "fontSize": 20
+      },
+      "link": null
+    }
+  ],
+  "files": {}
+}

@@ -77,12 +77,12 @@ chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown
   switch (message.type) {
     case "PAGE_UNDERSTANDING_ACTION": {
       const { action, payload } = message as { type: string; action: string; payload: Record<string, unknown> };
-      void (async () => {
+      void (async (): Promise<void> => {
         try {
           let data: unknown;
           if (action === "get_page_map") {
             const { collectPageMap } = await import("./page-map-collector.js");
-            data = await collectPageMap(payload as Parameters<typeof collectPageMap>[0]);
+            data = collectPageMap(payload as Parameters<typeof collectPageMap>[0]);
             // Save to CS-local store so diff_snapshots fallback can access snapshots
             // even after a service worker restart wipes the SW's in-memory store.
             const { defaultStore, isVersionedSnapshot } = await import("../relay-definitions.js");
@@ -120,12 +120,12 @@ chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown
     }
     case "CAPTURE_SNAPSHOT_ENVELOPE": {
       const { source } = (message as { type: string; source?: "dom" | "visual" });
-      void (async () => { try { const { captureSnapshotEnvelope } = await import("../snapshot-versioning.js"); _sendResponse(captureSnapshotEnvelope(source ?? "dom")); } catch { _sendResponse({ error: "envelope-failed" }); } })();
+      void (async (): Promise<void> => { try { const { captureSnapshotEnvelope } = await import("../snapshot-versioning.js"); _sendResponse(captureSnapshotEnvelope(source ?? "dom")); } catch { _sendResponse({ error: "envelope-failed" }); } })();
       return true;
     }
     case "RESOLVE_ANCHOR_BOUNDS": {
       const { anchorKey, nodeRef, padding = 8 } = (message as { anchorKey?: string; nodeRef?: string; padding?: number });
-      void (async () => {
+      void (async (): Promise<void> => {
         try {
           const { resolveAnchorKey } = await import("./enhanced-anchor.js");
           const { getElementByRef } = await import("./page-map-traversal.js");
@@ -148,7 +148,7 @@ chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown
       return true;
     }
     case "RESOLVE_ELEMENT_COORDS": {
-      void (async () => {
+      void (async (): Promise<void> => {
         const { uid, selector } = (message as { uid?: string; selector?: string });
         if (!uid && !selector) {
           _sendResponse({ error: "no-identifier" }); return;
@@ -183,7 +183,7 @@ chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown
     case "comments-mode-off": deactivateCommentsModeFromHandlers(); break;
     case "COMMENTS_UPDATED": void loadAndRenderPins(); break;
     case "show-comment-form-at-cursor": openSdkComposerAtAnchor(document.body, "body:0:center", window.innerWidth / 2, 60); break;
-    case "scroll-to-thread": { const { threadId } = (message.payload as { threadId: string }) ?? {}; if (threadId && getSdk()) getSdk()!.openPopover(threadId); break; }
+    case "scroll-to-thread": { const { threadId } = (message.payload as { threadId: string }) ?? {}; if (threadId) { const sdk = getSdk(); if (sdk) sdk.openPopover(threadId); } break; }
     default: break;
   }
   return false;

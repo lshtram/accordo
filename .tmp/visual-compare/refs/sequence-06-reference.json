@@ -1,0 +1,108 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "sequence-06.mmd",
+  "elements": [
+    {
+      "id": "Alice-top",
+      "type": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Alice",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Alice-bottom",
+      "type": "rectangle",
+      "x": 0,
+      "y": 179,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Alice",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": -100,
+      "y": 75,
+      "width": 150,
+      "height": 37,
+      "label": {
+        "text": "This is a note",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": "dashed",
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#EDF2AE",
+      "fillStyle": "solid"
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 100,
+      "y": 122,
+      "width": 171,
+      "height": 37,
+      "label": {
+        "text": "Hey I am coming soon!",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": "dashed",
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#EDF2AE",
+      "fillStyle": "solid"
+    },
+    {
+      "type": "line",
+      "x": 75,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          114
+        ]
+      ],
+      "width": 0,
+      "height": 114,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    }
+  ],
+  "files": {}
+}

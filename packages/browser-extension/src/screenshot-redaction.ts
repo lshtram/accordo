@@ -196,7 +196,7 @@ async function paintRedactionRectangles(
   const blob = await canvas.convertToBlob({ type: "image/png" });
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = (): void => {
       const result = reader.result;
       if (typeof result === "string") {
         resolve(result);

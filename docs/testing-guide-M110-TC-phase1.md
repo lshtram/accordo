@@ -5,7 +5,7 @@ You are a testing agent. Your job is to **live-verify** the Phase 1 MCP browser 
 ## Connection
 
 - **Hub URL:** `http://localhost:3007`
-- **Auth token:** `8be88de3-55ff-4d67-886d-8277b0fd5104`
+- **Auth token:** `<TOKEN>`
 - **Tool prefix:** `browser_` (e.g., `browser_health`, `browser_get_semantic_graph`, `browser_inspect_element`)
 
 Use the `accordo_browser_*` MCP tools (not curl). The MCP tools are available to you directly — just call them by name.

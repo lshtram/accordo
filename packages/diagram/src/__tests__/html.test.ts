@@ -19,6 +19,7 @@ const OPTS = {
   nonce: "abc123def456",
   cspSource: "vscode-webview://test-source",
   bundleUri: "vscode-resource://dist/webview/webview.bundle.js",
+  mermaidLibraryUri: "vscode-resource://dist/webview/excalidraw/accordo-mermaid-shapes.excalidrawlib",
 };
 
 // ── WH-01..WH-06 ─────────────────────────────────────────────────────────────
@@ -48,5 +49,11 @@ describe("getWebviewHtml", () => {
 
   it("WH-06: style-src contains 'unsafe-inline'", () => {
     expect(getWebviewHtml(OPTS)).toContain("'unsafe-inline'");
+  });
+
+  it("WH-07: exposes the Mermaid library URI as a startup global when provided", () => {
+    expect(getWebviewHtml(OPTS)).toContain(
+      `window.__accordoMermaidLibraryUri = "${OPTS.mermaidLibraryUri}";`,
+    );
   });
 });

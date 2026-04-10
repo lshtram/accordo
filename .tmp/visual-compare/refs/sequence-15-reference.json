@@ -1,0 +1,470 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "sequence-15.mmd",
+  "elements": [
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 54,
+      "y": 75,
+      "width": 380,
+      "height": 281,
+      "label": {
+        "text": "",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": null,
+      "backgroundColor": "rgb(191, 223, 255)",
+      "fillStyle": "solid"
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 64,
+      "y": 188,
+      "width": 360,
+      "height": 112,
+      "label": {
+        "text": "",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": null,
+      "backgroundColor": "rgb(200, 150, 255)",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Alice-top",
+      "type": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Alice",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Alice-bottom",
+      "type": "rectangle",
+      "x": 0,
+      "y": 468,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Alice",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "John-top",
+      "type": "rectangle",
+      "x": 329,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "John",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "John-bottom",
+      "type": "rectangle",
+      "x": 329,
+      "y": 468,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "John",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 100,
+      "y": 95,
+      "width": 150,
+      "height": 37,
+      "label": {
+        "text": "Alice calls John.",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": "dashed",
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#EDF2AE",
+      "fillStyle": "solid"
+    },
+    {
+      "type": "line",
+      "x": 75,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          403
+        ]
+      ],
+      "width": 0,
+      "height": 403,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "line",
+      "x": 404,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          403
+        ]
+      ],
+      "width": 0,
+      "height": 403,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "arrow",
+      "x": 76,
+      "y": 168,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          320,
+          0
+        ]
+      ],
+      "width": 320,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "Hello John, how are you?",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "John-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 76,
+      "y": 234,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          320,
+          0
+        ]
+      ],
+      "width": 320,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "John, can you hear me?",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "John-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 399,
+      "y": 280,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -320,
+          0
+        ]
+      ],
+      "width": -320,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "Hi Alice, I can hear you!",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "John-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 399,
+      "y": 336,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -320,
+          0
+        ]
+      ],
+      "width": -320,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "I feel great!",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "John-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 76,
+      "y": 392,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          320,
+          0
+        ]
+      ],
+      "width": 320,
+      "height": 0,
+      "strokeStyle": "solid",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "Did you want to go to the game tonight?",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "John-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 399,
+      "y": 438,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -320,
+          0
+        ]
+      ],
+      "width": -320,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "endArrowhead": "arrow",
+      "startArrowhead": null,
+      "label": {
+        "text": "Yeah! See you there.",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "John-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Alice-top"
+      }
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 399,
+      "y": 180,
+      "width": 10,
+      "height": 166,
+      "label": {
+        "text": "",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#e9ecef",
+      "fillStyle": "solid"
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 404,
+      "y": 246,
+      "width": 10,
+      "height": 44,
+      "label": {
+        "text": "",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#e9ecef",
+      "fillStyle": "solid"
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 399,
+      "y": 402,
+      "width": 10,
+      "height": 46,
+      "label": {
+        "text": "",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#e9ecef",
+      "fillStyle": "solid"
+    }
+  ],
+  "files": {}
+}

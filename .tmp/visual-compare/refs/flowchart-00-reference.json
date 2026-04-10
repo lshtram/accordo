@@ -1,0 +1,69 @@
+{
+  "elements": [
+    {
+      "id": "Start",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 8,
+      "y": 8,
+      "width": 102.25,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "Start",
+        "fontSize": 20
+      },
+      "link": null
+    },
+    {
+      "id": "Stop",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 8.546875,
+      "y": 118,
+      "width": 101.15625,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "Stop",
+        "fontSize": 20
+      },
+      "link": null
+    },
+    {
+      "id": "Start_Stop",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 59.125,
+      "y": 68,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          4.167000000000002
+        ],
+        [
+          0,
+          46
+        ]
+      ],
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "id": "Start"
+      },
+      "end": {
+        "id": "Stop"
+      }
+    }
+  ],
+  "files": {}
+}

@@ -1,0 +1,171 @@
+{
+  "elements": [
+    {
+      "id": "B",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 144.7109375,
+      "y": 8,
+      "width": 143.390625,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": " for peace",
+        "fontSize": 20
+      },
+      "link": null
+    },
+    {
+      "id": "C",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 8,
+      "y": 118,
+      "width": 143.40625,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": " forbidden",
+        "fontSize": 20
+      },
+      "link": null
+    },
+    {
+      "id": "D",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 201.40625,
+      "y": 133,
+      "width": 30,
+      "height": 30,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "",
+        "fontSize": 20
+      },
+      "link": null,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "id": "E",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 281.40625,
+      "y": 118,
+      "width": 131.203125,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "A perhaps?",
+        "fontSize": 20
+      },
+      "link": null,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "id": "B_C",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 144.711,
+      "y": 66.845,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -10.835000000000008,
+          4.358999999999995
+        ],
+        [
+          -65.00800000000001,
+          47.155
+        ]
+      ],
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "id": "B"
+      },
+      "end": {
+        "id": "C"
+      }
+    },
+    {
+      "id": "B_D",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 216.406,
+      "y": 68,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          4.167000000000002
+        ],
+        [
+          0,
+          61
+        ]
+      ],
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "id": "B"
+      },
+      "end": {
+        "id": "D"
+      }
+    },
+    {
+      "id": "B_E",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 287.643,
+      "y": 68,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          9.895000000000039,
+          4.167000000000002
+        ],
+        [
+          59.36500000000001,
+          46
+        ]
+      ],
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "id": "B"
+      },
+      "end": {
+        "id": "E"
+      }
+    }
+  ],
+  "files": {}
+}

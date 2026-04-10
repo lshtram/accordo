@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mermaid vs Excalidraw — Visual Comparison</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #141414;
+    color: #e8e8e8;
+    padding: 16px;
+  }
+
+  h1 {
+    font-size: 1.4rem;
+    margin-bottom: 4px;
+    color: #fff;
+  }
+
+  .subtitle {
+    font-size: 0.82rem;
+    color: #777;
+    margin-bottom: 20px;
+  }
+
+  .subtitle code {
+    background: #222;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: #aaa;
+  }
+
+  /* ── Filter bar ── */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .filter-bar label {
+    font-size: 0.82rem;
+    color: #888;
+  }
+
+  #search {
+    padding: 5px 10px;
+    border-radius: 4px;
+    border: 1px solid #444;
+    background: #222;
+    color: #eee;
+    font-size: 0.82rem;
+    width: 200px;
+  }
+
+  #search::placeholder { color: #555; }
+
+  .count-badge {
+    font-size: 0.78rem;
+    color: #888;
+    margin-left: auto;
+  }
+
+  /* ── Grid ── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(760px, 1fr));
+    gap: 18px;
+  }
+
+  /* ── Case card ── */
+  .case {
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .case-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border-bottom: 1px solid #2c2c2c;
+    background: #1a1a1a;
+  }
+
+  .case-num {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #bbb;
+    min-width: 60px;
+  }
+
+  .mmd-preview {
+    font-family: "SF Mono", "Fira Code", Consolas, monospace;
+    font-size: 0.7rem;
+    color: #666;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mmd-full-btn {
+    font-size: 0.7rem;
+    color: #555;
+    cursor: pointer;
+    border: 1px solid #333;
+    background: none;
+    padding: 2px 7px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  .mmd-full-btn:hover { color: #999; border-color: #555; }
+
+  .mmd-full {
+    display: none;
+    padding: 8px 14px;
+    font-family: "SF Mono", "Fira Code", Consolas, monospace;
+    font-size: 0.72rem;
+    color: #888;
+    background: #111;
+    border-bottom: 1px solid #2c2c2c;
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.5;
+  }
+
+  /* ── Side-by-side images ── */
+  .imgs {
+    display: flex;
+  }
+
+  .img-panel {
+    flex: 1;
+    padding: 10px;
+    border-right: 1px solid #2c2c2c;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .img-panel:last-child { border-right: none; }
+
+  .img-label {
+    font-size: 0.68rem;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+    align-self: flex-start;
+  }
+
+  .img-wrap {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 80px;
+    background: #fff;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #3a3a3a;
+  }
+
+  .img-wrap img,
+  .img-wrap object {
+    max-width: 100%;
+    max-height: 340px;
+    object-fit: contain;
+    display: block;
+  }
+
+  .missing-msg {
+    color: #555;
+    font-size: 0.78rem;
+    padding: 20px;
+    text-align: center;
+    background: transparent;
+  }
+</style>
+</head>
+<body>
+
+<h1>Mermaid vs Excalidraw — Visual Comparison</h1>
+<div class="subtitle">
+  <strong>Left:</strong> Mermaid CLI → <code>svgs/flowchart-XX.svg</code>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <strong>Right:</strong> Excalidraw export → <code>png-out/flowchart-XX.png</code>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <strong>Source:</strong> <code>demo/flowchart-v2/flowchart-XX.mmd</code>
+</div>
+
+<div class="filter-bar">
+  <label for="search">Filter:</label>
+  <input id="search" type="text" placeholder="case number or mmd text…" oninput="applyFilter()">
+  <span class="count-badge" id="count-badge"></span>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<script>
+// ── Source MMD text for each case ──────────────────────────────────────────
+// One entry per flowchart-XX.mmd (cases 00–50)
+const MMD = {
+  "00": "flowchart TD\nStart --> Stop",
+  "01": "flowchart LR\nStart --> Stop",
+  "02": "flowchart LR\nid1(This is the text in the box)",
+  "03": "flowchart LR\nid1([This is the text in the box])",
+  "04": "flowchart LR\nid1[[This is the text in the box]]",
+  "05": "flowchart LR\nid1[(Database)]",
+  "06": "flowchart LR\nid1((This is the text in the circle))",
+  "07": "flowchart LR\nid1>This is the text in the box]",
+  "08": "flowchart LR\nid1{This is the text in the box}",
+  "09": "flowchart LR\nid1{{This is the text in the box}}",
+  "10": "flowchart TD\nid1[/This is the text in the box/]",
+  "11": "flowchart TD\nid1[\\This is the text in the box\\]",
+  "12": "flowchart TD\nA[/Christmas\\]",
+  "13": "flowchart TD\nB[\\Go shopping/]",
+  "14": "flowchart TD\nid1(((This is the text in the circle)))",
+  "15": "flowchart LR\nA-->B",
+  "16": "flowchart LR\nA-->|text|B",
+  "17": "flowchart LR\nA-- text -->B",
+  "18": "flowchart LR\nA-.->B;",
+  "19": "flowchart LR\nA-. text .-> B",
+  "20": "flowchart LR\nA --- B",
+  "21": "flowchart LR\nA-- This is the text! ---B",
+  "22": "flowchart LR\nA---|This is the text|B",
+  "23": "flowchart LR\nA ==> B",
+  "24": "flowchart LR\nA == text ==> B",
+  "25": "flowchart LR\nA -- text --> B -- text2 --> C",
+  "26": "flowchart LR\na --> b & c--> d",
+  "27": "flowchart TB\nA & B--> C & D",
+  "28": "flowchart TB\nA --> C\nA --> D\nB --> C\nB --> D",
+  "29": "flowchart LR\nA --o B\nB --x C",
+  "30": "flowchart LR\nA o--o B\nB <--> C\nC x--x D",
+  "31": "flowchart LR\nid1[\"This is the (text) in the box\"]",
+  "32": "flowchart LR\nA[\"A double quote:#quot;\"] -->B[\"A dec char:#9829;\"]",
+  "33": "flowchart TB\nc1-->a2\nsubgraph one\n  a1-->a2\nend\nsubgraph two\n  b1-->b2\nend\nsubgraph three\n  c1-->c2\nend",
+  "34": "flowchart TB\nc1-->a2\nsubgraph ide1 [one]\n  a1-->a2\nend\nsubgraph ide2 [two]\n  b1-->b2\nend\nsubgraph ide3 [three]\n  c1-->c2\nend",
+  "35": "flowchart TB\nc1-->a2\nsubgraph one\n  direction TB\n  a1-->a2\nend\nsubgraph two\n  direction TB\n  b1-->b2\nend\nsubgraph three\n  direction TB\n  c1-->c2\nend",
+  "36": "flowchart LR\nsubgraph TOP\n  direction TB\n  subgraph B1\n    direction RL\n    i1 -->f1\n  end\n  subgraph B2\n    direction BT\n    i2 -->f2\n  end\nend\nA --> TOP --> B",
+  "37": "flowchart LR\nsubgraph \"One\"\n  a(\"`The **cat**\nin the hat`\")\nend",
+  "38": "flowchart LR\nA-->B\nB-->C\nC-->D\nD-->E\nclick A \"http://www.github.com\" _blank",
+  "39": "flowchart LR\nA-->B\nB-->C\nC-->D\nD-->E\nclick A callback",
+  "40": "flowchart LR\n%% this is a comment A -- text --> B{node}\nA -- text --> B -- text2 --> C",
+  "41": "flowchart LR\nid1(Start)-->id2(Stop)\nstyle id1 fill:#f9f,stroke:#333,stroke-width:4px\nstyle id2 fill:#bbf,stroke:#f66,stroke-width:2px,color:#fff,stroke-dasharray: 5 5",
+  "42": "flowchart LR\n    A:::foo & B:::bar --> C:::foobar\n    classDef foo stroke:#1971c2, fill:#4dabf7\n    classDef bar stroke:#e03131, fill:#ff8787\n    classDef foobar stroke:#2f9e44, fill:#8ce99a",
+  "43": "graph TD\n    %% Node styles work fine\n    classDef criticalNode fill:#ff5252,stroke:#b71c1c,color:#fff\n    classDef regularNode fill:#1976D2,stroke:#0D47A1,color:#fff\n    A[Task A]:::criticalNode --> B[Task B]:::regularNode\n    B --> C[Task C]:::criticalNode",
+  "44": "flowchart LR\nA-->B[AAABBB]\nB-->D\nC-->D",
+  "45": "flowchart TD\nB[\"fab:fa-twitter for peace\"]\nB-->C[fa:fa-ban forbidden]\nC-->D(fa:fa-spinner);\nD-->E(A fa:fa-camera-retro perhaps?);",
+  "46": "flowchart LR\nA[Hard edge] -->|Link text| B(Round edge)\nB --> C{Decision}\nC -->|One| D[Result one]\nC -->|Two| E[Result two]",
+  "47": "flowchart TD\n  A[Start] --> B{Decision 1}\n  B -->|Yes| C[Action 1]\n  B -->|No| D[Action 2]\n  C --> E[End]\n  D --> E",
+  "48": "flowchart TD\n\n  A[Start] --> B[Initialize]\n  B --> C{Check condition}\n  C -->|True| D[Process data]\n  C -->|False| E[Handle error]\n  D --> F[Save result]\n  E --> F\n  F --> G[End]",
+  "49": "flowchart LR\n    style Entity1 fill: gold, stroke:#333, stroke-width:4px\n\n    Entity1 --> Entity2\n    Entity1 --> Entity3",
+  "50": "flowchart TB\n    subgraph conference\n        frontend\n        backend\n    end\n    frontend -->|http| backend",
+};
+
+// Build all cases from keys
+const cases = Object.keys(MMD).map(n => ({ n, mmd: MMD[n] }));
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+
+function renderCase(c) {
+  const svgSrc  = 'svgs/flowchart-' + c.n + '.svg';
+  const pngSrc  = 'png-out/flowchart-' + c.n + '.png';
+  const mmdLine = (c.mmd || '').replace(/\n/g, '  ');
+  const id      = 'case-' + c.n;
+
+  return `
+<div class="case" data-n="${c.n}" data-mmd="${escHtml(mmdLine)}">
+  <div class="case-header">
+    <span class="case-num">Case ${c.n}</span>
+    <span class="mmd-preview" title="${escHtml(mmdLine)}">${escHtml(mmdLine)}</span>
+    <button class="mmd-full-btn" onclick="toggleMmd('${id}')">source ▾</button>
+  </div>
+  <div class="mmd-full" id="${id}">${escHtml(c.mmd || '')}</div>
+  <div class="imgs">
+    <div class="img-panel">
+      <div class="img-label">Mermaid SVG</div>
+      <div class="img-wrap" id="svg-wrap-${c.n}">
+        <img src="${svgSrc}" alt="Mermaid ${c.n}"
+             onerror="markMissing('svg-wrap-${c.n}', 'SVG missing')">
+      </div>
+    </div>
+    <div class="img-panel">
+      <div class="img-label">Excalidraw PNG</div>
+      <div class="img-wrap" id="png-wrap-${c.n}">
+        <img src="${pngSrc}" alt="Excalidraw ${c.n}"
+             onerror="markMissing('png-wrap-${c.n}', 'PNG missing')">
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function markMissing(wrapperId, msg) {
+  const el = document.getElementById(wrapperId);
+  if (el) {
+    el.style.background = '#1a1a1a';
+    el.innerHTML = '<span class="missing-msg">' + msg + '</span>';
+  }
+}
+
+function toggleMmd(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const btn = el.previousElementSibling.querySelector('.mmd-full-btn');
+  if (el.style.display === 'block') {
+    el.style.display = 'none';
+    if (btn) btn.textContent = 'source ▾';
+  } else {
+    el.style.display = 'block';
+    if (btn) btn.textContent = 'source ▴';
+  }
+}
+
+// ── Filter ─────────────────────────────────────────────────────────────────
+
+function applyFilter() {
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const grid = document.getElementById('grid');
+  const cards = grid.querySelectorAll('.case');
+  let visible = 0;
+  cards.forEach(card => {
+    const n   = card.dataset.n;
+    const mmd = card.dataset.mmd.toLowerCase();
+    const show = !q || n.includes(q) || mmd.includes(q);
+    card.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('count-badge').textContent =
+    visible + ' of ' + cases.length + ' cases shown';
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+
+(function init() {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = cases.map(renderCase).join('');
+  document.getElementById('count-badge').textContent = cases.length + ' cases';
+})();
+</script>
+</body>
+</html>

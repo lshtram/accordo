@@ -1,0 +1,518 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "sequence-13.mmd",
+  "elements": [
+    {
+      "id": "Consumer-top",
+      "type": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Consumer",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Consumer-bottom",
+      "type": "rectangle",
+      "x": 0,
+      "y": 338,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Consumer",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "API-top",
+      "type": "rectangle",
+      "x": 200,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "API",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "API-bottom",
+      "type": "rectangle",
+      "x": 200,
+      "y": 338,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "API",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "BookingService-top",
+      "type": "rectangle",
+      "x": 409,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "BookingService",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "BookingService-bottom",
+      "type": "rectangle",
+      "x": 409,
+      "y": 338,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "BookingService",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "BillingService-top",
+      "type": "rectangle",
+      "x": 609,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "BillingService",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "BillingService-bottom",
+      "type": "rectangle",
+      "x": 609,
+      "y": 338,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "BillingService",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "type": "line",
+      "x": 75,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          273
+        ]
+      ],
+      "width": 0,
+      "height": 273,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "line",
+      "x": 275,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          273
+        ]
+      ],
+      "width": 0,
+      "height": 273,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "line",
+      "x": 484,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          273
+        ]
+      ],
+      "width": 0,
+      "height": 273,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "line",
+      "x": 684,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          273
+        ]
+      ],
+      "width": 0,
+      "height": 273,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "arrow",
+      "x": 76,
+      "y": 101,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          198,
+          0
+        ]
+      ],
+      "width": 198,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "endArrowhead": null,
+      "startArrowhead": null,
+      "label": {
+        "text": "Book something",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Consumer-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "API-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 276,
+      "y": 147,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          207,
+          0
+        ]
+      ],
+      "width": 207,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "endArrowhead": null,
+      "startArrowhead": null,
+      "label": {
+        "text": "Start booking process",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "API-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "BookingService-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 274,
+      "y": 252,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -198,
+          0
+        ]
+      ],
+      "width": -198,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "endArrowhead": null,
+      "startArrowhead": null,
+      "label": {
+        "text": "show failure",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "API-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Consumer-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 276,
+      "y": 308,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          407,
+          0
+        ]
+      ],
+      "width": 407,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "endArrowhead": null,
+      "startArrowhead": null,
+      "label": {
+        "text": "Start billing process",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "API-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "BillingService-top"
+      }
+    },
+    {
+      "type": "line",
+      "x": 64,
+      "y": 167,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          222,
+          0
+        ]
+      ],
+      "width": 222,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 286,
+      "y": 167,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          105
+        ]
+      ],
+      "width": 0,
+      "height": 105,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 64,
+      "y": 272,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          222,
+          0
+        ]
+      ],
+      "width": 222,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 64,
+      "y": 167,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          105
+        ]
+      ],
+      "width": 0,
+      "height": 105,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "text",
+      "x": 135.16504669189453,
+      "y": 185,
+      "width": 129.66990661621094,
+      "height": 17.181934356689453,
+      "text": "[when the booking",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": null
+    },
+    {
+      "type": "text",
+      "x": 152.74804306030273,
+      "y": 202,
+      "width": 94.50391387939453,
+      "height": 17.181934356689453,
+      "text": "process fails]",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": null
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": 64,
+      "y": 167,
+      "width": null,
+      "height": 20,
+      "label": {
+        "text": "break",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#adb5bd",
+      "backgroundColor": "#e9ecef",
+      "fillStyle": "solid"
+    }
+  ],
+  "files": {}
+}

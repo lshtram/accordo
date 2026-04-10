@@ -7,6 +7,7 @@
  */
 
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
+import { getErrorMeta } from "./relay-definitions.js";
 
 // ── Multi-Tab Handlers ───────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ export async function handleSelectPage(
 ): Promise<RelayActionResponse> {
   const selectTabId = request.payload.tabId;
   if (typeof selectTabId !== "number" || !Number.isInteger(selectTabId)) {
-    return { requestId: request.requestId, success: false, error: "invalid-request" };
+    return { requestId: request.requestId, success: false, error: "invalid-request", ...getErrorMeta("invalid-request") };
   }
   await chrome.tabs.update(selectTabId, { active: true });
   return { requestId: request.requestId, success: true };

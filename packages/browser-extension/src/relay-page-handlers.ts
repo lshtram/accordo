@@ -14,12 +14,21 @@ import type { RelayActionRequest, RelayActionResponse } from "./relay-definition
 import { defaultStore, isVersionedSnapshot, actionFailed } from "./relay-definitions.js";
 import {
   resolveTargetTabId,
+  resolveRequestedUrl,
   forwardToContentScript,
   forwardToFrame,
   NO_CONTENT_SCRIPT,
 } from "./relay-forwarder.js";
 import { normalizeUrl } from "./store.js";
 import { hasErrorField, hasDataField, readBoundsLiteral } from "./relay-type-guards.js";
+import {
+  isOriginBlockedByPolicy,
+  mintAuditId,
+  applyRedaction,
+  attachRedactionWarning,
+  enrichWithAuditLog,
+  parseOriginPolicy,
+} from "./relay-privacy.js";
 
 // ── Shared forwarding helper ─────────────────────────────────────────────────
 
@@ -40,7 +49,35 @@ async function handlePageUnderstandingAction(
   localHandler: (() => Promise<unknown>) | null,
   saveToStore: boolean,
 ): Promise<RelayActionResponse> {
+  // ── Content-script / DOM context ─────────────────────────────────────────────
   if (typeof document !== "undefined" && localHandler) {
+    // MCP-SEC-001: Check origin before any DOM access in content script context.
+    const { allowedOrigins, deniedOrigins } = parseOriginPolicy(request.payload);
+    if (allowedOrigins !== undefined || deniedOrigins !== undefined) {
+      const origin = window.location.origin;
+      if (isOriginBlockedByPolicy(origin, allowedOrigins, deniedOrigins)) {
+        const auditId = mintAuditId();
+        const blockedResp = {
+          requestId: request.requestId,
+          success: false as const,
+          error: "origin-blocked" as const,
+          retryable: false as const,
+          auditId,
+        };
+        enrichWithAuditLog({
+          auditId,
+          toolName: request.action,
+          pageId: "",
+          origin,
+          action: "blocked",
+          redacted: false,
+          durationMs: 0,
+          response: blockedResp,
+        });
+        return blockedResp;
+      }
+    }
+
     const result = await localHandler();
     // Save to defaultStore in the content-script context.
     // In jsdom tests (single module scope): this is the same SnapshotStore that
@@ -51,13 +88,63 @@ async function handlePageUnderstandingAction(
     if (saveToStore && isVersionedSnapshot(result)) {
       await defaultStore.save(result.pageId, result);
     }
-    return { requestId: request.requestId, success: true, data: result };
+
+    // MCP-SEC-004/005: Attach auditId and redactionWarning
+    const auditId = mintAuditId();
+    const redactPII = request.payload.redactPII === true;
+    const response: RelayActionResponse = { requestId: request.requestId, success: true, data: result, auditId };
+    attachRedactionWarning(response, redactPII);
+
+    enrichWithAuditLog({
+      auditId,
+      toolName: request.action,
+      pageId: typeof result === "object" && result !== null ? (result as { pageId?: string }).pageId ?? "" : "",
+      origin: window.location.origin,
+      action: "allowed",
+      redacted: false,
+      durationMs: 0,
+      response: response as unknown as Record<string, unknown>,
+    });
+
+    return response;
   }
 
-  // Service worker context
+  // ── Service worker context ───────────────────────────────────────────────────
   const tabId = await resolveTargetTabId(request.payload);
   if (!tabId) {
     return actionFailed(request);
+  }
+
+  // MCP-SEC-001: Check origin before forwarding in SW context.
+  const { allowedOrigins, deniedOrigins } = parseOriginPolicy(request.payload);
+  if (allowedOrigins !== undefined || deniedOrigins !== undefined) {
+    // Resolve page origin from the target tab URL
+    const pageUrl = await resolveRequestedUrl(request.payload);
+    let origin = "unknown";
+    if (pageUrl) {
+      try { origin = new URL(pageUrl).origin; } catch { /* ignore */ }
+    }
+    if (isOriginBlockedByPolicy(origin, allowedOrigins, deniedOrigins)) {
+      const auditId = mintAuditId();
+      const blockedResp: RelayActionResponse = {
+        requestId: request.requestId,
+        success: false,
+        error: "origin-blocked",
+        retryable: false,
+        auditId,
+      };
+      enrichWithAuditLog({
+        auditId,
+        toolName: request.action,
+        pageId: `tab-${tabId}`,
+        origin,
+        action: "blocked",
+        redacted: false,
+        durationMs: 0,
+        response: blockedResp as unknown as Record<string, unknown>,
+      });
+      return blockedResp;
+    }
   }
 
   // F12: If frameId is provided, resolve the iframe and forward to it
@@ -66,6 +153,7 @@ async function handlePageUnderstandingAction(
     return handleFrameIdRequest(request, tabId, frameId, saveToStore);
   }
 
+  const startMs = Date.now();
   const data = await forwardToContentScript(tabId, request.action, request.payload);
   if (data === NO_CONTENT_SCRIPT) {
     return actionFailed(request, "no-content-script");
@@ -77,7 +165,60 @@ async function handlePageUnderstandingAction(
   if (saveToStore && isVersionedSnapshot(data)) {
     await defaultStore.save((data as { pageId: string }).pageId, data as Parameters<typeof defaultStore.save>[1]);
   }
-  return { requestId: request.requestId, success: true, data };
+
+  // MCP-SEC-002: Apply PII redaction if requested
+  const auditId = mintAuditId();
+  const redactPII = request.payload.redactPII === true;
+  let finalData: unknown = data;
+  let redactionApplied = false;
+
+  if (redactPII) {
+    try {
+      const result = applyRedaction(data);
+      finalData = result.data;
+      redactionApplied = result.redactionApplied;
+      if (finalData !== null && typeof finalData === "object") {
+        (finalData as Record<string, unknown>).redactionApplied = redactionApplied;
+      }
+    } catch {
+      // MCP-SEC-003: Fail-closed — do not return unredacted content
+      const failResp: RelayActionResponse = {
+        requestId: request.requestId,
+        success: false,
+        error: "redaction-failed",
+        retryable: false,
+        auditId,
+      };
+      return failResp;
+    }
+  }
+
+  const response: RelayActionResponse = {
+    requestId: request.requestId,
+    success: true,
+    data: finalData,
+    auditId,
+  };
+  attachRedactionWarning(response, redactPII);
+
+  // Resolve origin for audit log
+  const pageUrl = await resolveRequestedUrl(request.payload);
+  let origin = "unknown";
+  if (pageUrl) {
+    try { origin = new URL(pageUrl).origin; } catch { /* ignore */ }
+  }
+  enrichWithAuditLog({
+    auditId,
+    toolName: request.action,
+    pageId: typeof data === "object" && data !== null ? (data as { pageId?: string }).pageId ?? "" : "",
+    origin,
+    action: "allowed",
+    redacted: redactionApplied,
+    durationMs: Date.now() - startMs,
+    response: response as unknown as Record<string, unknown>,
+  });
+
+  return response;
 }
 
 /**
@@ -243,10 +384,37 @@ export async function handleGetPageMap(
 ): Promise<RelayActionResponse> {
   // Content-script context: delegate to collectPageMap directly
   if (typeof document !== "undefined") {
+    // MCP-SEC-001: Check origin before DOM access
+    const { allowedOrigins, deniedOrigins } = parseOriginPolicy(request.payload);
+    if (allowedOrigins !== undefined || deniedOrigins !== undefined) {
+      const origin = window.location.origin;
+      if (isOriginBlockedByPolicy(origin, allowedOrigins, deniedOrigins)) {
+        const auditId = mintAuditId();
+        const blockedResp: RelayActionResponse = {
+          requestId: request.requestId,
+          success: false,
+          error: "origin-blocked",
+          retryable: false,
+          auditId,
+        };
+        enrichWithAuditLog({
+          auditId,
+          toolName: request.action,
+          pageId: "",
+          origin,
+          action: "blocked",
+          redacted: false,
+          durationMs: 0,
+          response: blockedResp,
+        });
+        return blockedResp;
+      }
+    }
+
     const { collectPageMap } = await import("./content/page-map-collector.js");
     const p = request.payload;
     const regionFilter = readBoundsLiteral(p.regionFilter);
-    const result = await collectPageMap({
+    const result = collectPageMap({
       maxDepth: typeof p.maxDepth === "number" ? p.maxDepth : undefined,
       maxNodes: typeof p.maxNodes === "number" ? p.maxNodes : undefined,
       includeBounds: typeof p.includeBounds === "boolean" ? p.includeBounds : undefined,
@@ -265,13 +433,61 @@ export async function handleGetPageMap(
     if (isVersionedSnapshot(result)) {
       await defaultStore.save(result.pageId, result);
     }
-    return { requestId: request.requestId, success: true, data: result };
+
+    // MCP-SEC-004/005: Attach auditId and redactionWarning
+    const auditId = mintAuditId();
+    const redactPII = request.payload.redactPII === true;
+    const response: RelayActionResponse = { requestId: request.requestId, success: true, data: result, auditId };
+    attachRedactionWarning(response, redactPII);
+    enrichWithAuditLog({
+      auditId,
+      toolName: request.action,
+      pageId: result.pageId ?? "",
+      origin: window.location.origin,
+      action: "allowed",
+      redacted: false,
+      durationMs: 0,
+      response: response as unknown as Record<string, unknown>,
+    });
+    return response;
   }
 
   // Service-worker context — forward to main frame content script first
   const tabId = await resolveTargetTabId(request.payload);
   if (!tabId) {
     return actionFailed(request);
+  }
+
+  // MCP-SEC-001: Check origin before forwarding
+  const { allowedOrigins, deniedOrigins } = parseOriginPolicy(request.payload);
+  const startMs = Date.now();
+  if (allowedOrigins !== undefined || deniedOrigins !== undefined) {
+    const pageUrl = await resolveRequestedUrl(request.payload);
+    let origin = "unknown";
+    if (pageUrl) {
+      try { origin = new URL(pageUrl).origin; } catch { /* ignore */ }
+    }
+    if (isOriginBlockedByPolicy(origin, allowedOrigins, deniedOrigins)) {
+      const auditId = mintAuditId();
+      const blockedResp: RelayActionResponse = {
+        requestId: request.requestId,
+        success: false,
+        error: "origin-blocked",
+        retryable: false,
+        auditId,
+      };
+      enrichWithAuditLog({
+        auditId,
+        toolName: request.action,
+        pageId: `tab-${tabId}`,
+        origin,
+        action: "blocked",
+        redacted: false,
+        durationMs: Date.now() - startMs,
+        response: blockedResp as unknown as Record<string, unknown>,
+      });
+      return blockedResp;
+    }
   }
 
   const traverseFrames = request.payload.traverseFrames === true;
@@ -362,7 +578,58 @@ export async function handleGetPageMap(
   if (isVersionedSnapshot(result)) {
     await defaultStore.save((result as { pageId: string }).pageId, result as Parameters<typeof defaultStore.save>[1]);
   }
-  return { requestId: request.requestId, success: true, data: result };
+
+  // MCP-SEC-002: Apply PII redaction if requested
+  const auditId = mintAuditId();
+  const redactPII = request.payload.redactPII === true;
+  let finalData: unknown = result;
+  let redactionApplied = false;
+
+  if (redactPII) {
+    try {
+      const redactionResult = applyRedaction(result);
+      finalData = redactionResult.data;
+      redactionApplied = redactionResult.redactionApplied;
+      if (finalData !== null && typeof finalData === "object") {
+        (finalData as Record<string, unknown>).redactionApplied = redactionApplied;
+      }
+    } catch {
+      // MCP-SEC-003: Fail-closed
+      return {
+        requestId: request.requestId,
+        success: false,
+        error: "redaction-failed",
+        retryable: false,
+        auditId,
+      };
+    }
+  }
+
+  const response: RelayActionResponse = {
+    requestId: request.requestId,
+    success: true,
+    data: finalData,
+    auditId,
+  };
+  attachRedactionWarning(response, redactPII);
+
+  const pageUrl = await resolveRequestedUrl(request.payload);
+  let origin = "unknown";
+  if (pageUrl) {
+    try { origin = new URL(pageUrl).origin; } catch { /* ignore */ }
+  }
+  enrichWithAuditLog({
+    auditId,
+    toolName: request.action,
+    pageId: (result as { pageId?: string }).pageId ?? "",
+    origin,
+    action: "allowed",
+    redacted: redactionApplied,
+    durationMs: Date.now() - startMs,
+    response: response as unknown as Record<string, unknown>,
+  });
+
+  return response;
 }
 
 export async function handleInspectElement(

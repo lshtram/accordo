@@ -11,9 +11,18 @@
  *   §5  Layout store schema
  *   §6  Parser adapter types
  *   §7  Reconciler result
+ *
+ * API checklist:
+ *   types.ts schema source inspection — 4 tests
+ *   DiagramType / SpatialDiagramType / identity aliases — 4 tests
+ *   LayoutStore / NodeLayout / EdgeLayout / AestheticsConfig / NodeSizing — 9 tests
+ *   ParsedDiagram / ParsedNode / ParsedEdge / ParsedCluster / ParseResult — 10 tests
+ *   ReconcileResult — 3 tests
+ *   ExcalidrawElement / CanvasScene / style interfaces — 5 tests
  */
 
-import { describe, it, expectTypeOf } from "vitest";
+import { readFile } from "node:fs/promises";
+import { beforeAll, describe, expect, it, expectTypeOf } from "vitest";
 import type {
   DiagramType,
   SpatialDiagramType,
@@ -41,6 +50,31 @@ import type {
   ExcalidrawElement,
   CanvasScene,
 } from "../types.js";
+
+let typesSource = "";
+
+beforeAll(async () => {
+  typesSource = await readFile(new URL("../types.ts", import.meta.url), "utf-8");
+});
+
+describe("types.ts schema source", () => {
+  it("REQ-R1: ParsedDiagram.direction is declared optional for spatial diagrams that omit direction", () => {
+    expect(typesSource).toMatch(/direction\?:\s*"TD"\s*\|\s*"LR"\s*\|\s*"RL"\s*\|\s*"BT"/);
+  });
+
+  it("REQ-R2: NodeShape explicitly includes stateStart and stateEnd", () => {
+    expect(typesSource).toMatch(/export type NodeShape =[\s\S]*?\|\s*"stateStart"/);
+    expect(typesSource).toMatch(/export type NodeShape =[\s\S]*?\|\s*"stateEnd"/);
+  });
+
+  it("REQ-R3: ExcalidrawElement.type explicitly includes line and freedraw", () => {
+    expect(typesSource).toMatch(/type:\s*"rectangle"\s*\|\s*"diamond"\s*\|\s*"ellipse"\s*\|\s*"arrow"\s*\|\s*"text"\s*\|\s*"line"\s*\|\s*"freedraw"/);
+  });
+
+  it("REQ-R4: LayoutStore declares optional metadata alongside version 1.0 fields", () => {
+    expect(typesSource).toMatch(/export interface LayoutStore[\s\S]*?metadata\?:/);
+  });
+});
 
 // ── §4 Identity ───────────────────────────────────────────────────────────────
 
@@ -279,7 +313,13 @@ describe("ExcalidrawElement", () => {
     expectTypeOf<ExcalidrawElement["id"]>().toEqualTypeOf<string>();
     expectTypeOf<ExcalidrawElement["mermaidId"]>().toEqualTypeOf<string>();
     expectTypeOf<ExcalidrawElement["type"]>().toEqualTypeOf<
-      "rectangle" | "diamond" | "ellipse" | "arrow" | "text"
+      | "rectangle"
+      | "diamond"
+      | "ellipse"
+      | "arrow"
+      | "text"
+      | "line"
+      | "freedraw"
     >();
     expectTypeOf<ExcalidrawElement["x"]>().toEqualTypeOf<number>();
     expectTypeOf<ExcalidrawElement["y"]>().toEqualTypeOf<number>();

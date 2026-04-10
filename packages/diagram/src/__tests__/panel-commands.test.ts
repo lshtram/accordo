@@ -84,4 +84,10 @@ describe("setupWebview", () => {
 
     expect(mockWatcher.onDidChange).toHaveBeenCalled();
   });
+
+  it("PC-07: includes the Mermaid library asset URI in the generated webview HTML", () => {
+    setupWebview(vscPanel as never, ctx as never, mmdPath, state);
+
+    expect(vscPanel.webview.html).toContain("accordo-mermaid-shapes.excalidrawlib");
+  });
 });

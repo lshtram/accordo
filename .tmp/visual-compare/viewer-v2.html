@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Flowchart v2 — Mermaid SVG vs Our Excalidraw</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #1a1a1a; color: #eee; padding: 16px; }
+  h1 { font-size: 1.3rem; margin-bottom: 8px; }
+  .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 16px; }
+  .legend { display: flex; gap: 16px; margin-bottom: 20px; font-size: 0.85rem; }
+  .legend span { padding: 3px 10px; border-radius: 4px; font-weight: bold; }
+  .pass-tag { background: #1a6b2a; color: #7ee89a; }
+  .fail-tag { background: #6b1a1a; color: #f08080; }
+  .summary { margin-bottom: 24px; font-size: 0.9rem; color: #aaa; }
+  .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; }
+  .filter-bar button { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: bold; }
+  #btn-all  { background: #444; color: #eee; }
+  #btn-pass { background: #1a6b2a; color: #7ee89a; }
+  #btn-fail { background: #6b1a1a; color: #f08080; }
+  .filter-bar button:hover { opacity: 0.8; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(720px, 1fr)); gap: 20px; }
+  .case { background: #2a2a2a; border-radius: 8px; overflow: hidden; border: 2px solid #444; }
+  .case.pass { border-color: #2a7a3a; }
+  .case.fail { border-color: #7a2a2a; }
+  .case-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #333;
+    flex-wrap: wrap;
+  }
+  .case-num { font-size: 1rem; font-weight: bold; color: #ddd; }
+  .verdict { padding: 2px 10px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+  .verdict.pass { background: #1a6b2a; color: #7ee89a; }
+  .verdict.fail { background: #6b1a1a; color: #f08080; }
+  .reason { font-size: 0.75rem; color: #aaa; flex: 1; }
+  .mmd-src { font-size: 0.7rem; color: #666; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+  .imgs { display: flex; gap: 0; }
+  .img-panel { flex: 1; text-align: center; padding: 8px; border-right: 1px solid #333; }
+  .img-panel:last-child { border-right: none; }
+  .img-label { font-size: 0.72rem; color: #888; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .img-panel img { max-width: 100%; max-height: 320px; object-fit: contain; border: 1px solid #555; border-radius: 4px; background: #fff; }
+  .missing { color: #666; font-size: 0.8rem; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>Flowchart v2 — Mermaid SVG vs Our Excalidraw</h1>
+<div class="subtitle">
+  <strong>Source:</strong> demo/flowchart-v2/flowchart-XX.mmd &nbsp;&nbsp;|&nbsp;&nbsp;
+  <strong>Left:</strong> Mermaid CLI → SVG &nbsp;&nbsp;|&nbsp;&nbsp;
+  <strong>Right:</strong> Our library (Excalidraw JSON) → PNG
+</div>
+<div class="summary">
+  Independent reviewer verdict: <strong style="color:#7ee89a">9 PASS</strong> · <strong style="color:#f08080">42 FAIL</strong>
+</div>
+<div class="legend">
+  <span class="pass-tag">PASS</span> Diagrams convey the same structure
+  <span class="fail-tag">FAIL</span> Structural or visual mismatch
+</div>
+<div class="filter-bar">
+  <button id="btn-all"  onclick="filter('all')">All 51</button>
+  <button id="btn-pass" onclick="filter('pass')">PASS only (9)</button>
+  <button id="btn-fail" onclick="filter('fail')">FAIL only (42)</button>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<script>
+const cases = [{"n": "00", "pass": false, "reason": "strokeWidth=1 (ref=2), font size, text as separate elements"}, {"n": "01", "pass": false, "reason": "strokeWidth=1, rounded rect type 2 vs 3, edge label fontSize"}, {"n": "02", "pass": false, "reason": "strokeWidth=1, rounded rect type 2 vs 3, text layout"}, {"n": "03", "pass": false, "reason": "strokeWidth=1, font size mismatch, text as separate elements"}, {"n": "04", "pass": false, "reason": "Wrong shape: [[subroutine]] renders as extra lines; ref=single rect"}, {"n": "05", "pass": false, "reason": "Wrong shape: [(Database)] cylinder \u2192 OUR=ellipse, REF=rectangle"}, {"n": "06", "pass": false, "reason": "strokeWidth=1, rounded rect type 2 vs 3"}, {"n": "07", "pass": false, "reason": "strokeWidth=1, font size, text layout mismatch"}, {"n": "08", "pass": false, "reason": "strokeWidth=1, rounded rect, font size mismatch"}, {"n": "09", "pass": false, "reason": "Wrong shape: {{hexagon}} \u2192 OUR=diamond, REF=hexagon-like"}, {"n": "10", "pass": false, "reason": "Wrong shape: parallelogram \u2192 OUR=line (invisible), REF=rect"}, {"n": "11", "pass": false, "reason": "Wrong shape: parallelogram \u2192 OUR=line (invisible), REF=rect"}, {"n": "12", "pass": false, "reason": "Wrong shape: trapezoid \u2192 OUR=line (invisible), REF=rect"}, {"n": "13", "pass": false, "reason": "Wrong shape: trapezoid \u2192 OUR=line (invisible), REF=rect"}, {"n": "14", "pass": false, "reason": "strokeWidth=1, text layout, font size"}, {"n": "15", "pass": false, "reason": "strokeWidth=1, rounded rect type, font size"}, {"n": "16", "pass": false, "reason": "strokeWidth=1, rounded rect type, text layout"}, {"n": "17", "pass": false, "reason": "strokeWidth=1, font size, text as separate elements"}, {"n": "18", "pass": true, "reason": ""}, {"n": "19", "pass": true, "reason": ""}, {"n": "20", "pass": true, "reason": ""}, {"n": "21", "pass": true, "reason": ""}, {"n": "22", "pass": true, "reason": ""}, {"n": "23", "pass": true, "reason": ""}, {"n": "24", "pass": true, "reason": ""}, {"n": "25", "pass": false, "reason": "strokeWidth=1, rounded rect type, font size"}, {"n": "26", "pass": false, "reason": "strokeWidth=1, text layout, font size"}, {"n": "27", "pass": false, "reason": "strokeWidth=1, rounded rect type, text elements"}, {"n": "28", "pass": false, "reason": "strokeWidth=1, font size, rounded rect type"}, {"n": "29", "pass": false, "reason": "Wrong arrowhead: OUR=dot, REF=circle/filled-dot"}, {"n": "30", "pass": false, "reason": "Wrong arrowhead: OUR=dot, REF=circle/filled-dot"}, {"n": "31", "pass": false, "reason": "strokeWidth=1, rounded rect type, font size"}, {"n": "32", "pass": false, "reason": "HTML entity decode broken: #quot; #9829; rendered raw"}, {"n": "33", "pass": false, "reason": "Reference is image \u2014 no structural comparison possible"}, {"n": "34", "pass": false, "reason": "Reference is image \u2014 no structural comparison possible"}, {"n": "35", "pass": false, "reason": "Subgraph duplicate bug + reference is image"}, {"n": "36", "pass": false, "reason": "Subgraph duplicate bug + reference is image"}, {"n": "37", "pass": false, "reason": "Reference is image \u2014 no structural comparison possible"}, {"n": "38", "pass": false, "reason": "strokeWidth=1, rounded rect type, font size"}, {"n": "39", "pass": false, "reason": "strokeWidth=1, text layout, font size"}, {"n": "40", "pass": false, "reason": "strokeWidth=1, rounded rect type, font size"}, {"n": "41", "pass": true, "reason": ""}, {"n": "42", "pass": true, "reason": ""}, {"n": "43", "pass": false, "reason": "Subgraph duplicate bug + reference is image"}, {"n": "44", "pass": false, "reason": "strokeWidth=1, rounded rect type, font size"}, {"n": "45", "pass": false, "reason": "Font Awesome icon prefix fa:fa-* not stripped from label text"}, {"n": "46", "pass": false, "reason": "strokeWidth=1, rounded rect type, font size"}, {"n": "47", "pass": false, "reason": "strokeWidth=1, text layout, rounded rect type"}, {"n": "48", "pass": false, "reason": "strokeWidth=1, rounded rect type, font size"}, {"n": "49", "pass": false, "reason": "Font Awesome icon prefix fa:fa-* not stripped from label text"}, {"n": "50", "pass": false, "reason": "Subgraph duplicate bug + reference is image"}];
+const mmdSources = {"00": "flowchart TD \u21b5 Start --> Stop", "01": "flowchart LR \u21b5 Start --> Stop", "02": "flowchart LR \u21b5 id1(This is the text in the box)", "03": "flowchart LR \u21b5 id1([This is the text in the box])", "04": "flowchart LR \u21b5 id1[[This is the text in the box]]", "05": "flowchart LR \u21b5 id1[(Database)]", "06": "flowchart LR \u21b5 id1((This is the text in the circle))", "07": "flowchart LR \u21b5 id1>This is the text in the box]", "08": "flowchart LR \u21b5 id1{This is the text in the box}", "09": "flowchart LR \u21b5 id1{{This is the text in the box}}", "10": "flowchart TD \u21b5 id1[/This is the text in the box/]", "11": "flowchart TD \u21b5 id1[\\This is the text in the box\\]", "12": "flowchart TD \u21b5 A[/Christmas\\]", "13": "flowchart TD \u21b5 B[\\Go shopping/]", "14": "flowchart TD \u21b5 id1(((This is the text in the circle)))", "15": "flowchart LR \u21b5 A-->B", "16": "flowchart LR \u21b5 A-->|text|B", "17": "flowchart LR \u21b5 A-- text -->B", "18": "flowchart LR \u21b5 A-.->B;", "19": "flowchart LR \u21b5 A-. text .-> B", "20": "flowchart LR \u21b5 A --- B", "21": "flowchart LR \u21b5 A-- This is the text! ---B", "22": "flowchart LR \u21b5 A---|This is the text|B", "23": "flowchart LR \u21b5 A ==> B", "24": "flowchart LR \u21b5 A == text ==> B", "25": "flowchart LR \u21b5 A -- text --> B -- text2 --> C", "26": "flowchart LR \u21b5 a --> b & c--> d", "27": "flowchart TB \u21b5 A & B--> C & D", "28": "flowchart TB \u21b5 A --> C \u21b5 A --> D \u21b5 B --> C \u21b5 B --> D", "29": "flowchart LR \u21b5 A --o B \u21b5 B --x C", "30": "flowchart LR \u21b5 A o--o B \u21b5 B <--> C \u21b5 C x--x D", "31": "flowchart LR \u21b5 id1[\"This is the (text) in the box\"]", "32": "flowchart LR \u21b5 A[\"A double quote:#quot;\"] -->B[\"A dec char:#9829;\"]", "33": "flowchart TB \u21b5 c1-->a2 \u21b5 subgraph one \u21b5 a1-->a2 \u21b5 end \u21b5 subgraph two \u21b5 b1-->b2 \u21b5 end \u21b5 subgraph three \u21b5 c1-->c2 \u21b5 end", "34": "flowchart TB \u21b5 c1-->a2 \u21b5 subgraph ide1 [one] \u21b5 a1-->a2 \u21b5 end", "35": "flowchart TB \u21b5 c1-->a2 \u21b5 subgraph one \u21b5 a1-->a2 \u21b5 end \u21b5 subgraph two \u21b5 b1-->b2 \u21b5 end \u21b5 subgraph three \u21b5 c1-->c2 \u21b5 end \u21b5 one --> two \u21b5 three --> two \u21b5 two --> c2", "36": "flowchart LR \u21b5 subgraph TOP \u21b5 direction TB \u21b5 subgraph B1 \u21b5     direction RL \u21b5     i1 -->f1 \u21b5 end \u21b5 subgraph B2 \u21b5     direction BT \u21b5     i2 -->f2 \u21b5 end \u21b5 end \u21b5 A --> TOP --> B \u21b5 B1 --> B2", "37": "flowchart LR \u21b5 subgraph \"One\" \u21b5 a(\"`The **cat** \u21b5 in the hat`\") -- \"edge label\" --> b{{\"`The **dog** in the hog`\"}} \u21b5 end \u21b5 subgraph \"`Two`\" \u21b5 c(\"`The **cat** \u21b5 in the hat`\") -- \"`Bold **edge label**`\" --> d(\"The dog in the hog\") \u21b5 end", "38": "flowchart LR \u21b5 A-->B \u21b5 B-->C \u21b5 C-->D \u21b5 click A callback \"Tooltip for a callback\" \u21b5 click B \"https://www.github.com\" \"This is a tooltip for a link\" \u21b5 click A call callback() \"Tooltip for a callback\" \u21b5 click B href \"https://www.github.com\" \"This is a tooltip for a link\"", "39": "flowchart LR \u21b5 A-->B \u21b5 B-->C \u21b5 C-->D \u21b5 D-->E \u21b5 click A \"https://www.github.com\" _blank \u21b5 click B \"https://www.github.com\" \"Open this in a new tab\" _blank \u21b5 click C href \"https://www.github.com\" _blank \u21b5 click D href \"https://www.github.com\" \"Open this in a new tab\" _blank", "40": "flowchart LR \u21b5 %% this is a comment A -- text --> B{node} \u21b5 A -- text --> B -- text2 --> C", "41": "flowchart LR \u21b5 id1(Start)-->id2(Stop) \u21b5 style id1 fill:#f9f,stroke:#333,stroke-width:4px \u21b5 style id2 fill:#bbf,stroke:#f66,stroke-width:2px,color:#fff,stroke-dasharray: 5 5", "42": "flowchart LR \u21b5     A:::foo & B:::bar --> C:::foobar \u21b5     classDef foo stroke:#1971c2, fill:#4dabf7 \u21b5     classDef bar stroke:#d6336c, fill:#f783ac \u21b5     classDef foobar stroke:#00f stroke-width:2px", "43": "graph TD \u21b5     %% Node styles work fine \u21b5     classDef criticalNode fill:#ff5252,stroke:#b71c1c,color:#fff \u21b5  \u21b5     subgraph SG_RED [\"CRITICAL MODULE\"] \u21b5         Node01[\"Important Service\"]:::criticalNode \u21b5     end \u21b5  \u21b5     subgraph SG_BLUE [\"DASHED BORDER MODULE\"] \u21b5         Node02[\"Feature Module\"] \u21b5     end \u21b5  \u21b5     style SG_RED fill:#ffebee,stroke:#c62828,stroke-width:3px \u21b5     style SG_BLUE fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,stroke-dasharray: 10 5", "44": "flowchart LR \u21b5 A-->B[AAABBB] \u21b5 B-->D \u21b5 class A cssClass", "45": "flowchart TD \u21b5 B[\"fab:fa-twitter for peace\"] \u21b5 B-->C[fa:fa-ban forbidden] \u21b5 B-->D(fa:fa-spinner) \u21b5 B-->E(A fa:fa-camera-retro perhaps?)", "46": "flowchart LR \u21b5 A[Hard edge] -->|Link text| B(Round edge) \u21b5 B --> C{Decision} \u21b5 C -->|One| D[Result one] \u21b5 C -->|Two| E[Result two]", "47": "flowchart TD \u21b5   A[Start] --> B{Decision 1} \u21b5   B -->|Yes| C[Action 1] \u21b5   B -->|No| D[Action 2] \u21b5   C --> E{Decision 2} \u21b5   D --> E \u21b5   E -->|Yes| F[Action 3] \u21b5   E -->|No| G[Action 4] \u21b5   F --> H{Decision 3} \u21b5   G --> H \u21b5   H -->|Yes| I[Action 5] \u21b5   H -->|No| J[Action 6] \u21b5   I --> K[End] \u21b5   J --> K", "48": "flowchart TD \u21b5  \u21b5   A[Start] --> B[Initialize] \u21b5  \u21b5   B[Initialize] --> C[Input Data] \u21b5   C[Input Data] --> D{Data Valid?} \u21b5  \u21b5   D{Data Valid?} -- Yes --> E[Process Data] \u21b5   E[Process Data] --> F{More Data?} \u21b5   F{More Data?} -- Yes --> C[Input Data] \u21b5   F{More Data?} -- No --> G[Generate Output] \u21b5  \u21b5   D{Data Valid?} -- No --> I[Report Error] \u21b5   I[Report Error] --> H[End] \u21b5  \u21b5   B[Initialize] --> J[Task 1] \u21b5   J[Task 1] --> K[Task 2] \u21b5   K[Task 2] --> L[Task 3] \u21b5   L[Task 3] --> M[Task 4] \u21b5   M[Task 4] --> N[Task 5] \u21b5   N[Task 5] --> O[Task 6] \u21b5   O[Task 6] --> P[Task 7] \u21b5   P[Task 7] --> Q[Task 8] \u21b5   Q[Task 8] --> R[Task 9] \u21b5   R[Task 9] --> S[Task 10] \u21b5   S[Task 10] --> T[End] \u21b5  \u21b5   U[Decision] --> V[Decision Point] \u21b5   V[Decision Point] --> W{Condition 1} \u21b5   W{Condition 1} -- Yes --> X[Option 1] \u21b5   X[Option 1] --> Y[End Option 1] \u21b5   W{Condition 1} -- No --> Z[Option 2] \u21b5   Z[Option 2] --> Y[End Option 2] \u21b5   Y[End Option 1] --> U[Decision] \u21b5  \u21b5   AA[Loop] --> AB[Loop Start] \u21b5   AB[Loop Start] --> AC[Loop Condition] \u21b5   AC[Loop Condition] -- Yes --> AD[Loop Task] \u21b5   AD[Loop Task] --> AE[Loop End] \u21b5   AC[Loop Condition] -- No --> AF[Exit Loop] \u21b5   AF[Exit Loop] --> AE[Loop End] \u21b5   AE[Loop End] --> AA[Loop] \u21b5  \u21b5   AG[Subprocess] --> AH[Start Subprocess] \u21b5   AH[Start Subprocess] --> AI[Subprocess Task 1] \u21b5   AI[Subprocess Task 1] --> AJ[Subprocess Task 2] \u21b5   AJ[Subprocess Task 2] --> AK[Subprocess Task 3] \u21b5   AK[Subprocess Task 3] --> AL[End Subprocess] \u21b5  \u21b5   A[Start] --> B[Initialize] \u21b5   B[Initialize] --> J[Task 1] \u21b5   J[Task 1] --> U[Decision] \u21b5   U[Decision] --> AA[Loop] \u21b5   AA[Loop] --> AG[Subprocess] \u21b5   AG[Subprocess] --> J[Task 1] \u21b5   AG[Subprocess] --> B[Initialize]", "49": "flowchart LR \u21b5     style Entity1 fill: gold, stroke:#333, stroke-width:4px \u21b5  \u21b5     Entity1[Entity 1] \u21b5     Entity2[Entity 2 fa:fa-suitcase] \u21b5     Entity3[Entity 3 fa:fa-suitcase] \u21b5     Entity4[Entity 4] \u21b5     Entity5[Entity 5] \u21b5     Entity6[Entity 6<br><sub>Entity6</sub>] \u21b5     Entity7[Entity 7] \u21b5  \u21b5     Entity2 -..->|Relation1| Entity1 \u21b5     Entity3 -..->|Relation2| Entity1 \u21b5     Entity4 -..->|Relation3| Entity1 \u21b5     Entity3 -..->|Relation4| Entity1 \u21b5     Entity5 -..->|Relation5| Entity1 \u21b5     Entity5 -..->|Relation6| Entity1 \u21b5     Entity6 -..->|Relation7| Entity1 \u21b5     Entity7 -..->|Relation8| Entity1 \u21b5  \u21b5     Entity8[Entity 8<br><sub>Entity8</sub>] \u21b5     Entity1[Entity 1] \u21b5     Entity9[Entity 9<br><sub>Entity9</sub>] \u21b5     Entity10[Entity 10] \u21b5     Entity4[Entity 4] \u21b5     Entity11[Entity 11] \u21b5     Entity12[Entity 12] \u21b5     Entity13[Entity 13<br><sub>Entity13</sub>] \u21b5     Entity14[Entity 14] \u21b5     Entity15[Entity 15] \u21b5     Entity16[Entity 16 fa:fa-suitcase] \u21b5     Entity17[Entity 17 fa:fa-suitcase] \u21b5     Entity18[Entity 18 fa:fa-suitcase] \u21b5     Entity19[Entity 19 fa:fa-suitcase] \u21b5  \u21b5     Entity1 -..->|Relation9| Entity8 \u21b5     Entity1 -..->|Relation10| Entity9 \u21b5     Entity1 -..->|Relation11| Entity10 \u21b5     Entity1 -..->|Relation12| Entity4 \u21b5     Entity1 ===>|fa:fa-link Relation13| Entity11 \u21b5     Entity1 -..->|Relation14| Entity12 \u21b5     Entity1 -..->|Relation15| Entity13 \u21b5     Entity1 -..->|Relation16| Entity14 \u21b5     Entity1 ===>|fa:fa-link Relation17| Entity15 \u21b5     Entity1 -..->|Relation18| Entity16 \u21b5     Entity1 -..->|Relation19| Entity17 \u21b5     Entity1 -..->|Relation20| Entity17 \u21b5     Entity1 -..->|Relation21| Entity17 \u21b5     Entity1 -..->|Relation22| Entity18 \u21b5     Entity1 -..->|Relation23| Entity19", "50": "flowchart TB \u21b5     subgraph conference \u21b5         frontend \u21b5         backend \u21b5         security \u21b5     end \u21b5     frontend --> |Dive into frontend frameworks| conference \u21b5     backend --> |Learn all about backend| conference \u21b5     security --> |securing web apps| conference"};
+
+function render(list) {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  list.forEach(c => {
+    const svgSrc = 'svgs/flowchart-' + c.n + '.svg';
+    const pngSrc = 'flowchart-' + c.n + '-ours.png';
+    const mmdText = mmdSources[c.n] || '';
+    const cls = c.pass ? 'pass' : 'fail';
+    const verdictText = c.pass ? 'PASS' : 'FAIL';
+    let reasonHtml;
+    if (c.pass) {
+      reasonHtml = '<span class="reason" style="color:#2a7a3a">Diagrams match structurally</span>';
+    } else {
+      reasonHtml = '<span class="reason" title="' + c.reason + '">' + c.reason + '</span>';
+    }
+    grid.innerHTML += '<div class="case ' + cls + '" data-verdict="' + cls + '">' +
+      '<div class="case-header">' +
+        '<span class="case-num">Case ' + c.n + '</span>' +
+        '<span class="verdict ' + cls + '">' + verdictText + '</span>' +
+        reasonHtml +
+        '<span class="mmd-src" title="' + mmdText + '">' + mmdText + '</span>' +
+      '</div>' +
+      '<div class="imgs">' +
+        '<div class="img-panel">' +
+          '<div class="img-label">Mermaid SVG</div>' +
+          '<img src="' + svgSrc + '" alt="Mermaid SVG ' + c.n + '" loading="lazy" ' +
+            'onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'block\'">' +
+          '<div class="missing" style="display:none">SVG missing</div>' +
+        '</div>' +
+        '<div class="img-panel">' +
+          '<div class="img-label">Our Excalidraw</div>' +
+          '<img src="' + pngSrc + '" alt="Our PNG ' + c.n + '" loading="lazy" ' +
+            'onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'block\'">' +
+          '<div class="missing" style="display:none">PNG missing</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  });
+}
+
+function filter(type) {
+  if (type === 'all')  render(cases);
+  if (type === 'pass') render(cases.filter(c => c.pass));
+  if (type === 'fail') render(cases.filter(c => !c.pass));
+}
+
+render(cases);
+</script>
+</body>
+</html>

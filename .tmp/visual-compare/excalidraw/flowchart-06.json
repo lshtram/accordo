@@ -1,0 +1,90 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "flowchart-06.mmd",
+  "elements": [
+    {
+      "id": "8a6332b1-70f2-4efd-970c-79b73adf1a1c",
+      "kind": "node",
+      "type": "ellipse",
+      "x": 0,
+      "y": 0,
+      "width": 80,
+      "height": 80,
+      "roughness": 1,
+      "backgroundColor": "transparent",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "fillStyle": "hachure",
+      "opacity": 100,
+      "version": 1,
+      "versionNonce": 3709774954,
+      "isDeleted": false,
+      "angle": 0,
+      "seed": 3201312515,
+      "groupIds": [],
+      "frameId": null,
+      "updated": 1775750606003,
+      "link": null,
+      "locked": false,
+      "fontFamily": 1,
+      "roundness": null,
+      "boundElements": [
+        {
+          "id": "775f495e-8ce7-47a6-8939-c2da5bd3770d",
+          "type": "text"
+        }
+      ],
+      "containerId": null,
+      "customData": {
+        "mermaidId": "id1",
+        "kind": "node"
+      }
+    },
+    {
+      "id": "775f495e-8ce7-47a6-8939-c2da5bd3770d",
+      "kind": "label",
+      "type": "text",
+      "x": 0,
+      "y": 31,
+      "width": 80,
+      "height": 18,
+      "roughness": 1,
+      "fontSize": 14,
+      "strokeColor": "#1e1e1e",
+      "version": 1,
+      "versionNonce": 2386472413,
+      "isDeleted": false,
+      "fillStyle": "hachure",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "angle": 0,
+      "seed": 4028442956,
+      "groupIds": [],
+      "frameId": null,
+      "updated": 1775750606003,
+      "link": null,
+      "locked": false,
+      "backgroundColor": "transparent",
+      "fontFamily": 1,
+      "roundness": null,
+      "boundElements": null,
+      "containerId": "8a6332b1-70f2-4efd-970c-79b73adf1a1c",
+      "customData": {
+        "mermaidId": "id1:text",
+        "kind": "label"
+      },
+      "text": "This is the text in the circle",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "originalText": "This is the text in the circle",
+      "lineHeight": 1.25
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff"
+  },
+  "files": {}
+}

@@ -1,0 +1,1626 @@
+{
+  "type": "excalidrawlib",
+  "version": 2,
+  "source": "https://github.com/accordo/accordo",
+  "libraryItems": [
+    {
+      "id": "mermaid-rectangle",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-rectangle",
+      "elements": [
+        {
+          "id": "mermaid-rectangle--0",
+          "type": "rectangle",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 302068251,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 579044625,
+          "groupIds": [
+            "group-mermaid-rectangle"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 60
+        }
+      ]
+    },
+    {
+      "id": "mermaid-rounded-rectangle",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-rounded-rectangle",
+      "elements": [
+        {
+          "id": "mermaid-rounded-rectangle--0",
+          "type": "rectangle",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 2014361127,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 3753550141,
+          "groupIds": [
+            "group-mermaid-rounded-rectangle"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 60
+        }
+      ]
+    },
+    {
+      "id": "mermaid-stadium",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-stadium",
+      "elements": [
+        {
+          "id": "mermaid-stadium--0",
+          "type": "line",
+          "x": 150,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 343103409,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 3622625495,
+          "groupIds": [
+            "group-mermaid-stadium"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 60,
+          "points": [
+            [
+              150,
+              0
+            ],
+            [
+              165,
+              4
+            ],
+            [
+              176,
+              15
+            ],
+            [
+              180,
+              30
+            ],
+            [
+              176,
+              45
+            ],
+            [
+              165,
+              56
+            ],
+            [
+              150,
+              60
+            ],
+            [
+              30,
+              60
+            ],
+            [
+              15,
+              56
+            ],
+            [
+              4,
+              45
+            ],
+            [
+              0,
+              30
+            ],
+            [
+              4,
+              15
+            ],
+            [
+              15,
+              4
+            ],
+            [
+              30,
+              0
+            ],
+            [
+              150,
+              0
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        }
+      ]
+    },
+    {
+      "id": "mermaid-circle",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-circle",
+      "elements": [
+        {
+          "id": "mermaid-circle--0",
+          "type": "ellipse",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 1331071946,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 161099238,
+          "groupIds": [
+            "group-mermaid-circle"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 80,
+          "height": 80
+        }
+      ]
+    },
+    {
+      "id": "mermaid-double-circle",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-double-circle",
+      "elements": [
+        {
+          "id": "mermaid-double-circle--0",
+          "type": "ellipse",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 117819540,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 3708736568,
+          "groupIds": [
+            "group-mermaid-double-circle"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 80,
+          "height": 80
+        },
+        {
+          "id": "mermaid-double-circle--1",
+          "type": "ellipse",
+          "x": 10,
+          "y": 10,
+          "version": 1,
+          "versionNonce": 1798169003,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 2323734241,
+          "groupIds": [
+            "group-mermaid-double-circle"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 60,
+          "height": 60
+        }
+      ]
+    },
+    {
+      "id": "mermaid-ellipse",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-ellipse",
+      "elements": [
+        {
+          "id": "mermaid-ellipse--0",
+          "type": "ellipse",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 1587447438,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 952481594,
+          "groupIds": [
+            "group-mermaid-ellipse"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 120,
+          "height": 72
+        }
+      ]
+    },
+    {
+      "id": "mermaid-diamond",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-diamond",
+      "elements": [
+        {
+          "id": "mermaid-diamond--0",
+          "type": "diamond",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 4145206584,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 3108868844,
+          "groupIds": [
+            "group-mermaid-diamond"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 140,
+          "height": 90
+        }
+      ]
+    },
+    {
+      "id": "mermaid-hexagon",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-hexagon",
+      "elements": [
+        {
+          "id": "mermaid-hexagon--0",
+          "type": "line",
+          "x": 0,
+          "y": 45,
+          "version": 1,
+          "versionNonce": 3649434088,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 1335100380,
+          "groupIds": [
+            "group-mermaid-hexagon"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 140,
+          "height": 90,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              35,
+              -45
+            ],
+            [
+              105,
+              -45
+            ],
+            [
+              140,
+              0
+            ],
+            [
+              105,
+              45
+            ],
+            [
+              35,
+              45
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        }
+      ]
+    },
+    {
+      "id": "mermaid-parallelogram",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-parallelogram",
+      "elements": [
+        {
+          "id": "mermaid-parallelogram--0",
+          "type": "line",
+          "x": 24,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 2754076509,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 2365369923,
+          "groupIds": [
+            "group-mermaid-parallelogram"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 60,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              156,
+              0
+            ],
+            [
+              132,
+              60
+            ],
+            [
+              -24,
+              60
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        }
+      ]
+    },
+    {
+      "id": "mermaid-parallelogram-alt",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-parallelogram-alt",
+      "elements": [
+        {
+          "id": "mermaid-parallelogram-alt--0",
+          "type": "line",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 627535775,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 2047147413,
+          "groupIds": [
+            "group-mermaid-parallelogram-alt"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 60,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              156,
+              0
+            ],
+            [
+              180,
+              60
+            ],
+            [
+              24,
+              60
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        }
+      ]
+    },
+    {
+      "id": "mermaid-trapezoid",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-trapezoid",
+      "elements": [
+        {
+          "id": "mermaid-trapezoid--0",
+          "type": "line",
+          "x": 24,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 3872819104,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 3120712788,
+          "groupIds": [
+            "group-mermaid-trapezoid"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 60,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              132,
+              0
+            ],
+            [
+              156,
+              60
+            ],
+            [
+              -24,
+              60
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        }
+      ]
+    },
+    {
+      "id": "mermaid-inverted-trapezoid",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-inverted-trapezoid",
+      "elements": [
+        {
+          "id": "mermaid-inverted-trapezoid--0",
+          "type": "line",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 3845090314,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 1182360102,
+          "groupIds": [
+            "group-mermaid-inverted-trapezoid"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 60,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              180,
+              0
+            ],
+            [
+              156,
+              60
+            ],
+            [
+              24,
+              60
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        }
+      ]
+    },
+    {
+      "id": "mermaid-cylinder",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-cylinder",
+      "elements": [
+        {
+          "id": "mermaid-cylinder--0",
+          "type": "ellipse",
+          "x": 12,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 3552996496,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 1093721220,
+          "groupIds": [
+            "group-mermaid-cylinder"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 96,
+          "height": 24
+        },
+        {
+          "id": "mermaid-cylinder--1",
+          "type": "line",
+          "x": 12,
+          "y": 12,
+          "version": 1,
+          "versionNonce": 3898492551,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 1443062045,
+          "groupIds": [
+            "group-mermaid-cylinder"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 0,
+          "height": 56,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              56
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        },
+        {
+          "id": "mermaid-cylinder--2",
+          "type": "line",
+          "x": 108,
+          "y": 12,
+          "version": 1,
+          "versionNonce": 2488247670,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 3383320578,
+          "groupIds": [
+            "group-mermaid-cylinder"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 0,
+          "height": 56,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              56
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        },
+        {
+          "id": "mermaid-cylinder--3",
+          "type": "ellipse",
+          "x": 12,
+          "y": 56,
+          "version": 1,
+          "versionNonce": 1563399053,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 2649920691,
+          "groupIds": [
+            "group-mermaid-cylinder"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 96,
+          "height": 24
+        }
+      ]
+    },
+    {
+      "id": "mermaid-subroutine",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-subroutine",
+      "elements": [
+        {
+          "id": "mermaid-subroutine--0",
+          "type": "rectangle",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 2321681780,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 1127275928,
+          "groupIds": [
+            "group-mermaid-subroutine"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 60
+        },
+        {
+          "id": "mermaid-subroutine--1",
+          "type": "line",
+          "x": 12,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 4278327691,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 3612886593,
+          "groupIds": [
+            "group-mermaid-subroutine"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 0,
+          "height": 60,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              60
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        },
+        {
+          "id": "mermaid-subroutine--2",
+          "type": "line",
+          "x": 168,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 2443992858,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 2572894902,
+          "groupIds": [
+            "group-mermaid-subroutine"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 0,
+          "height": 60,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              60
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        }
+      ]
+    },
+    {
+      "id": "mermaid-subgraph",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-subgraph",
+      "elements": [
+        {
+          "id": "mermaid-subgraph--0",
+          "type": "rectangle",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 3452534516,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "dashed",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 922261016,
+          "groupIds": [
+            "group-mermaid-subgraph"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 220,
+          "height": 140
+        }
+      ]
+    },
+    {
+      "id": "mermaid-note",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-note",
+      "elements": [
+        {
+          "id": "mermaid-note--0",
+          "type": "line",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 1152089858,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 3722684638,
+          "groupIds": [
+            "group-mermaid-note"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 170,
+          "height": 110,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              140,
+              0
+            ],
+            [
+              170,
+              30
+            ],
+            [
+              170,
+              110
+            ],
+            [
+              0,
+              110
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        },
+        {
+          "id": "mermaid-note--1",
+          "type": "line",
+          "x": 140,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 3845015945,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 3115328559,
+          "groupIds": [
+            "group-mermaid-note"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 30,
+          "height": 30,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              30
+            ],
+            [
+              30,
+              30
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        }
+      ]
+    },
+    {
+      "id": "mermaid-document",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-document",
+      "elements": [
+        {
+          "id": "mermaid-document--0",
+          "type": "line",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 1717782513,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 3224505111,
+          "groupIds": [
+            "group-mermaid-document"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 170,
+          "height": 100,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              170,
+              0
+            ],
+            [
+              170,
+              80
+            ],
+            [
+              136,
+              92
+            ],
+            [
+              102,
+              84
+            ],
+            [
+              68,
+              96
+            ],
+            [
+              34,
+              88
+            ],
+            [
+              0,
+              100
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        }
+      ]
+    },
+    {
+      "id": "mermaid-package",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-package",
+      "elements": [
+        {
+          "id": "mermaid-package--0",
+          "type": "rectangle",
+          "x": 0,
+          "y": 20,
+          "version": 1,
+          "versionNonce": 480328224,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 1764122580,
+          "groupIds": [
+            "group-mermaid-package"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 100
+        },
+        {
+          "id": "mermaid-package--1",
+          "type": "rectangle",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 3395837207,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 679083437,
+          "groupIds": [
+            "group-mermaid-package"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 64,
+          "height": 24
+        }
+      ]
+    },
+    {
+      "id": "mermaid-fork-join-horizontal",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-fork-join-horizontal",
+      "elements": [
+        {
+          "id": "mermaid-fork-join-horizontal--0",
+          "type": "rectangle",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 1527199848,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "#1e1e1e",
+          "seed": 2241049436,
+          "groupIds": [
+            "group-mermaid-fork-join-horizontal"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 16
+        }
+      ]
+    },
+    {
+      "id": "mermaid-fork-join-vertical",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-fork-join-vertical",
+      "elements": [
+        {
+          "id": "mermaid-fork-join-vertical--0",
+          "type": "rectangle",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 2097024666,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "#1e1e1e",
+          "seed": 946767158,
+          "groupIds": [
+            "group-mermaid-fork-join-vertical"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 16,
+          "height": 120
+        }
+      ]
+    },
+    {
+      "id": "mermaid-class-box",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-class-box",
+      "elements": [
+        {
+          "id": "mermaid-class-box--0",
+          "type": "rectangle",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 1637686456,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 134536556,
+          "groupIds": [
+            "group-mermaid-class-box"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 120
+        },
+        {
+          "id": "mermaid-class-box--1",
+          "type": "line",
+          "x": 0,
+          "y": 30,
+          "version": 1,
+          "versionNonce": 3613522063,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 740356741,
+          "groupIds": [
+            "group-mermaid-class-box"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 0,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              180,
+              0
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        },
+        {
+          "id": "mermaid-class-box--2",
+          "type": "line",
+          "x": 0,
+          "y": 76,
+          "version": 1,
+          "versionNonce": 4091222526,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 2671042602,
+          "groupIds": [
+            "group-mermaid-class-box"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 0,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              180,
+              0
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        }
+      ]
+    },
+    {
+      "id": "mermaid-er-entity",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-er-entity",
+      "elements": [
+        {
+          "id": "mermaid-er-entity--0",
+          "type": "rectangle",
+          "x": 0,
+          "y": 0,
+          "version": 1,
+          "versionNonce": 3680285027,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 1288572953,
+          "groupIds": [
+            "group-mermaid-er-entity"
+          ],
+          "strokeSharpness": "sharp",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 110
+        },
+        {
+          "id": "mermaid-er-entity--1",
+          "type": "line",
+          "x": 0,
+          "y": 32,
+          "version": 1,
+          "versionNonce": 4083361772,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 2017543952,
+          "groupIds": [
+            "group-mermaid-er-entity"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 180,
+          "height": 0,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              180,
+              0
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        }
+      ]
+    },
+    {
+      "id": "mermaid-cloud",
+      "status": "unpublished",
+      "created": 1775260800000,
+      "name": "mermaid-cloud",
+      "elements": [
+        {
+          "id": "mermaid-cloud--0",
+          "type": "line",
+          "x": 24,
+          "y": 48,
+          "version": 1,
+          "versionNonce": 3522588331,
+          "isDeleted": false,
+          "fillStyle": "solid",
+          "strokeWidth": 2,
+          "strokeStyle": "solid",
+          "roughness": 1,
+          "opacity": 100,
+          "angle": 0,
+          "strokeColor": "#1e1e1e",
+          "backgroundColor": "transparent",
+          "seed": 4150443489,
+          "groupIds": [
+            "group-mermaid-cloud"
+          ],
+          "strokeSharpness": "round",
+          "boundElementIds": [],
+          "updated": 1775260800000,
+          "link": null,
+          "locked": false,
+          "width": 190,
+          "height": 104,
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              10,
+              -26
+            ],
+            [
+              34,
+              -40
+            ],
+            [
+              64,
+              -32
+            ],
+            [
+              82,
+              -48
+            ],
+            [
+              118,
+              -42
+            ],
+            [
+              142,
+              -18
+            ],
+            [
+              166,
+              -16
+            ],
+            [
+              190,
+              4
+            ],
+            [
+              182,
+              30
+            ],
+            [
+              154,
+              44
+            ],
+            [
+              122,
+              40
+            ],
+            [
+              96,
+              52
+            ],
+            [
+              58,
+              48
+            ],
+            [
+              28,
+              56
+            ],
+            [
+              4,
+              44
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "startBinding": null,
+          "endBinding": null,
+          "lastCommittedPoint": null,
+          "startArrowhead": null,
+          "endArrowhead": null
+        }
+      ]
+    }
+  ]
+}

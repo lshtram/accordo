@@ -267,6 +267,7 @@ function pollForCanvasReady(): void {
   const interval = setInterval(() => {
     const win = window as Window & {
       __accordoCanvasReady?: boolean;
+      __accordoRepositionPins?: (zoom?: number) => void;
       __accordoHandle?: {
         getSceneElements(): Array<{ id: string; customData?: { mermaidId?: string; kind?: string } }>;
         getAppState(): { scrollX: number; scrollY: number; zoom: { value: number } };

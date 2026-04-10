@@ -26,22 +26,22 @@ export class RelayBridgeClient {
       return;
     }
 
-    const url = `ws://${DEFAULT_RELAY_HOST}:${DEFAULT_RELAY_PORT}/?token=${encodeURIComponent(DEFAULT_RELAY_TOKEN)}`;
+    const url = `ws://${DEFAULT_RELAY_HOST}:${DEFAULT_RELAY_PORT}/chrome?token=${encodeURIComponent(DEFAULT_RELAY_TOKEN)}`;
     const socket = new WebSocket(url);
     this.ws = socket;
 
-    socket.onmessage = (event) => {
+    socket.onmessage = (event): void => {
       void this.handleIncoming(event.data);
     };
-    socket.onclose = () => {
+    socket.onclose = (): void => {
       this.stopHeartbeat();
       this.ws = null;
       this.scheduleReconnect();
     };
-    socket.onopen = () => {
+    socket.onopen = (): void => {
       this.startHeartbeat();
     };
-    socket.onerror = () => {
+    socket.onerror = (): void => {
       socket.close();
     };
   }
@@ -162,7 +162,14 @@ export class RelayBridgeClient {
         resolve(response);
       });
 
-      this.ws!.send(JSON.stringify(envelope));
+      const ws = this.ws;
+      if (!ws) {
+        clearTimeout(timer);
+        this.pending.delete(requestId);
+        resolve({ success: false, error: "browser-not-connected" });
+        return;
+      }
+      ws.send(JSON.stringify(envelope));
     });
   }
 

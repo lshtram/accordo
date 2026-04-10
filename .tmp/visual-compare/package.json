@@ -1,0 +1,10 @@
+{
+  "name": "visual-compare",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Temp debug tool — delete when diagram module development is done",
+  "dependencies": {
+    "@excalidraw/mermaid-to-excalidraw": "^2.2.2"
+  }
+}

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#fff}
+</style>
+</head>
+<body>
+<script src="/lib/excalidraw-with-preact.production.min.js"></script>
+<script>
+const elements = [{"id":"72356f43-bf8b-4da5-b56d-f273e27d948f","mermaidId":"A","kind":"node","type":"rectangle","x":0,"y":0,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"0fcefa56-ccff-42c2-bcd5-87bde7ffeee2","type":"text"},{"id":"37c2f472-c636-4d94-869d-718b251b8f90","type":"arrow"}]},{"id":"0fcefa56-ccff-42c2-bcd5-87bde7ffeee2","mermaidId":"A:text","kind":"label","type":"text","x":0,"y":21,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"A","containerId":"72356f43-bf8b-4da5-b56d-f273e27d948f"},{"id":"70940018-ffe1-4440-af15-880020a96379","mermaidId":"B","kind":"node","type":"rectangle","x":260,"y":0,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"357aa79c-33e5-493b-bf54-1128dda158d8","type":"text"},{"id":"37c2f472-c636-4d94-869d-718b251b8f90","type":"arrow"},{"id":"273183ff-6c0d-48bd-ad69-ff100fe5fa7c","type":"arrow"}]},{"id":"357aa79c-33e5-493b-bf54-1128dda158d8","mermaidId":"B:text","kind":"label","type":"text","x":260,"y":21,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"B","containerId":"70940018-ffe1-4440-af15-880020a96379"},{"id":"123f475c-1db3-4b5a-9b7b-7943485c26c4","mermaidId":"C","kind":"node","type":"rectangle","x":520,"y":0,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"7cb604f5-a7e5-4e5e-a8e5-6c1a0b5a29d4","type":"text"},{"id":"273183ff-6c0d-48bd-ad69-ff100fe5fa7c","type":"arrow"},{"id":"e0001468-c3b4-4d0d-8347-ba82ab418e22","type":"arrow"}]},{"id":"7cb604f5-a7e5-4e5e-a8e5-6c1a0b5a29d4","mermaidId":"C:text","kind":"label","type":"text","x":520,"y":21,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"C","containerId":"123f475c-1db3-4b5a-9b7b-7943485c26c4"},{"id":"6af3bb01-1d64-414e-a0e6-0fd6815e1e4d","mermaidId":"D","kind":"node","type":"rectangle","x":780,"y":0,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"6d53a82a-63c3-4690-bdfc-4bd40efff72a","type":"text"},{"id":"e0001468-c3b4-4d0d-8347-ba82ab418e22","type":"arrow"}]},{"id":"6d53a82a-63c3-4690-bdfc-4bd40efff72a","mermaidId":"D:text","kind":"label","type":"text","x":780,"y":21,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"D","containerId":"6af3bb01-1d64-414e-a0e6-0fd6815e1e4d"},{"id":"37c2f472-c636-4d94-869d-718b251b8f90","mermaidId":"A->B:0","kind":"edge","type":"arrow","x":188,"y":30,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[64,0]],"startBinding":{"elementId":"72356f43-bf8b-4da5-b56d-f273e27d948f","focus":0,"gap":8},"endBinding":{"elementId":"70940018-ffe1-4440-af15-880020a96379","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"273183ff-6c0d-48bd-ad69-ff100fe5fa7c","mermaidId":"B->C:0","kind":"edge","type":"arrow","x":448,"y":30,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[64,0]],"startBinding":{"elementId":"70940018-ffe1-4440-af15-880020a96379","focus":0,"gap":8},"endBinding":{"elementId":"123f475c-1db3-4b5a-9b7b-7943485c26c4","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"e0001468-c3b4-4d0d-8347-ba82ab418e22","mermaidId":"C->D:0","kind":"edge","type":"arrow","x":708,"y":30,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[64,0]],"startBinding":{"elementId":"123f475c-1db3-4b5a-9b7b-7943485c26c4","focus":0,"gap":8},"endBinding":{"elementId":"6af3bb01-1d64-414e-a0e6-0fd6815e1e4d","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"}];
+const offsetX = 50;
+const offsetY = 50;
+const width = 1060;
+const height = 300;
+
+// Adjust element positions to center them
+const adjustedElements = elements.map(el => ({
+  ...el,
+  x: (el.x || 0) + offsetX,
+  y: (el.y || 0) + offsetY,
+}));
+
+// Wait for ExcalidrawLib to be available
+function waitForExcalidraw() {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const check = () => {
+      attempts++;
+      if (window.ExcalidrawLib && window.ExcalidrawLib.exportToBlob) {
+        resolve();
+      } else if (attempts > 50) {
+        reject(new Error('ExcalidrawLib not available'));
+      } else {
+        setTimeout(check, 100);
+      }
+    };
+    check();
+  });
+}
+
+waitForExcalidraw()
+  .then(async () => {
+    const { exportToBlob } = window.ExcalidrawLib;
+    
+    const blob = await exportToBlob({
+      elements: adjustedElements,
+      files: null,
+      mimeType: 'image/png',
+      appState: {
+        exportBackground: true,
+        viewBackgroundColor: '#ffffff',
+        width: width,
+        height: height,
+      }
+    });
+    
+    const reader = new FileReader();
+    reader.onload = () => {
+      window.__PNG__ = reader.result;
+      window.__READY__ = true;
+    };
+    reader.onerror = (err) => {
+      window.__ERROR__ = 'FileReader error: ' + err;
+    };
+    reader.readAsDataURL(blob);
+  })
+  .catch(err => {
+    window.__ERROR__ = err.message || String(err);
+  });
+</script>
+</body>
+</html>

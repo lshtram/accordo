@@ -1,0 +1,5 @@
+#!/bin/bash
+# Wrapper that calls mmdc with sandbox disabled
+MMDC="$(ls ~/.npm/_npx/*/node_modules/.bin/mmdc 2>/dev/null | head -1)"
+PUPPETEER_CONFIG="$(dirname "$0")/puppeteer-config.json"
+exec "$MMDC" -p "$PUPPETEER_CONFIG" "$@"

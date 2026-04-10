@@ -21,7 +21,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { activate } from "../extension.js";
-import { createExtensionContextMock, extensions } from "./mocks/vscode.js";
+import { createExtensionContextMock, extensions, workspace } from "./mocks/vscode.js";
 
 const startMock = vi.fn().mockResolvedValue(undefined);
 const stopMock = vi.fn().mockResolvedValue(undefined);
@@ -53,6 +53,15 @@ vi.mock("../relay-server.js", () => ({
 
 beforeEach(() => {
   capturedRelayInstance = null;
+  // Force per-window relay path so BrowserRelayServer is instantiated and capturable.
+  // These tests exercise onRelayRequest behavior — the shared vs per-window branching
+  // is covered by shared-relay-feature-flag.test.ts.
+  workspace.getConfiguration.mockReturnValue({
+    get: vi.fn(<T>(key: string, defaultValue?: T): T => {
+      if (key === "sharedRelay") return false as unknown as T;
+      return defaultValue as T;
+    }),
+  });
 });
 
 describe("BUG-1: onRelayRequest response shape for get_comments", () => {

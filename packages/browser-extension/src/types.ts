@@ -61,7 +61,6 @@ export interface PageCommentStore {
   version: "1.0";
   url: string;
   threads: BrowserCommentThread[];
-  lastScreenshot?: ScreenshotRecord;
 }
 
 /** Per-URL screenshot record (stored separately, key: "screenshot:{normalizedUrl}") */

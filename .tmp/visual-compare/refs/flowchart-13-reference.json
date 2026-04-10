@@ -1,0 +1,21 @@
+{
+  "elements": [
+    {
+      "id": "B",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 8,
+      "y": 8,
+      "width": 203.421875,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "Go shopping",
+        "fontSize": 20
+      },
+      "link": null
+    }
+  ],
+  "files": {}
+}

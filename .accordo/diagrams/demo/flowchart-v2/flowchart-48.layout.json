@@ -1,0 +1,511 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "A": {
+      "x": 1110,
+      "y": 0,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "B": {
+      "x": 1110,
+      "y": 140,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "C": {
+      "x": 65,
+      "y": 280,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "D": {
+      "x": 20,
+      "y": 420,
+      "w": 140,
+      "h": 80,
+      "style": {}
+    },
+    "E": {
+      "x": 0,
+      "y": 580,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "F": {
+      "x": 85,
+      "y": 720,
+      "w": 140,
+      "h": 80,
+      "style": {}
+    },
+    "G": {
+      "x": 65,
+      "y": 880,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "I": {
+      "x": 305,
+      "y": 580,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "H": {
+      "x": 305,
+      "y": 730,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "J": {
+      "x": 1110,
+      "y": 280,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "K": {
+      "x": 545,
+      "y": 430,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "L": {
+      "x": 545,
+      "y": 580,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "M": {
+      "x": 545,
+      "y": 730,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "N": {
+      "x": 545,
+      "y": 880,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "O": {
+      "x": 545,
+      "y": 1020,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "P": {
+      "x": 545,
+      "y": 1160,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Q": {
+      "x": 545,
+      "y": 1300,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "R": {
+      "x": 545,
+      "y": 1440,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "S": {
+      "x": 545,
+      "y": 1580,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "T": {
+      "x": 545,
+      "y": 1720,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "U": {
+      "x": 1110,
+      "y": 430,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "V": {
+      "x": 860,
+      "y": 580,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "W": {
+      "x": 880,
+      "y": 720,
+      "w": 140,
+      "h": 80,
+      "style": {}
+    },
+    "X": {
+      "x": 785,
+      "y": 880,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Y": {
+      "x": 990,
+      "y": 1020,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Z": {
+      "x": 1025,
+      "y": 880,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "AA": {
+      "x": 1610,
+      "y": 580,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "AB": {
+      "x": 1395,
+      "y": 730,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "AC": {
+      "x": 1395,
+      "y": 880,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "AD": {
+      "x": 1295,
+      "y": 1020,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "AE": {
+      "x": 1515,
+      "y": 1160,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "AF": {
+      "x": 1535,
+      "y": 1020,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "AG": {
+      "x": 1840,
+      "y": 730,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "AH": {
+      "x": 1840,
+      "y": 880,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "AI": {
+      "x": 1840,
+      "y": 1020,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "AJ": {
+      "x": 1840,
+      "y": 1160,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "AK": {
+      "x": 1840,
+      "y": 1300,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "AL": {
+      "x": 1840,
+      "y": 1440,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    }
+  },
+  "edges": {
+    "A->B:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "B->C:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "C->D:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "D->E:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "E->F:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "F->C:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "F->G:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "D->I:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "I->H:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "B->J:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "J->K:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "K->L:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "L->M:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "M->N:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "N->O:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "O->P:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "P->Q:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Q->R:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "R->S:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "S->T:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "U->V:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "V->W:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "W->X:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "X->Y:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "W->Z:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Z->Y:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Y->U:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AA->AB:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AB->AC:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AC->AD:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AD->AE:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AC->AF:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AF->AE:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AE->AA:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AG->AH:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AH->AI:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AI->AJ:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AJ->AK:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AK->AL:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "A->B:1": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "B->J:1": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "J->U:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "U->AA:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AA->AG:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AG->J:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "AG->B:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  }
+}

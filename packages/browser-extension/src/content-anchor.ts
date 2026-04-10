@@ -82,7 +82,7 @@ export function parseAnchorKey(anchorKey: string): ParsedAnchorKey | null {
 export function getAnchorPagePosition(anchorKey: string, anchorElement: Element): { x: number; y: number } {
   const rect = anchorElement.getBoundingClientRect();
   const parsed = parseAnchorKey(anchorKey);
-  const genericOffset = (() => {
+  const genericOffset = ((): { x: number; y: number } | null => {
     const at = anchorKey.lastIndexOf("@");
     if (at <= 0) return null;
     const [xRaw, yRaw] = anchorKey.slice(at + 1).split(",");

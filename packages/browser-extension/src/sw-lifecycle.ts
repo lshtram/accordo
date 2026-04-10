@@ -29,23 +29,22 @@ function isNoReceiverError(err: unknown): boolean {
 export async function broadcastCommentsUpdated(url?: string): Promise<void> {
   const tabs = await chrome.tabs.query({});
   const normalized = url ? normalizeUrl(url) : undefined;
+  // Type predicate narrows tab.id to number (not undefined) for the map callback.
+  const httpTabs = tabs.filter((tab): tab is chrome.tabs.Tab & { id: number } => {
+    if (!tab.id || !tab.url) return false;
+    if (!tab.url.startsWith("http://") && !tab.url.startsWith("https://")) return false;
+    if (normalized && normalizeUrl(tab.url) !== normalized) return false;
+    return true;
+  });
   await Promise.all(
-    tabs
-      .filter((tab) => {
-        if (!tab.id || !tab.url) return false;
-        if (!tab.url.startsWith("http://") && !tab.url.startsWith("https://")) return false;
-        if (!normalized) return true;
-        return normalizeUrl(tab.url) === normalized;
-      })
-      .map(async (tab) => {
-        try {
-          await chrome.tabs.sendMessage(tab.id!, {
+    httpTabs.map(async (tab) => {
+      try {
+        chrome.tabs.sendMessage(tab.id, {
             type: MESSAGE_TYPES.COMMENTS_UPDATED,
             payload: { url: normalized },
-          });
-        } catch (err) {
-          if (!isNoReceiverError(err)) {
-          }
+          }).catch(() => {/* tab may not have listener */});
+        } catch {
+          // ignore send errors
         }
       }),
   );
@@ -126,24 +125,26 @@ export function registerListeners(
     }
   });
 
-  chrome.commands.onCommand.addListener(async (command: string) => {
+  chrome.commands.onCommand.addListener((command: string): void => {
     if (command === "toggle-comments-mode") {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) {
-        return;
-      }
-      const tabId = tab.id;
-      await toggleCommentsMode(tabId);
-      const isOn = getCommentsMode(tabId);
-      chrome.action.setBadgeText({ text: isOn ? "ON" : "", tabId });
-      chrome.action.setBadgeBackgroundColor({ color: isOn ? "#4a90d9" : "#888", tabId });
-      const msgType = isOn ? "comments-mode-on" : "comments-mode-off";
-      try {
-        await chrome.tabs.sendMessage(tabId, { type: msgType });
-      } catch (err) {
-        if (!isNoReceiverError(err)) {
+      void (async (): Promise<void> => {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) {
+          return;
         }
-      }
+        const tabId = tab.id;
+        await toggleCommentsMode(tabId);
+        const isOn = getCommentsMode(tabId);
+        void chrome.action.setBadgeText({ text: isOn ? "ON" : "", tabId });
+        void chrome.action.setBadgeBackgroundColor({ color: isOn ? "#4a90d9" : "#888", tabId });
+        const msgType = isOn ? "comments-mode-on" : "comments-mode-off";
+        try {
+          await chrome.tabs.sendMessage(tabId, { type: msgType });
+        } catch (err) {
+          if (!isNoReceiverError(err)) {
+          }
+        }
+      })();
     }
   });
 }

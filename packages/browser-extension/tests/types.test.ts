@@ -153,15 +153,20 @@ describe("M80-TYP — Shared Types", () => {
       expect(store.version).toBe("1.0");
     });
 
-    it("BR-F-03: lastScreenshot is optional", () => {
-      // BR-F-03
+    it("BR-F-03: has only version, url, and threads (no inline screenshot)", () => {
+      // BR-F-03: PageCommentStore wraps threads per URL with version, url, and threads[]
+      // only — screenshots are stored separately under "screenshot:{normalizedUrl}"
       const store: PageCommentStore = {
         version: "1.0",
         url: "https://example.com",
         threads: [],
       };
 
-      expect(store.lastScreenshot).toBeUndefined();
+      expect(store.version).toBe("1.0");
+      expect(store.url).toBe("https://example.com");
+      expect(Array.isArray(store.threads)).toBe(true);
+      // BR-F-03: lastScreenshot must NOT exist on the type
+      expect("lastScreenshot" in store).toBe(false);
     });
   });
 

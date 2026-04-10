@@ -27,13 +27,26 @@ export async function getActiveTabUrl(): Promise<string | null> {
 }
 
 /**
- * Resolve the target URL from an explicit payload URL or the active tab.
+ * Resolve the target URL from an explicit payload URL, explicit tabId, or active tab.
  * Prefers the explicit URL if provided and non-empty.
+ * B2-CTX-001: When tabId is provided, uses chrome.tabs.get to avoid tabs.query overhead.
  */
 export async function resolveRequestedUrl(payload: Record<string, unknown>): Promise<string | null> {
   const explicitUrl = readOptionalString(payload, "url");
   if (explicitUrl && explicitUrl.trim().length > 0) {
     return normalizeUrl(explicitUrl);
+  }
+  const tabId = readOptionalNumber(payload, "tabId");
+  if (tabId !== undefined) {
+    // Use chrome.tabs.get directly — avoids unnecessary tabs.query call (B2-CTX-001)
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (tab?.url) {
+      const url = tab.url;
+      if (url.startsWith("http://") || url.startsWith("https://")) {
+        return normalizeUrl(url);
+      }
+    }
+    return null;
   }
   return await getActiveTabUrl();
 }

@@ -7,13 +7,14 @@
  * They turn GREEN in Phase C after implementation.
  *
  * Requirements: diag_arch_v4.2.md §9.2
- * Requirement IDs: SM-01 through SM-15
+ * Requirement IDs: SM-01 through SM-22
  */
 
 // API checklist:
-// ✓ getShapeProps — 15 tests (SM-01..SM-15)
+// ✓ getShapeProps — 22 tests (SM-01..SM-22)
 //   covered shapes: rectangle, rounded, diamond, circle, ellipse, cylinder,
-//   stadium, hexagon, parallelogram, subgraph, unknown fallback.
+//   stadium, hexagon, parallelogram, subgraph, unknown fallback, subroutine,
+//   double_circle, asymmetric, parallelogram_alt, trapezoid, trapezoid_alt.
 //   covered properties: elementType, width, height, roundness (null vs >0),
 //   strokeDash (subgraph only), roundness ordering (stadium >= rounded),
 //   structural completeness of returned ShapeProps.
@@ -66,10 +67,10 @@ describe("getShapeProps (A8 — shape map)", () => {
     expect(p.height).toBe(80);
   });
 
-  // SM-06: "cylinder" → rectangle, 120×80 (diag.1 approximation)
-  it("SM-06: 'cylinder' → elementType 'rectangle', 120×80", () => {
+  // SM-06: "cylinder" → ellipse, 120×80 (diag.1 approximation — closest Excalidraw primitive)
+  it("SM-06: 'cylinder' → elementType 'ellipse', 120×80", () => {
     const p = getShapeProps("cylinder");
-    expect(p.elementType).toBe("rectangle");
+    expect(p.elementType).toBe("ellipse");
     expect(p.width).toBe(120);
     expect(p.height).toBe(80);
   });
@@ -142,5 +143,62 @@ describe("getShapeProps (A8 — shape map)", () => {
     expect(p).toHaveProperty("width");
     expect(p).toHaveProperty("height");
     expect("roundness" in p).toBe(true); // present and may be null
+  });
+
+  // SM-16: "subroutine" → rectangle (diag.1 approximation)
+  it("SM-16: 'subroutine' → elementType 'rectangle', 180×60", () => {
+    const p = getShapeProps("subroutine");
+    expect(p.elementType).toBe("rectangle");
+    expect(p.width).toBe(180);
+    expect(p.height).toBe(60);
+  });
+
+  // SM-17: "double_circle" → composite ellipse, 90×90
+  it("SM-17: 'double_circle' → composite 'double_circle', ellipse, 90×90", () => {
+    const p = getShapeProps("double_circle");
+    expect(p.elementType).toBe("ellipse");
+    expect(p.width).toBe(90);
+    expect(p.height).toBe(90);
+    expect(p.composite).toBe("double_circle");
+  });
+
+  // SM-18: "asymmetric" → rectangle (diag.1 approximation)
+  it("SM-18: 'asymmetric' → elementType 'rectangle', 180×60", () => {
+    const p = getShapeProps("asymmetric");
+    expect(p.elementType).toBe("rectangle");
+    expect(p.width).toBe(180);
+    expect(p.height).toBe(60);
+  });
+
+  // SM-19: "parallelogram_alt" → rectangle (diag.1 approximation)
+  it("SM-19: 'parallelogram_alt' → elementType 'rectangle', 180×60", () => {
+    const p = getShapeProps("parallelogram_alt");
+    expect(p.elementType).toBe("rectangle");
+    expect(p.width).toBe(180);
+    expect(p.height).toBe(60);
+  });
+
+  // SM-20: "trapezoid" → rectangle (diag.1 approximation)
+  it("SM-20: 'trapezoid' → elementType 'rectangle', 180×60", () => {
+    const p = getShapeProps("trapezoid");
+    expect(p.elementType).toBe("rectangle");
+    expect(p.width).toBe(180);
+    expect(p.height).toBe(60);
+  });
+
+  // SM-21: "trapezoid_alt" → rectangle (diag.1 approximation)
+  it("SM-21: 'trapezoid_alt' → elementType 'rectangle', 180×60", () => {
+    const p = getShapeProps("trapezoid_alt");
+    expect(p.elementType).toBe("rectangle");
+    expect(p.width).toBe(180);
+    expect(p.height).toBe(60);
+  });
+
+  // SM-22: "cylinder" → ellipse (diag.1 approximation — closest single primitive)
+  it("SM-22: 'cylinder' → elementType 'ellipse', 120×80", () => {
+    const p = getShapeProps("cylinder");
+    expect(p.elementType).toBe("ellipse");
+    expect(p.width).toBe(120);
+    expect(p.height).toBe(80);
   });
 });

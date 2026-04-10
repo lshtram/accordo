@@ -1,0 +1,76 @@
+{
+  "elements": [
+    {
+      "id": "A",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 8,
+      "y": 8,
+      "width": 73.34375,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "A",
+        "fontSize": 20
+      },
+      "link": null
+    },
+    {
+      "id": "B",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 260.28125,
+      "y": 8,
+      "width": 73.34375,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "B",
+        "fontSize": 20
+      },
+      "link": null
+    },
+    {
+      "id": "A_B",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 81.344,
+      "y": 38,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          14.911000000000001,
+          0
+        ],
+        [
+          178.937,
+          0
+        ]
+      ],
+      "label": {
+        "text": "This is the text",
+        "fontSize": 20,
+        "groupIds": []
+      },
+      "roundness": {
+        "type": 2
+      },
+      "endArrowhead": null,
+      "startArrowhead": null,
+      "start": {
+        "id": "A"
+      },
+      "end": {
+        "id": "B"
+      }
+    }
+  ],
+  "files": {}
+}

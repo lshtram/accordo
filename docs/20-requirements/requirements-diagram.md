@@ -139,19 +139,6 @@ StrokeStyle on edges was silently dropped by `detectNodeMutations` (edge mermaid
 
 ## 3. Open Items
 
-### D-03 — Curved Routing (NEXT)
-
-**Research:** `docs/reviews/D-03-curved-routing-research.md` ✅  
-**Approach:** Catmull-Rom spline interpolation — generate 16–20 intermediate points along a smooth curve; Excalidraw natively renders smooth curves through multi-point `points` array.
-
-**Files to touch:** `packages/diagram/src/canvas/edge-router.ts`, `edge-router.test.ts`
-
-**Implementation plan:**
-1. Add `routeCurved()` stub; remove `"curved" → "auto"` alias in `routeEdge` switch
-2. Implement Catmull-Rom spline sampling
-3. Handle self-loop curves (rounded rectangle variant)
-4. Handle N-waypoint case (curve through waypoints)
-
 ### diag.2 — Future Modules (NOT STARTED)
 
 Beyond parsers, these modules are planned for diag.2 (full list in `diagram-architecture.md §18`):
@@ -180,7 +167,7 @@ Architecture reference: `docs/10-architecture/diagram-types-architecture.md`
 | ID | Requirement | Acceptance Criteria |
 |---|---|---|
 | SD-R01 | Parse simple states | `db.nodes` with `isGroup===false` → `ParsedNode` with `shape: "rounded"` |
-| SD-R02 | Parse start/end pseudostates | `[*]` → nodes with `shape: "circle"` (stateStart/stateEnd mapped) |
+| SD-R02 | Parse start/end pseudostates | `[*]` → nodes with `shape: "stateStart"`/`"stateEnd"` (kept as distinct shapes, not mapped to `"circle"`); rendered as 30×30 ellipses via shape map |
 | SD-R03 | Parse composite states as clusters | `isGroup===true` → `ParsedCluster`; children's `parentId` → `cluster` membership |
 | SD-R04 | Parse nested composite states | Cluster with `parent` set when composites are nested |
 | SD-R05 | Parse transitions as edges | `db.edges` → `ParsedEdge` with label from `edge.label` |

@@ -875,14 +875,25 @@ export function generateCanvas(
   for (const edge of parsed.edges) {
     const fromLayout = resolvedLayout.nodes[edge.from];
     const toLayout = resolvedLayout.nodes[edge.to];
-    if (fromLayout === undefined || toLayout === undefined) continue;
+
+    // FC-08: If from/to is a cluster ID, resolve to cluster bounding box centre.
+    // Cluster bbox is used as both layout (for routing) and elementId (for binding).
+    const fromCluster = resolvedLayout.clusters[edge.from];
+    const toCluster = resolvedLayout.clusters[edge.to];
+    const hasFromCluster = fromCluster !== undefined && fromLayout === undefined;
+    const hasToCluster = toCluster !== undefined && toLayout === undefined;
+
+    // Skip only if both are missing (truly unresolvable)
+    if (fromLayout === undefined && !hasFromCluster) continue;
+    if (toLayout === undefined && !hasToCluster) continue;
 
     const key = edgeKey(edge.from, edge.to, edge.ordinal);
     const edgeL = resolvedLayout.edges[key];
 
+    // Default routing stays "auto" (straight baseline). Curved vs hard-angle
+    // behavior is selected through explicit edge routing/style settings.
     // Use orthogonal routing when the straight-line path between source and target
-    // would pass through any intermediate node. This prevents edges from visually
-    // "cutting through" other nodes in the diagram.
+    // would pass through any intermediate node.
     let routing = edgeL?.routing ?? "auto";
     const waypoints = edgeL?.waypoints ?? [];
     if (routing === "auto" && waypoints.length === 0) {
@@ -891,18 +902,46 @@ export function generateCanvas(
       }
     }
 
-    const sourceBB = { x: fromLayout.x, y: fromLayout.y, w: fromLayout.w, h: fromLayout.h };
-    const targetBB = { x: toLayout.x, y: toLayout.y, w: toLayout.w, h: toLayout.h };
+    // Resolve source and target bounding boxes
+    let sourceBB: { x: number; y: number; w: number; h: number };
+    let targetBB: { x: number; y: number; w: number; h: number };
+    let fromElemId: string | undefined;
+    let toElemId: string | undefined;
 
-    const sc: [number, number] = [fromLayout.x + fromLayout.w / 2, fromLayout.y + fromLayout.h / 2];
-    const tc: [number, number] = [toLayout.x + toLayout.w / 2, toLayout.y + toLayout.h / 2];
+    if (hasFromCluster) {
+      // FC-08: cluster as source → use cluster bbox for routing
+      sourceBB = { x: fromCluster.x, y: fromCluster.y, w: fromCluster.w, h: fromCluster.h };
+      // For binding: look up the cluster element (rendered as kind:"cluster")
+      fromElemId = undefined; // clusters don't have element bindings for edges
+    } else {
+      sourceBB = { x: fromLayout.x, y: fromLayout.y, w: fromLayout.w, h: fromLayout.h };
+      fromElemId = nodeElementIds.get(edge.from);
+    }
 
-    const routeResult = routeEdge(
-      routing,
-      waypoints,
-      sourceBB,
-      targetBB,
-    );
+    if (hasToCluster) {
+      // FC-08: cluster as target → use cluster bbox for routing
+      targetBB = { x: toCluster.x, y: toCluster.y, w: toCluster.w, h: toCluster.h };
+      toElemId = undefined;
+    } else {
+      targetBB = { x: toLayout.x, y: toLayout.y, w: toLayout.w, h: toLayout.h };
+      toElemId = nodeElementIds.get(edge.to);
+    }
+
+    // Compute centres for label waypoint (use cluster centres when applicable)
+    const sc: [number, number] = hasFromCluster
+      ? [fromCluster.x + fromCluster.w / 2, fromCluster.y + fromCluster.h / 2]
+      : [fromLayout.x + fromLayout.w / 2, fromLayout.y + fromLayout.h / 2];
+    const tc: [number, number] = hasToCluster
+      ? [toCluster.x + toCluster.w / 2, toCluster.y + toCluster.h / 2]
+      : [toLayout.x + toLayout.w / 2, toLayout.y + toLayout.h / 2];
+
+    // FC-08b/FC-08c: For cluster edges, route using explicit centre-to-centre
+    // points. This bypasses routeEdge's border clamping and ensures the arrow
+    // endpoint resolves to the cluster bbox centre (per FC-08b/08c requirement).
+    // For normal node edges, use routeEdge with direction-aware routing.
+    const routeResult = (hasFromCluster || hasToCluster)
+      ? { points: [sc, tc] as [number, number][], startBinding: null, endBinding: null }
+      : routeEdge(routing, waypoints, sourceBB, targetBB, parsed.direction);
 
     // Excalidraw arrow points must be relative to the element's x,y.
     // Use the first absolute point as the element origin, then subtract.
@@ -939,14 +978,17 @@ export function generateCanvas(
     // Pre-generate the arrow ID so we can reference it in shape boundElements.
     const arrowId = randomUUID();
     // Track this arrow against its source and target nodes for boundElements patching.
-    for (const nid of [edge.from, edge.to]) {
-      const arr = nodeArrows.get(nid) ?? [];
+    // FC-08: cluster edges are NOT added to nodeArrows (no binding to nodes).
+    if (!hasFromCluster) {
+      const arr = nodeArrows.get(edge.from) ?? [];
       arr.push(arrowId);
-      nodeArrows.set(nid, arr);
+      nodeArrows.set(edge.from, arr);
     }
-
-    const fromElemId = nodeElementIds.get(edge.from);
-    const toElemId = nodeElementIds.get(edge.to);
+    if (!hasToCluster) {
+      const arr = nodeArrows.get(edge.to) ?? [];
+      arr.push(arrowId);
+      nodeArrows.set(edge.to, arr);
+    }
 
     // Use explicit arrowheads from parser if present; fall back to type-based derivation
     // for class diagram edge types (inheritance, composition, etc.)

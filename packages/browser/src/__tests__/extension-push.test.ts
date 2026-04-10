@@ -11,7 +11,47 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { activate } from "../extension.js";
-import { createExtensionContextMock, extensions } from "./mocks/vscode.js";
+
+// Mock vscode at the top of this file so sharedRelay=false is guaranteed,
+// regardless of what other test files do with the shared mocks/vscode.js workspace mock.
+// This avoids cross-file pollution: extension-push.test.ts runs before
+// extension-activation.test.ts alphabetically, but this ensures isolation.
+vi.mock("vscode", () => {
+  const state = new Map<string, unknown>();
+  return {
+    workspace: {
+      getConfiguration: vi.fn(() => ({
+        get: vi.fn(<T>(_key: string, defaultValue: T): T => {
+          if (_key === "sharedRelay") return false as unknown as T;
+          return defaultValue;
+        }),
+      })),
+    },
+    extensions: {
+      getExtension: vi.fn(() => ({ exports: null })),
+    },
+    window: {
+      createOutputChannel: vi.fn(() => ({
+        appendLine: vi.fn(),
+        dispose: vi.fn(),
+      })),
+    },
+    Disposable: class Disposable {
+      constructor(private readonly fn: () => void) {}
+      dispose(): void { this.fn(); }
+    },
+    createExtensionContextMock: () => ({
+      subscriptions: [] as Array<{ dispose(): void }>,
+      globalState: {
+        get: vi.fn((k: string) => state.get(k)),
+        update: vi.fn(async (k: string, v: unknown) => { state.set(k, v); }),
+      },
+    }),
+  };
+});
+
+const vscode = await import("vscode");
+const { createExtensionContextMock, extensions } = await import("./mocks/vscode.js");
 
 const startMock = vi.fn().mockResolvedValue(undefined);
 const stopMock = vi.fn().mockResolvedValue(undefined);

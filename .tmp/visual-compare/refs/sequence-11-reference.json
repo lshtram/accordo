@@ -1,0 +1,428 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "sequence-11.mmd",
+  "elements": [
+    {
+      "id": "Service-top",
+      "type": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Service",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "Service-bottom",
+      "type": "rectangle",
+      "x": 0,
+      "y": 456,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "Service",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "DB-top",
+      "type": "rectangle",
+      "x": 200,
+      "y": 0,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "DB",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "id": "DB-bottom",
+      "type": "rectangle",
+      "x": 200,
+      "y": 456,
+      "width": 150,
+      "height": 65,
+      "label": {
+        "text": "DB",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#666",
+      "backgroundColor": "#eaeaea",
+      "fillStyle": "solid"
+    },
+    {
+      "type": "line",
+      "x": 75,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          391
+        ]
+      ],
+      "width": 0,
+      "height": 391,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "line",
+      "x": 275,
+      "y": 65,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          391
+        ]
+      ],
+      "width": 0,
+      "height": 391,
+      "strokeStyle": "solid",
+      "strokeColor": "#999",
+      "strokeWidth": 1
+    },
+    {
+      "type": "arrow",
+      "x": 76,
+      "y": 144,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          198,
+          0
+        ]
+      ],
+      "width": 198,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "endArrowhead": null,
+      "startArrowhead": null,
+      "label": {
+        "text": "connect",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Service-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "DB-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 76,
+      "y": 235,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          60,
+          -10
+        ],
+        [
+          60,
+          30
+        ],
+        [
+          0,
+          20
+        ]
+      ],
+      "width": -76,
+      "height": -225,
+      "strokeStyle": "dotted",
+      "endArrowhead": null,
+      "startArrowhead": null,
+      "label": {
+        "text": "Log error",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Service-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Service-top"
+      }
+    },
+    {
+      "type": "arrow",
+      "x": 76,
+      "y": 356,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          60,
+          -10
+        ],
+        [
+          60,
+          30
+        ],
+        [
+          0,
+          20
+        ]
+      ],
+      "width": -76,
+      "height": -346,
+      "strokeStyle": "dotted",
+      "endArrowhead": null,
+      "startArrowhead": null,
+      "label": {
+        "text": "Log different error",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": null
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "type": "rectangle",
+        "id": "Service-top"
+      },
+      "end": {
+        "type": "rectangle",
+        "id": "Service-top"
+      }
+    },
+    {
+      "type": "line",
+      "x": -9,
+      "y": 75,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          295,
+          0
+        ]
+      ],
+      "width": 295,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": 286,
+      "y": 75,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          361
+        ]
+      ],
+      "width": 0,
+      "height": 361,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": -9,
+      "y": 436,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          295,
+          0
+        ]
+      ],
+      "width": 295,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": -9,
+      "y": 75,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          361
+        ]
+      ],
+      "width": 0,
+      "height": 361,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": -9,
+      "y": 169,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          295,
+          0
+        ]
+      ],
+      "width": 295,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "line",
+      "x": -9,
+      "y": 290,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          295,
+          0
+        ]
+      ],
+      "width": 295,
+      "height": 0,
+      "strokeStyle": "dotted",
+      "strokeColor": "#adb5bd",
+      "strokeWidth": 2
+    },
+    {
+      "type": "text",
+      "x": 59.57289123535156,
+      "y": 93,
+      "width": 239.85421752929688,
+      "height": 16.83140754699707,
+      "text": "[Establish a connection to the DB]",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": null
+    },
+    {
+      "type": "text",
+      "x": 76.29515075683594,
+      "y": 187,
+      "width": 124.40969848632812,
+      "height": 16.83140754699707,
+      "text": "[Network timeout]",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": null
+    },
+    {
+      "type": "text",
+      "x": 62.96803283691406,
+      "y": 308,
+      "width": 151.06393432617188,
+      "height": 16.83140754699707,
+      "text": "[Credentials rejected]",
+      "fontSize": 16,
+      "verticalAlign": "top",
+      "strokeColor": null
+    },
+    {
+      "id": null,
+      "type": "rectangle",
+      "x": -9,
+      "y": 75,
+      "width": null,
+      "height": 20,
+      "label": {
+        "text": "critical",
+        "fontSize": 16,
+        "textAlign": null,
+        "verticalAlign": "middle",
+        "strokeColor": "#000"
+      },
+      "strokeStyle": null,
+      "strokeWidth": null,
+      "strokeColor": "#adb5bd",
+      "backgroundColor": "#e9ecef",
+      "fillStyle": "solid"
+    }
+  ],
+  "files": {}
+}

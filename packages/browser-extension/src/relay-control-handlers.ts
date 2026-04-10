@@ -76,24 +76,26 @@ export function toLifecycleEventName(waitUntil: WaitUntil): string {
 }
 
 /**
- * Wait for a Page.lifecycleEvent with the given name.
+ * Wait for Page.frameNavigated (used for back/forward where cached pages
+ * don't fire lifecycle events like DOMContentLoaded).
  */
-function createLifecycleWaiter(tabId: number, eventName: string): { promise: Promise<void>; cancel: () => void } {
+function createFrameNavigatedWaiter(tabId: number): { promise: Promise<void>; cancel: () => void } {
   let settled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const listener = (source: unknown, method: string, params?: Record<string, unknown>) => {
-    if (
-      !settled &&
-      method === "Page.lifecycleEvent" &&
-      (source as { tabId?: number }).tabId === tabId &&
-      params?.name === eventName
-    ) {
+  // params uses Object (Chrome API contract) — narrow to Record inside listener
+  type DebuggerEventListener = (source: chrome.debugger.Debuggee, method: string, params?: Object) => void;
+
+  const listener: DebuggerEventListener = (source, method, params) => {
+    // Only resolve on main-frame navigation (parentId is undefined for main frame, set for iframes)
+    const p = params as Record<string, unknown> | undefined;
+    const frame = p?.frame as Record<string, unknown> | undefined;
+    const isMainFrame = frame !== undefined && frame.parentId === undefined;
+
+    if (!settled && method === "Page.frameNavigated" && (source as { tabId?: number }).tabId === tabId && isMainFrame) {
       settled = true;
       if (timer) clearTimeout(timer);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      chrome.debugger.onEvent.removeListener(listener as any);
+      chrome.debugger.onEvent.removeListener(listener);
       resolveRef?.();
     }
   };
@@ -105,23 +107,73 @@ function createLifecycleWaiter(tabId: number, eventName: string): { promise: Pro
     timer = setTimeout(() => {
       if (settled) return;
       settled = true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      chrome.debugger.onEvent.removeListener(listener as any);
-      reject(new Error(`waitUntil ${eventName} timed out`));
-    }, 30000);
+      chrome.debugger.onEvent.removeListener(listener);
+      reject(new Error("Page.frameNavigated timed out"));
+    }, 10000);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    chrome.debugger.onEvent.addListener(listener as any);
+    chrome.debugger.onEvent.addListener(listener);
   });
 
   return {
     promise,
-    cancel: () => {
+    cancel: (): void => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      chrome.debugger.onEvent.removeListener(listener as any);
+      chrome.debugger.onEvent.removeListener(listener);
+    },
+  };
+}
+
+/**
+ * Wait for a Page.lifecycleEvent with the given name, for the main frame only.
+ * @param mainFrameId - The frameId of the main frame, used to filter out iframe events.
+ */
+function createLifecycleWaiter(tabId: number, eventName: string, mainFrameId: string): { promise: Promise<void>; cancel: () => void } {
+  let settled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  // params uses Object (Chrome API contract) — narrow to Record inside listener
+  type DebuggerEventListener = (source: chrome.debugger.Debuggee, method: string, params?: Object) => void;
+
+  const listener: DebuggerEventListener = (source, method, params) => {
+    const p = params as Record<string, unknown> | undefined;
+    const frameIdMatches = (params as Record<string, unknown>)?.frameId === mainFrameId;
+    if (
+      !settled &&
+      method === "Page.lifecycleEvent" &&
+      (source as { tabId?: number }).tabId === tabId &&
+      p?.name === eventName &&
+      frameIdMatches
+    ) {
+      settled = true;
+      if (timer) clearTimeout(timer);
+      chrome.debugger.onEvent.removeListener(listener);
+      resolveRef?.();
+    }
+  };
+
+  let resolveRef: (() => void) | undefined;
+
+  const promise = new Promise<void>((resolve, reject) => {
+    resolveRef = resolve;
+    timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      chrome.debugger.onEvent.removeListener(listener);
+      reject(new Error(`waitUntil ${eventName} timed out`));
+    }, 30000);
+
+    chrome.debugger.onEvent.addListener(listener);
+  });
+
+  return {
+    promise,
+    cancel: (): void => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      chrome.debugger.onEvent.removeListener(listener);
     },
   };
 }
@@ -150,7 +202,12 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
         return actionFailed(request, "invalid-request");
       }
       await sendCommand(tabId, "Page.setLifecycleEventsEnabled", { enabled: true });
-      const lifecycle = createLifecycleWaiter(tabId, eventName);
+      const frameTreeResult = await sendCommand<{ frameTree: { frame: { id: string } } }>(tabId, "Page.getFrameTree");
+      const mainFrameId = frameTreeResult?.frameTree?.frame?.id ?? "";
+      if (!mainFrameId) {
+        return actionFailed(request, "action-failed");
+      }
+      const lifecycle = createLifecycleWaiter(tabId, eventName, mainFrameId);
       try {
         await sendCommand(tabId, "Page.navigate", { url });
         await lifecycle.promise;
@@ -159,28 +216,49 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
         throw error;
       }
     } else if (type === "back") {
-      await sendCommand(tabId, "Page.setLifecycleEventsEnabled", { enabled: true });
-      const lifecycle = createLifecycleWaiter(tabId, eventName);
+      const history = await sendCommand<{ currentIndex: number; entries: Array<{ id: number }> }>(
+        tabId,
+        "Page.getNavigationHistory"
+      );
+      if (!history || history.currentIndex <= 0) {
+        return actionFailed(request, "action-failed");
+      }
+      const waiter = createFrameNavigatedWaiter(tabId);
       try {
-        await sendCommand(tabId, "Page.goBackInHistory");
-        await lifecycle.promise;
+        await sendCommand(tabId, "Page.navigateToHistoryEntry", {
+          entryId: history.entries[history.currentIndex - 1].id,
+        });
+        await waiter.promise;
       } catch (error) {
-        lifecycle.cancel();
+        waiter.cancel();
         throw error;
       }
     } else if (type === "forward") {
-      await sendCommand(tabId, "Page.setLifecycleEventsEnabled", { enabled: true });
-      const lifecycle = createLifecycleWaiter(tabId, eventName);
+      const history = await sendCommand<{ currentIndex: number; entries: Array<{ id: number }> }>(
+        tabId,
+        "Page.getNavigationHistory"
+      );
+      if (!history || history.currentIndex >= history.entries.length - 1) {
+        return actionFailed(request, "action-failed");
+      }
+      const waiter = createFrameNavigatedWaiter(tabId);
       try {
-        await sendCommand(tabId, "Page.goForwardInHistory");
-        await lifecycle.promise;
+        await sendCommand(tabId, "Page.navigateToHistoryEntry", {
+          entryId: history.entries[history.currentIndex + 1].id,
+        });
+        await waiter.promise;
       } catch (error) {
-        lifecycle.cancel();
+        waiter.cancel();
         throw error;
       }
     } else if (type === "reload") {
       await sendCommand(tabId, "Page.setLifecycleEventsEnabled", { enabled: true });
-      const lifecycle = createLifecycleWaiter(tabId, eventName);
+      const frameTreeResult = await sendCommand<{ frameTree: { frame: { id: string } } }>(tabId, "Page.getFrameTree");
+      const mainFrameId = frameTreeResult?.frameTree?.frame?.id ?? "";
+      if (!mainFrameId) {
+        return actionFailed(request, "action-failed");
+      }
+      const lifecycle = createLifecycleWaiter(tabId, eventName, mainFrameId);
       try {
         await sendCommand(tabId, "Page.reload");
         await lifecycle.promise;

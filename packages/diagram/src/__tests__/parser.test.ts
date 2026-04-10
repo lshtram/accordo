@@ -43,6 +43,7 @@ interface MockDb {
   getEdges?: () => unknown[];
   getSubGraphs?: () => unknown[];
   getDirection?: () => string;
+  getClasses?: () => Map<string, unknown> | Record<string, unknown>;
 }
 
 let _mockDb: MockDb = {};
@@ -77,13 +78,24 @@ function makeVertex(
   return { id, labelType: "string", label, type, domId: domId ?? id, classes };
 }
 
+function makeVertexWithStyles(
+  id: string,
+  label: string,
+  type: string,
+  classes: string[] = [],
+  styles: string[] = []
+) {
+  return { id, labelType: "string", label, type, domId: id, classes, styles };
+}
+
 function makeEdge(
   start: string,
   end: string,
   text: string,
-  type: number = 1 // 1 = arrow
+  type: string = "arrow_point", // Mermaid 11.x string type
+  stroke: string = "normal"
 ) {
-  return { start, end, text, type };
+  return { start, end, text, type, stroke };
 }
 
 function makeSubgraph(id: string, title: string, nodes: string[]) {
@@ -246,10 +258,10 @@ describe("parseMermaid — edge extraction", () => {
         C: makeVertex("C", "C", "square"),
       }),
       getEdges: () => [
-        makeEdge("A", "B", "", 1),         // arrow, no label
-        makeEdge("A", "B", "second", 1),   // arrow, label — second edge A→B
-        makeEdge("B", "C", "link", 2),     // dotted, label
-        makeEdge("A", "C", "", 3),         // thick
+        makeEdge("A", "B", "", "arrow_point", "normal"),       // arrow, no label
+        makeEdge("A", "B", "second", "arrow_point", "normal"), // arrow, label — second edge A→B
+        makeEdge("B", "C", "link", "arrow_point", "dotted"),   // dotted, label
+        makeEdge("A", "C", "", "arrow_point", "thick"),         // thick
       ],
       getSubGraphs: () => [],
       getDirection: () => "LR",
@@ -295,18 +307,18 @@ describe("parseMermaid — edge extraction", () => {
     expect(result.diagram.edges[0].type).toBe("arrow");
   });
 
-  it("edge type: type=2 maps to 'dotted'", async () => {
+  it("edge type: dotted stroke maps to strokeStyle='dashed'", async () => {
     const result = await parseMermaid("flowchart LR");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
-    expect(result.diagram.edges[2].type).toBe("dotted");
+    expect(result.diagram.edges[2].strokeStyle).toBe("dashed");
   });
 
-  it("edge type: type=3 maps to 'thick'", async () => {
+  it("edge type: thick stroke maps to strokeWidth=4", async () => {
     const result = await parseMermaid("flowchart LR");
     expect(result.valid).toBe(true);
     if (!result.valid) return;
-    expect(result.diagram.edges[3].type).toBe("thick");
+    expect(result.diagram.edges[3].strokeWidth).toBe(4);
   });
 });
 
@@ -679,5 +691,263 @@ describe("parseMermaid — vertex text-field fallback", () => {
     expect(result.valid).toBe(true);
     if (!result.valid) return;
     expect(result.diagram.nodes.get("Y")?.label).toBe("TextValue");
+  });
+});
+
+// ── 15. Inline `style` directive parsing ─────────────────────────────────────
+// Verifies that vertex.styles (CSS strings) are parsed into ParsedNode.style.
+
+describe("parseMermaid — inline style directive → ParsedNode.style", () => {
+  it("fill:#f9f sets node.style.backgroundColor", async () => {
+    setMockDb({
+      getVertices: () => ({
+        A: makeVertexWithStyles("A", "Start", "round", [], ["fill:#f9f"]),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.diagram.nodes.get("A")?.style?.backgroundColor).toBe("#f9f");
+  });
+
+  it("stroke:#333 sets node.style.strokeColor", async () => {
+    setMockDb({
+      getVertices: () => ({
+        A: makeVertexWithStyles("A", "A", "square", [], ["stroke:#333"]),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.diagram.nodes.get("A")?.style?.strokeColor).toBe("#333");
+  });
+
+  it("stroke-width:4px sets node.style.strokeWidth to 4", async () => {
+    setMockDb({
+      getVertices: () => ({
+        A: makeVertexWithStyles("A", "A", "square", [], ["stroke-width:4px"]),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.diagram.nodes.get("A")?.style?.strokeWidth).toBe(4);
+  });
+
+  it("color:#fff sets node.style.fontColor", async () => {
+    setMockDb({
+      getVertices: () => ({
+        A: makeVertexWithStyles("A", "A", "square", [], ["color:#fff"]),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.diagram.nodes.get("A")?.style?.fontColor).toBe("#fff");
+  });
+
+  it("stroke-dasharray sets node.style.strokeStyle to 'dashed'", async () => {
+    setMockDb({
+      getVertices: () => ({
+        A: makeVertexWithStyles("A", "A", "square", [], ["stroke-dasharray: 5 5"]),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.diagram.nodes.get("A")?.style?.strokeStyle).toBe("dashed");
+  });
+
+  it("multiple CSS properties all parsed correctly", async () => {
+    setMockDb({
+      getVertices: () => ({
+        A: makeVertexWithStyles("A", "Start", "round", [], ["fill:#f9f", "stroke:#333", "stroke-width:4px"]),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    const style = result.diagram.nodes.get("A")?.style;
+    expect(style?.backgroundColor).toBe("#f9f");
+    expect(style?.strokeColor).toBe("#333");
+    expect(style?.strokeWidth).toBe(4);
+  });
+
+  it("node with no styles has no style field", async () => {
+    setMockDb({
+      getVertices: () => ({
+        A: makeVertex("A", "A", "square"),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.diagram.nodes.get("A")?.style).toBeUndefined();
+  });
+});
+
+// ── 16. classDef resolution → ParsedNode.style ────────────────────────────────
+// Verifies that db.getClasses() classDef styles are resolved onto nodes.
+
+describe("parseMermaid — classDef → ParsedNode.style", () => {
+  it("classDef fill color is applied to matching nodes", async () => {
+    setMockDb({
+      getVertices: () => ({
+        A: makeVertex("A", "A", "square", ["highlight"]),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+      getClasses: () => new Map([
+        ["highlight", { id: "highlight", styles: ["fill:#4dabf7"], textStyles: [] }],
+      ]),
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.diagram.nodes.get("A")?.style?.backgroundColor).toBe("#4dabf7");
+  });
+
+  it("classDef stroke color is applied to matching nodes", async () => {
+    setMockDb({
+      getVertices: () => ({
+        A: makeVertex("A", "A", "square", ["service"]),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+      getClasses: () => new Map([
+        ["service", { id: "service", styles: ["stroke:#1971c2"], textStyles: [] }],
+      ]),
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.diagram.nodes.get("A")?.style?.strokeColor).toBe("#1971c2");
+  });
+
+  it("inline style overrides classDef fill for same node", async () => {
+    // classDef sets fill:#aaa; inline style overrides with fill:#f00
+    setMockDb({
+      getVertices: () => ({
+        A: makeVertexWithStyles("A", "A", "square", ["base"], ["fill:#f00"]),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+      getClasses: () => new Map([
+        ["base", { id: "base", styles: ["fill:#aaa"], textStyles: [] }],
+      ]),
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    // inline style wins
+    expect(result.diagram.nodes.get("A")?.style?.backgroundColor).toBe("#f00");
+  });
+
+  it("node with no class assignment gets no classDef style", async () => {
+    setMockDb({
+      getVertices: () => ({
+        A: makeVertex("A", "A", "square", []),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+      getClasses: () => new Map([
+        ["myClass", { id: "myClass", styles: ["fill:#aaa"], textStyles: [] }],
+      ]),
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    // A has no class "myClass" → no style
+    expect(result.diagram.nodes.get("A")?.style).toBeUndefined();
+  });
+
+  it("db without getClasses() still works gracefully (no crash)", async () => {
+    setMockDb({
+      getVertices: () => ({
+        A: makeVertex("A", "A", "square", ["myClass"]),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+      // No getClasses — simulates older Mermaid version
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    // Should not crash; node has no resolved style
+    expect(result.diagram.nodes.get("A")?.style).toBeUndefined();
+  });
+
+  it("space-separated classDef styles (no comma) are parsed correctly", async () => {
+    // classDef foobar stroke:#00f stroke-width:2px (space, no comma)
+    setMockDb({
+      getVertices: () => ({
+        C: makeVertex("C", "C", "square", ["foobar"]),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+      getClasses: () => new Map([
+        ["foobar", { id: "foobar", styles: ["stroke:#00f stroke-width:2px"], textStyles: [] }],
+      ]),
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    const style = result.diagram.nodes.get("C")?.style;
+    expect(style?.strokeColor).toBe("#00f");
+    expect(style?.strokeWidth).toBe(2);
+  });
+});
+// Verifies that flowchart.ts SHAPE_MAP correctly maps each Mermaid vertex type
+// string (as seen in the parsed db) to the expected internal NodeShape value.
+
+describe("parseMermaid — extended vertex type → NodeShape mapping (PR-12)", () => {
+  it.each([
+    ["subroutine",    "subroutine"],
+    ["doublecircle",  "double_circle"],
+    ["odd",           "asymmetric"],
+    ["lean_right",    "parallelogram"],
+    ["lean_left",     "parallelogram_alt"],
+    ["trapezoid",     "trapezoid"],
+    ["inv_trapezoid", "trapezoid_alt"],
+  ] as const)("PR-12: Mermaid type '%s' maps to NodeShape '%s'", async (vertexType, expectedShape) => {
+    setMockDb({
+      getVertices: () => ({
+        N: makeVertex("N", "Label", vertexType),
+      }),
+      getEdges: () => [],
+      getSubGraphs: () => [],
+      getDirection: () => "TD",
+    });
+    const result = await parseMermaid("flowchart TD");
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+    expect(result.diagram.nodes.get("N")?.shape).toBe(expectedShape);
   });
 });

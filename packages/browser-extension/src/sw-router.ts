@@ -88,9 +88,9 @@ export function createHandleMessage(
         const text = (payload?.text as string | undefined) ?? "";
         const tabId = sender.tab?.id;
         if (tabId !== undefined) {
-          chrome.action.setBadgeText({ text, tabId });
+          void chrome.action.setBadgeText({ text, tabId });
         } else {
-          chrome.action.setBadgeText({ text });
+          void chrome.action.setBadgeText({ text });
         }
         return { success: true };
       }

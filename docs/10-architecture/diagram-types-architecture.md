@@ -108,9 +108,11 @@ interface StateEdge {
 
 ### 2.3 Key Behaviours
 
-**Start/End pseudostates:** `[*]` in Mermaid source generates synthetic nodes:
+**Start/End pseudostates:** `[*]` in Mermaid source generates synthetic nodes that are **included** in the parsed diagram (not filtered out):
 - Top-level: `root_start`, `root_end`
 - Inside composite state `active`: `active_start`, `active_end`
+
+These pseudostates are full `ParsedNode` entries with edges connecting them to other states. They are rendered as small 30×30 ellipses (see DEC-016).
 
 **Composite states:** Nodes with `isGroup: true` act as clusters. Their children have `parentId` set to the composite state's `id`.
 
@@ -119,9 +121,11 @@ interface StateEdge {
 | Mermaid `shape` | Our `NodeShape` | Description |
 |---|---|---|
 | `"rect"` | `"rounded"` | Normal state (rounded rectangle per UML convention) |
-| `"stateStart"` | `"circle"` | Initial pseudostate (filled circle) |
-| `"stateEnd"` | `"circle"` | Final pseudostate (bullseye) |
+| `"stateStart"` | `"stateStart"` | Initial pseudostate (small filled circle, 30×30) |
+| `"stateEnd"` | `"stateEnd"` | Final pseudostate (small bullseye circle, 30×30) |
 | `"roundedWithTitle"` | `"rectangle"` | Composite state container (cluster, not rendered as node) |
+
+> **Design note (DEC-016):** Pseudostate shapes are kept as `"stateStart"`/`"stateEnd"` rather than mapping to the existing `"circle"` NodeShape. UML convention renders initial/final pseudostates as small circles (~30px), not full-size circles (80px). Separate shape map entries with smaller dimensions achieve this without introducing conditional sizing logic.
 
 **Edge type:** All edges are `"arrow"` — state diagrams have only one transition style.
 
@@ -139,7 +143,7 @@ export function parseStateDiagram(db: StateDiagramDb): ParsedDiagram {
   //    - Regular states (isGroup === false) → ParsedNode
   //    - Composite states (isGroup === true) → ParsedCluster
   // 4. Build cluster membership from parentId
-  // 5. Map shapes: rect→rounded, stateStart→circle, stateEnd→circle
+   // 5. Map shapes: rect→rounded, stateStart→stateStart, stateEnd→stateEnd (kept as-is)
   // 6. Build edges with ordinal counter
   // 7. Return ParsedDiagram
 }
@@ -163,9 +167,16 @@ stateEnd:          { elementType: "ellipse", width: 30,  height: 30,  roundness:
 
 ### 2.6 Auto-Layout
 
-Already wired — `DAGRE_TYPES` includes `"stateDiagram-v2"`. No changes needed to `auto-layout.ts`. The `computeInitialLayout()` → `layoutWithDagre()` path works as-is because:
+Already wired — `DAGRE_TYPES` includes `"stateDiagram-v2"`. The `computeInitialLayout()` → `layoutWithDagre()` path works as-is because:
 - Composite states become clusters via `ParsedCluster` → dagre compound mode
 - Start/end pseudostates are just small nodes
+
+The `SHAPE_DIMS` table in `auto-layout.ts` needs entries for pseudostate shapes:
+
+```typescript
+stateStart: { w: 30, h: 30 },
+stateEnd:   { w: 30, h: 30 },
+```
 
 ---
 
@@ -798,12 +809,12 @@ Write tests in `packages/diagram/src/__tests__/state-diagram.test.ts`:
 | Test ID | Description |
 |---|---|
 | SD-01 | Parse simple two-state diagram → 2 nodes, 1 edge |
-| SD-02 | Start/end pseudostates → circle shape nodes |
+| SD-02 | Start/end pseudostates `[*]` → nodes with shape `"stateStart"`/`"stateEnd"` (30×30 ellipse) |
 | SD-03 | Composite state → cluster with members |
 | SD-04 | Nested composite → cluster.parent set |
 | SD-05 | Transition labels preserved in edge.label |
 | SD-06 | Multiple transitions → ordinal counter |
-| SD-07 | Shape mapping: rect→rounded, stateStart→circle, stateEnd→circle |
+| SD-07 | Shape mapping: rect→rounded, stateStart→stateStart, stateEnd→stateEnd |
 | SD-08 | Empty diagram (no transitions) → nodes only |
 | SD-09 | Self-transition (state → same state) |
 | SD-10 | adapter.ts integration: `parseMermaid()` returns valid ParsedDiagram for stateDiagram-v2 source |

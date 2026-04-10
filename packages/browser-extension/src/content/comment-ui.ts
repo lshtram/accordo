@@ -12,10 +12,14 @@ import { openSdkComposerAtAnchor } from "./sdk-convergence.js";
 
 // ── Debug logger ─────────────────────────────────────────────────────────────────
 
+/** Set DEBUG=true to enable verbose content-script logging in the browser console. */
+const DEBUG = false;
+
 export function dbg(msg: string, ...args: unknown[]): void {
-  console.log(`[Accordo CS] ${msg}`, ...args);
+  if (DEBUG) console.warn(`[Accordo CS] ${msg}`, ...args);
 }
 export function dbgErr(msg: string, ...args: unknown[]): void {
+  // dbgErr is for real failures — always logged (noisy but necessary for diagnostics)
   console.error(`[Accordo CS ERROR] ${msg}`, ...args);
 }
 
@@ -106,10 +110,10 @@ export function wireSdkCallbacks(handlers: {
         _pendingAnchorContexts.delete(blockId);
         void handlers.onCreate(blockId, body, context);
       },
-      onReply: handlers.onReply,
-      onResolve: handlers.onResolve,
-      onReopen: handlers.onReopen,
-      onDelete: handlers.onDelete,
+      onReply: (threadId: string, body: string) => { void handlers.onReply(threadId, body).catch(() => {}); },
+      onResolve: (threadId: string) => { void handlers.onResolve(threadId).catch(() => {}); },
+      onReopen: (threadId: string) => { void handlers.onReopen(threadId).catch(() => {}); },
+      onDelete: (threadId: string, commentId?: string) => { void handlers.onDelete(threadId, commentId).catch(() => {}); },
     },
   });
   dbg("wireSdkCallbacks: SDK initialised");
@@ -179,7 +183,7 @@ export async function activateCommentsMode(): Promise<void> {
   if (commentsModeActive) return;
   commentsModeActive = true;
   showFloatingBar();
-  rightClickHandler = (e: MouseEvent) => {
+  rightClickHandler = (e: MouseEvent): void => {
     dbg(`contextmenu: target=${(e.target as Element)?.tagName} x=${e.clientX} y=${e.clientY}`);
     e.preventDefault();
     e.stopPropagation();

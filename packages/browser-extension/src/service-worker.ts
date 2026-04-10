@@ -49,6 +49,6 @@ export function registerListeners(): void {
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 registerListeners();
-chrome.runtime.onInstalled.addListener(onInstalled);
+chrome.runtime.onInstalled.addListener((details) => { void onInstalled(details); });
 relayBridge.start();
 startPeriodicSync();

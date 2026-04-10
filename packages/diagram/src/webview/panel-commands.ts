@@ -96,6 +96,17 @@ export function setupWebview(
       vscode.Uri.joinPath(context.extensionUri, "dist", "webview", "sdk.css"),
     )
     .toString();
+  const mermaidLibraryUri = panel.webview
+    .asWebviewUri(
+      vscode.Uri.joinPath(
+        context.extensionUri,
+        "dist",
+        "webview",
+        "excalidraw",
+        "accordo-mermaid-shapes.excalidrawlib",
+      ),
+    )
+    .toString();
 
   panel.webview.html = getWebviewHtml({
     nonce,
@@ -104,5 +115,6 @@ export function setupWebview(
     virgilFontUri,
     excalidrawAssetsUri,
     sdkCssUri,
+    mermaidLibraryUri,
   });
 }

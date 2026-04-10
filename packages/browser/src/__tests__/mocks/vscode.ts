@@ -31,8 +31,15 @@ export const window = {
   })),
 };
 
+export const workspace = {
+  getConfiguration: vi.fn((_section: string) => ({
+    get: vi.fn(<T>(key: string, defaultValue?: T): T => defaultValue as T),
+  })),
+};
+
 export default {
   extensions,
   window,
+  workspace,
   Disposable,
 };

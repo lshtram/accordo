@@ -488,8 +488,8 @@ export const debuggerAttachedTabs = new Set<number>();
 
 /** Detach listener registry. */
 const debuggerDetachListeners: Array<(source: chrome.debugger.Debuggee, reason: string) => void> = [];
-/** Debugger event listener registry. */
-const debuggerEventListeners: Array<(source: chrome.debugger.Debuggee, method: string, params?: Record<string, unknown>) => void> = [];
+/*** Debugger event listener registry. */
+export const debuggerEventListeners: Array<(source: chrome.debugger.Debuggee, method: string, params?: Record<string, unknown>) => void> = [];
 
 /** Creates a fresh debugger mock with new vi.fn() implementations. */
 function createDebuggerMock() {
@@ -529,10 +529,13 @@ function createDebuggerMock() {
         // we trust the module-level check and just return a mock CDP response.
         if (method === "Page.navigate" || method === "Page.reload" || method === "Page.goBackInHistory" || method === "Page.goForwardInHistory") {
           for (const listener of debuggerEventListeners) {
-            listener(target, "Page.lifecycleEvent", { name: "DOMContentLoaded" });
-            listener(target, "Page.lifecycleEvent", { name: "load" });
-            listener(target, "Page.lifecycleEvent", { name: "networkIdle" });
+            listener(target, "Page.lifecycleEvent", { name: "DOMContentLoaded", frameId: "main" });
+            listener(target, "Page.lifecycleEvent", { name: "load", frameId: "main" });
+            listener(target, "Page.lifecycleEvent", { name: "networkIdle", frameId: "main" });
           }
+        }
+        if (method === "Page.getFrameTree") {
+          return { frameTree: { frame: { id: "main", parentId: undefined } } } as unknown as Promise<unknown>;
         }
         if (callback) callback({});
         return Promise.resolve({});
@@ -665,11 +668,53 @@ export function setMockBytesInUse(bytes: number): void {
  * Helper to fire Page.lifecycleEvent debugger events for a tab.
  * Used to unblock handleNavigate's lifecycle waiter in tests that override
  * debugger.sendCommand but still need the lifecycle promise to resolve.
+ *
+ * Uses "main" as the frameId so events pass the main-frame filter in
+ * createLifecycleWaiter (which now requires frameId === mainFrameId).
  */
 export function fireLifecycleEvents(tabId: number): void {
   for (const listener of debuggerEventListeners) {
-    listener({ tabId }, "Page.lifecycleEvent", { name: "DOMContentLoaded" });
-    listener({ tabId }, "Page.lifecycleEvent", { name: "load" });
-    listener({ tabId }, "Page.lifecycleEvent", { name: "networkIdle" });
+    listener({ tabId }, "Page.lifecycleEvent", { name: "DOMContentLoaded", frameId: "main" });
+    listener({ tabId }, "Page.lifecycleEvent", { name: "load", frameId: "main" });
+    listener({ tabId }, "Page.lifecycleEvent", { name: "networkIdle", frameId: "main" });
+  }
+}
+
+/**
+ * Helper to fire Page.frameNavigated debugger event for a tab.
+ * Used to unblock handleNavigate's frame-navigated waiter (used for back/forward)
+ * in tests that override debugger.sendCommand.
+ *
+ * Uses a main-frame structure (frame without parentId) so the event passes
+ * the main-frame filter in createFrameNavigatedWaiter.
+ */
+export function fireFrameNavigatedEvent(tabId: number): void {
+  for (const listener of debuggerEventListeners) {
+    listener({ tabId }, "Page.frameNavigated", { frame: { id: "main" } });
+  }
+}
+
+/**
+ * Helper to fire Page.frameNavigated debugger event for an iframe tab.
+ * Used to test that iframes do NOT resolve the back/forward waiter.
+ * Fires with parentId set so the event is identifiable as an iframe.
+ */
+export function fireIframeFrameNavigatedEvent(tabId: number, iframeId = "child-frame", parentId = "main-frame"): void {
+  for (const listener of debuggerEventListeners) {
+    listener({ tabId }, "Page.frameNavigated", { frame: { id: iframeId, parentId } });
+  }
+}
+
+/**
+ * Helper to fire Page.lifecycleEvent debugger events for a specific frame.
+ * Used to test that only the main-frame lifecycle event resolves the waiter.
+ *
+ * @param tabId - The tab to fire the event on
+ * @param frameId - The frameId in the event (use "main" for main frame, any other value for iframe)
+ * @param name - The lifecycle event name (e.g. "DOMContentLoaded", "load")
+ */
+export function fireLifecycleEvent(tabId: number, frameId: string, name = "DOMContentLoaded"): void {
+  for (const listener of debuggerEventListeners) {
+    listener({ tabId }, "Page.lifecycleEvent", { name, frameId });
   }
 }

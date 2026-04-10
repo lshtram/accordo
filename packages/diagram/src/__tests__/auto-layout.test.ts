@@ -138,6 +138,101 @@ function makeStateDiagram(): ParsedDiagram {
   return makeDiagram("stateDiagram-v2", nodes, edges, [], "TB");
 }
 
+function makeMixedHeightStateChain(): ParsedDiagram {
+  const nodes: ParsedNode[] = [
+    makeNode("root_start", "stateStart"),
+    makeNode("Idle", "rounded"),
+    makeNode("Active", "rounded"),
+    makeNode("root_end", "stateEnd"),
+  ];
+  const edges: ParsedEdge[] = [
+    makeEdge("root_start", "Idle", 0),
+    makeEdge("Idle", "Active", 0),
+    makeEdge("Active", "root_end", 0),
+  ];
+  return makeDiagram("stateDiagram-v2", nodes, edges, [], "TB");
+}
+
+function makeCompositeStateDiagram(): ParsedDiagram {
+  const nodes: ParsedNode[] = [
+    makeNode("root_start", "stateStart"),
+    makeNodeInCluster("Active_start", "Active", "stateStart"),
+    makeNodeInCluster("Running", "Active", "rounded"),
+    makeNodeInCluster("Paused", "Active", "rounded"),
+    makeNode("root_end", "stateEnd"),
+  ];
+  const edges: ParsedEdge[] = [
+    makeEdge("root_start", "Active", 0),
+    makeEdge("Active_start", "Running", 0),
+    makeEdge("Running", "Paused", 0),
+    makeEdge("Paused", "Running", 0),
+    makeEdge("Active", "root_end", 0),
+  ];
+  const clusters: ParsedCluster[] = [makeCluster("Active", ["Active_start", "Running", "Paused"])];
+  return makeDiagram("stateDiagram-v2", nodes, edges, clusters, "TB");
+}
+
+function makeNestedStateDiagram(): ParsedDiagram {
+  const nodes: ParsedNode[] = [
+    makeNode("root_start", "stateStart"),
+    makeNodeInCluster("First_start", "First", "stateStart"),
+    makeNodeInCluster("Second_start", "Second", "stateStart"),
+    makeNodeInCluster("InnerA", "Second", "rounded"),
+    makeNodeInCluster("InnerB", "Second", "rounded"),
+    makeNodeInCluster("Second_end", "Second", "stateEnd"),
+    makeNode("root_end", "stateEnd"),
+  ];
+  const edges: ParsedEdge[] = [
+    makeEdge("root_start", "First", 0),
+    makeEdge("First_start", "Second", 0),
+    makeEdge("Second_start", "InnerA", 0),
+    makeEdge("InnerA", "InnerB", 0),
+    makeEdge("InnerB", "Second_end", 0),
+    makeEdge("First", "root_end", 0),
+  ];
+  const clusters: ParsedCluster[] = [
+    makeCluster("First", ["First_start", "Second"]),
+    { id: "Second", label: "Second", members: ["Second_start", "InnerA", "InnerB", "Second_end"], parent: "First" },
+  ];
+  return makeDiagram("stateDiagram-v2", nodes, edges, clusters, "TB");
+}
+
+function makeConcurrentStateDiagram(): ParsedDiagram {
+  const nodes: ParsedNode[] = [
+    makeNode("root_start", "stateStart"),
+    makeNodeInCluster("lane1_start", "lane1", "stateStart"),
+    makeNodeInCluster("NumLockOff", "lane1", "rounded"),
+    makeNodeInCluster("NumLockOn", "lane1", "rounded"),
+    makeNodeInCluster("lane2_start", "lane2", "stateStart"),
+    makeNodeInCluster("CapsLockOff", "lane2", "rounded"),
+    makeNodeInCluster("CapsLockOn", "lane2", "rounded"),
+    makeNodeInCluster("lane3_start", "lane3", "stateStart"),
+    makeNodeInCluster("ScrollLockOff", "lane3", "rounded"),
+    makeNodeInCluster("ScrollLockOn", "lane3", "rounded"),
+    makeNode("root_end", "stateEnd"),
+  ];
+  const edges: ParsedEdge[] = [
+    makeEdge("root_start", "Active", 0),
+    makeEdge("lane1_start", "NumLockOff", 0),
+    makeEdge("NumLockOff", "NumLockOn", 0),
+    makeEdge("NumLockOn", "NumLockOff", 0),
+    makeEdge("lane2_start", "CapsLockOff", 0),
+    makeEdge("CapsLockOff", "CapsLockOn", 0),
+    makeEdge("CapsLockOn", "CapsLockOff", 0),
+    makeEdge("lane3_start", "ScrollLockOff", 0),
+    makeEdge("ScrollLockOff", "ScrollLockOn", 0),
+    makeEdge("ScrollLockOn", "ScrollLockOff", 0),
+    makeEdge("Active", "root_end", 0),
+  ];
+  const clusters: ParsedCluster[] = [
+    makeCluster("Active", ["lane1", "lane2", "lane3"]),
+    { id: "lane1", label: "", members: ["lane1_start", "NumLockOff", "NumLockOn"], parent: "Active" },
+    { id: "lane2", label: "", members: ["lane2_start", "CapsLockOff", "CapsLockOn"], parent: "Active" },
+    { id: "lane3", label: "", members: ["lane3_start", "ScrollLockOff", "ScrollLockOn"], parent: "Active" },
+  ];
+  return makeDiagram("stateDiagram-v2", nodes, edges, clusters, "TB");
+}
+
 // ── 1. Unsupported type dispatch ──────────────────────────────────────────────
 // AL-01: block-beta and mindmap throw UnsupportedDiagramTypeError
 
@@ -222,7 +317,7 @@ describe("computeInitialLayout — node coverage (AL-03)", () => {
 });
 
 // ── 4. Edge coverage ──────────────────────────────────────────────────────────
-// AL-04: every edge appears in layout.edges with routing="auto", empty waypoints
+// AL-04: every edge appears in layout.edges with routing="curved" (flowchart) or "auto" (others), empty waypoints
 
 describe("computeInitialLayout — edge coverage (AL-04)", () => {
   it("AL-04: all six auth-flow edges appear in layout.edges", () => {
@@ -241,6 +336,7 @@ describe("computeInitialLayout — edge coverage (AL-04)", () => {
     for (const key of expectedKeys) {
       const edge = layout.edges[key];
       expect(edge, `edge "${key}" must appear in layout`).toBeDefined();
+      // Default routing remains "auto"; curved/hard-angle is selected per edge.
       expect(edge.routing).toBe("auto");
       expect(edge.waypoints).toEqual([]);
     }
@@ -364,6 +460,46 @@ describe("computeInitialLayout — spacing options (AL-07)", () => {
     const gapSpread = Math.abs(spread.nodes["B"].y - spread.nodes["A"].y);
     expect(gapSpread).toBeGreaterThan(gapTight);
   });
+
+  it("AL-07: mixed-height state chain keeps top-left vertical gaps equal to rankSpacing", () => {
+    const rankSpacing = 80;
+    const layout = computeInitialLayout(makeMixedHeightStateChain(), { rankdir: "TB", rankSpacing });
+
+    const orderedIds = ["root_start", "Idle", "Active", "root_end"];
+    const gaps = orderedIds.slice(0, -1).map((id, index) => {
+      const current = layout.nodes[id];
+      const next = layout.nodes[orderedIds[index + 1]];
+      return next.y - (current.y + current.h);
+    });
+
+    expect(gaps).toEqual([rankSpacing, rankSpacing, rankSpacing]);
+  });
+
+  it("AL-07: nested state cluster keeps internal top-left gaps equal to rankSpacing", () => {
+    const rankSpacing = 80;
+    const layout = computeInitialLayout(makeNestedStateDiagram(), { rankdir: "TB", rankSpacing });
+
+    const orderedIds = ["Second_start", "InnerA", "InnerB", "Second_end"];
+    const gaps = orderedIds.slice(0, -1).map((id, index) => {
+      const current = layout.nodes[id];
+      const next = layout.nodes[orderedIds[index + 1]];
+      return next.y - (current.y + current.h);
+    });
+
+    expect(gaps).toEqual([rankSpacing, rankSpacing, rankSpacing]);
+  });
+
+  it("AL-07: concurrent child clusters align to the same top y within the parent state", () => {
+    const layout = computeInitialLayout(makeConcurrentStateDiagram(), { rankdir: "TB", rankSpacing: 80 });
+
+    const yValues = [
+      layout.clusters["lane1"].y,
+      layout.clusters["lane2"].y,
+      layout.clusters["lane3"].y,
+    ];
+
+    expect(new Set(yValues).size).toBe(1);
+  });
 });
 
 // ── 8. Cluster bounding boxes ─────────────────────────────────────────────────
@@ -402,6 +538,17 @@ describe("computeInitialLayout — cluster bounding boxes (AL-08)", () => {
       expect(n.y,       `${id} top edge within cluster`).toBeGreaterThanOrEqual(c.y);
       expect(n.y + n.h, `${id} bottom edge within cluster`).toBeLessThanOrEqual(c.y + c.h);
     }
+  });
+
+  it("AL-08: composite-state entry and exit place outer pseudostates outside the cluster", () => {
+    const layout = computeInitialLayout(makeCompositeStateDiagram(), { rankdir: "TB" });
+
+    const active = layout.clusters["Active"];
+    const rootStart = layout.nodes["root_start"];
+    const rootEnd = layout.nodes["root_end"];
+
+    expect(rootStart.y + rootStart.h).toBeLessThan(active.y);
+    expect(rootEnd.y).toBeGreaterThan(active.y + active.h);
   });
 });
 
@@ -467,5 +614,49 @@ describe("computeInitialLayout — aesthetics defaults (AL-12)", () => {
 
   it("AL-12: animationMode defaults to 'static' (draw-on deferred to diag.2)", () => {
     expect(computeInitialLayout(makeAuthFlowDiagram()).aesthetics.animationMode).toBe("static");
+  });
+});
+
+// ── 13. parsed.direction → dagre rankdir (AL-13) ─────────────────────────────
+// Verifies that computeInitialLayout reads the parsed diagram's direction field
+// without requiring the caller to pass an explicit options.rankdir.
+// A chain A→B is used: TB/TD → B is below A (yB > yA); LR → B is right of A (xB > xA).
+
+describe("computeInitialLayout — parsed.direction drives layout (AL-13)", () => {
+  function makeChain(direction: "TD" | "LR" | "RL" | "BT") {
+    return makeDiagram(
+      "flowchart",
+      [makeNode("A"), makeNode("B")],
+      [makeEdge("A", "B")],
+      [],
+      direction
+    );
+  }
+
+  it("AL-13: direction='TD' lays out nodes top-to-bottom (B.y > A.y)", () => {
+    const layout = computeInitialLayout(makeChain("TD"));
+    expect(layout.nodes["B"].y).toBeGreaterThan(layout.nodes["A"].y);
+  });
+
+  it("AL-13: direction='LR' lays out nodes left-to-right (B.x > A.x)", () => {
+    const layout = computeInitialLayout(makeChain("LR"));
+    expect(layout.nodes["B"].x).toBeGreaterThan(layout.nodes["A"].x);
+  });
+
+  it("AL-13: direction='RL' lays out nodes right-to-left (B.x < A.x)", () => {
+    const layout = computeInitialLayout(makeChain("RL"));
+    expect(layout.nodes["B"].x).toBeLessThan(layout.nodes["A"].x);
+  });
+
+  it("AL-13: direction='BT' lays out nodes bottom-to-top (B.y < A.y)", () => {
+    const layout = computeInitialLayout(makeChain("BT"));
+    expect(layout.nodes["B"].y).toBeLessThan(layout.nodes["A"].y);
+  });
+
+  it("AL-13: explicit options.rankdir overrides parsed.direction", () => {
+    // Diagram says LR but caller forces TB — caller wins
+    const parsed = makeChain("LR");
+    const layout = computeInitialLayout(parsed, { rankdir: "TB" });
+    expect(layout.nodes["B"].y).toBeGreaterThan(layout.nodes["A"].y);
   });
 });

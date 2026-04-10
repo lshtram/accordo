@@ -1,0 +1,21 @@
+{
+  "elements": [
+    {
+      "id": "id1",
+      "type": "ellipse",
+      "groupIds": [],
+      "x": 8,
+      "y": 8,
+      "width": 215,
+      "height": 215,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "This is the text in the circle",
+        "fontSize": 20
+      },
+      "link": null
+    }
+  ],
+  "files": {}
+}

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#fff}
+</style>
+</head>
+<body>
+<script src="/lib/excalidraw-with-preact.production.min.js"></script>
+<script>
+const elements = [{"id":"1a829453-31c6-43d7-bc39-37e5ed210159","mermaidId":"A","kind":"node","type":"rectangle","x":120,"y":0,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"4d75f9cf-4f8a-488a-9e38-0b7c04bff121","type":"text"},{"id":"f65587c8-c853-43ff-8480-22c1dc22d28f","type":"arrow"}]},{"id":"4d75f9cf-4f8a-488a-9e38-0b7c04bff121","mermaidId":"A:text","kind":"label","type":"text","x":120,"y":21,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"Start","containerId":"1a829453-31c6-43d7-bc39-37e5ed210159"},{"id":"0d8eb007-da2e-444f-a112-71da7217eb6a","mermaidId":"B","kind":"node","type":"diamond","x":140,"y":140,"width":140,"height":80,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"61dd329e-e2bb-4cf0-8d73-ee90a686c1b1","type":"text"},{"id":"f65587c8-c853-43ff-8480-22c1dc22d28f","type":"arrow"},{"id":"efe80271-db31-47a5-a72f-27fef688de5d","type":"arrow"},{"id":"30eb3b98-7de1-43ae-81a8-60b1adb60423","type":"arrow"}]},{"id":"61dd329e-e2bb-4cf0-8d73-ee90a686c1b1","mermaidId":"B:text","kind":"label","type":"text","x":140,"y":171,"width":140,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"Decision 1","containerId":"0d8eb007-da2e-444f-a112-71da7217eb6a"},{"id":"45128910-f697-4776-9df0-48247842e10b","mermaidId":"C","kind":"node","type":"rectangle","x":0,"y":300,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"d115a953-e011-4125-b5d1-038bd918fdc7","type":"text"},{"id":"efe80271-db31-47a5-a72f-27fef688de5d","type":"arrow"},{"id":"dfbaacf7-e954-4581-8952-1a7f98fbb743","type":"arrow"}]},{"id":"d115a953-e011-4125-b5d1-038bd918fdc7","mermaidId":"C:text","kind":"label","type":"text","x":0,"y":321,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"Action 1","containerId":"45128910-f697-4776-9df0-48247842e10b"},{"id":"015ace14-7175-4066-af49-812bb8f9070e","mermaidId":"D","kind":"node","type":"rectangle","x":240,"y":300,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"ed6d4cec-a1d1-420e-bff4-aa93129c83ae","type":"text"},{"id":"30eb3b98-7de1-43ae-81a8-60b1adb60423","type":"arrow"},{"id":"6f132cf3-e1ba-495a-b3c2-f46c7644dca5","type":"arrow"}]},{"id":"ed6d4cec-a1d1-420e-bff4-aa93129c83ae","mermaidId":"D:text","kind":"label","type":"text","x":240,"y":321,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"Action 2","containerId":"015ace14-7175-4066-af49-812bb8f9070e"},{"id":"554474ae-52a2-491e-a41f-4cef1abf329a","mermaidId":"E","kind":"node","type":"diamond","x":140,"y":440,"width":140,"height":80,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"25ee2c4d-9680-4447-961e-29db017ed083","type":"text"},{"id":"dfbaacf7-e954-4581-8952-1a7f98fbb743","type":"arrow"},{"id":"6f132cf3-e1ba-495a-b3c2-f46c7644dca5","type":"arrow"},{"id":"2cbcb803-053f-4bb8-82ec-068e219ce123","type":"arrow"},{"id":"122700c0-4ae4-4b39-adeb-66000706faaa","type":"arrow"}]},{"id":"25ee2c4d-9680-4447-961e-29db017ed083","mermaidId":"E:text","kind":"label","type":"text","x":140,"y":471,"width":140,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"Decision 2","containerId":"554474ae-52a2-491e-a41f-4cef1abf329a"},{"id":"f28776e1-1e93-4553-bfc6-f2e2cc4a41e1","mermaidId":"F","kind":"node","type":"rectangle","x":0,"y":600,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"9eb9a24b-5f9c-40c0-b8c9-71dd80cfdf68","type":"text"},{"id":"2cbcb803-053f-4bb8-82ec-068e219ce123","type":"arrow"},{"id":"c62038c3-04e7-474b-89d3-4750c8b75693","type":"arrow"}]},{"id":"9eb9a24b-5f9c-40c0-b8c9-71dd80cfdf68","mermaidId":"F:text","kind":"label","type":"text","x":0,"y":621,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"Action 3","containerId":"f28776e1-1e93-4553-bfc6-f2e2cc4a41e1"},{"id":"ac75981b-9ecc-453e-8335-c693d3ec05ee","mermaidId":"G","kind":"node","type":"rectangle","x":240,"y":600,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"c2bd2ff5-f614-4b5e-bada-10338cf616e7","type":"text"},{"id":"122700c0-4ae4-4b39-adeb-66000706faaa","type":"arrow"},{"id":"32c502bc-61db-4bcd-9d7d-f45bedc1ce88","type":"arrow"}]},{"id":"c2bd2ff5-f614-4b5e-bada-10338cf616e7","mermaidId":"G:text","kind":"label","type":"text","x":240,"y":621,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"Action 4","containerId":"ac75981b-9ecc-453e-8335-c693d3ec05ee"},{"id":"d32d60a6-aa63-486c-915c-501e677fe794","mermaidId":"H","kind":"node","type":"diamond","x":140,"y":740,"width":140,"height":80,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"c6a72354-1d4e-4bb9-9bbb-28d7d7da93d6","type":"text"},{"id":"c62038c3-04e7-474b-89d3-4750c8b75693","type":"arrow"},{"id":"32c502bc-61db-4bcd-9d7d-f45bedc1ce88","type":"arrow"},{"id":"39f6f4cf-20fc-4101-b776-a949878ad06d","type":"arrow"},{"id":"60401b3a-0e54-419e-accc-836bb3cd0350","type":"arrow"}]},{"id":"c6a72354-1d4e-4bb9-9bbb-28d7d7da93d6","mermaidId":"H:text","kind":"label","type":"text","x":140,"y":771,"width":140,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"Decision 3","containerId":"d32d60a6-aa63-486c-915c-501e677fe794"},{"id":"768cbe25-a990-4bbf-aadc-9cc5c7f7c5a1","mermaidId":"I","kind":"node","type":"rectangle","x":0,"y":900,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"356bfb24-4e72-447a-90f9-cb0584216b9d","type":"text"},{"id":"39f6f4cf-20fc-4101-b776-a949878ad06d","type":"arrow"},{"id":"58d6bd26-10fe-41b3-9537-9cfc202570a5","type":"arrow"}]},{"id":"356bfb24-4e72-447a-90f9-cb0584216b9d","mermaidId":"I:text","kind":"label","type":"text","x":0,"y":921,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"Action 5","containerId":"768cbe25-a990-4bbf-aadc-9cc5c7f7c5a1"},{"id":"9d851270-98a4-48a0-869f-ee0b01909152","mermaidId":"J","kind":"node","type":"rectangle","x":240,"y":900,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"dc90a654-553a-48cc-af82-8d8a95f4500c","type":"text"},{"id":"60401b3a-0e54-419e-accc-836bb3cd0350","type":"arrow"},{"id":"98766e97-32e3-4fed-923c-40e16b979ba0","type":"arrow"}]},{"id":"dc90a654-553a-48cc-af82-8d8a95f4500c","mermaidId":"J:text","kind":"label","type":"text","x":240,"y":921,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"Action 6","containerId":"9d851270-98a4-48a0-869f-ee0b01909152"},{"id":"18b488c1-a857-43dd-b7e9-1cc3ae692534","mermaidId":"K","kind":"node","type":"rectangle","x":120,"y":1040,"width":180,"height":60,"roughness":1,"fontFamily":"Excalifont","boundElements":[{"id":"317010db-ed09-4bd6-a7a9-2bba0a994416","type":"text"},{"id":"58d6bd26-10fe-41b3-9537-9cfc202570a5","type":"arrow"},{"id":"98766e97-32e3-4fed-923c-40e16b979ba0","type":"arrow"}]},{"id":"317010db-ed09-4bd6-a7a9-2bba0a994416","mermaidId":"K:text","kind":"label","type":"text","x":120,"y":1061,"width":180,"height":18,"roughness":1,"fontFamily":"Excalifont","fontSize":14,"label":"End","containerId":"18b488c1-a857-43dd-b7e9-1cc3ae692534"},{"id":"f65587c8-c853-43ff-8480-22c1dc22d28f","mermaidId":"A->B:0","kind":"edge","type":"arrow","x":210,"y":68,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[0,64]],"startBinding":{"elementId":"1a829453-31c6-43d7-bc39-37e5ed210159","focus":0,"gap":8},"endBinding":{"elementId":"0d8eb007-da2e-444f-a112-71da7217eb6a","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"efe80271-db31-47a5-a72f-27fef688de5d","mermaidId":"B->C:0","kind":"edge","type":"arrow","x":173.0024396195646,"y":226.24695047554425,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[-54.004879239129195,67.50609904891152]],"startBinding":{"elementId":"0d8eb007-da2e-444f-a112-71da7217eb6a","focus":0,"gap":8},"endBinding":{"elementId":"45128910-f697-4776-9df0-48247842e10b","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow","label":"Yes"},{"id":"30eb3b98-7de1-43ae-81a8-60b1adb60423","mermaidId":"B->D:0","kind":"edge","type":"arrow","x":246.9975603804354,"y":226.24695047554425,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[54.004879239129195,67.50609904891152]],"startBinding":{"elementId":"0d8eb007-da2e-444f-a112-71da7217eb6a","focus":0,"gap":8},"endBinding":{"elementId":"015ace14-7175-4066-af49-812bb8f9070e","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow","label":"No"},{"id":"dfbaacf7-e954-4581-8952-1a7f98fbb743","mermaidId":"C->E:0","kind":"edge","type":"arrow","x":118.9975603804354,"y":366.2469504755442,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[54.004879239129195,67.50609904891155]],"startBinding":{"elementId":"45128910-f697-4776-9df0-48247842e10b","focus":0,"gap":8},"endBinding":{"elementId":"554474ae-52a2-491e-a41f-4cef1abf329a","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"6f132cf3-e1ba-495a-b3c2-f46c7644dca5","mermaidId":"D->E:0","kind":"edge","type":"arrow","x":301.0024396195646,"y":366.2469504755442,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[-54.004879239129195,67.50609904891155]],"startBinding":{"elementId":"015ace14-7175-4066-af49-812bb8f9070e","focus":0,"gap":8},"endBinding":{"elementId":"554474ae-52a2-491e-a41f-4cef1abf329a","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"2cbcb803-053f-4bb8-82ec-068e219ce123","mermaidId":"E->F:0","kind":"edge","type":"arrow","x":173.0024396195646,"y":526.2469504755443,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[-54.004879239129195,67.50609904891144]],"startBinding":{"elementId":"554474ae-52a2-491e-a41f-4cef1abf329a","focus":0,"gap":8},"endBinding":{"elementId":"f28776e1-1e93-4553-bfc6-f2e2cc4a41e1","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow","label":"Yes"},{"id":"122700c0-4ae4-4b39-adeb-66000706faaa","mermaidId":"E->G:0","kind":"edge","type":"arrow","x":246.9975603804354,"y":526.2469504755443,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[54.004879239129195,67.50609904891144]],"startBinding":{"elementId":"554474ae-52a2-491e-a41f-4cef1abf329a","focus":0,"gap":8},"endBinding":{"elementId":"ac75981b-9ecc-453e-8335-c693d3ec05ee","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow","label":"No"},{"id":"c62038c3-04e7-474b-89d3-4750c8b75693","mermaidId":"F->H:0","kind":"edge","type":"arrow","x":118.9975603804354,"y":666.2469504755443,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[54.004879239129195,67.50609904891144]],"startBinding":{"elementId":"f28776e1-1e93-4553-bfc6-f2e2cc4a41e1","focus":0,"gap":8},"endBinding":{"elementId":"d32d60a6-aa63-486c-915c-501e677fe794","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"32c502bc-61db-4bcd-9d7d-f45bedc1ce88","mermaidId":"G->H:0","kind":"edge","type":"arrow","x":301.0024396195646,"y":666.2469504755443,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[-54.004879239129195,67.50609904891144]],"startBinding":{"elementId":"ac75981b-9ecc-453e-8335-c693d3ec05ee","focus":0,"gap":8},"endBinding":{"elementId":"d32d60a6-aa63-486c-915c-501e677fe794","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"39f6f4cf-20fc-4101-b776-a949878ad06d","mermaidId":"H->I:0","kind":"edge","type":"arrow","x":173.0024396195646,"y":826.2469504755443,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[-54.004879239129195,67.50609904891144]],"startBinding":{"elementId":"d32d60a6-aa63-486c-915c-501e677fe794","focus":0,"gap":8},"endBinding":{"elementId":"768cbe25-a990-4bbf-aadc-9cc5c7f7c5a1","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow","label":"Yes"},{"id":"60401b3a-0e54-419e-accc-836bb3cd0350","mermaidId":"H->J:0","kind":"edge","type":"arrow","x":246.9975603804354,"y":826.2469504755443,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[54.004879239129195,67.50609904891144]],"startBinding":{"elementId":"d32d60a6-aa63-486c-915c-501e677fe794","focus":0,"gap":8},"endBinding":{"elementId":"9d851270-98a4-48a0-869f-ee0b01909152","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow","label":"No"},{"id":"58d6bd26-10fe-41b3-9537-9cfc202570a5","mermaidId":"I->K:0","kind":"edge","type":"arrow","x":120.92061670193345,"y":966.0740528189224,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[58.15876659613309,67.85189436215524]],"startBinding":{"elementId":"768cbe25-a990-4bbf-aadc-9cc5c7f7c5a1","focus":0,"gap":8},"endBinding":{"elementId":"18b488c1-a857-43dd-b7e9-1cc3ae692534","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"},{"id":"98766e97-32e3-4fed-923c-40e16b979ba0","mermaidId":"J->K:0","kind":"edge","type":"arrow","x":299.07938329806655,"y":966.0740528189224,"width":0,"height":0,"roughness":1,"fontFamily":"Excalifont","points":[[0,0],[-58.15876659613309,67.85189436215524]],"startBinding":{"elementId":"9d851270-98a4-48a0-869f-ee0b01909152","focus":0,"gap":8},"endBinding":{"elementId":"18b488c1-a857-43dd-b7e9-1cc3ae692534","focus":0,"gap":8},"arrowheadStart":null,"arrowheadEnd":"arrow"}];
+const offsetX = 50;
+const offsetY = 50;
+const width = 520;
+const height = 1200;
+
+// Adjust element positions to center them
+const adjustedElements = elements.map(el => ({
+  ...el,
+  x: (el.x || 0) + offsetX,
+  y: (el.y || 0) + offsetY,
+}));
+
+// Wait for ExcalidrawLib to be available
+function waitForExcalidraw() {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const check = () => {
+      attempts++;
+      if (window.ExcalidrawLib && window.ExcalidrawLib.exportToBlob) {
+        resolve();
+      } else if (attempts > 50) {
+        reject(new Error('ExcalidrawLib not available'));
+      } else {
+        setTimeout(check, 100);
+      }
+    };
+    check();
+  });
+}
+
+waitForExcalidraw()
+  .then(async () => {
+    const { exportToBlob } = window.ExcalidrawLib;
+    
+    const blob = await exportToBlob({
+      elements: adjustedElements,
+      files: null,
+      mimeType: 'image/png',
+      appState: {
+        exportBackground: true,
+        viewBackgroundColor: '#ffffff',
+        width: width,
+        height: height,
+      }
+    });
+    
+    const reader = new FileReader();
+    reader.onload = () => {
+      window.__PNG__ = reader.result;
+      window.__READY__ = true;
+    };
+    reader.onerror = (err) => {
+      window.__ERROR__ = 'FileReader error: ' + err;
+    };
+    reader.readAsDataURL(blob);
+  })
+  .catch(err => {
+    window.__ERROR__ = err.message || String(err);
+  });
+</script>
+</body>
+</html>

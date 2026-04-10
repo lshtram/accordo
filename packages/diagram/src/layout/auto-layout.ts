@@ -71,6 +71,19 @@ const DEFAULT_RANKDIR: Partial<Record<string, LayoutOptions["rankdir"]>> = {
   erDiagram: "LR",
 };
 
+/**
+ * Translate ParsedDiagram.direction values to dagre rankdir.
+ * Mermaid uses "TD" (top-down) but dagre uses "TB" (top-bottom) for the same
+ * concept. "LR", "RL", "BT" map unchanged. Missing keys fall back to the
+ * per-type default.
+ */
+const DIRECTION_TO_RANKDIR: Record<NonNullable<ParsedDiagram["direction"]>, LayoutOptions["rankdir"]> = {
+  TD: "TB",
+  LR: "LR",
+  RL: "RL",
+  BT: "BT",
+};
+
 // ── Public interfaces ─────────────────────────────────────────────────────────
 
 /**
@@ -343,12 +356,13 @@ function layoutWithDagre(
   }
 
   // --- collect edge results ---
-  // Skip edges that reference cluster IDs (same filter as when adding to dagre)
+  // FC-08a: Emit EdgeLayout for ALL edges, including those referencing cluster IDs.
+  // Cluster-ID edges are skipped in dagre layout but still need layout entries
+  // so canvas-generator can route them to cluster bounding box centres.
+  // Keep default routing as auto. Curved vs hard-angle behavior is selected by
+  // explicit routing/style settings per edge.
   const edges: Record<string, EdgeLayout> = {};
   for (const edge of parsed.edges) {
-    if (clusterIds.has(edge.from) || clusterIds.has(edge.to)) {
-      continue;
-    }
     const key = `${edge.from}->${edge.to}:${edge.ordinal}`;
     edges[key] = {
       routing: "auto",
@@ -501,8 +515,12 @@ export function computeInitialLayout(
   }
 
   const typeDefaultRankdir = DEFAULT_RANKDIR[parsed.type] ?? "TB";
+  // Translate the diagram's own direction via explicit lookup table (no cast).
+  const diagramRankdir = parsed.direction
+    ? DIRECTION_TO_RANKDIR[parsed.direction]
+    : undefined;
   const opts: Required<LayoutOptions> = {
-    rankdir:     options?.rankdir     ?? typeDefaultRankdir,
+    rankdir:     options?.rankdir ?? diagramRankdir ?? typeDefaultRankdir,
     nodeSpacing: options?.nodeSpacing ?? 60,
     rankSpacing: options?.rankSpacing ?? 80,
   };

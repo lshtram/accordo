@@ -105,6 +105,8 @@ export interface DiffSnapshotsResponse extends SnapshotEnvelopeFields {
   removed: DiffNodeResult[];
   changed: DiffChangeResult[];
   summary: DiffSummaryResult;
+  /** Present when both explicit IDs have the same pageId but fromVersion > toVersion (reversed order). */
+  orderingWarning?: string;
 }
 
 /**
@@ -161,6 +163,20 @@ function normalizeSnapshotId(id: string | undefined): string | undefined {
   if (id === undefined) return undefined;
   const trimmed = id.trim();
   return trimmed === "" ? undefined : trimmed;
+}
+
+/**
+ * Parse a snapshot ID into its components.
+ * Format: "<pageId>:<version>" e.g. "pg_abc123:3"
+ * Returns null if the format does not match.
+ */
+function parseSnapshotId(id: string): { pageId: string; version: number } | null {
+  const lastColon = id.lastIndexOf(":");
+  if (lastColon === -1) return null;
+  const pageId = id.slice(0, lastColon);
+  const version = parseInt(id.slice(lastColon + 1), 10);
+  if (isNaN(version)) return null;
+  return { pageId, version };
 }
 
 // ── Tool Timeout ─────────────────────────────────────────────────────────────
@@ -563,11 +579,6 @@ export async function handleDiffSnapshots(
 
   let resolvedToSnapshotId = normalizeSnapshotId(args.toSnapshotId);
   let resolvedFromSnapshotId = normalizeSnapshotId(args.fromSnapshotId);
-  // Track whether each ID was explicitly supplied by the caller (after normalisation).
-  // Used by the GAP-G2 pre-flight check below — we only validate IDs the caller
-  // provided, not ones we auto-derived (which are freshly captured and always present).
-  const wasFromExplicit = resolvedFromSnapshotId !== undefined;
-  const wasToExplicit = resolvedToSnapshotId !== undefined;
 
   if (resolvedFromSnapshotId === undefined && resolvedToSnapshotId === undefined) {
     // Case A: Both omitted — capture two consecutive snapshots.
@@ -593,67 +604,27 @@ export async function handleDiffSnapshots(
   }
 
   // ── GAP-G2: Pre-flight local store validation ─────────────────────────────
-  // When both IDs are now resolved (explicit or derived), check the local
-  // retention store before paying the relay round-trip cost.  If either ID
-  // is not in the local store AND the store has other snapshots for that page
-  // (meaning we've been tracking it), we can return an enriched error
-  // immediately with the list of actually-available snapshot IDs for that page.
-  //
-  // Applies only to IDs that were originally explicit (fromSnapshotId or
-  // toSnapshotId provided by the caller) — implicitly resolved IDs were just
-  // captured so they will be present.
-  //
-  // We skip the pre-flight when the store has NO snapshots for the page at all
-  // (fresh session / store never populated) — in that case the relay error is
-  // more accurate and we avoid masking transient relay errors with a false
-  // snapshot-not-found.
-  if (wasFromExplicit && store.get(resolvedFromSnapshotId) === undefined) {
-    const available = listAvailableSnapshotIds(store, resolvedFromSnapshotId);
-    if (available.length > 0) {
-      const eviction = analyzeEviction(store, resolvedFromSnapshotId);
-      const recoveryHints =
-        `Snapshot '${resolvedFromSnapshotId}' is not in the local retention store. ` +
-        `Available snapshots for this page: [${available.join(", ")}]. ` +
-        "Use one of those as fromSnapshotId, or omit fromSnapshotId to auto-derive the previous snapshot.";
-      return {
-        success: false,
-        error: "snapshot-not-found",
-        retryable: false,
-        recoveryHints,
-        details: {
-          eviction,
-          reason: eviction?.wasEvicted
-            ? `Snapshot '${resolvedFromSnapshotId}' was evicted from the ${RETENTION_SLOTS}-slot FIFO retention store.`
-            : `Snapshot '${resolvedFromSnapshotId}' was not found in the local retention store.`,
-          recoveryHints,
-          availableSnapshotIds: available,
-        },
-      };
-    }
-  }
-  if (wasToExplicit && store.get(resolvedToSnapshotId) === undefined) {
-    const available = listAvailableSnapshotIds(store, resolvedToSnapshotId);
-    if (available.length > 0) {
-      const eviction = analyzeEviction(store, resolvedToSnapshotId);
-      const recoveryHints =
-        `Snapshot '${resolvedToSnapshotId}' is not in the local retention store. ` +
-        `Available snapshots for this page: [${available.join(", ")}]. ` +
-        "Use one of those as toSnapshotId, or omit toSnapshotId to auto-capture a fresh snapshot.";
-      return {
-        success: false,
-        error: "snapshot-not-found",
-        retryable: false,
-        recoveryHints,
-        details: {
-          eviction,
-          reason: eviction?.wasEvicted
-            ? `Snapshot '${resolvedToSnapshotId}' was evicted from the ${RETENTION_SLOTS}-slot FIFO retention store.`
-            : `Snapshot '${resolvedToSnapshotId}' was not found in the local retention store.`,
-          recoveryHints,
-          availableSnapshotIds: available,
-        },
-      };
-    }
+  // NOTE: Pre-flight validation against the Hub's in-memory store has been
+  // intentionally removed.  The Hub's SnapshotRetentionStore is wiped on VS
+  // Code extension restart, but Chrome's content-script store persists.  A
+  // pre-flight check against the Hub store produces false "snapshot-not-found"
+  // errors when the caller holds a snapshot ID from before a restart.  The
+  // relay + content-script fallback path is the authoritative source of truth;
+  // always forward to it.
+
+  // Check for reversed snapshot ordering (same pageId, from > to) and warn.
+  let orderingWarning: string | undefined;
+  const fromParsed = parseSnapshotId(resolvedFromSnapshotId);
+  const toParsed = parseSnapshotId(resolvedToSnapshotId);
+  if (
+    fromParsed !== null &&
+    toParsed !== null &&
+    fromParsed.pageId === toParsed.pageId &&
+    fromParsed.version > toParsed.version
+  ) {
+    orderingWarning =
+      `fromSnapshotId (version ${fromParsed.version}) is newer than toSnapshotId (version ${toParsed.version}). ` +
+      `The diff may show additions as removals and vice versa.`;
   }
 
   try {
@@ -677,7 +648,10 @@ export async function handleDiffSnapshots(
     ) {
       // Persist the diff result's envelope for retention tracking
       store.save(response.data.pageId, response.data);
-      return response.data as DiffSnapshotsResponse;
+      return {
+        ...response.data,
+        orderingWarning,
+      } as DiffSnapshotsResponse;
     }
 
     // Check for known diff error codes (B2-DE-006, B2-DE-007 and relay-level)

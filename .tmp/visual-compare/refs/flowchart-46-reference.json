@@ -1,0 +1,231 @@
+{
+  "elements": [
+    {
+      "id": "A",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 8,
+      "y": 63,
+      "width": 153.40625,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "Hard edge",
+        "fontSize": 20
+      },
+      "link": null
+    },
+    {
+      "id": "B",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 285.890625,
+      "y": 63,
+      "width": 138.984375,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "Round edge",
+        "fontSize": 20
+      },
+      "link": null,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "id": "C",
+      "type": "diamond",
+      "groupIds": [],
+      "x": 475.375,
+      "y": 24.6484375,
+      "width": 136.703125,
+      "height": 136.703125,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "Decision",
+        "fontSize": 20
+      },
+      "link": null
+    },
+    {
+      "id": "D",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 699.390625,
+      "y": 8,
+      "width": 155.625,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "Result one",
+        "fontSize": 20
+      },
+      "link": null
+    },
+    {
+      "id": "E",
+      "type": "rectangle",
+      "groupIds": [],
+      "x": 700.515625,
+      "y": 118,
+      "width": 153.375,
+      "height": 60,
+      "strokeWidth": 2,
+      "label": {
+        "groupIds": [],
+        "text": "Result two",
+        "fontSize": 20
+      },
+      "link": null
+    },
+    {
+      "id": "A_B",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 161.406,
+      "y": 93,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          10.373999999999995,
+          0
+        ],
+        [
+          120.48500000000001,
+          0
+        ]
+      ],
+      "label": {
+        "text": "Link text",
+        "fontSize": 20,
+        "groupIds": []
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "id": "A"
+      },
+      "end": {
+        "id": "B"
+      }
+    },
+    {
+      "id": "B_C",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 424.875,
+      "y": 93,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          4.166999999999973,
+          0
+        ],
+        [
+          46,
+          0
+        ]
+      ],
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "id": "B"
+      },
+      "end": {
+        "id": "C"
+      }
+    },
+    {
+      "id": "C_D",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 589.102,
+      "y": 70.524,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          11.064000000000078,
+          -5.4210000000000065
+        ],
+        [
+          106.28899999999999,
+          -32.524
+        ]
+      ],
+      "label": {
+        "text": "One",
+        "fontSize": 20,
+        "groupIds": []
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "id": "C"
+      },
+      "end": {
+        "id": "D"
+      }
+    },
+    {
+      "id": "C_E",
+      "type": "arrow",
+      "groupIds": [],
+      "x": 589.102,
+      "y": 115.476,
+      "strokeWidth": 2,
+      "strokeStyle": null,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          11.064000000000078,
+          5.4210000000000065
+        ],
+        [
+          107.41399999999999,
+          32.524
+        ]
+      ],
+      "label": {
+        "text": "Two",
+        "fontSize": 20,
+        "groupIds": []
+      },
+      "roundness": {
+        "type": 2
+      },
+      "start": {
+        "id": "C"
+      },
+      "end": {
+        "id": "E"
+      }
+    }
+  ],
+  "files": {}
+}

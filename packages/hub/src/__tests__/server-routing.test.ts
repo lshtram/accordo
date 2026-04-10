@@ -1,10 +1,17 @@
 /**
  * Tests for server-routing.ts (createRouter)
  * Requirements: requirements-hub.md §2.1, §2.3, §2.4, §2.6, §5.6
+ *              adr-reload-reconnect.md §D1 (SR-01 to SR-05)
  *
  * API checklist:
  * ✓ createRouter() — 1 structural test
- * ✓ Router.handleHttpRequest() — 22 tests (routing + auth + origin + delegation)
+ * ✓ Router.handleHttpRequest() — 27 tests (routing + auth + origin + delegation + disconnect)
+ *
+ * SR-01: POST /bridge/disconnect with valid secret → delegates to handleDisconnect [1 test]
+ * SR-02: POST /bridge/disconnect with invalid secret → 401, handleDisconnect NOT called [1 test]
+ * SR-03: POST /bridge/disconnect missing x-accordo-secret → 401 [1 test]
+ * SR-04: GET /bridge/disconnect (wrong method) → 404 [1 test]
+ * SR-05: POST /bridge/disconnect with valid secret but invalid origin → 403 [1 test]
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -22,6 +29,7 @@ function makeOptions(): RouterDeps {
     handleMcp: vi.fn<() => void>(),
     handleMcpSse: vi.fn<() => void>(),
     handleReauth: vi.fn<() => void>(),
+    handleDisconnect: vi.fn<() => void>(),
     getHealth: () => ({
       ok: true,
       uptime: 1.5,
@@ -418,5 +426,151 @@ describe("Router.handleHttpRequest — delegation to handlers", () => {
       res,
     );
     expect(deps.handleReauth).toHaveBeenCalled();
+  });
+});
+
+// ── SR-01–SR-05: /bridge/disconnect endpoint (adr-reload-reconnect.md §D1) ────
+
+describe("Router.handleHttpRequest — /bridge/disconnect (SR-01 to SR-05)", () => {
+  let deps: RouterDeps;
+  let router: ReturnType<typeof createRouter>;
+
+  beforeEach(() => {
+    deps = makeOptions();
+    router = createRouter(deps);
+  });
+
+  it("SR-01: POST /bridge/disconnect with valid bridge secret delegates to handleDisconnect", () => {
+    const { res } = makeRes();
+    router.handleHttpRequest(
+      makeReq({
+        method: "POST",
+        url: "/bridge/disconnect",
+        headers: { "x-accordo-secret": "test-bridge-secret" },
+      }),
+      res,
+    );
+    // RED: handleDisconnect is a vi.fn() that does nothing — response will NOT be 200
+    expect(deps.handleDisconnect).toHaveBeenCalled();
+  });
+
+  it("SR-01: POST /bridge/disconnect with valid bridge secret returns 200", () => {
+    // Wire handleDisconnect to write a 200 response (as the real handler would)
+    (deps.handleDisconnect as ReturnType<typeof vi.fn>).mockImplementation(
+      (_req: unknown, res: { writeHead(c: number): void; end(): void }) => {
+        res.writeHead(200);
+        res.end();
+      },
+    );
+    router = createRouter(deps);
+
+    const { res, statusCode } = makeRes();
+    router.handleHttpRequest(
+      makeReq({
+        method: "POST",
+        url: "/bridge/disconnect",
+        headers: { "x-accordo-secret": "test-bridge-secret" },
+      }),
+      res,
+    );
+    expect(statusCode()).toBe(200);
+  });
+
+  it("SR-02: POST /bridge/disconnect with invalid bridge secret returns 401", () => {
+    const { res, statusCode } = makeRes();
+    router.handleHttpRequest(
+      makeReq({
+        method: "POST",
+        url: "/bridge/disconnect",
+        headers: { "x-accordo-secret": "wrong-secret" },
+      }),
+      res,
+    );
+    expect(statusCode()).toBe(401);
+  });
+
+  it("SR-02: POST /bridge/disconnect with invalid secret does NOT call handleDisconnect", () => {
+    const { res } = makeRes();
+    router.handleHttpRequest(
+      makeReq({
+        method: "POST",
+        url: "/bridge/disconnect",
+        headers: { "x-accordo-secret": "wrong-secret" },
+      }),
+      res,
+    );
+    expect(deps.handleDisconnect).not.toHaveBeenCalled();
+  });
+
+  it("SR-03: POST /bridge/disconnect missing x-accordo-secret header returns 401", () => {
+    const { res, statusCode } = makeRes();
+    router.handleHttpRequest(
+      makeReq({
+        method: "POST",
+        url: "/bridge/disconnect",
+        headers: {},
+      }),
+      res,
+    );
+    expect(statusCode()).toBe(401);
+  });
+
+  it("SR-03: POST /bridge/disconnect missing secret does NOT call handleDisconnect", () => {
+    const { res } = makeRes();
+    router.handleHttpRequest(
+      makeReq({
+        method: "POST",
+        url: "/bridge/disconnect",
+        headers: {},
+      }),
+      res,
+    );
+    expect(deps.handleDisconnect).not.toHaveBeenCalled();
+  });
+
+  it("SR-04: GET /bridge/disconnect (wrong HTTP method) returns 404", () => {
+    const { res, statusCode } = makeRes();
+    router.handleHttpRequest(
+      makeReq({
+        method: "GET",
+        url: "/bridge/disconnect",
+        headers: { "x-accordo-secret": "test-bridge-secret" },
+      }),
+      res,
+    );
+    // GET is not a registered route for /bridge/disconnect — expect 404
+    expect(statusCode()).toBe(404);
+  });
+
+  it("SR-05: POST /bridge/disconnect with valid secret but invalid origin returns 403", () => {
+    const { res, statusCode } = makeRes();
+    router.handleHttpRequest(
+      makeReq({
+        method: "POST",
+        url: "/bridge/disconnect",
+        headers: {
+          "x-accordo-secret": "test-bridge-secret",
+          origin: "https://evil.com",
+        },
+      }),
+      res,
+    );
+    expect(statusCode()).toBe(403);
+  });
+
+  it("SR-05: POST /bridge/disconnect with invalid origin does NOT call handleDisconnect", () => {
+    const { res } = makeRes();
+    router.handleHttpRequest(
+      makeReq({
+        method: "POST",
+        url: "/bridge/disconnect",
+        headers: {
+          "x-accordo-secret": "test-bridge-secret",
+          origin: "https://evil.com",
+        },
+      }),
+      res,
+    );
+    expect(deps.handleDisconnect).not.toHaveBeenCalled();
   });
 });

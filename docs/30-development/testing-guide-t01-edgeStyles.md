@@ -62,7 +62,7 @@ Expected: no output (clean).
 **System under test:** Accordo VS Code extension (accordo-diagram package) running in a live VS Code instance with the MCP bridge connected.
 
 **Prerequisites:**
-- VS Code running with all Accordo extensions in dev mode (`./scripts/dev-open.sh`)
+- VS Code running with all Accordo extensions in dev mode (`./scripts/start-session.sh`)
 - A workspace open at `/data/projects/accordo`
 - An MCP client connected (e.g., an AI agent session)
 

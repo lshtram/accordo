@@ -17,7 +17,52 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { activate } from "../extension.js";
-import { createExtensionContextMock, extensions } from "./mocks/vscode.js";
+
+// Mock vscode to force per-window relay path (sharedRelay=false).
+// Without this, extension.ts takes the shared relay path (sharedRelay=true default),
+// which does not call registerBrowserNotifier — breaking SUB-01 tests.
+vi.mock("vscode", () => {
+  const state = new Map<string, unknown>();
+  return {
+    workspace: {
+      getConfiguration: vi.fn(() => ({
+        get: vi.fn(<T>(_key: string, defaultValue: T): T => {
+          if (_key === "sharedRelay") return false as unknown as T;
+          return defaultValue;
+        }),
+      })),
+    },
+    extensions: {
+      getExtension: vi.fn(() => ({ exports: null })),
+    },
+    window: {
+      createOutputChannel: vi.fn(() => ({
+        appendLine: vi.fn(),
+        dispose: vi.fn(),
+      })),
+    },
+    Disposable: class Disposable {
+      constructor(private readonly fn: () => void) {}
+      dispose(): void { this.fn(); }
+    },
+    createExtensionContextMock: () => ({
+      subscriptions: [] as Array<{ dispose(): void }>,
+      globalState: {
+        get: vi.fn((k: string) => state.get(k)),
+        update: vi.fn(async (k: string, v: unknown) => { state.set(k, v); }),
+      },
+    }),
+  };
+});
+
+const vscode = await import("vscode");
+const extensions = (vscode as Record<string, unknown>).extensions as {
+  getExtension: ReturnType<typeof vi.fn>;
+};
+const createExtensionContextMock = (vscode as Record<string, unknown>).createExtensionContextMock as () => {
+  subscriptions: Array<{ dispose(): void }>;
+  globalState: { get: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+};
 
 // ── Relay mock ───────────────────────────────────────────────────────────────
 

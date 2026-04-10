@@ -1,0 +1,91 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "/data/projects/accordo/demo/flowchart/flowchart-05.mmd",
+  "mermaidSource": "flowchart LR\nid1[(Database)]\n",
+  "elements": [
+    {
+      "id": "4095828a-5a81-42ac-bdaa-7ef83ca62a58",
+      "kind": "node",
+      "type": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 120,
+      "height": 80,
+      "roughness": 1,
+      "backgroundColor": "transparent",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "fillStyle": "hachure",
+      "opacity": 100,
+      "version": 1,
+      "versionNonce": 3709774954,
+      "isDeleted": false,
+      "angle": 0,
+      "seed": 3201312515,
+      "groupIds": [],
+      "frameId": null,
+      "updated": 1775569660740,
+      "link": null,
+      "locked": false,
+      "fontFamily": 1,
+      "roundness": null,
+      "boundElements": [
+        {
+          "id": "f15821ae-1edc-4587-b365-3855a25828d0",
+          "type": "text"
+        }
+      ],
+      "containerId": null,
+      "customData": {
+        "mermaidId": "id1",
+        "kind": "node"
+      }
+    },
+    {
+      "id": "f15821ae-1edc-4587-b365-3855a25828d0",
+      "kind": "label",
+      "type": "text",
+      "x": 0,
+      "y": 30,
+      "width": 120,
+      "height": 20,
+      "roughness": 1,
+      "fontSize": 16,
+      "strokeColor": "#1e1e1e",
+      "version": 1,
+      "versionNonce": 2386472413,
+      "isDeleted": false,
+      "fillStyle": "hachure",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "angle": 0,
+      "seed": 4028442956,
+      "groupIds": [],
+      "frameId": null,
+      "updated": 1775569660740,
+      "link": null,
+      "locked": false,
+      "backgroundColor": "transparent",
+      "fontFamily": 1,
+      "roundness": null,
+      "boundElements": null,
+      "containerId": "4095828a-5a81-42ac-bdaa-7ef83ca62a58",
+      "customData": {
+        "mermaidId": "id1:text",
+        "kind": "label"
+      },
+      "text": "Database",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "originalText": "Database",
+      "lineHeight": 1.25
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff"
+  },
+  "files": {}
+}

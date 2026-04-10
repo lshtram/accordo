@@ -374,6 +374,13 @@ serve multiple VSCode windows. The ephemeral model makes sharing impractical:
 - Each Bridge kills its Hub on deactivate
 - Cross-window Hub sharing would require a separate lifecycle manager outside VSCode
 
+> **Exception — Browser Relay (DECISION-SBR-04):** The browser relay is the one explicit
+> exception to DECISION-MS-07. The browser is a machine-global resource (one Chrome instance),
+> and the Chrome extension can only maintain one WebSocket connection. Therefore the browser
+> relay runs as a shared/global service that multiple per-project Hubs connect to simultaneously.
+> Hubs remain independent; only the Chrome communication channel is shared.
+> See `docs/10-architecture/shared-browser-relay-architecture.md` for the full design.
+
 ### Scenario C: OpenCode Session Lifecycle (VSCode Restart)
 
 ```
@@ -464,11 +471,20 @@ The port number is now always discoverable from the workspace config file rather
 | `~/.accordo/hub.port` | Port discovery when Hub binds to a different port | **REMOVED.** Port discovered via stderr parsing + health poll. |
 | `~/.accordo/audit.jsonl` | Audit log of tool invocations | **RETAINED.** Audit logging is valuable and non-credential. |
 | `~/.accordo/logs/` | Hub log files | **RETAINED.** Log files are operational, not credential-related. |
+| `~/.accordo/shared-relay.json` | Shared browser relay discovery | **EXCEPTION (DECISION-SBR-04).** Machine-global browser relay needs a machine-global discovery file. Ephemeral — valid only while owner PID is alive. See `shared-browser-relay-architecture.md` §4.4. |
+| `~/.accordo/shared-relay.json.lock` | Advisory lock during relay ownership transfer | **EXCEPTION (DECISION-SBR-04).** Sub-second advisory lock. Cleaned up on release. See `shared-browser-relay-architecture.md` §4.4. |
 
 **DECISION-MS-10: Retain `~/.accordo/` for logs and audit only.**  
 The directory still exists for operational files (audit log, log files). Only credential
 and lifecycle files (token, PID, port) are removed. The directory creation (`mode 0700`)
 moves from Hub startup to audit/log initialization.
+
+> **Exception — Shared Browser Relay (DECISION-SBR-04):** The shared browser relay discovery
+> file (`shared-relay.json`) and its companion lock file are an explicit exception. The browser
+> relay is machine-global (not workspace-scoped), so a workspace-local file would be incorrect.
+> Both files are ephemeral — validated via PID liveness check on read, cleaned up on graceful
+> shutdown. See `docs/10-architecture/shared-browser-relay-architecture.md` §4.4 for lifecycle
+> rules and permissions.
 
 ---
 

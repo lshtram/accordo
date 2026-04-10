@@ -15,15 +15,20 @@
  * Source: diag_arch_v4.2.md §9.4 / diag_workplan.md §4.16 (A18-W)
  */
 
-import React, { useRef, useCallback } from "react";
-import { createRoot } from "react-dom/client";
+import React, { useRef, useCallback, useMemo } from "react";
 import {
   Excalidraw,
   exportToSvg,
   exportToBlob,
+  loadLibraryFromBlob,
   restoreElements,
 } from "@excalidraw/excalidraw";
-import type { ExcalidrawImperativeAPI, AppState } from "@excalidraw/excalidraw/types/types";
+import type {
+  ExcalidrawImperativeAPI,
+  AppState,
+  ExcalidrawInitialDataState,
+  LibraryItems,
+} from "@excalidraw/excalidraw/types/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
 
 import { detectNodeMutations } from "./message-handler.js";
@@ -145,10 +150,39 @@ export function setVscodeApi(vs: { postMessage(msg: unknown): void }): void {
   win.__accordoVscode = vs;
 }
 
+async function loadMermaidLibraryItems(): Promise<LibraryItems> {
+  const win = window as Window & { __accordoMermaidLibraryUri?: string };
+  const mermaidLibraryUri = win.__accordoMermaidLibraryUri;
+  if (!mermaidLibraryUri) {
+    return [];
+  }
+
+  try {
+    const response = await fetch(mermaidLibraryUri);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} while fetching Mermaid library`);
+    }
+
+    return await loadLibraryFromBlob(await response.blob(), "unpublished");
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    _vscode?.postMessage({
+      type: "canvas:js-error",
+      message: `Failed to load Mermaid shape library: ${message}`,
+    });
+    return [];
+  }
+}
+
 // ── ExcalidrawApp ─────────────────────────────────────────────────────────────
 
 export function ExcalidrawApp() {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  const initialData = useMemo<ExcalidrawInitialDataState>(() => ({
+    elements: [],
+    appState: {},
+    libraryItems: loadMermaidLibraryItems(),
+  }), []);
 
   const handleExcalidrawApi = useCallback(
     (api: ExcalidrawImperativeAPI) => {
@@ -317,7 +351,7 @@ export function ExcalidrawApp() {
     excalidrawAPI: handleExcalidrawApi,
     onChange: handleChange,
     onPointerUpdate: handlePointerUpdate as never,
-    initialData: { elements: [], appState: {} },
+    initialData,
     UIOptions: {
       canvasActions: {
         export: false,
