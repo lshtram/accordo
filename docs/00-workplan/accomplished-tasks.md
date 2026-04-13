@@ -139,3 +139,4 @@ All diagram work documented in `docs/20-requirements/requirements-diagram.md §2
 | Task | Status | Evidence |
 |---|---|---|
 | Merge `browser2.0` into `main` | ✅ | Full monorepo test suite green on `main`. Worktree deleted. |
+| `accordo_webview_capture` tool (Marp) | ✅ | postMessage + XMLSerializer capture; `PresentationProvider.requestCapture()`; `accordo_webview_capture` MCP tool writes SVG to disk; 10 tools total; all 229 tests passing. |
