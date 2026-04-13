@@ -714,21 +714,33 @@ export async function handleDiffSnapshots(
     return { requestId: request.requestId, success: false, error: "invalid-request", ...getErrorMeta("invalid-request") };
   }
 
-  // Fast path: both snapshots found in the SW's in-memory store.
-  const fromResult = await defaultStore.get(fromSnapshotId);
-  const toResult = await defaultStore.get(toSnapshotId);
-  if (!("error" in fromResult) && !("error" in toResult)) {
-    const diffResult = computeDiff(fromResult, toResult);
-    return { requestId: request.requestId, success: true, data: diffResult };
+  // B2-CTX-006: When an explicit tabId is provided, skip the SW in-memory fast-path.
+  // The SW store is not tab-scoped — it holds snapshots from any tab and could silently
+  // diff snapshots from the wrong tab if snapshot IDs collide across tabs.
+  // The content-script store is authoritative per-tab and persists for the page lifetime,
+  // so it is the correct source of truth when a specific tab is targeted.
+  const explicitTabId = typeof request.payload.tabId === "number" ? request.payload.tabId : undefined;
+
+  let fromResult: Awaited<ReturnType<typeof defaultStore.get>> | undefined;
+  let toResult: Awaited<ReturnType<typeof defaultStore.get>> | undefined;
+
+  if (explicitTabId === undefined) {
+    // Fast path: active-tab request — both snapshots found in the SW's in-memory store.
+    fromResult = await defaultStore.get(fromSnapshotId);
+    toResult = await defaultStore.get(toSnapshotId);
+    if (!("error" in fromResult) && !("error" in toResult)) {
+      const diffResult = computeDiff(fromResult, toResult);
+      return { requestId: request.requestId, success: true, data: diffResult };
+    }
   }
 
-  // Fallback: SW store missed — forward to content script (survives SW restarts).
+  // Fallback (or explicit tabId): SW store missed or skipped — forward to content script.
   // The content script's SnapshotStore persists for the page's lifetime and is
   // not cleared when the service worker restarts.
-  const activeTabResult = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => [] as chrome.tabs.Tab[]);
-  const tabId = typeof request.payload.tabId === "number"
-    ? request.payload.tabId
-    : activeTabResult[0]?.id;
+  const activeTabResult = explicitTabId === undefined
+    ? await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => [] as chrome.tabs.Tab[])
+    : [];
+  const tabId = explicitTabId ?? activeTabResult[0]?.id;
 
   if (tabId !== undefined) {
     const csResult = await diffViaContentScript(tabId, fromSnapshotId, toSnapshotId, request.requestId);
@@ -736,10 +748,15 @@ export async function handleDiffSnapshots(
   }
 
   // Both paths failed — return the best diagnostic error.
-  if ("error" in fromResult) {
+  // When we have SW store results, use them for staleness analysis.
+  if (fromResult !== undefined && "error" in fromResult) {
     const errorCode = defaultStore.isStale(fromSnapshotId) ? "snapshot-stale" : "snapshot-not-found";
     return { requestId: request.requestId, success: false, error: errorCode, ...getErrorMeta(errorCode) };
   }
-  const errorCode = defaultStore.isStale(toSnapshotId) ? "snapshot-stale" : "snapshot-not-found";
-  return { requestId: request.requestId, success: false, error: errorCode, ...getErrorMeta(errorCode) };
+  if (toResult !== undefined && "error" in toResult) {
+    const errorCode = defaultStore.isStale(toSnapshotId) ? "snapshot-stale" : "snapshot-not-found";
+    return { requestId: request.requestId, success: false, error: errorCode, ...getErrorMeta(errorCode) };
+  }
+  // Explicit tabId path (or no store results) — content script was the only path and it failed.
+  return { requestId: request.requestId, success: false, error: "snapshot-not-found", ...getErrorMeta("snapshot-not-found") };
 }

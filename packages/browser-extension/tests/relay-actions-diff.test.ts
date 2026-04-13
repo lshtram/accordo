@@ -250,6 +250,82 @@ describe("M101-DIFF — diff_snapshots relay action boundary", () => {
   });
 });
 
+// ── B2-CTX-006: explicit tabId bypasses SW in-memory fast-path ───────────────
+
+describe("B2-CTX-006 — explicit tabId bypasses SW fast-path in diff_snapshots", () => {
+  beforeEach(() => {
+    resetChromeMocks();
+    defaultStore.resetOnNavigation();
+    defaultStore.resetOnNavigation();
+  });
+
+  /**
+   * B2-CTX-006 (Phase 2 fix): When an explicit tabId is provided in the
+   * diff_snapshots payload, the SW in-memory fast-path must be bypassed —
+   * even when both snapshots exist in the SW store.
+   *
+   * The SW store is not tab-scoped; it can hold snapshots from any tab and
+   * could silently diff wrong-tab snapshots if IDs happen to collide. When
+   * tabId is explicit, the content-script store (authoritative per-tab) must
+   * be the only lookup path.
+   *
+   * In the test environment the Chrome mock returns `undefined` for
+   * PAGE_UNDERSTANDING_ACTION messages, so diffViaContentScript returns null
+   * and the handler falls through to "snapshot-not-found". The key assertion
+   * is that the SW fast-path SUCCESS is NOT returned despite both snapshots
+   * being present in the SW store.
+   */
+  it("B2-CTX-006: explicit tabId bypasses SW store even when both snapshots are present", async () => {
+    // Pre-populate the SW store with both snapshots
+    const fromSnap = makeSnapshot("page-tabid-bypass", 0, [makeNode("html", 0)]);
+    const toSnap = makeSnapshot("page-tabid-bypass", 1, [makeNode("html", 0), makeNode("div", 1)]);
+    await defaultStore.save("page-tabid-bypass", fromSnap);
+    await defaultStore.save("page-tabid-bypass", toSnap);
+
+    // Request with explicit tabId — must NOT use the SW fast-path
+    const response = await handleRelayAction({
+      requestId: "req-tabid-bypass",
+      action: "diff_snapshots",
+      payload: {
+        fromSnapshotId: "page-tabid-bypass:0",
+        toSnapshotId: "page-tabid-bypass:1",
+        tabId: 42,
+      },
+    });
+
+    // The SW fast-path would have returned success (both snapshots are in the SW store).
+    // With explicit tabId the content-script path is used instead — the mock returns
+    // undefined for PAGE_UNDERSTANDING_ACTION, so the result must NOT be a fast-path success.
+    // It falls through to snapshot-not-found because the content-script mock has no data.
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("snapshot-not-found");
+  });
+
+  /**
+   * Baseline: without tabId the SW fast-path IS used when both snapshots exist.
+   * This confirms the two tests above are testing meaningfully different code paths.
+   */
+  it("B2-CTX-006: without tabId the SW fast-path succeeds when both snapshots are present", async () => {
+    const fromSnap = makeSnapshot("page-no-tabid", 0, [makeNode("html", 0)]);
+    const toSnap = makeSnapshot("page-no-tabid", 1, [makeNode("html", 0), makeNode("div", 1)]);
+    await defaultStore.save("page-no-tabid", fromSnap);
+    await defaultStore.save("page-no-tabid", toSnap);
+
+    // No tabId — SW fast-path should succeed
+    const response = await handleRelayAction({
+      requestId: "req-no-tabid",
+      action: "diff_snapshots",
+      payload: {
+        fromSnapshotId: "page-no-tabid:0",
+        toSnapshotId: "page-no-tabid:1",
+      },
+    });
+
+    expect(response.success).toBe(true);
+    expect(response.error).toBeUndefined();
+  });
+});
+
 // ── End-to-End: get_page_map → defaultStore → diff_snapshots ─────────────────
 
 describe("M101-DIFF — get_page_map auto-saves to defaultStore", () => {

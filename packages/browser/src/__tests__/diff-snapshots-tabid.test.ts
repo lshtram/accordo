@@ -241,4 +241,45 @@ describe("B2-CTX-002/003: diff_snapshots — explicit snapshot IDs do not need t
     expect(diffCalls[0]!.payload.fromSnapshotId).toBe("page:0");
     expect(diffCalls[0]!.payload.toSnapshotId).toBe("page:5");
   });
+
+  /**
+   * B2-CTX-006 (Phase 1 fix): When explicit IDs AND explicit tabId are provided,
+   * the diff_snapshots relay payload must include tabId so the Chrome extension
+   * can route the request to the correct tab's content-script store.
+   *
+   * Before the fix, the tabId was silently dropped from the payload even when
+   * the caller specified a target tab — causing the extension to diff snapshots
+   * from the active tab's store instead of the requested tab's store.
+   */
+  it("B2-CTX-006: with explicit IDs + explicit tabId, diff_snapshots relay payload includes tabId", async () => {
+    const args: DiffSnapshotsArgs = { fromSnapshotId: "page:0", toSnapshotId: "page:5", tabId: 42 };
+
+    await handleDiffSnapshots(relay, args, store);
+
+    // No get_page_map calls — explicit IDs do not trigger implicit capture
+    const getPageMapCalls = relay.getRecordedCalls().filter(c => c.action === "get_page_map");
+    expect(getPageMapCalls).toHaveLength(0);
+
+    // diff_snapshots relay payload must carry tabId
+    const diffCalls = relay.getRecordedCalls().filter(c => c.action === "diff_snapshots");
+    expect(diffCalls).toHaveLength(1);
+    expect(diffCalls[0]!.payload.fromSnapshotId).toBe("page:0");
+    expect(diffCalls[0]!.payload.toSnapshotId).toBe("page:5");
+    expect(diffCalls[0]!.payload.tabId).toBe(42);
+  });
+
+  /**
+   * B2-CTX-006 (negative): When explicit IDs are provided but NO tabId,
+   * the diff_snapshots relay payload must NOT include a tabId field.
+   * This ensures backward compatibility for callers that do not specify a tab.
+   */
+  it("B2-CTX-006: with explicit IDs and no tabId, diff_snapshots relay payload omits tabId", async () => {
+    const args: DiffSnapshotsArgs = { fromSnapshotId: "page:0", toSnapshotId: "page:5" };
+
+    await handleDiffSnapshots(relay, args, store);
+
+    const diffCalls = relay.getRecordedCalls().filter(c => c.action === "diff_snapshots");
+    expect(diffCalls).toHaveLength(1);
+    expect(diffCalls[0]!.payload).not.toHaveProperty("tabId");
+  });
 });
