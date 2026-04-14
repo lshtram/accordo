@@ -3,6 +3,7 @@ import * as net from "net";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import * as http from "node:http";
 import { BrowserRelayServer } from "./relay-server.js";
 import { SharedBrowserRelayServer } from "./shared-relay-server.js";
 import { SharedRelayClient } from "./shared-relay-client.js";
@@ -376,6 +377,62 @@ function getSecurityConfig(): SecurityConfig {
  * Build all browser tools for a given relay (BrowserRelayLike).
  * Used for both per-window (BrowserRelayServer) and shared mode (SharedRelayClient / SharedBrowserRelayServer).
  */
+/**
+ * Build the accordo_browser_pair tool.
+ *
+ * Calls GET /pair/code on the shared relay server to issue a one-time pairing
+ * code. The agent displays this code to the user, who copies it into the
+ * browser extension popup to complete pairing.
+ *
+ * @see PAIR-04 — MCP tool issues a pairing code
+ */
+function buildPairTool() {
+  return {
+    name: "accordo_browser_pair",
+    description:
+      "Issue a one-time pairing code so the user can connect the Accordo browser extension to VS Code. " +
+      "Returns a short code (e.g. '1234-5678') that the user should paste into the browser extension popup. " +
+      "The code expires in 5 minutes.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+    },
+    dangerLevel: "safe" as const,
+    idempotent: false,
+    handler: async (): Promise<unknown> => {
+      return new Promise((resolve) => {
+        const req = http.get(`http://${RELAY_HOST}:${RELAY_BASE_PORT}/pair/code`, (res) => {
+          let body = "";
+          res.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+          res.on("end", () => {
+            try {
+              const parsed = JSON.parse(body) as { code?: string; expiresIn?: number };
+              if (parsed.code) {
+                resolve({
+                  content: [
+                    {
+                      type: "text",
+                      text: `Pairing code: **${parsed.code}**\n\nAsk the user to open the Accordo browser extension popup, enter this code in the "VS Code code:" field, and click Connect. The code expires in ${Math.round((parsed.expiresIn ?? 300000) / 1000)} seconds.`,
+                    },
+                  ],
+                });
+              } else {
+                resolve({ content: [{ type: "text", text: "Failed to generate pairing code — relay may not be running." }] });
+              }
+            } catch {
+              resolve({ content: [{ type: "text", text: "Failed to parse pairing code response." }] });
+            }
+          });
+        });
+        req.on("error", (err: Error) => {
+          resolve({ content: [{ type: "text", text: `Failed to reach relay: ${err.message}` }] });
+        });
+        req.end();
+      });
+    },
+  };
+}
+
 function buildBrowserTools(
   relay: BrowserRelayLike,
   snapshotStore: SnapshotRetentionStore,
@@ -391,6 +448,7 @@ function buildBrowserTools(
     buildManageSnapshotsTool(relay, snapshotStore),
     buildSpatialRelationsTool(relay, snapshotStore, securityConfig),
     ...buildControlTools(relay),
+    buildPairTool(),
   ];
 }
 

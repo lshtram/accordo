@@ -148,6 +148,27 @@
 
 ---
 
+### ~~Priority O — Browser Relay Auth Phase 2 — Pairing Flow~~ ✅ COMPLETE
+
+**What was delivered:** Replaced the native messaging approach (which required system-level install scripts) with a simpler in-band pairing flow. No native host, no install step.
+
+**Flow:**
+1. Agent calls `accordo_browser_pair` MCP tool → relay issues a one-time code (`NNNN-NNNN`, 5-min TTL)
+2. User copies code into the browser extension popup's "VS Code code:" field and clicks Connect
+3. Popup POSTs to `/pair/confirm` → relay validates code, returns token
+4. Token stored in `chrome.storage.local` → extension auto-connects
+
+**Files changed:**
+- `packages/browser/src/shared-relay-server.ts` — added `generatePairCode()`, `/pair/code` (GET) and `/pair/confirm` (POST) endpoints with origin security
+- `packages/browser/src/extension.ts` — added `accordo_browser_pair` MCP tool via `buildPairTool()`
+- `packages/browser-extension/src/relay-bridge.ts` — removed hardcoded token, reads from `chrome.storage.local`; code 1008 clears stored token
+- `packages/browser-extension/src/popup.ts` — added `renderPairingSection()` pairing UI banner
+- `packages/browser-extension/src/manifest.json` — removed `"nativeMessaging"` permission
+
+**Tests:** `relay-bridge.test.ts` 5/5, `shared-relay-server.test.ts` 24/24 — all passing.
+
+---
+
 ---
 
 ## 3) Guardrails

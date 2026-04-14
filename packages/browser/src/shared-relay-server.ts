@@ -9,7 +9,7 @@
  * @see docs/20-requirements/requirements-shared-browser-relay.md §1.1
  */
 
-import { createServer, type IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import type { BrowserRelayAction, BrowserRelayRequest, BrowserRelayResponse } from "./types.js";
@@ -17,6 +17,9 @@ import type { SharedRelayServerOptions, HubClientInfo, ChromeStatusEvent } from 
 import { WriteLeaseManager } from "./write-lease.js";
 import { MUTATING_ACTIONS } from "./shared-relay-types.js";
 import { isAuthorizedToken } from "./relay-auth.js";
+
+/** Duration (ms) a pairing code is valid before it expires. */
+const PAIR_CODE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 interface HubSocket {
   socket: WebSocket;
@@ -42,6 +45,11 @@ export class SharedBrowserRelayServer {
   private readonly writeLease: WriteLeaseManager;
   private chromeConnected = false;
 
+  /** Active pairing code, or null if none issued / already consumed. */
+  private pairCode: string | null = null;
+  /** Epoch ms when the current pairing code expires. */
+  private pairCodeExpiry: number = 0;
+
   constructor(options: SharedRelayServerOptions) {
     this.options = options;
     this.writeLease = new WriteLeaseManager({});
@@ -57,7 +65,9 @@ export class SharedBrowserRelayServer {
   async start(): Promise<void> {
     if (this.httpServer || this.wsServer) return;
 
-    this.httpServer = createServer();
+    this.httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
+      this.handleHttpRequest(req, res);
+    });
     this.wsServer = new WebSocketServer({ server: this.httpServer });
 
     this.wsServer.on("connection", (socket: WebSocket, req: IncomingMessage) => {
@@ -109,6 +119,90 @@ export class SharedBrowserRelayServer {
     });
 
     this.emit("relay-started", { host: this.options.host, port: this.options.port });
+  }
+
+  /**
+   * PAIR-01: Issue a new short-lived pairing code.
+   * Format: "NNNN-NNNN" (8 digits with hyphen). Valid for PAIR_CODE_TTL_MS.
+   * Replaces any previously issued, unconsumed code.
+   */
+  generatePairCode(): string {
+    const half = (): string =>
+      Array.from({ length: 4 }, () => Math.floor(Math.random() * 10).toString()).join("");
+    const code = `${half()}-${half()}`;
+    this.pairCode = code;
+    this.pairCodeExpiry = Date.now() + PAIR_CODE_TTL_MS;
+    this.emit("pair-code-issued");
+    return code;
+  }
+
+  /**
+   * PAIR-02: Handle HTTP requests for pairing endpoints.
+   *
+   * GET  /pair/code    — issue a new pairing code (called by VS Code / agent)
+   * POST /pair/confirm — validate code, return relay token (called by Chrome extension)
+   *
+   * Security: only chrome-extension:// origins and empty origins (loopback tools) are allowed.
+   * Webpage JS cannot reach these endpoints even though the port is known.
+   */
+  private handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
+    const url = new URL(req.url ?? "/", `http://${this.options.host}:${this.options.port}`);
+    const origin = typeof req.headers["origin"] === "string" ? req.headers["origin"] : "";
+
+    // PAIR-SEC-01: Allow only extension origins and empty origins (loopback callers).
+    const isAllowedOrigin = origin === "" || origin.startsWith("chrome-extension://");
+
+    const json = (statusCode: number, body: Record<string, unknown>, allowOrigin?: string): void => {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (allowOrigin) headers["Access-Control-Allow-Origin"] = allowOrigin;
+      res.writeHead(statusCode, headers);
+      res.end(JSON.stringify(body));
+    };
+
+    if (url.pathname === "/pair/code" && req.method === "GET") {
+      if (!isAllowedOrigin) {
+        json(403, { error: "forbidden" });
+        return;
+      }
+      const code = this.generatePairCode();
+      json(200, { code, expiresIn: PAIR_CODE_TTL_MS }, origin || undefined);
+      return;
+    }
+
+    if (url.pathname === "/pair/confirm" && req.method === "POST") {
+      if (!isAllowedOrigin) {
+        json(403, { error: "forbidden" });
+        return;
+      }
+      let body = "";
+      req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+      req.on("end", () => {
+        try {
+          const parsed = JSON.parse(body) as Record<string, unknown>;
+          const candidate = parsed["code"];
+          if (
+            typeof candidate !== "string" ||
+            this.pairCode === null ||
+            Date.now() > this.pairCodeExpiry ||
+            candidate !== this.pairCode
+          ) {
+            json(401, { error: "invalid-code" }, origin || undefined);
+            return;
+          }
+          // Valid — consume the code (one-time use) and return the relay token.
+          this.pairCode = null;
+          this.pairCodeExpiry = 0;
+          this.emit("pair-confirmed");
+          json(200, { token: this.options.token }, origin || undefined);
+        } catch {
+          json(400, { error: "bad-request" }, origin || undefined);
+        }
+      });
+      return;
+    }
+
+    // All other HTTP paths — 404
+    json(404, { error: "not-found" });
   }
 
   private handleChromeConnection(socket: WebSocket): void {
