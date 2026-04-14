@@ -3,12 +3,11 @@
  * posted to the webview.  This gives you the exact scene that will be rendered,
  * with no transforms applied after the fact.
  *
- * Enable:   ALWAYS ON during diagram-engine development.
- *           TODO(diag.debug): restore env-var gate once module is done.
- * Disable:  flip isDebugEnabled() to check ACCORDO_DEBUG_DIAGRAM_JSON
+ * Enable:  set ACCORDO_DEBUG_DIAGRAM_JSON=1 in the environment
+ * Disable: unset or set to 0/false — function is a total no-op (zero cost)
  *
- * Output:   <workspaceRoot>/.accordo/diagrams/debug/<stem>.excalidraw.json
- *           (overwritten on every render — no timestamp suffix)
+ * Output:  <workspaceRoot>/.accordo/diagrams/debug/<stem>.excalidraw.json
+ *          (overwritten on every render — no timestamp suffix)
  *
  * The file is a valid Excalidraw scene document.  Open it at
  * https://excalidraw.com  or via the VS Code Excalidraw extension to inspect
@@ -24,13 +23,12 @@ import type { ExcalidrawAPIElement } from "./scene-adapter.js";
 // ── Debug flag ────────────────────────────────────────────────────────────────
 
 /**
- * Debug dumps are ON for the duration of diagram-engine development.
- * TODO(diag.debug): flip to env-var check once the module is complete:
- *   const v = process.env["ACCORDO_DEBUG_DIAGRAM_JSON"];
- *   return v !== undefined && v !== "" && v !== "0" && v !== "false";
+ * Returns true when `ACCORDO_DEBUG_DIAGRAM_JSON` is set to a non-empty,
+ * non-"0"/"false" value.  When false the entire dump is a no-op (zero cost).
  */
 function isDebugEnabled(): boolean {
-  return true;
+  const v = process.env["ACCORDO_DEBUG_DIAGRAM_JSON"];
+  return v !== undefined && v !== "" && v !== "0" && v !== "false";
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

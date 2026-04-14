@@ -172,6 +172,14 @@ export interface NodeStyle {
   fillStyle?: "hachure" | "cross-hatch" | "solid" | "zigzag" | "dots" | "dashed" | "zigzag-line";
   /** Mermaid shape hint. See NodeShape for valid values. */
   shape?: NodeShape;
+  /**
+   * Explicit corner roundness override for rectangle-family node shapes.
+   * `undefined` = use default roundness implied by shape.
+   * `null` = force sharp corners.
+   * `number > 0` = rounded corners.
+   * Ignored for non-rectangle-family shapes.
+   */
+  roundness?: number | null;
   /** Font size in pixels. */
   fontSize?: number;
   /** Text/font color. */
@@ -201,6 +209,14 @@ export interface EdgeStyle {
   strokeStyle?: "solid" | "dashed" | "dotted";
   /** Whether line is dashed. Kept for backward compat; prefer strokeStyle. */
   strokeDash?: boolean;
+  /**
+   * Visual corner curvature for rendered edge segments.
+   * `undefined` = use default for the selected routing mode.
+   * `null` = force sharp corners.
+   * `number > 0` = rounded corners / curved treatment where supported.
+   * Does not replace `EdgeLayout.routing`, which still chooses path geometry.
+   */
+  roundness?: number | null;
 }
 
 /** Per-cluster visual style overrides. All fields optional. */
@@ -517,6 +533,14 @@ export interface ExcalidrawElement {
   containerId?: string | null;
   /** Font size in pixels.  Only for text elements.  Default: 16. */
   fontSize?: number;
+  /**
+   * Excalidraw group IDs — elements sharing a groupId are treated as a single
+   * selectable unit on the canvas.  Used by class diagram nodes to group the
+   * title box, divider line, and members text into one visual unit.
+   *
+   * Optional: absent / empty = not grouped.
+   */
+  groupIds?: string[];
 }
 
 /**

@@ -1,0 +1,7 @@
+flowchart TD
+  Gateway[Gateway] --> Auth[Auth]
+
+  subgraph Backend
+    Auth --> DB[(DB)]
+    Auth --> Cache[Cache]
+  end

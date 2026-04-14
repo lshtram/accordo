@@ -22,7 +22,7 @@
  * Source: diag_arch_v4.2.md §9.3, diag_workplan.md §5 A8–A10
  */
 
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import type {
   ParsedDiagram,
   ParsedNodeStyle,
@@ -56,6 +56,7 @@ function mergeNodeStyle(parsedStyle: ParsedNodeStyle | undefined, layoutStyle: N
     strokeDash:       layoutStyle.strokeDash,
     fillStyle:        layoutStyle.fillStyle,
     shape:            layoutStyle.shape,
+    roundness:       layoutStyle.roundness,
     fontSize:         layoutStyle.fontSize,
     fontColor:        layoutStyle.fontColor         ?? parsedStyle.fontColor,
     fontWeight:       layoutStyle.fontWeight,
@@ -63,6 +64,67 @@ function mergeNodeStyle(parsedStyle: ParsedNodeStyle | undefined, layoutStyle: N
     roughness:        layoutStyle.roughness,
     fontFamily:       layoutStyle.fontFamily,
   };
+}
+
+/**
+ * Resolve the effective roundness for a node element.
+ *
+ * Priority (highest wins):
+ *   1. Explicit nl.style.roundness (including null → sharp)
+ *   2. Shape default (shapeProps.roundness)
+ *
+ * Only rectangle-family shapes (rectangle, rounded, stadium, and compatible
+ * composites) have meaningful roundness. Non-rectangle shapes (diamond,
+ * ellipse, circle, etc.) always get null regardless of the style override,
+ * because the shape physically cannot render rounded corners.
+ *
+ * @param effectiveStyle  Merged node style (nl.style + parsed style).
+ * @param shapeProps     Shape default properties from shape-map.
+ */
+function resolveNodeRoundness(
+  effectiveStyle: NodeStyle,
+  shapeProps: { roundness: number | null; elementType: string },
+): number | null | undefined {
+  // If user explicitly set roundness (including null = force sharp),
+  // check whether the shape can render rounded corners.
+  if (effectiveStyle.roundness !== undefined) {
+    // Non-rectangle shapes (diamond, ellipse, circle, hexagon, cylinder,
+    // stateStart, stateEnd) have elementType "diamond" or "ellipse" and
+    // shapeProps.roundness === null. They cannot render rounded corners.
+    // Normalize any explicit value to null.
+    // Rectangle-family shapes (elementType "rectangle") CAN render
+    // rounded corners → explicit override applies as-is.
+    if (shapeProps.elementType === "ellipse" || shapeProps.elementType === "diamond") {
+      return null;
+    }
+    return effectiveStyle.roundness;
+  }
+
+  // No explicit roundness set → use shape default.
+  if (shapeProps.roundness == null) {
+    return null;
+  }
+  return shapeProps.roundness;
+}
+
+// ── Class node grouping (Phase A stub) ────────────────────────────────────────
+
+/**
+ * Generate a deterministic Excalidraw group ID for class diagram nodes.
+ *
+ * Class nodes consist of multiple Excalidraw elements (title box, divider
+ * line, members text) that should move as a single unit on the canvas.
+ * This helper produces a stable groupId from the Mermaid nodeId so the
+ * same class always gets the same group, regardless of render order.
+ *
+ * @param nodeId  Stable Mermaid node identifier (e.g. "UserService").
+ * @returns       Deterministic group ID string.
+ *
+ * @internal — diagram-update-plan.md §12 (P-A)
+ */
+export function classNodeGroupId(nodeId: string): string {
+  // Deterministic prefix + nodeId. A future phase may switch to a hash if needed.
+  return `class-group:${nodeId}`;
 }
 
 /**
@@ -711,6 +773,7 @@ export function generateCanvas(
       const titleTextId = randomUUID();
       const dividerId = randomUUID();
       const membersTextId = randomUUID();
+      const classGroupId = classNodeGroupId(nodeId);
 
       pushElement({
         id: elemId,
@@ -723,13 +786,14 @@ export function generateCanvas(
         height: boxH,
         roughness: effectiveStyle?.roughness ?? roughness,
         fontFamily,
-        roundness: shapeProps.roundness ?? undefined,
+        roundness: resolveNodeRoundness(effectiveStyle, shapeProps),
         backgroundColor: effectiveStyle?.backgroundColor,
         strokeColor: effectiveStyle?.strokeColor,
         strokeWidth: effectiveStyle?.strokeWidth,
         strokeStyle: effectiveStyle?.strokeStyle ?? (effectiveStyle?.strokeDash ? "dashed" : undefined),
         fillStyle: effectiveStyle?.fillStyle,
         opacity: effectiveStyle?.opacity,
+        groupIds: [classGroupId],
         boundElements: [
           { id: titleTextId, type: "text" },
           { id: dividerId, type: "arrow" },
@@ -753,6 +817,7 @@ export function generateCanvas(
         label: normalizeLabel(node.label),
         strokeColor: effectiveStyle?.fontColor,
         containerId: elemId,
+        groupIds: [classGroupId],
       });
 
       // Horizontal divider line between name compartment and members compartment
@@ -774,6 +839,7 @@ export function generateCanvas(
         arrowheadEnd: null,
         strokeColor: effectiveStyle?.strokeColor,
         strokeWidth: effectiveStyle?.strokeWidth,
+        groupIds: [classGroupId],
       });
 
       // Members text (attributes + methods joined by newlines)
@@ -794,6 +860,7 @@ export function generateCanvas(
         label: membersText,
         strokeColor: effectiveStyle?.fontColor,
         containerId: elemId,
+        groupIds: [classGroupId],
       });
       } else {
         // ── Standard node: single text label centered ────────────────────────
@@ -839,7 +906,7 @@ export function generateCanvas(
             height: elemH,
             roughness: effectiveStyle?.roughness ?? roughness,
             fontFamily,
-            roundness: shapeProps.roundness ?? undefined,
+        roundness: resolveNodeRoundness(effectiveStyle, shapeProps),
             backgroundColor: effectiveStyle?.backgroundColor,
             strokeColor: effectiveStyle?.strokeColor,
             strokeWidth: effectiveStyle?.strokeWidth,
@@ -1030,6 +1097,9 @@ export function generateCanvas(
       strokeColor: edgeL?.style?.strokeColor,
       strokeWidth: resolvedStrokeWidth,
       strokeStyle: resolvedStrokeStyle,
+      // Edge corner roundness — visual only; routing geometry comes from EdgeLayout.routing.
+      // undefined means use routing-mode default; null means sharp; number means rounded.
+      roundness: edgeL?.style?.roundness,
     });
   }
 

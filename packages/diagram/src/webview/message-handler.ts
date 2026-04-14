@@ -47,7 +47,7 @@
  *   WF-16  detectNodeMutations: fillStyle changed on edge arrow → NOT emitted
  */
 
-import type { HostToWebviewMessage } from "./protocol.js";
+import type { HostToWebviewMessage, WebviewToHostMessage } from "./protocol.js";
 import { type ExcalidrawAPIElement, REVERSE_FONT_FAMILY_MAP } from "./scene-adapter.js";
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
@@ -108,6 +108,13 @@ export interface NodeMutation {
   w?: number;
   h?: number;
   style?: Record<string, unknown>;
+}
+
+/** Edge route mutation when an arrow's waypoints change. */
+export interface EdgeRoutedMutation {
+  type: "edge-routed";
+  edgeKey: string;
+  waypoints: Array<{ x: number; y: number }>;
 }
 
 // ── applyHostMessage ──────────────────────────────────────────────────────────
@@ -240,6 +247,23 @@ export function detectNodeMutations(
       }
     }
 
+    // Detect roundness changes — applies to all shape/arrow elements.
+    // Excalidraw roundness is { type: number } | null. Normalize to numeric format
+    // for internal storage (NodeStyle.roundness / EdgeStyle.roundness = number | null).
+    // This applies to both node elements (rectangles with roundness) and arrow elements.
+    if (!isText && !mermaidId.endsWith(":label")) {
+      const nextRn = nextEl.roundness;
+      const prevRn = prevEl.roundness;
+      if (nextRn !== prevRn) {
+        // Normalize Excalidraw format to numeric: { type: N } → N, null → null
+        if (nextRn !== null) {
+          style.roundness = (nextRn as { type: number }).type;
+        } else {
+          style.roundness = null;
+        }
+      }
+    }
+
     // F-3: Detect fontFamily changes on text elements only.
     // Excalidraw stores fontFamily as a number (1=Excalifont, 2=Nunito, 3=Comic Shanns).
     // Reverse-map to the string name before emitting; skip unknown numeric values
@@ -268,4 +292,156 @@ export function detectNodeMutations(
   }
 
   return mutations;
+}
+
+// ── detectArrowRouteMutations ─────────────────────────────────────────────────
+
+/**
+ * REQ-01..REQ-06d
+ * Diff two Excalidraw element snapshots and returns edge-routed mutations
+ * for arrow elements whose relative `points` array has changed.
+ *
+ * Only elements that:
+ *   1. Have type "arrow"
+ *   2. Carry a non-empty customData.mermaidId containing "->" (valid EdgeKey)
+ *   3. Have a different `points` array between prev and next
+ *
+ * Waypoints are converted from relative (element-local) to absolute canvas
+ * coordinates before being returned: absoluteX = element.x + point[0].
+ *
+ * Returns [] for all other cases — no mutation is emitted.
+ */
+export function detectArrowRouteMutations(
+  prev: ExcalidrawAPIElement[],
+  next: ExcalidrawAPIElement[],
+): EdgeRoutedMutation[] {
+  const nextById = new Map(next.map((el) => [el.id, el]));
+  const mutations: EdgeRoutedMutation[] = [];
+
+  for (const prevEl of prev) {
+    // Condition 1: must be an arrow
+    if (prevEl.type !== "arrow") continue;
+
+    const mermaidId = prevEl.customData?.mermaidId;
+    // Condition 2: must have a valid edge key (contains "->")
+    if (!mermaidId || !mermaidId.includes("->")) continue;
+
+    const nextEl = nextById.get(prevEl.id);
+    if (!nextEl) continue;
+
+    const prevPoints = prevEl.points;
+    const nextPoints = nextEl.points;
+
+    // Condition 3: points must actually differ
+    if (!prevPoints || !nextPoints) continue;
+    if (prevPoints.length !== nextPoints.length) {
+      // Different length → definitely changed
+    } else {
+      const len = prevPoints.length;
+      let same = true;
+      for (let i = 0; i < len; i++) {
+        if (prevPoints[i][0] !== nextPoints[i][0] || prevPoints[i][1] !== nextPoints[i][1]) {
+          same = false;
+          break;
+        }
+      }
+      if (same) continue;
+    }
+
+    // Convert relative points to absolute waypoints
+    const waypoints = nextPoints.map((pt) => ({
+      x: nextEl.x + pt[0],
+      y: nextEl.y + pt[1],
+    }));
+
+    mutations.push({ type: "edge-routed", edgeKey: mermaidId, waypoints });
+  }
+
+  return mutations;
+}
+
+// ── handleChangeCallback ───────────────────────────────────────────────────────
+
+/**
+ * Core change-detection and message-emission logic for the webview canvas.
+ *
+ * Extracted as a pure function with explicit dependencies so it can be
+ * unit-tested without React or browser globals (message-handler.ts has no
+ * browser imports).
+ *
+ * @param elements        — current Excalidraw elements from onChange
+ * @param appStateRaw     — current Excalidraw appState from onChange
+ * @param prevElements    — previous element snapshot for diffing
+ * @param vscode          — postMessage target (vscode API or test mock)
+ * @returns updated prevElements snapshot to pass to next call
+ */
+export function handleChangeCallback(
+  elements: unknown,
+  appStateRaw: Record<string, unknown>,
+  prevElements: readonly ExcalidrawAPIElement[],
+  vscode: { postMessage(msg: unknown): void },
+): readonly ExcalidrawAPIElement[] {
+  const next = elements as readonly ExcalidrawAPIElement[];
+
+  // Node mutations (existing)
+  const mutations: NodeMutation[] = detectNodeMutations(
+    prevElements as ExcalidrawAPIElement[],
+    next as ExcalidrawAPIElement[],
+  );
+
+  // Arrow route mutations (P-B: missing emission path — REQ-01)
+  const arrowMutations = detectArrowRouteMutations(
+    prevElements as ExcalidrawAPIElement[],
+    next as ExcalidrawAPIElement[],
+  );
+
+  // Snapshot with deep-clone of nested points array to prevent aliasing:
+  // Excalidraw mutates arrow points in-place between onChange callbacks.
+  // A shallow { ...el } leaves points aliased — detectArrowRouteMutations
+  // would compare prevPoints === nextPoints (same reference) and silently
+  // drop the canvas:edge-routed emission.
+  const nextSnapshot = (next as ExcalidrawAPIElement[]).map(el => ({
+    ...el,
+    points: el.points != null
+      ? el.points.map(pt => ([...pt] as [number, number]))
+      : el.points,
+  })) as unknown as readonly ExcalidrawAPIElement[];
+
+  // Emit node mutations (existing)
+  for (const mutation of mutations) {
+    if (mutation.type === "moved") {
+      vscode.postMessage({
+        type: "canvas:node-moved",
+        nodeId: mutation.nodeId,
+        x: mutation.x ?? 0,
+        y: mutation.y ?? 0,
+      } satisfies WebviewToHostMessage);
+    } else if (mutation.type === "resized") {
+      vscode.postMessage({
+        type: "canvas:node-resized",
+        nodeId: mutation.nodeId,
+        w: mutation.w ?? 0,
+        h: mutation.h ?? 0,
+      } satisfies WebviewToHostMessage);
+    } else if (mutation.type === "styled") {
+      vscode.postMessage({
+        type: "canvas:node-styled",
+        nodeId: mutation.nodeId,
+        style: mutation.style ?? {},
+      } satisfies WebviewToHostMessage);
+    }
+  }
+
+  // Emit arrow route mutations (P-B: REQ-01)
+  for (const arrowMutation of arrowMutations) {
+    if (arrowMutation.type === "edge-routed") {
+      vscode.postMessage({
+        type: "canvas:edge-routed",
+        edgeKey: arrowMutation.edgeKey,
+        waypoints: arrowMutation.waypoints,
+      } satisfies WebviewToHostMessage);
+    }
+  }
+
+  return nextSnapshot;
 }
