@@ -10,6 +10,7 @@ import { MESSAGE_TYPES } from "./constants.js";
 import { hasPermission, grant, revoke } from "./control-permission.js";
 
 const RELAY_TOKEN_STORAGE_KEY = "relayToken";
+const RELAY_IDENTITY_SECRET_KEY = "relayIdentitySecret";
 const RELAY_PAIR_URL = "http://127.0.0.1:40111/pair/confirm";
 
 const STORAGE_KEY = "commentsMode";
@@ -314,7 +315,7 @@ async function renderPairingSection(container: HTMLElement): Promise<void> {
       padding: 2px 10px; font-size: 11px; cursor: pointer; color: #666;
     `;
     disconnectBtn.addEventListener("click", () => {
-      void chrome.storage.local.remove(RELAY_TOKEN_STORAGE_KEY).then(() => {
+      void chrome.storage.local.remove([RELAY_TOKEN_STORAGE_KEY, RELAY_IDENTITY_SECRET_KEY]).then(() => {
         void renderPairingSection(container);
       });
     });
@@ -362,9 +363,12 @@ async function renderPairingSection(container: HTMLElement): Promise<void> {
         if (!res.ok) {
           throw new Error("rejected");
         }
-        const body = await res.json() as { token?: string };
+        const body = await res.json() as { token?: string; relayIdentitySecret?: string };
         if (!body.token) throw new Error("no-token");
-        await chrome.storage.local.set({ [RELAY_TOKEN_STORAGE_KEY]: body.token });
+        await chrome.storage.local.set({
+          [RELAY_TOKEN_STORAGE_KEY]: body.token,
+          ...(body.relayIdentitySecret ? { [RELAY_IDENTITY_SECRET_KEY]: body.relayIdentitySecret } : {}),
+        });
         void renderPairingSection(container);
       }).catch(() => {
         connectBtn.disabled = false;

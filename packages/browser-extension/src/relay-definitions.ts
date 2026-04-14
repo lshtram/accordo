@@ -7,59 +7,55 @@
  *
  * Split from relay-actions.ts (B5a modularity).
  *
+ * Shared relay contract types (BrowserRelayAction, BrowserRelayRequest,
+ * BrowserRelayResponse, CapturePayload) are imported from @accordo/bridge-types.
+ * Local extensions (auditId, redactionWarning, index signature on Response)
+ * and runtime helpers stay local.
+ *
  * @module
  */
 
-import { SnapshotStore } from "./snapshot-versioning.js";
 import type { VersionedSnapshot } from "./snapshot-versioning.js";
+import type {
+  BrowserRelayAction as BrowserRelayActionType,
+  BrowserRelayRequest,
+  BrowserRelayResponse,
+  CapturePayload as CapturePayloadBase,
+} from "@accordo/bridge-types";
 
-// ── Type Definitions ─────────────────────────────────────────────────────────
+// Re-export BrowserRelayAction from bridge-types so existing imports continue to work.
+// browser-extension's full action surface is the same as BrowserRelayAction.
+// Exported as RelayAction for backward compatibility with existing imports.
+export type { BrowserRelayActionType as RelayAction };
 
-export type RelayAction =
-  | "get_all_comments"
-  | "get_comments"
-  | "get_comments_version"
-  | "create_comment"
-  | "reply_comment"
-  | "resolve_thread"
-  | "reopen_thread"
-  | "delete_comment"
-  | "delete_thread"
-  | "notify_comments_updated"
-  | "get_page_map"
-  | "inspect_element"
-  | "get_dom_excerpt"
-  | "capture_region"
-  | "capture_full_page_screenshot"
-  | "diff_snapshots"
-  | "wait_for"
-  | "get_text_map"
-  | "get_semantic_graph"
-  | "list_pages"
-  | "select_page"
-  | "get_spatial_relations"
-  | "navigate"
-  | "click"
-  | "type"
-  | "press_key";
+// Re-export CapturePayload from bridge-types for convenience.
+export type { CapturePayloadBase as CapturePayload };
 
-export interface RelayActionRequest {
-  requestId: string;
-  action: RelayAction;
-  payload: Record<string, unknown>;
-}
+// ── Relay Action Request (browser-extension) ────────────────────────────────────
 
-export interface RelayActionResponse {
-  requestId: string;
-  success: boolean;
-  /**
-   * B2-SV-003: For data-producing tool responses, the full SnapshotEnvelope
-   * is included inside `data`. The relay forwards the envelope created by
-   * the content script without modification. This top-level `snapshotId`
-   * is retained for backward compatibility on error responses only.
-   */
-  snapshotId?: string;
-  data?: unknown;
+/**
+ * Relay action request — the browser-extension's request envelope.
+ * The base shape is the same as BrowserRelayRequest from bridge-types.
+ */
+export type RelayActionRequest = BrowserRelayRequest;
+
+// ── Relay Action Response (browser-extension extended) ─────────────────────────
+
+/**
+ * Relay action response — the browser-extension's response envelope.
+ *
+ * Extends BrowserRelayResponse with:
+ *   - auditId: MCP-SEC-004 UUIDv4 audit identifier
+ *   - redactionWarning: MCP-SEC-005 warning when PII may be present
+ *   - error override: allows all string error codes (not just BrowserRelayError)
+ *   - index signature: allows RelayActionResponse to satisfy Record<string, unknown>
+ *
+ * The base fields (requestId, success, snapshotId, data) are shared
+ * with the browser package via @accordo/bridge-types.
+ * The error field is overridden to string since browser-extension uses
+ * error codes beyond BrowserRelayError.
+ */
+export interface RelayActionResponse extends Omit<BrowserRelayResponse, "error"> {
   /**
    * MCP-SEC-004: UUIDv4 audit identifier for this tool invocation.
    * Present on all responses (success and failure) for traceability.
@@ -70,51 +66,18 @@ export interface RelayActionResponse {
    * read tools. Warns callers that PII may be present in the response.
    */
   redactionWarning?: string;
-  error?:
-    | "action-failed"
-    | "unsupported-action"
-    | "invalid-request"
-    | "no-target"
-    | "capture-failed"
-    | "image-too-large"
-    | "snapshot-not-found"
-    | "snapshot-stale"
-    | "navigation-interrupted"
-    | "page-closed"
-    | "control-not-granted"
-    | "unsupported-page"
-    | "element-not-found"
-    | "element-off-screen"
-    | "iframe-cross-origin"
-    | "no-content-script"
-    | "origin-blocked"
-    | "redaction-failed";
   /**
-   * MCP-ER-002: Whether the error is retryable.
-   * Present on error responses only.
+   * Error code string. Override allows all browser-extension error codes,
+   * not just the shared BrowserRelayError subset.
    */
-  retryable?: boolean;
+  error?: string;
   /** Index signature — allows RelayActionResponse to satisfy Record<string, unknown> */
   [key: string]: unknown;
 }
 
-export interface CapturePayload {
-  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
-  tabId?: number;
-  anchorKey?: string;
-  nodeRef?: string;
-  rect?: { x: number; y: number; width: number; height: number };
-  padding?: number;
-  quality?: number;
-  /** P4-CR: "viewport" (default) or "fullPage" */
-  mode?: "viewport" | "fullPage";
-  /** GAP-E1 / E4: Output image format — "jpeg" (default), "png", or "webp" */
-  format?: "jpeg" | "png" | "webp";
-  /** GAP-I1: Redaction regex patterns to apply to screenshot (bbox-based). */
-  redactPatterns?: string[];
-}
-
 // ── Module-level Singleton ───────────────────────────────────────────────────
+
+import { SnapshotStore } from "./snapshot-versioning.js";
 
 /**
  * B2-SV-004: Module-level SnapshotStore singleton for runtime snapshot retention.
@@ -127,12 +90,15 @@ export interface CapturePayload {
 export const defaultStore: SnapshotStore = new SnapshotStore();
 defaultStore.setMaxAgeMs(3600000); // 1 hour default TTL
 
-// ── Shared Response Helpers ──────────────────────────────────────────────────
+// ── Shared Response Helpers ─────────────────────────────────────────────────
 
 /**
  * MCP-ER-002: Retry metadata for structured error responses.
  * Maps error codes to retryable flag and optional retryAfterMs.
  * Codes not listed default to retryable: true with no retryAfterMs.
+ *
+ * This helper CANNOT live in @accordo/bridge-types because it encodes
+ * the browser-extension's local error policy.
  */
 const ERROR_META: Record<string, { retryable: boolean; retryAfterMs?: number }> = {
   "browser-not-connected": { retryable: true, retryAfterMs: 2000 },
@@ -149,6 +115,9 @@ const ERROR_META: Record<string, { retryable: boolean; retryAfterMs?: number }> 
 
 /**
  * Get standardized retry metadata for an error code.
+ *
+ * This helper CANNOT live in @accordo/bridge-types because it encodes
+ * the browser-extension's local error policy.
  */
 export function getErrorMeta(code: string): { retryable: boolean; retryAfterMs?: number } {
   return ERROR_META[code] ?? { retryable: true };
@@ -158,10 +127,13 @@ export function getErrorMeta(code: string): { retryable: boolean; retryAfterMs?:
  * Build a standardized action-failed response with structured retry metadata (MCP-ER-001/002).
  * Use this instead of inline `{ success: false, error: "action-failed" }` spread
  * across individual handlers.
+ *
+ * This helper CANNOT live in @accordo/bridge-types because it returns
+ * a RelayActionResponse (which has browser-extension-specific fields).
  */
 export function actionFailed(
   request: { requestId: string },
-  code: RelayActionResponse["error"] = "action-failed",
+  code: string = "action-failed",
 ): RelayActionResponse {
   const meta = getErrorMeta(code);
   return {
@@ -173,12 +145,15 @@ export function actionFailed(
   };
 }
 
-// ── Type Guard ───────────────────────────────────────────────────────────────
+// ── Type Guard ─────────────────────────────────────────────────────────────
 
 /**
  * Runtime type guard for VersionedSnapshot.
  * Replaces unsafe `as unknown as VersionedSnapshot` casts — validates all
  * required fields are present with the correct types before narrowing.
+ *
+ * This helper CANNOT live in @accordo/bridge-types because it requires
+ * the VersionedSnapshot type from snapshot-versioning.ts (Chrome runtime).
  */
 export function isVersionedSnapshot(val: unknown): val is VersionedSnapshot {
   if (val === null || typeof val !== "object") return false;

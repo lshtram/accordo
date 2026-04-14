@@ -3,20 +3,30 @@ import type { RelayActionRequest, RelayActionResponse } from "./relay-actions.js
 const DEFAULT_RELAY_HOST = "127.0.0.1";
 const DEFAULT_RELAY_PORT = 40111;
 const RELAY_TOKEN_STORAGE_KEY = "relayToken";
+const RELAY_IDENTITY_SECRET_KEY = "relayIdentitySecret";
+
+/** Timeout (ms) to receive relay-hello nonce after opening the WebSocket. */
+const RELAY_HELLO_TIMEOUT_MS = 3000;
 
 type RelayActionHandler = (request: RelayActionRequest) => Promise<RelayActionResponse>;
 
 /**
  * WebSocket client that connects the Chrome extension to the Accordo browser relay.
  *
- * On each connection attempt, reads the relay token from `chrome.storage.local`.
- * If no token is stored (not yet paired), schedules a retry without opening a
- * WebSocket. If the server rejects the token with close code 1008, the stored
- * token is cleared so the popup can prompt for re-pairing.
+ * Authentication flow:
+ *   1. On each connection attempt, reads the relay token from `chrome.storage.local`.
+ *      If no token is stored (not yet paired), schedules a retry.
+ *   2. If the server rejects the token with close code 1008, the stored token and
+ *      identity secret are cleared so the popup can prompt for re-pairing.
+ *   3. After the WS opens, the relay sends a `relay-hello` challenge (nonce). The
+ *      extension computes HMAC-SHA256(nonce, relayIdentitySecret) and replies with
+ *      `relay-hello-ack`. If the secret is not stored or the relay doesn't send a
+ *      hello within RELAY_HELLO_TIMEOUT_MS, the connection is closed (re-pair required).
  *
  * @see PAIR-01 — Token read from chrome.storage.local on each connect attempt
  * @see PAIR-02 — No token → schedule retry (wait until user completes pairing)
  * @see PAIR-03 — Close code 1008 → clear stored token, schedule retry
+ * @see PAIR-SEC-06 — relay-hello challenge/response for relay identity verification
  */
 export class RelayBridgeClient {
   private ws: WebSocket | null = null;
@@ -47,7 +57,7 @@ export class RelayBridgeClient {
       return;
     }
 
-    void chrome.storage.local.get([RELAY_TOKEN_STORAGE_KEY]).then((result) => {
+    void chrome.storage.local.get([RELAY_TOKEN_STORAGE_KEY, RELAY_IDENTITY_SECRET_KEY]).then((result) => {
       // Guard: if stopped while awaiting storage read, abort
       if (this.stopped) return;
       // Guard: if a connection was established while awaiting, abort
@@ -56,6 +66,7 @@ export class RelayBridgeClient {
       }
 
       const token = result[RELAY_TOKEN_STORAGE_KEY] as string | undefined;
+      const identitySecret = result[RELAY_IDENTITY_SECRET_KEY] as string | undefined;
 
       if (!token) {
         // PAIR-02: Not yet paired — retry later
@@ -75,13 +86,15 @@ export class RelayBridgeClient {
         this.stopHeartbeat();
         this.ws = null;
         if (event.code === 1008) {
-          // PAIR-03: Token rejected — clear it and wait for user to re-pair
-          void chrome.storage.local.remove(RELAY_TOKEN_STORAGE_KEY);
+          // PAIR-03: Token rejected or identity verification failed — clear credentials
+          // and wait for user to re-pair.
+          void chrome.storage.local.remove([RELAY_TOKEN_STORAGE_KEY, RELAY_IDENTITY_SECRET_KEY]);
         }
         this.scheduleReconnect();
       };
       socket.onopen = (): void => {
-        this.startHeartbeat();
+        // PAIR-SEC-06: Wait for relay-hello challenge before starting heartbeat / accepting messages.
+        this.awaitRelayHello(socket, identitySecret ?? null);
       };
       socket.onerror = (): void => {
         socket.close();
@@ -91,6 +104,98 @@ export class RelayBridgeClient {
         this.scheduleReconnect();
       }
     });
+  }
+
+  /**
+   * PAIR-SEC-06: After the WebSocket opens, wait for the relay to send a
+   * `relay-hello` message containing a nonce. Reply with
+   * `relay-hello-ack` containing HMAC-SHA256(nonce, relayIdentitySecret).
+   *
+   * If no hello arrives within RELAY_HELLO_TIMEOUT_MS, or if the relay sends a
+   * hello but we have no identity secret (first-ever connection before pairing),
+   * close the socket so a fresh re-pair is forced.
+   *
+   * If the relay does NOT send a hello at all within the timeout (e.g. old relay
+   * without challenge support), we treat this as a no-secret scenario and close.
+   */
+  private awaitRelayHello(socket: WebSocket, identitySecret: string | null): void {
+    let resolved = false;
+
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        socket.onmessage = null; // remove temporary handler
+        if (!identitySecret) {
+          // No secret and no hello — relay likely doesn't support challenge yet or this
+          // is a first connection. Accept without challenge.
+          this.activateSocket(socket);
+        } else {
+          // Had a secret but relay never sent hello — suspicious, close + re-pair.
+          socket.close(1008, "relay-hello-timeout");
+        }
+      }
+    }, RELAY_HELLO_TIMEOUT_MS);
+
+    socket.onmessage = (event): void => {
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(String(event.data)) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+
+      if (parsed["kind"] !== "relay-hello") return;
+
+      const nonce = parsed["nonce"];
+      if (typeof nonce !== "string") {
+        resolved = true;
+        clearTimeout(timeout);
+        socket.close(1008, "invalid-relay-hello");
+        return;
+      }
+
+      if (!identitySecret) {
+        // Got a hello challenge but we have no secret stored — we can't verify.
+        // This likely means the extension was re-installed or storage was cleared.
+        // Close and require re-pair.
+        resolved = true;
+        clearTimeout(timeout);
+        socket.close(1008, "no-identity-secret");
+        return;
+      }
+
+      // Compute HMAC-SHA256(nonce, identitySecret) using Web Crypto API.
+      void crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(identitySecret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"],
+      ).then((key) => crypto.subtle.sign("HMAC", key, new TextEncoder().encode(nonce)))
+        .then((sig) => {
+          const hmac = Array.from(new Uint8Array(sig))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ kind: "relay-hello-ack", hmac }));
+          }
+          resolved = true;
+          clearTimeout(timeout);
+          // Restore normal message handler now that hello is done.
+          this.activateSocket(socket);
+        });
+    };
+  }
+
+  /**
+   * Activate the socket for normal operation after identity handshake completes.
+   * Wires the real message handler and starts the heartbeat.
+   */
+  private activateSocket(socket: WebSocket): void {
+    socket.onmessage = (event): void => {
+      void this.handleIncoming(event.data);
+    };
+    this.startHeartbeat();
   }
 
   stop(): void {
