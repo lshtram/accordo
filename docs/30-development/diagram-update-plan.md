@@ -1,8 +1,8 @@
 # Diagram Engine Update — Excalidraw Mermaid-to-Excalidraw Integration Plan
 
 **Date:** 2026-04-14  
-**Phase:** D (cleanup — final wash before D3 reviewer sign-off)  
-**Status:** NEARLY COMPLETE — Priority P batch tests green; awaiting Phase D3 reviewer sign-off  
+**Phase:** Post-Phase F (Priority P + Priority D committed)  
+**Status:** READY FOR NEXT BATCH — PR-4 (visual snapshot comparison) is the next prioritized item  
 **Architecture reference:** `docs/10-architecture/diagram-architecture.md` (v4.2)  
 **Package:** `accordo-diagram` (`packages/diagram/`)
 
