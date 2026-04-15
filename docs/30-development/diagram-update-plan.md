@@ -373,8 +373,8 @@ export async function computeInitialLayoutAsync(
 
 ## 11. Required Documentation Updates
 
-- [ ] `docs/module-map-diagram.md` — add `excalidraw-engine.ts` and `element-mapper.ts`; document `computeInitialLayoutAsync()` in the auto-layout entry
-- [ ] `docs/10-architecture/diagram-architecture.md` — document dual-engine layout strategy and sync/async boundary rule
+- [x] `docs/module-map-diagram.md` — add `excalidraw-engine.ts` and `element-mapper.ts`; document `computeInitialLayoutAsync()` in the auto-layout entry
+- [x] `docs/10-architecture/diagram-architecture.md` — document dual-engine layout strategy and sync/async boundary rule
 - [ ] Keep this plan updated as PRs land and decisions change
 
 ---
@@ -433,7 +433,22 @@ export async function computeInitialLayoutAsync(
 
 ## 10. Visual Comparison Results
 
-_To be filled during Phase 2, PR-4._
+**Pipeline:** `scripts/diagram-comparison/` — 51 upstream flowchart test cases rendered through 3 paths:
+- Path A: Mermaid SVG (canonical reference via `mermaid.render()`)
+- Path B: Dagre SVG (Accordo `computeInitialLayout` → `generateCanvas` → `toExcalidrawPayload` → `exportToSvg`)
+- Path C: Excalidraw SVG (upstream `parseMermaidToExcalidraw` positions overlaid on dagre layout)
+
+**Results summary:**
+- All 51 cases: **WARN** — Mermaid's SVG renderer differs stylistically from the excalidraw renderer (different fonts, stroke styles, layout algorithms). This is expected — Mermaid and Excalidraw are different rendering engines.
+- Dagre vs Excalidraw: Nearly **identical** for most cases. The current overlay approach (mapGeometryToLayout → computeInitialLayout → overlay positions) is not yet producing distinctly different node positions from dagre. This indicates the excalidraw layout engine path needs further integration work to fully replace dagre positioning.
+- Key finding: The `layoutWithExcalidraw` → `generateCanvas` pipeline currently uses dagre for edges AND node positioning, with excalidraw positions overlaid. True excalidraw engine differentiation requires `generateCanvas` to respect excalidraw positions without re-dagring them.
+
+**Artifacts:**
+- `scripts/diagram-comparison/results.json` — raw comparison results
+- `scripts/diagram-comparison/index.html` — web page with all 51 comparisons (1.7MB, can be regenerated with `pnpm generate`)
+- `scripts/diagram-comparison/dist/` — bundled mermaid-to-excalidraw IIFE
+
+**Next:** Fix the excalidraw overlay path so dagre and excalidraw produce genuinely different layouts on visual comparison.
 
 ---
 
@@ -683,7 +698,7 @@ function resolveEdgeRoundness(
 - [x] PR-2: Implement element-mapper with label→NodeId matching
 - [x] PR-3: Implement excalidraw-engine adapter + `computeInitialLayoutAsync()` dispatch
 - [x] PR-D: Fix RED-phase stub tests, types.test.ts, cluster bounds, non-null assertions
-- [ ] PR-4: Visual snapshot comparison tests
+- [x] PR-4: Visual snapshot comparison tests (implemented; pipeline working, page generated)
 - [ ] PR-5: Edge case handling (empty, single-node, large, unicode)
 - [ ] Benchmark: dagre vs excalidraw engine performance on large flowcharts
 - [ ] Decide: persist engine choice in LayoutStore.metadata (Phase 3)
