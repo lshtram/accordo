@@ -6,7 +6,8 @@
 
 import * as vscode from "vscode";
 import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
-import type { SurfaceCommentAdapter } from "@accordo/capabilities";
+import type { SurfaceCommentAdapter, NavigationAdapterRegistry } from "@accordo/capabilities";
+import { createNavigationAdapterRegistry } from "@accordo/capabilities";
 import type { BridgeAPI, ParsedDeck } from "./types.js";
 import { parseDeck } from "./narration.js";
 import { MarpAdapter } from "./marp-adapter.js";
@@ -48,6 +49,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const commentsAdapter = await acquireCommentsAdapter();
   const provider = new PresentationProvider({ context });
 
+  // Navigation adapter for surface:slide routing via comments panel
+  const registry = createNavigationAdapterRegistry();
+  const slideAdapter: NavigationAdapterRegistry extends { get(s: string): infer A } ? A : never = {
+    surfaceType: "slide",
+    navigateToAnchor: async (anchor) => {
+      const coords = anchor as { slideIndex?: number };
+      if (typeof coords.slideIndex === "number") {
+        await vscode.commands.executeCommand(
+          CAPABILITY_COMMANDS.PRESENTATION_GOTO,
+          coords.slideIndex,
+        );
+        return true;
+      }
+      return false;
+    },
+    focusThread: async (threadId) => {
+      await vscode.commands.executeCommand(
+        CAPABILITY_COMMANDS.PRESENTATION_FOCUS_THREAD,
+        threadId,
+      );
+      return true;
+    },
+  };
+  registry.register(slideAdapter);
+
   const session: SessionState = {
     adapter: null,
     deck: null,
@@ -66,6 +92,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     prev: () => prevSlide(session, stateContrib),
     generateNarration: (target) => generateNarration(target, session),
     capture: () => provider.requestCapture(),
+    getSessionDeckUri: () => provider.getCurrentDeckUri(),
   };
 
   const tools = createPresentationTools(deps);

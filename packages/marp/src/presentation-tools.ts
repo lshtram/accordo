@@ -5,7 +5,7 @@
  */
 
 import { writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, basename, extname, join, resolve } from "node:path";
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { SlideSummary, SlideNarration } from "./types.js";
 
@@ -22,6 +22,8 @@ export interface PresentationToolDeps {
     target: number | "all",
   ): Promise<SlideNarration[] | { error: string }>;
   capture(): Promise<Buffer>;
+  /** Returns the absolute path of the currently open deck, or null if no session is active. */
+  getSessionDeckUri(): string | null;
 }
 
 export function createPresentationTools(
@@ -196,11 +198,16 @@ export function createPresentationTools(
         if (typeof args["output_path"] === "string" && args["output_path"]) {
           outputPath = resolve(args["output_path"] as string);
         } else {
-          // No output path — we need the deck URI to derive a sensible default.
-          // deps.getCurrent() doesn't expose deckUri, so we rely on capture failing
-          // if no session is open. We'll write to cwd as fallback.
-          const stem = "slide";
-          outputPath = resolve(`${stem}${slideNumber}.svg`);
+          // Derive default path from the open deck's location: <deck-dir>/<stem>-slide<N>.svg
+          // Fall back to CWD only if no session is active (capture() will error anyway).
+          const deckUri = deps.getSessionDeckUri();
+          if (deckUri) {
+            const dir = dirname(deckUri);
+            const stem = basename(deckUri, extname(deckUri));
+            outputPath = join(dir, `${stem}-slide${slideNumber}.svg`);
+          } else {
+            outputPath = resolve(`slide${slideNumber}.svg`);
+          }
         }
 
         let buffer: Buffer;

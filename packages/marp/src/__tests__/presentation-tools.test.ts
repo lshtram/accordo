@@ -25,6 +25,11 @@ import { describe, it, expect, vi } from "vitest";
 import { createPresentationTools } from "../presentation-tools.js";
 import type { PresentationToolDeps } from "../presentation-tools.js";
 
+// Mock node:fs/promises so capture tests don't hit disk
+vi.mock("node:fs/promises", () => ({
+  writeFile: vi.fn().mockResolvedValue(undefined),
+}));
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeDeps(overrides?: Partial<PresentationToolDeps>): PresentationToolDeps {
@@ -44,6 +49,7 @@ function makeDeps(overrides?: Partial<PresentationToolDeps>): PresentationToolDe
       { slideIndex: 0, narrationText: "Welcome to the presentation." },
     ]),
     capture: vi.fn().mockResolvedValue(Buffer.from("<svg></svg>")),
+    getSessionDeckUri: vi.fn().mockReturnValue(null),
     ...overrides,
   };
 }
@@ -352,5 +358,36 @@ describe("createPresentationTools — input schemas", () => {
       expect(typeof tool.description).toBe("string");
       expect(tool.description.length).toBeGreaterThan(0);
     }
+  });
+});
+
+// ── accordo_webview_capture — default output path ────────────────────────────
+
+describe("accordo_webview_capture — default output path", () => {
+  it("M50-TL-10: default output_path uses deck directory and stem when session is open", async () => {
+    // When output_path is omitted and a session is open at /deck/slides.md,
+    // the default path must be /deck/slides-slide1.svg (deck-dir/stem-slideN.svg).
+    const deps = makeDeps({
+      getCurrent: vi.fn().mockResolvedValue({ index: 0, title: "Intro" }),
+      getSessionDeckUri: vi.fn().mockReturnValue("/deck/slides.md"),
+    });
+    const tools = createPresentationTools(deps);
+    const result = await getToolByName(tools, "accordo_webview_capture").handler({}) as Record<string, unknown>;
+    expect(result.captured).toBe(true);
+    expect(result.output_path).toBe("/deck/slides-slide1.svg");
+  });
+
+  it("M50-TL-10: default output_path falls back to CWD when no session is open", async () => {
+    // When output_path is omitted and no session is active, capture() will fail anyway,
+    // but the path should still be derived relative to CWD as a safe fallback.
+    const deps = makeDeps({
+      getCurrent: vi.fn().mockResolvedValue({ index: 0, title: "Intro" }),
+      getSessionDeckUri: vi.fn().mockReturnValue(null),
+    });
+    const tools = createPresentationTools(deps);
+    const result = await getToolByName(tools, "accordo_webview_capture").handler({}) as Record<string, unknown>;
+    expect(result.captured).toBe(true);
+    expect(typeof result.output_path).toBe("string");
+    expect((result.output_path as string).endsWith("slide1.svg")).toBe(true);
   });
 });
