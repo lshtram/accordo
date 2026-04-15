@@ -36,6 +36,7 @@
 | P2 cleanup — MOD-P2-11 through MOD-P2-16 | ✅ Completed (`fdb34c4`, prior session) |
 | Priority 0 — browser_diff_snapshots fix (B2-CTX-000/000b) | ✅ Completed (`2a20512`) |
 | Hub spawn + MCP config sync + protocol fixes | ✅ Completed (`6f1e6b0`) |
+| Browser Relay Auth Hardening (Phase 1) | ✅ Completed (`d91368f`, 2026-04-10). Deferred follow-up remains in Phase 2: Chrome token discovery via native messaging, query-string transport, and token rotation. |
 
 ---
 
@@ -138,3 +139,4 @@ All diagram work documented in `docs/20-requirements/requirements-diagram.md §2
 | Task | Status | Evidence |
 |---|---|---|
 | Merge `browser2.0` into `main` | ✅ | Full monorepo test suite green on `main`. Worktree deleted. |
+| `accordo_webview_capture` tool (Marp) | ✅ | postMessage + XMLSerializer capture; `PresentationProvider.requestCapture()`; `accordo_webview_capture` MCP tool writes SVG to disk; 10 tools total; all 229 tests passing. |

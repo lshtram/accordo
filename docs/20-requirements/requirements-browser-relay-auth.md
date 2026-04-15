@@ -1,6 +1,6 @@
 # Browser Relay Auth Hardening — Requirements (Phase 1)
 
-**Status:** Implemented for Phase 1 auth hardening; docs updated after validation and review on 2026-04-10  
+**Status:** Implemented and committed for Phase 1 auth hardening in `d91368f` on 2026-04-10. Deferred follow-up items are listed in §3.  
 **Package:** `accordo-browser` (`packages/browser`)  
 **Date:** 2026-04-10  
 **Scope:** Harden the existing browser relay auth model. Does NOT include Chrome token discovery or native-messaging redesign (Phase 2).
@@ -99,14 +99,14 @@ The browser relay uses a token-based auth model for WebSocket connections. A pri
 
 ---
 
-## 3. Out of Scope (Phase 2)
+## 3. Deferred to Phase 2 / Out of Scope for Phase 1
 
-These are acknowledged gaps but are NOT addressed in this module:
+These items are intentionally deferred. They are acknowledged gaps, but they are NOT addressed in this Phase 1 module:
 
-- **Chrome token discovery via native messaging** — Chrome extension still hardcodes its token.
-- **Query-string token transport** — WebSocket API limitation; loopback-only mitigates. Documented as accepted risk.
-- **Token rotation** — No mechanism to rotate tokens without restarting. Deferred.
-- **Hub `validateBridgeSecret()` timing safety** — Gap exists in `hub/security.ts:69` but belongs to a Hub-scoped module.
+- **Chrome token discovery via native messaging** — deferred. Chrome extension still hardcodes its token.
+- **Query-string token transport** — deferred. WebSocket API limitation; loopback-only mitigates. Documented as accepted risk.
+- **Token rotation** — deferred. No mechanism to rotate tokens without restarting.
+- **Hub `validateBridgeSecret()` timing safety** — deferred to a separate Hub-scoped hardening module. Gap exists in `hub/security.ts:69`.
 
 ---
 

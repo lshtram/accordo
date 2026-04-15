@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createHmac } from "node:crypto";
 import { SharedBrowserRelayServer } from "../shared-relay-server.js";
 import type { SharedRelayServerOptions, HubClientInfo } from "../shared-relay-types.js";
 
@@ -26,6 +27,10 @@ const wsMockState = vi.hoisted<WsMockState>(() => ({
   wsServer: null as unknown,
 }));
 
+// Module-level variable to capture the HTTP request handler from the node:http mock.
+// Populated when createServer is called during server.start().
+let capturedHttpHandler: ((req: unknown, res: unknown) => void) | null = null;
+
 vi.mock("node:http", () => {
   const mockHttpServer = {
     on: vi.fn(),
@@ -39,8 +44,17 @@ vi.mock("node:http", () => {
   };
   return {
     __esModule: true,
-    createServer: vi.fn(() => mockHttpServer),
-    default: { createServer: vi.fn(() => mockHttpServer) },
+    createServer: vi.fn((handler?: (req: unknown, res: unknown) => void) => {
+      // Capture the HTTP request handler so tests can invoke it directly
+      if (handler) capturedHttpHandler = handler;
+      return mockHttpServer;
+    }),
+    default: {
+      createServer: vi.fn((handler?: (req: unknown, res: unknown) => void) => {
+        if (handler) capturedHttpHandler = handler;
+        return mockHttpServer;
+      }),
+    },
   };
 });
 
@@ -366,6 +380,7 @@ function makeMockSocket() {
     closeMessage: null as string,
     sent,
     on: vi.fn(),
+    off: vi.fn(),
     send: (data: string) => sent.push(data),
     close: (code?: number, msg?: string) => {
       socket.readyState = 3;
@@ -383,7 +398,88 @@ function makeMockRequest(url: string) {
   };
 }
 
-describe("AUTH-01: SharedBrowserRelayServer rejects wrong token, accepts correct token", () => {
+// ── HTTP harness helpers ───────────────────────────────────────────────────────
+
+/** Returns the HTTP request handler captured by the node:http mock. */
+function getCapturedHttpHandler(): (req: unknown, res: unknown) => void {
+  if (!capturedHttpHandler) throw new Error("No HTTP handler captured — call server.start() first");
+  return capturedHttpHandler;
+}
+
+interface MockHttpRes {
+  statusCode: number;
+  body: string;
+  headers: Record<string, string>;
+  writeHead: ReturnType<typeof vi.fn>;
+  end: ReturnType<typeof vi.fn>;
+}
+
+interface MockHttpReq {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  socket: { remoteAddress: string };
+  _dataListeners: Array<(chunk: Buffer) => void>;
+  _endListeners: Array<() => void>;
+  _bufferedBody: string | null;
+  on: ReturnType<typeof vi.fn>;
+}
+
+function makeMockHttpRequest(method: string, path: string, origin: string) {
+  const res: MockHttpRes = {
+    statusCode: 0,
+    body: "",
+    headers: {},
+    writeHead: vi.fn((code: number, headers: Record<string, string>) => {
+      res.statusCode = code;
+      res.headers = { ...headers };
+    }),
+    end: vi.fn((data: string) => { res.body = data; }),
+  };
+
+  const req: MockHttpReq = {
+    method,
+    url: path,
+    headers: origin ? { origin } : {},
+    socket: { remoteAddress: "127.0.0.1" },
+    _dataListeners: [],
+    _endListeners: [],
+    _bufferedBody: null,
+    on: vi.fn((event: string, cb: (chunk?: Buffer) => void) => {
+      if (event === "data") {
+        req._dataListeners.push(cb as (chunk: Buffer) => void);
+        // Replay buffered body immediately if simulateBodyData was already called
+        if (req._bufferedBody !== null) {
+          cb(Buffer.from(req._bufferedBody));
+        }
+      }
+      if (event === "end") {
+        req._endListeners.push(cb as () => void);
+        // Replay end immediately if body was already simulated
+        if (req._bufferedBody !== null) {
+          (cb as () => void)();
+        }
+      }
+    }),
+  };
+
+  return { req, res };
+}
+
+/** Feed body data into a mock request's data/end listeners. */
+function simulateBodyData(req: MockHttpReq, body: string): void {
+  req._bufferedBody = body;
+  req._dataListeners.forEach((cb) => cb(Buffer.from(body)));
+  req._endListeners.forEach((cb) => cb());
+}
+
+/** Flush the microtask queue (gives async request handlers time to complete). */
+async function flushPostHandlers(): Promise<void> {
+  await new Promise<void>((r) => setTimeout(r, 0));
+}
+
+
+describe("AUTH-01: Shared relay auth handshake — token enforcement on /chrome and /hub", () => {
   const SERVER_TOKEN = "shared-secret-xyz";
 
   beforeEach(() => { clearWsHandlers(); });
@@ -472,6 +568,422 @@ describe("AUTH-01: SharedBrowserRelayServer rejects wrong token, accepts correct
 
     expect(mockSocket.closeCode).toBe(1008);
     expect(mockSocket.closeMessage).toBe("missing hubId");
+    await server.stop();
+  });
+});
+
+// ── PAIR-SEC-01: /pair/code origin enforcement ────────────────────────────────
+
+describe("PAIR-SEC-01: /pair/code rejects web-page origins, allows empty origin and extension origins", () => {
+  beforeEach(() => { clearWsHandlers(); capturedHttpHandler = null; });
+  afterEach(() => { clearWsHandlers(); });
+
+  it("PAIR-SEC-01: /pair/code accepts empty origin (VS Code / Node.js HTTP caller)", async () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    const httpHandler = getCapturedHttpHandler();
+    const { req, res } = makeMockHttpRequest("GET", "/pair/code", "");
+
+    httpHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { code?: string };
+    expect(typeof body.code).toBe("string");
+    expect(body.code).toMatch(/^\d{4}-\d{4}$/);
+    await server.stop();
+  });
+
+  it("PAIR-SEC-01: /pair/code accepts chrome-extension:// origin (dev mode, no pinning)", async () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    const httpHandler = getCapturedHttpHandler();
+    const { req, res } = makeMockHttpRequest("GET", "/pair/code", "chrome-extension://any-extension-id-here");
+
+    httpHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    await server.stop();
+  });
+
+  it("PAIR-SEC-01: /pair/code rejects web-page http origin", async () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    const httpHandler = getCapturedHttpHandler();
+    const { req, res } = makeMockHttpRequest("GET", "/pair/code", "https://evil.com");
+
+    httpHandler(req, res);
+
+    expect(res.statusCode).toBe(403);
+    await server.stop();
+  });
+});
+
+// ── PAIR-SEC-02: /pair/confirm origin enforcement ─────────────────────────────
+
+describe("PAIR-SEC-02: /pair/confirm rejects empty origin and non-extension origins", () => {
+  beforeEach(() => { clearWsHandlers(); capturedHttpHandler = null; });
+  afterEach(() => { clearWsHandlers(); });
+
+  it("PAIR-SEC-02: /pair/confirm rejects empty origin (prevents self-issue+redeem)", async () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    const httpHandler = getCapturedHttpHandler();
+    const { req, res } = makeMockHttpRequest("POST", "/pair/confirm", "");
+
+    httpHandler(req, res);
+
+    expect(res.statusCode).toBe(403);
+    await server.stop();
+  });
+
+  it("PAIR-SEC-02: /pair/confirm rejects http web-page origin", async () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    const httpHandler = getCapturedHttpHandler();
+    const { req, res } = makeMockHttpRequest("POST", "/pair/confirm", "https://attacker.com");
+
+    httpHandler(req, res);
+
+    expect(res.statusCode).toBe(403);
+    await server.stop();
+  });
+
+  it("PAIR-SEC-02: /pair/confirm accepts chrome-extension:// origin (dev mode, no pinning)", async () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    // Issue a code first
+    server.generatePairCode();
+
+    const httpHandler = getCapturedHttpHandler();
+    // Use correct code via second call so we have the code value
+    const code = server.generatePairCode();
+    const { req, res } = makeMockHttpRequest("POST", "/pair/confirm", "chrome-extension://any-id");
+    simulateBodyData(req, JSON.stringify({ code }));
+
+    httpHandler(req, res);
+    await flushPostHandlers();
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { token?: string; relayIdentitySecret?: string };
+    expect(body.token).toBe(FIXED_TOKEN);
+    expect(typeof body.relayIdentitySecret).toBe("string");
+    expect(body.relayIdentitySecret!.length).toBeGreaterThan(0);
+    await server.stop();
+  });
+});
+
+// ── PAIR-SEC-03: Extension ID pinning ─────────────────────────────────────────
+
+describe("PAIR-SEC-03: allowedExtensionId pins pairing to a specific extension (production mode)", () => {
+  const ALLOWED_ID = "abcdefghijklmnopabcdefghijklmnop";
+  const OTHER_ID   = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
+
+  beforeEach(() => { clearWsHandlers(); capturedHttpHandler = null; });
+  afterEach(() => { clearWsHandlers(); });
+
+  it("PAIR-SEC-03: with allowedExtensionId set, /pair/confirm rejects a different extension ID", async () => {
+    const server = new SharedBrowserRelayServer({ ...makeOptions(), allowedExtensionId: ALLOWED_ID });
+    await server.start();
+
+    const httpHandler = getCapturedHttpHandler();
+    const { req, res } = makeMockHttpRequest("POST", "/pair/confirm", `chrome-extension://${OTHER_ID}`);
+
+    httpHandler(req, res);
+
+    expect(res.statusCode).toBe(403);
+    await server.stop();
+  });
+
+  it("PAIR-SEC-03: with allowedExtensionId set, /pair/confirm accepts the exact allowed extension ID", async () => {
+    const server = new SharedBrowserRelayServer({ ...makeOptions(), allowedExtensionId: ALLOWED_ID });
+    await server.start();
+
+    const code = server.generatePairCode();
+    const httpHandler = getCapturedHttpHandler();
+    const { req, res } = makeMockHttpRequest("POST", "/pair/confirm", `chrome-extension://${ALLOWED_ID}`);
+    simulateBodyData(req, JSON.stringify({ code }));
+
+    httpHandler(req, res);
+    await flushPostHandlers();
+
+    expect(res.statusCode).toBe(200);
+    await server.stop();
+  });
+
+  it("PAIR-SEC-03: with allowedExtensionId set, /pair/code also rejects a different extension ID", async () => {
+    const server = new SharedBrowserRelayServer({ ...makeOptions(), allowedExtensionId: ALLOWED_ID });
+    await server.start();
+
+    const httpHandler = getCapturedHttpHandler();
+    const { req, res } = makeMockHttpRequest("GET", "/pair/code", `chrome-extension://${OTHER_ID}`);
+
+    httpHandler(req, res);
+
+    expect(res.statusCode).toBe(403);
+    await server.stop();
+  });
+});
+
+// ── PAIR-SEC-04: Rate limiting on /pair/confirm ────────────────────────────────
+
+describe("PAIR-SEC-04: /pair/confirm rate-limits and locks out after 5 failed attempts", () => {
+  beforeEach(() => { clearWsHandlers(); capturedHttpHandler = null; });
+  afterEach(() => { clearWsHandlers(); });
+
+  it("PAIR-SEC-04: after 5 wrong codes, /pair/confirm returns 429 and rejects valid code", async () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    server.generatePairCode(); // sets a valid code
+    const httpHandler = getCapturedHttpHandler();
+
+    // Submit 5 wrong codes
+    for (let i = 0; i < 5; i++) {
+      const { req, res } = makeMockHttpRequest("POST", "/pair/confirm", "chrome-extension://any-id");
+      simulateBodyData(req, JSON.stringify({ code: "0000-0000" }));
+      httpHandler(req, res);
+      await flushPostHandlers();
+    }
+
+    // 6th attempt (even with a "valid-looking" code) → 429
+    const { req: req6, res: res6 } = makeMockHttpRequest("POST", "/pair/confirm", "chrome-extension://any-id");
+    simulateBodyData(req6, JSON.stringify({ code: "0000-0000" }));
+    httpHandler(req6, res6);
+
+    expect(res6.statusCode).toBe(429);
+    const body6 = JSON.parse(res6.body) as { error?: string };
+    expect(body6.error).toBe("too-many-attempts");
+    await server.stop();
+  });
+
+  it("PAIR-SEC-04: generatePairCode() resets the failed-attempt counter", async () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    server.generatePairCode(); // first code
+    const httpHandler = getCapturedHttpHandler();
+
+    // Exhaust attempts
+    for (let i = 0; i < 5; i++) {
+      const { req, res } = makeMockHttpRequest("POST", "/pair/confirm", "chrome-extension://any-id");
+      simulateBodyData(req, JSON.stringify({ code: "0000-0000" }));
+      httpHandler(req, res);
+      await flushPostHandlers();
+    }
+
+    // Issue fresh code — counter resets
+    const freshCode = server.generatePairCode();
+
+    const { req: reqFresh, res: resFresh } = makeMockHttpRequest("POST", "/pair/confirm", "chrome-extension://any-id");
+    simulateBodyData(reqFresh, JSON.stringify({ code: freshCode }));
+    httpHandler(reqFresh, resFresh);
+    await flushPostHandlers();
+
+    expect(resFresh.statusCode).toBe(200);
+    await server.stop();
+  });
+});
+
+// ── PAIR-SEC-04: CSPRNG for pair codes ────────────────────────────────────────
+
+describe("PAIR-SEC-04: generatePairCode() uses CSPRNG — produces NNNN-NNNN format codes", () => {
+  it("PAIR-SEC-04: code matches NNNN-NNNN format", () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    const code = server.generatePairCode();
+    expect(code).toMatch(/^\d{4}-\d{4}$/);
+  });
+
+  it("PAIR-SEC-04: consecutive codes are different (CSPRNG, not sequential)", () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    const codes = new Set(Array.from({ length: 20 }, () => server.generatePairCode()));
+    // With CSPRNG, 20 random 8-digit codes should all be unique (10^8 space)
+    expect(codes.size).toBeGreaterThan(1);
+  });
+});
+
+// ── PAIR-SEC-06: /pair/confirm returns relayIdentitySecret ────────────────────
+
+describe("PAIR-SEC-06: /pair/confirm response includes relayIdentitySecret", () => {
+  beforeEach(() => { clearWsHandlers(); capturedHttpHandler = null; });
+  afterEach(() => { clearWsHandlers(); });
+
+  it("PAIR-SEC-06: successful pairing response includes relayIdentitySecret (UUID)", async () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    const code = server.generatePairCode();
+    const httpHandler = getCapturedHttpHandler();
+    const { req, res } = makeMockHttpRequest("POST", "/pair/confirm", "chrome-extension://ext-id");
+    simulateBodyData(req, JSON.stringify({ code }));
+
+    httpHandler(req, res);
+    await flushPostHandlers();
+
+    const body = JSON.parse(res.body) as { token?: string; relayIdentitySecret?: string };
+    expect(body.relayIdentitySecret).toBeDefined();
+    // UUID v4 format
+    expect(body.relayIdentitySecret).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    await server.stop();
+  });
+
+  it("PAIR-SEC-06: two consecutive pairings produce different relayIdentitySecrets", async () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    const httpHandler = getCapturedHttpHandler();
+
+    const code1 = server.generatePairCode();
+    const { req: req1, res: res1 } = makeMockHttpRequest("POST", "/pair/confirm", "chrome-extension://ext-id");
+    simulateBodyData(req1, JSON.stringify({ code: code1 }));
+    httpHandler(req1, res1);
+    await flushPostHandlers();
+
+    const code2 = server.generatePairCode();
+    const { req: req2, res: res2 } = makeMockHttpRequest("POST", "/pair/confirm", "chrome-extension://ext-id");
+    simulateBodyData(req2, JSON.stringify({ code: code2 }));
+    httpHandler(req2, res2);
+    await flushPostHandlers();
+
+    const secret1 = (JSON.parse(res1.body) as { relayIdentitySecret?: string }).relayIdentitySecret;
+    const secret2 = (JSON.parse(res2.body) as { relayIdentitySecret?: string }).relayIdentitySecret;
+    expect(secret1).not.toBe(secret2);
+    await server.stop();
+  });
+});
+
+// ── PAIR-SEC-06: relay-hello challenge/response on /chrome ────────────────────
+
+describe("PAIR-SEC-06: /chrome WS — relay sends hello challenge, closes on wrong HMAC", () => {
+  beforeEach(() => { clearWsHandlers(); capturedHttpHandler = null; });
+  afterEach(() => { clearWsHandlers(); });
+
+  it("PAIR-SEC-06: /chrome with relayIdentitySecret — relay sends relay-hello nonce immediately", async () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    // Trigger a pairing so relayIdentitySecret is set inside the server
+    const httpHandler = getCapturedHttpHandler();
+    const code = server.generatePairCode();
+    const { req, res } = makeMockHttpRequest("POST", "/pair/confirm", "chrome-extension://ext-id");
+    simulateBodyData(req, JSON.stringify({ code }));
+    httpHandler(req, res);
+    await flushPostHandlers();
+
+    // Now simulate /chrome WS connection
+    const harness = getWsHarness();
+    const wsHandler = harness.captured[harness.captured.length - 1];
+    const mockSocket = makeMockSocket();
+
+    wsHandler(mockSocket, makeMockRequest(`/chrome?token=${FIXED_TOKEN}`));
+
+    // Relay must have sent relay-hello immediately
+    expect(mockSocket.sent.length).toBeGreaterThanOrEqual(1);
+    const hello = JSON.parse(mockSocket.sent[0]) as { kind?: string; nonce?: string };
+    expect(hello.kind).toBe("relay-hello");
+    expect(typeof hello.nonce).toBe("string");
+    expect(hello.nonce!.length).toBeGreaterThan(0);
+    await server.stop();
+  });
+
+  it("PAIR-SEC-06: /chrome — wrong HMAC causes close(1008, 'identity-verification-failed')", async () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    // Trigger pairing
+    const httpHandler = getCapturedHttpHandler();
+    const code = server.generatePairCode();
+    const { req, res } = makeMockHttpRequest("POST", "/pair/confirm", "chrome-extension://ext-id");
+    simulateBodyData(req, JSON.stringify({ code }));
+    httpHandler(req, res);
+    await flushPostHandlers();
+
+    // Simulate /chrome WS connection
+    const harness = getWsHarness();
+    const wsHandler = harness.captured[harness.captured.length - 1];
+    const mockSocket = makeMockSocket();
+    wsHandler(mockSocket, makeMockRequest(`/chrome?token=${FIXED_TOKEN}`));
+
+    // Get the nonce from relay-hello
+    const hello = JSON.parse(mockSocket.sent[0]) as { kind: string; nonce: string };
+    expect(hello.kind).toBe("relay-hello");
+
+    // Simulate extension registering its message handler and firing the wrong ack
+    const msgHandler = mockSocket.on.mock.calls.find((c) => c[0] === "message")?.[1] as
+      | ((buf: Buffer) => void)
+      | undefined;
+    expect(msgHandler).toBeDefined();
+    msgHandler!(Buffer.from(JSON.stringify({ kind: "relay-hello-ack", hmac: "deadbeef" })));
+
+    expect(mockSocket.closeCode).toBe(1008);
+    expect(mockSocket.closeMessage).toBe("identity-verification-failed");
+    expect(server.isChromeConnected()).toBe(false);
+    await server.stop();
+  });
+
+  it("PAIR-SEC-06: /chrome — correct HMAC completes the connection", async () => {
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    // Trigger pairing and extract relayIdentitySecret
+    const httpHandler = getCapturedHttpHandler();
+    const code = server.generatePairCode();
+    const { req, res } = makeMockHttpRequest("POST", "/pair/confirm", "chrome-extension://ext-id");
+    simulateBodyData(req, JSON.stringify({ code }));
+    httpHandler(req, res);
+    await flushPostHandlers();
+
+    const secret = (JSON.parse(res.body) as { relayIdentitySecret: string }).relayIdentitySecret;
+
+    // Simulate /chrome WS connection
+    const harness = getWsHarness();
+    const wsHandler = harness.captured[harness.captured.length - 1];
+    const mockSocket = makeMockSocket();
+    wsHandler(mockSocket, makeMockRequest(`/chrome?token=${FIXED_TOKEN}`));
+
+    const hello = JSON.parse(mockSocket.sent[0]) as { kind: string; nonce: string };
+    expect(hello.kind).toBe("relay-hello");
+
+    // Compute correct HMAC
+    const correctHmac = createHmac("sha256", secret).update(hello.nonce).digest("hex");
+
+    // Simulate correct ack
+    const msgHandler = mockSocket.on.mock.calls.find((c) => c[0] === "message")?.[1] as
+      | ((buf: Buffer) => void)
+      | undefined;
+    expect(msgHandler).toBeDefined();
+    msgHandler!(Buffer.from(JSON.stringify({ kind: "relay-hello-ack", hmac: correctHmac })));
+
+    // Socket must remain open and Chrome must be connected
+    expect(mockSocket.closeCode).toBeNull();
+    expect(server.isChromeConnected()).toBe(true);
+    await server.stop();
+  });
+
+  it("PAIR-SEC-06: /chrome before any pairing — connection accepted without challenge", async () => {
+    // No pairing → relayIdentitySecret is null → relay skips challenge
+    const server = new SharedBrowserRelayServer(makeOptions());
+    await server.start();
+
+    const harness = getWsHarness();
+    const wsHandler = harness.captured[harness.captured.length - 1];
+    const mockSocket = makeMockSocket();
+    wsHandler(mockSocket, makeMockRequest(`/chrome?token=${FIXED_TOKEN}`));
+
+    // No relay-hello should have been sent
+    const sentMessages = mockSocket.sent.map((s) => JSON.parse(s) as { kind?: string });
+    const helloSent = sentMessages.some((m) => m.kind === "relay-hello");
+    expect(helloSent).toBe(false);
+
+    // Chrome should be connected
+    expect(server.isChromeConnected()).toBe(true);
     await server.stop();
   });
 });

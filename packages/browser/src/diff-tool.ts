@@ -628,12 +628,16 @@ export async function handleDiffSnapshots(
   }
 
   try {
+    const diffPayload: Record<string, unknown> = {
+      fromSnapshotId: resolvedFromSnapshotId,
+      toSnapshotId: resolvedToSnapshotId,
+    };
+    if (args.tabId !== undefined) {
+      diffPayload.tabId = args.tabId;
+    }
     const response = await relay.request(
       "diff_snapshots",
-      {
-        fromSnapshotId: resolvedFromSnapshotId,
-        toSnapshotId: resolvedToSnapshotId,
-      },
+      diffPayload,
       DIFF_TIMEOUT_MS,
     );
 

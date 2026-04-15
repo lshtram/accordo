@@ -14,7 +14,7 @@ Accordo Marp is a lightweight presentation modality for Accordo IDE, built on [M
 
 ### 1.1 Relationship to `accordo-slidev`
 
-Both extensions expose the **same 9 MCP tools** under the same `accordo.presentation.*` namespace. The Accordo system prompt configuration (`accordo.presentation.engine`) determines which extension is active. Only one engine is active at a time.
+Both extensions expose the **same 9 navigation/session MCP tools** under the same `accordo.presentation.*` namespace, plus one capture tool (`accordo_webview_capture`) that is engine-specific. The Accordo system prompt configuration (`accordo.presentation.engine`) determines which extension is active. Only one engine is active at a time.
 
 ### 1.2 Why Marp
 
@@ -90,11 +90,13 @@ The tool names are **identical** to Slidev — the MCP surface is engine-agnosti
 | M50-TL-07 | `accordo.presentation.next` advances one slide |
 | M50-TL-08 | `accordo.presentation.prev` goes back one slide |
 | M50-TL-09 | `accordo.presentation.generateNarration` returns narration text for a given slide (or all slides) |
+| M50-TL-10 | `accordo_webview_capture` captures the currently visible slide as a UTF-8-encoded SVG file; writes to a caller-specified output path; requires an open presentation session; returns `{ captured, output_path, slide, bytes }` |
 
 ### Tool danger levels
 
 - Navigation/read tools (`discover`, `listSlides`, `getCurrent`, `goto`, `next`, `prev`, `generateNarration`): `safe`, `requiresConfirmation: false`
 - Session management (`open`, `close`): `moderate`, `requiresConfirmation: false`
+- Capture (`accordo_webview_capture`): `moderate`, `requiresConfirmation: false` (writes to disk)
 
 ---
 
@@ -108,7 +110,7 @@ The tool names are **identical** to Slidev — the MCP surface is engine-agnosti
 |---|---|
 | M50-EXT-01 | Reads `accordo.presentation.engine` setting; if value is `"slidev"`, does NOT register tools (yields to `accordo-slidev`) |
 | M50-EXT-02 | Activates Bridge dependency and acquires BridgeAPI exports |
-| M50-EXT-03 | Registers all 9 presentation tools when engine is `"marp"` (default) |
+| M50-EXT-03 | Registers all 10 presentation tools when engine is `"marp"` (default): 9 navigation/session tools + `accordo_webview_capture` |
 | M50-EXT-04 | Creates WebviewPanel on demand (via `presentation.open` tool) |
 | M50-EXT-05 | Acquires comments surface adapter via `accordo.comments.internal.getSurfaceAdapter` when available |
 | M50-EXT-06 | Publishes initial modality state via `bridge.publishState` |
@@ -169,6 +171,7 @@ The tool names are **identical** to Slidev — the MCP surface is engine-agnosti
 | M50-PVD-08 | Webview CSP: nonce-based script policy, `style-src` for Marp CSS; NO `frame-src` needed (no iframe) |
 | M50-PVD-09 | `marp:update` messages include a monotonic `revision: number`; webview drops updates where `revision ≤ lastReceivedRevision` |
 | M50-PVD-10 | After live-reload re-render, if slide count changes, `currentSlide` is clamped to `Math.min(oldCurrentSlide, newSlideCount - 1)` |
+| M50-PVD-11 | `requestCapture(): Promise<Buffer>` sends `host:request-capture` to the webview and resolves with the decoded SVG buffer when `presentation:capture-ready` is received; rejects if the panel is closed before the response arrives |
 
 ### M50-CBR — Comments Bridge
 
@@ -260,6 +263,7 @@ interface MarpRenderResult {
 
 - `presentation:ready`
 - `presentation:slideChanged { index: number }`
+- `presentation:capture-ready { data: string | null, error?: string }` — response to `host:request-capture`; `data` is a base64-encoded UTF-8 SVG string (using `btoa(unescape(encodeURIComponent(svgString)))`); `null` on error
 - `nav:next`
 - `nav:prev`
 - Comment SDK messages (`comment:create`, `comment:reply`, `comment:resolve`, `comment:delete`)
@@ -267,6 +271,7 @@ interface MarpRenderResult {
 ### Host → Webview
 
 - `slide-index { index: number, navigate?: boolean }`
+- `host:request-capture` — instructs webview to serialize the active slide SVG (`<svg data-marpit-svg class="active">`) via `XMLSerializer` and respond with `presentation:capture-ready`
 - `marp:update { html: string, css: string, currentSlide: number, revision: number }` — live reload on file change; `revision` is monotonic (webview drops updates where `revision ≤ lastReceivedRevision`); after re-render, `currentSlide` is clamped to `Math.min(oldCurrentSlide, newSlideCount - 1)`
 - Comment SDK updates (`comments:load`, `comments:add`, `comments:update`, `comments:remove`)
 
@@ -326,7 +331,7 @@ accordo.presentation.engine: "marp" | "slidev"   (default: "marp")
 
 | Setting value | `accordo-marp` behavior | `accordo-slidev` behavior |
 |---|---|---|
-| `"marp"` (default) | Registers all 9 tools, publishes state | Does NOT register tools (yields) |
+| `"marp"` (default) | Registers all 10 tools, publishes state | Does NOT register tools (yields) |
 | `"slidev"` | Does NOT register tools (yields) | Registers all 9 tools, publishes state |
 
 Both extensions read the same setting on activation. Only the selected engine registers its tools. The MCP tool names are identical (`accordo.presentation.*`), so agents see no difference — the engine swap is transparent.

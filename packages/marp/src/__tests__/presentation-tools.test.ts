@@ -43,6 +43,7 @@ function makeDeps(overrides?: Partial<PresentationToolDeps>): PresentationToolDe
     generateNarration: vi.fn().mockResolvedValue([
       { slideIndex: 0, narrationText: "Welcome to the presentation." },
     ]),
+    capture: vi.fn().mockResolvedValue(Buffer.from("<svg></svg>")),
     ...overrides,
   };
 }
@@ -56,10 +57,10 @@ function getToolByName(tools: ReturnType<typeof createPresentationTools>, name: 
 // ── Tool count and names ──────────────────────────────────────────────────────
 
 describe("createPresentationTools — tool count and names", () => {
-  it("M50-TL-01 through M50-TL-09: returns exactly 9 tools", () => {
-    // Must match the 9-tool MCP surface identical to accordo-slidev.
+  it("M50-TL-01 through M50-TL-10: returns exactly 10 tools", () => {
+    // 9 original tools + accordo_webview_capture (M50-TL-10)
     const tools = createPresentationTools(makeDeps());
-    expect(tools).toHaveLength(9);
+    expect(tools).toHaveLength(10);
   });
 
   it("M50-TL-01 through M50-TL-09: all expected tool names are present", () => {

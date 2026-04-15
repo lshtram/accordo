@@ -557,10 +557,10 @@ This allows users to opt out if the shared model causes issues.
 
 **Date:** 2026-04-10  
 **Context:** Auth assessment found gaps in browser relay token handling: `===` comparison (timing side-channel), hardcoded dev token fallback, globalState (unencrypted) storage, inconsistent validation between `BrowserRelayServer` and `SharedBrowserRelayServer`.  
-**Decision:** Phase 1 hardening — `isAuthorizedToken()` uses `timingSafeEqual`, both relay servers delegate to it, token stored in VS Code `SecretStorage`, dev token fallback removed. Chrome extension token discovery deferred to Phase 2 (native messaging).  
+**Decision:** Phase 1 hardening — `isAuthorizedToken()` uses `timingSafeEqual`, both relay servers delegate to it, token stored in VS Code `SecretStorage`, dev token fallback removed, and predictable fallback tokens are disallowed by a fail-closed guardrail. Chrome extension token discovery is deferred to Phase 2 (native messaging).  
 **Rationale:** Aligns browser relay security with Hub security (`hub/security.ts` already uses `timingSafeEqual`). Eliminates the lowest-effort attack vectors without requiring Chrome extension changes.  
-**Consequence:** Chrome extension cannot connect until Phase 2 implements native-messaging token discovery. `resolveRelayToken()` provides migration path from globalState to SecretStorage.  
-**Requirements:** `docs/20-requirements/requirements-browser-relay-auth.md` AUTH-01 through AUTH-05.
+**Consequence:** Chrome extension cannot connect until deferred Phase 2 native-messaging token discovery is implemented. `resolveRelayToken()` provides migration path from globalState to SecretStorage.  
+**Requirements:** `docs/20-requirements/requirements-browser-relay-auth.md` AUTH-01 through AUTH-06.
 
 ---
 

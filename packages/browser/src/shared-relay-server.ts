@@ -9,14 +9,34 @@
  * @see docs/20-requirements/requirements-shared-browser-relay.md §1.1
  */
 
-import { createServer, type IncomingMessage } from "node:http";
-import { randomUUID } from "node:crypto";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { randomUUID, randomInt, createHmac } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import type { BrowserRelayAction, BrowserRelayRequest, BrowserRelayResponse } from "./types.js";
 import type { SharedRelayServerOptions, HubClientInfo, ChromeStatusEvent } from "./shared-relay-types.js";
 import { WriteLeaseManager } from "./write-lease.js";
 import { MUTATING_ACTIONS } from "./shared-relay-types.js";
 import { isAuthorizedToken } from "./relay-auth.js";
+
+/** Duration (ms) a pairing code is valid before it expires. */
+const PAIR_CODE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * PAIR-SEC-04: Max failed confirm attempts before the current code is invalidated
+ * and new attempts are locked out until a fresh code is issued.
+ */
+const PAIR_MAX_ATTEMPTS = 5;
+
+/**
+ * PAIR-SEC-05: Duration (ms) the relay waits for the Chrome extension to reply
+ * to the relay-hello challenge before closing the WebSocket.
+ */
+const RELAY_HELLO_TIMEOUT_MS = 3000;
+
+/**
+ * PAIR-SEC-06: HMAC algorithm used for the relay-hello challenge/response.
+ */
+const RELAY_HMAC_ALGO = "sha256";
 
 interface HubSocket {
   socket: WebSocket;
@@ -42,6 +62,23 @@ export class SharedBrowserRelayServer {
   private readonly writeLease: WriteLeaseManager;
   private chromeConnected = false;
 
+  /** Active pairing code, or null if none issued / already consumed. */
+  private pairCode: string | null = null;
+  /** Epoch ms when the current pairing code expires. */
+  private pairCodeExpiry: number = 0;
+  /**
+   * PAIR-SEC-04: Number of failed /pair/confirm attempts since the current code
+   * was issued. When this reaches PAIR_MAX_ATTEMPTS the code is invalidated and
+   * the endpoint returns 429 until a new code is issued.
+   */
+  private pairCodeFailedAttempts: number = 0;
+  /**
+   * PAIR-SEC-06: Per-session relay identity secret. Returned to the extension on
+   * successful pairing. Used for the relay-hello challenge/response on every
+   * subsequent WS /chrome connect.
+   */
+  private relayIdentitySecret: string | null = null;
+
   constructor(options: SharedRelayServerOptions) {
     this.options = options;
     this.writeLease = new WriteLeaseManager({});
@@ -57,7 +94,9 @@ export class SharedBrowserRelayServer {
   async start(): Promise<void> {
     if (this.httpServer || this.wsServer) return;
 
-    this.httpServer = createServer();
+    this.httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
+      this.handleHttpRequest(req, res);
+    });
     this.wsServer = new WebSocketServer({ server: this.httpServer });
 
     this.wsServer.on("connection", (socket: WebSocket, req: IncomingMessage) => {
@@ -111,11 +150,217 @@ export class SharedBrowserRelayServer {
     this.emit("relay-started", { host: this.options.host, port: this.options.port });
   }
 
+  /**
+   * PAIR-01: Issue a new short-lived pairing code.
+   * Format: "NNNN-NNNN" (8 digits with hyphen). Valid for PAIR_CODE_TTL_MS.
+   * Replaces any previously issued, unconsumed code.
+   *
+   * PAIR-SEC-04: Resets the failed-attempt counter so a fresh code always starts
+   * with a clean slate.
+   *
+   * PAIR-SEC-07: Generates the per-session relay identity secret (used for the
+   * relay-hello challenge/response on every subsequent /chrome WS connection).
+   */
+  generatePairCode(): string {
+    // PAIR-SEC-04 (Finding 3.4): Use CSPRNG instead of Math.random().
+    const half = (): string =>
+      Array.from({ length: 4 }, () => randomInt(0, 10).toString()).join("");
+    const code = `${half()}-${half()}`;
+    this.pairCode = code;
+    this.pairCodeExpiry = Date.now() + PAIR_CODE_TTL_MS;
+    this.pairCodeFailedAttempts = 0;
+    // Generate a new relay identity secret for this pairing session.
+    this.relayIdentitySecret = randomUUID();
+    this.emit("pair-code-issued");
+    return code;
+  }
+
+  /**
+   * PAIR-02: Handle HTTP requests for pairing endpoints.
+   *
+   * GET  /pair/code    — issue a new pairing code (called by VS Code / agent via loopback)
+   * POST /pair/confirm — validate code, return relay token (called by Chrome extension only)
+   *
+   * Security model (Findings 3.2, 3.3):
+   *   - /pair/code: allows empty origin (loopback Node.js callers — VS Code, agent) OR exact
+   *     extension origin. Does NOT accept web-page origins.
+   *   - /pair/confirm: ONLY accepts chrome-extension:// origins. Empty origin is NOT allowed
+   *     here so arbitrary local processes cannot self-issue + redeem a code.
+   *   - If allowedExtensionId is set (production), only that exact extension ID is accepted.
+   *   - If allowedExtensionId is unset (dev/test), any chrome-extension:// origin is accepted.
+   */
+  private handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
+    const url = new URL(req.url ?? "/", `http://${this.options.host}:${this.options.port}`);
+    const origin = typeof req.headers["origin"] === "string" ? req.headers["origin"] : "";
+
+    /**
+     * PAIR-SEC-03 (Finding 3.3): Returns true if the origin is an allowed Chrome extension.
+     * - If allowedExtensionId is set: only `chrome-extension://<allowedExtensionId>` passes.
+     * - If allowedExtensionId is unset: any `chrome-extension://` origin passes (dev/test).
+     */
+    const isAllowedExtensionOrigin = (o: string): boolean => {
+      if (!o.startsWith("chrome-extension://")) return false;
+      if (this.options.allowedExtensionId) {
+        return o === `chrome-extension://${this.options.allowedExtensionId}`;
+      }
+      return true; // dev/test: accept any extension ID
+    };
+
+    const json = (statusCode: number, body: Record<string, unknown>, allowOrigin?: string): void => {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (allowOrigin) headers["Access-Control-Allow-Origin"] = allowOrigin;
+      res.writeHead(statusCode, headers);
+      res.end(JSON.stringify(body));
+    };
+
+    if (url.pathname === "/pair/code" && req.method === "GET") {
+      // PAIR-SEC-01: /pair/code is called by VS Code (empty origin) or extension popup.
+      const isAllowed = origin === "" || isAllowedExtensionOrigin(origin);
+      if (!isAllowed) {
+        json(403, { error: "forbidden" });
+        return;
+      }
+      const code = this.generatePairCode();
+      json(200, { code, expiresIn: PAIR_CODE_TTL_MS }, origin || undefined);
+      return;
+    }
+
+    if (url.pathname === "/pair/confirm" && req.method === "POST") {
+      // PAIR-SEC-02 (Finding 3.2): /pair/confirm ONLY accepts extension origins.
+      // Empty origin (local process) is explicitly rejected here to prevent self-issue+redeem.
+      if (!isAllowedExtensionOrigin(origin)) {
+        json(403, { error: "forbidden" });
+        return;
+      }
+
+      // PAIR-SEC-04 (Finding 8.1): Rate-limit — if too many failed attempts, reject immediately.
+      if (this.pairCodeFailedAttempts >= PAIR_MAX_ATTEMPTS) {
+        this.emit("pair-rate-limited", { origin });
+        json(429, { error: "too-many-attempts" }, origin);
+        return;
+      }
+
+      let body = "";
+      req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+      req.on("end", () => {
+        try {
+          const parsed = JSON.parse(body) as Record<string, unknown>;
+          const candidate = parsed["code"];
+          if (
+            typeof candidate !== "string" ||
+            this.pairCode === null ||
+            Date.now() > this.pairCodeExpiry ||
+            candidate !== this.pairCode
+          ) {
+            // PAIR-SEC-04: Count failed attempt.
+            this.pairCodeFailedAttempts++;
+            if (this.pairCodeFailedAttempts >= PAIR_MAX_ATTEMPTS) {
+              // Invalidate the code on lockout.
+              this.pairCode = null;
+              this.pairCodeExpiry = 0;
+              this.emit("pair-code-locked-out", { attempts: this.pairCodeFailedAttempts });
+            }
+            json(401, { error: "invalid-code" }, origin);
+            return;
+          }
+          // Valid — consume the code (one-time use) and return the relay token + identity secret.
+          this.pairCode = null;
+          this.pairCodeExpiry = 0;
+          this.pairCodeFailedAttempts = 0;
+          this.emit("pair-confirmed");
+          // PAIR-SEC-06 (Finding 4.3): Return relayIdentitySecret so the extension can verify
+          // relay identity on every subsequent WS /chrome connection.
+          json(200, {
+            token: this.options.token,
+            relayIdentitySecret: this.relayIdentitySecret,
+          }, origin);
+        } catch {
+          json(400, { error: "bad-request" }, origin);
+        }
+      });
+      return;
+    }
+
+    // All other HTTP paths — 404
+    json(404, { error: "not-found" });
+  }
+
   private handleChromeConnection(socket: WebSocket): void {
     // SBR-F-002: exactly one Chrome client — new replaces previous
     if (this.chromeSocket && this.chromeSocket !== socket) {
       this.chromeSocket.close(1000, "replaced");
     }
+
+    // PAIR-SEC-06 (Finding 4.3): Relay identity challenge/response.
+    // Before accepting this socket as the active Chrome connection, send a nonce
+    // and wait for the extension to reply with HMAC(nonce, relayIdentitySecret).
+    // If no valid reply arrives within RELAY_HELLO_TIMEOUT_MS, close the socket.
+    if (this.relayIdentitySecret !== null) {
+      const secret = this.relayIdentitySecret;
+      const nonce = randomUUID();
+      const expectedHmac = createHmac(RELAY_HMAC_ALGO, secret).update(nonce).digest("hex");
+
+      let verified = false;
+      let helloTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const onHelloMessage = (raw: Buffer): void => {
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(String(raw)) as Record<string, unknown>;
+        } catch {
+          return;
+        }
+        if (parsed["kind"] !== "relay-hello-ack") return;
+        const receivedHmac = parsed["hmac"];
+        if (typeof receivedHmac !== "string") {
+          socket.close(1008, "identity-verification-failed");
+          return;
+        }
+        // Constant-time compare
+        const expected = Buffer.from(expectedHmac, "hex");
+        const received = Buffer.from(receivedHmac, "hex");
+        const valid =
+          expected.length === received.length &&
+          expected.every((b, i) => b === received[i]);
+
+        if (!valid) {
+          socket.close(1008, "identity-verification-failed");
+          return;
+        }
+        verified = true;
+        if (helloTimer !== null) {
+          clearTimeout(helloTimer);
+          helloTimer = null;
+        }
+        // Remove this one-time handler and complete the connection.
+        socket.off("message", onHelloMessage);
+        this.completesChromeConnection(socket);
+      };
+
+      socket.on("message", onHelloMessage);
+
+      // Send the challenge.
+      socket.send(JSON.stringify({ kind: "relay-hello", nonce }));
+
+      helloTimer = setTimeout(() => {
+        if (!verified) {
+          socket.off("message", onHelloMessage);
+          socket.close(1008, "identity-verification-timeout");
+        }
+      }, RELAY_HELLO_TIMEOUT_MS);
+
+      return;
+    }
+
+    // No identity secret set yet (first-ever connection before any pairing) — accept directly.
+    this.completesChromeConnection(socket);
+  }
+
+  /**
+   * Complete a Chrome WebSocket connection after identity is verified (or when no
+   * identity secret exists yet — first connection before any pairing).
+   */
+  private completesChromeConnection(socket: WebSocket): void {
     this.chromeSocket = socket;
     this.chromeConnected = true;
 

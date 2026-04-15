@@ -190,8 +190,10 @@ export function handleWebviewMessage(
       log(`[TIMING webview] ${msg.label}: ${msg.ms}ms`);
       break;
     case "canvas:edge-routed":
-      // Future: wire to patchEdge(layout, msg.edgeKey, { waypoints: msg.waypoints })
-      log(`[diag.2] ${msg.type} — not yet implemented`);
+      // Validates canvas:edge-routed payload, persists waypoints to layout.json
+      // via patchEdge, and schedules a debounced re-render.
+      // Source: diagram-update-plan.md §12.5 (P-B)
+      persistEdgeWaypoints(state, msg);
       break;
     case "canvas:node-added":
     case "canvas:node-deleted":
@@ -232,7 +234,9 @@ export function patchLayout(
   const layoutPath = layoutPathFor(state.mmdPath, state._workspaceRoot);
   // FIX: If _currentLayout is null, the initial layout hasn't loaded yet.
   // Drop this mutation — the real layout will be written by loadAndPost.
-  if (state._currentLayout === null) return;
+  if (state._currentLayout === null) {
+    return;
+  }
 
   const base = state._currentLayout;
   state._currentLayout = apply(base);
@@ -246,6 +250,46 @@ export function patchLayout(
       // Non-fatal: the next _loadAndPost or interaction will write again.
     });
   }, 100);
+}
+
+// ── Edge waypoint persistence ────────────────────────────────────────────────
+
+/**
+ * Persist user-placed edge waypoints from the canvas back to layout.json.
+ *
+ * Contract: receives `{ edgeKey: string; waypoints: Array<{ x: number; y: number }> }`
+ * from the webview's `canvas:edge-routed` message, and patches the corresponding
+ * edge entry via `patchEdge(layout, edgeKey, { waypoints })`.
+ *
+ * Validation:
+ *   1. edgeKey must be a non-empty string
+ *   2. waypoints must be a finite number array
+ *   3. Malformed payloads are silently dropped
+ *
+ * @internal — diagram-update-plan.md §12.5 (P-B)
+ */
+function persistEdgeWaypoints(
+  state: PanelState,
+  msg: { type: string; edgeKey?: string; waypoints?: Array<{ x: number; y: number }> },
+): void {
+  // Validate payload shape before touching any state.
+  if (!msg.edgeKey || !Array.isArray(msg.waypoints)) {
+    return;
+  }
+  // Ignore clearly malformed coordinates (e.g. from a buggy canvas hook).
+  for (const wp of msg.waypoints) {
+    if (
+      typeof wp.x !== "number" || !Number.isFinite(wp.x) ||
+      typeof wp.y !== "number" || !Number.isFinite(wp.y)
+    ) {
+      return;
+    }
+  }
+
+  // Validated above: edgeKey is non-empty string, waypoints is finite-number array.
+  const edgeKey: string = msg.edgeKey;
+  const waypoints = msg.waypoints;
+  patchLayout(state, (layout) => patchEdge(layout, edgeKey, { waypoints }));
 }
 
 // ── Node / export event handlers ──────────────────────────────────────────────

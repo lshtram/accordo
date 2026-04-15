@@ -7,7 +7,8 @@
  * Responsibilities:
  *   1. Mount the Excalidraw React component into #excalidraw-root.
  *   2. Wire onChange → detectNodeMutations → vscode.postMessage for layout
- *      mutations (canvas:node-moved / canvas:node-resized / canvas:node-styled).
+ *      mutations (canvas:node-moved / canvas:node-resized / canvas:node-styled)
+ *      and detectArrowRouteMutations → canvas:edge-routed.
  *   3. Provide ExcalidrawExportFns by wrapping standalone Excalidraw export
  *      utilities (exportToSvg, exportToBlob).
  *   4. Expose handle, exportFns, ui via window for use by comment-overlay.ts.
@@ -31,15 +32,37 @@ import type {
 } from "@excalidraw/excalidraw/types/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
 
-import { detectNodeMutations } from "./message-handler.js";
-import type {
-  ExcalidrawHandle,
-  WebviewUI,
-  ExcalidrawExportFns,
-  NodeMutation,
-} from "./message-handler.js";
+import { detectNodeMutations, handleChangeCallback } from "./message-handler.js";
 import type { ExcalidrawAPIElement } from "./scene-adapter.js";
+import type { ExcalidrawHandle, WebviewUI, ExcalidrawExportFns } from "./message-handler.js";
 import type { WebviewToHostMessage } from "./protocol.js";
+
+// ── Snapshot helper ───────────────────────────────────────────────────────────
+
+/**
+ * Deep-clones an ExcalidrawAPIElement array for snapshot isolation.
+ *
+ * Excalidraw mutates arrow `points` arrays in-place between onChange callbacks.
+ * A shallow `{ ...el }` clone leaves `points` aliased — the same mutable array
+ * reference is shared between the snapshot and the live element. When the next
+ * onChange fires, `detectArrowRouteMutations` compares prevPoints === nextPoints
+ * (identical references, potentially different contents) and silently drops the
+ * canvas:edge-routed emission.
+ *
+ * This helper is exported so both `updateScene` and `handlePointerUpdate`
+ * (which are not in message-handler.ts and cannot call handleChangeCallback)
+ * can snapshot with the same guarantee.
+ */
+export function snapshotElements(
+  els: readonly ExcalidrawAPIElement[],
+): readonly ExcalidrawAPIElement[] {
+  return els.map(el => ({
+    ...el,
+    points: el.points != null
+      ? el.points.map(pt => ([...pt] as [number, number]))
+      : el.points,
+  })) as unknown as readonly ExcalidrawAPIElement[];
+}
 
 // ── Toast / Error overlay helpers ─────────────────────────────────────────────
 
@@ -201,8 +224,12 @@ export function ExcalidrawApp() {
             elements: restored,
             ...(opts.appState ? { appState: opts.appState } : {}),
           } as unknown as Parameters<typeof api.updateScene>[0]);
-          // Snapshot with value copies to avoid Excalidraw mutating in-place
-          prevElements = (restored as unknown as ExcalidrawAPIElement[]).map(el => ({ ...el })) as unknown as readonly ExcalidrawAPIElement[];
+          // Snapshot with deep-clone of nested points array to prevent aliasing.
+          // Excalidraw mutates arrow points in-place between onChange callbacks —
+          // a shallow clone would leave points aliased and could silently suppress
+          // later canvas:edge-routed emissions. snapshotElements is shared with
+          // handlePointerUpdate so the same deep-clone guarantee applies in both paths.
+          prevElements = snapshotElements(restored as unknown as ExcalidrawAPIElement[]);
         },
         getSceneElements() {
           return api.getSceneElements() as unknown as readonly ExcalidrawAPIElement[];
@@ -270,8 +297,6 @@ export function ExcalidrawApp() {
       elements: readonly ExcalidrawElement[],
       appStateRaw: Record<string, unknown>,
     ) => {
-      const vscode = _vscode!;
-
       // G-3: Detect viewport pan/zoom — Excalidraw uses CSS transforms, not DOM scroll,
       // so PinPositioner (which listens for DOM scroll) never fires. We detect changes
       // here in handleChange and call repositionPins to re-position all comment pins.
@@ -288,36 +313,7 @@ export function ExcalidrawApp() {
         win.__accordoRepositionPins?.(zoom);
       }
 
-      const next = elements as unknown as readonly ExcalidrawAPIElement[];
-      const mutations: NodeMutation[] = detectNodeMutations(
-        prevElements as ExcalidrawAPIElement[],
-        next as ExcalidrawAPIElement[],
-      );
-      prevElements = (next as ExcalidrawAPIElement[]).map(el => ({ ...el })) as unknown as readonly ExcalidrawAPIElement[];
-
-      for (const mutation of mutations) {
-        if (mutation.type === "moved") {
-          vscode.postMessage({
-            type: "canvas:node-moved",
-            nodeId: mutation.nodeId,
-            x: mutation.x ?? 0,
-            y: mutation.y ?? 0,
-          } satisfies WebviewToHostMessage);
-        } else if (mutation.type === "resized") {
-          vscode.postMessage({
-            type: "canvas:node-resized",
-            nodeId: mutation.nodeId,
-            w: mutation.w ?? 0,
-            h: mutation.h ?? 0,
-          } satisfies WebviewToHostMessage);
-        } else if (mutation.type === "styled") {
-          vscode.postMessage({
-            type: "canvas:node-styled",
-            nodeId: mutation.nodeId,
-            style: mutation.style ?? {},
-          } satisfies WebviewToHostMessage);
-        }
-      }
+      prevElements = handleChangeCallback(elements, appStateRaw, prevElements, _vscode!);
     },
     [],
   );
@@ -332,7 +328,10 @@ export function ExcalidrawApp() {
         current,
       );
       if (missed.length > 0) {
-        prevElements = current.map(el => ({ ...el })) as unknown as readonly ExcalidrawAPIElement[];
+        // Deep-clone to isolate snapshot from Excalidraw's in-place mutations.
+        // Same guarantee as updateScene — prevents aliasing that could suppress
+        // later canvas:edge-routed emissions.
+        prevElements = snapshotElements(current);
         for (const mutation of missed) {
           if (mutation.type === "moved") {
             vscode.postMessage({ type: "canvas:node-moved", nodeId: mutation.nodeId, x: mutation.x ?? 0, y: mutation.y ?? 0 } satisfies WebviewToHostMessage);

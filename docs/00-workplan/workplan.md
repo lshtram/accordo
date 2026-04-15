@@ -14,23 +14,18 @@
 
 ---
 
-### Priority A — Browser continuity for agents (MUST-HAVE)
+### ~~Priority A — Browser continuity for agents~~ ✅ COMPLETE (2026-04-13)
 
-**Problem:** current `browser_*` tools are active-tab scoped, so agent context can break when users switch tabs.  
-**Requirement:** if a tab is open, agent must be able to keep reading/inspecting it without forcing user focus.
+**Problem solved:** `browser_*` tools now support explicit `tabId` targeting across all understanding tools — agents can keep operating on a previously selected tab while the user works elsewhere.
 
-**Planned deliverables:**
-1. ~~Add `browser_list_pages` + `browser_select_page` (prerequisite for all tab targeting)~~ ✅ **DONE** (`2a1cf9b`, `9c3fa9f`)
-2. Add tab-scoped targeting contract: `tabId` on remaining understanding tools:
-   - `browser_capture_region` — add `tabId` param
-   - `browser_diff_snapshots` — add `tabId` param
-   (7 tools already done in B2-CTX-001: `browser_wait_for`, `browser_get_text_map`, `browser_get_semantic_graph`, `browser_list_pages`, `browser_select_page`, `browser_inspect_element`, `browser_capture_region` has `pageId` only — needs `tabId`)
-3. Verify non-active tab workflows: Chrome CDP routing for background tabs, Hub registration for `browser_get_text_map` + `browser_get_semantic_graph`, `diff_snapshots` internal state for background tabs.
-4. Add E2E smoke tests for context continuity under tab switching.
+**What was delivered:**
+1. ✅ `browser_list_pages` + `browser_select_page` — prerequisite tab targeting (`2a1cf9b`, `9c3fa9f`)
+2. ✅ `tabId` on 7 tools: `browser_wait_for`, `browser_get_text_map`, `browser_get_semantic_graph`, `browser_list_pages`, `browser_select_page`, `browser_inspect_element`, `browser_capture_region` (wave 8, `94b41ba`)
+3. ✅ `browser_diff_snapshots` relay payload now forwards `tabId` to Chrome extension (`packages/browser/src/diff-tool.ts` — Phase 1 fix, 2026-04-13)
+4. ✅ Chrome extension `handleDiffSnapshots` bypasses SW in-memory fast-path when explicit `tabId` is present — routes directly to content-script store, which is authoritative per-tab (`packages/browser-extension/src/relay-capture-handler.ts` — Phase 2 fix, 2026-04-13)
+5. ✅ E2E smoke tests added: B2-CTX-006 tests in `diff-snapshots-tabid.test.ts` (+2 tests → 985 total) and `relay-actions-diff.test.ts` (+2 tests → 1194 total)
 
-**Success criteria:**
-- Agent can keep operating on a previously selected tab while user works elsewhere.
-- No `active tab required` failure for core read/understanding flows.
+**All tests green:** `browser` 985/985, `browser-extension` 1194/1194.
 
 ---
 
@@ -153,37 +148,24 @@
 
 ---
 
-### Priority P — Browser Relay Auth Hardening (Phase 1)
+### ~~Priority O — Browser Relay Auth Phase 2 — Pairing Flow~~ ✅ COMPLETE
 
-**Status:** Implemented and validated locally on 2026-04-10. Ready for commit/push.
+**What was delivered:** Replaced the native messaging approach (which required system-level install scripts) with a simpler in-band pairing flow. No native host, no install step.
 
-**Problem:** Auth assessment identified multiple gaps in browser relay token handling: non-timing-safe comparison, hardcoded dev token fallback, unencrypted token storage (globalState instead of SecretStorage), and inconsistent auth validation paths between relay servers.
+**Flow:**
+1. Agent calls `accordo_browser_pair` MCP tool → relay issues a one-time code (`NNNN-NNNN`, 5-min TTL)
+2. User copies code into the browser extension popup's "VS Code code:" field and clicks Connect
+3. Popup POSTs to `/pair/confirm` → relay validates code, returns token
+4. Token stored in `chrome.storage.local` → extension auto-connects
 
-**Plan:** Phase 1 hardening module covering AUTH-01 through AUTH-06.  
-**Requirements:** `docs/20-requirements/requirements-browser-relay-auth.md`  
-**Source of truth:** requirements doc above + architecture decision `DECISION-SBR-07`.
+**Files changed:**
+- `packages/browser/src/shared-relay-server.ts` — added `generatePairCode()`, `/pair/code` (GET) and `/pair/confirm` (POST) endpoints with origin security
+- `packages/browser/src/extension.ts` — added `accordo_browser_pair` MCP tool via `buildPairTool()`
+- `packages/browser-extension/src/relay-bridge.ts` — removed hardcoded token, reads from `chrome.storage.local`; code 1008 clears stored token
+- `packages/browser-extension/src/popup.ts` — added `renderPairingSection()` pairing UI banner
+- `packages/browser-extension/src/manifest.json` — removed `"nativeMessaging"` permission
 
-**Completed work:**
-1. ~~AUTH-01: Timing-safe token comparison in `relay-auth.ts`~~ ✅ Done
-2. ~~AUTH-02: Remove hardcoded dev token fallback from `extension.ts`~~ ✅ Done
-3. ~~AUTH-03: Migrate token storage from globalState to SecretStorage~~ ✅ Done
-4. ~~AUTH-04: Unify auth validation path (SharedBrowserRelayServer → `isAuthorizedToken()`)~~ ✅ Done
-5. ~~AUTH-05: Dedicated auth test coverage~~ ✅ Done for Phase 1 scope
-6. ~~AUTH-06: Fail-closed guardrail against predictable fallback tokens~~ ✅ Done
-
-**Validation evidence:**
-- `packages/browser`: auth-focused tests passing, typecheck passing, lint passing
-- `packages/browser`: full suite passed locally during auth hardening
-- `packages/browser-extension`: suite passed locally; relay bridge assertions updated for current Phase 1 contract
-
-**Out of scope (Phase 2):** Chrome token discovery via native messaging, query-string transport, token rotation.
-
-**Success criteria:**
-- All token comparisons use `timingSafeEqual`
-- No hardcoded dev token in VS Code extension
-- Token stored in SecretStorage with one-time migration from globalState
-- Single `isAuthorizedToken()` used by all relay servers
-- Dedicated tests for all 5 requirements
+**Tests:** `relay-bridge.test.ts` 5/5, `shared-relay-server.test.ts` 24/24 — all passing.
 
 ---
 

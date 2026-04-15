@@ -234,7 +234,6 @@ function routeDirect(
  * @param target     Bounding box of the target node.
  * @returns          RouteResult with axis-aligned polyline and null bindings.
  *
- * Requirement: ER-16..ER-24 (D-04 Z-shape waypoint routing)
  * @internal — called from routeOrthogonal when waypoints.length >= 2.
  */
 function routeOrthogonalMultiWaypoint(
@@ -320,18 +319,61 @@ function routeOrthogonal(
  * @param source    Bounding box of the source node.
  * @param target    Bounding box of the target node.
  * @param direction Optional diagram flow direction for biased attachment.
+ * @param waypoints Optional user-placed waypoints for curved routing.
+ *                  Empty or absent = auto (single control-point heuristic).
+ *                  One waypoint = explicit Bézier control point.
+ *                  Two+ waypoints = explicit polyline-curve through all points.
  * @returns         RouteResult with curved point path and bindings.
  *
- * @internal — FC-06, FC-09 (Batch 2)
+ * @internal — FC-06, FC-09 (Batch 2), diagram-update-plan.md §12.5 (P-B)
  */
 export function routeCurved(
   source: BoundingBox,
   target: BoundingBox,
   direction?: "TD" | "LR" | "RL" | "BT",
+  waypoints?: ReadonlyArray<{ readonly x: number; readonly y: number }>,
 ): RouteResult {
   const sc = centre(source);
   const tc = centre(target);
 
+  // ── Waypoint-aware path ─────────────────────────────────────────────────────
+  // §12.3 curved waypoint semantics:
+  //   0 waypoints → existing auto-curve behavior (single control-point heuristic)
+  //   1 waypoint  → that waypoint becomes the explicit single control point
+  //   2+ waypoints → all waypoints are explicit control points (path goes through each)
+  if (waypoints && waypoints.length > 0) {
+    const startPt = clampToBorder(sc, centre(source), source, ARROW_GAP);
+    const endPt   = clampToBorder(tc, centre(target), target, ARROW_GAP);
+
+    if (waypoints.length === 1) {
+      // Single explicit control point: use the waypoint verbatim as cp.
+      const cp: [number, number] = [waypoints[0]!.x, waypoints[0]!.y];
+      // Re-clamp start/end relative to the explicit cp (FC-09).
+      const clampedStart = clampToBorder(sc, cp, source, ARROW_GAP);
+      const clampedEnd   = clampToBorder(tc, cp, target, ARROW_GAP);
+      return {
+        points: [clampedStart, cp, clampedEnd],
+        startBinding: { focus: 0, gap: ARROW_GAP },
+        endBinding:   { focus: 0, gap: ARROW_GAP },
+      };
+    }
+
+    // 2+ waypoints: explicit polyline path through all waypoints.
+    // FC-09: start/end are clamped to the source/target border relative to
+    // the first/last waypoint direction (not the opposite node centre).
+    const wp0 = waypoints[0]!;
+    const wpLast = waypoints[waypoints.length - 1]!;
+    const clampedStart = clampToBorder(sc, [wp0.x, wp0.y], source, ARROW_GAP);
+    const clampedEnd   = clampToBorder(tc, [wpLast.x, wpLast.y], target, ARROW_GAP);
+    // pts[pts.length - 1] is guaranteed to be the last waypoint (not startPt)
+    // because waypoints.length >= 2 and we have not yet pushed clampedEnd.
+    const pts: Array<[number, number]> = [clampedStart];
+    for (const wp of waypoints) pts.push([wp.x, wp.y]);
+    pts.push(clampedEnd);
+    return { points: pts, startBinding: null, endBinding: null };
+  }
+
+  // ── Auto-curve (no waypoints) ───────────────────────────────────────────────
   // Straight baseline vector.
   const dx = tc[0] - sc[0];
   const dy = tc[1] - sc[1];
@@ -430,7 +472,7 @@ export function routeEdge(
   switch (mode) {
     case "direct":      return routeDirect(waypoints, source, target);
     case "orthogonal":  return routeOrthogonal(waypoints, source, target);
-    case "curved":      return routeCurved(source, target, direction);
+    case "curved":      return routeCurved(source, target, direction, waypoints);
     default:            return routeAuto(source, target, direction);
   }
 }
