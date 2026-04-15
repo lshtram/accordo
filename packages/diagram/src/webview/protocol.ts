@@ -142,6 +142,12 @@ export interface HostLoadSceneMessage {
   appState: Record<string, unknown>;
 }
 
+/** Ask the webview to parse/render via upstream mermaid-to-excalidraw directly. */
+export interface HostLoadUpstreamDirectMessage {
+  type: "host:load-upstream-direct";
+  source: string;
+}
+
 /** Ask the webview to export the current canvas. */
 export interface HostRequestExportMessage {
   type: "host:request-export";
@@ -173,6 +179,7 @@ export interface HostErrorOverlayMessage {
 /** Union of all messages the extension host can send to the webview. */
 export type HostToWebviewMessage =
   | HostLoadSceneMessage
+  | HostLoadUpstreamDirectMessage
   | HostRequestExportMessage
   | HostToastMessage
   | HostErrorOverlayMessage

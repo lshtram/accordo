@@ -4,10 +4,18 @@
   "publisher": "accordo",
   "version": "0.1.0",
   "description": "Accordo IDE Diagram Tools — spatial diagram editing with Mermaid + Excalidraw",
-  "categories": ["Other"],
-  "extensionKind": ["workspace"],
-  "activationEvents": ["onStartupFinished"],
-  "extensionDependencies": ["accordo.accordo-bridge"],
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionDependencies": [
+    "accordo.accordo-bridge"
+  ],
   "type": "module",
   "main": "./dist/extension.js",
   "scripts": {
@@ -18,6 +26,7 @@
     "package": "vsce package --no-dependencies",
     "test": "vitest run",
     "test:watch": "vitest watch",
+    "test:modularity": "vitest run --config vitest.modularity.config.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.webview.json --noEmit",
     "typecheck:webview": "tsc -p tsconfig.webview.json --noEmit",
     "lint": "echo 'no lint configured yet'"
@@ -25,9 +34,11 @@
   "dependencies": {
     "@accordo/capabilities": "workspace:*",
     "@accordo/comment-sdk": "workspace:*",
-    "@excalidraw/excalidraw": "0.17.6",
-    "mermaid": "11.12.3",
     "@dagrejs/dagre": "^1.1.4",
+    "@excalidraw/excalidraw": "0.17.6",
+    "@excalidraw/mermaid-to-excalidraw": "^2.2.2",
+    "happy-dom": "^20.9.0",
+    "mermaid": "11.12.3",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
@@ -47,7 +58,9 @@
         "viewType": "accordo-diagram.diagramEditor",
         "displayName": "Accordo Diagram",
         "selector": [
-          { "filenamePattern": "*.mmd" }
+          {
+            "filenamePattern": "*.mmd"
+          }
         ],
         "priority": "default"
       }

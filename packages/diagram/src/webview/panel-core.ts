@@ -27,6 +27,7 @@ import { dumpExcalidrawJson } from "./debug-diagram-json.js";
 import type { LayoutStore, SpatialDiagramType } from "../types.js";
 import type {
   HostLoadSceneMessage,
+  HostLoadUpstreamDirectMessage,
   HostErrorOverlayMessage,
   WebviewToHostMessage,
 } from "./protocol.js";
@@ -103,10 +104,41 @@ export async function loadAndPost(
 
   state._lastSource = source;
 
-  // generateCanvas is synchronous; the return is awaited to remain compatible
-  // with the test harness which mocks it as Promise-returning.
-  const scene = await Promise.resolve(generateCanvas(parseResult.diagram, layout));
+  // UD-02: Engine selection policy.
+  // Default for flowcharts is upstream-direct unless explicitly overridden
+  // via layout.metadata.engine = "dagre".
+  const requestedEngine = layout?.metadata?.engine as string | undefined;
+  const effectiveEngine =
+    requestedEngine ?? (parseResult.diagram.type === "flowchart" ? "upstream-direct" : "dagre");
+  const useUpstreamDirect =
+    effectiveEngine === "upstream-direct" &&
+    parseResult.diagram.type === "flowchart";
 
+  // Persist default engine choice for flowcharts when metadata is missing so
+  // subsequent opens are explicit and deterministic.
+  if (parseResult.diagram.type === "flowchart" && requestedEngine === undefined) {
+    layout = {
+      ...layout,
+      metadata: {
+        ...(layout.metadata ?? {}),
+        engine: "upstream-direct",
+      },
+    };
+    await writeLayout(layoutPath, layout);
+  }
+
+  if (useUpstreamDirect) {
+    state._currentLayout = layout;
+    const msg: HostLoadUpstreamDirectMessage = {
+      type: "host:load-upstream-direct",
+      source,
+    };
+    state._panel.webview.postMessage(msg);
+    return;
+  }
+
+  // Default dagre pipeline.
+  const scene = await Promise.resolve(generateCanvas(parseResult.diagram, layout));
   await writeLayout(layoutPath, scene.layout);
   state._currentLayout = scene.layout;
 

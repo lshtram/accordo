@@ -132,12 +132,38 @@ export async function applyHostMessage(
   exportFns: ExcalidrawExportFns,
 ): Promise<void> {
   switch (msg.type) {
+    case "host:load-upstream-direct": {
+      ui.clearErrorOverlay();
+      try {
+        const [{ parseMermaidToExcalidraw }, { convertToExcalidrawElements }] = await Promise.all([
+          import("@excalidraw/mermaid-to-excalidraw"),
+          import("@excalidraw/excalidraw"),
+        ]);
+        const parsed = await parseMermaidToExcalidraw(msg.source);
+        const elements = convertToExcalidrawElements(parsed.elements as never) as ExcalidrawAPIElement[];
+        api.updateScene({ elements, appState: {} });
+      } catch (err) {
+        ui.showErrorOverlay(`upstream-direct render failed: ${String(err)}`);
+      }
+      return;
+    }
+
     case "host:load-scene":
       ui.clearErrorOverlay();
-      // Cast is safe: panel.ts converts via toExcalidrawPayload() before posting
-      // host:load-scene. protocol.ts uses unknown[] to keep the wire type JSON-safe
-      // without coupling protocol.ts to the Excalidraw API shape.
-      api.updateScene({ elements: msg.elements as ExcalidrawAPIElement[], appState: msg.appState });
+      {
+        const appState = { ...(msg.appState ?? {}) } as Record<string, unknown>;
+        const elementsAreSkeletons = appState["__upstreamSkeletons"] === true;
+        delete appState["__upstreamSkeletons"];
+
+        const elements = elementsAreSkeletons
+          ? await import("@excalidraw/excalidraw").then(
+            ({ convertToExcalidrawElements }) =>
+              convertToExcalidrawElements(msg.elements as never) as ExcalidrawAPIElement[]
+          )
+          : (msg.elements as ExcalidrawAPIElement[]);
+
+        api.updateScene({ elements, appState });
+      }
       return;
 
     case "host:request-export": {

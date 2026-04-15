@@ -201,6 +201,16 @@ describe("loadAndPost", () => {
   });
 
   it("PCore-06: calls generateCanvas with diagram and layout", async () => {
+    mockReadLayout.mockResolvedValueOnce({
+      version: "1.0",
+      diagram_type: "flowchart",
+      nodes: {},
+      edges: {},
+      clusters: {},
+      aesthetics: {},
+      unplaced: [],
+      metadata: { engine: "dagre" },
+    });
     const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
 
     await loadAndPost(panelState as never);
@@ -212,6 +222,16 @@ describe("loadAndPost", () => {
   });
 
   it("PCore-07: posts host:load-scene to webview with elements", async () => {
+    mockReadLayout.mockResolvedValueOnce({
+      version: "1.0",
+      diagram_type: "flowchart",
+      nodes: {},
+      edges: {},
+      clusters: {},
+      aesthetics: {},
+      unplaced: [],
+      metadata: { engine: "dagre" },
+    });
     const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
 
     await loadAndPost(panelState as never);
@@ -436,5 +456,123 @@ describe("handleExportReady", () => {
     const panelState = { ...state, _pendingExport: null } as unknown as PanelState;
 
     expect(() => handleExportReady(panelState, "svg", btoa("<svg/>"))).not.toThrow();
+  });
+});
+
+// ── UD-04..UD-07: Engine selection in loadAndPost ───────────────────────────
+
+describe("loadAndPost — upstream-direct engine selection", () => {
+  it("UD-04: uses upstream-direct when layout.metadata.engine === 'upstream-direct' and type is flowchart", async () => {
+    // Layout with upstream-direct engine flag
+    const upstreamLayout = {
+      version: "1.0" as const,
+      diagram_type: "flowchart" as const,
+      nodes: { A: { x: 0, y: 0, w: 100, h: 50 } },
+      edges: {},
+      clusters: {},
+      aesthetics: {},
+      unplaced: [],
+      metadata: { engine: "upstream-direct" },
+    };
+    mockReadLayout.mockResolvedValueOnce(upstreamLayout);
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+
+    await loadAndPost(panelState as never);
+
+    // Should NOT call generateCanvas (dagre path)
+    expect(mockGenerateCanvas).not.toHaveBeenCalled();
+    const upstreamCall = vi.mocked(vscPanel.webview.postMessage).mock.calls.find(
+      ([msg]) => (msg as { type: string }).type === "host:load-upstream-direct",
+    );
+    expect(upstreamCall).toBeDefined();
+    expect((upstreamCall?.[0] as { source?: string }).source).toBe(SIMPLE_FLOWCHART);
+  });
+
+  it("UD-05: defaults to upstream-direct for flowchart when engine metadata is unset", async () => {
+    mockReadLayout.mockResolvedValueOnce(null);
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+
+    await loadAndPost(panelState as never);
+
+    // Should post upstream-direct message by default for flowcharts
+    const upstreamCall = vi.mocked(vscPanel.webview.postMessage).mock.calls.find(
+      ([msg]) => (msg as { type: string }).type === "host:load-upstream-direct",
+    );
+    expect(upstreamCall).toBeDefined();
+  });
+
+  it("UD-05b: uses dagre when metadata explicitly sets engine='dagre'", async () => {
+    const dagreLayout = {
+      version: "1.0" as const,
+      diagram_type: "flowchart" as const,
+      nodes: { A: { x: 0, y: 0, w: 100, h: 50 } },
+      edges: {},
+      clusters: {},
+      aesthetics: {},
+      unplaced: [],
+      metadata: { engine: "dagre" },
+    };
+    mockReadLayout.mockResolvedValueOnce(dagreLayout);
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+
+    await loadAndPost(panelState as never);
+
+    expect(mockGenerateCanvas).toHaveBeenCalled();
+  });
+
+  it("UD-06: uses dagre when engine=upstream-direct but diagram type is not flowchart", async () => {
+    // stateDiagram-v2 is not supported by upstream-direct
+    mockParseMermaid.mockResolvedValueOnce({
+      valid: true,
+      diagram: { type: "stateDiagram-v2", nodes: {}, edges: [] },
+    });
+    const upstreamLayout = {
+      version: "1.0" as const,
+      diagram_type: "stateDiagram-v2" as const,
+      nodes: {},
+      edges: {},
+      clusters: {},
+      aesthetics: {},
+      unplaced: [],
+      metadata: { engine: "upstream-direct" },
+    };
+    mockReadLayout.mockResolvedValueOnce(upstreamLayout);
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+
+    await loadAndPost(panelState as never);
+
+    // Should NOT use upstream-direct even with the flag
+    const upstreamCall = vi.mocked(vscPanel.webview.postMessage).mock.calls.find(
+      ([msg]) => (msg as { type: string }).type === "host:load-upstream-direct",
+    );
+    expect(upstreamCall).toBeUndefined();
+    expect(mockGenerateCanvas).toHaveBeenCalled();
+  });
+
+  it("UD-07: upstream-direct path does not run dagre pipeline for flowcharts", async () => {
+    mockGenerateCanvas.mockClear();
+    mockReadLayout.mockClear();
+
+    const upstreamLayout = {
+      version: "1.0" as const,
+      diagram_type: "flowchart" as const,
+      nodes: { A: { x: 0, y: 0, w: 100, h: 50 } },
+      edges: {},
+      clusters: {},
+      aesthetics: {},
+      unplaced: [],
+      metadata: { engine: "upstream-direct" },
+    };
+    mockReadLayout.mockResolvedValueOnce(upstreamLayout);
+
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+
+    await loadAndPost(panelState as never);
+
+    const upstreamCall = vi.mocked(vscPanel.webview.postMessage).mock.calls.find(
+      ([msg]) => (msg as { type: string }).type === "host:load-upstream-direct",
+    );
+    expect(upstreamCall).toBeDefined();
+    expect(mockGenerateCanvas).not.toHaveBeenCalled();
   });
 });
