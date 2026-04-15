@@ -1,0 +1,21 @@
+{
+  "name": "diagram-comparison",
+  "version": "1.0.0",
+  "description": "Diagram comparison pipeline: Mermaid SVG vs Dagre vs Excalidraw engines",
+  "type": "module",
+  "scripts": {
+    "generate": "tsx generate.ts"
+  },
+  "dependencies": {
+    "@excalidraw/excalidraw": "0.17.6",
+    "@excalidraw/mermaid-to-excalidraw": "^2.1.1",
+    "happy-dom": "^20.8.9",
+    "mermaid": "11.12.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
+  }
+}
