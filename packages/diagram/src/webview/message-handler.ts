@@ -348,8 +348,13 @@ export function detectArrowRouteMutations(
       if (same) continue;
     }
 
-    // Convert relative points to absolute waypoints
-    const waypoints = nextPoints.map((pt) => ({
+    // Convert relative points to absolute waypoints.
+    // Excalidraw's points[] includes the start anchor (index 0) and end anchor
+    // (last index). EdgeLayout.waypoints are intermediate control points only —
+    // the router re-attaches endpoints on each render. Strip first and last to
+    // avoid double-prepending/appending anchors after repeated edits.
+    const interiorPoints = nextPoints.slice(1, nextPoints.length - 1);
+    const waypoints = interiorPoints.map((pt) => ({
       x: nextEl.x + pt[0],
       y: nextEl.y + pt[1],
     }));
