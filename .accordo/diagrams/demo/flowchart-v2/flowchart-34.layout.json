@@ -2,62 +2,47 @@
   "version": "1.0",
   "diagram_type": "flowchart",
   "nodes": {
-    "a": {
-      "x": 40,
+    "c1": {
+      "x": 0,
       "y": 40,
       "w": 180,
       "h": 60,
       "style": {}
     },
-    "b": {
-      "x": 460,
+    "a2": {
+      "x": 260,
+      "y": 340,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "a1": {
+      "x": 270,
       "y": 40,
-      "w": 180,
-      "h": 60,
-      "style": {}
-    },
-    "c": {
-      "x": 40,
-      "y": 200,
-      "w": 180,
-      "h": 60,
-      "style": {}
-    },
-    "d": {
-      "x": 460,
-      "y": 200,
       "w": 180,
       "h": 60,
       "style": {}
     }
   },
   "edges": {
-    "a->b:0": {
+    "c1->a2:0": {
       "routing": "auto",
       "waypoints": [],
       "style": {}
     },
-    "c->d:0": {
+    "a1->a2:0": {
       "routing": "auto",
       "waypoints": [],
       "style": {}
     }
   },
   "clusters": {
-    "Two": {
-      "x": 20,
-      "y": 152,
-      "w": 640,
-      "h": 128,
-      "label": "Two",
-      "style": {}
-    },
-    "One": {
-      "x": 20,
+    "ide1": {
+      "x": 240,
       "y": -8,
-      "w": 640,
-      "h": 128,
-      "label": "One",
+      "w": 230,
+      "h": 428,
+      "label": "one",
       "style": {}
     }
   },
@@ -66,5 +51,8 @@
     "roughness": 1,
     "animationMode": "static",
     "theme": "hand-drawn"
+  },
+  "metadata": {
+    "engine": "upstream-direct"
   }
 }
