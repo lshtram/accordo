@@ -140,3 +140,4 @@ All diagram work documented in `docs/20-requirements/requirements-diagram.md §2
 |---|---|---|
 | Merge `browser2.0` into `main` | ✅ | Full monorepo test suite green on `main`. Worktree deleted. |
 | `accordo_webview_capture` tool (Marp) | ✅ | postMessage + XMLSerializer capture; `PresentationProvider.requestCapture()`; `accordo_webview_capture` MCP tool writes SVG to disk; 10 tools total; all 229 tests passing. |
+| Session 2026-04-16 — Live E2E module testing | ✅ | Tested MD viewer (✅), Marp presentation (⚠️ user-left comment dismisses presentation), Diagram (✅), Browser tab (❌ store silo). Three new debt items logged: Priority P (comment store unification), Priority Q (comments panel navigation), Priority R (Marp user/agent comment divergence). |

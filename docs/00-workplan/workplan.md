@@ -1,7 +1,7 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
-**Date:** 2026-04-08  
-**Status:** Browser MCP implementation waves 1-8 are complete and committed. Live evaluation sits at **44/45** pending an explicit product decision on OCR-assisted screenshot redaction. DEC-024 reload-reconnect is implemented and committed; remaining work is robustness hardening and broader E2E validation.  
+**Date:** 2026-04-16
+**Status:** Live E2E module testing session completed. Four modalities tested (MD viewer ✅, Marp presentation ⚠️, Diagram ✅, Browser tab ❌). Three new technical debt items identified: (1) comment store silo between VS Code and browser extension, (2) comments panel navigation failures across modalities, (3) Marp user-left comment dismisses presentation on click.  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
@@ -168,6 +168,91 @@
 **Tests:** `relay-bridge.test.ts` 5/5, `shared-relay-server.test.ts` 24/24 — all passing.
 
 ---
+
+### Priority P — Comment Store Unification: VS Code ↔ Browser Extension
+
+**Status:** Discovery (live testing, 2026-04-16)
+
+**Problem:** The VS Code `accordo-comment-store` and the browser extension's local `store.ts` are completely siloed. Agent-created comments (via `accordo_comment_create` / `accordo_comment_reply`) go only to the VS Code store. The browser extension's pin rendering layer (`content/comment-ui.ts`) reads only from its own local store.
+
+**Observed symptoms:**
+- User comment on GitHub Copilot page → pin visible in browser ✅
+- Agent reply to same thread (via `accordo_comment_reply`) → not visible as pin ❌
+- Agent comment on same GitHub page (via `accordo_comment_create`) → not visible as pin ❌
+- Agent comment on "Usage" h3 heading → not visible as pin ❌
+- Agent comment on "MCP Dispatch" node in diagram → pin visible ✅
+
+**Root cause:** `VscodeRelayAdapter` in `packages/browser-extension/src/adapters/comment-backend.ts` is a stub — all methods throw `"not implemented — stub for Wave 2 W2-A"`. The adapter factory `selectAdapter()` also throws. There is no path for VS Code comment store events to reach the browser extension's local store.
+
+**Scope of impact:**
+- All browser-tab surface comments created by the agent are invisible in the browser
+- All browser-tab surface replies by the agent are invisible in the browser
+- Only user-initiated browser comments are visible as pins in the browser
+
+**Open tasks:**
+1. Implement `VscodeRelayAdapter.listThreads()` — route to VS Code comment store via MCP/Bridge
+2. Implement `VscodeRelayAdapter.createThread()` — bridge comment creation events to VS Code store
+3. Implement `VscodeRelayAdapter.reply()` — bridge reply events to VS Code store
+4. Implement `selectAdapter()` factory — detect VS Code relay availability at runtime
+5. Add bidirectional sync: VS Code store changes → browser extension store (comment:create/update events)
+6. Consider: should agent-created browser-tab comments go through the browser extension's relay-first path instead of direct to VS Code store?
+
+**Key files:**
+- `packages/browser-extension/src/adapters/comment-backend.ts` — stub adapter (all throw)
+- `packages/browser-extension/src/relay-comment-handlers.ts` — browser extension's own comment handlers (separate store)
+- `packages/browser-extension/src/store.ts` — browser extension's local comment store
+- `packages/comments/src/panel/navigation-router.ts` — VS Code comment panel navigation logic
+
+---
+
+### Priority Q — Comments Panel Navigation: Focus to Surface
+
+**Status:** Discovery (live testing, 2026-04-16)
+
+**Problem:** When clicking a comment in the VS Code comments panel, the navigation to the correct surface/view is inconsistent or fails across modalities. Observed symptom: browser extension tab shows "not connected" in the comments panel even though the relay is healthy (`accordo_browser_health` returns `connected: true`).
+
+**Observed symptoms:**
+- Comments panel shows browser threads with surface type `browser` but clicking them reports relay as disconnected
+- Comments on Marp slides: user-left comment → clicking dismisses the presentation view entirely
+- Comments on text/MD preview: clicking navigates but may not scroll to the correct line/anchor
+
+**Root cause area:** `navigation-router.ts` `navigateToThread()` — the command dispatched when focusing a comment from the panel. The router uses `CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD` for text surfaces, but different commands for different surface types. The browser surface handler may be routing to the wrong command or the wrong VS Code context.
+
+**Open tasks:**
+1. Map all surface types (`text`, `slide`, `diagram`, `browser`) to the correct focus/navigation command
+2. Verify that `accordo_preview_internal_focusThread` is correctly routing browser-surface threads to the right handler
+3. Verify that browser relay health (`connected: true`) is correctly reflected in the comments panel for all tab states
+4. Fix: clicking user-left Marp slide comment should NOT dismiss the presentation — only open/highlight the pin
+
+**Key files:**
+- `packages/comments/src/panel/navigation-router.ts` — `navigateToThread()` dispatch logic
+- `packages/marp/src/extension.ts` — Marp-specific `focusThread` handler vs generic preview handler
+- `packages/md-viewer/src/extension.ts` — preview focus handler
+
+---
+
+### Priority R — Marp Slide Comment: User-left vs Agent-left Behaviour Divergence
+
+**Status:** Discovery (live testing, 2026-04-16)
+
+**Problem:** On Marp presentations, clicking a user-left comment pin causes the presentation view to close/dismiss. Clicking an agent-left comment pin keeps the presentation open and correctly highlights the pin.
+
+**Root cause area:** The `comments:focus` message handler in `marp-webview-html.ts` calls `sdk.openPopover()`. This is the same path for both user and agent comments. The difference likely lies in how the focus command is dispatched from the comments panel — user-left comments may be going through `navigation-router.ts` → `CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD` which routes to VS Code's generic preview handler, while agent-left comments may be going through a different path (perhaps Marp's internal `focusThread` command registered in `extension.ts`).
+
+**What works:** Agent-left comment focus → `accordo.presentation.internal.focusThread` → `goTo(slideIndex)` + `sdk.openPopover(threadId)` ✅
+
+**What fails:** User-left comment focus → likely routes via `accordo_preview_internal_focusThread` → generic preview handler → may call something that closes the webview panel ❌
+
+**Open tasks:**
+1. Trace the exact dispatch path for user-left slide comment → find where it diverges from agent-left
+2. Align both paths to use Marp's internal `focusThread` command for slide surfaces
+3. Verify `goTo()` + `openPopover()` sequence is identical for both cases
+4. Add test: clicking any comment pin on a slide should never close the presentation
+
+**Key files:**
+- `packages/marp/src/extension.ts` — `accordo.presentation.internal.focusThread` command
+- `packages/marp/src/marp-webview-html.ts` — `comments:focus` handler with `sdk.openPopover()`
+- `packages/comments/src/panel/navigation-router.ts` — surface type → command dispatch
 
 ---
 
