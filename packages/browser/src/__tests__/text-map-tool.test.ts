@@ -80,8 +80,18 @@ const MOCK_TEXT_MAP_DATA: TextMapResponse = {
       visibility: "hidden" as TextVisibility,
       readingOrderIndex: 2,
     },
+    {
+      textRaw: "More text",
+      textNormalized: "More text",
+      nodeId: 3,
+      role: undefined,
+      accessibleName: undefined,
+      bbox: { x: 0, y: 150, width: 200, height: 30 },
+      visibility: "visible" as TextVisibility,
+      readingOrderIndex: 3,
+    },
   ],
-  totalSegments: 3,
+  totalSegments: 4,
   truncated: false,
 };
 
@@ -640,5 +650,863 @@ describe("M112-TEXT type exports", () => {
   it("TEXT_MAP_TIMEOUT_MS is exported and is a number", () => {
     expect(typeof TEXT_MAP_TIMEOUT_MS).toBe("number");
     expect(TEXT_MAP_TIMEOUT_MS).toBeGreaterThan(0);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Incremental Pagination — get_text_map (offset + limit)
+// Approved design: add optional offset/limit to tool args; return hasMore,
+// nextOffset, totalAvailable when offset or limit is explicitly provided.
+// Pagination is stateless offset+limit bounded by collector caps (maxSegments=2000).
+// ════════════════════════════════════════════════════════════════════════════════
+
+describe("Incremental Pagination — get_text_map schema (offset + limit args)", () => {
+  /**
+   * PAG-01: get_text_map tool schema accepts optional offset parameter.
+   */
+  it("PAG-01: browser_get_text_map tool accepts offset?: number in inputSchema", () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    const tool = buildTextMapTool(relay, store);
+    expect(tool.inputSchema.properties).toHaveProperty("offset");
+    expect(tool.inputSchema.properties.offset.type).toBe("number");
+  });
+
+  /**
+   * PAG-01: get_text_map tool schema accepts optional limit parameter.
+   */
+  it("PAG-01: browser_get_text_map tool accepts limit?: number in inputSchema", () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    const tool = buildTextMapTool(relay, store);
+    expect(tool.inputSchema.properties).toHaveProperty("limit");
+    expect(tool.inputSchema.properties.limit.type).toBe("number");
+  });
+
+  /**
+   * PAG-01: offset and limit are both optional — purely opt-in.
+   */
+  it("PAG-01: offset and limit are not in the required array", () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    const tool = buildTextMapTool(relay, store);
+    const required = tool.inputSchema.required ?? [];
+    expect(required).not.toContain("offset");
+    expect(required).not.toContain("limit");
+  });
+});
+
+describe("Incremental Pagination — get_text_map handler forwarding", () => {
+  /**
+   * PAG-02: offset is forwarded to relay when provided.
+   */
+  it("PAG-02: handler forwards offset to relay.request payload", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    const tool = buildTextMapTool(relay, store);
+    await (tool.handler as (args: GetTextMapArgs) => Promise<unknown>)({ offset: 100 });
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_text_map",
+      expect.objectContaining({ offset: 100 }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * PAG-02: limit is forwarded to relay when provided.
+   */
+  it("PAG-02: handler forwards limit to relay.request payload", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    const tool = buildTextMapTool(relay, store);
+    await (tool.handler as (args: GetTextMapArgs) => Promise<unknown>)({ limit: 50 });
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_text_map",
+      expect.objectContaining({ limit: 50 }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * PAG-02: Both offset and limit forwarded simultaneously.
+   */
+  it("PAG-02: handler forwards both offset and limit together", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    const tool = buildTextMapTool(relay, store);
+    await (tool.handler as (args: GetTextMapArgs) => Promise<unknown>)({ offset: 200, limit: 100 });
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_text_map",
+      expect.objectContaining({ offset: 200, limit: 100 }),
+      expect.any(Number),
+    );
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Incremental Pagination — get_text_map BLACK-BOX CLAMPING TESTS
+//
+// PAG-CLAMP-01: offset < 0  →  behaves identically to offset = 0
+// PAG-CLAMP-02: limit  < 1  →  behaves identically to limit  = 1
+// PAG-CLAMP-03: limit  > effectiveCap  →  behaves identically to limit = effectiveCap
+//
+// Effective cap for get_text_map = min(maxSegments ?? 500, 2000).
+// Default effective cap = 500.
+//
+// Strategy: call handler with (invalid value) and (its clamped equivalent).
+// Both calls MUST produce identical observable outputs (segments, hasMore,
+// nextOffset, totalAvailable, no error).  This is a black-box equivalence
+// test — we do NOT inspect what the handler forwarded to the relay.
+// ════════════════════════════════════════════════════════════════════════════════
+
+describe("Incremental Pagination — get_text_map clamping (PAG-CLAMP-01..03)", () => {
+  function makeSegment(index: number) {
+    return {
+      textRaw: `seg${index}`,
+      textNormalized: `seg${index}`,
+      nodeId: index,
+      bbox: { x: 0, y: index * 10, width: 200, height: 10 },
+      visibility: "visible" as const,
+      readingOrderIndex: index,
+    };
+  }
+
+  // ── PAG-CLAMP-01: offset < 0 behaves the same as offset = 0 ─────────────
+  //
+  // Use a SINGLE relay mock so the same underlying scenario is exercised.
+  // The mock implementation returns different data based on the forwarded offset:
+  //   - negative offset  → returns fewer segments (simulates collector drift / different slice)
+  //   - valid offset     → returns the full 3-segment page
+  //
+  // Without clamping:   offset=-5 → mock returns 1 segment  (FAIL)
+  // With clamping:      offset=-5 → clamped to offset=0 → returns 3 segments (PASS)
+  //
+  // The mock's internal branching is a fixture detail, not an assertion.
+
+  it("PAG-CLAMP-01: offset=-5 produces identical output to offset=0", async () => {
+    const store = new SnapshotRetentionStore();
+
+    // Single shared relay — deterministic fixture.
+    // mockImplementation reads the CURRENT call's args (last entry in mock.calls).
+    // This mirrors how a real collector would return different slices for different offsets.
+    //
+    // Strategy: use a fixture of 5+ ordered segments; limit=2 so negative offset
+    // produces a clearly different slice than offset=0 when NOT clamped.
+    // Without clamping: offset=-5 → collector returns fewer segments (1) — test FAILS
+    // With clamping:    offset=-5 → clamped to offset=0 → collector returns 2 segments — test PASSES
+
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        // Always read the LAST call's args — this is the current invocation's args.
+        const calls = vi.mocked(relay.request).mock.calls as unknown[][];
+        const callArgs = (calls[calls.length - 1] ?? []) as unknown[];
+        const payload = callArgs[1] as Record<string, unknown>;
+        const offset = (payload?.offset as number) ?? 0;
+
+        if (offset < 0) {
+          // Unclamped negative offset — collector skips/returns nothing from negative index
+          return {
+            success: true,
+            requestId: "test",
+            data: {
+              ...MOCK_ENVELOPE,
+              pageUrl: "https://example.com/page",
+              title: "Example Page",
+              segments: [makeSegment(0)],   // 1 segment — clamped behavior (collector cannot serve -5)
+              totalSegments: 10,
+              truncated: false,
+            },
+          };
+        }
+        // Valid offset (or clamped-to-0) — collector returns 2 segments from the page
+        return {
+          success: true,
+          requestId: "test",
+          data: {
+            ...MOCK_ENVELOPE,
+            pageUrl: "https://example.com/page",
+            title: "Example Page",
+            segments: [makeSegment(0), makeSegment(1), makeSegment(2), makeSegment(3), makeSegment(4)],
+            totalSegments: 10,
+            truncated: false,
+          },
+        };
+      }),
+      push: vi.fn(),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    // offset=0 call — baseline (valid) → collector returns 2 segments (capped by limit=2)
+    const resultAt0 = await invokeToolHandler(relay, store, { offset: 0, limit: 2 });
+    // offset=-5 call — if clamping exists it behaves as offset=0 → also 2 segments
+    //                  if clamping broken → collector receives offset=-5 → returns 1 segment (different)
+    const resultAtNeg = await invokeToolHandler(relay, store, { offset: -5, limit: 2 });
+
+    if ("success" in resultAt0) throw new Error("Expected TextMapResponse");
+    if ("success" in resultAtNeg) throw new Error("Expected TextMapResponse");
+
+    // Observable equivalence: both calls must produce identical output
+    expect((resultAtNeg as TextMapResponse).segments.length).toEqual((resultAt0 as TextMapResponse).segments.length);
+    expect((resultAtNeg as TextMapResponse).totalSegments).toEqual((resultAt0 as TextMapResponse).totalSegments);
+    expect((resultAtNeg as TextMapResponse).truncated).toEqual((resultAt0 as TextMapResponse).truncated);
+  });
+
+  it("PAG-CLAMP-01: offset=-1 produces identical output to offset=0 (boundary)", async () => {
+    const store = new SnapshotRetentionStore();
+
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        const calls = vi.mocked(relay.request).mock.calls as unknown[][];
+        const callArgs = (calls[calls.length - 1] ?? []) as unknown[];
+        const payload = callArgs[1] as Record<string, unknown>;
+        const offset = (payload?.offset as number) ?? 0;
+
+        if (offset < 0) {
+          return {
+            success: true,
+            requestId: "test",
+            data: {
+              ...MOCK_ENVELOPE,
+              pageUrl: "https://example.com/page",
+              title: "Example Page",
+              segments: [makeSegment(0)],   // 1 — clamped behavior
+              totalSegments: 10,
+              truncated: false,
+            },
+          };
+        }
+        return {
+          success: true,
+          requestId: "test",
+          data: {
+            ...MOCK_ENVELOPE,
+            pageUrl: "https://example.com/page",
+            title: "Example Page",
+            segments: [makeSegment(0), makeSegment(1), makeSegment(2), makeSegment(3), makeSegment(4)],
+            totalSegments: 10,
+            truncated: false,
+          },
+        };
+      }),
+      push: vi.fn(),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    const resultAt0 = await invokeToolHandler(relay, store, { offset: 0, limit: 2 });
+    const resultAtNeg = await invokeToolHandler(relay, store, { offset: -1, limit: 2 });
+
+    if ("success" in resultAt0) throw new Error("Expected TextMapResponse");
+    if ("success" in resultAtNeg) throw new Error("Expected TextMapResponse");
+
+    expect((resultAtNeg as TextMapResponse).segments.length).toEqual((resultAt0 as TextMapResponse).segments.length);
+    expect((resultAtNeg as TextMapResponse).totalSegments).toEqual((resultAt0 as TextMapResponse).totalSegments);
+  });
+
+  // ── PAG-CLAMP-02: limit < 1 behaves the same as limit = 1 ──────────────
+  //
+  // Use a SINGLE shared relay mock that reads the forwarded limit from call args.
+  // Returns different segment counts based on the actual limit received:
+  //   - limit < 1  → collector returns 0 segments (wrong/unclamped behaviour)
+  //   - limit >= 1 → collector returns 1 segment (correct/clamped behaviour)
+  //
+  // Without clamping: limit=0 → relay gets limit=0 → returns 0 segments (FAIL)
+  // With clamping:    limit=0 → clamped to limit=1 → relay gets limit=1 → 1 segment (PASS)
+
+  it("PAG-CLAMP-02: limit=0 produces identical output to limit=1", async () => {
+    const store = new SnapshotRetentionStore();
+
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        // Read this call's forwarded limit — always the last entry in mock.calls
+        const calls = vi.mocked(relay.request).mock.calls;
+        const payload = (calls[calls.length - 1]?.[1] as Record<string, unknown>) ?? {};
+        const limit = (payload?.limit as number) ?? 1;
+
+        if (limit < 1) {
+          // Unclamped limit < 1 — collector returns 0 segments
+          return {
+            success: true,
+            requestId: "test",
+            data: {
+              ...MOCK_ENVELOPE,
+              pageUrl: "https://example.com/page",
+              title: "Example Page",
+              segments: [],   // 0 segments — unclamped behaviour
+              totalSegments: 10,
+              truncated: false,
+            },
+          };
+        }
+        // Clamped-to-1 (or valid) — collector returns 1 segment
+        return {
+          success: true,
+          requestId: "test",
+          data: {
+            ...MOCK_ENVELOPE,
+            pageUrl: "https://example.com/page",
+            title: "Example Page",
+            segments: [makeSegment(0)],   // 1 segment — clamped behaviour
+            totalSegments: 10,
+            truncated: false,
+          },
+        };
+      }),
+      push: vi.fn(),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    const resultAt1 = await invokeToolHandler(relay, store, { offset: 0, limit: 1 });
+    const resultAt0 = await invokeToolHandler(relay, store, { offset: 0, limit: 0 });
+
+    if ("success" in resultAt1) throw new Error("Expected TextMapResponse");
+    if ("success" in resultAt0) throw new Error("Expected TextMapResponse");
+
+    expect((resultAt0 as TextMapResponse).segments.length).toEqual((resultAt1 as TextMapResponse).segments.length);
+    expect((resultAt0 as TextMapResponse).totalSegments).toEqual((resultAt1 as TextMapResponse).totalSegments);
+  });
+
+  it("PAG-CLAMP-02: negative limit=-3 produces identical output to limit=1 (boundary)", async () => {
+    const store = new SnapshotRetentionStore();
+
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        const calls = vi.mocked(relay.request).mock.calls;
+        const payload = (calls[calls.length - 1]?.[1] as Record<string, unknown>) ?? {};
+        const limit = (payload?.limit as number) ?? 1;
+
+        if (limit < 1) {
+          return {
+            success: true,
+            requestId: "test",
+            data: {
+              ...MOCK_ENVELOPE,
+              pageUrl: "https://example.com/page",
+              title: "Example Page",
+              segments: [],   // 0 segments — unclamped behaviour
+              totalSegments: 10,
+              truncated: false,
+            },
+          };
+        }
+        return {
+          success: true,
+          requestId: "test",
+          data: {
+            ...MOCK_ENVELOPE,
+            pageUrl: "https://example.com/page",
+            title: "Example Page",
+            segments: [makeSegment(0)],   // 1 segment — clamped behaviour
+            totalSegments: 10,
+            truncated: false,
+          },
+        };
+      }),
+      push: vi.fn(),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    const resultAt1 = await invokeToolHandler(relay, store, { offset: 0, limit: 1 });
+    const resultAtNeg = await invokeToolHandler(relay, store, { offset: 0, limit: -3 });
+
+    if ("success" in resultAt1) throw new Error("Expected TextMapResponse");
+    if ("success" in resultAtNeg) throw new Error("Expected TextMapResponse");
+
+    expect((resultAtNeg as TextMapResponse).segments.length).toEqual((resultAt1 as TextMapResponse).segments.length);
+    expect((resultAtNeg as TextMapResponse).totalSegments).toEqual((resultAt1 as TextMapResponse).totalSegments);
+  });
+
+  // ── PAG-CLAMP-03: limit > effectiveCap behaves the same as limit = effectiveCap ─
+  //
+  // Use a SINGLE shared relay mock that reads the forwarded limit from call args.
+  // Default effective cap = 500 for get_text_map.
+  //   - limit > 500  → collector returns 3 segments (unclamped behaviour)
+  //   - limit <= 500 → collector returns 5 segments (clamped/capped behaviour)
+  //
+  // Without clamping: limit=10000 → relay gets 10000 → returns 3 segments (FAIL)
+  // With clamping:    limit=10000 → clamped to 500 → relay gets 500 → 5 segments (PASS)
+
+  it("PAG-CLAMP-03: limit=10000 produces identical output to limit=500 (effective cap = 500)", async () => {
+    const store = new SnapshotRetentionStore();
+
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        const calls = vi.mocked(relay.request).mock.calls;
+        const payload = (calls[calls.length - 1]?.[1] as Record<string, unknown>) ?? {};
+        const limit = (payload?.limit as number) ?? 500;
+
+        if (limit > 500) {
+          // Unclamped limit > cap — collector returns fewer segments
+          return {
+            success: true,
+            requestId: "test",
+            data: {
+              ...MOCK_ENVELOPE,
+              pageUrl: "https://example.com/page",
+              title: "Example Page",
+              segments: [makeSegment(0), makeSegment(1), makeSegment(2)],  // 3 — unclamped behaviour
+              totalSegments: 10,
+              truncated: false,
+            },
+          };
+        }
+        // Clamped-to-cap (or valid) — collector returns 5 segments
+        return {
+          success: true,
+          requestId: "test",
+          data: {
+            ...MOCK_ENVELOPE,
+            pageUrl: "https://example.com/page",
+            title: "Example Page",
+            segments: Array.from({ length: 5 }, (_, i) => makeSegment(i)),  // 5 — clamped behaviour
+            totalSegments: 10,
+            truncated: false,
+          },
+        };
+      }),
+      push: vi.fn(),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    const resultAtCap  = await invokeToolHandler(relay, store, { offset: 0, limit: 500 });
+    const resultAtOver = await invokeToolHandler(relay, store, { offset: 0, limit: 10000 });
+
+    if ("success" in resultAtCap) throw new Error("Expected TextMapResponse");
+    if ("success" in resultAtOver) throw new Error("Expected TextMapResponse");
+
+    expect((resultAtOver as TextMapResponse).segments.length).toEqual((resultAtCap as TextMapResponse).segments.length);
+    expect((resultAtOver as TextMapResponse).totalSegments).toEqual((resultAtCap as TextMapResponse).totalSegments);
+    expect((resultAtOver as TextMapResponse).truncated).toEqual((resultAtCap as TextMapResponse).truncated);
+  });
+
+  it("PAG-CLAMP-03: limit=5000 with maxSegments=3000 produces identical output to limit=2000", async () => {
+    const store = new SnapshotRetentionStore();
+
+    // effective cap = min(3000, 2000) = 2000
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        const calls = vi.mocked(relay.request).mock.calls;
+        const payload = (calls[calls.length - 1]?.[1] as Record<string, unknown>) ?? {};
+        const limit = (payload?.limit as number) ?? 2000;
+
+        if (limit > 2000) {
+          // Unclamped limit > cap — collector returns fewer segments
+          return {
+            success: true,
+            requestId: "test",
+            data: {
+              ...MOCK_ENVELOPE,
+              pageUrl: "https://example.com/page",
+              title: "Example Page",
+              segments: [makeSegment(0), makeSegment(1)],  // 2 — unclamped behaviour
+              totalSegments: 10,
+              truncated: false,
+            },
+          };
+        }
+        // Clamped-to-cap — collector returns 5 segments
+        return {
+          success: true,
+          requestId: "test",
+          data: {
+            ...MOCK_ENVELOPE,
+            pageUrl: "https://example.com/page",
+            title: "Example Page",
+            segments: Array.from({ length: 5 }, (_, i) => makeSegment(i)),  // 5 — clamped behaviour
+            totalSegments: 10,
+            truncated: false,
+          },
+        };
+      }),
+      push: vi.fn(),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    const resultAtCap  = await invokeToolHandler(relay, store, { offset: 0, limit: 2000, maxSegments: 3000 });
+    const resultAtOver = await invokeToolHandler(relay, store, { offset: 0, limit: 5000, maxSegments: 3000 });
+
+    if ("success" in resultAtCap) throw new Error("Expected TextMapResponse");
+    if ("success" in resultAtOver) throw new Error("Expected TextMapResponse");
+
+    expect((resultAtOver as TextMapResponse).segments.length).toEqual((resultAtCap as TextMapResponse).segments.length);
+    expect((resultAtOver as TextMapResponse).totalSegments).toEqual((resultAtCap as TextMapResponse).totalSegments);
+  });
+
+  it("PAG-CLAMP-03: limit=500 (at effective cap) passes through unchanged — no error produced", async () => {
+    const store = new SnapshotRetentionStore();
+
+    const relay = createMockRelay({
+      response: Promise.resolve({
+        success: true,
+        requestId: "test",
+        data: {
+          ...MOCK_ENVELOPE,
+          pageUrl: "https://example.com/page",
+          title: "Example Page",
+          segments: Array.from({ length: 5 }, (_, i) => makeSegment(i)),
+          totalSegments: 10,
+          truncated: false,
+        },
+      }),
+    });
+
+    const result = await invokeToolHandler(relay, store, { offset: 0, limit: 500 });
+
+    if ("success" in result) throw new Error("Expected TextMapResponse");
+    expect((result as TextMapResponse).segments.length).toBe(5);
+    expect((result as TextMapResponse).truncated).toBe(false);
+  });
+});
+
+describe("Incremental Pagination — get_text_map response metadata", () => {
+  it("PAG-03: handler applies offset/limit slice when relay returns unsliced segments", async () => {
+    const relayData: TextMapResponse = {
+      ...MOCK_ENVELOPE,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      // Relay returns unsliced data (full page)
+      segments: Array.from({ length: 10 }, (_, i) => ({
+        textRaw: `seg${i}`,
+        textNormalized: `seg${i}`,
+        nodeId: i,
+        bbox: { x: 0, y: i * 10, width: 200, height: 10 },
+        visibility: "visible" as const,
+        readingOrderIndex: i,
+      })),
+      totalSegments: 10,
+      truncated: false,
+    };
+    const relay = createMockRelay({
+      response: Promise.resolve({ success: true, requestId: "test", data: relayData }),
+    });
+    const store = new SnapshotRetentionStore();
+    const result = await invokeToolHandler(relay, store, { offset: 2, limit: 3 });
+
+    if ("success" in result) {
+      throw new Error(`Expected TextMapResponse but got error: ${JSON.stringify(result)}`);
+    }
+    expect(result.segments).toHaveLength(3);
+    expect(result.segments.map((s) => s.textNormalized)).toEqual(["seg2", "seg3", "seg4"]);
+    expect(result).toHaveProperty("nextOffset", 5);
+  });
+
+  /**
+   * PAG-03: offset AND limit together trigger pagination metadata in response.
+   * Handler injects metadata (or relay provides it — either satisfies the contract).
+   */
+  it("PAG-03: with offset+limit, result includes hasMore, nextOffset, totalAvailable", async () => {
+    const plainData: TextMapResponse = {
+      ...MOCK_ENVELOPE,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      segments: MOCK_TEXT_MAP_DATA.segments.slice(0, 3),
+      totalSegments: 10,
+      truncated: false,
+      // intentionally NO pagination metadata
+    };
+    const relay = createMockRelay({
+      response: Promise.resolve({ success: true, requestId: "test", data: plainData }),
+    });
+    const store = new SnapshotRetentionStore();
+    const result = await invokeToolHandler(relay, store, { offset: 0, limit: 3 });
+
+    if ("success" in result) {
+      throw new Error(`Expected TextMapResponse but got error: ${JSON.stringify(result)}`);
+    }
+    // PAG-03: Pagination metadata must be present when offset+limit are used
+    expect(result).toHaveProperty("hasMore", true);
+    expect(result).toHaveProperty("nextOffset", 3);
+    expect(result).toHaveProperty("totalAvailable", 10);
+  });
+
+  /**
+   * PAG-03 regression (live relay): metadata must use totalSegments from the
+   * collector result (full set), not the current returned segment slice length.
+   */
+  it("PAG-03 regression: text_map metadata uses totalSegments for hasMore/totalAvailable", async () => {
+    const plainData: TextMapResponse = {
+      ...MOCK_ENVELOPE,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      segments: Array.from({ length: 50 }, (_, i) => ({
+        textRaw: `seg${i}`,
+        textNormalized: `seg${i}`,
+        nodeId: i,
+        bbox: { x: 0, y: i * 10, width: 200, height: 10 },
+        visibility: "visible" as const,
+        readingOrderIndex: i,
+      })),
+      totalSegments: 675,
+      truncated: true,
+    };
+    const relay = createMockRelay({
+      response: Promise.resolve({ success: true, requestId: "test", data: plainData }),
+    });
+    const store = new SnapshotRetentionStore();
+    const result = await invokeToolHandler(relay, store, { maxSegments: 50, offset: 0, limit: 10 });
+
+    if ("success" in result) {
+      throw new Error(`Expected TextMapResponse but got error: ${JSON.stringify(result)}`);
+    }
+
+    expect(result.segments).toHaveLength(10);
+    expect(result).toHaveProperty("totalAvailable", 50);
+    expect(result).toHaveProperty("hasMore", true);
+    expect(result).toHaveProperty("nextOffset", 10);
+  });
+
+  /**
+   * PAG-03: offset alone (no limit) also triggers pagination metadata.
+   * limit defaults to effective cap (maxSegments=2000) when omitted.
+   */
+  it("PAG-03: offset alone (no limit) triggers pagination metadata", async () => {
+    const plainData: TextMapResponse = {
+      ...MOCK_ENVELOPE,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      segments: Array.from({ length: 500 }, (_, i) => ({
+        textRaw: `seg${i}`,
+        textNormalized: `seg${i}`,
+        nodeId: i,
+        bbox: { x: 0, y: i * 10, width: 200, height: 10 },
+        visibility: "visible" as const,
+        readingOrderIndex: i,
+      })),
+      totalSegments: 500,
+      truncated: false,
+      // intentionally NO pagination metadata
+    };
+    const relay = createMockRelay({
+      response: Promise.resolve({ success: true, requestId: "test", data: plainData }),
+    });
+    const store = new SnapshotRetentionStore();
+    const result = await invokeToolHandler(relay, store, { offset: 0 });
+
+    if ("success" in result) {
+      throw new Error(`Expected TextMapResponse but got error: ${JSON.stringify(result)}`);
+    }
+    // PAG-03: Metadata required when offset is provided, regardless of limit
+    expect(result).toHaveProperty("hasMore", expect.any(Boolean));
+    expect(result).toHaveProperty("nextOffset", expect.any(Number));
+    expect(result).toHaveProperty("totalAvailable", expect.any(Number));
+  });
+
+  /**
+   * PAG-03: limit alone (no offset) also triggers pagination metadata.
+   * offset defaults to 0 when omitted.
+   */
+  it("PAG-03: limit alone (no offset) triggers pagination metadata", async () => {
+    const plainData: TextMapResponse = {
+      ...MOCK_ENVELOPE,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      segments: [{ textRaw: "seg0", textNormalized: "seg0", nodeId: 0, bbox: { x: 0, y: 0, width: 200, height: 10 }, visibility: "visible" as const, readingOrderIndex: 0 }],
+      totalSegments: 100,
+      truncated: false,
+      // intentionally NO pagination metadata
+    };
+    const relay = createMockRelay({
+      response: Promise.resolve({ success: true, requestId: "test", data: plainData }),
+    });
+    const store = new SnapshotRetentionStore();
+    const result = await invokeToolHandler(relay, store, { limit: 10 });
+
+    if ("success" in result) {
+      throw new Error(`Expected TextMapResponse but got error: ${JSON.stringify(result)}`);
+    }
+    // PAG-03: Metadata required when limit is provided, regardless of offset
+    expect(result).toHaveProperty("hasMore", expect.any(Boolean));
+    expect(result).toHaveProperty("nextOffset", expect.any(Number));
+    expect(result).toHaveProperty("totalAvailable", expect.any(Number));
+  });
+
+  /**
+   * PAG-03: Without offset AND limit, pagination metadata must NOT be present.
+   */
+  it("PAG-03: without offset/limit, pagination metadata is absent from result", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    const result = await invokeToolHandler(relay, store, { maxSegments: 500 });
+    if ("success" in result) {
+      throw new Error(`Expected TextMapResponse but got error: ${JSON.stringify(result)}`);
+    }
+    expect((result as Record<string, unknown>).hasMore).toBeUndefined();
+    expect((result as Record<string, unknown>).nextOffset).toBeUndefined();
+    expect((result as Record<string, unknown>).totalAvailable).toBeUndefined();
+  });
+
+  /**
+   * PAG-04: offset beyond totalAvailable returns empty segments,
+   * hasMore=false, nextOffset omitted.
+   */
+  it("PAG-04: offset beyond totalAvailable returns empty segments, hasMore=false, nextOffset omitted", async () => {
+    const beyondData: TextMapResponse = {
+      ...MOCK_ENVELOPE,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      segments: [],
+      totalSegments: 0,
+      truncated: false,
+      // intentionally NO pagination metadata
+    };
+    const relay = createMockRelay({
+      response: Promise.resolve({ success: true, requestId: "test", data: beyondData }),
+    });
+    const store = new SnapshotRetentionStore();
+    const result = await invokeToolHandler(relay, store, { offset: 100, limit: 10 });
+
+    if ("success" in result) {
+      throw new Error(`Expected TextMapResponse but got error: ${JSON.stringify(result)}`);
+    }
+    expect(result.segments).toHaveLength(0);
+    expect(result).toHaveProperty("hasMore", false);
+    expect((result as Record<string, unknown>).nextOffset).toBeUndefined();
+  });
+
+  /**
+   * PAG-05: truncated:true from collector cap means hasMore=false.
+   * Fixture: page has 3000 total segments, offset=1500, limit=1000.
+   * Collector cap is 2000, so at offset=1500 it collects 1500-2000 (500 segments),
+   * truncated=true. Cannot paginate beyond cap.
+   */
+  it("PAG-05: truncated:true from cap hit means hasMore=false in response", async () => {
+    const cappedSegments = Array.from({ length: 500 }, (_, i) => ({
+      textRaw: `seg${1500 + i}`,
+      textNormalized: `seg${1500 + i}`,
+      nodeId: 1500 + i,
+      bbox: { x: 0, y: (1500 + i) * 10, width: 200, height: 10 },
+      visibility: "visible" as const,
+      readingOrderIndex: 1500 + i,
+    }));
+    const cappedData: TextMapResponse = {
+      ...MOCK_ENVELOPE,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      segments: cappedSegments,
+      totalSegments: 3000,
+      truncated: true,
+      // intentionally NO pagination metadata
+    };
+    const relay = createMockRelay({
+      response: Promise.resolve({ success: true, requestId: "test", data: cappedData }),
+    });
+    const store = new SnapshotRetentionStore();
+    const result = await invokeToolHandler(relay, store, { offset: 1500, limit: 1000 });
+
+    if ("success" in result) {
+      throw new Error(`Expected TextMapResponse but got error: ${JSON.stringify(result)}`);
+    }
+    expect(result).toHaveProperty("truncated", true);
+    expect(result).toHaveProperty("hasMore", false);
+    // Non-trivial: returned count is strictly less than limit due to cap
+    expect(result.segments.length).toBeLessThan(1000);
+  });
+
+  /**
+   * PAG-05-EFFCAP: User-provided maxSegments lower than global cap (2000).
+   * Effective cap is min(maxSegments, 2000). Fixture: page has 5000 total,
+   * user sets maxSegments=300, requesting offset=0, limit=500.
+   * Effective cap is 300 — collector returns 300 segments, truncated=true.
+   */
+  it("PAG-05-EFFCAP: user maxSegments below global cap becomes the effective cap", async () => {
+    const effCapSegments = Array.from({ length: 300 }, (_, i) => ({
+      textRaw: `seg${i}`,
+      textNormalized: `seg${i}`,
+      nodeId: i,
+      bbox: { x: 0, y: i * 10, width: 200, height: 10 },
+      visibility: "visible" as const,
+      readingOrderIndex: i,
+    }));
+    const effCapData: TextMapResponse = {
+      ...MOCK_ENVELOPE,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      segments: effCapSegments,
+      totalSegments: 5000,
+      truncated: true,
+      // intentionally NO pagination metadata
+    };
+    const relay = createMockRelay({
+      response: Promise.resolve({ success: true, requestId: "test", data: effCapData }),
+    });
+    const store = new SnapshotRetentionStore();
+    // User wants 500 but maxSegments=300 clamps effective cap to 300
+    const result = await invokeToolHandler(relay, store, { offset: 0, limit: 500, maxSegments: 300 });
+
+    if ("success" in result) {
+      throw new Error(`Expected TextMapResponse but got error: ${JSON.stringify(result)}`);
+    }
+    // Non-trivial: exactly 300 returned (maxSegments cap), not 500
+    expect(result.segments.length).toBe(300);
+    expect(result).toHaveProperty("truncated", true);
+    expect(result).toHaveProperty("hasMore", false);
+  });
+
+  /**
+   * PAG-06: Pagination coherence uses pageId, not snapshotId.
+   * The relay provides sequential pagination metadata — handler passes it through.
+   * Same pageId with different snapshotId must return consistent pagination slices.
+   */
+  it("PAG-06: pagination uses pageId coherence — two calls with same pageId return consistent slices", async () => {
+    // First page: offset=0, limit=2 → relay returns nextOffset=2, hasMore=true
+    const firstPageData: TextMapResponse = {
+      ...MOCK_ENVELOPE,
+      pageId: "text-page-A",
+      snapshotId: "text-page-A:1",
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      segments: MOCK_TEXT_MAP_DATA.segments.slice(0, 2),
+      totalSegments: 10,
+      truncated: false,
+      hasMore: true,
+      nextOffset: 2,
+      totalAvailable: 10,
+    };
+    // Second page: offset=2, limit=2 → relay computes nextOffset=4, hasMore=true
+    const secondPageData: TextMapResponse = {
+      ...MOCK_ENVELOPE,
+      pageId: "text-page-A",
+      snapshotId: "text-page-A:2", // different snapshot — DOM drift accepted
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      segments: MOCK_TEXT_MAP_DATA.segments.slice(2, 4),
+      totalSegments: 10,
+      truncated: false,
+      hasMore: true,
+      nextOffset: 4, // sequential from relay
+      totalAvailable: 10,
+    };
+
+    let callCount = 0;
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        callCount++;
+        return {
+          success: true,
+          requestId: "test",
+          data: callCount === 1 ? firstPageData : secondPageData,
+        };
+      }),
+      push: vi.fn(),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    const store = new SnapshotRetentionStore();
+    const tool = buildTextMapTool(relay, store);
+
+    const firstResult = await (tool.handler as (args: GetTextMapArgs) => Promise<TextMapResponse | TextMapToolError>)(
+      { offset: 0, limit: 2, tabId: 1 },
+    );
+    if ("success" in firstResult) throw new Error("Expected TextMapResponse");
+    expect(firstResult).toHaveProperty("pageId", "text-page-A");
+    expect(firstResult).toHaveProperty("hasMore", true);
+    expect(firstResult).toHaveProperty("nextOffset", 2);
+
+    const secondResult = await (tool.handler as (args: GetTextMapArgs) => Promise<TextMapResponse | TextMapToolError>)(
+      { offset: 2, limit: 2, tabId: 1 },
+    );
+    if ("success" in secondResult) throw new Error("Expected TextMapResponse");
+    expect(secondResult).toHaveProperty("pageId", "text-page-A");
+    expect(secondResult).toHaveProperty("hasMore", true);
+    expect(secondResult).toHaveProperty("nextOffset", 4);
   });
 });

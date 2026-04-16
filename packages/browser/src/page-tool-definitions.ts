@@ -245,6 +245,14 @@ export function buildPageUnderstandingTools(
             type: "boolean",
             description: "I1-text: When true, scan text content for PII and replace with [REDACTED].",
           },
+          offset: {
+            type: "number",
+            description: "Pagination offset — 0-based index of first node to return (default: 0).",
+          },
+          limit: {
+            type: "number",
+            description: "Pagination limit — max nodes to return (default: effective cap = min(maxNodes ?? 200, 500)).",
+          },
         },
       },
       dangerLevel: "safe",

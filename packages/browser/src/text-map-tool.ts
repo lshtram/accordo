@@ -33,6 +33,7 @@ export const TEXT_MAP_TIMEOUT_MS = 10_000;
  * Input for `browser_get_text_map`.
  *
  * B2-TX-008: `maxSegments` caps the number of returned text segments.
+ * PAG-01: `offset` and `limit` enable incremental pagination.
  */
 export interface GetTextMapArgs {
   /** B2-CTX-001: Optional tab ID to target; omit for active tab */
@@ -47,6 +48,13 @@ export interface GetTextMapArgs {
   allowedOrigins?: string[];
   /** I2-001: Denied origins for this request. Overrides global policy. */
   deniedOrigins?: string[];
+
+  // ── Pagination (PAG-01) ─────────────────────────────────────────────────
+
+  /** Pagination offset — 0-based index of first segment to return (default: 0). */
+  offset?: number;
+  /** Pagination limit — max segments to return (default: effective cap = min(maxSegments ?? 500, 2000)). */
+  limit?: number;
 }
 
 // ── Tool Result Types ────────────────────────────────────────────────────────
@@ -87,6 +95,16 @@ export interface TextMapResponse extends SnapshotEnvelopeFields {
   redactionApplied?: boolean;
   /** Warning when PII may be present in response. MCP-VC-005. */
   redactionWarning?: string;
+
+  // ── Pagination (PAG-03..06) ─────────────────────────────────────────────────
+  // Present only when offset or limit is explicitly provided.
+
+  /** True if there are more segments beyond the returned slice. */
+  hasMore?: boolean;
+  /** Suggested offset for the next page (offset + segments.length). */
+  nextOffset?: number;
+  /** Total segments available for pagination (post-filter, post-cap, pre-slice). */
+  totalAvailable?: number;
 }
 
 /**
@@ -158,6 +176,14 @@ export function buildTextMapTool(
           items: { type: "string" },
           description: "Block data from these origins. Takes precedence over allowedOrigins.",
         },
+        offset: {
+          type: "number",
+          description: "Pagination offset — 0-based index of first segment to return (default: 0).",
+        },
+        limit: {
+          type: "number",
+          description: "Pagination limit — max segments to return (default: effective cap = min(maxSegments ?? 500, 2000)).",
+        },
       },
     },
     dangerLevel: "safe",
@@ -209,6 +235,29 @@ async function handleGetTextMap(
     return buildStructuredError("browser-not-connected") as TextMapToolError;
   }
 
+  // PAG-01: Apply pagination clamping before forwarding to relay.
+  // offset is clamped to >= 0.
+  // limit is clamped to >= 1 and <= effective cap (min(maxSegments ?? 500, 2000)).
+  const effectiveCap = Math.min(args.maxSegments ?? 500, 2000);
+  const clampedOffset = Math.max(0, args.offset ?? 0);
+  const clampedLimit = args.limit !== undefined
+    ? Math.min(Math.max(1, args.limit), effectiveCap)
+    : undefined;
+
+  // Build payload — only include offset/limit when explicitly provided by caller
+  const paginationArgsProvided = args.offset !== undefined || args.limit !== undefined;
+  const payload: Record<string, unknown> = { ...args };
+  if (args.offset !== undefined) {
+    payload.offset = clampedOffset;
+  } else {
+    delete payload.offset;
+  }
+  if (args.limit !== undefined) {
+    payload.limit = clampedLimit;
+  } else {
+    delete payload.limit;
+  }
+
   // F4: Create audit entry before relay call
   const auditEntry = security.auditLog.createEntry("accordo_browser_get_text_map", undefined, undefined);
   const startTime = Date.now();
@@ -216,7 +265,7 @@ async function handleGetTextMap(
   try {
     const response = await relay.request(
       "get_text_map",
-      args as Record<string, unknown>,
+      payload,
       TEXT_MAP_TIMEOUT_MS,
     );
 
@@ -260,7 +309,8 @@ async function handleGetTextMap(
       store.save(data.pageId, data as SnapshotEnvelopeFields);
     }
 
-    const result = data as TextMapResponse;
+    // Create a shallow copy BEFORE mutating to avoid mutating the original mock/data object
+    const result = { ...data } as TextMapResponse;
 
     // F2: Apply redaction if requested (fail-closed)
     if (args.redactPII) {
@@ -289,6 +339,25 @@ async function handleGetTextMap(
       redacted: !!(result as any).redactionApplied,
       durationMs: Date.now() - startTime,
     });
+
+    // PAG-03: Inject pagination metadata when offset or limit was explicitly provided.
+    if (paginationArgsProvided) {
+      const effectiveLimit = clampedLimit ?? effectiveCap;
+      const allSegments = result.segments;
+      const slicedSegments = allSegments.slice(clampedOffset, clampedOffset + effectiveLimit);
+      result.segments = slicedSegments;
+
+      const totalAvailable = result.truncated
+        ? Math.min(result.totalSegments, effectiveCap)
+        : result.totalSegments;
+      const hasMore = (clampedOffset + slicedSegments.length) < totalAvailable;
+      result.hasMore = hasMore;
+      result.totalAvailable = totalAvailable;
+      // PAG-04: Omit nextOffset when result is empty
+      if (slicedSegments.length > 0) {
+        result.nextOffset = clampedOffset + slicedSegments.length;
+      }
+    }
 
     // Return a shallow copy so subsequent calls don't overwrite auditId on the same object
     return { ...result };

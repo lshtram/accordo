@@ -30,6 +30,45 @@ import {
   parseOriginPolicy,
 } from "./relay-privacy.js";
 
+function clampOffsetLimit(
+  payload: Record<string, unknown>,
+  defaultCap: number,
+  maxCap: number,
+  userCapField?: "maxNodes" | "maxSegments",
+): { offset: number; limit: number; hasPagination: boolean } {
+  const hasPagination = payload.offset !== undefined || payload.limit !== undefined;
+  const userCapRaw = userCapField ? payload[userCapField] : undefined;
+  const userCap = typeof userCapRaw === "number" ? userCapRaw : defaultCap;
+  const effectiveCap = Math.min(userCap, maxCap);
+  const offset = Math.max(0, typeof payload.offset === "number" ? payload.offset : 0);
+  const limit = typeof payload.limit === "number"
+    ? Math.min(Math.max(1, payload.limit), effectiveCap)
+    : effectiveCap;
+  return { offset, limit, hasPagination };
+}
+
+function appendPaginationMetadata(
+  data: Record<string, unknown>,
+  opts: {
+    itemsKey: "nodes" | "segments";
+    totalAvailable: number;
+    offset: number;
+    limit: number;
+  },
+): void {
+  const rawItems = data[opts.itemsKey];
+  const items = Array.isArray(rawItems) ? rawItems : [];
+  const sliced = items.slice(opts.offset, opts.offset + opts.limit);
+  data[opts.itemsKey] = sliced;
+
+  const nextOffset = opts.offset + sliced.length;
+  data.hasMore = nextOffset < opts.totalAvailable;
+  data.totalAvailable = opts.totalAvailable;
+  if (sliced.length > 0) {
+    data.nextOffset = nextOffset;
+  }
+}
+
 // ── Shared forwarding helper ─────────────────────────────────────────────────
 
 /**
@@ -430,6 +469,20 @@ export async function handleGetPageMap(
       piercesShadow: typeof p.piercesShadow === "boolean" ? p.piercesShadow : undefined,
       traverseFrames: typeof p.traverseFrames === "boolean" ? p.traverseFrames : undefined,
     });
+
+    const pagination = clampOffsetLimit(p as Record<string, unknown>, 200, 500, "maxNodes");
+    if (pagination.hasPagination) {
+      const totalAvailable = typeof result.filterSummary?.totalAfterFilter === "number"
+        ? result.filterSummary.totalAfterFilter
+        : result.totalElements;
+      appendPaginationMetadata(result as unknown as Record<string, unknown>, {
+        itemsKey: "nodes",
+        totalAvailable,
+        offset: pagination.offset,
+        limit: pagination.limit,
+      });
+    }
+
     if (isVersionedSnapshot(result)) {
       await defaultStore.save(result.pageId, result);
     }
@@ -673,9 +726,21 @@ export async function handleGetTextMap(
     ? async (): Promise<unknown> => {
         const { collectTextMap } = await import("./content/text-map-collector.js");
         const p = request.payload;
-        return collectTextMap({
+        const result = collectTextMap({
           maxSegments: typeof p.maxSegments === "number" ? p.maxSegments : undefined,
         });
+
+        const pagination = clampOffsetLimit(p as Record<string, unknown>, 500, 2000, "maxSegments");
+        if (pagination.hasPagination) {
+          appendPaginationMetadata(result as unknown as Record<string, unknown>, {
+            itemsKey: "segments",
+            totalAvailable: result.totalSegments,
+            offset: pagination.offset,
+            limit: pagination.limit,
+          });
+        }
+
+        return result;
       }
     : null;
   return handlePageUnderstandingAction(request, localHandler, /* saveToStore */ false);

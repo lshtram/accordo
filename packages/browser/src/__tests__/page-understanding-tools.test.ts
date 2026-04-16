@@ -1836,3 +1836,663 @@ describe("B2-CTX-001: all existing tool handlers forward tabId in relay payload 
     );
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Incremental Pagination — get_page_map (offset + limit)
+// Approved design: add optional offset/limit to tool args; return hasMore,
+// nextOffset, totalAvailable when offset or limit is explicitly provided.
+// Pagination is stateless offset+limit bounded by collector caps (maxNodes=500).
+// ════════════════════════════════════════════════════════════════════════════════
+
+describe("Incremental Pagination — get_page_map schema (offset + limit args)", () => {
+  /**
+   * PAG-01: get_page_map tool schema accepts optional offset parameter.
+   */
+  it("PAG-01: browser_get_page_map tool accepts offset?: number in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
+    expect(pageMapTool?.inputSchema.properties).toHaveProperty("offset");
+    expect(pageMapTool?.inputSchema.properties.offset.type).toBe("number");
+  });
+
+  /**
+   * PAG-01: get_page_map tool schema accepts optional limit parameter.
+   */
+  it("PAG-01: browser_get_page_map tool accepts limit?: number in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
+    expect(pageMapTool?.inputSchema.properties).toHaveProperty("limit");
+    expect(pageMapTool?.inputSchema.properties.limit.type).toBe("number");
+  });
+
+  /**
+   * PAG-01: offset and limit are both optional (no 'required' entry).
+   */
+  it("PAG-01: offset and limit are not required — pagination is purely opt-in", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const pageMapTool = tools.find((t) => t.name === "accordo_browser_get_page_map");
+    const required = pageMapTool?.inputSchema.required ?? [];
+    expect(required).not.toContain("offset");
+    expect(required).not.toContain("limit");
+  });
+});
+
+describe("Incremental Pagination — get_page_map handler behavior", () => {
+  /**
+   * PAG-02: offset is forwarded to relay when provided.
+   */
+  it("PAG-02: handleGetPageMap forwards offset to relay.request payload", async () => {
+    const relay = createMockRelay();
+    await handleGetPageMap(relay, { offset: 100 }, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ offset: 100 }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * PAG-02: limit is forwarded to relay when provided.
+   */
+  it("PAG-02: handleGetPageMap forwards limit to relay.request payload", async () => {
+    const relay = createMockRelay();
+    await handleGetPageMap(relay, { limit: 50 }, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ limit: 50 }),
+      expect.any(Number),
+    );
+  });
+
+  /**
+   * PAG-02: Both offset and limit are forwarded simultaneously.
+   */
+  it("PAG-02: handleGetPageMap forwards both offset and limit together", async () => {
+    const relay = createMockRelay();
+    await handleGetPageMap(relay, { offset: 200, limit: 100 }, noopStore);
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_page_map",
+      expect.objectContaining({ offset: 200, limit: 100 }),
+      expect.any(Number),
+    );
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Incremental Pagination — get_page_map BLACK-BOX CLAMPING TESTS
+//
+// PAG-CLAMP-01: offset < 0  →  behaves identically to offset = 0
+// PAG-CLAMP-02: limit  < 1  →  behaves identically to limit  = 1
+// PAG-CLAMP-03: limit  > effectiveCap  →  behaves identically to limit = effectiveCap
+//
+// Effective cap for get_page_map = min(maxNodes ?? 200, 500).
+// Default effective cap = 200.
+//
+// Strategy: call handler with (invalid value) and (its clamped equivalent).
+// Both calls MUST produce identical observable outputs (nodes, hasMore,
+// nextOffset, totalAvailable, no error).  This is a black-box equivalence
+// test — we do NOT inspect what the handler forwarded to the relay.
+// ════════════════════════════════════════════════════════════════════════════════
+
+describe("Incremental Pagination — get_page_map clamping (PAG-CLAMP-01..03)", () => {
+  // Shared base fixture — 10 total nodes, paginated.
+  function makePageData(nodes: { uid: string }[]) {
+    return {
+      pageId: "mock-page-001",
+      frameId: "main",
+      snapshotId: "mock-page-001:1",
+      capturedAt: "2025-01-01T00:00:00.000Z",
+      viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom" as const,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      nodes,
+      totalElements: 10,
+      depth: 1,
+      truncated: false,
+    };
+  }
+
+  // ── PAG-CLAMP-01: offset < 0 behaves the same as offset = 0 ─────────────
+  //
+  // Use a SINGLE relay mock that reads the CURRENT call's args (calls.length - 1).
+  // Use a fixture of 5+ ordered nodes with limit=2 so offset=-5 produces a
+  // clearly different slice than offset=0 when NOT clamped.
+  //
+  // Without clamping: offset=-5 → collector receives -5 → returns fewer nodes (1) — test FAILS
+  // With clamping:    offset=-5 → clamped to 0 → collector returns 2 nodes — test PASSES
+
+  it("PAG-CLAMP-01: offset=-5 produces identical output to offset=0", async () => {
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        const calls = vi.mocked(relay.request).mock.calls as unknown[][];
+        const callArgs = (calls[calls.length - 1] ?? []) as unknown[];
+        const payload = callArgs[1] as Record<string, unknown>;
+        const offset = (payload?.offset as number) ?? 0;
+
+        if (offset < 0) {
+          // Unclamped negative offset — collector cannot serve negative index → fewer nodes
+          return { success: true, requestId: "test", data: makePageData([{ uid: "n0" }]) };
+        }
+        // Valid offset (or clamped-to-0) — collector returns 2 nodes (capped by limit=2)
+        return { success: true, requestId: "test", data: makePageData([{ uid: "n0" }, { uid: "n1" }, { uid: "n2" }, { uid: "n3" }, { uid: "n4" }]) };
+      }),
+      isConnected: vi.fn(() => true),
+    };
+
+    const resultAt0 = await handleGetPageMap(relay, { offset: 0, limit: 2 }, noopStore);
+    const resultAtNeg = await handleGetPageMap(relay, { offset: -5, limit: 2 }, noopStore);
+
+    if ("success" in resultAt0) throw new Error("Expected PageMapResponse");
+    if ("success" in resultAtNeg) throw new Error("Expected PageMapResponse");
+
+    expect((resultAtNeg as PageMapResponse).nodes.length).toEqual((resultAt0 as PageMapResponse).nodes.length);
+    expect((resultAtNeg as PageMapResponse).totalElements).toEqual((resultAt0 as PageMapResponse).totalElements);
+    expect((resultAtNeg as PageMapResponse).truncated).toEqual((resultAt0 as PageMapResponse).truncated);
+  });
+
+  it("PAG-CLAMP-01: offset=-1 produces identical output to offset=0 (boundary)", async () => {
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        const calls = vi.mocked(relay.request).mock.calls as unknown[][];
+        const callArgs = (calls[calls.length - 1] ?? []) as unknown[];
+        const payload = callArgs[1] as Record<string, unknown>;
+        const offset = (payload?.offset as number) ?? 0;
+
+        if (offset < 0) {
+          return { success: true, requestId: "test", data: makePageData([{ uid: "n0" }]) };
+        }
+        return { success: true, requestId: "test", data: makePageData([{ uid: "n0" }, { uid: "n1" }, { uid: "n2" }, { uid: "n3" }, { uid: "n4" }]) };
+      }),
+      isConnected: vi.fn(() => true),
+    };
+
+    const resultAt0 = await handleGetPageMap(relay, { offset: 0, limit: 2 }, noopStore);
+    const resultAtNeg = await handleGetPageMap(relay, { offset: -1, limit: 2 }, noopStore);
+
+    if ("success" in resultAt0) throw new Error("Expected PageMapResponse");
+    if ("success" in resultAtNeg) throw new Error("Expected PageMapResponse");
+
+    expect((resultAtNeg as PageMapResponse).nodes.length).toEqual((resultAt0 as PageMapResponse).nodes.length);
+    expect((resultAtNeg as PageMapResponse).totalElements).toEqual((resultAt0 as PageMapResponse).totalElements);
+  });
+
+  // ── PAG-CLAMP-02: limit < 1 behaves the same as limit = 1 ──────────────
+  //
+  // Single shared relay that reads the CURRENT call's limit.
+  // Without clamping: limit=0 → collector gets 0 → returns 0 nodes — test FAILS
+  // With clamping:    limit=0 → clamped to 1 → collector gets 1 → 1 node — test PASSES
+
+  it("PAG-CLAMP-02: limit=0 produces identical output to limit=1", async () => {
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        const calls = vi.mocked(relay.request).mock.calls as unknown[][];
+        const callArgs = (calls[calls.length - 1] ?? []) as unknown[];
+        const payload = callArgs[1] as Record<string, unknown>;
+        const limit = (payload?.limit as number) ?? 1;
+
+        if (limit < 1) {
+          return { success: true, requestId: "test", data: makePageData([]) };
+        }
+        return { success: true, requestId: "test", data: makePageData([{ uid: "n0" }]) };
+      }),
+      isConnected: vi.fn(() => true),
+    };
+
+    const resultAt1 = await handleGetPageMap(relay, { offset: 0, limit: 1 }, noopStore);
+    const resultAt0 = await handleGetPageMap(relay, { offset: 0, limit: 0 }, noopStore);
+
+    if ("success" in resultAt1) throw new Error("Expected PageMapResponse");
+    if ("success" in resultAt0) throw new Error("Expected PageMapResponse");
+
+    expect((resultAt0 as PageMapResponse).nodes.length).toEqual((resultAt1 as PageMapResponse).nodes.length);
+    expect((resultAt0 as PageMapResponse).totalElements).toEqual((resultAt1 as PageMapResponse).totalElements);
+  });
+
+  it("PAG-CLAMP-02: negative limit=-3 produces identical output to limit=1 (boundary)", async () => {
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        const calls = vi.mocked(relay.request).mock.calls as unknown[][];
+        const callArgs = (calls[calls.length - 1] ?? []) as unknown[];
+        const payload = callArgs[1] as Record<string, unknown>;
+        const limit = (payload?.limit as number) ?? 1;
+
+        if (limit < 1) {
+          return { success: true, requestId: "test", data: makePageData([]) };
+        }
+        return { success: true, requestId: "test", data: makePageData([{ uid: "n0" }]) };
+      }),
+      isConnected: vi.fn(() => true),
+    };
+
+    const resultAt1 = await handleGetPageMap(relay, { offset: 0, limit: 1 }, noopStore);
+    const resultAtNeg = await handleGetPageMap(relay, { offset: 0, limit: -3 }, noopStore);
+
+    if ("success" in resultAt1) throw new Error("Expected PageMapResponse");
+    if ("success" in resultAtNeg) throw new Error("Expected PageMapResponse");
+
+    expect((resultAtNeg as PageMapResponse).nodes.length).toEqual((resultAt1 as PageMapResponse).nodes.length);
+    expect((resultAtNeg as PageMapResponse).totalElements).toEqual((resultAt1 as PageMapResponse).totalElements);
+  });
+
+  // ── PAG-CLAMP-03: limit > effectiveCap behaves the same as limit = effectiveCap ─
+  //
+  // Single shared relay that reads the CURRENT call's limit.
+  // Without clamping: limit=10000 → collector gets 10000 → returns 3 nodes — test FAILS
+  // With clamping:    limit=10000 → clamped to 200 → collector gets 200 → 5 nodes — test PASSES
+
+  it("PAG-CLAMP-03: limit=10000 produces identical output to limit=200 (effective cap = 200)", async () => {
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        const calls = vi.mocked(relay.request).mock.calls as unknown[][];
+        const callArgs = (calls[calls.length - 1] ?? []) as unknown[];
+        const payload = callArgs[1] as Record<string, unknown>;
+        const limit = (payload?.limit as number) ?? 200;
+
+        if (limit > 200) {
+          return { success: true, requestId: "test", data: makePageData(Array.from({ length: 3 }, (_, i) => ({ uid: `n${i}` }))) };
+        }
+        return { success: true, requestId: "test", data: makePageData(Array.from({ length: 5 }, (_, i) => ({ uid: `n${i}` }))) };
+      }),
+      isConnected: vi.fn(() => true),
+    };
+
+    const resultAtCap  = await handleGetPageMap(relay, { offset: 0, limit: 200 }, noopStore);
+    const resultAtOver = await handleGetPageMap(relay, { offset: 0, limit: 10000 }, noopStore);
+
+    if ("success" in resultAtCap) throw new Error("Expected PageMapResponse");
+    if ("success" in resultAtOver) throw new Error("Expected PageMapResponse");
+
+    expect((resultAtOver as PageMapResponse).nodes.length).toEqual((resultAtCap as PageMapResponse).nodes.length);
+    expect((resultAtOver as PageMapResponse).totalElements).toEqual((resultAtCap as PageMapResponse).totalElements);
+    expect((resultAtOver as PageMapResponse).truncated).toEqual((resultAtCap as PageMapResponse).truncated);
+  });
+
+  it("PAG-CLAMP-03: limit=600 with maxNodes=800 produces identical output to limit=500", async () => {
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        const calls = vi.mocked(relay.request).mock.calls as unknown[][];
+        const callArgs = (calls[calls.length - 1] ?? []) as unknown[];
+        const payload = callArgs[1] as Record<string, unknown>;
+        const limit = (payload?.limit as number) ?? 500;
+
+        if (limit > 500) {
+          return { success: true, requestId: "test", data: makePageData(Array.from({ length: 2 }, (_, i) => ({ uid: `n${i}` }))) };
+        }
+        return { success: true, requestId: "test", data: makePageData(Array.from({ length: 5 }, (_, i) => ({ uid: `n${i}` }))) };
+      }),
+      isConnected: vi.fn(() => true),
+    };
+
+    const resultAt500 = await handleGetPageMap(relay, { offset: 0, limit: 500, maxNodes: 800 }, noopStore);
+    const resultAt600 = await handleGetPageMap(relay, { offset: 0, limit: 600, maxNodes: 800 }, noopStore);
+
+    if ("success" in resultAt500) throw new Error("Expected PageMapResponse");
+    if ("success" in resultAt600) throw new Error("Expected PageMapResponse");
+
+    expect((resultAt600 as PageMapResponse).nodes.length).toEqual((resultAt500 as PageMapResponse).nodes.length);
+    expect((resultAt600 as PageMapResponse).totalElements).toEqual((resultAt500 as PageMapResponse).totalElements);
+  });
+
+  it("PAG-CLAMP-03: limit=200 (at effective cap) passes through unchanged — no error produced", async () => {
+    const dataAt200 = makePageData(Array.from({ length: 5 }, (_, i) => ({ uid: `n${i}` })));
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: true, requestId: "test", data: dataAt200 }),
+      isConnected: vi.fn(() => true),
+    };
+
+    const result = await handleGetPageMap(relay, { offset: 0, limit: 200 }, noopStore);
+
+    if ("success" in result) throw new Error("Expected PageMapResponse");
+    expect((result as PageMapResponse).nodes.length).toBe(5);
+    expect((result as PageMapResponse).truncated).toBe(false);
+  });
+});
+
+describe("Incremental Pagination — get_page_map response metadata", () => {
+  it("PAG-03: handler applies offset/limit slice when relay returns unsliced nodes", async () => {
+    const relayData = {
+      pageId: "mock-page-001",
+      frameId: "main",
+      snapshotId: "mock-page-001:1",
+      capturedAt: "2025-01-01T00:00:00.000Z",
+      viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom" as const,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      // Relay returns unsliced data (full page)
+      nodes: Array.from({ length: 10 }, (_, i) => ({ uid: `n${i}` })),
+      totalElements: 10,
+      depth: 1,
+      truncated: false,
+    };
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: true, requestId: "test", data: relayData }),
+      isConnected: vi.fn(() => true),
+    };
+
+    const result = await handleGetPageMap(relay, { offset: 2, limit: 3 }, noopStore);
+
+    expect(result.nodes).toHaveLength(3);
+    expect(result.nodes.map((n: { uid: string }) => n.uid)).toEqual(["n2", "n3", "n4"]);
+    expect(result).toHaveProperty("nextOffset", 5);
+  });
+
+  /**
+   * PAG-03: When offset AND limit are explicitly provided together,
+   * response includes hasMore, nextOffset, totalAvailable.
+   * The handler injects these (or the relay provides them — either satisfies the contract).
+   */
+  it("PAG-03: with offset+limit, result includes hasMore, nextOffset, totalAvailable", async () => {
+    const plainData = {
+      pageId: "mock-page-001",
+      frameId: "main",
+      snapshotId: "mock-page-001:1",
+      capturedAt: "2025-01-01T00:00:00.000Z",
+      viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom" as const,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      nodes: [{ uid: "n0" }, { uid: "n1" }, { uid: "n2" }, { uid: "n3" }, { uid: "n4" }],
+      totalElements: 10,
+      depth: 1,
+      truncated: false,
+      // intentionally NO hasMore, nextOffset, totalAvailable
+    };
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: true, requestId: "test", data: plainData }),
+      isConnected: vi.fn(() => true),
+    };
+    const result = await handleGetPageMap(relay, { offset: 0, limit: 5 }, noopStore);
+
+    // PAG-03: Pagination metadata must be present when offset+limit are used
+    expect(result).toHaveProperty("hasMore", true);
+    expect(result).toHaveProperty("nextOffset", 5);
+    expect(result).toHaveProperty("totalAvailable", 10);
+  });
+
+  /**
+   * PAG-03 regression (live relay): when filters are active, totalAvailable/hasMore
+   * must be based on the post-filter total, not totalElements (pre-filter DOM total).
+   */
+  it("PAG-03 regression: page_map metadata uses filterSummary.totalAfterFilter when present", async () => {
+    const filteredData = {
+      pageId: "mock-page-001",
+      frameId: "main",
+      snapshotId: "mock-page-001:1",
+      capturedAt: "2025-01-01T00:00:00.000Z",
+      viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom" as const,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      nodes: Array.from({ length: 92 }, (_, i) => ({ uid: `n${i}` })),
+      totalElements: 1258,
+      depth: 1,
+      truncated: false,
+      filterSummary: {
+        activeFilters: ["interactiveOnly"],
+        totalBeforeFilter: 618,
+        totalAfterFilter: 92,
+        reductionRatio: 0.85,
+      },
+    };
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: true, requestId: "test", data: filteredData }),
+      isConnected: vi.fn(() => true),
+    };
+
+    const result = await handleGetPageMap(relay, { interactiveOnly: true, offset: 0, limit: 5 }, noopStore);
+
+    expect(result.nodes).toHaveLength(5);
+    expect(result).toHaveProperty("totalAvailable", 92);
+    expect(result).toHaveProperty("hasMore", true);
+    expect(result).toHaveProperty("nextOffset", 5);
+  });
+
+  /**
+   * PAG-03: offset alone (no limit) also triggers pagination metadata.
+   * limit defaults to effective cap (maxNodes) when omitted.
+   */
+  it("PAG-03: offset alone (no limit) triggers pagination metadata", async () => {
+    const plainData = {
+      pageId: "mock-page-001",
+      frameId: "main",
+      snapshotId: "mock-page-001:1",
+      capturedAt: "2025-01-01T00:00:00.000Z",
+      viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom" as const,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      nodes: Array.from({ length: 200 }, (_, i) => ({ uid: `n${i}` })),
+      totalElements: 200,
+      depth: 1,
+      truncated: false,
+      // intentionally NO pagination metadata
+    };
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: true, requestId: "test", data: plainData }),
+      isConnected: vi.fn(() => true),
+    };
+    const result = await handleGetPageMap(relay, { offset: 0 }, noopStore);
+
+    // PAG-03: Metadata required when offset is provided, regardless of limit
+    expect(result).toHaveProperty("hasMore", expect.any(Boolean));
+    expect(result).toHaveProperty("nextOffset", expect.any(Number));
+    expect(result).toHaveProperty("totalAvailable", expect.any(Number));
+  });
+
+  /**
+   * PAG-03: limit alone (no offset) also triggers pagination metadata.
+   * offset defaults to 0 when omitted.
+   */
+  it("PAG-03: limit alone (no offset) triggers pagination metadata", async () => {
+    const plainData = {
+      pageId: "mock-page-001",
+      frameId: "main",
+      snapshotId: "mock-page-001:1",
+      capturedAt: "2025-01-01T00:00:00.000Z",
+      viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom" as const,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      nodes: [{ uid: "n0" }],
+      totalElements: 100,
+      depth: 1,
+      truncated: false,
+      // intentionally NO pagination metadata
+    };
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: true, requestId: "test", data: plainData }),
+      isConnected: vi.fn(() => true),
+    };
+    const result = await handleGetPageMap(relay, { limit: 10 }, noopStore);
+
+    // PAG-03: Metadata required when limit is provided, regardless of offset
+    expect(result).toHaveProperty("hasMore", expect.any(Boolean));
+    expect(result).toHaveProperty("nextOffset", expect.any(Number));
+    expect(result).toHaveProperty("totalAvailable", expect.any(Number));
+  });
+
+  /**
+   * PAG-03: Without offset AND limit, pagination metadata must NOT be present.
+   */
+  it("PAG-03: without offset/limit, pagination metadata is absent from result", async () => {
+    const relay = createMockRelay();
+    const result = await handleGetPageMap(relay, { maxDepth: 4 }, noopStore);
+    expect((result as Record<string, unknown>).hasMore).toBeUndefined();
+    expect((result as Record<string, unknown>).nextOffset).toBeUndefined();
+    expect((result as Record<string, unknown>).totalAvailable).toBeUndefined();
+  });
+
+  /**
+   * PAG-04: offset beyond totalAvailable returns empty nodes,
+   * hasMore=false, and nextOffset omitted.
+   */
+  it("PAG-04: offset beyond totalAvailable returns empty nodes, hasMore=false, nextOffset omitted", async () => {
+    const beyondData = {
+      pageId: "mock-page-001",
+      frameId: "main",
+      snapshotId: "mock-page-001:1",
+      capturedAt: "2025-01-01T00:00:00.000Z",
+      viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom" as const,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      nodes: [],
+      totalElements: 0,
+      depth: 0,
+      truncated: false,
+      // intentionally NO pagination metadata
+    };
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: true, requestId: "test", data: beyondData }),
+      isConnected: vi.fn(() => true),
+    };
+    const result = await handleGetPageMap(relay, { offset: 100, limit: 10 }, noopStore);
+
+    expect(result.nodes).toHaveLength(0);
+    expect(result).toHaveProperty("hasMore", false);
+    expect((result as Record<string, unknown>).nextOffset).toBeUndefined();
+  });
+
+  /**
+   * PAG-05: truncated:true means collector hit its cap; hasMore=false.
+   * The cap is maxNodes=500 for page-map. The fixture uses 600 total elements
+   * with offset=400 + limit=200 — collector stops at cap=500, returns 100 nodes,
+   * truncated=true.
+   */
+  it("PAG-05: truncated:true from cap hit means hasMore=false in response", async () => {
+    const cappedData = {
+      pageId: "mock-page-001",
+      frameId: "main",
+      snapshotId: "mock-page-001:1",
+      capturedAt: "2025-01-01T00:00:00.000Z",
+      viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom" as const,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      // 100 nodes returned (offset 400–500), but cap hit means no more beyond this
+      nodes: Array.from({ length: 100 }, (_, i) => ({ uid: `n${400 + i}` })),
+      totalElements: 600,
+      depth: 1,
+      truncated: true,
+      // intentionally NO pagination metadata
+    };
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: true, requestId: "test", data: cappedData }),
+      isConnected: vi.fn(() => true),
+    };
+    const result = await handleGetPageMap(relay, { offset: 400, limit: 200 }, noopStore);
+
+    expect(result).toHaveProperty("truncated", true);
+    expect(result).toHaveProperty("hasMore", false);
+    // Non-trivial: returned node count is strictly less than limit due to cap
+    expect(result.nodes.length).toBeLessThan(200);
+  });
+
+  /**
+   * PAG-05-EFFCAP: User-provided maxNodes lower than global cap (500).
+   * The effective cap is min(maxNodes, 500). Pagination cannot exceed this.
+   * Fixture: page has 1000 total, user sets maxNodes=100, requesting offset=0, limit=200.
+   * Effective cap is 100 — collector returns 100 nodes, truncated=true.
+   */
+  it("PAG-05-EFFCAP: user maxNodes below global cap becomes the effective cap", async () => {
+    const effCapData = {
+      pageId: "mock-page-001",
+      frameId: "main",
+      snapshotId: "mock-page-001:1",
+      capturedAt: "2025-01-01T00:00:00.000Z",
+      viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom" as const,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      // 100 nodes returned (maxNodes cap of 100), not 200
+      nodes: Array.from({ length: 100 }, (_, i) => ({ uid: `n${i}` })),
+      totalElements: 1000,
+      depth: 1,
+      truncated: true,
+      // intentionally NO pagination metadata
+    };
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: true, requestId: "test", data: effCapData }),
+      isConnected: vi.fn(() => true),
+    };
+    // User wants 200 but maxNodes=100 clamps the effective cap to 100
+    const result = await handleGetPageMap(relay, { offset: 0, limit: 200, maxNodes: 100 }, noopStore);
+
+    // Non-trivial: exactly 100 nodes returned (maxNodes cap), not 200
+    expect(result.nodes.length).toBe(100);
+    expect(result).toHaveProperty("truncated", true);
+    expect(result).toHaveProperty("hasMore", false);
+  });
+
+  /**
+   * PAG-06: Pagination coherence uses pageId, not snapshotId.
+   * The relay provides sequential pagination metadata — handler passes it through.
+   * Same pageId with different snapshotId must return consistent pagination slices.
+   */
+  it("PAG-06: pagination uses pageId coherence — two calls with same pageId return consistent slices", async () => {
+    // First page: offset=0, limit=2 → nextOffset=2, hasMore=true
+    const firstPageData = {
+      pageId: "page-A",
+      frameId: "main",
+      snapshotId: "page-A:1",
+      capturedAt: "2025-01-01T00:00:00.000Z",
+      viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom" as const,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      nodes: [{ uid: "n0" }, { uid: "n1" }],
+      totalElements: 10,
+      depth: 1,
+      truncated: false,
+      hasMore: true,
+      nextOffset: 2,
+      totalAvailable: 10,
+    };
+    // Second page: offset=2, limit=2 → relay computes nextOffset=4, hasMore=true
+    const secondPageData = {
+      pageId: "page-A",
+      frameId: "main",
+      snapshotId: "page-A:2", // different snapshot — DOM drift accepted
+      capturedAt: "2025-01-01T00:00:01.000Z",
+      viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom" as const,
+      pageUrl: "https://example.com/page",
+      title: "Example Page",
+      nodes: [{ uid: "n2" }, { uid: "n3" }],
+      totalElements: 10,
+      depth: 1,
+      truncated: false,
+      hasMore: true,
+      nextOffset: 4, // sequential from relay
+      totalAvailable: 10,
+    };
+
+    let callCount = 0;
+    const relay = {
+      request: vi.fn().mockImplementation(async () => {
+        callCount++;
+        return {
+          success: true,
+          requestId: "test",
+          data: callCount === 1 ? firstPageData : secondPageData,
+        };
+      }),
+      isConnected: vi.fn(() => true),
+    };
+
+    const firstResult = await handleGetPageMap(relay, { offset: 0, limit: 2, tabId: 1 }, noopStore);
+    expect(firstResult).toHaveProperty("pageId", "page-A");
+    expect(firstResult).toHaveProperty("hasMore", true);
+    expect(firstResult).toHaveProperty("nextOffset", 2);
+
+    const secondResult = await handleGetPageMap(relay, { offset: 2, limit: 2, tabId: 1 }, noopStore);
+    expect(secondResult).toHaveProperty("pageId", "page-A");
+    expect(secondResult).toHaveProperty("hasMore", true);
+    expect(secondResult).toHaveProperty("nextOffset", 4);
+  });
+});

@@ -26,6 +26,13 @@ export interface GetPageMapArgs {
   /** Filter to only visible elements in current viewport (default: false) */
   viewportOnly?: boolean;
 
+  // ── Pagination (PAG-01) ─────────────────────────────────────────────────
+
+  /** Pagination offset — 0-based index of first node to return (default: 0). */
+  offset?: number;
+  /** Pagination limit — maximum nodes to return (default: effective cap = min(maxNodes ?? 200, 500)). */
+  limit?: number;
+
   // ── M102-FILT: Server-Side Filter Parameters (B2-FI-001..008) ──────────
 
   /**
@@ -198,6 +205,13 @@ export interface GetTextMapArgs {
   allowedOrigins?: string[];
   /** I2-001: Denied origins for this request. Overrides global policy. */
   deniedOrigins?: string[];
+
+  // ── Pagination (PAG-01) ─────────────────────────────────────────────────
+
+  /** Pagination offset — 0-based index of first segment to return (default: 0). */
+  offset?: number;
+  /** Pagination limit — max segments to return (default: effective cap = min(maxSegments ?? 500, 2000)). */
+  limit?: number;
 }
 
 /** Input for browser_get_semantic_graph (inlined for multi-tab support) */
@@ -273,6 +287,16 @@ export interface PageMapResponse extends SnapshotEnvelopeFields {
   redactionApplied?: boolean;
   /** Warning when PII may be present in response. MCP-VC-005. */
   redactionWarning?: string;
+
+  // ── Pagination (PAG-03..06) ─────────────────────────────────────────────────
+  // Present only when offset or limit is explicitly provided.
+
+  /** True if there are more nodes beyond the returned slice. */
+  hasMore?: boolean;
+  /** Suggested offset for the next page (offset + nodes.length). */
+  nextOffset?: number;
+  /** Total nodes available for pagination (post-filter, post-cap, pre-slice). */
+  totalAvailable?: number;
 }
 
 /**

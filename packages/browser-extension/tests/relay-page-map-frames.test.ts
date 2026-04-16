@@ -631,6 +631,104 @@ describe("Feature 12: iframe-cross-origin contract for frameId-targeted requests
     expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
   });
 
+  it("PAG-03 passthrough: get_page_map preserves content-script response when metadata is omitted", async () => {
+    const request = {
+      requestId: "pag-page-1",
+      action: "get_page_map" as const,
+      payload: { tabId: 1, interactiveOnly: true, offset: 0, limit: 5 },
+    };
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        return {
+          data: {
+            pageId: "p1",
+            frameId: "main",
+            snapshotId: "p1:1",
+            capturedAt: "2025-01-01T00:00:00Z",
+            viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+            source: "dom",
+            pageUrl: "https://example.com/parent",
+            title: "Parent",
+            nodes: Array.from({ length: 92 }, (_, i) => ({ uid: `n${i}` })),
+            totalElements: 1258,
+            truncated: false,
+            filterSummary: {
+              activeFilters: ["interactiveOnly"],
+              totalBeforeFilter: 618,
+              totalAfterFilter: 92,
+              reductionRatio: 0.85,
+            },
+          },
+        };
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleGetPageMap } = await import("../src/relay-page-handlers.js");
+      response = await handleGetPageMap(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("nodes");
+    expect((response.data as { nodes: unknown[] }).nodes).toHaveLength(92);
+    expect((response.data as Record<string, unknown>).hasMore).toBeUndefined();
+    expect((response.data as Record<string, unknown>).totalAvailable).toBeUndefined();
+    expect((response.data as Record<string, unknown>).nextOffset).toBeUndefined();
+  });
+
+  it("PAG-03 passthrough: get_text_map preserves content-script response when metadata is omitted", async () => {
+    const request = {
+      requestId: "pag-text-1",
+      action: "get_text_map" as const,
+      payload: { tabId: 1, maxSegments: 50, offset: 0, limit: 10 },
+    };
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        return {
+          data: {
+            pageId: "p1",
+            frameId: "main",
+            snapshotId: "p1:1",
+            capturedAt: "2025-01-01T00:00:00Z",
+            viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+            source: "dom",
+            pageUrl: "https://example.com/parent",
+            title: "Parent",
+            segments: Array.from({ length: 50 }, (_, i) => ({ text: `seg${i}` })),
+            totalSegments: 675,
+            truncated: true,
+          },
+        };
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleGetTextMap } = await import("../src/relay-page-handlers.js");
+      response = await handleGetTextMap(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("segments");
+    expect((response.data as { segments: unknown[] }).segments).toHaveLength(50);
+    expect((response.data as Record<string, unknown>).hasMore).toBeUndefined();
+    expect((response.data as Record<string, unknown>).totalAvailable).toBeUndefined();
+    expect((response.data as Record<string, unknown>).nextOffset).toBeUndefined();
+  });
+
   /**
    * F12: get_dom_excerpt with cross-origin frameId returns iframe-cross-origin error.
    */

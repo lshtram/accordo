@@ -91,12 +91,35 @@ export async function handleGetPageMap(
 
   const tabId = args.tabId ? String(args.tabId) : "main";
 
+  // PAG-01: Apply pagination clamping before forwarding to relay.
+  // offset is clamped to >= 0.
+  // limit is clamped to >= 1 and <= effective cap (min(maxNodes ?? 200, 500)).
+  const effectiveCap = Math.min(args.maxNodes ?? 200, 500);
+  const clampedOffset = Math.max(0, args.offset ?? 0);
+  const clampedLimit = args.limit !== undefined
+    ? Math.min(Math.max(1, args.limit), effectiveCap)
+    : undefined;
+
+  // Build payload — only include offset/limit when explicitly provided by caller
+  const paginationArgsProvided = args.offset !== undefined || args.limit !== undefined;
+  const payload: Record<string, unknown> = { ...args };
+  if (args.offset !== undefined) {
+    payload.offset = clampedOffset;
+  } else {
+    delete payload.offset;
+  }
+  if (args.limit !== undefined) {
+    payload.limit = clampedLimit;
+  } else {
+    delete payload.limit;
+  }
+
   // F4: Create audit entry (start early; origin field may be updated after relay)
   const auditEntry = security.auditLog.createEntry("accordo_browser_get_page_map", undefined, undefined);
   const startTime = Date.now();
 
   try {
-    const response = await relay.request("get_page_map", args as Record<string, unknown>, PAGE_MAP_TIMEOUT_MS);
+    const response = await relay.request("get_page_map", payload, PAGE_MAP_TIMEOUT_MS);
     if (
       response.success &&
       response.data &&
@@ -123,7 +146,8 @@ export async function handleGetPageMap(
       }
 
       store.save(response.data.pageId, response.data);
-      const result = response.data as PageMapResponse;
+      // Create a shallow copy BEFORE mutating to avoid mutating the original mock/data object
+      const result = { ...response.data } as PageMapResponse;
       // F4: Add auditId to response
       result.auditId = auditEntry.auditId;
 
@@ -157,6 +181,29 @@ export async function handleGetPageMap(
         redacted: !!(result as any).redactionApplied,
         durationMs: Date.now() - startTime,
       });
+
+      // PAG-03: Inject pagination metadata when offset or limit was explicitly provided.
+      if (paginationArgsProvided) {
+        const effectiveLimit = clampedLimit ?? effectiveCap;
+        const allNodes = result.nodes;
+        const slicedNodes = allNodes.slice(clampedOffset, clampedOffset + effectiveLimit);
+        result.nodes = slicedNodes;
+
+        const filteredTotal = result.filterSummary?.totalAfterFilter;
+        const preCapTotal = typeof filteredTotal === "number"
+          ? filteredTotal
+          : result.totalElements;
+        const totalAvailable = result.truncated
+          ? Math.min(preCapTotal, effectiveCap)
+          : preCapTotal;
+        const hasMore = (clampedOffset + slicedNodes.length) < totalAvailable;
+        (result as PageMapResponse).hasMore = hasMore;
+        (result as PageMapResponse).totalAvailable = totalAvailable;
+        // PAG-04: Omit nextOffset when result is empty
+        if (slicedNodes.length > 0) {
+          (result as PageMapResponse).nextOffset = clampedOffset + slicedNodes.length;
+        }
+      }
 
       // Return a shallow copy so subsequent calls don't overwrite auditId on the same object
       return { ...result };
@@ -613,12 +660,35 @@ export async function handleGetTextMapInline(
     return { success: false, error: "browser-not-connected" };
   }
 
+  // PAG-01: Apply pagination clamping before forwarding to relay.
+  // offset is clamped to >= 0.
+  // limit is clamped to >= 1 and <= effective cap (min(maxSegments ?? 500, 2000)).
+  const effectiveCap = Math.min(args.maxSegments ?? 500, 2000);
+  const clampedOffset = Math.max(0, args.offset ?? 0);
+  const clampedLimit = args.limit !== undefined
+    ? Math.min(Math.max(1, args.limit), effectiveCap)
+    : undefined;
+
+  // Build payload — only include offset/limit when explicitly provided by caller
+  const paginationArgsProvided = args.offset !== undefined || args.limit !== undefined;
+  const payload: Record<string, unknown> = { ...args };
+  if (args.offset !== undefined) {
+    payload.offset = clampedOffset;
+  } else {
+    delete payload.offset;
+  }
+  if (args.limit !== undefined) {
+    payload.limit = clampedLimit;
+  } else {
+    delete payload.limit;
+  }
+
   // F4: Create audit entry before relay call
   const auditEntry = security.auditLog.createEntry("accordo_browser_get_text_map", undefined, undefined);
   const startTime = Date.now();
 
   try {
-    const response = await relay.request("get_text_map", args as Record<string, unknown>, TEXT_MAP_TIMEOUT_MS);
+    const response = await relay.request("get_text_map", payload, TEXT_MAP_TIMEOUT_MS);
     if (!response.success || response.data === undefined) {
       security.auditLog.completeEntry(auditEntry, {
         action: "blocked",
@@ -648,7 +718,8 @@ export async function handleGetTextMapInline(
       store.save(response.data.pageId, response.data);
     }
 
-    const result = response.data as Record<string, unknown>;
+    // Create a shallow copy BEFORE mutating to avoid mutating the original mock/data object
+    const result = { ...response.data } as Record<string, unknown>;
     // F4: Add auditId to response
     result.auditId = auditEntry.auditId;
 
@@ -675,6 +746,26 @@ export async function handleGetTextMapInline(
       redacted: !!(result as any).redactionApplied,
       durationMs: Date.now() - startTime,
     });
+
+    // PAG-03: Inject pagination metadata when offset or limit was explicitly provided.
+    if (paginationArgsProvided) {
+      const effectiveLimit = clampedLimit ?? effectiveCap;
+      const allSegments = (result.segments as unknown[]);
+      const slicedSegments = allSegments.slice(clampedOffset, clampedOffset + effectiveLimit);
+      result.segments = slicedSegments;
+
+      const totalSegments = (result.totalSegments as number) ?? 0;
+      const totalAvailable = (result.truncated as boolean)
+        ? Math.min(totalSegments, effectiveCap)
+        : totalSegments;
+      const hasMore = (clampedOffset + slicedSegments.length) < totalAvailable;
+      result.hasMore = hasMore;
+      result.totalAvailable = totalAvailable;
+      // PAG-04: Omit nextOffset when result is empty
+      if (slicedSegments.length > 0) {
+        result.nextOffset = clampedOffset + slicedSegments.length;
+      }
+    }
 
     return result;
   } catch (err: unknown) {
