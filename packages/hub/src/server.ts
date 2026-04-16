@@ -27,7 +27,7 @@ import { createSseManager } from "./server-sse.js";
 import { createMcpRequestHandler, extractAgentHint } from "./server-mcp.js";
 import { createReauthHandler } from "./server-reauth.js";
 import type { Router } from "./server-routing.js";
-import { ScriptRunner, createScriptDepsAdapter, createScriptTools } from "./script/index.js";
+
 
 export interface HubServerOptions {
   /** Port to listen on. Default: 3000 */
@@ -106,17 +106,6 @@ export class HubServer {
     });
     this.toolRegistry = new ToolRegistry();
     this.stateCache = new StateCache();
-
-    // Wire up Hub-native script runner and tools (DEC-005)
-    const scriptDeps = createScriptDepsAdapter(this.bridgeServer);
-    const scriptRunner = new ScriptRunner(scriptDeps);
-    const scriptTools = createScriptTools({
-      runner: scriptRunner,
-      toolRegistry: this.toolRegistry,
-    });
-    for (const tool of scriptTools) {
-      this.toolRegistry.registerHubTool(tool);
-    }
 
     this.mcpHandler = new McpHandler({
       toolRegistry: this.toolRegistry,

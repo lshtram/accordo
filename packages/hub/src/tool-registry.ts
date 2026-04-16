@@ -4,15 +4,13 @@
  * Runtime registry for tools from two sources:
  * 1. **Bridge tools** — registered by extensions via WebSocket. Replaced in
  *    bulk when Bridge sends a toolRegistry message.
- * 2. **Hub-native tools** — registered once at startup (e.g. script tools).
+ * 2. **Hub-native tools** — registered once at startup.
  *    Survive Bridge registry updates. Use `registerHubTool()`.
  *
  * Both pools are merged in `list()`, `get()`, and `toMcpTools()`.
- * Hub-native tools take precedence if a name collision occurs (should not
- * happen in practice — Hub tools use the `accordo_script_*` namespace).
+ * Hub-native tools take precedence if a name collision occurs.
  *
  * Requirements: requirements-hub.md §5.1
- * DEC-005 — Hub-native tool local handler pattern
  */
 
 import type { ToolRegistration, McpTool } from "@accordo/bridge-types";

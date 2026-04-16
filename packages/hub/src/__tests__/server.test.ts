@@ -153,8 +153,8 @@ describe("HubServer", () => {
     });
 
     it("§2.4: toolCount reflects only Hub-native tools before any Bridge registration", () => {
-      // 4 Hub-native script tools are always registered at startup (DEC-006)
-      expect(server.getHealth().toolCount).toBe(4);
+      // 0 Hub-native tools before any Bridge registration (script tools removed 2026-04-16)
+      expect(server.getHealth().toolCount).toBe(0);
     });
 
     it("§2.4: inflight is 0 before any invocations", () => {

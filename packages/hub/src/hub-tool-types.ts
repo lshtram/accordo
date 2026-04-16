@@ -2,14 +2,12 @@
  * Hub-internal tool types.
  *
  * Extends the wire-format ToolRegistration with a `localHandler` field
- * for tools that execute directly in the Hub process (e.g. script tools)
+ * for tools that execute directly in the Hub process
  * without routing through BridgeServer.invoke().
  *
  * IMPORTANT: This type NEVER crosses the package boundary. It lives in
  * the Hub only. The wire-format ToolRegistration in bridge-types does NOT
  * contain handler functions (architecture.md §4.5, AGENTS.md §4.3).
- *
- * DEC-005 — Hub-native tool local handler pattern
  */
 
 import type { ToolRegistration } from "@accordo/bridge-types";

@@ -8,7 +8,7 @@ This directory contains project-specific skills for the Accordo IDE agent.
 |----------|---------|--------------|
 | `accordo-diagrams` | Create and edit Mermaid diagrams with Accordo styling | Diagram-related tasks |
 | `accordo-presentations` | Create Marp presentations with narration | Presentation/slide tasks |
-| `accordo-script-authoring` | Author NarrationScripts for voiced demos | Script/narration tasks |
+| `accordo-script-authoring` | Author demo scripts via external Python runner (NarrationScript format, `accordo-run.py`) | Script/narration tasks |
 | `debugging` | Systematic 5-phase debugging process | Bug investigation, test failures |
 
 ## How to Use Skills
@@ -17,7 +17,7 @@ When working on a relevant task, load the skill using:
 
 ```
 skill: accordo-diagrams
-skill: accordo-presentations  
+skill: accordo-presentations
 skill: accordo-script-authoring
 skill: debugging
 ```

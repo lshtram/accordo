@@ -453,7 +453,7 @@ describe("§E2E-2 Tool registration", () => {
 
     const res = await fetch(`${baseUrl}/health`);
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body["toolCount"]).toBe(3 + 4); // 3 bridge + 4 Hub-native script tools (DEC-006)
+    expect(body["toolCount"]).toBe(3 + 0); // 3 bridge + 0 Hub-native tools (script tools removed 2026-04-16)
   });
 });
 

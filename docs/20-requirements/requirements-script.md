@@ -2,9 +2,13 @@
 
 **Module series:** M52 (`accordo-script`)  
 **Session:** 10D  
-**Status:** COMPLETE — Phase F  
+**Status:** **REMOVED** — 2026-04-16  
 **Date:** 2026-03-11  
-**Architecture ref:** `docs/voice-architecture.md` ADR-04 (separation rationale), `docs/architecture.md` §13
+**Architecture ref:** `docs/voice-architecture.md` ADR-04 (separation rationale), `docs/architecture.md` §13 (former)
+
+---
+
+> **This module has been removed.** The built-in scripting engine is no longer part of the active system. For script-style demos and walkthroughs, use the external Python skill approach.
 
 ---
 

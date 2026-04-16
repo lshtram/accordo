@@ -926,7 +926,7 @@ interface SearchMatch {
 - Refactor `layoutTools` static array → `createLayoutTools(getState: () => IDEState)` factory in `packages/editor/src/tools/layout.ts`
 - Add `layoutStateHandler` + tool definition inside the factory
 - Update `extension.ts` to call `createLayoutTools(() => bridge.getState())`
-- Add `accordo_layout_state` entry to `accordo_script_discover` catalog in `packages/script/src/tools/script-discover.ts`
+- Add `accordo_layout_state` entry to `accordo_script_discover` catalog in `packages/script/src/tools/script-discover.ts` (⚠️ **Superseded** — script module removed 2026-04-16; the discover mechanism is no longer available)
 
 ---
 

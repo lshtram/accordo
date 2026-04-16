@@ -64,8 +64,8 @@ All files use **lowercase-kebab-case**: `requirements-{component}.md`
 | Document | Package(s) | Scope | Status |
 |---|---|---|---|
 | [requirements-voice.md](requirements-voice.md) | `accordo-editor` (voice module) | TTS, dictation, voice policy tools | Active |
-| [requirements-narration-plugin.md](requirements-narration-plugin.md) | `accordo-editor` (script module) | NarrationScript engine — sequenced IDE automation | Active |
-| [requirements-script.md](requirements-script.md) | `accordo-editor` (script module) | Script authoring, discovery, execution | Active |
+| [requirements-narration-plugin.md](requirements-narration-plugin.md) | `accordo-editor` (script module) | NarrationScript engine — sequenced IDE automation | **Archived** — removed 2026-04-16 |
+| [requirements-script.md](requirements-script.md) | `accordo-editor` (script module) | Script authoring, discovery, execution | **Archived** — removed 2026-04-16 |
 
 ---
 

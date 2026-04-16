@@ -1,5 +1,9 @@
 # Testing Guide — Hub-Based Script Routing (`hub-script-routing`)
 
+> **Archived [2026-04-16]:** The built-in scripting engine has been removed. This guide describes the now-removed Hub-based script routing architecture. External script authoring via `skills/script-authoring/accordo-run.py` is the replacement path.
+
+> **ARCHIVED — 2026-04-16:** This testing guide applied to the now-removed built-in scripting engine. The `accordo_script_*` tools are no longer registered.
+
 ## What This Tests
 
 The NarrationScript execution engine has been moved from the VS Code extension host into the Hub. Scripts are now executed by the Hub, and all tool calls from scripts (editor, voice, terminal, layout) route through `bridgeServer.invoke()` to the Bridge — the same path AI agents use.

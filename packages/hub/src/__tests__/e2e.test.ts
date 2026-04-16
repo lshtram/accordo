@@ -381,13 +381,8 @@ const ALL_TOOLS: ToolRegistration[] = [
 
 // Canonical list of all expected tool names — derived once so tests don't
 // accidentally re-compute it differently from the registration list above.
-// Includes both Bridge tools (ALL_TOOLS) and Hub-native script tools (DEC-006).
-const HUB_NATIVE_TOOL_NAMES = [
-  "accordo_script_run",
-  "accordo_script_stop",
-  "accordo_script_status",
-  "accordo_script_discover",
-];
+// Hub-native tool names (empty after script engine removal).
+const HUB_NATIVE_TOOL_NAMES: string[] = [];
 const HUB_NATIVE_TOOL_COUNT = HUB_NATIVE_TOOL_NAMES.length;
 const EXPECTED_TOOL_NAMES = [...ALL_TOOLS.map((t) => t.name), ...HUB_NATIVE_TOOL_NAMES];
 

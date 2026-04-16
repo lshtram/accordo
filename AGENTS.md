@@ -167,7 +167,6 @@ These are project-level decisions that override or extend [`docs/30-development/
 |---|---|
 | [`skills/diagrams/skill.md`](skills/diagrams/skill.md) | User says "diagram", "flowchart", or needs to visualize architecture/processes. **Critical: Mermaid classDef is IGNORED — use `accordo_diagram_patch` with `nodeStyles` for all styling.** |
 | [`skills/presentations/skill.md`](skills/presentations/skill.md) | User says "present", "deck", "slides", or needs to create a Marp presentation. |
-| [`skills/script-authoring/skill.md`](skills/script-authoring/skill.md) | User says "demo", "walkthrough", "script", or needs narrated demonstrations. |
 | [`skills/debugging/skill.md`](skills/debugging/skill.md) | Fails, test failures, unexpected runtime behavior — load before debugging. |
 | [`skills/README.md`](skills/README.md) | Skills index — lists all project skills and how to create new ones. |
 

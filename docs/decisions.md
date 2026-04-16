@@ -122,7 +122,7 @@
 **Alternatives considered:**
 1. *Re-register Hub tools after every Bridge update* — fragile, order-dependent, easy to forget
 2. *Make register() additive instead of replacing* — breaks the "full snapshot" contract that Bridge depends on
-3. *Prefix-based filtering in register()* — `register()` would skip tools starting with "accordo_script_" — too magical, coupling on naming conventions
+3. *Prefix-based filtering in register()* — `register()` would skip tools starting with "accordo_script_" — too magical, coupling on naming conventions (⚠️ note: `accordo_script_*` tools were removed 2026-04-16; the prefix-based approach was never implemented)
 
 **Consequences:**
 - (+) Bridge updates are still full-replacement — no contract change for the Bridge

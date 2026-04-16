@@ -19,7 +19,7 @@ paginate: true
 Every time an AI agent narrated something before, it had to:
 
 - Make **individual LLM round-trips** per tool call — slow
-- Use `accordo_script_run` — which **can't be interrupted**
+- Use the built-in `accordo_script_run` — which **can't be interrupted** *(removed 2026-04-16; the external Python runner is the replacement and IS interruptible)*
 - Re-write Python glue code from scratch every time
 
 **The solution:** one permanent runner. Agent writes only **JSON**.

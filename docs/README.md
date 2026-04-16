@@ -84,7 +84,7 @@ Requirements by package/component. Each includes module IDs for TDD traceability
 - [requirements-voice.md](20-requirements/requirements-voice.md) — Voice tools
 - [requirements-marp.md](20-requirements/requirements-marp.md) — Presentations
 - [requirements-diagram.md](20-requirements/requirements-diagram.md) — Diagrams
-- [requirements-script.md](20-requirements/requirements-script.md) — Scripted walkthroughs
+- [requirements-script.md](20-requirements/requirements-script.md) — Scripted walkthroughs **(Removed 2026-04-16)**
 - [requirements-md-viewer.md](20-requirements/requirements-md-viewer.md) — Markdown viewer
 
 ### 30-development/ — Development Guides

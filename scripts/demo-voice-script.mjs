@@ -2,6 +2,9 @@
  * demo-voice-script.js
  * Runs a 4-step voice demo script via the Accordo Hub MCP endpoint.
  * Monitors audio process count throughout.
+ *
+ * @deprecated 2026-04-16: This script uses the now-removed built-in scripting engine.
+ * accordo_script_run is no longer registered. This file is kept for reference only.
  */
 
 import WebSocket from "../packages/hub/node_modules/ws/index.js";

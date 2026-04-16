@@ -59,14 +59,16 @@ For summary mode, the agent is the summarizer. When `narrationMode === 'narrate-
 
 ### ADR-04 — Voice-only scope: scripting lives elsewhere
 
-Scripted walkthroughs (the `NarrationScript` format, `ScriptRunner`, and `accordo_script_run` tool) are **not part of the voice extension**.
+> **⚠️ ADR-04 status [2026-04-16]:** The built-in scripting engine (`NarrationScript`, `ScriptRunner`, `accordo_script_run`) has been removed. This ADR is historical — the decision was implemented in Session 10D and then reverted.
+
+Scripted walkthroughs (the `NarrationScript` format, `ScriptRunner`, and `accordo_script_run` tool) were **not part of the voice extension** (they lived in `packages/hub/src/script/` and `packages/script/`).
 
 | Option | Verdict |
 |---|---|
-| Scripting as a separate module (Bridge extension or standalone) | **Chosen** — works without voice installed (subtitles, visual-only), no circular dependency |
-| Scripting inside voice extension (original plan) | Not chosen — couples presentation scripting to audio; user without voice loses scripting entirely |
+| Scripting as a separate module (Bridge extension or standalone) | ~~**Chosen**~~ — implemented in Session 10D |
+| Scripting inside voice extension (original plan) | Not chosen |
 
-**Rationale:** A user who doesn't want audio (or can't use it) should still be able to run a scripted walkthrough with subtitles, code navigation, slide transitions, and highlights. The voice extension provides TTS; it does not own orchestration.
+**Note:** External script authoring via Python skill + NarrationScript remains available as a replacement approach.
 
 ### ADR-05 — Voice panel: port Theia waveform widget as WebviewView
 

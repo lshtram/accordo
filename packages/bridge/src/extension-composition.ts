@@ -508,7 +508,6 @@ export function buildShowStatusHandler(deps: CompositionDeps): () => void {
       { prefix: "comment_", label: "Comments" },
       { prefix: "accordo_voice_", label: "Voice" },
       { prefix: "browser_", label: "Browser" },
-      { prefix: "accordo_script_", label: "Script" },
       { prefix: "accordo_diagram_", label: "Diagrams" },
       { prefix: ["accordo_presentation_", "accordo_marp_"], label: "Marp" },
     ];

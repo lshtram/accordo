@@ -34,8 +34,6 @@
         "--extensionDevelopmentPath=${workspaceFolder}/packages/marp",
         // accordo-voice: STT/TTS narration + dictation (requires accordo-bridge)
         "--extensionDevelopmentPath=${workspaceFolder}/packages/voice",
-        // accordo-script: scripted multi-step IDE walkthroughs via MCP
-        "--extensionDevelopmentPath=${workspaceFolder}/packages/script",
         // accordo-diagram: Mermaid + Excalidraw diagram tools
         "--extensionDevelopmentPath=${workspaceFolder}/packages/diagram",
         // accordo-browser: browser comments relay + browser MCP tools
@@ -53,7 +51,6 @@
         "${workspaceFolder}/packages/md-viewer/dist/**/*.js",
         "${workspaceFolder}/packages/marp/dist/**/*.js",
         "${workspaceFolder}/packages/voice/dist/**/*.js",
-        "${workspaceFolder}/packages/script/dist/**/*.js",
         "${workspaceFolder}/packages/diagram/dist/**/*.js",
         "${workspaceFolder}/packages/browser/dist/**/*.js"
       ],

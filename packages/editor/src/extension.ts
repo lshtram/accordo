@@ -92,9 +92,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const disposable = bridge.registerTools("accordo.accordo-editor", allTools);
   context.subscriptions.push(disposable);
 
-  // Register all editor/terminal/layout tools as VS Code commands so the
-  // NarrationScript runner (accordo_script_run "command" steps) can invoke
-  // them via vscode.commands.executeCommand, even when the MCP Hub is not
+  // Register all editor/terminal/layout tools as VS Code commands so they can
+  // be invoked via vscode.commands.executeCommand, even when the MCP Hub is not
   // connected. Each command passes its args directly to the tool handler.
   const cmd = (id: string, fn: (args: Record<string, unknown>) => unknown): vscode.Disposable =>
     vscode.commands.registerCommand(id, (args: unknown) =>

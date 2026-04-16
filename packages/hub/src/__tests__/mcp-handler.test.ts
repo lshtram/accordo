@@ -942,7 +942,8 @@ describe("McpHandler — M32: idempotent retry on timeout", () => {
 //
 // When a tool is a HubToolRegistration (has localHandler), the executor calls
 // localHandler directly instead of routing through bridgeServer.invoke().
-// This bypasses the bridge entirely for Hub-native tools like script tools.
+// This bypasses the bridge entirely for Hub-native tools.
+// Note: The built-in script tools (accordo_script_*) were removed 2026-04-16.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("McpHandler — DEC-005: Hub-native tool short-circuit", () => {
@@ -956,8 +957,8 @@ describe("McpHandler — DEC-005: Hub-native tool short-circuit", () => {
 
     // Register a Hub-native tool
     const hubTool = {
-      name: "accordo_script_status",
-      description: "Get script status",
+      name: "accordo_hub_status",
+      description: "Get hub status",
       inputSchema: { type: "object" as const, properties: {} },
       dangerLevel: "safe" as const,
       requiresConfirmation: false,
@@ -969,7 +970,7 @@ describe("McpHandler — DEC-005: Hub-native tool short-circuit", () => {
     const invokeSpy = vi.spyOn(bridgeServer, "invoke");
 
     const req = makeRequest("tools/call", {
-      name: "accordo_script_status",
+      name: "accordo_hub_status",
       arguments: {},
     });
     const response = await handler.handleRequest(req, session);
@@ -1014,18 +1015,18 @@ describe("McpHandler — DEC-005: Hub-native tool short-circuit", () => {
     const session = handler.createSession();
 
     const hubTool = {
-      name: "accordo_script_run",
-      description: "Run a script",
+      name: "accordo_hub_demo",
+      description: "Run a demo",
       inputSchema: { type: "object" as const, properties: {}, required: ["script"] },
       dangerLevel: "safe" as const,
       requiresConfirmation: false,
       idempotent: false,
-      localHandler: vi.fn().mockRejectedValue(new Error("ScriptRunner already running")),
+      localHandler: vi.fn().mockRejectedValue(new Error("Hub demo already running")),
     };
     toolRegistry.registerHubTool(hubTool);
 
     const req = makeRequest("tools/call", {
-      name: "accordo_script_run",
+      name: "accordo_hub_demo",
       arguments: { script: { steps: [] } },
     });
     const response = await handler.handleRequest(req, session);
@@ -1042,8 +1043,8 @@ describe("McpHandler — DEC-005: Hub-native tool short-circuit", () => {
     const session = handler.createSession();
 
     const hubTool = {
-      name: "accordo_script_status",
-      description: "Get script status",
+      name: "accordo_hub_status",
+      description: "Get hub status",
       inputSchema: { type: "object" as const, properties: {} },
       dangerLevel: "safe" as const,
       requiresConfirmation: false,
@@ -1053,7 +1054,7 @@ describe("McpHandler — DEC-005: Hub-native tool short-circuit", () => {
     toolRegistry.registerHubTool(hubTool);
 
     const req = makeRequest("tools/call", {
-      name: "accordo_script_status",
+      name: "accordo_hub_status",
       arguments: {},
     });
     const response = await handler.handleRequest(req, session);
@@ -1073,8 +1074,8 @@ describe("McpHandler — DEC-005: Hub-native tool short-circuit", () => {
     const session = handler.createSession();
 
     const hubTool = {
-      name: "accordo_script_status",
-      description: "Get script status",
+      name: "accordo_hub_status",
+      description: "Get hub status",
       inputSchema: { type: "object" as const, properties: {} },
       dangerLevel: "safe" as const,
       requiresConfirmation: false,
@@ -1084,14 +1085,14 @@ describe("McpHandler — DEC-005: Hub-native tool short-circuit", () => {
     toolRegistry.registerHubTool(hubTool);
 
     const req = makeRequest("tools/call", {
-      name: "accordo_script_status",
+      name: "accordo_hub_status",
       arguments: {},
     });
     await handler.handleRequest(req, session);
 
     expect(auditLog.writeAuditEntry).toHaveBeenCalledWith(
       "/tmp/test-audit.jsonl",
-      expect.objectContaining({ result: "success", tool: "accordo_script_status" }),
+      expect.objectContaining({ result: "success", tool: "accordo_hub_status" }),
     );
   });
 
@@ -1103,8 +1104,8 @@ describe("McpHandler — DEC-005: Hub-native tool short-circuit", () => {
     const session = handler.createSession();
 
     const hubTool = {
-      name: "accordo_script_run",
-      description: "Run a script",
+      name: "accordo_hub_demo",
+      description: "Run a demo",
       inputSchema: { type: "object" as const, properties: {} },
       dangerLevel: "safe" as const,
       requiresConfirmation: false,
@@ -1114,7 +1115,7 @@ describe("McpHandler — DEC-005: Hub-native tool short-circuit", () => {
     toolRegistry.registerHubTool(hubTool);
 
     const req = makeRequest("tools/call", {
-      name: "accordo_script_run",
+      name: "accordo_hub_demo",
       arguments: {},
     });
     await handler.handleRequest(req, session);
@@ -1123,7 +1124,7 @@ describe("McpHandler — DEC-005: Hub-native tool short-circuit", () => {
       "/tmp/test-audit.jsonl",
       expect.objectContaining({
         result: "error",
-        tool: "accordo_script_run",
+        tool: "accordo_hub_demo",
         errorMessage: "Validation failed",
       }),
     );
