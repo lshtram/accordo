@@ -1009,7 +1009,8 @@ describe("PU-F-53: handler forwards to relay and returns structured result", () 
     // PU-F-53 contract: relay.request() must be called with action name, args, and timeout
     expect(relay.request).toHaveBeenCalledWith("capture_region", expect.objectContaining({ anchorKey: "id:submit-btn" }), expect.any(Number));
 
-    expect(result).toHaveProperty("dataUrl");
+    expect(result).toHaveProperty("fileUri");
+    expect(result).toHaveProperty("filePath");
     expect(result).toHaveProperty("width");
     expect(result).toHaveProperty("height");
     expect(result).toHaveProperty("sizeBytes");
@@ -1141,9 +1142,10 @@ describe("CR-F-07: captureVisibleTab + OffscreenCanvas crop flow contract", () =
     const result = await handleCaptureRegion(relay, args, noopStore);
 
     expect(result).toHaveProperty("success");
-    // Stub returns success: false with error - real implementation would return success: true with dataUrl
+    // Default transport is file-ref; result has fileUri + filePath instead of dataUrl
     expect(result.success).toBe(true);
-    expect(result).toHaveProperty("dataUrl");
+    expect(result).toHaveProperty("fileUri");
+    expect(result).toHaveProperty("filePath");
     expect(result).toHaveProperty("width");
     expect(result).toHaveProperty("height");
     expect(result).toHaveProperty("sizeBytes");
@@ -1160,7 +1162,8 @@ describe("CR-F-07: captureVisibleTab + OffscreenCanvas crop flow contract", () =
     const result = await handleCaptureRegion(relay, args, noopStore);
 
     expect(result.success).toBe(true);
-    expect(result).toHaveProperty("dataUrl");
+    expect(result).toHaveProperty("fileUri");
+    expect(result).toHaveProperty("filePath");
     expect(result).toHaveProperty("width");
     expect(result).toHaveProperty("height");
     expect(result).toHaveProperty("sizeBytes");

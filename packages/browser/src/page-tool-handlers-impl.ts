@@ -493,10 +493,10 @@ export async function handleCaptureRegion(
           (result as CaptureRegionResponse).redactionWarning = "screenshots-not-subject-to-redaction-policy";
         }
         // Feature 5: Explicitly advertise inline artifact transport (MCP checklist §3.1).
-        // Current screenshots are always returned as base64 data URLs — no file-ref or remote-ref yet.
+        // Default is inline; overridden to "file-ref" below when applicable.
         (result as CaptureRegionResponse).artifactMode = "inline";
-        // G6: If caller requested file-ref transport, write the screenshot to disk.
-        if (args.transport === "file-ref" && typeof result.dataUrl === "string") {
+        // G6: Default transport is file-ref; only stay inline when caller explicitly opts in with transport="inline".
+        if (args.transport !== "inline" && typeof result.dataUrl === "string") {
           try {
             // Allow test/CI override via env var; default to ~/.accordo/screenshots
             const screenshotsDir = process.env["ACCORDO_SCREENSHOTS_DIR"]

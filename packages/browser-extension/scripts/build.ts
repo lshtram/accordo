@@ -62,6 +62,9 @@ function copyStaticAssets(): void {
   copyFile(path.join(SRC, "popup", "popup.html"), "popup.html");
 }
 
+/** Build timestamp injected as a global constant so the popup can display it */
+const BUILD_TIME = new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC";
+
 /** esbuild shared options */
 const sharedOptions: esbuild.BuildOptions = {
   bundle: true,
@@ -71,6 +74,9 @@ const sharedOptions: esbuild.BuildOptions = {
   sourcemap: true,
   minify: false, // keep readable during development
   logLevel: "info",
+  define: {
+    __BUILD_TIME__: JSON.stringify(BUILD_TIME),
+  },
 };
 
 /** Build all 3 entry points */

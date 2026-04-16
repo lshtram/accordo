@@ -410,40 +410,39 @@ describe("Feature 5: artifactMode: 'inline' on successful screenshot responses",
 
   /**
    * Feature 5 / MCP checklist §3.1: Successful region capture must include
-   * artifactMode: "inline" to advertise that screenshots are returned as
-   * inline base64 data URLs (no file-ref or remote-ref yet).
+   * artifactMode: "file-ref" by default (G6 default transport change).
    */
-  it("Feature 5: region capture (rect) returns artifactMode: 'inline'", async () => {
+  it("Feature 5: region capture (rect) returns artifactMode: 'file-ref' by default", async () => {
     const args: CaptureRegionArgs = { tabId: 1, rect: { x: 0, y: 0, width: 200, height: 100 } };
 
     const result = await handleCaptureRegion(relay, args, store);
 
     expect(result).toHaveProperty("success", true);
-    expect((result as Record<string, unknown>).artifactMode).toBe("inline");
+    expect((result as Record<string, unknown>).artifactMode).toBe("file-ref");
   });
 
   /**
-   * Feature 5: viewport capture also returns artifactMode: "inline".
+   * Feature 5: viewport capture returns artifactMode: "file-ref" by default.
    */
-  it("Feature 5: viewport capture returns artifactMode: 'inline'", async () => {
+  it("Feature 5: viewport capture returns artifactMode: 'file-ref' by default", async () => {
     const args: CaptureRegionArgs = { tabId: 1, mode: "viewport" };
 
     const result = await handleCaptureRegion(relay, args, store);
 
     expect(result).toHaveProperty("success", true);
-    expect((result as Record<string, unknown>).artifactMode).toBe("inline");
+    expect((result as Record<string, unknown>).artifactMode).toBe("file-ref");
   });
 
   /**
-   * Feature 5: full-page capture also returns artifactMode: "inline".
+   * Feature 5: full-page capture returns artifactMode: "file-ref" by default.
    */
-  it("Feature 5: fullPage capture returns artifactMode: 'inline'", async () => {
+  it("Feature 5: fullPage capture returns artifactMode: 'file-ref' by default", async () => {
     const args: CaptureRegionArgs = { tabId: 1, mode: "fullPage" };
 
     const result = await handleCaptureRegion(relay, args, store);
 
     expect(result).toHaveProperty("success", true);
-    expect((result as Record<string, unknown>).artifactMode).toBe("inline");
+    expect((result as Record<string, unknown>).artifactMode).toBe("file-ref");
   });
 
   /**
@@ -597,11 +596,27 @@ describe("G6: capture_region transport='file-ref' artifact transport", () => {
   });
 
   /**
-   * G6: Default transport (omitted) still returns inline dataUrl and artifactMode="inline".
-   * This is the regression guard — file-ref must not affect default behaviour.
+   * G6: Default transport (omitted) now uses file-ref — writes file and returns fileUri + filePath.
+   * Inline base64 is no longer the default; caller must pass transport="inline" to get dataUrl.
    */
-  it("G6: default transport (omitted) still returns inline dataUrl, no filePath", async () => {
+  it("G6: default transport (omitted) uses file-ref — writes file and returns fileUri + filePath", async () => {
     const args: CaptureRegionArgs = { tabId: 1, mode: "viewport" };
+
+    const result = await handleCaptureRegion(relay, args, store) as Record<string, unknown>;
+
+    expect(result.success).toBe(true);
+    expect(result.artifactMode).toBe("file-ref");
+    expect(typeof result.fileUri).toBe("string");
+    expect(typeof result.filePath).toBe("string");
+    expect(result).not.toHaveProperty("dataUrl");
+    expect(result).not.toHaveProperty("transportFallback");
+  });
+
+  /**
+   * G6: When transport="inline" is explicitly requested, the response returns dataUrl and no filePath.
+   */
+  it("G6: transport='inline' (explicit) returns inline dataUrl, no filePath", async () => {
+    const args: CaptureRegionArgs = { tabId: 1, mode: "viewport", transport: "inline" };
 
     const result = await handleCaptureRegion(relay, args, store) as Record<string, unknown>;
 

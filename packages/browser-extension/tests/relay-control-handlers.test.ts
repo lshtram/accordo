@@ -30,7 +30,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { resetChromeMocks, setMockTabUrl, fireLifecycleEvents, fireFrameNavigatedEvent, fireIframeFrameNavigatedEvent, fireLifecycleEvent, debuggerEventListeners } from "./setup/chrome-mock.js";
+import { resetChromeMocks, setMockTabUrl, fireLifecycleEvents, fireFrameNavigatedEvent, fireIframeFrameNavigatedEvent, fireLifecycleEvent, debuggerEventListeners, simulateTabNotFound } from "./setup/chrome-mock.js";
 import {
   handleNavigate,
   handleClick,
@@ -107,6 +107,103 @@ describe("Permission checks — all handlers", () => {
       const request = makeRequest("press_key", { tabId: 1, key: "Enter" });
       const response = await handlePressKey(request);
       expect(response.success).toBe(false);
+      expect(response.error).toBe("control-not-granted");
+    });
+  });
+});
+
+// ── REQ-TC-017: tab-not-found vs control-not-granted ─────────────────────────
+
+describe("REQ-TC-017: tab-not-found error when explicit tabId is invalid", () => {
+  beforeEach(() => {
+    resetChromeMocks();
+    // Tab 99 is not in mockTabUrls — will be marked non-existent
+  });
+
+  describe("handleNavigate", () => {
+    it("returns tab-not-found when explicit tabId does not exist", async () => {
+      simulateTabNotFound(99);
+      const request = makeRequest("navigate", { tabId: 99, url: "https://example.com" });
+      const response = await handleNavigate(request);
+      expect(response.success).toBe(false);
+      expect(response.error).toBe("tab-not-found");
+      expect(response.retryable).toBe(false);
+    });
+
+    it("returns control-not-granted (not tab-not-found) when tab exists but has no permission", async () => {
+      setMockTabUrl(1, "https://example.com");
+      const request = makeRequest("navigate", { tabId: 1, url: "https://example.com" });
+      const response = await handleNavigate(request);
+      expect(response.success).toBe(false);
+      expect(response.error).toBe("control-not-granted");
+    });
+  });
+
+  describe("handleClick", () => {
+    it("returns tab-not-found when explicit tabId does not exist", async () => {
+      simulateTabNotFound(99);
+      const request = makeRequest("click", { tabId: 99, coordinates: { x: 10, y: 20 } });
+      const response = await handleClick(request);
+      expect(response.success).toBe(false);
+      expect(response.error).toBe("tab-not-found");
+      expect(response.retryable).toBe(false);
+    });
+
+    it("returns control-not-granted (not tab-not-found) when tab exists but has no permission", async () => {
+      setMockTabUrl(1, "https://example.com");
+      const request = makeRequest("click", { tabId: 1, coordinates: { x: 10, y: 20 } });
+      const response = await handleClick(request);
+      expect(response.success).toBe(false);
+      expect(response.error).toBe("control-not-granted");
+    });
+  });
+
+  describe("handleType", () => {
+    it("returns tab-not-found when explicit tabId does not exist", async () => {
+      simulateTabNotFound(99);
+      const request = makeRequest("type", { tabId: 99, text: "hello" });
+      const response = await handleType(request);
+      expect(response.success).toBe(false);
+      expect(response.error).toBe("tab-not-found");
+      expect(response.retryable).toBe(false);
+    });
+
+    it("returns control-not-granted (not tab-not-found) when tab exists but has no permission", async () => {
+      setMockTabUrl(1, "https://example.com");
+      const request = makeRequest("type", { tabId: 1, text: "hello" });
+      const response = await handleType(request);
+      expect(response.success).toBe(false);
+      expect(response.error).toBe("control-not-granted");
+    });
+  });
+
+  describe("handlePressKey", () => {
+    it("returns tab-not-found when explicit tabId does not exist", async () => {
+      simulateTabNotFound(99);
+      const request = makeRequest("press_key", { tabId: 99, key: "Enter" });
+      const response = await handlePressKey(request);
+      expect(response.success).toBe(false);
+      expect(response.error).toBe("tab-not-found");
+      expect(response.retryable).toBe(false);
+    });
+
+    it("returns control-not-granted (not tab-not-found) when tab exists but has no permission", async () => {
+      setMockTabUrl(1, "https://example.com");
+      const request = makeRequest("press_key", { tabId: 1, key: "Enter" });
+      const response = await handlePressKey(request);
+      expect(response.success).toBe(false);
+      expect(response.error).toBe("control-not-granted");
+    });
+  });
+
+  describe("implicit tab path (no tabId in payload)", () => {
+    it("REQ-TC-017: does NOT return tab-not-found when tabId is omitted (active tab path)", async () => {
+      // Active tab (id 1) exists — tab existence check must be skipped for implicit tab
+      setMockTabUrl(1, "https://example.com");
+      const request = makeRequest("navigate", { url: "https://example.com/new" });
+      const response = await handleNavigate(request);
+      // Should fail with control-not-granted (permission), never tab-not-found
+      expect(response.error).not.toBe("tab-not-found");
       expect(response.error).toBe("control-not-granted");
     });
   });

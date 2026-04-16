@@ -20,6 +20,7 @@
  * REQ-TC-013: Dispatches correct Input.dispatchKeyEvent for key.
  * REQ-TC-014: Handles modifier keys via modifiers bitmask.
  * REQ-TC-015: Uses KeyCodeMap for named keys.
+ * REQ-TC-017: Returns tab-not-found when caller provides an invalid explicit tabId.
  *
  * @module
  */
@@ -43,6 +44,21 @@ async function resolveTargetTabId(payload: Record<string, unknown>): Promise<num
     return tabs[0].id;
   }
   return 1; // fallback
+}
+
+/**
+ * REQ-TC-017: Verify an explicitly-provided tabId refers to a real tab.
+ * Returns true if the tab exists, false if it doesn't.
+ * Only called when the caller explicitly provided a tabId in the payload.
+ * When the tabId is resolved from the active tab (no explicit tabId), skip this check.
+ */
+async function tabExists(tabId: number): Promise<boolean> {
+  try {
+    await chrome.tabs.get(tabId);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -184,6 +200,11 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
   try {
     const tabId = await resolveTargetTabId(payload);
 
+    // REQ-TC-017: when caller explicitly provides a tabId, verify the tab exists
+    if (typeof payload.tabId === "number" && !(await tabExists(tabId))) {
+      return actionFailed(request, "tab-not-found");
+    }
+
     // Check permission
     if (!(await hasPermission(tabId))) {
       return actionFailed(request, "control-not-granted");
@@ -307,6 +328,11 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
   try {
     const tabId = await resolveTargetTabId(payload);
 
+    // REQ-TC-017: when caller explicitly provides a tabId, verify the tab exists
+    if (typeof payload.tabId === "number" && !(await tabExists(tabId))) {
+      return actionFailed(request, "tab-not-found");
+    }
+
     // Check permission
     if (!(await hasPermission(tabId))) {
       return actionFailed(request, "control-not-granted");
@@ -378,6 +404,11 @@ export async function handleType(request: RelayActionRequest): Promise<RelayActi
 
   try {
     const tabId = await resolveTargetTabId(payload);
+
+    // REQ-TC-017: when caller explicitly provides a tabId, verify the tab exists
+    if (typeof payload.tabId === "number" && !(await tabExists(tabId))) {
+      return actionFailed(request, "tab-not-found");
+    }
 
     // Check permission
     if (!(await hasPermission(tabId))) {
@@ -451,6 +482,11 @@ export async function handlePressKey(request: RelayActionRequest): Promise<Relay
 
   try {
     const tabId = await resolveTargetTabId(payload);
+
+    // REQ-TC-017: when caller explicitly provides a tabId, verify the tab exists
+    if (typeof payload.tabId === "number" && !(await tabExists(tabId))) {
+      return actionFailed(request, "tab-not-found");
+    }
 
     // Check permission
     if (!(await hasPermission(tabId))) {

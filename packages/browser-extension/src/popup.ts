@@ -365,6 +365,8 @@ async function renderPairingSection(container: HTMLElement): Promise<void> {
         const body = await res.json() as { token?: string };
         if (!body.token) throw new Error("no-token");
         await chrome.storage.local.set({ [RELAY_TOKEN_STORAGE_KEY]: body.token });
+        // Trigger an immediate reconnect — don't wait for the next token-poll cycle.
+        void chrome.runtime.sendMessage({ type: MESSAGE_TYPES.RELAY_RECONNECT });
         void renderPairingSection(container);
       }).catch(() => {
         connectBtn.disabled = false;
@@ -624,6 +626,18 @@ export async function initPopup(container: HTMLElement): Promise<void> {
   });
 
   dbg("initPopup: complete");
+
+  // ── Build version footer ────────────────────────────────────────────────────
+  const versionFooter = document.createElement("div");
+  versionFooter.style.cssText = "padding: 6px 12px 8px; font-size: 10px; color: #888; text-align: right; border-top: 1px solid #eee; margin-top: 8px;";
+  // __BUILD_TIME__ is injected by esbuild via define (scripts/build.ts).
+  // Use a safe fallback for environments where the global is not defined (e.g. tests).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const buildTime = typeof (__BUILD_TIME__ as unknown as string | undefined) === "string"
+    ? (__BUILD_TIME__ as string)
+    : new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC";
+  versionFooter.textContent = `build: ${buildTime}`;
+  container.appendChild(versionFooter);
 }
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────────

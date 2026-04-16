@@ -805,3 +805,138 @@ describe("handleCaptureRegion propagates RESOLVE_ANCHOR_BOUNDS error codes", () 
     expect((response.data as Record<string, unknown>)["error"]).toBe("element-not-found");
   });
 });
+
+// ── Tests: CR-F-12 error taxonomy — integration via handleCaptureRegion ─────────
+//
+// These tests verify that the three remaining architecture-defined error codes
+// are emitted as distinct codes by the actual handler, not just as type stubs.
+//
+// Gap 3 coverage:
+//   "element-off-screen" — covered above (propagate element-off-screen error code)
+//   "capture-failed"     — covered below (captureVisibleTab throws)
+//   "image-too-large"    — covered below (both attempts exceed MAX_CAPTURE_BYTES)
+
+/** Standard envelope stub returned by CAPTURE_SNAPSHOT_ENVELOPE in these tests. */
+const STANDARD_ENVELOPE = {
+  pageId: "page-gap3",
+  frameId: "main",
+  snapshotId: "page-gap3:0",
+  capturedAt: "2025-01-01T00:00:00.000Z",
+  viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+  source: "visual" as const,
+};
+
+describe("CR-F-12: capture-failed and image-too-large integration tests (Gap 3)", () => {
+  beforeEach(() => {
+    resetChromeMocks();
+    setMockTabUrl(1, "https://example.com/active");
+  });
+
+  /**
+   * CR-F-12 Gap 3: When chrome.tabs.captureVisibleTab throws (e.g. permission
+   * error, no active tab), handleCaptureRegion must return error "capture-failed"
+   * — not "action-failed" or any other generic code.
+   *
+   * Implementation path: executeCaptureRegion → captureVisibleTab throws →
+   *   catch block → { success: false, error: "capture-failed" }
+   */
+  it("CR-F-12 Gap 3: capture-failed emitted as distinct code when captureVisibleTab throws", async () => {
+    const { handleCaptureRegion } = await import("../src/relay-capture-handler.js");
+
+    // Make captureVisibleTab throw to trigger the capture-failed path
+    (chrome.tabs.captureVisibleTab as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("Could not capture active tab: permission denied")
+    );
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_tabId: number, message: unknown) => {
+        const msg = message as Record<string, unknown>;
+        if (msg["type"] === "RESOLVE_ANCHOR_BOUNDS") {
+          // Return valid bounds so the handler proceeds to captureVisibleTab
+          return { bounds: { x: 10, y: 20, width: 200, height: 100 } };
+        }
+        if (msg["type"] === "CAPTURE_SNAPSHOT_ENVELOPE") {
+          return STANDARD_ENVELOPE;
+        }
+        return undefined;
+      }
+    );
+
+    const response = await handleCaptureRegion({
+      requestId: "gap3-capture-failed",
+      action: "capture_region",
+      payload: {
+        tabId: 1,
+        anchorKey: "some_element",
+        padding: 8,
+        quality: 70,
+      },
+    });
+
+    // Outer relay envelope is always success:true
+    expect(response.success).toBe(true);
+    // Inner capture result must be the distinct "capture-failed" code
+    const data = response.data as Record<string, unknown>;
+    expect(data["success"]).toBe(false);
+    expect(data["error"]).toBe("capture-failed");
+    // Must carry retryable:false metadata from ERROR_META
+    expect(data["retryable"]).toBe(false);
+  });
+
+  /**
+   * CR-F-12 Gap 3: When the captured image exceeds MAX_CAPTURE_BYTES (500 KB)
+   * after both the initial crop and the reduced-quality retry, handleCaptureRegion
+   * must return error "image-too-large" — as a distinct named code.
+   *
+   * Implementation path: executeCaptureRegion → cropImageToBounds succeeds →
+   *   sizeBytes > MAX_CAPTURE_BYTES → retryCaptureAtReducedQuality →
+   *   retry sizeBytes > MAX_CAPTURE_BYTES → { success: false, error: "image-too-large" }
+   *
+   * To trigger this path we need captureVisibleTab to return a data URL whose
+   * base64 payload length exceeds ~667 KB (so that estimateSizeBytes > 500 000).
+   * The string "A".repeat(N) is valid ASCII and produces a predictable size.
+   */
+  it("CR-F-12 Gap 3: image-too-large emitted as distinct code when image exceeds 500 KB after retry", async () => {
+    const { handleCaptureRegion } = await import("../src/relay-capture-handler.js");
+
+    // Build a data URL whose base64 portion exceeds 666_667 chars so that
+    // estimateSizeBytes() returns > 500_000 bytes.
+    // estimateSizeBytes = Math.round((base64.length * 3) / 4)
+    // We need base64.length > 500_000 * 4 / 3 ≈ 666_667
+    const bigBase64 = "A".repeat(700_000);
+    const bigDataUrl = `data:image/jpeg;base64,${bigBase64}`;
+
+    (chrome.tabs.captureVisibleTab as ReturnType<typeof vi.fn>).mockResolvedValue(bigDataUrl);
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_tabId: number, message: unknown) => {
+        const msg = message as Record<string, unknown>;
+        if (msg["type"] === "RESOLVE_ANCHOR_BOUNDS") {
+          return { bounds: { x: 0, y: 0, width: 1280, height: 800 } };
+        }
+        if (msg["type"] === "CAPTURE_SNAPSHOT_ENVELOPE") {
+          return STANDARD_ENVELOPE;
+        }
+        return undefined;
+      }
+    );
+
+    const response = await handleCaptureRegion({
+      requestId: "gap3-image-too-large",
+      action: "capture_region",
+      payload: {
+        tabId: 1,
+        anchorKey: "big_element",
+        padding: 0,
+        quality: 85, // MAX_QUALITY so retry step triggers
+      },
+    });
+
+    expect(response.success).toBe(true);
+    const data = response.data as Record<string, unknown>;
+    expect(data["success"]).toBe(false);
+    expect(data["error"]).toBe("image-too-large");
+    // Must carry retryable:false metadata from ERROR_META
+    expect(data["retryable"]).toBe(false);
+  });
+});

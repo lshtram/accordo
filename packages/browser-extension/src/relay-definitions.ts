@@ -82,6 +82,7 @@ export interface RelayActionResponse {
     | "navigation-interrupted"
     | "page-closed"
     | "control-not-granted"
+    | "tab-not-found"
     | "unsupported-page"
     | "element-not-found"
     | "element-off-screen"
@@ -139,6 +140,7 @@ const ERROR_META: Record<string, { retryable: boolean; retryAfterMs?: number }> 
   "timeout": { retryable: true, retryAfterMs: 1000 },
   "element-not-found": { retryable: false },
   "element-off-screen": { retryable: false },
+  "tab-not-found": { retryable: false },
   "image-too-large": { retryable: false },
   "capture-failed": { retryable: false },
   "origin-blocked": { retryable: false },

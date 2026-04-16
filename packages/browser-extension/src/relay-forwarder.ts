@@ -100,7 +100,7 @@ export async function resolveTargetTabId(payload: Record<string, unknown>): Prom
   if (explicitTabId !== undefined) {
     return explicitTabId;
   }
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   return tab?.id;
 }
 

@@ -211,6 +211,21 @@ function createStorageMock() {
 export const mockTabUrls = new Map<number, string>();
 
 /**
+ * REQ-TC-017: Set of tab IDs that should be treated as non-existent.
+ * When chrome.tabs.get is called with one of these IDs it will reject,
+ * simulating a tab that no longer exists.
+ */
+export const nonExistentTabIds = new Set<number>();
+
+/**
+ * Mark a tabId as non-existent so chrome.tabs.get() rejects for it.
+ * Call before the action under test; reset clears this automatically.
+ */
+export function simulateTabNotFound(tabId: number): void {
+  nonExistentTabIds.add(tabId);
+}
+
+/**
  * When set, tabs.sendMessage will reject with this error on the next call.
  * Tests use this to simulate "no receiver" conditions.
  * After the next call, the ref is cleared automatically.
@@ -261,6 +276,10 @@ function createTabsMock() {
         tabId: number,
         callback?: (tab: chrome.tabs.Tab) => void
       ): Promise<chrome.tabs.Tab> => {
+        // REQ-TC-017: simulate a non-existent tab
+        if (nonExistentTabIds.has(tabId)) {
+          return Promise.reject(new Error(`No tab with id: ${tabId}`));
+        }
         const url = mockTabUrls.get(tabId) ?? "https://example.com/page";
         const tab = { id: tabId, url, active: true, index: 0, windowId: 1, highlighted: false, pinned: false, incognito: false } as chrome.tabs.Tab;
         if (callback) callback(tab);
@@ -629,6 +648,7 @@ export function resetChromeMocks(): void {
   storageMap.clear();
   runtimeListeners.length = 0;
   mockTabUrls.clear();
+  nonExistentTabIds.clear();
   debuggerAttachedTabs.clear();
   debuggerDetachListeners.length = 0;
   setPendingSendMessageRejection(undefined);

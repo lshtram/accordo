@@ -365,7 +365,7 @@ export function buildPageUnderstandingTools(
             type: "string",
             enum: ["inline", "file-ref"],
             description:
-              "G6: Artifact transport mode. 'inline' (default): base64 data URL returned in dataUrl. 'file-ref': screenshot saved to ~/.accordo/screenshots/ and returned by fileUri + filePath instead of inline data.",
+              "G6: Artifact transport mode. 'file-ref' (default): screenshot saved to ~/.accordo/screenshots/ and returned by fileUri + filePath instead of inline data. 'inline': base64 data URL returned in dataUrl — opt in explicitly to avoid large payloads.",
           },
           redactPII: {
             type: "boolean",

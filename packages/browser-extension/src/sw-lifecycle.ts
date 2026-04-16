@@ -15,9 +15,47 @@ import { toggleCommentsMode, getCommentsMode, loadCommentsModeFromStorage } from
 import { normalizeUrl } from "./store.js";
 import { handleRelayAction, type RelayActionRequest, type RelayActionResponse } from "./relay-actions.js";
 import { RelayBridgeClient } from "./relay-bridge.js";
+import { RelayTransport, type RelayTransportEvents, type TransportState } from "./relay-transport.js";
+import { DEFAULT_RELAY_CONFIG, getRelayConfig } from "./relay-config.js";
 import { MESSAGE_TYPES } from "./constants.js";
 import { handleNavigationReset } from "./relay-actions.js";
 import type { SwMessage, SwResponse } from "./sw-router.js";
+
+const RELAY_TOKEN_STORAGE_KEY = "relayToken";
+
+/**
+ * Create a RelayTransport configured with a tokenProvider that reads
+ * from chrome.storage.local. This enables the transport to use the
+ * latest token on every reconnect.
+ */
+function createTransport(): RelayTransport {
+  const transportEvents: RelayTransportEvents = {
+    onMessage: (data: string) => {
+      // Message handling is done by RelayBridgeClient through its own handler
+      void data;
+    },
+    onStateChange: (state: TransportState) => {
+      void state;
+    },
+    onError: (error: string) => {
+      void error;
+    },
+  };
+
+  const config = {
+    ...DEFAULT_RELAY_CONFIG,
+    tokenProvider: async (): Promise<string | undefined> => {
+      try {
+        const result = await chrome.storage.local.get([RELAY_TOKEN_STORAGE_KEY]);
+        return result[RELAY_TOKEN_STORAGE_KEY] as string | undefined;
+      } catch {
+        return undefined;
+      }
+    },
+  };
+
+  return new RelayTransport(config, transportEvents);
+}
 
 // ── Broadcast helper ────────────────────────────────────────────────────────
 
@@ -74,7 +112,15 @@ export async function handleRelayActionWithBroadcast(req: RelayActionRequest): P
 // ── Relay bridge instance ───────────────────────────────────────────────────
 // Created early so forwardToAccordoBrowser can reference it.
 // Started in bootstrap (service-worker.ts) after registerListeners().
-export const relayBridge = new RelayBridgeClient(handleRelayActionWithBroadcast);
+const relayTransport = createTransport();
+export const relayBridge = new RelayBridgeClient(handleRelayActionWithBroadcast, relayTransport);
+
+// Wire transport inbound messages to the bridge's pending-request handler.
+// The transport is created before relayBridge, so we wire the callback here
+// after both are available. This enables response routing in transport mode.
+relayTransport.events.onMessage = (data: string): void => {
+  relayBridge.handleTransportMessage(data);
+};
 
 // ── Forwarder to accordo-browser ────────────────────────────────────────────
 /**

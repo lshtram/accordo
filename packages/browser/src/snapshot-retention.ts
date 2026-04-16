@@ -76,6 +76,14 @@ export class SnapshotRetentionStore {
   }
 
   /**
+   * GAP-G1: Convenience overload — save an envelope when only the envelope
+   * is available (pageId is derived from envelope.pageId).
+   */
+  add(envelope: SnapshotEnvelopeFields): void {
+    this.save(envelope.pageId, envelope);
+  }
+
+  /**
    * Return the most-recently saved envelope for a page, or undefined if none.
    * GAP-I1: Runs TTL eviction before returning.
    *

@@ -206,6 +206,13 @@ export function createHandleMessage(
         return await handleRelayActionWithBroadcast(req);
       }
 
+      case MESSAGE_TYPES.RELAY_RECONNECT: {
+        // Triggered by the popup immediately after storing a new pairing token.
+        // Calling start() here avoids waiting for the next token-poll cycle (up to 60s).
+        relayBridge.start();
+        return { success: true };
+      }
+
       default:
         return { success: false, error: "unknown message type" };
     }

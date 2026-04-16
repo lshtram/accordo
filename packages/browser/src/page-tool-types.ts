@@ -169,8 +169,8 @@ export interface CaptureRegionArgs {
   redactPII?: boolean;
   /**
    * G6: Artifact transport mode for the captured screenshot.
-   * "inline" (default) — returns base64 data URL in `dataUrl`.
-   * "file-ref" — writes the screenshot to disk and returns `fileUri` + `filePath` instead.
+   * "file-ref" (default) — writes the screenshot to disk and returns `fileUri` + `filePath` instead of inline data.
+   * "inline" — returns base64 data URL in `dataUrl`. Opt in explicitly to avoid large payloads in the response.
    */
   transport?: "inline" | "file-ref";
 }

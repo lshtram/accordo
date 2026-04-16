@@ -350,7 +350,7 @@ describe("B2-CTX-001: multi-tab support", () => {
         });
 
         // chrome.tabs.query must be called to find the active tab
-        expect(globalThis.chrome.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true });
+        expect(globalThis.chrome.tabs.query).toHaveBeenCalledWith({ active: true, lastFocusedWindow: true });
 
         // chrome.tabs.sendMessage is called with the tab returned by the query
         expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
@@ -418,7 +418,7 @@ describe("B2-CTX-001: multi-tab support", () => {
           payload: { texts: ["Done"] },
         });
 
-        expect(globalThis.chrome.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true });
+        expect(globalThis.chrome.tabs.query).toHaveBeenCalledWith({ active: true, lastFocusedWindow: true });
         expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
           1, // active tab id
           expect.objectContaining({ action: "wait_for" }),

@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { RelayBridgeClient } from "../src/relay-bridge.js";
+import type { RelayActionRequest, RelayActionResponse } from "../src/relay-actions.js";
+
+type HandlerFn = (request: RelayActionRequest) => Promise<RelayActionResponse>;
 
 class FakeSocket {
   static OPEN = 1;
@@ -152,5 +155,41 @@ describe("M82-RELAY — browser-extension relay client", () => {
     const payload = JSON.parse(socket.sent[0]) as { requestId: string; success: boolean };
     expect(payload.requestId).toBe("req-42");
     expect(payload.success).toBe(true);
+  });
+
+  it("BR-F-124: transport mode handles incoming action requests and sends handler response", async () => {
+    const handler = vi.fn(async (request: { requestId: string }) => ({
+      requestId: request.requestId,
+      success: true,
+      data: { pages: [] },
+    }));
+
+    const transportSend = vi.fn((_data: string) => true);
+    const transport = {
+      start: vi.fn(),
+      startPolling: vi.fn(),
+      stop: vi.fn(),
+      send: transportSend,
+      isConnected: vi.fn(() => true),
+    };
+
+    const bridge = new RelayBridgeClient(
+      handler as unknown as HandlerFn,
+      transport as unknown as { start(): void; startPolling(): void; stop(): void; send(data: string): boolean; isConnected(): boolean } as any,
+    );
+
+    bridge.handleTransportMessage(JSON.stringify({
+      requestId: "req-transport-1",
+      action: "list_pages",
+      payload: {},
+    }));
+
+    await Promise.resolve();
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(transportSend).toHaveBeenCalledTimes(1);
+    const wirePayload = JSON.parse(String(transportSend.mock.calls[0][0])) as { requestId: string; success: boolean };
+    expect(wirePayload.requestId).toBe("req-transport-1");
+    expect(wirePayload.success).toBe(true);
   });
 });

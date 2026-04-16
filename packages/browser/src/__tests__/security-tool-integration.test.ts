@@ -488,7 +488,7 @@ describe("MCP-SEC-004: auditId in tool responses", () => {
     const result = await (captureTool!.handler as any)({ mode: "viewport" });
 
     expect(result).toHaveProperty("success", true);
-    expect(result).toHaveProperty("dataUrl");
+    expect(result).toHaveProperty("fileUri");
     expect(result).toHaveProperty("auditId");
     expect(typeof result.auditId).toBe("string");
     expect(result.auditId).toMatch(
