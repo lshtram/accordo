@@ -319,9 +319,10 @@ describe("seeded layout includes canonical edge keys and waypoints", () => {
     // Intermediate waypoints (slice(1, -1)): [[100, 25], [200, 50]]
     // el.x=100, el.y=200, points[1]=[100,25] → x=100+100=200, y=200+25=225
     // el.x=100, el.y=200, points[2]=[200,50] → x=100+200=300, y=200+50=250
+    // Scale factor 1.5 is applied to all geometry: (200*1.5, 225*1.5), (300*1.5, 250*1.5)
     expect(edges["A->B:0"].waypoints).toEqual([
-      { x: 200, y: 225 },
-      { x: 300, y: 250 },
+      { x: 300, y: 337.5 },
+      { x: 450, y: 375 },
     ]);
   });
 });

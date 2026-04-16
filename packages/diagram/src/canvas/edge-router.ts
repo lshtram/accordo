@@ -345,18 +345,21 @@ export function routeCurved(
     const startPt = clampToBorder(sc, centre(source), source, ARROW_GAP);
     const endPt   = clampToBorder(tc, centre(target), target, ARROW_GAP);
 
-    if (waypoints.length === 1) {
-      // Single explicit control point: use the waypoint verbatim as cp.
-      const cp: [number, number] = [waypoints[0]!.x, waypoints[0]!.y];
-      // Re-clamp start/end relative to the explicit cp (FC-09).
-      const clampedStart = clampToBorder(sc, cp, source, ARROW_GAP);
-      const clampedEnd   = clampToBorder(tc, cp, target, ARROW_GAP);
-      return {
-        points: [clampedStart, cp, clampedEnd],
-        startBinding: { focus: 0, gap: ARROW_GAP },
-        endBinding:   { focus: 0, gap: ARROW_GAP },
-      };
-    }
+     if (waypoints.length === 1) {
+       // Single explicit control point: use the waypoint verbatim as cp.
+       const cp: [number, number] = [waypoints[0]!.x, waypoints[0]!.y];
+       // Re-clamp start/end relative to the explicit cp (FC-09).
+       const clampedStart = clampToBorder(sc, cp, source, ARROW_GAP);
+       const clampedEnd   = clampToBorder(tc, cp, target, ARROW_GAP);
+       return {
+         points: [clampedStart, cp, clampedEnd],
+         // Explicit waypoint geometry must win over Excalidraw's bound-arrow
+         // recomputation. Non-null bindings cause the live view to re-route the
+         // edge and visually ignore the persisted control point.
+         startBinding: null,
+         endBinding:   null,
+       };
+     }
 
     // 2+ waypoints: explicit polyline path through all waypoints.
     // FC-09: start/end are clamped to the source/target border relative to

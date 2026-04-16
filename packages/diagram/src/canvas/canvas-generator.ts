@@ -36,6 +36,8 @@ import { getShapeProps } from "./shape-map.js";
 import type { CompositeKind } from "./shape-map.js";
 import { routeEdge } from "./edge-router.js";
 
+const DEFAULT_EDGE_WAYPOINT_ROUNDNESS = 8;
+
 /**
  * Merge parsed Mermaid node style (from `style` / `classDef` directives) with
  * the layout-store style (user overrides via accordo_diagram_patch).
@@ -105,6 +107,49 @@ function resolveNodeRoundness(
     return null;
   }
   return shapeProps.roundness;
+}
+
+function resolveEdgeRoundness(
+  routing: string,
+  waypoints: ReadonlyArray<{ readonly x: number; readonly y: number }>,
+  explicitRoundness: number | null | undefined,
+): number | null | undefined {
+  if (explicitRoundness !== undefined) return explicitRoundness;
+  if (waypoints.length > 0) {
+    return DEFAULT_EDGE_WAYPOINT_ROUNDNESS;
+  }
+  if (routing === "curved") {
+    return DEFAULT_EDGE_WAYPOINT_ROUNDNESS;
+  }
+  return undefined;
+}
+
+function isHarmlessSeededAutoWaypointHint(
+  waypoints: ReadonlyArray<{ readonly x: number; readonly y: number }>,
+  source: { x: number; y: number; w: number; h: number } | undefined,
+  target: { x: number; y: number; w: number; h: number } | undefined,
+): boolean {
+  if (waypoints.length !== 1 || source === undefined || target === undefined) {
+    return false;
+  }
+
+  const wp = waypoints[0]!;
+  const scx = source.x + source.w / 2;
+  const scy = source.y + source.h / 2;
+  const tcx = target.x + target.w / 2;
+  const tcy = target.y + target.h / 2;
+
+  const EPS = 0.5;
+  const between = (value: number, a: number, b: number): boolean =>
+    value >= Math.min(a, b) - EPS && value <= Math.max(a, b) + EPS;
+
+  // Upstream first-init can seed a single midpoint-like waypoint that merely
+  // hints the edge direction (e.g. vertical/horizontal) without representing
+  // an explicit detached reroute. Keep these as bound auto edges.
+  const alignedWithSourceX = Math.abs(wp.x - scx) <= EPS && between(wp.y, scy, tcy);
+  const alignedWithSourceY = Math.abs(wp.y - scy) <= EPS && between(wp.x, scx, tcx);
+
+  return alignedWithSourceX || alignedWithSourceY;
 }
 
 // ── Class node grouping (Phase A stub) ────────────────────────────────────────
@@ -963,8 +1008,13 @@ export function generateCanvas(
     // would pass through any intermediate node.
     let routing = edgeL?.routing ?? "auto";
     const waypoints = edgeL?.waypoints ?? [];
-    if (routing === "auto" && waypoints.length === 0) {
-      if (wouldPassThroughObstacle(edge.from, edge.to, resolvedLayout.nodes)) {
+    const harmlessSeedHint = isHarmlessSeededAutoWaypointHint(waypoints, fromLayout, toLayout);
+    if (routing === "auto") {
+      if (waypoints.length > 0 && !harmlessSeedHint) {
+        // Persisted waypoints with "auto" routing: promote to "curved" so
+        // routeEdge honours the waypoints (routeAuto ignores them).
+        routing = "curved";
+      } else if (wouldPassThroughObstacle(edge.from, edge.to, resolvedLayout.nodes)) {
         routing = "orthogonal";
       }
     }
@@ -1098,8 +1148,9 @@ export function generateCanvas(
       strokeWidth: resolvedStrokeWidth,
       strokeStyle: resolvedStrokeStyle,
       // Edge corner roundness — visual only; routing geometry comes from EdgeLayout.routing.
-      // undefined means use routing-mode default; null means sharp; number means rounded.
-      roundness: edgeL?.style?.roundness,
+      // Persisted explicit style wins. Default edges with waypoints should render rounded
+      // to match Mermaid's SVG look, unless the user explicitly forces sharp (null).
+      roundness: resolveEdgeRoundness(routing, waypoints, edgeL?.style?.roundness),
     });
   }
 

@@ -667,3 +667,158 @@ describe("generateCanvas — edge stroke styling (A10-v2)", () => {
     expect(arrow!.strokeStyle).toBe("dotted");
   });
 });
+
+// ── CG-36..CG-37: Persisted waypoints with "auto" routing ────────────────────
+
+describe("generateCanvas — auto routing with persisted waypoints", () => {
+  // CG-36: waypoints stored with routing="auto" are reflected in arrow points
+  it("CG-36: auto routing + waypoints → arrow points include waypoint coordinates", () => {
+    const k = edgeKey("A", "B", 0);
+    const wp = { x: 200, y: 50 };
+    const parsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")], ["B", makeNode("B")]]),
+      edges: [makeEdge("A", "B")],
+    });
+    const layout = makeLayout({
+      nodes: {
+        A: makeNodeLayout({ x: 0, y: 100, w: 100, h: 60 }),
+        B: makeNodeLayout({ x: 300, y: 100, w: 100, h: 60 }),
+      },
+      edges: {
+        [k]: { routing: "auto", waypoints: [wp], style: {} },
+      },
+    });
+    const scene = generateCanvas(parsed, layout);
+    const arrow = scene.elements.find((e) => e.type === "arrow" && e.mermaidId === k);
+    expect(arrow).toBeDefined();
+    // Arrow should have > 2 points (auto without waypoints gives exactly 2)
+    expect(arrow!.points!.length).toBeGreaterThan(2);
+    // Reconstruct absolute coordinates and verify waypoint is present
+    const absPts = (arrow!.points ?? []).map(
+      ([px, py]) => [px + arrow!.x, py + arrow!.y] as [number, number],
+    );
+    const found = absPts.some(([ax, ay]) => ax === wp.x && ay === wp.y);
+    expect(found).toBe(true);
+  });
+
+  // CG-37: two waypoints stored with routing="auto" → both appear in arrow
+  it("CG-37: auto routing + 2 waypoints → both waypoints in arrow points", () => {
+    const k = edgeKey("A", "B", 0);
+    const wps = [{ x: 150, y: 50 }, { x: 250, y: 150 }];
+    const parsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")], ["B", makeNode("B")]]),
+      edges: [makeEdge("A", "B")],
+    });
+    const layout = makeLayout({
+      nodes: {
+        A: makeNodeLayout({ x: 0, y: 100, w: 100, h: 60 }),
+        B: makeNodeLayout({ x: 300, y: 100, w: 100, h: 60 }),
+      },
+      edges: {
+        [k]: { routing: "auto", waypoints: wps, style: {} },
+      },
+    });
+    const scene = generateCanvas(parsed, layout);
+    const arrow = scene.elements.find((e) => e.type === "arrow" && e.mermaidId === k);
+    expect(arrow).toBeDefined();
+    const absPts = (arrow!.points ?? []).map(
+      ([px, py]) => [px + arrow!.x, py + arrow!.y] as [number, number],
+    );
+    for (const wp of wps) {
+      const found = absPts.some(([ax, ay]) => ax === wp.x && ay === wp.y);
+      expect(found).toBe(true);
+    }
+  });
+
+  it("CG-38: auto routing + waypoints defaults edge roundness to rounded", () => {
+    const k = edgeKey("A", "B", 0);
+    const parsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")], ["B", makeNode("B")]]),
+      edges: [makeEdge("A", "B")],
+    });
+    const layout = makeLayout({
+      nodes: {
+        A: makeNodeLayout({ x: 0, y: 100, w: 100, h: 60 }),
+        B: makeNodeLayout({ x: 300, y: 100, w: 100, h: 60 }),
+      },
+      edges: {
+        [k]: { routing: "auto", waypoints: [{ x: 200, y: 50 }], style: {} },
+      },
+    });
+    const scene = generateCanvas(parsed, layout);
+    const arrow = scene.elements.find((e) => e.type === "arrow" && e.mermaidId === k);
+    expect(arrow).toBeDefined();
+    expect(arrow!.roundness).toBe(8);
+  });
+
+  it("CG-39: explicit sharp edge style overrides default waypoint roundness", () => {
+    const k = edgeKey("A", "B", 0);
+    const parsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")], ["B", makeNode("B")]]),
+      edges: [makeEdge("A", "B")],
+    });
+    const layout = makeLayout({
+      nodes: {
+        A: makeNodeLayout({ x: 0, y: 100, w: 100, h: 60 }),
+        B: makeNodeLayout({ x: 300, y: 100, w: 100, h: 60 }),
+      },
+      edges: {
+        [k]: { routing: "auto", waypoints: [{ x: 200, y: 50 }], style: { roundness: null } },
+      },
+    });
+    const scene = generateCanvas(parsed, layout);
+    const arrow = scene.elements.find((e) => e.type === "arrow" && e.mermaidId === k);
+    expect(arrow).toBeDefined();
+    expect(arrow!.roundness).toBeNull();
+  });
+
+  it("CG-40: auto routing + seeded midpoint waypoint keeps edge bindings attached", () => {
+    const k = edgeKey("Start", "Stop", 0);
+    const parsed = makeParsed({
+      nodes: new Map([["Start", makeNode("Start")], ["Stop", makeNode("Stop")]]),
+      edges: [makeEdge("Start", "Stop")],
+      direction: "TD",
+    });
+    // Repro based on flowchart-00/01 seeded upstream-direct layout geometry.
+    const layout = makeLayout({
+      nodes: {
+        Start: makeNodeLayout({ x: 12, y: 12, w: 90, h: 45 }),
+        Stop: makeNodeLayout({ x: 70, y: 191, w: 90, h: 45 }),
+      },
+      edges: {
+        [k]: { routing: "auto", waypoints: [{ x: 57, y: 94.5 }], style: {} },
+      },
+      metadata: { engine: "upstream-direct" },
+    });
+
+    const scene = generateCanvas(parsed, layout);
+    const arrow = scene.elements.find((e) => e.type === "arrow" && e.mermaidId === k);
+    expect(arrow).toBeDefined();
+    expect(arrow!.startBinding).not.toBeNull();
+    expect(arrow!.endBinding).not.toBeNull();
+  });
+
+  it("CG-41: auto routing + non-midpoint waypoint stays explicit and unbound", () => {
+    const k = edgeKey("A", "B", 0);
+    const parsed = makeParsed({
+      nodes: new Map([["A", makeNode("A")], ["B", makeNode("B")]]),
+      edges: [makeEdge("A", "B")],
+      direction: "TD",
+    });
+    const layout = makeLayout({
+      nodes: {
+        A: makeNodeLayout({ x: 0, y: 100, w: 100, h: 60 }),
+        B: makeNodeLayout({ x: 300, y: 100, w: 100, h: 60 }),
+      },
+      edges: {
+        [k]: { routing: "auto", waypoints: [{ x: 150, y: 50 }], style: {} },
+      },
+    });
+
+    const scene = generateCanvas(parsed, layout);
+    const arrow = scene.elements.find((e) => e.type === "arrow" && e.mermaidId === k);
+    expect(arrow).toBeDefined();
+    expect(arrow!.startBinding).toBeNull();
+    expect(arrow!.endBinding).toBeNull();
+  });
+});

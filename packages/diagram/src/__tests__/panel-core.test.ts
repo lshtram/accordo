@@ -202,9 +202,19 @@ describe("loadAndPost", () => {
     expect(mockComputeInitialLayout).toHaveBeenCalled();
   });
 
-  it("PCore-05: calls reconcile when source has changed since last load", async () => {
+  it("PCore-05: calls reconcile when source changed and layout already exists", async () => {
     // Change the file content so source differs from _lastSource
     await writeFile(mmdPath, "flowchart TD\nA-->C\n", "utf8");
+    mockReadLayout.mockResolvedValueOnce({
+      version: "1.0",
+      diagram_type: "flowchart",
+      nodes: { A: { x: 0, y: 0, w: 100, h: 50 } },
+      edges: { "A->C:0": { routing: "auto", waypoints: [], style: {} } },
+      clusters: {},
+      aesthetics: {},
+      unplaced: [],
+      metadata: { engine: "upstream-direct" },
+    });
     const freshState = createPanelState(mmdPath, vscPanel as never, ctx as never);
     freshState._lastSource = "flowchart TD\nA-->B\n"; // old source
 
@@ -671,8 +681,8 @@ describe("runUpstreamPlacement — UD-08..UD-11", () => {
     expect(writeCall).toBeDefined();
     const writtenLayout = writeCall![1] as Record<string, unknown>;
     const nodes = writtenLayout.nodes as Record<string, { x: number; y: number; w: number; h: number }>;
-    expect(nodes["A"]).toMatchObject({ x: 100, y: 200, w: 120, h: 60 });
-    expect(nodes["B"]).toMatchObject({ x: 400, y: 200, w: 120, h: 60 });
+    expect(nodes["A"]).toMatchObject({ x: 150, y: 300, w: 180, h: 90 });
+    expect(nodes["B"]).toMatchObject({ x: 600, y: 300, w: 180, h: 90 });
   });
 
   // UD-09: first-init persists structurally valid edge entries keyed as EdgeKey (from->to:ordinal)
@@ -697,8 +707,9 @@ describe("runUpstreamPlacement — UD-08..UD-11", () => {
     // UD-09: edge key must be the canonical EdgeKey "A->B:0" (not "edge-1" or "edge-1:0")
     expect(edges["A->B:0"]).toBeDefined();
     // Waypoints exclude the start and end (first and last points)
+    // Scale is applied after absolute waypoint calculation: (el.x + pt[0]) * 1.5
     expect(edges["A->B:0"].waypoints).toEqual([
-      { x: 210, y: 35 }, // el.x(10) + 200, el.y(10) + 25
+      { x: 315, y: 52.5 }, // (el.x(10) + 200) * 1.5, (el.y(10) + 25) * 1.5
     ]);
   });
 
@@ -750,8 +761,35 @@ describe("runUpstreamPlacement — UD-08..UD-11", () => {
 
     // Edge key is the fallback el.id — not a canonical EdgeKey
     expect(edges["edge-1"]).toBeDefined();
-    expect(edges["edge-1"].waypoints).toEqual([{ x: 210, y: 35 }]);
+    expect(edges["edge-1"].waypoints).toEqual([{ x: 315, y: 52.5 }]);
     // Canonical key should NOT be present (no mermaidId to derive it from)
     expect(edges["A->B:0"]).toBeUndefined();
+  });
+
+  it("UD-12: first-init with stale _lastSource does NOT reconcile away seeded waypoints", async () => {
+    mockParseMermaidToExcalidraw.mockImplementation(() => Promise.resolve({ elements: MOCK_ELEMENTS_WITH_EDGE }));
+
+    const panelState = {
+      ...state,
+      _panel: vscPanel as never,
+      // Simulate previous file content lingering on shared panel state.
+      _lastSource: "flowchart TD\nX-->Y\n",
+    } as PanelState & { _panel: never };
+
+    await loadAndPost(panelState as never);
+
+    // First-init should skip reconcile entirely.
+    expect(mockReconcile).not.toHaveBeenCalled();
+
+    const writeCall = mockWriteLayout.mock.calls.find(
+      (call) => {
+        const layoutArg = call[1] as Record<string, unknown> | undefined;
+        return layoutArg != null && "edges" in layoutArg && Object.keys(layoutArg.edges as object).includes("A->B:0");
+      },
+    );
+    expect(writeCall).toBeDefined();
+    const writtenLayout = writeCall![1] as Record<string, unknown>;
+    const edges = writtenLayout.edges as Record<string, { waypoints: Array<{ x: number; y: number }> }>;
+    expect(edges["A->B:0"].waypoints).toEqual([{ x: 315, y: 52.5 }]);
   });
 });

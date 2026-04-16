@@ -479,6 +479,7 @@ export function handleChangeCallback(
   appStateRaw: Record<string, unknown>,
   prevElements: readonly ExcalidrawAPIElement[],
   vscode: { postMessage(msg: unknown): void },
+  options?: { suppressEdgeRouteEmission?: boolean },
 ): readonly ExcalidrawAPIElement[] {
   const next = elements as readonly ExcalidrawAPIElement[];
 
@@ -489,10 +490,12 @@ export function handleChangeCallback(
   );
 
   // Arrow route mutations (P-B: missing emission path — REQ-01)
-  const arrowMutations = detectArrowRouteMutations(
-    prevElements as ExcalidrawAPIElement[],
-    next as ExcalidrawAPIElement[],
-  );
+  const arrowMutations = options?.suppressEdgeRouteEmission
+    ? []
+    : detectArrowRouteMutations(
+      prevElements as ExcalidrawAPIElement[],
+      next as ExcalidrawAPIElement[],
+    );
 
   // Snapshot with deep-clone of nested points array to prevent aliasing:
   // Excalidraw mutates arrow points in-place between onChange callbacks.

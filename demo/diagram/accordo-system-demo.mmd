@@ -1,0 +1,30 @@
+flowchart TD
+    AI["AI agents\nOpenCode · Claude · Copilot"]
+    Hub["accordo-hub\nMCP server"]
+    Bridge["accordo-bridge\nVS Code extension"]
+
+    Editor["accordo-editor\neditor · terminal · workspace"]
+    Voice["accordo-voice\nread aloud · dictation"]
+    Diagram["accordo-diagram\nMermaid · Excalidraw"]
+    Comments["accordo-comments\nthreads · navigation"]
+    Browser["accordo-browser\nbrowser automation"]
+    BrowserExt["browser-extension\nChrome relay"]
+    Marp["accordo-marp\npresentations"]
+    Md["md-viewer\nmarkdown preview"]
+
+    Types[("@accordo/bridge-types\nshared types")]
+    Cap{"accordo-capabilities\nshared command IDs"}
+
+    AI --> Hub
+    Hub <--> Bridge
+    Bridge --> Editor
+    Bridge --> Voice
+    Bridge --> Diagram
+    Bridge --> Comments
+    Bridge --> Browser
+    Bridge --> Marp
+    Bridge --> Md
+    Browser <--> BrowserExt
+    Hub -.-> Types
+    Bridge -.-> Types
+    Bridge -.-> Cap

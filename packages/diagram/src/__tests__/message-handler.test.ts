@@ -186,6 +186,78 @@ describe("applyHostMessage", () => {
   });
 });
 
+describe("handleChangeCallback edge-route suppression", () => {
+  it("WF-18: suppressEdgeRouteEmission=true blocks canvas:edge-routed while preserving node messages", async () => {
+    const { handleChangeCallback } = await import("../webview/message-handler.js");
+
+    const prevArrow: ExcalidrawAPIElement = {
+      id: "edge-1",
+      type: "arrow",
+      x: 100,
+      y: 200,
+      width: 0,
+      height: 0,
+      version: 1,
+      versionNonce: 0,
+      isDeleted: false,
+      fillStyle: "solid",
+      strokeWidth: 1,
+      strokeStyle: "solid",
+      roughness: 1,
+      opacity: 100,
+      angle: 0,
+      seed: 0,
+      groupIds: [],
+      frameId: null,
+      boundElements: null,
+      updated: 0,
+      link: null,
+      locked: false,
+      fontFamily: 1,
+      strokeColor: "#1e1e1e",
+      backgroundColor: "transparent",
+      roundness: null,
+      points: [[0, 0], [60, 60], [120, 120]],
+      customData: { mermaidId: "A->B:0" },
+    };
+    const nextArrow: ExcalidrawAPIElement = {
+      ...prevArrow,
+      points: [[0, 0], [70, 70], [120, 120]],
+    };
+
+    const prevNode: ExcalidrawAPIElement = {
+      ...prevArrow,
+      id: "node-1",
+      type: "rectangle",
+      width: 100,
+      height: 50,
+      points: undefined,
+      customData: { mermaidId: "A" },
+      x: 0,
+      y: 0,
+    };
+    const nextNode: ExcalidrawAPIElement = {
+      ...prevNode,
+      x: 10,
+      y: 20,
+    };
+
+    const posted: unknown[] = [];
+    const vscode = { postMessage: (msg: unknown) => posted.push(msg) };
+
+    handleChangeCallback(
+      [nextArrow, nextNode],
+      {},
+      [prevArrow, prevNode],
+      vscode,
+      { suppressEdgeRouteEmission: true },
+    );
+
+    expect(posted.find((m) => (m as { type?: string }).type === "canvas:edge-routed")).toBeUndefined();
+    expect(posted.find((m) => (m as { type?: string }).type === "canvas:node-moved")).toBeDefined();
+  });
+});
+
 // ── detectNodeMutations ───────────────────────────────────────────────────────
 
 describe("detectNodeMutations", () => {

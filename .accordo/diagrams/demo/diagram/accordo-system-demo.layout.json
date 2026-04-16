@@ -1,0 +1,331 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "AI": {
+      "x": 720,
+      "y": 0,
+      "w": 240,
+      "h": 72,
+      "style": {
+        "backgroundColor": "#E8E0F0",
+        "strokeColor": "#7B68EE",
+        "strokeWidth": 3,
+        "fillStyle": "cross-hatch",
+        "fontColor": "#4A3080",
+        "fontWeight": "bold",
+        "roundness": 16
+      }
+    },
+    "Hub": {
+      "x": 720,
+      "y": 150,
+      "w": 240,
+      "h": 72,
+      "style": {
+        "backgroundColor": "#D4E8F5",
+        "strokeColor": "#4A90D9",
+        "strokeWidth": 3,
+        "fillStyle": "solid",
+        "fontColor": "#1A5276",
+        "fontWeight": "bold",
+        "roundness": 16
+      }
+    },
+    "Bridge": {
+      "x": 720,
+      "y": 300,
+      "w": 240,
+      "h": 72,
+      "style": {
+        "backgroundColor": "#D5F5E3",
+        "strokeColor": "#27AE60",
+        "strokeWidth": 3,
+        "fillStyle": "solid",
+        "fontColor": "#1E8449",
+        "fontWeight": "bold",
+        "roundness": 16
+      }
+    },
+    "Editor": {
+      "x": 0,
+      "y": 520,
+      "w": 220,
+      "h": 72,
+      "style": {
+        "backgroundColor": "#EAF4FF",
+        "strokeColor": "#4A90D9",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#1A5276",
+        "roundness": 12
+      }
+    },
+    "Voice": {
+      "x": 250,
+      "y": 520,
+      "w": 220,
+      "h": 72,
+      "style": {
+        "backgroundColor": "#FEF9E7",
+        "strokeColor": "#F39C12",
+        "strokeWidth": 2,
+        "fillStyle": "dots",
+        "fontColor": "#B7950B",
+        "roundness": 12
+      }
+    },
+    "Diagram": {
+      "x": 500,
+      "y": 520,
+      "w": 220,
+      "h": 72,
+      "style": {
+        "backgroundColor": "#F4ECF7",
+        "strokeColor": "#7B68EE",
+        "strokeWidth": 2,
+        "fillStyle": "cross-hatch",
+        "fontColor": "#4A3080",
+        "roundness": 12
+      }
+    },
+    "Comments": {
+      "x": 750,
+      "y": 520,
+      "w": 220,
+      "h": 72,
+      "style": {
+        "backgroundColor": "#E8F8F5",
+        "strokeColor": "#16A085",
+        "strokeWidth": 2,
+        "fillStyle": "zigzag",
+        "fontColor": "#117864",
+        "roundness": 12
+      }
+    },
+    "Browser": {
+      "x": 1000,
+      "y": 520,
+      "w": 220,
+      "h": 72,
+      "style": {
+        "backgroundColor": "#FDEDEC",
+        "strokeColor": "#E74C3C",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#922B21",
+        "roundness": 12
+      }
+    },
+    "BrowserExt": {
+      "x": 1000,
+      "y": 690,
+      "w": 220,
+      "h": 72,
+      "style": {
+        "backgroundColor": "#FDF2E9",
+        "strokeColor": "#E67E22",
+        "strokeWidth": 2,
+        "fillStyle": "dots",
+        "fontColor": "#AF601A",
+        "roundness": 12
+      }
+    },
+    "Marp": {
+      "x": 1250,
+      "y": 520,
+      "w": 220,
+      "h": 72,
+      "style": {
+        "backgroundColor": "#FCEEF5",
+        "strokeColor": "#D2527F",
+        "strokeWidth": 2,
+        "fillStyle": "cross-hatch",
+        "fontColor": "#943126",
+        "roundness": 12
+      }
+    },
+    "Md": {
+      "x": 1500,
+      "y": 520,
+      "w": 220,
+      "h": 72,
+      "style": {
+        "backgroundColor": "#EAECEE",
+        "strokeColor": "#95A5A6",
+        "strokeWidth": 2,
+        "fillStyle": "solid",
+        "fontColor": "#566573",
+        "roundness": 12
+      }
+    },
+    "Types": {
+      "x": 1500,
+      "y": 130,
+      "w": 240,
+      "h": 80,
+      "style": {
+        "backgroundColor": "#EBF5FB",
+        "strokeColor": "#5DADE2",
+        "strokeWidth": 2,
+        "fillStyle": "solid",
+        "fontColor": "#1B4F72"
+      }
+    },
+    "Cap": {
+      "x": 1500,
+      "y": 300,
+      "w": 240,
+      "h": 80,
+      "style": {
+        "backgroundColor": "#FCF3CF",
+        "strokeColor": "#D4AC0D",
+        "strokeWidth": 2,
+        "fillStyle": "solid",
+        "fontColor": "#9A7D0A"
+      }
+    }
+  },
+  "edges": {
+    "AI->Hub:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#7B68EE",
+        "strokeWidth": 3,
+        "roundness": 8
+      }
+    },
+    "Hub->Bridge:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#2E86DE",
+        "strokeWidth": 3,
+        "roundness": 8
+      }
+    },
+    "Bridge->Editor:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#4A90D9",
+        "strokeWidth": 2,
+        "roundness": 8
+      }
+    },
+    "Bridge->Voice:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#F39C12",
+        "strokeWidth": 2,
+        "roundness": 8
+      }
+    },
+    "Bridge->Diagram:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#7B68EE",
+        "strokeWidth": 2,
+        "roundness": 8
+      }
+    },
+    "Bridge->Comments:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#16A085",
+        "strokeWidth": 2,
+        "roundness": 8
+      }
+    },
+    "Bridge->Browser:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#E74C3C",
+        "strokeWidth": 2,
+        "roundness": 8
+      }
+    },
+    "Bridge->Marp:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#D2527F",
+        "strokeWidth": 2,
+        "roundness": 8
+      }
+    },
+    "Bridge->Md:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 1518,
+          "y": 418
+        }
+      ],
+      "style": {
+        "strokeColor": "#7F8C8D",
+        "strokeWidth": 2,
+        "roundness": 8
+      }
+    },
+    "Browser->BrowserExt:0": {
+      "routing": "curved",
+      "waypoints": [
+        {
+          "x": 1110,
+          "y": 650
+        }
+      ],
+      "style": {
+        "strokeColor": "#E67E22",
+        "strokeWidth": 2,
+        "roundness": 8
+      }
+    },
+    "Hub->Types:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#5DADE2",
+        "strokeWidth": 2,
+        "strokeStyle": "dashed",
+        "roundness": 8
+      }
+    },
+    "Bridge->Types:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#5DADE2",
+        "strokeWidth": 2,
+        "strokeStyle": "dashed",
+        "roundness": 8
+      }
+    },
+    "Bridge->Cap:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#D4AC0D",
+        "strokeWidth": 2,
+        "strokeStyle": "dashed",
+        "roundness": 8
+      }
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  },
+  "metadata": {
+    "engine": "upstream-direct"
+  }
+}

@@ -201,6 +201,7 @@ async function loadMermaidLibraryItems(): Promise<LibraryItems> {
 
 export function ExcalidrawApp() {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  const suppressNextEdgeRouteRef = useRef<boolean>(false);
   const initialData = useMemo<ExcalidrawInitialDataState>(() => ({
     elements: [],
     appState: {},
@@ -224,6 +225,11 @@ export function ExcalidrawApp() {
             elements: restored,
             ...(opts.appState ? { appState: opts.appState } : {}),
           } as unknown as Parameters<typeof api.updateScene>[0]);
+          // Host-driven scene loads should not be interpreted as user edge reroutes.
+          // Without this guard, onChange can emit canvas:edge-routed for freshly
+          // loaded arrows, and host persists those transient points back into
+          // layout.json (often as empty waypoints), overwriting seeded geometry.
+          suppressNextEdgeRouteRef.current = true;
           // Snapshot with deep-clone of nested points array to prevent aliasing.
           // Excalidraw mutates arrow points in-place between onChange callbacks —
           // a shallow clone would leave points aliased and could silently suppress
@@ -313,7 +319,14 @@ export function ExcalidrawApp() {
         win.__accordoRepositionPins?.(zoom);
       }
 
-      prevElements = handleChangeCallback(elements, appStateRaw, prevElements, _vscode!);
+      prevElements = handleChangeCallback(
+        elements,
+        appStateRaw,
+        prevElements,
+        _vscode!,
+        { suppressEdgeRouteEmission: suppressNextEdgeRouteRef.current },
+      );
+      suppressNextEdgeRouteRef.current = false;
     },
     [],
   );
