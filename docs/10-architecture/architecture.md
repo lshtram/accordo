@@ -799,12 +799,6 @@ accordo-editor/               VSCode extension — "accordo.accordo-editor"
   Published: VSCode Marketplace
   extensionKind: ["workspace"]
   extensionDependencies: ["accordo.accordo-bridge"]
-
-accordo-script/               VSCode extension — "accordo.accordo-script"
-  Published: VSCode Marketplace
-  extensionKind: ["workspace"]
-  extensionDependencies: ["accordo.accordo-bridge"]
-  See: §13 Component: accordo-script
 ```
 
 ---
@@ -817,7 +811,7 @@ The following are explicitly deferred:
 - `accordo-slidev` — Modality. Requires Phase 1 gate to pass first.
 - `accordo-tldraw` — Modality. Requires Phase 1 gate to pass first.
 - `accordo-voice` — Voice modality (TTS + STT + summary narration). Implemented in Phase 2 Session 10. Architecture: [`docs/voice-architecture.md`](voice-architecture.md).
-- `accordo-script` — Scripted walkthroughs. Implemented in Phase 2 Session 10D. Architecture ref: `docs/voice-architecture.md` ADR-04. Requirements: `docs/requirements-script.md`.
+- `accordo-script` — **Removed (2026-04-16).** Previously implemented in Session 10D. The built-in scripting engine has been removed. External script authoring via Python skill remains available.
 - Custom IDE packaging — No.
 - Cloud/hosted Hub — No. Local-first only.
 
@@ -863,71 +857,21 @@ The VS Code **built-in Comments panel** (bottom-bar `workbench.panel.comments`) 
 
 ---
 
-## 13. Component: accordo-script (Session 10D)
+## 13. Former Component: accordo-script (Removed)
 
-> **Agent note [2026-03-11]:** Established during Session 10D. The script module is the automation layer that sequences multi-step IDE experiences from a single agent call.
-> **Agent note [2026-04-01]:** Migrated from extension host to Hub. ScriptRunner + types live in Hub, tools are Hub-native with localHandler (DEC-005). The extension retains only SubtitleBar and state display.
+> **Agent note [2026-04-16]:** The built-in scripting engine has been removed. The `accordo_script_*` tools are no longer registered. External script authoring via the Python skill + NarrationScript approach remains available.
 
-### 13.1 Role
+The built-in `accordo-script` module (Session 10D, M52) has been removed. The Hub's `HubToolRegistration` / `localHandler` infrastructure (DEC-005) remains available for future Hub-native tools.
 
-Exposes a **declarative scripting runtime** as MCP tools. The agent produces a `NarrationScript` JSON object in one call; `accordo-script` executes each step sequentially without further round-trips.
+**What was removed:**
+- `packages/hub/src/script/` — Hub-native script runner, tools, and types
+- `packages/script/` — VS Code extension package
 
-**Hub-native architecture:** The ScriptRunner and its 4 MCP tools (run, stop, status, discover) live in the Hub process. Script tool calls are handled locally via the `localHandler` pattern (DEC-005) without routing through BridgeServer. When a script's `command` steps need to control the IDE (e.g. open a file, highlight lines), the ScriptRunner's deps adapter calls `bridgeServer.invoke()` — the same path AI agents use. The Hub doesn't know it's running a script; it just dispatches tool calls.
+**What remains:**
+- `packages/hub/src/hub-tool-types.ts` — `HubToolRegistration` type and `isHubTool()` guard (generic, not script-specific)
+- `packages/hub/src/mcp-call-executor.ts` — `isHubTool()` short-circuit for local handler execution (generic)
 
-Designed to be **voice-optional**: `speak` steps synthesise audio if `accordo-voice` is installed; otherwise they fall back to the subtitle bar and continue. This ensures automated demos, code walkthroughs, and teaching sequences work on any machine regardless of audio setup.
-
-### 13.2 Step Types
-
-| Step `type` | Fields | Behaviour |
-|---|---|---|
-| `speak` | `text` | Calls `accordo_voice_readAloud` via Bridge; falls back to subtitle if voice unavailable |
-| `subtitle` | `text`, `durationMs?` | Calls `accordo_subtitle_show` via Bridge (future subtitle service) |
-| `delay` | `ms` | Pauses execution for `ms` milliseconds (local setTimeout in Hub) |
-| `highlight` | `path`, `startLine`, `endLine`, `color?` | Calls `accordo_editor_highlight` via Bridge |
-| `clear-highlights` | — | Calls `accordo_editor_clearHighlights` via Bridge |
-| `command` | `command`, `args?` | Calls `bridgeServer.invoke(command, args)` — routes to any registered tool |
-
-**`command` universality:** Every registered Accordo MCP tool is reachable via `command` steps through `bridgeServer.invoke()`. This means every tool from every modality (editor, voice, comments, presentations, diagrams, …) is reachable without any changes to the script module.
-
-### 13.3 MCP Tools (Hub-native)
-
-| Tool | Purpose | Danger | Idempotent | Handler |
-|---|---|---|---|---|
-| `accordo_script_run` | Accept and execute a `NarrationScript` | moderate | no | localHandler |
-| `accordo_script_stop` | Cancel the running script | safe | yes | localHandler |
-| `accordo_script_status` | Poll execution progress (current step, state) | safe | yes | localHandler |
-| `accordo_script_discover` | Return full reference card (step types, available tools) | safe | yes | localHandler |
-
-**Hub-native tool pattern:** These tools are registered via `ToolRegistry.registerHubTool()` and have a `localHandler` field. `McpCallExecutor` checks `isHubTool(tool)` before routing to the Bridge — if true, it calls `localHandler` directly. Tools still appear in `tools/list` identically to Bridge-registered tools. See DEC-005.
-
-**Dynamic discover:** `accordo_script_discover` no longer uses hardcoded command IDs. It calls `toolRegistry.list()` to return whatever tools are currently registered, making the reference card automatically reflect newly installed extensions.
-
-### 13.4 LLM Schema Design
-
-The `accordo_script_run` input schema uses a **flat property list with inline example** rather than a deep `oneOf` discriminated union. Lessons learned:
-
-- `oneOf` with many variants causes LLMs to pick the easiest variant (the last in the list with zero required fields) when generating under token pressure.
-- Numeric `minItems`/`maxItems` constraints are interpreted by LLMs as target values, not bounds — causing scripts padded to exactly `maxItems` steps.
-- A flat schema with a concrete example in `description` (e.g. `speak/delay/speak` pattern) produces correct, varied scripts reliably.
-
-`accordo_script_discover` provides the full annotated reference as a tool call result, decoupling schema discoverability from the run tool's schema size.
-
-### 13.5 Internal File Structure
-
-```
-packages/hub/src/script/          ← Hub-native script module
-├── index.ts                      — barrel export
-├── script-types.ts               — NarrationScript, ScriptStep discriminated union, ScriptState
-├── script-runner.ts              — ScriptRunner: sequential executor, cancellation, error policy
-├── script-deps-adapter.ts        — Factory: ScriptRunnerDeps wired to bridgeServer.invoke()
-└── script-tools.ts               — 4 HubToolRegistration factories (run, stop, status, discover)
-
-packages/hub/src/hub-tool-types.ts — HubToolRegistration, isHubTool() type guard
-
-packages/script/src/              ← Extension host (retained)
-├── extension.ts                  — activate(), SubtitleBar, Bridge state display (gutted)
-└── subtitle-bar.ts               — ScriptSubtitleBar: status bar text, auto-clear
-```
+**Migration path for script-style demos:** Use the Python skill approach with external script execution, or implement a dedicated script runner as a standalone service.
 
 ---
 
@@ -1751,3 +1695,74 @@ This plugin is a **complement** to ADR-03 (agent-driven summary narration), not 
 | Clients | Copilot, Claude (instruction URL consumers) | OpenCode only |
 | Hub changes | Prompt engine renders voice section | None |
 | Reliability | Depends on agent following instructions | Deterministic (always triggers on idle) |
+
+---
+
+## 17. Navigation Adapter Registry
+
+### 17.1 Purpose
+
+The `NavigationAdapterRegistry` (`packages/capabilities/src/navigation.ts`) provides a host-agnostic, plug-and-play mechanism for routing comment thread focus and anchor navigation to any surface type. Instead of hard-coding surface-specific `if` branches in the comments panel router, each modality registers a `NavigationAdapter` at activation time.
+
+### 17.2 Interface
+
+```typescript
+interface NavigationAdapter {
+  readonly surfaceType: string;           // e.g. "slide", "browser", "diagram"
+  navigateToAnchor(anchor, env): Promise<boolean>;
+  focusThread(threadId, anchor, env): Promise<boolean>;
+  dispose?(): void;
+}
+
+interface NavigationAdapterRegistry {
+  register(adapter: NavigationAdapter): void;
+  unregister(surfaceType: string): void;
+  get(surfaceType: string): NavigationAdapter | undefined;
+  dispose(): void;
+}
+```
+
+### 17.3 Lifecycle
+
+| Event | What happens |
+|-------|---------------|
+| Surface extension activates | Calls `registry.register(adapter)` |
+| Surface extension deactivates | Calls `registry.unregister(surfaceType)` — adapter's `dispose()` called if present |
+| VS Code restarts | All adapters cleared; re-registered on next activation |
+| `get(surfaceType)` → undefined | Router falls back to generic file-open (never silently fails) |
+
+### 17.4 Registered Adapters
+
+| Surface Type | Package | Command(s) called |
+|---|---|---|
+| `slide` | `packages/marp/` | `accordo.presentation.internal.focusThread` |
+| `browser` | `packages/browser/` | `accordo_browser_focusThread` |
+| `diagram` | `packages/diagram/` | `accordo_diagram_focusThread` |
+| `markdown-preview` | `packages/md-viewer/` | `accordo_preview_internal_focusThread` |
+
+### 17.5 Router Contract
+
+The comments panel router (`packages/comments/src/panel/navigation-router.ts`) follows a registry-first dispatch:
+
+```
+anchor.kind === "text"     → VS Code commands.executeCommand with PREVIEW_FOCUS_THREAD
+anchor.kind === "surface"  → registry.get(surfaceType) → adapter.focusThread()
+no adapter registered      → env.openTextDocument (generic fallback)
+```
+
+The `DEFERRED_COMMANDS` fallback path is deprecated. All surfaces must register a `NavigationAdapter` to receive focus events.
+
+### 17.6 Adding a New Surface
+
+To add comment support for a new surface type (e.g. PDF viewer):
+
+1. Implement `NavigationAdapter` with `surfaceType: "pdf"`
+2. In the surface's `extension.ts` activation, call `registry.register(myAdapter)`
+3. No changes to `navigation-router.ts` — the router discovers the adapter automatically
+
+### 17.7 State Ownership
+
+- The registry is owned by the comments panel (`packages/comments/`)
+- Adapters are owned by their respective surface packages
+- The registry is a plain `Map` — no persistence, cleared on VS Code restart
+- Adapters must re-register on every activation (no persistence requirement)

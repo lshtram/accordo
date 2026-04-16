@@ -336,3 +336,61 @@ export const COMMENT_CREATE_RATE_LIMIT = 10;
 
 /** Rate limit window in milliseconds (1 minute) */
 export const COMMENT_CREATE_RATE_WINDOW_MS = 60_000;
+
+// ─── Comment Mutation Event (cross-store sync contract) ──────────────────────
+
+/**
+ * A mutation event emitted whenever a comment thread or reply is created,
+ * updated, resolved, reopened, or deleted.
+ *
+ * Used by the VS Code comment store and the browser extension's offline queue
+ * to keep a shared vocabulary for cross-surface sync events.
+ *
+ * Source: consolidation-sequenced-plan-2026-04-16.md §S-2
+ */
+export type CommentMutationKind =
+  | "created"
+  | "replied"
+  | "resolved"
+  | "reopened"
+  | "deleted";
+
+export interface CommentMutationEvent {
+  /** What happened */
+  kind: CommentMutationKind;
+  /** Affected thread */
+  threadId: string;
+  /** Affected comment (absent for delete-by-thread) */
+  commentId?: string;
+  /** URI of the surface/file the thread is anchored to */
+  sourceUri: string;
+  /** Surface type at mutation time (e.g. "browser", "slide") */
+  surfaceType?: string;
+  /** ISO 8601 timestamp */
+  timestamp: string;
+  /** Opaque actor ID — "agent" or "user:<name>" */
+  actor?: string;
+}
+
+/**
+ * A queued mutation stored in chrome.storage.local when the browser extension
+ * is disconnected from the relay.
+ *
+ * Source: consolidation-sequenced-plan-2026-04-16.md §P-4
+ */
+export interface QueuedCommentMutation {
+  /** Unique ID for deduplication — UUID generated at enqueue time */
+  id: string;
+  /** ISO 8601 enqueue timestamp */
+  timestamp: string;
+  /** The mutation operation */
+  kind: CommentMutationKind;
+  /** Thread ID targeted by the mutation */
+  threadId: string;
+  /** Comment ID (required for reply, optional for create) */
+  commentId?: string;
+  /** Full params passed to the relay action */
+  params: Record<string, unknown>;
+  /** Surface type at enqueue time */
+  surfaceType?: string;
+}
