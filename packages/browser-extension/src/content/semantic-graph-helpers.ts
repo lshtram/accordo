@@ -25,6 +25,11 @@ export const SEMANTIC_GRAPH_TIMEOUT_MS = 15_000;
 export class NodeIdRegistry {
   private readonly elementIds = new Map<Element, number>();
   private counter = 0;
+  /**
+   * B2-UID-001: Frame identifier used when building canonical uid.
+   * Set by the collector before building sub-trees.
+   */
+  public frameId: string = "main";
 
   /** Get or assign a stable nodeId for an element. */
   idFor(el: Element): number {
@@ -33,6 +38,16 @@ export class NodeIdRegistry {
     const id = this.counter++;
     this.elementIds.set(el, id);
     return id;
+  }
+
+  /**
+   * B2-UID-001: Return the canonical uid for an element.
+   * Returns undefined if the element has not been registered yet.
+   */
+  uidFor(el: Element): string | undefined {
+    const nodeId = this.elementIds.get(el);
+    if (nodeId === undefined) return undefined;
+    return `${this.frameId}:${nodeId}`;
   }
 }
 

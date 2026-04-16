@@ -30,6 +30,7 @@ import { BrowserRelayServer } from "./relay-server.js";
 import { SharedBrowserRelayServer } from "./shared-relay-server.js";
 import { SharedRelayClient } from "./shared-relay-client.js";
 import { SnapshotRetentionStore } from "./snapshot-retention.js";
+import { ScreenshotRetentionStore } from "./screenshot-retention.js";
 import { buildBrowserTools } from "./tool-assembly.js";
 import {
   registerBrowserNotifier,
@@ -305,8 +306,9 @@ export async function activateSharedRelay(
 
     // SBR-F-050: shared mode — register browser tools with the SharedRelayClient (BrowserRelayLike)
     const snapshotStore = new SnapshotRetentionStore(0);
+    const screenshotStore = new ScreenshotRetentionStore();
     const securityConfig = getSecurityConfig();
-    const allBrowserTools = buildBrowserTools(client, snapshotStore, securityConfig);
+    const allBrowserTools = buildBrowserTools(client, snapshotStore, securityConfig, screenshotStore);
     const toolsDisposable = bridge.registerTools(EXTENSION_ID, allBrowserTools);
     context.subscriptions.push(toolsDisposable);
     out.appendLine(`[accordo-browser] registered ${allBrowserTools.length} browser MCP tools (shared mode)`);
@@ -392,8 +394,9 @@ export async function activateSharedRelay(
       context.subscriptions.push({ dispose: () => ownerSyncScheduler.stop() });
 
       const ownerSnapshotStore = new SnapshotRetentionStore(0);
+      const ownerScreenshotStore = new ScreenshotRetentionStore();
       const ownerSecurityConfig = getSecurityConfig();
-      const ownerBrowserTools = buildBrowserTools(ownerClient, ownerSnapshotStore, ownerSecurityConfig);
+      const ownerBrowserTools = buildBrowserTools(ownerClient, ownerSnapshotStore, ownerSecurityConfig, ownerScreenshotStore);
       const ownerToolsDisposable = bridge.registerTools(EXTENSION_ID, ownerBrowserTools);
       context.subscriptions.push(ownerToolsDisposable);
       out.appendLine(`[accordo-browser] registered ${ownerBrowserTools.length} browser MCP tools (shared mode, owner)`);
@@ -495,7 +498,8 @@ export async function activatePerWindowRelay(
 
   const securityConfig = getSecurityConfig();
   const snapshotStore = new SnapshotRetentionStore(securityConfig.snapshotRetention?.maxAgeMs ?? 0);
-  const allBrowserTools = buildBrowserTools(relay, snapshotStore, securityConfig);
+  const screenshotStore = new ScreenshotRetentionStore();
+  const allBrowserTools = buildBrowserTools(relay, snapshotStore, securityConfig, screenshotStore);
 
   const toolsDisposable = bridge.registerTools(EXTENSION_ID, allBrowserTools);
   context.subscriptions.push(toolsDisposable);

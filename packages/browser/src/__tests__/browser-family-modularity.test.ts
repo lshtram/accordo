@@ -873,6 +873,7 @@ describe("tool-assembly", () => {
       const { buildBrowserTools } = await import("../tool-assembly.js");
       const relay = createMockRelay();
       const store = { add: vi.fn(), find: vi.fn(), clear: vi.fn() };
+      const screenshotStore = { save: vi.fn(), getLatest: vi.fn(), list: vi.fn(), listAll: vi.fn() };
       const securityConfig = {
         originPolicy: { allowedOrigins: [], deniedOrigins: [], defaultAction: "allow" as const },
         redactionPolicy: { redactPatterns: [], replacement: "[REDACTED]" },
@@ -884,6 +885,7 @@ describe("tool-assembly", () => {
         relay as unknown as BrowserRelayLike,
         store as never,
         securityConfig,
+        screenshotStore as never,
       );
 
       expect(Array.isArray(tools)).toBe(true);
@@ -894,6 +896,7 @@ describe("tool-assembly", () => {
       const { buildBrowserTools } = await import("../tool-assembly.js");
       const relay = createMockRelay();
       const store = { add: vi.fn(), find: vi.fn(), clear: vi.fn() };
+      const screenshotStore = { save: vi.fn(), getLatest: vi.fn(), list: vi.fn(), listAll: vi.fn() };
       const securityConfig = {
         originPolicy: { allowedOrigins: [], deniedOrigins: [], defaultAction: "allow" as const },
         redactionPolicy: { redactPatterns: [], replacement: "[REDACTED]" },
@@ -905,6 +908,7 @@ describe("tool-assembly", () => {
         relay as unknown as BrowserRelayLike,
         store as never,
         securityConfig,
+        screenshotStore as never,
       );
 
       for (const tool of tools) {
@@ -912,6 +916,80 @@ describe("tool-assembly", () => {
         expect(tool.name.length).toBeGreaterThan(0);
         expect(typeof tool.handler).toBe("function");
       }
+    });
+
+    // GAP-G1: manage_screenshots tool registration
+
+    it("GAP-G1: buildBrowserTools includes accordo_browser_manage_screenshots", async () => {
+      const { buildBrowserTools } = await import("../tool-assembly.js");
+      const relay = createMockRelay();
+      const store = { add: vi.fn(), find: vi.fn(), clear: vi.fn() };
+      const screenshotStore = { save: vi.fn(), getLatest: vi.fn(), list: vi.fn(), listAll: vi.fn(), clear: vi.fn() };
+      const securityConfig = {
+        originPolicy: { allowedOrigins: [], deniedOrigins: [], defaultAction: "allow" as const },
+        redactionPolicy: { redactPatterns: [], replacement: "[REDACTED]" },
+        auditLog: { log: vi.fn() },
+        snapshotRetention: { maxAgeMs: 0 },
+      };
+
+      const tools = buildBrowserTools(
+        relay as unknown as BrowserRelayLike,
+        store as never,
+        securityConfig,
+        screenshotStore as never,
+      );
+
+      const names = tools.map((t) => t.name);
+      expect(names).toContain("accordo_browser_manage_screenshots");
+    });
+
+    it("GAP-G1: accordo_browser_manage_screenshots tool has correct inputSchema", async () => {
+      const { buildBrowserTools } = await import("../tool-assembly.js");
+      const relay = createMockRelay();
+      const store = { add: vi.fn(), find: vi.fn(), clear: vi.fn() };
+      const screenshotStore = { save: vi.fn(), getLatest: vi.fn(), list: vi.fn(), listAll: vi.fn(), clear: vi.fn() };
+      const securityConfig = {
+        originPolicy: { allowedOrigins: [], deniedOrigins: [], defaultAction: "allow" as const },
+        redactionPolicy: { redactPatterns: [], replacement: "[REDACTED]" },
+        auditLog: { log: vi.fn() },
+        snapshotRetention: { maxAgeMs: 0 },
+      };
+
+      const tools = buildBrowserTools(
+        relay as unknown as BrowserRelayLike,
+        store as never,
+        securityConfig,
+        screenshotStore as never,
+      );
+
+      const tool = tools.find((t) => t.name === "accordo_browser_manage_screenshots");
+      expect(tool).toBeDefined();
+      expect(tool!.inputSchema.required).toContain("action");
+      expect(tool!.inputSchema.properties.action.enum).toEqual(["list", "clear"]);
+    });
+
+    it("GAP-G1: buildBrowserTools works without screenshotStore (creates default)", async () => {
+      const { buildBrowserTools } = await import("../tool-assembly.js");
+      const relay = createMockRelay();
+      const store = { add: vi.fn(), find: vi.fn(), clear: vi.fn() };
+      const securityConfig = {
+        originPolicy: { allowedOrigins: [], deniedOrigins: [], defaultAction: "allow" as const },
+        redactionPolicy: { redactPatterns: [], replacement: "[REDACTED]" },
+        auditLog: { log: vi.fn() },
+        snapshotRetention: { maxAgeMs: 0 },
+      };
+
+      // Should not throw even without screenshotStore
+      const tools = buildBrowserTools(
+        relay as unknown as BrowserRelayLike,
+        store as never,
+        securityConfig,
+        // intentionally omit screenshotStore
+      );
+
+      expect(Array.isArray(tools)).toBe(true);
+      const names = tools.map((t) => t.name);
+      expect(names).toContain("accordo_browser_manage_screenshots");
     });
   });
 });

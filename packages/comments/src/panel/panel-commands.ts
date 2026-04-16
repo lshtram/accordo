@@ -9,6 +9,7 @@
 
 import type * as vscode from "vscode";
 import type { CommentThread, CommentAuthor } from "@accordo/bridge-types";
+import type { NavigationAdapterRegistry } from "@accordo/capabilities";
 import type { CommentsTreeProvider, CommentTreeItem } from "./comments-tree-provider.js";
 import type { NavigationEnv } from "./navigation-router.js";
 import type { PanelFilters } from "./panel-filters.js";
@@ -89,8 +90,19 @@ export function registerPanelCommands(
   disposables.push(commands.registerCommand("accordo.commentsPanel.navigateToAnchor", async (arg: unknown) => {
     const thread = extractThread(arg);
     if (!thread) { await noArg(); return; }
+
+    // Acquire the navigation registry from accordo-marp (shared at activation).
+    // Uses the command-based approach for loose coupling between extensions.
+    // Graceful no-op if marp hasn't activated yet — deferred path handles it.
+    let registry: NavigationAdapterRegistry | undefined;
+    try {
+      registry = await commands.executeCommand<NavigationAdapterRegistry | null>(
+        "accordo_marp_internal_getNavigationRegistry",
+      ) ?? undefined;
+    } catch { /* marp not available — deferred path will be used */ }
+
     const { navigateToThread } = await import("./navigation-router.js");
-    await navigateToThread(thread, navEnv);
+    await navigateToThread(thread, navEnv, registry);
   }));
 
   // M45-CMD-03: resolve
@@ -127,11 +139,18 @@ export function registerPanelCommands(
   // (gutter widget for text anchors, slide popover for surface anchors).
   // This avoids the top-of-screen showInputBox dialog in favour of native,
   // in-context input controls.
+  // Uses registry-backed navigation (same as navigateToAnchor) for consistency.
   disposables.push(commands.registerCommand("accordo.commentsPanel.reply", async (arg: unknown) => {
     const thread = extractThread(arg);
     if (!thread) { await noArg(); return; }
     const { navigateToThread } = await import("./navigation-router.js");
-    await navigateToThread(thread, navEnv);
+    let registry: NavigationAdapterRegistry | undefined;
+    try {
+      registry = await commands.executeCommand<NavigationAdapterRegistry | null>(
+        "accordo_marp_internal_getNavigationRegistry",
+      ) ?? undefined;
+    } catch { /* marp not available — deferred path will be used */ }
+    await navigateToThread(thread, navEnv, registry);
   }));
 
   // M45-CMD-06: delete

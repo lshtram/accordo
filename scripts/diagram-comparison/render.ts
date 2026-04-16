@@ -80,19 +80,52 @@ let _browser: BrowserInstance | null = null;
 let _playwright: PlaywrightModule | null = null;
 
 async function ensureBrowser(): Promise<{ browser: BrowserInstance; pw: PlaywrightModule }> {
-  if (!_playwright || !_browser) {
+  const disconnected =
+    _browser !== null &&
+    "isConnected" in _browser &&
+    typeof (_browser as { isConnected?: () => boolean }).isConnected === "function" &&
+    !(_browser as { isConnected: () => boolean }).isConnected();
+
+  if (!_playwright || !_browser || disconnected) {
     _playwright = await import("/home/liorshtram/.nvm/versions/node/v24.14.0/lib/node_modules/playwright/index.mjs");
     _browser = await _playwright.chromium.launch({ headless: true });
   }
   return { browser: _browser, pw: _playwright };
 }
 
+async function resetBrowser(): Promise<void> {
+  if (_browser) {
+    try {
+      await _browser.close();
+    } catch {
+      // ignore
+    }
+  }
+  _browser = null;
+}
+
+async function withClosedBrowserRetry<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    const msg = String(err);
+    const isClosed =
+      msg.includes("has been closed") ||
+      msg.includes("Target page, context or browser has been closed") ||
+      msg.includes("Browser has been closed");
+    if (!isClosed) throw err;
+    await resetBrowser();
+    return await fn();
+  }
+}
+
 // ── Path A: Mermaid SVG via Playwright ────────────────────────────────────────
 
 async function pathAMermaid(definition: string): Promise<string> {
-  const { browser } = await ensureBrowser();
-  const port = await ensureServer();
-  const page = await browser.newPage();
+  return withClosedBrowserRetry(async () => {
+    const { browser } = await ensureBrowser();
+    const port = await ensureServer();
+    const page = await browser.newPage();
 
   const escapedDef = definition.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$");
 
@@ -111,17 +144,18 @@ async function pathAMermaid(definition: string): Promise<string> {
 })().catch(e => { window.__ERROR__ = e.message; window.__READY__ = true; });
 </script></body></html>`;
 
-  try {
-    await page.setContent(html, { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => (window as Record<string, unknown>).__READY__, { timeout: 60000 });
+    try {
+      await page.setContent(html, { waitUntil: "domcontentloaded" });
+      await page.waitForFunction(() => (window as Record<string, unknown>).__READY__, { timeout: 60000 });
 
-    const err = await page.evaluate(() => (window as Record<string, unknown>).__ERROR__);
-    if (err) throw new Error(String(err));
+      const err = await page.evaluate(() => (window as Record<string, unknown>).__ERROR__);
+      if (err) throw new Error(String(err));
 
-    return await page.evaluate(() => (window as Record<string, unknown>).__SVG__) as string;
-  } finally {
-    await page.close();
-  }
+      return await page.evaluate(() => (window as Record<string, unknown>).__SVG__) as string;
+    } finally {
+      await page.close();
+    }
+  });
 }
 
 // ── Path B & C helper: render Excalidraw SVG via Playwright ───────────────────
@@ -129,9 +163,10 @@ async function pathAMermaid(definition: string): Promise<string> {
 // The library is exposed as window.ExcalidrawLib with an exportToSvg method.
 
 async function renderExcalidrawSvg(elements: unknown[]): Promise<string> {
-  const { browser } = await ensureBrowser();
-  const port = await ensureServer();
-  const page = await browser.newPage();
+  return withClosedBrowserRetry(async () => {
+    const { browser } = await ensureBrowser();
+    const port = await ensureServer();
+    const page = await browser.newPage();
 
   // Serialize elements - plain JSON, no TypeScript
   const elementsJson = JSON.stringify(elements);
@@ -189,6 +224,73 @@ async function renderExcalidrawSvg(elements: unknown[]): Promise<string> {
 </script>
 </body></html>`;
 
+    try {
+      await page.setContent(html, { waitUntil: "domcontentloaded" });
+      await page.waitForFunction(() => (window as Record<string, unknown>).__READY__, { timeout: 60000 });
+
+      const err = await page.evaluate(() => (window as Record<string, unknown>).__ERROR__);
+      if (err) throw new Error(String(err));
+
+      return await page.evaluate(() => (window as Record<string, unknown>).__SVG__) as string;
+    } finally {
+      await page.close();
+    }
+  });
+}
+
+async function renderExcalidrawFromSkeletons(skeletons: unknown[]): Promise<string> {
+  const { browser } = await ensureBrowser();
+  const port = await ensureServer();
+  const page = await browser.newPage();
+
+  const skeletonsJson = JSON.stringify(skeletons);
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<script src="http://localhost:${port}/react.production.min.js"></script>
+<script src="http://localhost:${port}/react-dom.production.min.js"></script>
+<script src="http://localhost:${port}/excalidraw.min.js"></script>
+</head>
+<body>
+<script>
+(async () => {
+  try {
+    let attempts = 0;
+    while (!window.ExcalidrawLib && attempts < 100) {
+      await new Promise(r => setTimeout(r, 100));
+      attempts++;
+    }
+    if (!window.ExcalidrawLib) {
+      throw new Error('ExcalidrawLib not loaded');
+    }
+
+    const lib = window.ExcalidrawLib;
+    const input = JSON.parse(${JSON.stringify(JSON.stringify(skeletons))});
+    const elements = typeof lib.convertToExcalidrawElements === 'function'
+      ? lib.convertToExcalidrawElements(input)
+      : input;
+
+    const svgResult = await lib.exportToSvg({
+      elements,
+      files: null,
+      appState: { exportBackground: true, viewBackgroundColor: '#ffffff' },
+    });
+
+    if (svgResult instanceof SVGElement) {
+      window.__SVG__ = svgResult.outerHTML;
+    } else if (typeof svgResult === 'string') {
+      window.__SVG__ = svgResult;
+    } else {
+      window.__SVG__ = new XMLSerializer().serializeToString(svgResult);
+    }
+  } catch (err) {
+    window.__ERROR__ = String(err);
+  }
+  window.__READY__ = true;
+})();
+</script>
+</body></html>`;
+
   try {
     await page.setContent(html, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => (window as Record<string, unknown>).__READY__, { timeout: 60000 });
@@ -222,17 +324,17 @@ async function pathBDagre(definition: string): Promise<string> {
   return renderExcalidrawSvg(elements);
 }
 
-// ── Path C: Excalidraw SVG ──────────────────────────────────────────────────────
-// Uses Playwright to call parseMermaidToExcalidraw in a browser DOM environment,
-// then completes the Accordo pipeline (generateCanvas + toExcalidrawPayload) in Node.
+// ── Path C: Excalidraw SVG (upstream-direct) ──────────────────────────────────
+// Uses Playwright to call parseMermaidToExcalidraw in a browser context, then
+// uses ExcalidrawLib.convertToExcalidrawElements + exportToSvg to render.
+// No dagre remap, no generateCanvas — true upstream output.
 async function pathCExcalidraw(definition: string): Promise<string> {
-  const { browser } = await ensureBrowser();
-  const port = await ensureServer();
-  const page = await browser.newPage();
+  return withClosedBrowserRetry(async () => {
+    const { browser } = await ensureBrowser();
+    const port = await ensureServer();
+    const page = await browser.newPage();
 
-  const escapedDef = definition.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$");
-
-  const html = `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <script src="http://localhost:${port}/mermaid-to-excalidraw.js"></script>
 </head>
@@ -240,77 +342,43 @@ async function pathCExcalidraw(definition: string): Promise<string> {
 <script>
 (async () => {
   try {
+    let attempts = 0;
+    while (!window.MermaidToExcalidraw && attempts < 100) {
+      await new Promise(r => setTimeout(r, 100));
+      attempts++;
+    }
+    if (!window.MermaidToExcalidraw) {
+      throw new Error('MermaidToExcalidraw not loaded');
+    }
+
     const { parseMermaidToExcalidraw } = window.MermaidToExcalidraw;
-    const def = \`${escapedDef}\`;
-    const result = await parseMermaidToExcalidraw(def);
-    window.__ELEMENTS__ = JSON.stringify(result.elements);
-    window.__ERROR__ = null;
-  } catch(err) {
-    window.__ERROR__ = err.message || String(err);
+    const result = await parseMermaidToExcalidraw(${JSON.stringify(definition)});
+    window.__SKELETONS__ = JSON.stringify(result.elements || []);
+  } catch (err) {
+    window.__ERROR__ = String(err);
   }
   window.__READY__ = true;
 })();
 </script>
 </body></html>`;
 
-  try {
-    await page.setContent(html, { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(
-      () => (window as Record<string, unknown>).__READY__,
-      { timeout: 60000 }
-    );
+    try {
+      await page.setContent(html, { waitUntil: "domcontentloaded" });
+      await page.waitForFunction(() => (window as Record<string, unknown>).__READY__, { timeout: 60000 });
 
-    const err = await page.evaluate(() => (window as Record<string, unknown>).__ERROR__);
-    if (err) throw new Error(String(err));
+      const err = await page.evaluate(() => (window as Record<string, unknown>).__ERROR__);
+      if (err) throw new Error(String(err));
 
-    const elementsJson = await page.evaluate(
-      () => (window as Record<string, unknown>).__ELEMENTS__
-    ) as string;
-    const elements = JSON.parse(elementsJson);
+      const skeletonsJson = await page.evaluate(
+        () => (window as Record<string, unknown>).__SKELETONS__
+      ) as string;
 
-    // Complete the Accordo pipeline in Node.js using the excalidraw-positioned elements
-    const { parseMermaid } = await import(
-      "../../packages/diagram/dist/parser/adapter.js"
-    );
-    const { computeInitialLayout } = await import(
-      "../../packages/diagram/dist/layout/auto-layout.js"
-    );
-    const { generateCanvas } = await import(
-      "../../packages/diagram/dist/canvas/canvas-generator.js"
-    );
-    const { toExcalidrawPayload } = await import(
-      "../../packages/diagram/dist/webview/scene-adapter.js"
-    );
-    const { mapGeometryToLayout } = await import(
-      "../../packages/diagram/dist/layout/element-mapper.js"
-    );
-
-    const parseResult = await parseMermaid(definition);
-    if (!parseResult.valid || !parseResult.diagram) {
-      throw new Error("Parse failed: " + (parseResult.error?.message ?? "unknown"));
+      const skeletons = JSON.parse(skeletonsJson);
+      return await renderExcalidrawFromSkeletons(skeletons);
+    } finally {
+      await page.close();
     }
-
-    // Map excalidraw element positions to Accordo layout
-    const layout = await computeInitialLayout(parseResult.diagram);
-    const mappedLayout = mapGeometryToLayout(elements, parseResult.diagram);
-
-    // Overlay excalidraw node positions onto the dagre layout
-    for (const [nodeId, nodeLayout] of Object.entries(mappedLayout.nodes)) {
-      if (layout.nodes[nodeId]) {
-        layout.nodes[nodeId]!.x = nodeLayout.x;
-        layout.nodes[nodeId]!.y = nodeLayout.y;
-        layout.nodes[nodeId]!.width = nodeLayout.width;
-        layout.nodes[nodeId]!.height = nodeLayout.height;
-      }
-    }
-
-    const scene = generateCanvas(parseResult.diagram, layout);
-    const sceneElements = toExcalidrawPayload(scene.elements);
-
-    return renderExcalidrawSvg(sceneElements);
-  } finally {
-    await page.close();
-  }
+  });
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

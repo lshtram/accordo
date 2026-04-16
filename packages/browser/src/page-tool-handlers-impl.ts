@@ -10,6 +10,7 @@
 import type { BrowserRelayLike, SnapshotEnvelopeFields } from "./types.js";
 import { hasSnapshotEnvelope } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
+import type { ScreenshotRetentionStore } from "./screenshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
 import { checkOrigin, extractOrigin, mergeOriginPolicy, redactPageMapResponse, redactInspectElementResponse, redactDomExcerptResponse, redactTextMapResponse, redactSemanticGraphResponse, DEFAULT_SECURITY_CONFIG } from "./security/index.js";
 import { buildStructuredError } from "./page-tool-types.js";
@@ -469,6 +470,7 @@ export async function handleCaptureRegion(
   args: CaptureRegionArgs,
   store: SnapshotRetentionStore,
   security: SecurityConfig = DEFAULT_SECURITY_CONFIG,
+  screenshotStore?: ScreenshotRetentionStore,
 ): Promise<CaptureRegionResponse | PageToolError> {
   if (!relay.isConnected()) {
     return buildStructuredError("browser-not-connected") as PageToolError;
@@ -559,6 +561,22 @@ export async function handleCaptureRegion(
             (result as CaptureRegionResponse).filePath = absPath;
             (result as CaptureRegionResponse).artifactMode = "file-ref";
             delete (result as CaptureRegionResponse).dataUrl;
+
+            // GAP-G1: Save screenshot metadata to retention store (file-ref branch only)
+            if (screenshotStore !== undefined && result.auditId !== undefined) {
+              const ext = args.format ?? "jpeg";
+              screenshotStore.save(result.pageId, {
+                screenshotId: result.auditId,
+                pageId: result.pageId,
+                filePath: absPath,
+                fileUri: pathToFileURL(absPath).href,
+                capturedAt: data.capturedAt,
+                sizeBytes: result.sizeBytes ?? 0,
+                format: ext,
+                width: result.width ?? 0,
+                height: result.height ?? 0,
+              });
+            }
           } catch {
             // Fall back to inline — caller can detect this via transportFallback
             (result as CaptureRegionResponse).transportFallback = true;

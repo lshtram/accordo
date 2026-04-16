@@ -146,6 +146,12 @@ export interface HostLoadSceneMessage {
 export interface HostLoadUpstreamDirectMessage {
   type: "host:load-upstream-direct";
   source: string;
+  /**
+   * Persisted node positions from layout.json.
+   * When present the webview applies them after upstream rendering so that
+   * user-moved positions are restored on reopen (no recompute placement).
+   */
+  layoutNodes?: Record<string, { x: number; y: number; w: number; h: number }>;
 }
 
 /** Ask the webview to export the current canvas. */

@@ -31,21 +31,21 @@ import { setupWebview } from "./panel-commands.js";
 
 export class PanelDisposedError extends Error {
   constructor() {
-    super("DiagramPanel has been disposed");
+    super("PanelDisposedError: DiagramPanel has been disposed");
     this.name = "PanelDisposedError";
   }
 }
 
 export class ExportBusyError extends Error {
   constructor() {
-    super("An export is already in progress");
+    super("ExportBusyError: An export is already in progress");
     this.name = "ExportBusyError";
   }
 }
 
 export class PanelFileNotFoundError extends Error {
   constructor(path: string) {
-    super(`Diagram file not found: ${path}`);
+    super(`PanelFileNotFoundError: Diagram file not found: ${path}`);
     this.name = "PanelFileNotFoundError";
   }
 }

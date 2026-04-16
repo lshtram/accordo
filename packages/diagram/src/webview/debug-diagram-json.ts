@@ -18,7 +18,6 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, basename, extname } from "node:path";
-import type { ExcalidrawAPIElement } from "./scene-adapter.js";
 
 // ── Debug flag ────────────────────────────────────────────────────────────────
 
@@ -40,8 +39,8 @@ export interface DumpOptions {
   workspaceRoot: string;
   /** Raw Mermaid source text. */
   source: string;
-  /** The Excalidraw API elements about to be posted to the webview. */
-  elements: ExcalidrawAPIElement[];
+  /** The scene elements about to be posted to the webview (API or skeleton). */
+  elements: unknown[];
 }
 
 // ── dumpExcalidrawJson ────────────────────────────────────────────────────────

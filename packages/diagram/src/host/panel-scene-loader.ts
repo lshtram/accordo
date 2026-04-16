@@ -26,7 +26,6 @@ import type { LayoutStore, SpatialDiagramType } from "../types.js";
 import type { HostContext } from "./host-context.js";
 import type {
   HostLoadSceneMessage,
-  HostLoadUpstreamDirectMessage,
   HostErrorOverlayMessage,
 } from "../webview/protocol.js";
 import { PanelFileNotFoundError } from "../webview/panel.js";
@@ -117,12 +116,11 @@ export async function loadAndPost(ctx: HostContext): Promise<void> {
   // UD-02: Engine selection policy.
   // Default for flowcharts is upstream-direct unless explicitly overridden
   // via layout.metadata.engine = "dagre".
+  // The chosen engine only affects initial layout seeding (first-init with no existing layout).
+  // Runtime renders ALWAYS use generateCanvas + host:load-scene (SRP-01, SRP-03).
   const requestedEngine = layout?.metadata?.engine as string | undefined;
   const effectiveEngine =
     requestedEngine ?? (parseResult.diagram.type === "flowchart" ? "upstream-direct" : "dagre");
-  const useUpstreamDirect =
-    effectiveEngine === "upstream-direct" &&
-    parseResult.diagram.type === "flowchart";
 
   // Persist default engine choice for flowcharts when metadata is missing so
   // subsequent opens are explicit and deterministic.
@@ -137,17 +135,9 @@ export async function loadAndPost(ctx: HostContext): Promise<void> {
     await writeLayout(layoutPath, layout);
   }
 
-  if (useUpstreamDirect) {
-    state._currentLayout = layout;
-    const msg: HostLoadUpstreamDirectMessage = {
-      type: "host:load-upstream-direct",
-      source,
-    };
-    await ctx.panel.webview.postMessage(msg);
-    return;
-  }
-
-  // Default dagre pipeline.
+  // Single runtime render path: ALWAYS use generateCanvas + host:load-scene.
+  // mermaid-to-excalidraw seeding (when upstream-direct) happens at first-init
+  // via panel-core.ts runUpstreamPlacement; the host side render path is unified.
   const scene = await Promise.resolve(generateCanvas(parseResult.diagram, layout));
   await writeLayout(layoutPath, scene.layout);
   state._currentLayout = scene.layout;

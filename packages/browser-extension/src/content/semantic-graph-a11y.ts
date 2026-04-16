@@ -95,10 +95,12 @@ function buildA11yChildrenInShadow(
     if (childRole !== undefined) {
       const nodeId = registry.idFor(child);
       const name = getAccessibleName(child);
+      const uid = registry.uidFor(child);
 
       const node: SemanticA11yNode = {
         role: childRole,
         nodeId,
+        ...(uid !== undefined ? { uid } : {}),
         children: [],
         inShadowRoot: true,
         shadowHostId,
@@ -184,10 +186,12 @@ function buildA11yNode(
 
   const nodeId = registry.idFor(el);
   const name = getAccessibleName(el);
+  const uid = registry.uidFor(el);
 
   const node: SemanticA11yNode = {
     role,
     nodeId,
+    ...(uid !== undefined ? { uid } : {}),
     children: [],
   };
 

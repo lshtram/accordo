@@ -26,6 +26,11 @@ export interface SemanticA11yNode {
   level?: number;
   /** Per-call scoped node ID, shared across all four sub-trees. B2-SG-006. */
   nodeId: number;
+  /**
+   * B2-UID-001: Canonical node identity across frames.
+   * Shaped as "{frameId}:{nodeId}" — e.g. "main:3" or "iframe-1:0".
+   */
+  uid?: string;
   /** Child nodes in document order. */
   children: SemanticA11yNode[];
   /**
@@ -97,6 +102,37 @@ export interface FormField {
   value?: string;
   /** Per-call scoped node ID. B2-SG-006. */
   nodeId: number;
+  /**
+   * B2-UID-001: Canonical node identity across frames.
+   * Shaped as "{frameId}:{nodeId}" — e.g. "main:3" or "iframe-1:0".
+   */
+  uid?: string;
+  /** B2-FORM-EXT: HTML5 validation state — "valid", "invalid", or undefined if no constraint. */
+  validationState?: "valid" | "invalid";
+  /** B2-FORM-EXT: Validation message from the browser (constraint validator.message). */
+  validationMessage?: string;
+  /** B2-FORM-EXT: Whether the field is disabled. */
+  disabled?: boolean;
+  /** B2-FORM-EXT: Whether the field is read-only. */
+  readonly?: boolean;
+  /**
+   * B2-FORM-EXT: Constraint information for the field.
+   * Present for input/textarea/select elements with constraint validation attributes.
+   */
+  constraints?: {
+    /** Minimum length (minlength attribute). */
+    minLength?: number;
+    /** Maximum length (maxlength attribute). */
+    maxLength?: number;
+    /** Minimum value (min attribute, for date/number types). */
+    min?: string | number;
+    /** Maximum value (max attribute, for date/number types). */
+    max?: string | number;
+    /** Pattern regex for pattern attribute. */
+    pattern?: string;
+    /** Step attribute for numeric fields. */
+    step?: string | number;
+  };
 }
 
 /**
@@ -115,8 +151,24 @@ export interface FormModel {
   method: string;
   /** Per-call scoped node ID. B2-SG-006. */
   nodeId: number;
+  /**
+   * B2-UID-001: Canonical node identity across frames.
+   * Shaped as "{frameId}:{nodeId}" — e.g. "main:5".
+   */
+  uid?: string;
   /** Fields within this form. */
   fields: FormField[];
+  /**
+   * B2-FORM-EXT: Summary counts for the form's fields.
+   */
+  summary?: {
+    /** Total number of fields. */
+    total: number;
+    /** Number of optional (not-required) fields. */
+    optional: number;
+    /** Number of disabled fields. */
+    disabled: number;
+  };
 }
 
 /**

@@ -35,14 +35,16 @@ export interface DomExcerptResult extends SnapshotEnvelope {
 /**
  * Arguments for element inspection.
  *
- * Must supply at least one of: ref, selector, or nodeId.
+ * Must supply at least one of: uid, ref, selector, or nodeId.
  * B2-SV-006: nodeId is the DFS traversal index from a page map snapshot,
  * allowing agents to inspect elements by their stable snapshot node ID.
+ * B2-UID-001: uid is the canonical frame-scoped identity "{frameId}:{nodeId}".
  */
 export type InspectElementArgs =
-  | { ref: string; selector?: string; nodeId?: undefined }
-  | { ref?: string; selector: string; nodeId?: undefined }
-  | { ref?: undefined; selector?: undefined; nodeId: number };
+  | { uid: string; ref?: string; selector?: string; nodeId?: undefined }
+  | { uid?: string; ref: string; selector?: string; nodeId?: undefined }
+  | { uid?: string; ref?: string; selector: string; nodeId?: undefined }
+  | { uid?: string; ref?: string; selector?: undefined; nodeId: number };
 
 /** Context about the element's position in the DOM */
 export interface ElementContext {
@@ -386,7 +388,40 @@ function resolveElementByNodeId(nodeId: number): Element | null {
   return getElementByRef(`ref-${nodeId}`);
 }
 
+/**
+ * B2-UID-001: Resolve an element by uid.
+ * uid format: "{frameId}:{nodeId}" — e.g. "main:3" or "iframe-1:0".
+ * Since the content script only runs in the main frame, we extract nodeId and
+ * use the same ref-index lookup as resolveElementByNodeId. The frameId portion
+ * is validated but not otherwise used in content script context.
+ * Returns null if the uid format is invalid or the element is not found.
+ */
+function resolveElementByUid(uid: string): Element | null {
+  const colonIdx = uid.indexOf(":");
+  if (colonIdx < 0) return null;
+  const nodeIdStr = uid.slice(colonIdx + 1);
+  const nodeId = parseInt(nodeIdStr, 10);
+  if (isNaN(nodeId)) return null;
+  return resolveElementByNodeId(nodeId);
+}
+
 function resolveElement(args: InspectElementArgs): Element | null {
+  // B2-UID-001: uid has highest precedence — it unambiguously identifies a node
+  if (args.uid !== undefined) {
+    const el = resolveElementByUid(args.uid);
+    if (!el) return null;
+    if (!isElementVisible(el)) {
+      const parent = el.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children);
+        const visibleSibling = siblings.find(
+          (s) => s !== el && isElementVisible(s),
+        );
+        if (visibleSibling) return visibleSibling;
+      }
+    }
+    return el;
+  }
   if (args.ref) {
     const el = getElementByRef(args.ref);
     if (!el) return null;

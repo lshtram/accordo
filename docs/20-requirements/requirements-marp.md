@@ -172,6 +172,24 @@ The tool names are **identical** to Slidev — the MCP surface is engine-agnosti
 | M50-PVD-09 | `marp:update` messages include a monotonic `revision: number`; webview drops updates where `revision ≤ lastReceivedRevision` |
 | M50-PVD-10 | After live-reload re-render, if slide count changes, `currentSlide` is clamped to `Math.min(oldCurrentSlide, newSlideCount - 1)` |
 | M50-PVD-11 | `requestCapture(): Promise<Buffer>` sends `host:request-capture` to the webview and resolves with the decoded SVG buffer when `presentation:capture-ready` is received; rejects if the panel is closed before the response arrives |
+| M50-PVD-12 | Webview HTML is built by `buildMarpWebviewHtml()` in `src/marp-webview-html.ts` (extracted from provider for modularity) |
+| M50-PVD-13 | When Comment SDK URIs are provided, webview HTML includes `<script>` and `<link>` tags for the SDK with nonce attributes |
+| M50-PVD-14 | Webview initializes Comment SDK via `sdk.init()` with `coordinateToScreen` that maps `blockId` → pixel position on the active slide SVG |
+| M50-PVD-15 | Webview handles `comments:load`, `comments:add`, `comments:update`, `comments:remove`, `comments:focus` messages from host (same protocol as md-viewer) |
+| M50-PVD-16 | `comments:focus` handler navigates to the target slide (if not current) and calls `sdk.openPopover(threadId)` |
+| M50-PVD-17 | Alt+click on the active slide captures normalized (0–1) coordinates, encodes blockId via `slide:{slideIndex}:{x}:{y}`, and invokes `callbacks.onCreate` |
+
+### M50-FOCUS — Presentation Focus Command
+
+**File:** `src/extension.ts`
+
+| Requirement ID | Requirement |
+|---|---|
+| M50-FOCUS-01 | Registers VS Code command `accordo.presentation.internal.focusThread` |
+| M50-FOCUS-02 | Command parameters: `(uri: string, threadId: string, blockId: string)` |
+| M50-FOCUS-03 | Ensures the deck is open (calls `accordo.presentation.open` if needed) |
+| M50-FOCUS-04 | Parses `slideIndex` from `blockId`, navigates to that slide |
+| M50-FOCUS-05 | Posts `{ type: 'comments:focus', threadId, blockId }` to the webview after navigation settling |
 
 ### M50-CBR — Comments Bridge
 
@@ -274,6 +292,7 @@ interface MarpRenderResult {
 - `host:request-capture` — instructs webview to serialize the active slide SVG (`<svg data-marpit-svg class="active">`) via `XMLSerializer` and respond with `presentation:capture-ready`
 - `marp:update { html: string, css: string, currentSlide: number, revision: number }` — live reload on file change; `revision` is monotonic (webview drops updates where `revision ≤ lastReceivedRevision`); after re-render, `currentSlide` is clamped to `Math.min(oldCurrentSlide, newSlideCount - 1)`
 - Comment SDK updates (`comments:load`, `comments:add`, `comments:update`, `comments:remove`)
+- `comments:focus { threadId: string, blockId: string }` — instructs webview to navigate to the anchored slide (if not current) and open the SDK popover for the thread; sent by `accordo.presentation.internal.focusThread` command
 
 ---
 

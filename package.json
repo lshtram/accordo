@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "AI-native development environment — VSCode extension layer",
   "scripts": {
-    "build": "pnpm -r run build",
+    "build": "pnpm -r --filter='!accordo-voice' run build",
     "test": "pnpm -r run test",
     "test:watch": "pnpm -r run test:watch",
     "lint": "pnpm -r run lint",

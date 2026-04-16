@@ -104,10 +104,16 @@ export interface GetPageMapArgs {
  *
  * B2-SV-006: Supports lookup by `nodeId` from a page map snapshot, in addition
  * to `ref` (opaque element reference) and `selector` (CSS selector).
+ * B2-UID-001: Supports lookup by canonical `uid` ("{frameId}:{nodeId}").
  */
 export interface InspectElementArgs {
   /** B2-CTX-001: Optional tab ID to target; omit for active tab */
   tabId?: number;
+  /**
+   * B2-UID-001: Canonical node identity "{frameId}:{nodeId}" — e.g. "main:3".
+   * Takes precedence over ref/selector/nodeId when present.
+   */
+  uid?: string;
   /** Element reference from page map (ref field) */
   ref?: string;
   /** CSS selector to find the element (alternative to ref) */
@@ -512,6 +518,7 @@ export interface SelectPageResponse {
  *
  * GAP-D1: Takes node IDs from a prior `get_page_map` call (with `includeBounds: true`)
  * and returns pairwise spatial relationships. Maximum 50 node IDs per request.
+ * B2-UID-001: Supports canonical uid strings ("{frameId}:{nodeId}").
  */
 export interface GetSpatialRelationsArgs {
   /** B2-CTX-001: Optional tab ID to target; omit for active tab */
@@ -520,7 +527,12 @@ export interface GetSpatialRelationsArgs {
    * Node IDs from a prior `get_page_map` call (with `includeBounds: true`).
    * Maximum 50 IDs — pairwise computation is O(n²).
    */
-  nodeIds: number[];
+  nodeIds?: number[];
+  /**
+   * B2-UID-001: Canonical node identities "{frameId}:{nodeId}" from a prior
+   * `get_page_map` call. Alternative to `nodeIds`. Maximum 50 uids.
+   */
+  uids?: string[];
   /** I2-001: Allowed origins for this request. Overrides global policy. */
   allowedOrigins?: string[];
   /** I2-001: Denied origins for this request. Overrides global policy. */
@@ -530,12 +542,17 @@ export interface GetSpatialRelationsArgs {
 /**
  * Successful response from `browser_get_spatial_relations`.
  * GAP-D1: Pairwise geometry for requested nodes.
+ * B2-UID-001: relations include optional sourceUid/targetUid when available.
  */
 export interface SpatialRelationsResponse extends SnapshotEnvelopeFields {
   pageUrl: string;
   relations: readonly {
     sourceNodeId: number;
     targetNodeId: number;
+    /** B2-UID-001: Canonical uid of source node ("{frameId}:{nodeId}"). */
+    sourceUid?: string;
+    /** B2-UID-001: Canonical uid of target node ("{frameId}:{nodeId}"). */
+    targetUid?: string;
     leftOf: boolean;
     above: boolean;
     contains: boolean;

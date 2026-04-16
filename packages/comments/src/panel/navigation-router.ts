@@ -11,7 +11,8 @@
 
 import type * as vscode from "vscode";
 import type { CommentThread } from "@accordo/bridge-types";
-import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
+import { CAPABILITY_COMMANDS, DEFERRED_COMMANDS } from "@accordo/capabilities";
+import type { NavigationAdapterRegistry } from "@accordo/capabilities";
 
 // ── NavigationEnv ────────────────────────────────────────────────────────────
 
@@ -51,6 +52,7 @@ export interface NavigationEnv {
 export async function navigateToThread(
   thread: CommentThread,
   env: NavigationEnv,
+  registry?: NavigationAdapterRegistry,
 ): Promise<void> {
   try {
     const anchor = thread.anchor;
@@ -120,14 +122,35 @@ export async function navigateToThread(
         const uri = Uri.parse(uriStr);
         const coords = anchor.coordinates as { slideIndex: number };
 
+        // Try registry-based navigation first (primary path)
+        // Calls navigateToAnchor THEN focusThread — both must succeed for a clean return.
+        const slideAdapter = registry?.get("slide");
+        if (slideAdapter) {
+          try {
+            const navResult = await slideAdapter.navigateToAnchor(
+              anchor as unknown as Readonly<Record<string, unknown>>,
+              env as unknown as import("@accordo/capabilities").NavigationEnv,
+            );
+            if (!navResult) throw new Error("navigateToAnchor returned false");
+            // Slide navigated — now focus the thread.
+            await slideAdapter.focusThread(
+              thread.id,
+              anchor as unknown as Readonly<Record<string, unknown>>,
+              env as unknown as import("@accordo/capabilities").NavigationEnv,
+            );
+            return;
+          } catch { /* fall through to deferred path */ }
+        }
+
+        // Deferred path: use DEFERRED_COMMANDS directly
         // Fast path: deck already running — goto immediately, no delay needed.
         // accordo_presentation_internal_goto throws on error (no UI), unlike the
         // user-facing accordo.presentation.goto which swallows errors to showErrorMessage.
         try {
-          await env.executeCommand(CAPABILITY_COMMANDS.PRESENTATION_GOTO, coords.slideIndex);
+          await env.executeCommand(DEFERRED_COMMANDS.PRESENTATION_GOTO, coords.slideIndex);
           // Focus the comment thread in the presentation webview.
           try {
-            await env.executeCommand(CAPABILITY_COMMANDS.PRESENTATION_FOCUS_THREAD, thread.id);
+            await env.executeCommand(DEFERRED_COMMANDS.PRESENTATION_FOCUS_THREAD, thread.id);
           } catch { /* non-critical */ }
           return;
         } catch {
@@ -136,13 +159,13 @@ export async function navigateToThread(
         await env.executeCommand("accordo.presentation.open", uri);
         await env.delay(2000);
         try {
-          await env.executeCommand(CAPABILITY_COMMANDS.PRESENTATION_GOTO, coords.slideIndex);
+          await env.executeCommand(DEFERRED_COMMANDS.PRESENTATION_GOTO, coords.slideIndex);
           try {
-            await env.executeCommand(CAPABILITY_COMMANDS.PRESENTATION_FOCUS_THREAD, thread.id);
+            await env.executeCommand(DEFERRED_COMMANDS.PRESENTATION_FOCUS_THREAD, thread.id);
           } catch { /* non-critical */ }
         } catch {
           await env.showInformationMessage(
-            "Slidev deck opened. Slide navigation unavailable — install the Accordo Slidev extension.",
+            "Marp deck opened. Slide navigation unavailable — try again in a moment.",
           );
         }
         return;
@@ -150,7 +173,7 @@ export async function navigateToThread(
 
       if (surfaceType === "browser") {
         try {
-          await env.executeCommand(CAPABILITY_COMMANDS.BROWSER_FOCUS_THREAD, thread.id);
+          await env.executeCommand(DEFERRED_COMMANDS.BROWSER_FOCUS_THREAD, thread.id);
         } catch {
           await env.showInformationMessage("Browser extension not connected.");
         }

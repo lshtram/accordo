@@ -154,19 +154,27 @@ describe("D2-001: Tool registration", () => {
     expect(tool.idempotent).toBe(true);
   });
 
-  it("D2-001: Tool inputSchema has nodeIds as required array of integers", () => {
+  it("D2-001: Tool inputSchema validates at runtime (not declared required)", () => {
     const relay = createMockRelay();
     const store = new SnapshotRetentionStore();
     const tool = buildSpatialRelationsTool(relay, store);
     expect(tool.inputSchema).toBeDefined();
     expect(tool.inputSchema.type).toBe("object");
     expect(tool.inputSchema.properties).toBeDefined();
+    // nodeIds and uids are NOT in required array — validation is at runtime via narrowArgs
+    expect(tool.inputSchema.required ?? []).not.toContain("nodeIds");
+    expect(tool.inputSchema.required ?? []).not.toContain("uids");
+  });
+
+  it("D2-001: Tool inputSchema has nodeIds as optional array of integers", () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    const tool = buildSpatialRelationsTool(relay, store);
     expect(tool.inputSchema.properties.nodeIds).toBeDefined();
     expect(tool.inputSchema.properties.nodeIds.type).toBe("array");
     expect(tool.inputSchema.properties.nodeIds.items.type).toBe("integer");
     expect(tool.inputSchema.properties.nodeIds.minItems).toBe(1);
     expect(tool.inputSchema.properties.nodeIds.maxItems).toBe(50);
-    expect(tool.inputSchema.required).toContain("nodeIds");
   });
 
   it("D2-001: Tool inputSchema has optional tabId as number", () => {
@@ -175,6 +183,46 @@ describe("D2-001: Tool registration", () => {
     const tool = buildSpatialRelationsTool(relay, store);
     expect(tool.inputSchema.properties.tabId).toBeDefined();
     expect(tool.inputSchema.properties.tabId.type).toBe("number");
+  });
+
+  // ── B2-UID-001: uid support ──────────────────────────────────────────────────
+
+  it("B2-UID-001: Tool inputSchema has uids as optional array of strings", () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    const tool = buildSpatialRelationsTool(relay, store);
+    expect(tool.inputSchema.properties.uids).toBeDefined();
+    expect(tool.inputSchema.properties.uids.type).toBe("array");
+    expect(tool.inputSchema.properties.uids.items.type).toBe("string");
+    expect(tool.inputSchema.properties.uids.minItems).toBe(1);
+    expect(tool.inputSchema.properties.uids.maxItems).toBe(50);
+  });
+
+  it("B2-UID-001: Tool description mentions uid format {frameId}:{nodeId}", () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    const tool = buildSpatialRelationsTool(relay, store);
+    expect(tool.description).toContain("{frameId}:{nodeId}");
+  });
+
+  it("B2-UID-001: Handler rejects empty nodeIds and empty uids", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    const tool = buildSpatialRelationsTool(relay, store);
+    // Both empty → should return error
+    const result = await invokeToolHandler(relay, store, {});
+    expect("success" in result && result.success).toBe(false);
+  });
+
+  it("B2-UID-001: Handler accepts uids array", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    const tool = buildSpatialRelationsTool(relay, store);
+    const result = await invokeToolHandler(relay, store, { uids: ["main:1", "main:2"] });
+    if ("success" in result && result.success === false) {
+      throw new Error(`Expected success but got error: ${JSON.stringify(result)}`);
+    }
+    expect(result).toHaveProperty("relations");
   });
 
   it("D2-001: Tool handler exists and is callable", () => {

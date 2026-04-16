@@ -221,7 +221,7 @@ describe("M45-NR NavigationRouter", () => {
     );
     // Should show info message (not warning — the deck is still open)
     expect(env.showInformationMessage).toHaveBeenCalledWith(
-      expect.stringContaining("Slidev"),
+      expect.stringContaining("Marp"),
     );
   });
 

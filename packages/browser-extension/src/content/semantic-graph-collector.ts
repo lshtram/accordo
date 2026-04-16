@@ -82,17 +82,21 @@ export function collectSemanticGraph(options?: SemanticGraphOptions): SemanticGr
   // B2-VD-001: shadow DOM traversal
   const piercesShadow = options?.piercesShadow ?? false;
 
+  // B2-SG-007: capture snapshot envelope FIRST so frameId is available for registry.
+  const envelope: SnapshotEnvelope = captureSnapshotEnvelope("dom");
+
   // B2-SG-006: shared node ID registry across all sub-trees
   const registry = new NodeIdRegistry();
+
+  // B2-UID-001: Set frameId on registry so uid is available on all sub-tree nodes.
+  // The content script frame is always "main" — iframe frameIds are assigned by the SW.
+  registry.frameId = envelope.frameId ?? "main";
 
   // Build all four sub-trees — visibleOnly applied consistently to all. B2-SG-009.
   const a11yTree = buildA11yTree(registry, effectiveMaxDepth, visibleOnly, piercesShadow);
   const landmarks = extractLandmarks(registry, visibleOnly);
   const outline = extractOutline(registry, visibleOnly);
   const forms = extractForms(registry, visibleOnly);
-
-  // B2-SG-007: capture snapshot envelope
-  const envelope: SnapshotEnvelope = captureSnapshotEnvelope("dom");
 
   return {
     ...envelope,

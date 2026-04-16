@@ -128,7 +128,7 @@ Pure async function module. No class, no state. Takes a `CommentThread` and exec
 |---|---|---|
 | `text` | n/a | `showTextDocument(uri, { selection: anchorRange, preserveFocus: false })` |
 | `surface` | `markdown-preview` | `executeCommand('accordo.preview.internal.focusThread', uri, threadId, blockId)` |
-| `surface` | `slide` | `executeCommand('accordo.presentation.open', deckUri)` → 500ms settling → `executeCommand('accordo.presentation.goto', slideIndex)` (if registered), else warn + keep deck open |
+| `surface` | `slide` | `executeCommand('accordo.presentation.internal.focusThread', uri, threadId, blockId)` — opens deck if needed, navigates to slide, posts `comments:focus` to webview |
 | `surface` | `browser` | `executeCommand('accordo.browser.focusThread', threadId)` — no-op if not registered |
 | `surface` | `diagram` | `executeCommand('accordo.diagram.focusThread', threadId)` — no-op if not registered (reserved for Phase 5) |
 | `file` | n/a | `showTextDocument(uri)` without range |
@@ -136,11 +136,9 @@ Pure async function module. No class, no state. Takes a `CommentThread` and exec
 
 **Error contract:** All navigation errors are caught. On failure, `vscode.window.showWarningMessage('Could not navigate to thread: <message>')`. The function never throws.
 
-**"Surface not open" handling:** For slide navigation, the router first calls `accordo.presentation.open(deckUri)`. If the presentation is already open, this is a no-op. A 500ms `setTimeout`-wrapped `goto` call follows — same pattern as [focusInPreview line 290](../../packages/comments/src/native-comments.ts) — to allow webview initialization to complete before navigation.
+**"Surface not open" handling:** For slide navigation, the router delegates entirely to `accordo.presentation.internal.focusThread` (contributed by `accordo-marp`). That command owns the full sequencing: open deck if needed → navigate to slide → post `comments:focus` to webview. The router does not perform its own open/settling logic for slides.
 
-**Dependency note:** `accordo-slidev` currently contributes `accordo.presentation.open` and `accordo.presentation.close` as VS Code commands. `accordo.presentation.goto` exists as an MCP tool but is not yet a VS Code command. Session 9 requires one of:
-1. Add `accordo.presentation.goto` as a VS Code command in `accordo-slidev`.
-2. Add a new internal command in `accordo-slidev` (for example `accordo.presentation.internal.goto`) and have the router call it.
+**Dependency note:** `accordo-marp` contributes `accordo.presentation.internal.focusThread` as a VS Code command. If the command is not registered (extension not active), the router catches the error and shows a warning message.
 
 ### 3.3 PanelCommands (M45-CMD)
 

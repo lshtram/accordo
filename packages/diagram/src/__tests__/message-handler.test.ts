@@ -338,4 +338,86 @@ describe("detectNodeMutations", () => {
     // strokeDash on edges IS a valid layout property — must be emitted
     expect(mutations).toEqual([{ type: "styled", nodeId: "A->B:0", style: { strokeDash: true } }]);
   });
+
+  // H0-02: WRITE-path fallback — upstream elements may lack customData.mermaidId
+  // when rendered via upstream-direct (IDs come from Mermaid, not from scene-adapter).
+  // In that case, detectNodeMutations falls back to el.id for stable node identity.
+  it("H0-02: moved element without customData.mermaidId uses el.id as nodeId (write-path fallback)", () => {
+    const prevEl: ExcalidrawAPIElement = {
+      id: "node-42",
+      type: "rectangle",
+      x: 0, y: 0, width: 100, height: 50,
+      roughness: 1, fontFamily: 1,
+      customData: {}, // no mermaidId
+    };
+    const nextEl: ExcalidrawAPIElement = { ...prevEl, x: 300, y: 400 };
+
+    const mutations = detectNodeMutations([prevEl], [nextEl]);
+    // nodeId must be the stable element id, not undefined
+    expect(mutations).toEqual([{ type: "moved", nodeId: "node-42", x: 300, y: 400 }]);
+  });
+
+  it("H0-02: resized element without customData.mermaidId uses el.id as nodeId (write-path fallback)", () => {
+    const prevEl: ExcalidrawAPIElement = {
+      id: "node-99",
+      type: "rectangle",
+      x: 0, y: 0, width: 100, height: 50,
+      roughness: 1, fontFamily: 1,
+      customData: {}, // no mermaidId
+    };
+    const nextEl: ExcalidrawAPIElement = { ...prevEl, width: 250, height: 80 };
+
+    const mutations = detectNodeMutations([prevEl], [nextEl]);
+    expect(mutations).toEqual([{ type: "resized", nodeId: "node-99", w: 250, h: 80 }]);
+  });
+
+  it("H0-02: moved element with customData.mermaidId still uses mermaidId (not el.id)", () => {
+    const prevEl: ExcalidrawAPIElement = {
+      id: "exc-random-id",
+      type: "rectangle",
+      x: 0, y: 0, width: 100, height: 50,
+      roughness: 1, fontFamily: 1,
+      customData: { mermaidId: "auth" }, // has mermaidId — takes priority
+    };
+    const nextEl: ExcalidrawAPIElement = { ...prevEl, x: 500, y: 600 };
+
+    const mutations = detectNodeMutations([prevEl], [nextEl]);
+    expect(mutations).toEqual([{ type: "moved", nodeId: "auth", x: 500, y: 600 }]);
+  });
+
+  it("H0-02: text element without mermaidId is excluded (no mutation emitted)", () => {
+    // A text element with customData but no mermaidId — e.g. a standalone text
+    // box added directly on the canvas, not a bound label. Such elements do NOT
+    // correspond to a Mermaid node and must not produce layout mutations.
+    // We identify them by type === "text" with no mermaidId.
+    const prevEl: ExcalidrawAPIElement = {
+      id: "text-el",
+      type: "text",
+      x: 0, y: 0, width: 80, height: 20,
+      roughness: 1, fontFamily: 1,
+      customData: {}, // has customData but no mermaidId — standalone text
+    };
+    const nextEl: ExcalidrawAPIElement = { ...prevEl, x: 999, y: 999 };
+
+    const mutations = detectNodeMutations([prevEl], [nextEl]);
+    // type:text with no mermaidId = standalone canvas text → skip
+    expect(mutations).toEqual([]);
+  });
+
+  it("H0-02: shape element without mermaidId emits moved mutation (fallback to el.id)", () => {
+    // Upstream-direct elements may have customData but no mermaidId property.
+    // For non-text elements, we fall back to el.id as the stable nodeId.
+    const prevEl: ExcalidrawAPIElement = {
+      id: "standalone-shape",
+      type: "rectangle",
+      x: 0, y: 0, width: 100, height: 50,
+      roughness: 1, fontFamily: 1,
+      customData: {}, // has customData but no mermaidId
+    };
+    const nextEl: ExcalidrawAPIElement = { ...prevEl, x: 300, y: 400 };
+
+    const mutations = detectNodeMutations([prevEl], [nextEl]);
+    // Rectangle without mermaidId: fallback to el.id
+    expect(mutations).toEqual([{ type: "moved", nodeId: "standalone-shape", x: 300, y: 400 }]);
+  });
 });

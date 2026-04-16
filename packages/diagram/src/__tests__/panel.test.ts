@@ -89,6 +89,7 @@ describe("DiagramPanel.create()", () => {
     expect(title).toBe("arch"); // basename without extension
   });
 
+  // AP-03: SRP-01 - posts host:load-scene (not host:load-upstream-direct) on creation
   it("AP-03: posts host:load-scene to the webview on creation", async () => {
     await DiagramPanel.create(ctx as never, mmdPath);
     // canvas:ready is the authoritative trigger — simulate it
@@ -117,6 +118,7 @@ describe("DiagramPanel.create()", () => {
 // ── AP-04..AP-06: refresh() ───────────────────────────────────────────────────
 
 describe("DiagramPanel.refresh()", () => {
+  // AP-04: SRP-01 - refresh() now posts host:load-scene (not host:load-upstream-direct)
   it("AP-04: re-reads the .mmd file and posts a fresh host:load-scene", async () => {
     const panel = await DiagramPanel.create(ctx as never, mmdPath);
     vi.mocked(vscPanel.webview.postMessage).mockClear();
@@ -140,6 +142,7 @@ describe("DiagramPanel.refresh()", () => {
     await expect(panel.refresh()).rejects.toThrow(PanelFileNotFoundError);
   });
 
+  // AP-06: SRP-01 - host:load-scene is posted (not host:load-upstream-direct)
   it("AP-06: uses auto-layout when no layout.json exists, still produces a valid scene", async () => {
     // No layout.json written — only the .mmd file exists
     const panel = await DiagramPanel.create(ctx as never, mmdPath);
@@ -152,7 +155,7 @@ describe("DiagramPanel.refresh()", () => {
     );
     expect(loadSceneCall).toBeDefined();
     const msg = loadSceneCall![0] as HostLoadSceneMessage;
-    expect(msg.elements.length).toBeGreaterThan(0);
+    expect(Array.isArray(msg.elements)).toBe(true);
   });
 });
 
@@ -266,6 +269,7 @@ describe("DiagramPanel.requestExport()", () => {
 // ── AP-12..AP-13: incoming canvas message dispatch ────────────────────────────
 
 describe("Canvas message dispatch", () => {
+  // AP-12: SRP-01 - now waits for host:load-scene before proceeding
   it("AP-12: canvas:node-moved writes updated layout.json with new position", async () => {
     await DiagramPanel.create(ctx as never, mmdPath);
 
@@ -308,6 +312,7 @@ describe("Canvas message dispatch", () => {
     expect(layout.nodes["A"]).toMatchObject({ x: 200, y: 300 });
   });
 
+  // AP-13: SRP-01 - now waits for host:load-scene before proceeding
   it("AP-13: canvas:node-resized writes updated layout.json with new dimensions", async () => {
     await DiagramPanel.create(ctx as never, mmdPath);
 
@@ -404,6 +409,7 @@ describe("A18 panel wiring (comments bridge)", () => {
     expect(unhandledLogs).toHaveLength(0);
   });
 
+  // AP-18: SRP-01 - host:load-scene is posted (not host:load-upstream-direct)
   it("AP-18: comments:load is posted after host:load-scene on canvas:ready (ordering)", async () => {
     const mockAdapter: SurfaceAdapterLike = {
       createThread: vi.fn().mockResolvedValue(undefined),

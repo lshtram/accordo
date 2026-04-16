@@ -27,6 +27,13 @@ export interface PageNode {
   tag: string;
   /** B2-SV-006: Stable node identifier within this snapshot (DFS traversal index) */
   nodeId: number;
+  /**
+   * B2-UID-001: Canonical node identity across frames.
+   * Shaped as "{frameId}:{nodeId}" — e.g. "main:3" or "iframe-1:0".
+   * Enables unambiguous cross-frame node references without ambiguity between
+   * same nodeId values in different frames.
+   */
+  uid?: string;
   /** B2-SV-007: Experimental — stable across snapshots for unchanged elements */
   persistentId?: string;
   /** Element id attribute (shortcut for attrs.id) */
@@ -509,9 +516,16 @@ export function collectPageMap(options?: PageMapOptions): PageMapResult {
   const includeBounds = options?.includeBounds ?? false;
   const viewportOnly = options?.viewportOnly ?? false;
 
+  // B2-SV-003: Capture SnapshotEnvelope FIRST so frameId is available for traversal options.
+  const envelope = captureSnapshotEnvelope("dom");
+
   // B2-FI-007: Build filter pipeline from options
   const filterPipeline = buildFilterPipeline(options ?? {});
   const totalBeforeFilter = { count: 0 };
+
+  // B2-UID-001: frameId from envelope — "main" for content script context.
+  // Passed to traversal so uid="{frameId}:{nodeId}" is set on all nodes.
+  const frameId = envelope.frameId ?? "main";
 
   const traversalOpts: TraversalOptions = {
     maxDepth,
@@ -535,6 +549,8 @@ export function collectPageMap(options?: PageMapOptions): PageMapResult {
       || options?.visibleOnly === true,
     // B2-VD-001..003: pass piercesShadow flag to traversal
     piercesShadow: options?.piercesShadow ?? false,
+    // B2-UID-001: pass frameId so uid="{frameId}:{nodeId}" is set on all nodes.
+    frameId,
   };
 
   const pageUrl = document.location?.href ?? "https://localhost/";
@@ -552,9 +568,6 @@ export function collectPageMap(options?: PageMapOptions): PageMapResult {
 
   // Use generateAnchorKey to satisfy the import (avoids dead import lint)
   void generateAnchorKey;
-
-  // B2-SV-003: Capture full SnapshotEnvelope
-  const envelope = captureSnapshotEnvelope("dom");
 
   // B2-FI-008: Emit filter summary when filters were active
   const filterSummary = filterPipeline.hasFilters

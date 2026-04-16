@@ -5,9 +5,57 @@
 
 ---
 
-## The Four Script Types
+## Demo Types
 
-Before writing a single step, identify which type you're writing. Each has a different audience, structure, and voice.
+Before writing anything, identify which type fits the request. There are five types — **always check Type 0 first.**
+
+### Type 0: Manual Testing Guide — User Walks Through It
+
+**Audience:** The user — they are doing the steps, not watching  
+**Purpose:** Show a feature is working by walking the user through it step-by-step from a real user's perspective  
+**Format:** A markdown document in `docs/40-testing/testing-guide-<feature>.md` — NOT an automated script  
+**Shows:** Real UI interactions (open popup, click button, see result), NOT code or tests
+
+**When to use Type 0:**
+- User says "demo the feature to me", "can we test it", "show me it's working", "walk me through it"
+- User wants to experience the feature themselves, not watch a narrated walkthrough
+- The feature has visible user-facing UI or interaction (browser extension, VS Code command, etc.)
+
+**Format rules:**
+- Prerequisites section first — what must be running before you start
+- Numbered steps — "Step 1", "Step 2", ... in the order a user would actually do them
+- Each step has: what to do, what you expect to see (as "Expected result:" or "Expected:")
+- Include a "What to check if something goes wrong" section with a table
+- No agent calls, no curl commands, no code — pure user actions
+- Keep it under 2 pages — if it's longer, split by feature area
+
+**Example structure:**
+```
+## Prerequisites
+- VS Code open with Accordo active
+- Chrome extension installed
+
+## Step 1 — Do X
+Action: Click the Y button in Z.
+Expected: The banner changes to "Connected ✓".
+
+## Step 2 — Verify the connection
+Tell the agent: "list my tabs".
+Expected: Agent returns your open tabs without error.
+
+## What to check if something goes wrong
+| Symptom | Cause | Fix |
+```
+
+**Reference:** `docs/40-testing/testing-guide-browser-relay-pairing.md` — canonical example of this format.
+
+> **Key rule:** When a user says "demo" or "show me the feature working", default to Type 0 (manual testing guide) unless they specifically ask for an automated narrated demo. Type 0 is faster to produce, more useful for verification, and doesn't require a running script system.
+
+---
+
+## The Four Script Types (Automated Narration)
+
+Before writing a single automated script step, identify which of these four types you're writing. Each has a different audience, structure, and voice.
 
 ### Type 1: Feature Demo — User-Facing
 
@@ -274,13 +322,14 @@ Use this matrix — don't default to the same voice every time:
 
 ---
 
-## How to Choose: Feature Demo vs Code Walkthrough
+## How to Choose
 
 | Signal from user | Script Type |
 |---|---|
-| "demo the feature", "show me how X works", "user-facing demo" | **Feature Demo (Type 1)** |
+| "demo the feature", "show me it's working", "can we test it", "walk me through it" | **Manual Testing Guide (Type 0)** |
+| "show me a narrated demo", "demo the feature with voice", "user-facing demo" | **Feature Demo (Type 1)** |
 | "walk through the implementation", "show me the code", "explain how it works under the hood" | **Code Walkthrough (Type 2)** |
 | "present the architecture", "walk the deck" | **Presentation (Type 3)** |
 | "review findings", "here's what we found" | **Code Review (Type 4)** |
 
-When in doubt: a feature demo (Type 1) is almost always what users expect when they say "demo." Only show code when they explicitly ask for it.
+**Default rule:** When a user says "demo" without specifying an automated walkthrough, use **Type 0** (manual testing guide). It's faster to produce, works without a running script system, and lets the user experience the feature themselves. Only escalate to Type 1 (narrated script) if the user explicitly asks for narration or an automated demo.

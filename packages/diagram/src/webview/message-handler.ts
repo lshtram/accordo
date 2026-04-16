@@ -140,7 +140,53 @@ export async function applyHostMessage(
           import("@excalidraw/excalidraw"),
         ]);
         const parsed = await parseMermaidToExcalidraw(msg.source);
-        const elements = convertToExcalidrawElements(parsed.elements as never) as ExcalidrawAPIElement[];
+        // READ-path (H0-01): preserve upstream element IDs so layout-node replay
+        // maps correctly on reopen. Without regenerateIds:false, Excalidraw
+        // library v0.x regenerates IDs on every parse, breaking the mapping
+        // between layout.json mermaidId keys and the rendered element list.
+        let elements = convertToExcalidrawElements(
+          parsed.elements as never,
+          { regenerateIds: false },
+        ) as ExcalidrawAPIElement[];
+
+        // Read-path: apply persisted node positions from layout.json.
+        // This runs AFTER the upstream render so the placement engine only
+        // fires once (at initiation). On reopen, positions are restored from
+        // layout.json — no recompute.
+        //
+        // Mapping strategy:
+        //   - Prefer el.customData.mermaidId (set by toExcalidrawPayload / dagre path)
+        //   - Fall back to el.id directly (upstream library uses Mermaid IDs as Excalidraw IDs)
+        // Skipped: bound text (:text suffix), edge labels (:label suffix), arrows (contain "->")
+        if (msg.layoutNodes) {
+          const elByMermaidId = new Map<string, ExcalidrawAPIElement>();
+          for (const el of elements) {
+            const mid = el.customData?.mermaidId ?? el.id;
+            elByMermaidId.set(mid, el);
+          }
+
+          for (const [mermaidId, pos] of Object.entries(msg.layoutNodes)) {
+            // Skip bound text elements (:text), edge labels (:label), and
+            // arrow elements (contain "->") — their positions are derived
+            // from their parent nodes and must not be independently overridden.
+            if (
+              mermaidId.endsWith(":text") ||
+              mermaidId.endsWith(":label") ||
+              mermaidId.includes("->")
+            ) continue;
+
+            const el = elByMermaidId.get(mermaidId);
+            if (!el) continue;
+
+            if (el.x !== pos.x || el.y !== pos.y) {
+              el.x = pos.x; el.y = pos.y;
+            }
+            if (el.width !== pos.w || el.height !== pos.h) {
+              el.width = pos.w; el.height = pos.h;
+            }
+          }
+        }
+
         api.updateScene({ elements, appState: {} });
       } catch (err) {
         ui.showErrorOverlay(`upstream-direct render failed: ${String(err)}`);
@@ -206,32 +252,54 @@ export function detectNodeMutations(
   const mutations: NodeMutation[] = [];
 
   for (const prevEl of prev) {
-    const mermaidId = prevEl.customData?.mermaidId;
-    if (!mermaidId) continue;
+    // H0-02: customData may exist but mermaidId be absent (upstream-direct path).
+    // Only skip when customData itself is missing — not when mermaidId is absent.
+    // Elements without customData entirely are cluster backgrounds or anonymous shapes
+    // that should not contribute layout mutations.
+    const customData = prevEl.customData;
+    if (!customData) continue;
+
+    const mermaidId = customData.mermaidId;
+    // Empty string mermaidId (from scene-adapter for cluster backgrounds) → skip
+    if (mermaidId === "") continue;
 
     const nextEl = nextById.get(prevEl.id);
     if (!nextEl) continue;
+
+    // H0-02: text elements (type:text) without mermaidId are standalone canvas text
+    // boxes, not Mermaid nodes — they must be skipped entirely. This is distinct
+    // from the :text suffix check which handles bound labels on nodes.
+    if (prevEl.type === "text" && !mermaidId) continue;
 
     // Only emit moved/resized for actual Mermaid node elements.
     // Bound text elements (":text" suffix), edge arrows ("->" in id), and
     // edge labels (":label" suffix) move or resize when their parent changes —
     // they are not addressable layout nodes and must not create spurious entries.
+    //
+    // WRITE-path (H0-02): fallback to el.id when mermaidId is absent/undefined.
+    // Upstream elements carry Mermaid IDs as Excalidraw element IDs; using el.id
+    // directly is stable and correct when no customData.mermaidId is present.
     const isNodeElement =
-      !mermaidId.endsWith(":text") &&
-      !mermaidId.endsWith(":label") &&
-      !mermaidId.includes("->");
+      !mermaidId?.endsWith(":text") &&
+      !mermaidId?.endsWith(":label") &&
+      !mermaidId?.includes("->");
     if (isNodeElement) {
+      const nodeId = mermaidId || prevEl.id;
       if (nextEl.x !== prevEl.x || nextEl.y !== prevEl.y) {
-        mutations.push({ type: "moved", nodeId: mermaidId, x: nextEl.x, y: nextEl.y });
+        mutations.push({ type: "moved", nodeId, x: nextEl.x, y: nextEl.y });
       } else if (nextEl.width !== prevEl.width || nextEl.height !== prevEl.height) {
-        mutations.push({ type: "resized", nodeId: mermaidId, w: nextEl.width, h: nextEl.height });
+        mutations.push({ type: "resized", nodeId, w: nextEl.width, h: nextEl.height });
       }
     }
 
     // Detect visual style changes on shape and text elements.
     // Extract the base nodeId — text bound elements have mermaidId "nodeId:text".
-    const isText = mermaidId.endsWith(":text");
-    const shapeNodeId = isText ? mermaidId.slice(0, -5) : mermaidId;
+    // Only emit style patches when mermaidId is present — style mutations need
+    // a string nodeId to populate the layout, and undefined cannot be used.
+    const isText = mermaidId ? mermaidId.endsWith(":text") : false;
+    const shapeNodeId = mermaidId
+      ? (isText ? mermaidId.slice(0, -5) : mermaidId)
+      : prevEl.id;
 
     const style: Record<string, unknown> = {};
 
@@ -254,18 +322,18 @@ export function detectNodeMutations(
     // Also exclude edge labels (":label" suffix).
     // Note: strokeStyle changes on edges ARE emitted now — handleNodeStyled
     // routes them to patchEdge (layout.edges) to avoid data corruption.
-    if (!isText && !mermaidId.endsWith(":label") && !mermaidId.includes("->")) {
+    if (!isText && !mermaidId?.endsWith(":label") && !mermaidId?.includes("->")) {
       if (nextEl.fillStyle !== prevEl.fillStyle) style.fillStyle = nextEl.fillStyle;
     }
     // strokeStyle — for non-text, non-label elements (including edges)
-    if (!isText && !mermaidId.endsWith(":label")) {
+    if (!isText && !mermaidId?.endsWith(":label")) {
       if (nextEl.strokeStyle !== prevEl.strokeStyle) style.strokeStyle = nextEl.strokeStyle;
     }
 
     // Detect strokeDash changes — applies to all elements including edges.
     // strokeDash on edges IS a valid layout property (unlike fillStyle/strokeStyle).
     // strokeDash is not in ExcalidrawAPIElement, so we cast through Record.
-    if (!isText && !mermaidId.endsWith(":label")) {
+    if (!isText && !mermaidId?.endsWith(":label")) {
       const nextSd = (nextEl as unknown as Record<string, unknown>).strokeDash as boolean | undefined;
       const prevSd = (prevEl as unknown as Record<string, unknown>).strokeDash as boolean | undefined;
       if (nextSd !== prevSd) {
@@ -277,7 +345,7 @@ export function detectNodeMutations(
     // Excalidraw roundness is { type: number } | null. Normalize to numeric format
     // for internal storage (NodeStyle.roundness / EdgeStyle.roundness = number | null).
     // This applies to both node elements (rectangles with roundness) and arrow elements.
-    if (!isText && !mermaidId.endsWith(":label")) {
+    if (!isText && !mermaidId?.endsWith(":label")) {
       const nextRn = nextEl.roundness;
       const prevRn = prevEl.roundness;
       if (nextRn !== prevRn) {

@@ -39,6 +39,11 @@ export interface TextSegment {
   textNormalized: string;
   /** B2-TX-002: Node ID matching the ref index (same space as page map nodeId). */
   nodeId: number;
+  /**
+   * B2-UID-001: Canonical node identity across frames.
+   * Shaped as "{frameId}:{nodeId}" — e.g. "main:3" or "iframe-1:0".
+   */
+  uid?: string;
   /** B2-TX-006: ARIA role or implicit HTML role (e.g. "heading" for h1–h6). */
   role?: string;
   /** B2-TX-006: Accessible name (aria-label, alt, title, or derived). */
@@ -225,9 +230,10 @@ function getDirectText(el: HTMLElement): string {
  * Assigns sequential nodeId values (0-based, per-call scoped). B2-TX-002.
  *
  * @param doc - Document to walk
+ * @param frameId - Frame identifier used when building canonical uid. Defaults to "main".
  * @returns Unsorted array of segments before reading-order assignment
  */
-function collectRawSegments(doc: Document): TextSegment[] {
+function collectRawSegments(doc: Document, frameId: string = "main"): TextSegment[] {
   const segments: TextSegment[] = [];
   let nodeIdCounter = 0;
 
@@ -246,11 +252,13 @@ function collectRawSegments(doc: Document): TextSegment[] {
           const role = getRole(current);
           const normalizedText = rawText.replace(/\s+/g, " ").trim();
           const accessibleName = getAccessibleName(current, normalizedText);
+          const nodeId = nodeIdCounter++;
 
           const segment: TextSegment = {
             textRaw: rawText,
             textNormalized: normalizedText,
-            nodeId: nodeIdCounter++,
+            nodeId,
+            uid: `${frameId}:${nodeId}`,
             bbox: {
               x: rect.x,
               y: rect.y,
@@ -325,12 +333,16 @@ function assignReadingOrder(segments: TextSegment[], doc: Document): void {
  * @returns Text map with segments and metadata
  */
 export function collectTextMap(options?: TextMapOptions): TextMapResult {
+  // B2-TX-007: capture snapshot envelope first so we can use its frameId
+  const envelope: SnapshotEnvelope = captureSnapshotEnvelope("dom");
+  const frameId = envelope.frameId ?? "main";
+
   // B2-TX-008: resolve effective max, clamp to MAX_SEGMENTS_LIMIT
   const requestedMax = options?.maxSegments ?? DEFAULT_MAX_SEGMENTS;
   const effectiveMax = Math.min(requestedMax, MAX_SEGMENTS_LIMIT);
 
-  // Collect all raw segments
-  const allSegments = collectRawSegments(document);
+  // Collect all raw segments with uid built from frameId
+  const allSegments = collectRawSegments(document, frameId);
 
   // B2-TX-004: assign reading order indices after sorting
   assignReadingOrder(allSegments, document);
@@ -340,9 +352,6 @@ export function collectTextMap(options?: TextMapOptions): TextMapResult {
   // B2-TX-008: truncate if needed
   const truncated = totalSegments > effectiveMax;
   const segments = truncated ? allSegments.slice(0, effectiveMax) : allSegments;
-
-  // B2-TX-007: capture snapshot envelope
-  const envelope: SnapshotEnvelope = captureSnapshotEnvelope("dom");
 
   return {
     ...envelope,

@@ -270,7 +270,7 @@ function recomputeClusterBox(
  * This ensures dagre places external nodes (outside any subgraph) outside the
  * cluster footprint rather than topologically inside it.
  */
-function layoutWithDagre(
+export function layoutWithDagre(
   parsed: ParsedDiagram,
   options: Required<LayoutOptions>
 ): LayoutStore {

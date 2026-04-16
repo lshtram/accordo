@@ -17,6 +17,7 @@ import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { BrowserRelayLike, SnapshotEnvelopeFields } from "./types.js";
 import { hasSnapshotEnvelope } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
+import type { ScreenshotRetentionStore } from "./screenshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
 import { DEFAULT_SECURITY_CONFIG } from "./security/index.js";
 
@@ -169,12 +170,15 @@ export function resolveAnchorMetadata(args: InspectElementArgs): {
  *
  * @param relay — The relay connection to the Chrome extension
  * @param store — Shared snapshot retention store (5-slot FIFO per page)
+ * @param security — Security configuration
+ * @param screenshotStore — Optional shared screenshot retention store (GAP-G1)
  * @returns Array of 6 tool definitions
  */
 export function buildPageUnderstandingTools(
   relay: BrowserRelayLike,
   store: SnapshotRetentionStore,
   security: SecurityConfig = DEFAULT_SECURITY_CONFIG,
+  screenshotStore?: ScreenshotRetentionStore,
 ): ExtensionToolDefinition[] {
   return [
     {
@@ -266,11 +270,13 @@ export function buildPageUnderstandingTools(
         "Returns computed styles, full attribute set, states (disabled, readonly, invalid, checked, expanded), " +
         "interaction properties (hasPointerEvents, isObstructed, clickTargetSize), " +
         "bounding box, visibility, and accessible name. " +
-        "Use after get_page_map to drill into a specific element by its ref, selector, or stable nodeId.",
+        "B2-UID-001: Use uid \"{frameId}:{nodeId}\" from get_page_map to target across frames. " +
+        "Otherwise use ref, selector, or nodeId.",
       inputSchema: {
         type: "object",
         properties: {
           tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
+          uid: { type: "string", description: "B2-UID-001: Canonical node identity \"{frameId}:{nodeId}\" from get_page_map. Takes precedence over ref/selector/nodeId." },
           ref: { type: "string", description: "Element reference from page map" },
           selector: { type: "string", description: "CSS selector to find element" },
           nodeId: { type: "number", description: "B2-SV-006: Stable node ID from a page map snapshot" },
@@ -384,7 +390,7 @@ export function buildPageUnderstandingTools(
       },
       dangerLevel: "safe",
       idempotent: true,
-      handler: (args) => handleCaptureRegion(relay, args as CaptureRegionArgs, store, security),
+      handler: (args) => handleCaptureRegion(relay, args as CaptureRegionArgs, store, security, screenshotStore),
     },
     {
       name: "accordo_browser_list_pages",

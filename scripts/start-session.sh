@@ -11,6 +11,7 @@ DEFAULT_PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PROJECT_DIR=""
 DO_BUILD=1
+DO_CLEAN=0
 NEW_WINDOW=1
 PKG_DIRS=()
 
@@ -28,6 +29,7 @@ Options:
   -p, --pkg <dir>  Add a package directory to load (can be used multiple times).
                    Auto-detected if not specified: packages/, extensions/, ext/
   --no-build       Skip 'pnpm build' before launch
+  --clean          Run 'pnpm clean' in all packages before building (fixes stale tsbuildinfo)
   --reuse-window   Use current VS Code window instead of --new-window
   -h, --help       Show this help
 
@@ -81,6 +83,10 @@ while [[ $# -gt 0 ]]; do
       DO_BUILD=0
       shift
       ;;
+    --clean)
+      DO_CLEAN=1
+      shift
+      ;;
     --reuse-window)
       NEW_WINDOW=0
       shift
@@ -128,8 +134,12 @@ ACCORDO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ACCORDO_PKG_DIR="$ACCORDO_DIR/packages"
 
 if [[ "$DO_BUILD" -eq 1 ]]; then
+  if [[ "$DO_CLEAN" -eq 1 ]]; then
+    echo "[start-session] Cleaning all accordo VS Code extensions..."
+    (cd "$ACCORDO_DIR" && pnpm -r --filter="./packages/*" --filter='!accordo-voice' run clean 2>/dev/null || true)
+  fi
   echo "[start-session] Building all accordo VS Code extensions..."
-  (cd "$ACCORDO_DIR" && pnpm -r --filter="./packages/*" run build)
+  (cd "$ACCORDO_DIR" && pnpm -r --filter="./packages/*" --filter='!accordo-voice' run build)
 else
   echo "[start-session] Skipping build (--no-build)"
 fi

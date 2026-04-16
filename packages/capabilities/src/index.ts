@@ -4,15 +4,16 @@
  * Typed inter-extension capability interfaces for Accordo IDE.
  *
  * Provides:
- *   - CAPABILITY_COMMANDS  — canonical command ID string constants
+ *   - CAPABILITY_COMMANDS  — canonical command ID string constants (8 stable)
+ *   - DEFERRED_COMMANDS    — deferred command IDs for fallback invocation
  *   - SurfaceCommentAdapter — generalised surface adapter interface
  *   - CommentStoreAdapter   — narrower store interface used by md-viewer
  *   - CommentsCapability    — full 6-method comments capability
  *   - PreviewCapability     — markdown preview focus capability
  *   - DiagramCapability     — diagram focus capability
- *   - PresentationCapability — presentation goto + focus capability
- *   - BrowserCapability     — browser focus capability
- *   - CapabilityCommandMap  — maps each command to args tuple + return type
+ *   - PresentationCapability — presentation goto + focus capability (from deferred.ts)
+ *   - BrowserCapability     — browser focus capability (from deferred.ts)
+ *   - CapabilityCommandMap  — maps each stable command to args tuple + return type
  *
  * No runtime code — purely types and constants.
  * Import types from @accordo/bridge-types where they already exist.
@@ -26,7 +27,7 @@ export type { CommentAnchor, CommentIntent, CommentThread };
 // ─── Command ID Constants ─────────────────────────────────────────────────────
 
 /**
- * All 11 command string constants — canonical values used by registerCommand
+ * All 8 stable command string constants — canonical values used by registerCommand
  * producers and executeCommand consumers.
  * Changing a value = single-point rename.
  */
@@ -44,12 +45,21 @@ export const CAPABILITY_COMMANDS = {
 
   // diagram (producer: accordo-diagram)
   DIAGRAM_FOCUS_THREAD: "accordo_diagram_focusThread",
+} as const;
 
-  // presentation (producer: accordo-marp — not yet registered, ghost)
+/**
+ * Deferred command constants — commands that are invoked by navigateToThread
+ * as a fallback when no NavigationAdapter is registered for the target surface.
+ * These are the same string values as CAPABILITY_COMMANDS but scoped to
+ * the deferred-invocation pathway.
+ *
+ * Source: presentation-comments-modularity-A.md §17.4
+ */
+export const DEFERRED_COMMANDS = {
   PRESENTATION_GOTO: "accordo_presentation_internal_goto",
+  /** Focus thread in presentation — used by deferred slide path after goto succeeds. */
   PRESENTATION_FOCUS_THREAD: "accordo_presentation_internal_focusThread",
-
-  // browser (producer: accordo-browser — not yet registered, ghost)
+  /** Focus thread in browser — used by deferred browser path. */
   BROWSER_FOCUS_THREAD: "accordo_browser_focusThread",
 } as const;
 
@@ -205,49 +215,6 @@ export interface DiagramCapability {
   focusThread(threadId: string, mmdUri?: string): Promise<void>;
 }
 
-/**
- * PresentationCapability — to be registered by accordo-marp (ghost: not yet wired).
- *
- * Navigate to a slide and/or focus a comment thread in the presentation webview.
- *
- * Sources (call sites in navigation-router.ts):
- *   - accordo_presentation_internal_goto    → coords.slideIndex (number)
- *   - accordo_presentation_internal_focusThread → thread.id (string)
- */
-export interface PresentationCapability {
-  /**
-   * Navigate the presentation to the given 0-based slide index.
-   * Throws if no presentation session is open.
-   *
-   * @param slideIndex 0-based slide index
-   */
-  goto(slideIndex: number): Promise<void>;
-
-  /**
-   * Focus a comment thread popover in the presentation webview.
-   *
-   * @param threadId ID of the thread to focus
-   */
-  focusThread(threadId: string): Promise<void>;
-}
-
-/**
- * BrowserCapability — to be registered by accordo-browser (ghost: not yet wired).
- *
- * Focus a comment thread in the Chrome browser extension popup/content script.
- *
- * Source (call site in navigation-router.ts):
- *   - accordo_browser_focusThread → thread.id (string)
- */
-export interface BrowserCapability {
-  /**
-   * Focus a comment thread in the connected browser extension.
-   *
-   * @param threadId ID of the thread to focus
-   */
-  focusThread(threadId: string): Promise<void>;
-}
-
 // ─── CapabilityCommandMap ─────────────────────────────────────────────────────
 
 /**
@@ -300,20 +267,17 @@ export interface CapabilityCommandMap {
     args: [threadId: string, mmdUri?: string];
     result: void;
   };
-
-  // ── presentation ──────────────────────────────────────────────────────────
-  readonly [CAPABILITY_COMMANDS.PRESENTATION_GOTO]: {
-    args: [slideIndex: number];
-    result: void;
-  };
-  readonly [CAPABILITY_COMMANDS.PRESENTATION_FOCUS_THREAD]: {
-    args: [threadId: string];
-    result: void;
-  };
-
-  // ── browser ────────────────────────────────────────────────────────────────
-  readonly [CAPABILITY_COMMANDS.BROWSER_FOCUS_THREAD]: {
-    args: [threadId: string];
-    result: void;
-  };
 }
+
+// ─── Navigation Adapter Registry ───────────────────────────────────────────────
+
+export { createNavigationAdapterRegistry } from "./navigation.js";
+export type { NavigationAdapterRegistry, NavigationEnv } from "./navigation.js";
+
+// ─── Deferred Capability Re-exports ───────────────────────────────────────────
+// PresentationCapability and BrowserCapability live in deferred.ts to keep them
+// off the stable public surface. Re-export here for consumers that import them
+// from @accordo/capabilities directly.
+
+export type { PresentationCapability } from "./deferred.js";
+export type { BrowserCapability } from "./deferred.js";

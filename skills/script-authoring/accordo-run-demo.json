@@ -1,0 +1,233 @@
+{
+  "project": "accordo",
+  "label": "accordo-run.py — Live Demo",
+  "steps": [
+    {
+      "type": "slide_open",
+      "_label": "Open the deck",
+      "deckUri": "/data/projects/accordo/skills/script-authoring/accordo-run-demo.deck.md",
+      "after_ms": 800
+    },
+    {
+      "type": "slide_goto",
+      "_label": "Slide 1 — Title",
+      "index": 1,
+      "after_ms": 600
+    },
+    {
+      "type": "speak",
+      "_label": "Intro",
+      "text": "Welcome. This demo walks through accordo-run — a lightweight Python runner that lets an AI agent deliver narrated walkthroughs using nothing but a JSON file. The engine is Kokoro, running locally on a G T X 1070 GPU — so there's no cloud, no latency, no API cost.",
+      "voice": "af_nicole",
+      "block": true
+    },
+    {
+      "type": "slide_goto",
+      "_label": "Slide 2 — Why this exists",
+      "index": 2,
+      "after_ms": 600
+    },
+    {
+      "type": "speak",
+      "_label": "Problem statement",
+      "text": "Before this runner existed, every narrated walkthrough required the LLM to make individual tool calls — one round-trip per sentence, per highlight, per slide navigation. It was slow and fragile. The accordo script run tool existed but couldn't be interrupted. This runner solves both problems.",
+      "voice": "af_nicole",
+      "block": true
+    },
+    {
+      "type": "slide_goto",
+      "_label": "Slide 3 — How it works",
+      "index": 3,
+      "after_ms": 600
+    },
+    {
+      "type": "speak",
+      "_label": "Architecture narration",
+      "text": "The runner has two key boot steps. First it reads hubs dot json to find the port for this project. Then it reads the hub process's environment directly from slash proc to get the live auth token. This is important because the token in home accordo token can go stale — the only reliable source is the running process itself.",
+      "voice": "af_nicole",
+      "block": true
+    },
+    {
+      "type": "slide_goto",
+      "_label": "Slide 4 — Step types",
+      "index": 4,
+      "after_ms": 600
+    },
+    {
+      "type": "speak",
+      "_label": "Step types narration",
+      "text": "There are eight step types. Speak sends text to Kokoro for narration. Open and highlight work together to draw attention to specific lines in a file. Slide open and slide goto drive Marp presentations. Layout controls the VS Code panels. Delay adds breathing room. And call is a raw escape hatch for any Accordo tool not covered by the other types.",
+      "voice": "af_nicole",
+      "block": true
+    },
+    {
+      "type": "slide_goto",
+      "_label": "Slide 5 — The result",
+      "index": 5,
+      "after_ms": 600
+    },
+    {
+      "type": "speak",
+      "_label": "Final slide narration",
+      "text": "The result is a self-contained JSON file. The agent writes the JSON. The runner executes it. You can interrupt at any time with Control C, and resume from any step number with the from flag. Let me now close the presentation and show you the actual runner source code.",
+      "voice": "af_nicole",
+      "block": true
+    },
+    {
+      "type": "call",
+      "_label": "Close presentation",
+      "tool": "accordo_presentation_close",
+      "args": {},
+      "after_ms": 500
+    },
+    {
+      "type": "open",
+      "_label": "Open accordo-run.py",
+      "path": "/data/projects/accordo/skills/script-authoring/accordo-run.py",
+      "line": 1,
+      "after_ms": 800
+    },
+    {
+      "type": "speak",
+      "_label": "Intro to source walkthrough",
+      "text": "Here's the runner source. It's about 270 lines of plain Python — no frameworks, just the requests library. Let me walk through the three key sections.",
+      "voice": "af_nicole",
+      "block": true
+    },
+    {
+      "type": "open",
+      "_label": "Scroll to get_hub",
+      "path": "/data/projects/accordo/skills/script-authoring/accordo-run.py",
+      "line": 33,
+      "after_ms": 500
+    },
+    {
+      "type": "highlight",
+      "_label": "Highlight get_hub",
+      "path": "/data/projects/accordo/skills/script-authoring/accordo-run.py",
+      "start": 33,
+      "end": 57,
+      "color": "rgba(88,166,255,0.25)"
+    },
+    {
+      "type": "speak",
+      "_label": "Narrate get_hub",
+      "text": "The get_hub function takes a project fragment — a substring of the project path — and finds the matching hub entry. It reads the port, then opens slash proc slash p-i-d slash environ to extract the ACCORDO_TOKEN directly from the live process. This is the secret sauce: no stale files, always the real token.",
+      "voice": "af_nicole",
+      "block": true
+    },
+    {
+      "type": "clear_highlights",
+      "_label": "Clear get_hub highlight"
+    },
+    {
+      "type": "open",
+      "_label": "Scroll to call_tool",
+      "path": "/data/projects/accordo/skills/script-authoring/accordo-run.py",
+      "line": 60,
+      "after_ms": 500
+    },
+    {
+      "type": "highlight",
+      "_label": "Highlight call_tool",
+      "path": "/data/projects/accordo/skills/script-authoring/accordo-run.py",
+      "start": 60,
+      "end": 77,
+      "color": "rgba(255,166,87,0.25)"
+    },
+    {
+      "type": "speak",
+      "_label": "Narrate call_tool",
+      "text": "call_tool is the single HTTP dispatch function. Every step type eventually calls this. It sends a JSON-RPC 2.0 POST to the hub's slash m-c-p endpoint with a Bearer token. The timeout is 90 seconds to accommodate long-running speak steps.",
+      "voice": "af_nicole",
+      "block": true
+    },
+    {
+      "type": "clear_highlights",
+      "_label": "Clear call_tool highlight"
+    },
+    {
+      "type": "open",
+      "_label": "Scroll to highlight handler",
+      "path": "/data/projects/accordo/skills/script-authoring/accordo-run.py",
+      "line": 115,
+      "after_ms": 500
+    },
+    {
+      "type": "highlight",
+      "_label": "Highlight the highlight handler",
+      "path": "/data/projects/accordo/skills/script-authoring/accordo-run.py",
+      "start": 115,
+      "end": 126,
+      "color": "rgba(63,185,80,0.25)"
+    },
+    {
+      "type": "speak",
+      "_label": "Narrate highlight handler",
+      "text": "Here's the highlight step handler — the one I'm demonstrating right now. It reads path, start line, end line, and an optional color. Then it calls accordo editor highlight. You're looking at the code that's highlighting itself.",
+      "voice": "af_nicole",
+      "block": true
+    },
+    {
+      "type": "clear_highlights",
+      "_label": "Clear highlight handler highlight"
+    },
+    {
+      "type": "open",
+      "_label": "Open the demo JSON itself",
+      "path": "/data/projects/accordo/skills/script-authoring/accordo-run-demo.json",
+      "line": 1,
+      "after_ms": 800
+    },
+    {
+      "type": "speak",
+      "_label": "Intro to JSON file",
+      "text": "And here's the JSON file that produced everything you just saw. Each object in the steps array is one action. The agent writes this file. The runner executes it. That's the entire contract.",
+      "voice": "af_nicole",
+      "block": true
+    },
+    {
+      "type": "highlight",
+      "_label": "Highlight speak step example",
+      "path": "/data/projects/accordo/skills/script-authoring/accordo-run-demo.json",
+      "start": 17,
+      "end": 23,
+      "color": "rgba(88,166,255,0.25)"
+    },
+    {
+      "type": "speak",
+      "_label": "Narrate speak step",
+      "text": "A speak step: text, voice, and block equals true so the runner waits for the audio to finish before moving on.",
+      "voice": "af_nicole",
+      "block": true
+    },
+    {
+      "type": "clear_highlights"
+    },
+    {
+      "type": "highlight",
+      "_label": "Highlight highlight step example",
+      "path": "/data/projects/accordo/skills/script-authoring/accordo-run-demo.json",
+      "start": 104,
+      "end": 111,
+      "color": "rgba(63,185,80,0.25)"
+    },
+    {
+      "type": "speak",
+      "_label": "Narrate highlight step",
+      "text": "A highlight step: path, start line, end line, and an optional rgba color. Four fields. That's all it takes to draw attention to any code in the editor.",
+      "voice": "af_nicole",
+      "block": true
+    },
+    {
+      "type": "clear_highlights"
+    },
+    {
+      "type": "speak",
+      "_label": "Closing",
+      "text": "That's the accordo-run system. One runner, JSON steps, GPU-accelerated voice, live editor control — all without the LLM making a single tool call during playback. Thank you.",
+      "voice": "af_nicole",
+      "block": true
+    }
+  ]
+}

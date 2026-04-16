@@ -396,11 +396,20 @@ async function resolveNumericFrameId(
 // ── Page-map payload narrowing ───────────────────────────────────────────────
 
 type InspectPayload =
+  | { uid: string; ref?: string; selector?: string }
   | { nodeId: number }
   | { ref: string; selector?: string }
   | { selector: string };
 
 function toInspectPayload(raw: Record<string, unknown>): InspectPayload {
+  // B2-UID-001: uid takes precedence — it unambiguously identifies a node
+  if (typeof raw.uid === "string" && raw.uid.length > 0) {
+    return {
+      uid: raw.uid,
+      ref: typeof raw.ref === "string" ? raw.ref : undefined,
+      selector: typeof raw.selector === "string" ? raw.selector : undefined,
+    };
+  }
   if (typeof raw.ref === "string") {
     return {
       ref: raw.ref,

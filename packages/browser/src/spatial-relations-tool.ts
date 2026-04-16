@@ -76,20 +76,34 @@ export interface SpatialRelationsToolError {
 /**
  * Narrow an unknown value to GetSpatialRelationsArgs.
  * Validates required fields and extracts only the typed fields.
+ * B2-UID-001: accepts either nodeIds or uids (at least one required).
  */
 function narrowArgs(raw: unknown): GetSpatialRelationsArgs | null {
   if (typeof raw !== "object" || raw === null) return null;
 
   const obj = raw as Record<string, unknown>;
-  const result: GetSpatialRelationsArgs = { nodeIds: [] };
+  const result: GetSpatialRelationsArgs = {};
 
-  // nodeIds is required and must be an array of numbers
-  if (!Array.isArray(obj["nodeIds"])) return null;
-  const nodeIds = (obj["nodeIds"] as unknown[]).filter(
-    (id): id is number => typeof id === "number" && Number.isInteger(id),
-  );
-  if (nodeIds.length === 0) return null;
-  result.nodeIds = nodeIds;
+  // nodeIds: optional array of numbers
+  if (Array.isArray(obj["nodeIds"])) {
+    const nodeIds = (obj["nodeIds"] as unknown[]).filter(
+      (id): id is number => typeof id === "number" && Number.isInteger(id) && id >= 0,
+    );
+    if (nodeIds.length > 0) result.nodeIds = nodeIds;
+  }
+
+  // B2-UID-001: uids: optional array of strings
+  if (Array.isArray(obj["uids"])) {
+    const uids = (obj["uids"] as unknown[]).filter(
+      (uid): uid is string => typeof uid === "string" && uid.length > 0,
+    );
+    if (uids.length > 0) result.uids = uids;
+  }
+
+  // At least one of nodeIds or uids must be non-empty
+  const hasNodeIds = Array.isArray(obj["nodeIds"]) && (obj["nodeIds"] as unknown[]).length > 0;
+  const hasUids = Array.isArray(obj["uids"]) && (obj["uids"] as unknown[]).length > 0;
+  if (!hasNodeIds && !hasUids) return null;
 
   if (typeof obj["tabId"] === "number") {
     result.tabId = obj["tabId"];
@@ -146,9 +160,10 @@ export function buildSpatialRelationsTool(
     name: "accordo_browser_get_spatial_relations",
     description:
       "Compute pairwise spatial relationships between page elements. " +
-      "Takes node IDs from a prior get_page_map call (with includeBounds: true) " +
+      "Takes node IDs or uids from a prior get_page_map call (with includeBounds: true) " +
       "and returns directional (leftOf, above), containment, overlap (IoU), " +
-      "and distance relationships for all pairs. Maximum 50 node IDs per request.",
+      "and distance relationships for all pairs. Maximum 50 node IDs per request. " +
+      "B2-UID-001: Pass uids (\"{frameId}:{nodeId}\") instead of nodeIds for cross-frame identity.",
     inputSchema: {
       type: "object",
       properties: {
@@ -161,7 +176,17 @@ export function buildSpatialRelationsTool(
           items: { type: "integer" },
           description:
             "Node IDs from a prior get_page_map call (with includeBounds: true). " +
-            "Maximum 50 IDs — pairwise computation is O(n²).",
+            "Maximum 50 IDs — pairwise computation is O(n²). Alternative to uids.",
+          minItems: 1,
+          maxItems: 50,
+        },
+        /** B2-UID-001: Canonical uid strings "{frameId}:{nodeId}". Alternative to nodeIds. */
+        uids: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Canonical node identities from a prior get_page_map call. " +
+            'Format: "{frameId}:{nodeId}" (e.g. "main:3"). Alternative to nodeIds.',
           minItems: 1,
           maxItems: 50,
         },
@@ -176,7 +201,8 @@ export function buildSpatialRelationsTool(
           description: "Block data from these origins. Takes precedence over allowedOrigins.",
         },
       },
-      required: ["nodeIds"],
+      // At least one of nodeIds or uids is required — validated by narrowArgs at runtime
+      required: [],
     },
     dangerLevel: "safe",
     idempotent: true,
@@ -185,13 +211,15 @@ export function buildSpatialRelationsTool(
       if (!args) {
         return buildStructuredError(
           "action-failed",
-          "nodeIds is required and must be a non-empty array of integers",
+          "nodeIds or uids is required and must be a non-empty array",
         );
       }
-      if (args.nodeIds.length > MAX_SPATIAL_NODE_IDS) {
+      const nodeIds = args.nodeIds ?? [];
+      const totalIds = nodeIds.length + (args.uids?.length ?? 0);
+      if (totalIds > MAX_SPATIAL_NODE_IDS) {
         return buildStructuredError(
           "too-many-nodes",
-          `Maximum ${MAX_SPATIAL_NODE_IDS} node IDs allowed, got ${args.nodeIds.length}`,
+          `Maximum ${MAX_SPATIAL_NODE_IDS} IDs allowed, got ${totalIds}`,
         );
       }
       return handleGetSpatialRelations(relay, args, store, security);
@@ -238,9 +266,14 @@ async function handleGetSpatialRelations(
   const startTime = Date.now();
 
   try {
-    const payload: Record<string, unknown> = {
-      nodeIds: args.nodeIds,
-    };
+    const payload: Record<string, unknown> = {};
+    // B2-UID-001: Pass at least one of nodeIds or uids
+    if (args.nodeIds !== undefined && args.nodeIds.length > 0) {
+      payload["nodeIds"] = args.nodeIds;
+    }
+    if (args.uids !== undefined && args.uids.length > 0) {
+      payload["uids"] = args.uids;
+    }
     if (args.tabId !== undefined) payload["tabId"] = args.tabId;
 
     const response = await relay.request(

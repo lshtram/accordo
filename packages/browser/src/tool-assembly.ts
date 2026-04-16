@@ -13,6 +13,7 @@
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { BrowserRelayLike } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
+import { ScreenshotRetentionStore } from "./screenshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
 import { buildPageUnderstandingTools } from "./page-understanding-tools.js";
 import { buildWaitForTool } from "./wait-tool.js";
@@ -21,6 +22,7 @@ import { buildSemanticGraphTool } from "./semantic-graph-tool.js";
 import { buildDiffSnapshotsTool } from "./diff-tool.js";
 import { buildHealthTool } from "./health-tool.js";
 import { buildManageSnapshotsTool } from "./manage-snapshots-tool.js";
+import { buildManageScreenshotsTool } from "./manage-screenshots-tool.js";
 import { buildSpatialRelationsTool } from "./spatial-relations-tool.js";
 import { buildControlTools } from "./control-tool-types.js";
 import * as http from "node:http";
@@ -88,27 +90,30 @@ function buildPairTool(): ExtensionToolDefinition {
  * Build all browser tools for a given relay (BrowserRelayLike).
  *
  * Composes page-understanding tools, wait-for, text-map, semantic-graph,
- * diff-snapshots, health, manage-snapshots, spatial-relations, and control
- * tools into a single array for registration with the bridge.
+ * diff-snapshots, health, manage-snapshots, manage-screenshots, spatial-relations,
+ * and control tools into a single array for registration with the bridge.
  *
- * @param relay          - The browser relay connection
- * @param snapshotStore  - Snapshot retention store for envelope persistence
- * @param securityConfig - Security configuration (origin policy, redaction, audit)
+ * @param relay            - The browser relay connection
+ * @param snapshotStore    - Snapshot retention store for envelope persistence
+ * @param securityConfig   - Security configuration (origin policy, redaction, audit)
+ * @param screenshotStore  - Screenshot retention store for file-ref capture (GAP-G1)
  * @returns Array of all browser tool definitions
  */
 export function buildBrowserTools(
   relay: BrowserRelayLike,
   snapshotStore: SnapshotRetentionStore,
   securityConfig: SecurityConfig,
+  screenshotStore?: ScreenshotRetentionStore,
 ): ExtensionToolDefinition[] {
   return [
-    ...buildPageUnderstandingTools(relay, snapshotStore, securityConfig),
+    ...buildPageUnderstandingTools(relay, snapshotStore, securityConfig, screenshotStore),
     buildWaitForTool(relay),
     buildTextMapTool(relay, snapshotStore, securityConfig),
     buildSemanticGraphTool(relay, snapshotStore, securityConfig),
     buildDiffSnapshotsTool(relay, snapshotStore),
     buildHealthTool(relay),
     buildManageSnapshotsTool(relay, snapshotStore),
+    buildManageScreenshotsTool(relay, screenshotStore ?? new ScreenshotRetentionStore()),
     buildSpatialRelationsTool(relay, snapshotStore, securityConfig),
     ...buildControlTools(relay),
     buildPairTool(),

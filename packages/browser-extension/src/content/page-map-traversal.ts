@@ -32,6 +32,13 @@ let refIndex: Map<string, Element> = new Map();
 let elementToNodeId: Map<Element, number> = new Map();
 let nextSyntheticNodeId = -1;
 
+/**
+ * B2-UID-001: Maps nodeId → uid for the most recent page map.
+ * Populated alongside refIndex in `buildPassedNode()` and `buildShadowNode()`.
+ * Enables the spatial relations handler to include uid in its response.
+ */
+let nodeIdToUid: Map<number, string> = new Map();
+
 function ensureSyntheticNodeId(element: Element, refCounter: { count: number }): number {
   const existing = elementToNodeId.get(element);
   if (existing !== undefined) return existing;
@@ -53,10 +60,22 @@ export function getNodeIdByElement(element: Element): number | undefined {
   return elementToNodeId.get(element);
 }
 
-/** Clear the ref index (called at the start of each collection) */
+/**
+ * B2-UID-001: Look up the canonical uid for a nodeId from the most recent page map.
+ * Returns undefined if the nodeId is not in the most recent page map.
+ *
+ * @param nodeId - The nodeId to look up
+ * @returns The uid string "{frameId}:{nodeId}" or undefined if not found
+ */
+export function getUidByNodeId(nodeId: number): string | undefined {
+  return nodeIdToUid.get(nodeId);
+}
+
+/** Clear the ref index and nodeId-to-uid map (called at the start of each collection) */
 export function clearRefIndex(): void {
   refIndex = new Map();
   elementToNodeId = new Map();
+  nodeIdToUid = new Map();
   nextSyntheticNodeId = -1;
 }
 
@@ -131,6 +150,13 @@ export interface TraversalOptions {
    * closed shadow roots on their hosts. Default: false.
    */
   piercesShadow?: boolean;
+  /**
+   * B2-UID-001: Frame identifier used when building canonical uid.
+   * Defaults to "main" for the top-level document frame.
+   * For same-origin iframe nodes assembled in the SW, this is set to the
+   * iframe's frameId so uid is globally unique across frames.
+   */
+  frameId?: string;
 }
 
 // ── Core buildNode ────────────────────────────────────────────────────────────
@@ -138,6 +164,9 @@ export interface TraversalOptions {
 /**
  * Build a PageNode for an element that passed the filter pipeline,
  * recursing into children. Internal — callers should use buildNode.
+ *
+ * @param frameId - The frameId to use when building the canonical uid.
+ *                  Defaults to "main" for top-level documents.
  */
 function buildPassedNode(
   element: Element,
@@ -145,6 +174,7 @@ function buildPassedNode(
   depth: number,
   opts: TraversalOptions,
   truncated: { value: boolean },
+  frameId: string = "main",
 ): PageNode {
   const tag = element.tagName.toLowerCase();
 
@@ -153,8 +183,12 @@ function buildPassedNode(
   refCounter.count++;
   refIndex.set(ref, element);
   elementToNodeId.set(element, nodeId);
+  // B2-UID-001: Populate nodeId→uid lookup for spatial relations handler
+  nodeIdToUid.set(nodeId, `${frameId}:${nodeId}`);
 
-  const node: PageNode = { ref, tag, nodeId };
+  // B2-UID-001: Canonical uid shaped "{frameId}:{nodeId}" enables cross-frame
+  // node identity without ambiguity. frameId is "main" for the top-level document.
+  const node: PageNode = { ref, tag, nodeId, uid: `${frameId}:${nodeId}` };
 
   // B2-SV-007: stable persistent ID
   const directTextForId = Array.from(element.childNodes)
@@ -354,7 +388,12 @@ function buildShadowNode(
   refIndex.set(ref, element);
   elementToNodeId.set(element, nodeId);
 
-  const node: PageNode = { ref, tag, nodeId, inShadowRoot: true, shadowHostId };
+  // B2-UID-001: Shadow nodes share the frameId of their parent document.
+  const frameId = opts.frameId ?? "main";
+  // B2-UID-001: Populate nodeId→uid lookup for spatial relations handler
+  nodeIdToUid.set(nodeId, `${frameId}:${nodeId}`);
+
+  const node: PageNode = { ref, tag, nodeId, uid: `${frameId}:${nodeId}`, inShadowRoot: true, shadowHostId };
 
   // Stable persistent ID
   const directTextForId = Array.from(element.childNodes)
@@ -466,7 +505,7 @@ export function buildNode(
 
   if (passesFilter) {
     // Element passes — build it (with its children nested inside)
-    return [buildPassedNode(element, refCounter, depth, opts, truncated)];
+    return [buildPassedNode(element, refCounter, depth, opts, truncated, opts.frameId ?? "main")];
   }
 
   // Element fails filter — skip it BUT recurse into children so matching

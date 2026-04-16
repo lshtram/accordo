@@ -61,6 +61,7 @@ const mockWriteLayout = vi.fn();
 const mockComputeInitialLayout = vi.fn();
 const mockGetWebviewHtml = vi.fn();
 const mockToExcalidrawPayload = vi.fn();
+const mockParseMermaidToExcalidraw = vi.fn();
 
 vi.mock("../parser/adapter.js", () => ({
   parseMermaid: (...args: unknown[]) => mockParseMermaid(...args),
@@ -94,6 +95,13 @@ vi.mock("./html.js", () => ({
 
 vi.mock("./scene-adapter.js", () => ({
   toExcalidrawPayload: (...args: unknown[]) => mockToExcalidrawPayload(...args),
+}));
+
+// Mock @excalidraw/mermaid-to-excalidraw at module level.
+// Use mockImplementation so the mock ALWAYS returns the configured value
+// (vi.fn() alone returns undefined by default, which breaks the Promise chain).
+vi.mock("@excalidraw/mermaid-to-excalidraw", () => ({
+  parseMermaidToExcalidraw: (...args: unknown[]) => mockParseMermaidToExcalidraw(...args),
 }));
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
@@ -178,7 +186,14 @@ describe("loadAndPost", () => {
     expect(msg.message).toBe("Syntax error in flowchart");
   });
 
-  it("PCore-04: calls computeInitialLayout when no layout file exists", async () => {
+  // PCore-04: Non-flowchart types (e.g. stateDiagram-v2) use computeInitialLayout when no layout exists.
+  // Flowcharts with upstream-direct (default) use runUpstreamPlacement instead.
+  it("PCore-04: calls computeInitialLayout for non-flowchart when no layout file exists", async () => {
+    mockParseMermaid.mockResolvedValueOnce({
+      valid: true,
+      diagram: { type: "stateDiagram-v2", nodes: {}, edges: [] },
+      error: null,
+    });
     mockReadLayout.mockResolvedValueOnce(null);
     const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
 
@@ -462,8 +477,9 @@ describe("handleExportReady", () => {
 // ── UD-04..UD-07: Engine selection in loadAndPost ───────────────────────────
 
 describe("loadAndPost — upstream-direct engine selection", () => {
-  it("UD-04: uses upstream-direct when layout.metadata.engine === 'upstream-direct' and type is flowchart", async () => {
-    // Layout with upstream-direct engine flag
+  // UD-04: REOPEN path — with existing layout, uses generateCanvas + host:load-scene
+  // (NOT host:load-upstream-direct, which is reserved for first-init only)
+  it("UD-04: reopen with existing layout uses generateCanvas (not upstream-direct)", async () => {
     const upstreamLayout = {
       version: "1.0" as const,
       diagram_type: "flowchart" as const,
@@ -479,26 +495,37 @@ describe("loadAndPost — upstream-direct engine selection", () => {
 
     await loadAndPost(panelState as never);
 
-    // Should NOT call generateCanvas (dagre path)
-    expect(mockGenerateCanvas).not.toHaveBeenCalled();
+    // Reopen uses generateCanvas + host:load-scene, NOT host:load-upstream-direct
+    expect(mockGenerateCanvas).toHaveBeenCalled();
     const upstreamCall = vi.mocked(vscPanel.webview.postMessage).mock.calls.find(
       ([msg]) => (msg as { type: string }).type === "host:load-upstream-direct",
     );
-    expect(upstreamCall).toBeDefined();
-    expect((upstreamCall?.[0] as { source?: string }).source).toBe(SIMPLE_FLOWCHART);
+    expect(upstreamCall).toBeUndefined();
+    // Should use host:load-scene for reopen
+    const loadSceneCall = vi.mocked(vscPanel.webview.postMessage).mock.calls.find(
+      ([msg]) => (msg as { type: string }).type === "host:load-scene",
+    );
+    expect(loadSceneCall).toBeDefined();
   });
 
-  it("UD-05: defaults to upstream-direct for flowchart when engine metadata is unset", async () => {
+  // UD-05: FIRST INIT path — no existing layout, uses upstream-direct
+  // SRP-01: first-init now uses host:load-scene (not host:load-upstream-direct)
+  it("UD-05: defaults to upstream-direct for flowchart when engine metadata is unset (first init)", async () => {
     mockReadLayout.mockResolvedValueOnce(null);
     const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
 
     await loadAndPost(panelState as never);
 
-    // Should post upstream-direct message by default for flowcharts
+    // First init: posts host:load-scene for flowcharts (SRP-01)
+    const loadSceneCall = vi.mocked(vscPanel.webview.postMessage).mock.calls.find(
+      ([msg]) => (msg as { type: string }).type === "host:load-scene",
+    );
+    expect(loadSceneCall).toBeDefined();
+    // host:load-upstream-direct is never sent (SRP-03)
     const upstreamCall = vi.mocked(vscPanel.webview.postMessage).mock.calls.find(
       ([msg]) => (msg as { type: string }).type === "host:load-upstream-direct",
     );
-    expect(upstreamCall).toBeDefined();
+    expect(upstreamCall).toBeUndefined();
   });
 
   it("UD-05b: uses dagre when metadata explicitly sets engine='dagre'", async () => {
@@ -549,30 +576,182 @@ describe("loadAndPost — upstream-direct engine selection", () => {
     expect(mockGenerateCanvas).toHaveBeenCalled();
   });
 
-  it("UD-07: upstream-direct path does not run dagre pipeline for flowcharts", async () => {
+  // UD-07: First init (layout === null) + upstream-direct → host:load-scene
+  // SRP-01: All renders use host:load-scene, including first-init
+  // runUpstreamPlacement seeds layout.json, then generateCanvas + host:load-scene renders
+  it("UD-07: first-init with layout===null and upstream-direct runs upstream placement (not dagre)", async () => {
     mockGenerateCanvas.mockClear();
     mockReadLayout.mockClear();
-
-    const upstreamLayout = {
-      version: "1.0" as const,
-      diagram_type: "flowchart" as const,
-      nodes: { A: { x: 0, y: 0, w: 100, h: 50 } },
-      edges: {},
-      clusters: {},
-      aesthetics: {},
-      unplaced: [],
-      metadata: { engine: "upstream-direct" },
-    };
-    mockReadLayout.mockResolvedValueOnce(upstreamLayout);
+    mockReadLayout.mockResolvedValueOnce(null); // First init: no existing layout
 
     const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
 
     await loadAndPost(panelState as never);
 
+    // First init: host:load-scene is sent (SRP-01)
+    const loadSceneCall = vi.mocked(vscPanel.webview.postMessage).mock.calls.find(
+      ([msg]) => (msg as { type: string }).type === "host:load-scene",
+    );
+    expect(loadSceneCall).toBeDefined();
+    // host:load-upstream-direct is never sent (SRP-03)
     const upstreamCall = vi.mocked(vscPanel.webview.postMessage).mock.calls.find(
       ([msg]) => (msg as { type: string }).type === "host:load-upstream-direct",
     );
-    expect(upstreamCall).toBeDefined();
-    expect(mockGenerateCanvas).not.toHaveBeenCalled();
+    expect(upstreamCall).toBeUndefined();
+    // generateCanvas IS called for first-init (now uses single render path)
+    expect(mockGenerateCanvas).toHaveBeenCalled();
+  });
+});
+
+// ── UD-08..UD-11: runUpstreamPlacement correctness ─────────────────────────
+
+// Test data shared across UD-08..UD-11
+const MOCK_ELEMENTS_WITH_NODES: unknown[] = [
+  { id: "node-A", type: "rectangle", x: 100, y: 200, width: 120, height: 60, customData: { mermaidId: "A" } },
+  { id: "node-B", type: "rectangle", x: 400, y: 200, width: 120, height: 60, customData: { mermaidId: "B" } },
+];
+
+const MOCK_ELEMENTS_WITH_EDGE: unknown[] = [
+  { id: "node-A", type: "rectangle", x: 10, y: 10, width: 100, height: 50, customData: { mermaidId: "A" } },
+  { id: "node-B", type: "rectangle", x: 400, y: 10, width: 100, height: 50, customData: { mermaidId: "B" } },
+  { id: "edge-1", type: "arrow", x: 10, y: 10, width: 400, height: 50, points: [[0, 0], [200, 25], [400, 50]], customData: { mermaidId: "A->B:0" } },
+];
+
+const MOCK_ELEMENTS_WITH_TEXT_AND_LABELS: unknown[] = [
+  { id: "A", type: "rectangle", x: 10, y: 10, width: 100, height: 50, customData: { mermaidId: "A" } },
+  { id: "A:text", type: "text", x: 60, y: 35, width: 50, height: 20, customData: { mermaidId: "A:text" } },
+  { id: "A->B:0:label", type: "text", x: 200, y: 100, width: 30, height: 16, customData: { mermaidId: "A->B:0:label" } },
+];
+
+const MOCK_ELEMENTS_WITH_ARROW_NO_MERMAID_ID: unknown[] = [
+  { id: "node-A", type: "rectangle", x: 10, y: 10, width: 100, height: 50, customData: { mermaidId: "A" } },
+  { id: "node-B", type: "rectangle", x: 400, y: 10, width: 100, height: 50, customData: { mermaidId: "B" } },
+  { id: "edge-1", type: "arrow", x: 10, y: 10, width: 400, height: 50, points: [[0, 0], [200, 25], [400, 50]] },
+];
+
+describe("runUpstreamPlacement — UD-08..UD-11", () => {
+  beforeEach(() => {
+    // Reset call history; preserve mock implementations.
+    vi.clearAllMocks();
+    mockReadLayout.mockResolvedValue(null);
+    mockWriteLayout.mockResolvedValue(undefined);
+    mockParseMermaid.mockResolvedValue({
+      valid: true,
+      diagram: { type: "flowchart", nodes: {}, edges: [] },
+      error: null,
+    });
+    mockGenerateCanvas.mockResolvedValue({
+      elements: [{ id: "A" }],
+      layout: { nodes: { A: { x: 0, y: 0, w: 100, h: 50 } }, edges: {}, clusters: {}, aesthetics: {}, unplaced: [] },
+    });
+    mockComputeInitialLayout.mockReturnValue({ nodes: { A: { x: 0, y: 0, w: 100, h: 50 } }, edges: {}, clusters: {}, aesthetics: {}, unplaced: [] });
+    mockGetWebviewHtml.mockReturnValue("<html></html>");
+    mockToExcalidrawPayload.mockReturnValue([{ id: "A" }]);
+    mockReconcile.mockResolvedValue({ layout: { nodes: { A: {} }, edges: {}, clusters: {}, aesthetics: {}, unplaced: [] } });
+    // Reset the parseMermaidToExcalidraw mock so each test controls its return value.
+    // Use mockImplementation to ensure it ALWAYS returns (vi.fn() alone returns undefined).
+    mockParseMermaidToExcalidraw.mockReset();
+    mockParseMermaidToExcalidraw.mockImplementation(() => Promise.resolve({ elements: [] }));
+  });
+
+  // UD-08: first-init persists nodes from runUpstreamPlacement into layout.json
+  it("UD-08: first-init persists nodes from upstream into layout.nodes", async () => {
+    mockParseMermaidToExcalidraw.mockImplementation(() => Promise.resolve({ elements: MOCK_ELEMENTS_WITH_NODES }));
+
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+    await loadAndPost(panelState as never);
+
+    // writeLayout(path, layout) — layout is at call[1]
+    const writeCall = mockWriteLayout.mock.calls.find(
+      (call) => {
+        const layoutArg = call[1] as Record<string, unknown> | undefined;
+        return layoutArg != null && "nodes" in layoutArg && Object.keys(layoutArg.nodes as object).length > 0;
+      },
+    );
+    expect(writeCall).toBeDefined();
+    const writtenLayout = writeCall![1] as Record<string, unknown>;
+    const nodes = writtenLayout.nodes as Record<string, { x: number; y: number; w: number; h: number }>;
+    expect(nodes["A"]).toMatchObject({ x: 100, y: 200, w: 120, h: 60 });
+    expect(nodes["B"]).toMatchObject({ x: 400, y: 200, w: 120, h: 60 });
+  });
+
+  // UD-09: first-init persists structurally valid edge entries keyed as EdgeKey (from->to:ordinal)
+  // This is the main regression test for the "skip ID containing ->" bug.
+  it("UD-09: first-init persists edge entries keyed as EdgeKey with waypoints", async () => {
+    mockParseMermaidToExcalidraw.mockImplementation(() => Promise.resolve({ elements: MOCK_ELEMENTS_WITH_EDGE }));
+
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+    await loadAndPost(panelState as never);
+
+    // writeLayout(path, layout) — layout is at call[1]
+    const writeCall = mockWriteLayout.mock.calls.find(
+      (call) => {
+        const layoutArg = call[1] as Record<string, unknown> | undefined;
+        return layoutArg != null && "edges" in layoutArg && Object.keys(layoutArg.edges as object).length > 0;
+      },
+    );
+    expect(writeCall).toBeDefined();
+    const writtenLayout = writeCall![1] as Record<string, unknown>;
+    const edges = writtenLayout.edges as Record<string, { waypoints: Array<{ x: number; y: number }> }>;
+
+    // UD-09: edge key must be the canonical EdgeKey "A->B:0" (not "edge-1" or "edge-1:0")
+    expect(edges["A->B:0"]).toBeDefined();
+    // Waypoints exclude the start and end (first and last points)
+    expect(edges["A->B:0"].waypoints).toEqual([
+      { x: 210, y: 35 }, // el.x(10) + 200, el.y(10) + 25
+    ]);
+  });
+
+  // UD-10: no text/label pseudo-nodes are written into layout.nodes
+  // Ensures the :text/:label skip logic prevents bound text from polluting node layout.
+  it("UD-10: text and label elements are NOT written into layout.nodes", async () => {
+    mockParseMermaidToExcalidraw.mockImplementation(() => Promise.resolve({ elements: MOCK_ELEMENTS_WITH_TEXT_AND_LABELS }));
+
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+    await loadAndPost(panelState as never);
+
+    // writeLayout(path, layout) — layout is at call[1]
+    const writeCall = mockWriteLayout.mock.calls.find(
+      (call) => {
+        const layoutArg = call[1] as Record<string, unknown> | undefined;
+        return layoutArg != null && "nodes" in layoutArg && Object.keys(layoutArg.nodes as object).length > 0;
+      },
+    );
+    expect(writeCall).toBeDefined();
+    const writtenLayout = writeCall![1] as Record<string, unknown>;
+    const nodes = writtenLayout.nodes as Record<string, unknown>;
+
+    // Only the real node "A" should be in layout.nodes
+    expect(nodes["A"]).toBeDefined();
+    expect(nodes["A:text"]).toBeUndefined();
+    expect(nodes["A->B:0:label"]).toBeUndefined();
+  });
+
+  // UD-11: Arrow without customData.mermaidId falls back to el.id (non-canonical key).
+  // This documents the upstream identity-mapping limitation: when mermaidId is absent,
+  // the edge key in layout is the Excalidraw element id (e.g. "edge-1") rather than
+  // a canonical EdgeKey "from->to:ordinal". Consumers should handle this gracefully.
+  it("UD-11: arrow without customData.mermaidId uses el.id as edge key (non-canonical fallback)", async () => {
+    mockParseMermaidToExcalidraw.mockImplementation(() => Promise.resolve({ elements: MOCK_ELEMENTS_WITH_ARROW_NO_MERMAID_ID }));
+
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+    await loadAndPost(panelState as never);
+
+    // writeLayout(path, layout) — layout is at call[1]
+    const writeCall = mockWriteLayout.mock.calls.find(
+      (call) => {
+        const layoutArg = call[1] as Record<string, unknown> | undefined;
+        return layoutArg != null && "edges" in layoutArg && Object.keys(layoutArg.edges as object).length > 0;
+      },
+    );
+    expect(writeCall).toBeDefined();
+    const writtenLayout = writeCall![1] as Record<string, unknown>;
+    const edges = writtenLayout.edges as Record<string, { waypoints: Array<{ x: number; y: number }> }>;
+
+    // Edge key is the fallback el.id — not a canonical EdgeKey
+    expect(edges["edge-1"]).toBeDefined();
+    expect(edges["edge-1"].waypoints).toEqual([{ x: 210, y: 35 }]);
+    // Canonical key should NOT be present (no mermaidId to derive it from)
+    expect(edges["A->B:0"]).toBeUndefined();
   });
 });

@@ -2,6 +2,7 @@
  * M113-SEM — Form model extractor.
  *
  * B2-SG-005, B2-SG-009, B2-SG-013.
+ * B2-FORM-EXT: validationState, validationMessage, constraints, summary.
  *
  * @module
  */
@@ -47,22 +48,64 @@ function resolveFieldLabel(el: HTMLElement): string | undefined {
   return undefined;
 }
 
+// ── Constraint extraction ────────────────────────────────────────────────────
+
+/**
+ * Extract constraint attributes from a form element.
+ * B2-FORM-EXT.
+ */
+function extractConstraints(el: HTMLElement): FormField["constraints"] {
+  const constraints: NonNullable<FormField["constraints"]> = {};
+
+  const minLength = el.getAttribute("minlength");
+  if (minLength !== null) constraints.minLength = parseInt(minLength, 10);
+
+  const maxLength = el.getAttribute("maxlength");
+  if (maxLength !== null) constraints.maxLength = parseInt(maxLength, 10);
+
+  const min = el.getAttribute("min");
+  if (min !== null) {
+    // Try numeric first, fall back to string for date etc.
+    const numeric = parseFloat(min);
+    constraints.min = isNaN(numeric) ? min : numeric;
+  }
+
+  const max = el.getAttribute("max");
+  if (max !== null) {
+    const numeric = parseFloat(max);
+    constraints.max = isNaN(numeric) ? max : numeric;
+  }
+
+  const pattern = el.getAttribute("pattern");
+  if (pattern !== null && pattern.length > 0) constraints.pattern = pattern;
+
+  const step = el.getAttribute("step");
+  if (step !== null && step.length > 0) {
+    const numeric = parseFloat(step);
+    constraints.step = isNaN(numeric) ? step : numeric;
+  }
+
+  return Object.keys(constraints).length > 0 ? constraints : undefined;
+}
+
 // ── Field extraction ──────────────────────────────────────────────────────────
 
 /**
  * Extract a single form field from an element.
- * B2-SG-005, B2-SG-013.
+ * B2-SG-005, B2-SG-013, B2-FORM-EXT.
  */
 function extractField(fieldEl: HTMLElement, registry: NodeIdRegistry): FormField {
   const fieldTag = fieldEl.tagName.toLowerCase();
   const fieldNodeId = registry.idFor(fieldEl);
   const fieldType = fieldEl.getAttribute("type") ?? undefined;
+  const uid = registry.uidFor(fieldEl);
 
   const field: FormField = {
     tag: fieldTag,
     // Non-null assertion justified: HTMLInputElement.required defaults to false
     required: (fieldEl as HTMLInputElement).required ?? false,
     nodeId: fieldNodeId,
+    ...(uid !== undefined ? { uid } : {}),
   };
 
   if (fieldType !== undefined) field.type = fieldType;
@@ -83,6 +126,35 @@ function extractField(fieldEl: HTMLElement, registry: NodeIdRegistry): FormField
     }
   }
 
+  // B2-FORM-EXT: Extract validation state for form control elements
+  const isFormControl = fieldEl instanceof HTMLInputElement ||
+    fieldEl instanceof HTMLTextAreaElement ||
+    fieldEl instanceof HTMLSelectElement;
+
+  if (isFormControl) {
+    const el = fieldEl as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    const validity = el.validity;
+    if (validity) {
+      if (!validity.valid) {
+        field.validationState = "invalid";
+        // HTML5 constraint validation message
+        field.validationMessage = el.validationMessage;
+      } else if (validity.valueMissing || validity.typeMismatch ||
+        validity.patternMismatch || validity.tooLong || validity.tooShort ||
+        validity.rangeUnderflow || validity.rangeOverflow || validity.stepMismatch) {
+        // Has constraints and they are all satisfied — mark valid
+        field.validationState = "valid";
+      }
+    }
+
+    // B2-FORM-EXT: disabled/readonly state
+    if ("disabled" in el) field.disabled = el.disabled;
+    if ("readOnly" in el) field.readonly = el.readOnly;
+
+    // B2-FORM-EXT: Extract constraints
+    field.constraints = extractConstraints(fieldEl);
+  }
+
   return field;
 }
 
@@ -95,6 +167,7 @@ function extractField(fieldEl: HTMLElement, registry: NodeIdRegistry): FormField
  * B2-SG-009: Hidden forms (and hidden fields within visible forms) excluded
  *            when visibleOnly is true.
  * B2-SG-013: Password field values redacted.
+ * B2-FORM-EXT: validationState, validationMessage, constraints, summary.
  */
 export function extractForms(
   registry: NodeIdRegistry,
@@ -110,9 +183,11 @@ export function extractForms(
     if (visibleOnly && isHidden(formEl)) continue;
 
     const nodeId = registry.idFor(formEl);
+    const uid = registry.uidFor(formEl);
 
     const model: FormModel = {
       nodeId,
+      ...(uid !== undefined ? { uid } : {}),
       method: (formEl.method?.toUpperCase() ?? "GET") || "GET",
       fields: [],
     };
@@ -134,6 +209,15 @@ export function extractForms(
       if (visibleOnly && isHidden(fieldEl)) continue;
 
       model.fields.push(extractField(fieldEl, registry));
+    }
+
+    // B2-FORM-EXT: Compute summary counts
+    if (model.fields.length > 0) {
+      model.summary = {
+        total: model.fields.length,
+        optional: model.fields.filter((f) => !f.required).length,
+        disabled: model.fields.filter((f) => f.disabled === true).length,
+      };
     }
 
     models.push(model);
