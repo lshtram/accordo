@@ -4,8 +4,9 @@
  * Source: requirements-marp.md §4 M50-CBR
  */
 
-import type { SlideCoordinates, CommentAnchorSurface } from "@accordo/bridge-types";
+import type { SlideCoordinates, CommentAnchorSurface, CommentThread } from "@accordo/bridge-types";
 import type { SurfaceCommentAdapter } from "@accordo/capabilities";
+import type { SdkThread } from "@accordo/comment-sdk";
 
 export function encodeBlockId(coords: SlideCoordinates): string {
   return `slide:${coords.slideIndex}:${coords.x.toFixed(4)}:${coords.y.toFixed(4)}`;
@@ -21,17 +22,65 @@ export function parseBlockId(blockId: string): SlideCoordinates | null {
   return { type: "slide", slideIndex, x, y };
 }
 
+/**
+ * Convert a store CommentThread into the SdkThread model the comment SDK webview expects.
+ *
+ * For surface anchors with slide coordinates → derives blockId via encodeBlockId.
+ * For non-slide surface anchors or other anchor types → empty blockId (no pin rendered).
+ *
+ * hasUnread is derived conservatively: true when lastActivity > loadedAt.
+ */
+export function toSdkThread(thread: CommentThread, loadedAt: string): SdkThread {
+  const anchor = thread.anchor;
+  let blockId: string;
+
+  if (anchor.kind === "surface" && anchor.surfaceType === "slide") {
+    const coords = anchor.coordinates as SlideCoordinates;
+    blockId = encodeBlockId(coords);
+  } else {
+    // Non-slide anchors (file, text, non-slide surfaces) cannot render pins on Marp slides.
+    blockId = "";
+  }
+
+  return {
+    id: thread.id,
+    blockId,
+    status: thread.status,
+    hasUnread: thread.lastActivity > loadedAt,
+    comments: thread.comments.map((c) => ({
+      id: c.id,
+      author: c.author ? { kind: c.author.kind, name: c.author.name } : { kind: "user" as const, name: "" },
+      body: c.body,
+      createdAt: c.createdAt,
+    })),
+  };
+}
+
 export interface WebviewSender {
   postMessage(message: unknown): Thenable<boolean>;
 }
 
 export class PresentationCommentsBridge {
   private adapterUnsubscribe: { dispose(): void } | null = null;
+  private _sender: WebviewSender;
+  /** ISO timestamp when loadThreadsForUri was first called (for hasUnread derivation) */
+  private _loadedAt: string = new Date().toISOString();
 
   constructor(
     private readonly adapter: SurfaceCommentAdapter | null,
-    private readonly sender: WebviewSender,
-  ) {}
+    sender: WebviewSender,
+  ) {
+    this._sender = sender;
+  }
+
+  /**
+   * Rebind the message sender after panel creation.
+   * Returns `this` so callers can discard the return value.
+   */
+  bindToSender(sender: WebviewSender): this {
+    this._sender = sender;
+    return this;
+  }
 
   async handleWebviewMessage(message: unknown, deckUri: string): Promise<void> {
     if (!this.adapter) return;
@@ -70,11 +119,15 @@ export class PresentationCommentsBridge {
     if (!this.adapter) return;
     const send = () => {
       if (!this.adapter) return;
-      const threads = this.adapter.getThreadsForUri(deckUri);
-      void this.sender.postMessage({ type: "comments:load", threads });
+      if (typeof this.adapter.getThreadsForUri !== "function") return;
+      const rawThreads = this.adapter.getThreadsForUri(deckUri);
+      const threads = rawThreads.map((t) => toSdkThread(t, this._loadedAt));
+      void this._sender.postMessage({ type: "comments:load", threads });
     };
     send();
-    this.adapterUnsubscribe = this.adapter.onChanged((_uri: string) => send());
+    if (typeof this.adapter.onChanged === "function") {
+      this.adapterUnsubscribe = this.adapter.onChanged((_uri: string) => send());
+    }
   }
 
   buildAnchor(blockId: string, deckUri: string): CommentAnchorSurface | null {

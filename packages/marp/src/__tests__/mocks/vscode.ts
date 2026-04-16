@@ -65,7 +65,12 @@ export class MockWebview {
   readonly postMessage = vi.fn().mockResolvedValue(true);
   asWebviewUri(uri: Uri): Uri { return uri; }
 
-  onDidReceiveMessage = vi.fn().mockReturnValue({ dispose: vi.fn() });
+  // Use a getter so reassignments (e.g. in tests) always affect what callers see.
+  // (MockWebviewPanel.webview is a shared instance property, so without a getter,
+  // reassigning onDidReceiveMessage after open() would leave the stored reference stale.)
+  private _onDidReceiveMessage = vi.fn().mockReturnValue({ dispose: vi.fn() });
+  get onDidReceiveMessage() { return this._onDidReceiveMessage; }
+  set onDidReceiveMessage(fn) { this._onDidReceiveMessage = fn; }
 }
 
 export class MockWebviewPanel {

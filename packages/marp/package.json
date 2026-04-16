@@ -46,7 +46,7 @@
   "main": "./dist/extension.js",
   "engines": { "vscode": "^1.100.0" },
   "scripts": {
-    "build": "tsc --noEmit && esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=dist/extension.js --sourcemap --format=cjs",
+    "build": "tsc --noEmit && esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=dist/extension.js --sourcemap --format=cjs && node scripts/copy-webview-assets.mjs",
     "clean": "rm -rf dist *.tsbuildinfo",
     "package": "vsce package --no-dependencies --allow-missing-repository --skip-license",
     "test": "vitest run",
@@ -60,6 +60,7 @@
   },
   "devDependencies": {
     "@accordo/bridge-types": "workspace:*",
+    "@accordo/comment-sdk": "workspace:*",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.100.0",
     "@vscode/vsce": "^3.7.1",

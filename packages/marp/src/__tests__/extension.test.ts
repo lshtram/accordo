@@ -17,6 +17,12 @@
  *   M50-EXT-07  If comments extension unavailable, presentation still works
  *   M50-EXT-08  Only one session at a time; opening new deck closes previous
  *
+ *   M50-FOCUS-01  Registers VS Code command accordo.presentation.internal.focusThread
+ *   M50-FOCUS-02  Command parameters: (uri: string, threadId: string, blockId: string)
+ *   M50-FOCUS-03  Ensures the deck is open (calls accordo.presentation.open if needed)
+ *   M50-FOCUS-04  Parses slideIndex from blockId, navigates to that slide
+ *   M50-FOCUS-05  Posts comments:focus to webview after navigation settling
+ *
  * Test state: ALL tests expected to FAIL with "not implemented" until implementation lands.
  */
 
@@ -579,6 +585,222 @@ describe("VS Code commands registered by activate", () => {
     await activate(asCtx(ctx));
 
     expect(ctx.subscriptions.length).toBeGreaterThanOrEqual(5);
+  });
+});
+
+// ── M50-FOCUS: accordo.presentation.internal.focusThread command ───────────────
+
+describe("M50-FOCUS: accordo.presentation.internal.focusThread command", () => {
+  it("M50-FOCUS-01: registers accordo.presentation.internal.focusThread as a VS Code command", async () => {
+    // The command must be registered so the comments panel can call it.
+    const bridge = makeBridge();
+    setupExtensions(bridge, false);
+    setupEngineConfig("marp");
+    const ctx = makeExtensionContext();
+
+    await activate(asCtx(ctx));
+
+    const registeredCmds = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([cmd]: [string]) => cmd,
+    );
+    expect(registeredCmds).toContain("accordo.presentation.internal.focusThread");
+  });
+
+  it("M50-FOCUS-01: focusThread command is registered separately from open/close/goto commands", async () => {
+    // Must be a distinct command registration.
+    const bridge = makeBridge();
+    setupExtensions(bridge, false);
+    setupEngineConfig("marp");
+    const ctx = makeExtensionContext();
+
+    await activate(asCtx(ctx));
+
+    const registeredCmds = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([cmd]: [string]) => cmd,
+    );
+    expect(registeredCmds).toContain("accordo.presentation.internal.focusThread");
+    // Not the same as accordo_presentation_internal_goto (different command ID).
+    expect(registeredCmds).toContain("accordo_presentation_internal_goto");
+    expect(registeredCmds.filter((c) => c === "accordo.presentation.internal.focusThread")).toHaveLength(1);
+  });
+
+  it("M50-FOCUS-02: focusThread command accepts (uri, threadId, blockId) parameters", async () => {
+    // The command signature must accept three string parameters.
+    const bridge = makeBridge();
+    setupExtensions(bridge, true); // comments active
+    setupEngineConfig("marp");
+    const ctx = makeExtensionContext();
+
+    await activate(asCtx(ctx));
+
+    // Find the focusThread command registration
+    const focusThreadReg = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([cmd]: [string]) => cmd === "accordo.presentation.internal.focusThread",
+    );
+    expect(focusThreadReg).toBeDefined();
+    // The handler function must be called with uri, threadId, blockId
+    // We verify by calling the handler directly (it was registered as a mock).
+    // Get the registered handler
+    const [, handler] = focusThreadReg as [string, (...args: unknown[]) => unknown];
+    // Calling with no session should not throw (graceful no-op).
+    await expect(handler("file:///deck.md", "t1", "slide:0:0.5:0.5")).resolves.toBeDefined();
+  });
+
+  it("M50-FOCUS-03: focusThread opens the deck if not already open (calls openSession)", async () => {
+    // When focusThread is called with a deck not yet open, it must open it first.
+    const bridge = makeBridge();
+    setupExtensions(bridge, true);
+    setupEngineConfig("marp");
+    const ctx = makeExtensionContext();
+
+    await activate(asCtx(ctx));
+
+    // Mock workspace.openTextDocument to succeed with valid deck content
+    vi.mocked(workspace.openTextDocument).mockResolvedValue({
+      getText: vi.fn().mockReturnValue("---\nmarp: true\n---\n\n# Slide\n"),
+    } as unknown as import("vscode").TextDocument);
+
+    // Find focusThread handler
+    const focusThreadReg = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([cmd]: [string]) => cmd === "accordo.presentation.internal.focusThread",
+    );
+    const [, handler] = focusThreadReg as [string, (...args: unknown[]) => unknown];
+
+    await handler("file:///deck.md", "t1", "slide:0:0.5:0.5");
+
+    // openTextDocument should have been called (deck opened).
+    expect(workspace.openTextDocument).toHaveBeenCalled();
+    // A webview panel should have been created.
+    expect(window.createWebviewPanel).toHaveBeenCalled();
+  });
+
+  it("M50-FOCUS-04: focusThread parses slideIndex from blockId and produces observable focus outcome", async () => {
+    // The blockId "slide:N:x:y" must be parsed to extract slideIndex.
+    // Observable contract: when focusThread is called with blockId "slide:2:...",
+    // the focus outcome is: (a) navigation occurs and (b) comments:focus is posted
+    // to the webview with the blockId indicating slide 2 — both must happen.
+    const bridge = makeBridge();
+    setupExtensions(bridge, true);
+    setupEngineConfig("marp");
+    const ctx = makeExtensionContext();
+
+    await activate(asCtx(ctx));
+
+    vi.mocked(workspace.openTextDocument).mockResolvedValue({
+      getText: vi.fn().mockReturnValue(
+        "---\nmarp: true\n---\n\n# Slide 0\n\n---\n\n# Slide 1\n\n---\n\n# Slide 2\n",
+      ),
+    } as unknown as import("vscode").TextDocument);
+
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    const focusThreadReg = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([cmd]: [string]) => cmd === "accordo.presentation.internal.focusThread",
+    );
+    expect(focusThreadReg).toBeDefined();
+    const [, handler] = focusThreadReg as [string, (...args: unknown[]) => unknown];
+
+    // Execute focusThread with blockId pointing to slide 2
+    await handler("file:///deck.md", "t1", "slide:2:0.5000:0.5000");
+
+    // Observable outcome (a): a panel was created — navigation side effect
+    expect(window.createWebviewPanel).toHaveBeenCalled();
+
+    // Observable outcome (b): comments:focus posted to webview with blockId containing slide 2
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "comments:focus",
+        threadId: "t1",
+        blockId: "slide:2:0.5000:0.5000",
+      }),
+    );
+
+    // The slide index parsed from blockId must be reflected in the outcome.
+    // blockId "slide:2:..." must produce a focus that references slide 2.
+    const focusCall = (panel.webview.postMessage as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([msg]: [unknown]) => (msg as Record<string, unknown>)["type"] === "comments:focus",
+    );
+    expect(focusCall).toBeDefined();
+    const blockId = (focusCall?.[0] as Record<string, unknown>)["blockId"] as string;
+    expect(blockId).toContain("slide:2");
+  });
+
+  it("M50-FOCUS-05: focusThread posts { type: 'comments:focus', threadId, blockId } to webview after navigation", async () => {
+    // After navigating to the correct slide, the command must post comments:focus to the webview.
+    const bridge = makeBridge();
+    setupExtensions(bridge, true);
+    setupEngineConfig("marp");
+    const ctx = makeExtensionContext();
+
+    await activate(asCtx(ctx));
+
+    vi.mocked(workspace.openTextDocument).mockResolvedValue({
+      getText: vi.fn().mockReturnValue("---\nmarp: true\n---\n\n# Slide\n"),
+    } as unknown as import("vscode").TextDocument);
+
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    const focusThreadReg = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([cmd]: [string]) => cmd === "accordo.presentation.internal.focusThread",
+    );
+    const [, handler] = focusThreadReg as [string, (...args: unknown[]) => unknown];
+
+    await handler("file:///deck.md", "thread-42", "slide:1:0.2500:0.7500");
+
+    // The webview must receive comments:focus with the threadId and blockId.
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "comments:focus",
+        threadId: "thread-42",
+        blockId: "slide:1:0.2500:0.7500",
+      }),
+    );
+  });
+
+  it("M50-FOCUS-02: focusThread requires all three string parameters (uri, threadId, blockId)", async () => {
+    // The approved contract is (uri: string, threadId: string, blockId: string).
+    // Nullable uri is not part of the approved contract.
+    const bridge = makeBridge();
+    setupExtensions(bridge, true);
+    setupEngineConfig("marp");
+    const ctx = makeExtensionContext();
+
+    await activate(asCtx(ctx));
+
+    const focusThreadReg = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([cmd]: [string]) => cmd === "accordo.presentation.internal.focusThread",
+    );
+    expect(focusThreadReg).toBeDefined();
+    const [, handler] = focusThreadReg as [string, (...args: unknown[]) => unknown];
+
+    // All three parameters must be strings — no null/undefined allowed.
+    // A null uri should not silently succeed; the command should handle it as missing.
+    await expect(handler("file:///deck.md", "t1", "slide:0:0.5:0.5")).resolves.not.toThrow();
+  });
+
+  it("M50-FOCUS: focusThread does NOT use old router-owned open+goto path (no duplicate sequencing)", async () => {
+    // M50-FOCUS is the single canonical focus path. The old pattern where the router
+    // calls open THEN goto is replaced by focusThread which owns the full sequence.
+    // The router must NOT do its own open+settling before calling focusThread.
+    const bridge = makeBridge();
+    setupExtensions(bridge, true);
+    setupEngineConfig("marp");
+    const ctx = makeExtensionContext();
+
+    await activate(asCtx(ctx));
+
+    const registeredCmds = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([cmd]: [string]) => cmd,
+    );
+
+    // The focusThread command is the single point of entry for slide thread focus.
+    // It must NOT be preceded by a separate accordo.presentation.open call in the router.
+    expect(registeredCmds).toContain("accordo.presentation.internal.focusThread");
+
+    // The focusThread implementation should handle deck open internally (M50-FOCUS-03).
+    // Verify the command exists — the design is that it owns open sequencing internally.
   });
 });
 

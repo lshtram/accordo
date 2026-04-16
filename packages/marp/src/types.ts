@@ -101,6 +101,19 @@ export interface MarpRenderResult {
   comments: string[];
 }
 
+// ── Presentation Renderer Interface ───────────────────────────────────────────────
+
+/**
+ * Interface for presentation renderers.
+ * Allows engine substitution without changing the provider.
+ *
+ * Source: presentation-comments-modularity-A.md §Frozen Presentation Renderer Seam
+ */
+export interface PresentationRenderer {
+  render(markdown: string): MarpRenderResult;
+  getNotes(result: MarpRenderResult, slideIndex: number): string | null;
+}
+
 // ── Bridge API (local interface — avoids hard accordo-bridge dependency) ──────
 
 /**
@@ -113,6 +126,8 @@ export interface BridgeAPI {
     tools: ExtensionToolDefinition[],
   ): { dispose(): void };
   publishState(extensionId: string, state: Record<string, unknown>): void;
+  /** Returns the shared NavigationAdapterRegistry for surface:slide routing. */
+  getNavigationRegistry(): Promise<import("@accordo/capabilities").NavigationAdapterRegistry | null>;
 }
 
 // ── Surface Adapter (local interface — matches SurfaceCommentAdapter in comments) ──

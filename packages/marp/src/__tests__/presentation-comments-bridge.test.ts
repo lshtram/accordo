@@ -20,12 +20,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   encodeBlockId,
   parseBlockId,
+  toSdkThread,
   PresentationCommentsBridge,
 } from "../presentation-comments-bridge.js";
-import type { SlideCoordinates } from "@accordo/bridge-types";
+import type { SlideCoordinates, CommentThread } from "@accordo/bridge-types";
 import type { WebviewSender } from "../presentation-comments-bridge.js";
 import type { SurfaceCommentAdapter } from "@accordo/capabilities";
-import type { CommentThread } from "@accordo/bridge-types";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -275,26 +275,60 @@ describe("PresentationCommentsBridge.handleWebviewMessage", () => {
 // ── PresentationCommentsBridge.loadThreadsForUri ──────────────────────────────
 
 describe("PresentationCommentsBridge.loadThreadsForUri", () => {
-  it("M50-CBR-03: sends comments:load with current threads to webview", () => {
-    // loadThreadsForUri must immediately push current threads to the webview.
+  it("M50-CBR-03: sends comments:load with SdkThread[] to webview", () => {
+    // loadThreadsForUri must push SdkThread[] (not raw CommentThread[]) to the webview.
     const adapter = makeAdapter();
-    const threads: CommentThread[] = [
+    const rawThreads: CommentThread[] = [
       {
         id: "t1",
-        anchor: {} as never,
+        anchor: { kind: "surface", uri: "file:///deck.md", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 2, x: 0.5, y: 0.3 } },
         comments: [],
         status: "open",
         createdAt: new Date().toISOString(),
         lastActivity: new Date().toISOString(),
       },
     ];
-    vi.mocked(adapter.getThreadsForUri).mockReturnValue(threads);
+    vi.mocked(adapter.getThreadsForUri).mockReturnValue(rawThreads);
     const sender = makeSender();
     const bridge = new PresentationCommentsBridge(adapter, sender);
     bridge.loadThreadsForUri("file:///deck.md");
+
+    // Convert raw threads to expected SdkThread[] using the same logic the bridge uses
+    const loadedAt = new Date().toISOString();
+    const expectedSdkThreads = rawThreads.map((t) => toSdkThread(t, loadedAt));
+
     expect(sender.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "comments:load", threads }),
+      expect.objectContaining({ type: "comments:load", threads: expectedSdkThreads }),
     );
+  });
+
+  it("M50-CBR-03: non-slide anchors produce empty blockId in SdkThread", () => {
+    // Threads anchored to non-slide surfaces (or text/file anchors) must have blockId="" so no pin renders.
+    const adapter = makeAdapter();
+    const rawThreads: CommentThread[] = [
+      {
+        id: "t1",
+        anchor: { kind: "file", uri: "file:///deck.md" },
+        comments: [],
+        status: "open",
+        createdAt: new Date().toISOString(),
+        lastActivity: new Date().toISOString(),
+      },
+    ];
+    vi.mocked(adapter.getThreadsForUri).mockReturnValue(rawThreads);
+    const sender = makeSender();
+    const bridge = new PresentationCommentsBridge(adapter, sender);
+    bridge.loadThreadsForUri("file:///deck.md");
+
+    const loadedAt = new Date().toISOString();
+    const expectedSdkThreads = rawThreads.map((t) => toSdkThread(t, loadedAt));
+
+    expect(sender.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "comments:load", threads: expectedSdkThreads }),
+    );
+    // Verify blockId is empty for non-slide anchors
+    const postedMessage = vi.mocked(sender.postMessage).mock.calls[0][0] as { threads: Array<{ blockId: string }> };
+    expect(postedMessage.threads[0].blockId).toBe("");
   });
 
   it("M50-CBR-03: subscribes to adapter changes via onChanged", () => {
@@ -305,7 +339,7 @@ describe("PresentationCommentsBridge.loadThreadsForUri", () => {
     expect(adapter.onChanged).toHaveBeenCalled();
   });
 
-  it("M50-CBR-03: adapter onChanged callback re-sends comments:load with updated threads", () => {
+  it("M50-CBR-03: adapter onChanged callback re-sends comments:load with updated SdkThread[]", () => {
     // When threads change, the adapter calls onChanged and the bridge must push to webview.
     const adapter = makeAdapter();
     const sender = makeSender();
@@ -324,7 +358,7 @@ describe("PresentationCommentsBridge.loadThreadsForUri", () => {
     const updatedThreads: CommentThread[] = [
       {
         id: "t1",
-        anchor: {} as never,
+        anchor: { kind: "surface", uri: "file:///deck.md", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 0, x: 0.1, y: 0.2 } },
         comments: [],
         status: "open",
         createdAt: new Date().toISOString(),
@@ -332,9 +366,9 @@ describe("PresentationCommentsBridge.loadThreadsForUri", () => {
       },
       {
         id: "t2",
-        anchor: {} as never,
+        anchor: { kind: "surface", uri: "file:///deck.md", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 1, x: 0.3, y: 0.4 } },
         comments: [],
-        status: "open",
+        status: "resolved",
         createdAt: new Date().toISOString(),
         lastActivity: new Date().toISOString(),
       },
@@ -345,10 +379,20 @@ describe("PresentationCommentsBridge.loadThreadsForUri", () => {
     expect(onChangedListener).toBeDefined();
     onChangedListener!("file:///deck.md");
 
-    // Bridge must have pushed updated threads to webview
-    expect(sender.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "comments:load", threads: updatedThreads }),
-    );
+    // Bridge must have pushed SdkThread[] to webview on the second send.
+    // We assert the stable slide/block mapping contract and thread identities,
+    // without coupling this test to the bridge's private loadedAt timestamp.
+    const secondCall = vi.mocked(sender.postMessage).mock.calls[1]?.[0] as
+      | { type: string; threads: Array<{ id: string; blockId: string; status: string }> }
+      | undefined;
+
+    expect(secondCall).toBeDefined();
+    expect(secondCall?.type).toBe("comments:load");
+    expect(secondCall?.threads).toHaveLength(2);
+    expect(secondCall?.threads.map((t) => ({ id: t.id, blockId: t.blockId, status: t.status }))).toEqual([
+      { id: "t1", blockId: "slide:0:0.1000:0.2000", status: "open" },
+      { id: "t2", blockId: "slide:1:0.3000:0.4000", status: "resolved" },
+    ]);
   });
 
   it("M50-CBR-04: null adapter — loadThreadsForUri is a no-op (does not throw)", () => {

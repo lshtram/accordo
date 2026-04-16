@@ -7,102 +7,19 @@
 import * as vscode from "vscode";
 import type { PresentationRuntimeAdapter } from "./runtime-adapter.js";
 import type { PresentationCommentsBridge } from "./presentation-comments-bridge.js";
-import type { MarpRenderResult } from "./types.js";
-import { MarpRenderer } from "./marp-renderer.js";
+import type { MarpRenderResult, PresentationRenderer } from "./types.js";
+import { buildMarpWebviewHtml } from "./marp-webview-html.js";
 
 export function buildWebviewHtml(
   renderResult: MarpRenderResult,
   nonce: string,
   cspSource: string,
+  sdkJsUri?: string,
+  sdkCssUri?: string,
 ): string {
-  const total = renderResult.slideCount;
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}' 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src ${cspSource} data: https: blob:;">
-  <style nonce="${nonce}">${renderResult.css}</style>
-  <style nonce="${nonce}">
-    html, body { margin: 0; padding: 0; background: #1e1e1e; overflow-x: hidden; }
-    div.marpit { width: 100%; }
-    svg[data-marpit-svg] { display: none; width: 100%; height: auto; }
-    svg[data-marpit-svg].active { display: block; }
-    #slide-container { padding: 20px 20px 80px; }
-    #nav {
-      position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-      display: flex; align-items: center; gap: 12px;
-      background: rgba(0,0,0,0.75); color: #fff;
-      padding: 8px 18px; border-radius: 24px; z-index: 9999;
-      font-family: var(--vscode-font-family, sans-serif); font-size: 13px;
-      user-select: none;
-    }
-    #nav button {
-      background: transparent; border: 1px solid rgba(255,255,255,0.4);
-      color: #fff; padding: 3px 14px; border-radius: 12px;
-      cursor: pointer; font-size: 13px;
-    }
-    #nav button:disabled { opacity: 0.3; cursor: default; }
-    #nav button:hover:not(:disabled) { background: rgba(255,255,255,0.15); }
-  </style>
-</head>
-<body>
-  <div id="slide-container">${renderResult.html}</div>
-  <div id="nav">
-    <button id="btn-prev">&#9664; Prev</button>
-    <span id="slide-counter">1 / ${total}</span>
-    <button id="btn-next">Next &#9654;</button>
-  </div>
-  <script nonce="${nonce}">
-    const vscode = acquireVsCodeApi();
-    const slides = Array.from(document.querySelectorAll('svg[data-marpit-svg]'));
-    let current = 0;
-
-    // Show only the first slide via CSS class
-    slides.forEach((s, i) => { if (i === 0) s.classList.add('active'); });
-    document.getElementById('btn-prev').disabled = true;
-    document.getElementById('btn-next').disabled = slides.length <= 1;
-
-    function goTo(index) {
-      if (index < 0 || index >= slides.length) return;
-      slides[current].classList.remove('active');
-      current = index;
-      slides[current].classList.add('active');
-      document.getElementById('slide-counter').textContent = (current + 1) + ' / ' + slides.length;
-      document.getElementById('btn-prev').disabled = current === 0;
-      document.getElementById('btn-next').disabled = current === slides.length - 1;
-      window.scrollTo(0, 0);
-      vscode.postMessage({ type: 'presentation:slideChanged', index: current });
-    }
-
-    document.getElementById('btn-prev').addEventListener('click', () => goTo(current - 1));
-    document.getElementById('btn-next').addEventListener('click', () => goTo(current + 1));
-
-    window.addEventListener('message', (event) => {
-      const msg = event.data;
-      if (msg.type === 'slide-index') goTo(msg.index);
-      if (msg.type === 'host:request-capture') {
-        const active = slides[current];
-        if (!active) {
-          vscode.postMessage({ type: 'presentation:capture-ready', data: null, error: 'No active slide' });
-          return;
-        }
-        try {
-          const svgString = new XMLSerializer().serializeToString(active);
-          const b64 = btoa(unescape(encodeURIComponent(svgString)));
-          vscode.postMessage({ type: 'presentation:capture-ready', data: b64 });
-        } catch (e) {
-          vscode.postMessage({ type: 'presentation:capture-ready', data: null, error: String(e) });
-        }
-      }
-    });
-
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown') goTo(current + 1);
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') goTo(current - 1);
-    });
-  </script>
-</body>
-</html>`;
+  // Delegates to the dedicated HTML builder — no SDK URIs (comment SDK is
+  // injected by the provider when commentsBridge is present).
+  return buildMarpWebviewHtml({ renderResult, nonce, cspSource, sdkJsUri, sdkCssUri });
 }
 
 export class PresentationProvider {
@@ -111,21 +28,25 @@ export class PresentationProvider {
   private currentSlide = 0;
   private revision = 0;
   private adapter: PresentationRuntimeAdapter | null = null;
-  private renderer: MarpRenderer;
+  private renderer: PresentationRenderer | null = null;
   private commentsBridge: PresentationCommentsBridge | null = null;
   private slideSubscription: { dispose(): void } | null = null;
   private disposeCallbacks: Array<() => void> = [];
   private fileWatcher: vscode.FileSystemWatcher | null = null;
   private _pendingCapture: { resolve: (buf: Buffer) => void; reject: (err: Error) => void } | null = null;
+  private extensionUri: vscode.Uri;
 
-  constructor(options: { context: vscode.ExtensionContext }) {
-    this.renderer = new MarpRenderer();
+  // Constructor accepts context for API compatibility but does not retain it.
+  // Renderer is injected via open() or setRenderer().
+  // extensionUri is stored so SDK asset URIs can be computed post-panel-creation.
+  constructor(_options: { context: vscode.ExtensionContext }) {
+    this.extensionUri = _options.context.extensionUri;
   }
 
   async open(
     deckUri: string,
     adapter: PresentationRuntimeAdapter,
-    renderer: MarpRenderer,
+    renderer: PresentationRenderer,
     commentsBridge: PresentationCommentsBridge | null,
   ): Promise<void> {
     // Re-use existing panel for same URI (before closing anything)
@@ -152,7 +73,6 @@ export class PresentationProvider {
     const renderResult = this.renderer.render(deckContent);
 
     const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-    const cspSource = this.panel?.webview.cspSource ?? "https://localhost";
 
     this.panel = vscode.window.createWebviewPanel(
       "accordo.marp.presentation",
@@ -163,12 +83,45 @@ export class PresentationProvider {
         retainContextWhenHidden: true,
       },
     );
+    const cspSource = this.panel.webview.cspSource;
 
-    this.panel.webview.html = buildWebviewHtml(renderResult, nonce, cspSource);
+    // Compute SDK asset URIs if comments bridge is present.
+    // Must be done after panel creation so webview is available.
+    let sdkJsUri: string | undefined;
+    let sdkCssUri: string | undefined;
+    if (this.commentsBridge) {
+      sdkJsUri = this.panel.webview
+        .asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "sdk.browser.js"))
+        .toString();
+      sdkCssUri = this.panel.webview
+        .asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "sdk.css"))
+        .toString();
 
-    this.panel.webview.onDidReceiveMessage((message) => {
-      this.handleWebviewMessage(message);
+      // Rebind the bridge sender to the real webview.postMessage.
+      // This must happen after panel creation so we have a real sender.
+      const realSender = this.commentsBridge.bindToSender({
+        postMessage: (msg: unknown) => this.panel!.webview.postMessage(msg),
+      });
+      void realSender; // bindToSender returns the same bridge instance (for chaining)
+    }
+
+    this.panel.webview.html = buildWebviewHtml(renderResult, nonce, cspSource, sdkJsUri, sdkCssUri);
+
+    // Single onDidReceiveMessage registration — consolidates:
+    //  a) webview:ready → reload threads (commentsBridge restart/reload scenario)
+    //  b) all other messages → handleWebviewMessage (slide changes, comments, capture)
+    this.panel.webview.onDidReceiveMessage((msg: unknown) => {
+      if (this.commentsBridge && (msg as { type?: string }).type === "webview:ready") {
+        this.commentsBridge.loadThreadsForUri(deckUri);
+      }
+      this.handleWebviewMessage(msg);
     });
+
+    // Immediate load on open — needed for real integration (before webview:ready fires)
+    // and for tests that don't fire webview:ready at all.
+    if (this.commentsBridge) {
+      this.commentsBridge.loadThreadsForUri(deckUri);
+    }
 
     this.slideSubscription = adapter.onSlideChanged((index) => {
       this.currentSlide = index;
@@ -186,7 +139,8 @@ export class PresentationProvider {
   }
 
   private async reloadDeck(): Promise<void> {
-    if (!this.deckUri || !this.panel) return;
+    if (!this.deckUri || !this.panel || !this.renderer) return;
+    // renderer is always set after open() completes, and close() does not clear it
     try {
       const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(this.deckUri));
       const result = this.renderer.render(Buffer.from(bytes).toString("utf8"));
@@ -212,7 +166,9 @@ export class PresentationProvider {
     const msg = message as Record<string, unknown>;
 
     if (String(msg["type"]).startsWith("comment:")) {
-      this.commentsBridge?.handleWebviewMessage(message, this.deckUri ?? "");
+      if (this.commentsBridge && typeof this.commentsBridge.handleWebviewMessage === "function") {
+        this.commentsBridge.handleWebviewMessage(message, this.deckUri ?? "");
+      }
       return;
     }
 
@@ -229,10 +185,12 @@ export class PresentationProvider {
     }
 
     if (msg["type"] === "presentation:slideChanged") {
+      if (!this.adapter) return;
       const index = msg["index"] as number;
-      // MarpAdapter exposes handleWebviewSlideChanged — not in shared interface
-      (this.adapter as unknown as { handleWebviewSlideChanged(index: number): void })
-        ?.handleWebviewSlideChanged(index);
+      // Call handleWebviewSlideChanged — the single truthful typed path.
+      // handleWebviewSlideChanged is declared on PresentationRuntimeAdapter and
+      // implemented by MarpAdapter (delegates to handleViewSlideChanged internally).
+      this.adapter.handleWebviewSlideChanged(index);
     }
   }
 
@@ -266,7 +224,7 @@ export class PresentationProvider {
     this.currentSlide = index;
   }
 
-  setRenderer(renderer: MarpRenderer): void {
+  setRenderer(renderer: PresentationRenderer): void {
     this.renderer = renderer;
   }
 

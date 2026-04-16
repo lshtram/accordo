@@ -75,4 +75,12 @@ export interface PresentationRuntimeAdapter {
    * Tears down the adapter (removes listeners, resets state).
    */
   dispose(): void;
+
+  /**
+   * M50-RT-03
+   * Called by the webview when a slide change occurs via user interaction.
+   * Updates local cursor and notifies onSlideChanged listeners.
+   * Default implementation in MarpAdapter: delegates to handleViewSlideChanged.
+   */
+  handleWebviewSlideChanged(index: number): void;
 }

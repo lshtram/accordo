@@ -94,11 +94,19 @@ export class MarpAdapter implements PresentationRuntimeAdapter {
     this.slideChangeListeners.splice(0);
   }
 
-  handleWebviewSlideChanged(index: number): void {
+  handleViewSlideChanged(index: number): void {
     if (index >= 0 && index < this.deck.slides.length && index !== this.currentIndex) {
       this.currentIndex = index;
       this.emitSlideChanged(index);
     }
+  }
+
+  /**
+   * Called by the webview when a slide change occurs via user interaction in the
+   * Marp webview. Updates local cursor and notifies listeners.
+   */
+  handleWebviewSlideChanged(index: number): void {
+    this.handleViewSlideChanged(index);
   }
 
   private emitSlideChanged(index: number): void {

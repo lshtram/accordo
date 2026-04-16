@@ -9,12 +9,17 @@
  *   M50-PVD-01  Opens deck in a VS Code WebviewPanel
  *   M50-PVD-02  Renders deck via MarpRenderer, injects HTML directly (no iframe)
  *   M50-PVD-03  Webview HTML includes slide navigation JS (section-based, keyboard)
+ *   M50-PVD-04  Injects Comment SDK overlay when comments integration is enabled
  *   M50-PVD-05  dispose() disposes panel and resets state
  *   M50-PVD-06  Reopening same URI reveals existing panel (no re-render)
  *   M50-PVD-07  Watches deck file; on change, re-renders and posts marp:update
  *   M50-PVD-08  CSP: nonce-based script policy; NO frame-src (no iframe)
  *   M50-PVD-09  marp:update messages include monotonic revision: number
  *   M50-PVD-10  After re-render, currentSlide clamped to Math.min(old, newCount - 1)
+ *   M50-PVD-13  When Comment SDK URIs provided, webview HTML includes SDK <script>/<link> with nonce
+ *   M50-PVD-14  Webview initializes Comment SDK via sdk.init() with coordinateToScreen
+ *   M50-PVD-15  Webview handles comments:load, comments:add, comments:update, comments:remove, comments:focus
+ *   M50-PVD-16  comments:focus handler navigates to slide + calls sdk.openPopover(threadId)
  *
  * Test state: ALL tests expected to FAIL with "not implemented" until implementation lands.
  */
@@ -166,6 +171,19 @@ describe("PresentationProvider.open", () => {
     const provider = makeProvider();
     await provider.open("/deck.md", makeAdapter(), makeRenderer(), null);
     expect(panel.webview.html.length).toBeGreaterThan(0);
+  });
+
+  it("M50-PVD-13: uses panel.webview.cspSource for SDK asset CSP allowlist", async () => {
+    // Regression guard: CSP must use the real panel webview cspSource,
+    // not a pre-panel fallback value.
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    panel.webview.cspSource = "vscode-webview://unit-test-origin";
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    const provider = makeProvider();
+    await provider.open("/deck.md", makeAdapter(), makeRenderer(), null);
+
+    expect(panel.webview.html).toContain("vscode-webview://unit-test-origin");
   });
 
   it("M50-PVD-06: re-opening same deck URI reveals existing panel (no re-render)", async () => {
@@ -463,6 +481,7 @@ describe("PresentationProvider — webview message routing", () => {
       loadThreadsForUri: vi.fn(),
       buildAnchor: vi.fn(),
       dispose: vi.fn(),
+      bindToSender: vi.fn().mockReturnThis(),
     } as unknown as PresentationCommentsBridge;
 
     const provider = makeProvider();
@@ -474,5 +493,154 @@ describe("PresentationProvider — webview message routing", () => {
 
     await Promise.resolve();
     expect(commentsBridge.handleWebviewMessage).toHaveBeenCalled();
+  });
+});
+
+// ── PresentationProvider — Comment SDK integration (M50-PVD-13..16) ────────────
+
+describe("PresentationProvider — Comment SDK integration", () => {
+  beforeEach(() => {
+    vi.mocked(window.createWebviewPanel).mockReturnValue(
+      new MockWebviewPanel("accordo.marp.presentation", "Deck"),
+    );
+  });
+
+  it("M50-PVD-13: when commentsBridge is non-null, open() calls commentsBridge.loadThreadsForUri(deckUri)", async () => {
+    // When comments integration is available, loading threads for the deck is part of the open sequence.
+    const commentsBridge = {
+      handleWebviewMessage: vi.fn().mockResolvedValue(undefined),
+      loadThreadsForUri: vi.fn(),
+      buildAnchor: vi.fn(),
+      dispose: vi.fn(),
+      bindToSender: vi.fn().mockReturnThis(),
+    } as unknown as PresentationCommentsBridge;
+
+    const provider = makeProvider();
+    await provider.open("/deck.md", makeAdapter(), makeRenderer(), commentsBridge);
+
+    expect(commentsBridge.loadThreadsForUri).toHaveBeenCalledWith(expect.stringContaining("deck.md"));
+  });
+
+  it("M50-PVD-14: open() posts comments:load message to webview after init (via commentsBridge subscription)", async () => {
+    // loadThreadsForUri pushes comments:load to the webview via sender.postMessage.
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    let messageHandler: ((msg: Record<string, unknown>) => void) | undefined;
+    panel.webview.onDidReceiveMessage = vi.fn().mockImplementation(
+      (cb: (msg: Record<string, unknown>) => void) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      },
+    );
+
+    const commentsBridge = {
+      handleWebviewMessage: vi.fn().mockResolvedValue(undefined),
+      loadThreadsForUri: vi.fn().mockImplementation(() => {
+        // Simulate the bridge posting comments:load to the webview
+        void panel.webview.postMessage({ type: "comments:load", threads: [] });
+      }),
+      buildAnchor: vi.fn(),
+      dispose: vi.fn(),
+      bindToSender: vi.fn().mockReturnThis(),
+    } as unknown as PresentationCommentsBridge;
+
+    const provider = makeProvider();
+    await provider.open("/deck.md", makeAdapter(), makeRenderer(), commentsBridge);
+
+    // The bridge should have been asked to load threads for the deck URI.
+    expect(commentsBridge.loadThreadsForUri).toHaveBeenCalled();
+  });
+
+  it("M50-PVD-14: open() posts comments:load message to webview after init (via commentsBridge subscription)", async () => {
+    // loadThreadsForUri pushes comments:load to the webview via sender.postMessage.
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    const commentsBridge = {
+      handleWebviewMessage: vi.fn().mockResolvedValue(undefined),
+      loadThreadsForUri: vi.fn().mockImplementation(() => {
+        // Simulate the bridge posting comments:load to the webview
+        void panel.webview.postMessage({ type: "comments:load", threads: [] });
+      }),
+      buildAnchor: vi.fn(),
+      dispose: vi.fn(),
+      bindToSender: vi.fn().mockReturnThis(),
+    } as unknown as PresentationCommentsBridge;
+
+    const provider = makeProvider();
+    await provider.open("/deck.md", makeAdapter(), makeRenderer(), commentsBridge);
+
+    // The bridge should have been asked to load threads for the deck URI.
+    expect(commentsBridge.loadThreadsForUri).toHaveBeenCalled();
+  });
+
+  it("M50-PVD-15: onDidReceiveMessage routes webview-originated comment:* messages to bridge.handleWebviewMessage", async () => {
+    // Only webview-originated comment messages come through onDidReceiveMessage.
+    // Host→Webview comment messages (comments:load/add/update/remove) are sent by
+    // PresentationCommentsBridge.sender directly, not routed through onDidReceiveMessage.
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    let messageHandler: ((msg: Record<string, unknown>) => void) | undefined;
+    panel.webview.onDidReceiveMessage = vi.fn().mockImplementation(
+      (cb: (msg: Record<string, unknown>) => void) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      },
+    );
+
+    const commentsBridge = {
+      handleWebviewMessage: vi.fn().mockResolvedValue(undefined),
+      loadThreadsForUri: vi.fn(),
+      buildAnchor: vi.fn(),
+      dispose: vi.fn(),
+      bindToSender: vi.fn().mockReturnThis(),
+    } as unknown as PresentationCommentsBridge;
+
+    const provider = makeProvider();
+    await provider.open("/deck.md", makeAdapter(), makeRenderer(), commentsBridge);
+
+    // Webview sends comment:create → provider routes to bridge
+    if (messageHandler) {
+      messageHandler({ type: "comment:create", blockId: "slide:0:0.5:0.5", body: "test" });
+    }
+    await Promise.resolve();
+    expect(commentsBridge.handleWebviewMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "comment:create" }),
+      expect.stringContaining("deck.md"),
+    );
+
+    // Webview sends comment:reply → provider routes to bridge
+    if (messageHandler) {
+      messageHandler({ type: "comment:reply", threadId: "t1", body: "reply text" });
+    }
+    await Promise.resolve();
+    expect(commentsBridge.handleWebviewMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "comment:reply" }),
+      expect.any(String),
+    );
+  });
+
+  it("M50-PVD-16: comments:focus with malformed blockId does not throw", async () => {
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    let messageHandler: ((msg: Record<string, unknown>) => void) | undefined;
+    panel.webview.onDidReceiveMessage = vi.fn().mockImplementation(
+      (cb: (msg: Record<string, unknown>) => void) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      },
+    );
+
+    const provider = makeProvider();
+    await provider.open("/deck.md", makeAdapter(), makeRenderer(), null);
+
+    if (messageHandler) {
+      expect(() =>
+        messageHandler!({ type: "comments:focus", threadId: "t1", blockId: "heading:1:bad" }),
+      ).not.toThrow();
+    }
   });
 });
