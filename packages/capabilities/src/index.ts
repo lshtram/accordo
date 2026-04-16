@@ -58,7 +58,7 @@ export const CAPABILITY_COMMANDS = {
 export const DEFERRED_COMMANDS = {
   PRESENTATION_GOTO: "accordo_presentation_internal_goto",
   /** Focus thread in presentation — used by deferred slide path after goto succeeds. */
-  PRESENTATION_FOCUS_THREAD: "accordo_presentation_internal_focusThread",
+  PRESENTATION_FOCUS_THREAD: "accordo.presentation.internal.focusThread",
   /** Focus thread in browser — used by deferred browser path. */
   BROWSER_FOCUS_THREAD: "accordo_browser_focusThread",
 } as const;

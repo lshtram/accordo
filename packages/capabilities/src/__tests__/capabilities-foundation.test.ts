@@ -63,7 +63,7 @@ const STABLE_COMMAND_VALUES: Record<(typeof STABLE_COMMANDS)[number], string> = 
 // Expected string values for deferred commands (Phase A §2 table)
 const DEFERRED_COMMAND_VALUES: Record<(typeof DEFERRED_COMMANDS)[number], string> = {
   PRESENTATION_GOTO: "accordo_presentation_internal_goto",
-  PRESENTATION_FOCUS_THREAD: "accordo_presentation_internal_focusThread",
+  PRESENTATION_FOCUS_THREAD: "accordo.presentation.internal.focusThread",
   BROWSER_FOCUS_THREAD: "accordo_browser_focusThread",
 };
 
