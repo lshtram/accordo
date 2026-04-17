@@ -42,6 +42,17 @@ Load this skill when:
 
 All visual styling must be applied via `accordo_diagram_patch` using `nodeStyles` and `edgeStyles` arguments.
 
+## Critical: How to Make New Lines in Labels
+
+**Use Mermaid `\n` inside quoted labels. Do NOT use `<br/>` or `<br>`.**
+
+- ✅ Correct: `A["accordo-hub\nMCP server"]`
+- ❌ Wrong: `A["accordo-hub<br/>MCP server"]`
+
+Reason:
+- Accordo's diagram pipeline normalizes Mermaid `\n` into real Excalidraw line breaks.
+- HTML line breaks like `<br/>` are not the canonical format here and can regress rendering/parsing behavior.
+
 ### Style Fields (nodeStyles)
 
 | Field | Type | Description |
@@ -209,6 +220,13 @@ A --* B        Diamond end
 
 ```
 A -->|label| B
+```
+
+### Multi-line Node Labels
+
+```
+A["First line\nSecond line"]
+B("Rounded\nmultiline")
 ```
 
 ---
