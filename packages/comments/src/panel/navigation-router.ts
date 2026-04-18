@@ -49,7 +49,7 @@ export interface NavigationEnv {
  * Surface packages register adapters at activation time.
  *
  * Adapters currently registered:
- * - browser: calls accordo_browser_focusThread
+ * - browser: calls accordo_browser.focusThread
  *
  * Other surface types (slide, diagram, markdown-preview) are registered by
  * their respective packages and will be handled by Q-3 and Q-5.
@@ -60,7 +60,7 @@ const adapterRegistry: NavigationAdapterRegistry = createNavigationAdapterRegist
 
 /**
  * NavigationAdapter for the browser surface type.
- * Focuses a comment thread via the accordo_browser_focusThread command.
+ * Focuses a comment thread via the accordo_browser.focusThread command.
  */
 const browserAdapter: NavigationAdapter = {
   surfaceType: "browser" as const,

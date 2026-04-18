@@ -1,5 +1,5 @@
 /**
- * @accordo/capabilities — Phase B failing tests
+ * @accordo/capabilities — tests
  *
  * Phase A design source: docs/30-development/capabilities-foundation-phase-a.md
  *
@@ -64,7 +64,7 @@ const STABLE_COMMAND_VALUES: Record<(typeof STABLE_COMMANDS)[number], string> = 
 const DEFERRED_COMMAND_VALUES: Record<(typeof DEFERRED_COMMANDS)[number], string> = {
   PRESENTATION_GOTO: "accordo_presentation_internal_goto",
   PRESENTATION_FOCUS_THREAD: "accordo.presentation.internal.focusThread",
-  BROWSER_FOCUS_THREAD: "accordo_browser_focusThread",
+  BROWSER_FOCUS_THREAD: "accordo_browser.focusThread",
 };
 
 // Expected methods per stable interface (Phase A §3.1 table)

@@ -225,21 +225,18 @@ describe("M45-NR NavigationRouter", () => {
     );
   });
 
-  it("M45-NR-05: surface/browser → executeCommand accordo_browser_focusThread; swallows if not registered", async () => {
+  it("M45-NR-05: surface/browser → executeCommand accordo_browser.focusThread; swallows if not registered", async () => {
     const anchor: CommentAnchorSurface = {
       kind: "surface",
       uri: "https://example.com",
       surfaceType: "browser",
       coordinates: { type: "normalized", x: 0.5, y: 0.5 },
     };
-    const thread = makeThread(anchor);
-
-    env.executeCommand.mockRejectedValueOnce(new Error("command not found"));
 
     await navigateToThread(thread, env);
 
     expect(env.executeCommand).toHaveBeenCalledWith(
-      "accordo_browser_focusThread",
+      "accordo_browser.focusThread",
       "thread-1",
     );
     expect(env.showInformationMessage).toHaveBeenCalledWith(

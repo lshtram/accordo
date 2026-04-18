@@ -42,7 +42,7 @@ export interface PresentationCapability {
  * Focus a comment thread in the Chrome browser extension popup/content script.
  *
  * Source (call site in navigation-router.ts):
- *   - accordo_browser_focusThread → thread.id (string)
+ *   - accordo_browser.focusThread → thread.id (string)
  */
 export interface BrowserCapability {
   /**

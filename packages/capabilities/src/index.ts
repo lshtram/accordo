@@ -60,7 +60,7 @@ export const DEFERRED_COMMANDS = {
   /** Focus thread in presentation — used by deferred slide path after goto succeeds. */
   PRESENTATION_FOCUS_THREAD: "accordo.presentation.internal.focusThread",
   /** Focus thread in browser — used by deferred browser path. */
-  BROWSER_FOCUS_THREAD: "accordo_browser_focusThread",
+  BROWSER_FOCUS_THREAD: "accordo_browser.focusThread",
 } as const;
 
 // ─── SurfaceCommentAdapter ────────────────────────────────────────────────────
