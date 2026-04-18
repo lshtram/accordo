@@ -187,8 +187,8 @@ export class BridgeDispatch {
 
       // Wrap to clear timer on resolution
       this.pendingStateRequest = {
-        resolve: (state) => { clearTimeout(timer); resolve(state); },
-        reject: (err) => { clearTimeout(timer); reject(err); },
+        resolve: (state: unknown): void => { clearTimeout(timer); resolve(state); },
+        reject: (err: unknown): void => { clearTimeout(timer); reject(err); },
       };
 
       this.send({ type: "getState", id });
@@ -381,6 +381,8 @@ export class BridgeDispatch {
     if (this.queue.length === 0) return;
     if (this.inflight >= this.maxConcurrent) return;
 
+    // Guard above ensures queue is non-empty; shift() on non-empty array is defined
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const next = this.queue.shift()!;
     this.queued--;
 

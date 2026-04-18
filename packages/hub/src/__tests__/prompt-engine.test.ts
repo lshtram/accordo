@@ -392,30 +392,31 @@ describe("M42: Open Comment Threads section in system prompt", () => {
   });
 });
 
-// ── M51-SN: Voice section + narration directive ─────────────────────────────
+// ── M51-SN: Voice section (simplified — narration controlled by plugin) ────────
 
-describe("M51-SN: Voice section + narration directive in system prompt", () => {
+/**
+ * M51-SN v2.0: Hub prompt no longer includes automatic narration directives.
+ * Narration is controlled exclusively by the OpenCode narration plugin
+ * (ACCORDO_NARRATION_MODE env var). The Hub ## Voice section only
+ * shows TTS availability.
+ */
+describe("M51-SN: Voice section in system prompt (minimal — plugin controls narration)", () => {
   function makeVoiceModality(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {
       isOpen: true,
-      session: "active",
-      narration: "idle",
-      audio: "idle",
       policy: {
         enabled: true,
-        narrationMode: "narrate-summary",
+        narrationMode: "narrate-off",
         speed: 1.0,
         voice: "af_sarah",
         language: "en-US",
       },
-      sttAvailable: true,
       ttsAvailable: true,
       ...overrides,
     };
   }
 
-  it("M51-SN-01: '## Voice' section rendered when voice modality is present and enabled", () => {
-    // req-voice M51-SN-01: section appears when voice state published with policy.enabled = true
+  it("M51-SN-01: '## Voice' section rendered when voice is enabled", () => {
     const state = makeState({
       modalities: { "accordo-voice": makeVoiceModality() },
     });
@@ -429,17 +430,10 @@ describe("M51-SN: Voice section + narration directive in system prompt", () => {
   });
 
   it("M51-SN-05: no '## Voice' section when policy.enabled is false", () => {
-    // req-voice M51-SN-05: directive only when policy.enabled is true
     const state = makeState({
       modalities: {
         "accordo-voice": makeVoiceModality({
-          policy: {
-            enabled: false,
-            narrationMode: "narrate-summary",
-            speed: 1.0,
-            voice: "af_sarah",
-            language: "en-US",
-          },
+          policy: { enabled: false, narrationMode: "narrate-off", speed: 1.0, voice: "af_sarah", language: "en-US" },
         }),
       },
     });
@@ -447,107 +441,40 @@ describe("M51-SN: Voice section + narration directive in system prompt", () => {
     expect(result).not.toContain("## Voice");
   });
 
-  it("M51-SN-02: narrate-summary directive contains the exact required text", () => {
-    // req-voice M51-SN-02: exact directive wording for narrate-summary
+  it("M51-SN-v2: voice section shows 'TTS available' when ttsAvailable is true", () => {
     const state = makeState({
-      modalities: { "accordo-voice": makeVoiceModality() },
+      modalities: { "accordo-voice": makeVoiceModality({ ttsAvailable: true }) },
     });
     const result = renderPrompt(state, []);
-    expect(result).toContain("accordo_voice_readAloud");
-    expect(result).toContain("2-3 sentence spoken summary");
-    expect(result).toContain("plain language, no technical formatting");
-    expect(result).toContain("Do NOT write the summary in your visible response text");
+    expect(result).toContain("TTS available");
   });
 
-  it("M51-SN-04: narrate-everything directive instructs full response readback", () => {
-    // req-voice M51-SN-04: different directive for narrate-everything
+  it("M51-SN-v2: voice section shows 'TTS unavailable' when ttsAvailable is false", () => {
     const state = makeState({
-      modalities: {
-        "accordo-voice": makeVoiceModality({
-          policy: {
-            enabled: true,
-            narrationMode: "narrate-everything",
-            speed: 1.0,
-            voice: "af_sarah",
-            language: "en-US",
-          },
-        }),
-      },
+      modalities: { "accordo-voice": makeVoiceModality({ ttsAvailable: false }) },
     });
     const result = renderPrompt(state, []);
-    expect(result).toContain("call accordo_voice_readAloud");
-    expect(result).toContain("full response text");
-    expect(result).toContain("text cleaning pipeline");
+    expect(result).toContain("TTS unavailable");
   });
 
-  it("M51-SN-03: narrate-off produces no narration directive", () => {
-    // req-voice M51-SN-03: no directive when narrate-off
-    const state = makeState({
-      modalities: {
-        "accordo-voice": makeVoiceModality({
-          policy: {
-            enabled: true,
-            narrationMode: "narrate-off",
-            speed: 1.0,
-            voice: "af_sarah",
-            language: "en-US",
-          },
-        }),
-      },
-    });
-    const result = renderPrompt(state, []);
-    // The Voice section may still render (status info), but no narration directive
-    expect(result).not.toContain("accordo_voice_readAloud");
-    expect(result).not.toContain("spoken summary");
-    expect(result).not.toContain("full response text");
+  it("M51-SN-v2: no narration directive in voice section for any narrationMode (plugin is control plane)", () => {
+    // Narrate-summary and narrate-everything modes are handled by the plugin, not Hub
+    for (const mode of ["narrate-off", "narrate-summary", "narrate-everything"] as const) {
+      const state = makeState({
+        modalities: {
+          "accordo-voice": makeVoiceModality({
+            policy: { enabled: true, narrationMode: mode, speed: 1.0, voice: "af_sarah", language: "en-US" },
+          }),
+        },
+      });
+      const result = renderPrompt(state, []);
+      expect(result).not.toContain("accordo_voice_readAloud");
+      expect(result).not.toContain("spoken summary");
+      expect(result).not.toContain("full response text");
+    }
   });
 
-  it("M51-SN-01: voice status line includes session and provider availability", () => {
-    // The ## Voice section must show human-readable status
-    const state = makeState({
-      modalities: {
-        "accordo-voice": makeVoiceModality({
-          session: "active",
-          sttAvailable: true,
-          ttsAvailable: true,
-        }),
-      },
-    });
-    const result = renderPrompt(state, []);
-    // Expect readable status like "Active" and provider names
-    expect(result).toContain("Active");
-    // Should mention STT and TTS availability
-    expect(result).toMatch(/STT|Whisper/i);
-    expect(result).toMatch(/TTS|Kokoro/i);
-  });
-
-  it("M51-SN-01: voice mode line includes narrationMode, speed, and voice — in ## Voice section", () => {
-    // Strings must appear inside the dedicated ## Voice section, not just anywhere
-    // in the raw JSON modality dump (false-green guard).
-    const state = makeState({
-      modalities: {
-        "accordo-voice": makeVoiceModality({
-          policy: {
-            enabled: true,
-            narrationMode: "narrate-summary",
-            speed: 1.5,
-            voice: "bf_emma",
-            language: "en-US",
-          },
-        }),
-      },
-    });
-    const result = renderPrompt(state, []);
-    // Extract the ## Voice section (everything from the header to the next ## header)
-    const voiceSection = result.match(/## Voice[\s\S]*?(?=\n## |\n\n##|$)/)?.[0] ?? "";
-    expect(voiceSection).toBeTruthy(); // section must exist
-    expect(voiceSection).toContain("narrate-summary");
-    expect(voiceSection).toContain("1.5");
-    expect(voiceSection).toContain("bf_emma");
-  });
-
-  it("M51-SN-05+M42: accordo-voice NOT in generic Extension state block", () => {
-    // Same pattern as M42: voice gets a dedicated section, excluded from JSON dump
+  it("M51-SN-v2+M42: accordo-voice NOT in generic Extension state block", () => {
     const state = makeState({
       modalities: {
         "accordo-voice": makeVoiceModality(),
@@ -563,8 +490,7 @@ describe("M51-SN: Voice section + narration directive in system prompt", () => {
     expect(extStateLine).toBeUndefined();
   });
 
-  it("M51-SN-06: prompt stays within token budget with voice directive", () => {
-    // req-voice M51-SN-06: ~60 tokens for directive, must fit in budget
+  it("M51-SN-v2: prompt stays within token budget (minimal voice section)", () => {
     const state = makeState({
       modalities: { "accordo-voice": makeVoiceModality() },
       activeFile: "/workspace/main.ts",

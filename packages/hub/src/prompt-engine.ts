@@ -104,6 +104,7 @@ function renderOpenTabs(openTabs: OpenTab[], maxTokens = Infinity): string {
   // Build the markdown text for one group
   const groupBody = (gi: number): string => {
     // gi always originates from groups.keys(), so get() is guaranteed non-null
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const tabs = groups.get(gi)!;
     const lines = tabs.map((t) => {
       const prefix = t.isActive ? "[active] " : "";
@@ -241,49 +242,20 @@ export function renderPrompt(
     postTabLines.push(`**Extension state:**\n${modalLines.join("\n")}`);
   }
 
-  // ── Voice section (M51-SN) ───────────────────────────────────────────────
-  // Rendered as a top-level section BEFORE the state dump so the narration
-  // directive appears early in the prompt and is treated as an instruction,
-  // not as informational state data. Models deprioritize late instructions.
+  // ── Voice section (M51-SN) — simplified for minimal TTS-only ─────────────
+  // Narration is controlled exclusively by the OpenCode narration plugin
+  // (ACCORDO_NARRATION_MODE env var). The Hub prompt does NOT include
+  // automatic narration directives to avoid double-trigger with the plugin.
+  // Voice state is still published so the agent knows TTS is available.
   const voiceModality = state.modalities["accordo-voice"];
   const voicePolicy = voiceModality?.["policy"] as Record<string, unknown> | undefined;
   const voiceEnabled = voicePolicy?.["enabled"] === true;
 
   let voiceSection = "";
   if (voiceEnabled) {
-    const session = (voiceModality?.["session"] as string | undefined) ?? "inactive";
-    const sttAvailable = voiceModality?.["sttAvailable"] === true;
     const ttsAvailable = voiceModality?.["ttsAvailable"] === true;
-    const narrationMode = (voicePolicy?.["narrationMode"] as string | undefined) ?? "narrate-off";
-    const speed = (voicePolicy?.["speed"] as number | undefined) ?? 1.0;
-    const voice = (voicePolicy?.["voice"] as string | undefined) ?? "";
-
-    const sessionLabel = session.charAt(0).toUpperCase() + session.slice(1);
-    const sttLabel = sttAvailable ? "Whisper STT" : "No STT";
-    const ttsLabel = ttsAvailable ? "Kokoro TTS" : "No TTS";
-
-    const voiceLines: string[] = [
-      `Status: ${sessionLabel} (${sttLabel} + ${ttsLabel})`,
-      `Mode: ${narrationMode}, speed ${speed}\u00d7, voice ${voice}`,
-    ];
-
-    if (narrationMode === "narrate-summary") {
-      voiceLines.push(
-        "Directive: At the end of every response, call accordo_voice_readAloud as the LAST tool call with a 2-3 sentence spoken summary of your answer, plain language, no technical formatting. Do NOT write the summary in your visible response text — only pass it to the readAloud tool.",
-      );
-      voiceLines.push(
-        "If accordo_voice_readAloud returns an error or is unavailable, skip the voice step and proceed with your text response — do not retry.",
-      );
-    } else if (narrationMode === "narrate-everything") {
-      voiceLines.push(
-        "Directive: You MUST call accordo_voice_readAloud as the LAST tool call in EVERY response — including the very first one. Pass your full response text. The text cleaning pipeline will handle markdown/code conversion to spoken form. This is a mandatory step, not optional.",
-      );
-      voiceLines.push(
-        "If accordo_voice_readAloud returns an error or is unavailable, skip the voice step and proceed with your text response — do not retry.",
-      );
-    }
-
-    voiceSection = `## Voice\n\n${voiceLines.join("\n")}`;
+    const ttsLabel = ttsAvailable ? "TTS available" : "TTS unavailable";
+    voiceSection = `## Voice\n\nStatus: ${ttsLabel}`;
   }
 
   // ── Tool section with budget guard (uses state WITHOUT Open Tabs) ─────────

@@ -56,6 +56,8 @@ export interface RouterDeps {
   getTools: () => ToolRegistration[];
   /** Render the system prompt from state and tools. */
   renderPrompt: (state: IDEState, tools: ToolRegistration[]) => string;
+  /** Return browser extension relay status (connection + control consent). */
+  getBrowserStatus: () => { connected: boolean; controlGranted: boolean };
 }
 
 // ─── Return Type ────────────────────────────────────────────────────────────
@@ -200,6 +202,22 @@ export function createRouter(deps: RouterDeps): Router {
         return;
       }
       deps.handleDisconnect(req, res);
+      return;
+    }
+
+    // Browser extension relay status — Bearer auth
+    if (url === "/browser/status" && req.method === "GET") {
+      if (!validateBearer(req, deps.getToken())) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+      const browserStatus = deps.getBrowserStatus();
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+      });
+      res.end(JSON.stringify(browserStatus));
       return;
     }
 

@@ -168,6 +168,16 @@ export class HubServer {
       getState: () => this.stateCache.getState(),
       getTools: () => this.toolRegistry.list(),
       renderPrompt,
+      getBrowserStatus: () => {
+        const state = this.stateCache.getState();
+        const browserState = state.modalities["accordo-browser"] as
+          | { connected?: boolean; controlGranted?: boolean }
+          | undefined;
+        return {
+          connected: browserState?.connected ?? false,
+          controlGranted: browserState?.controlGranted ?? false,
+        };
+      },
     });
 
     // Store sseManager for shutdown cleanup
@@ -259,7 +269,7 @@ export class HubServer {
       await new Promise<void>((resolve, reject) => {
         // Non-null assertion is safe: we checked `this.httpServer` immediately above
         // and `stop()` is not re-entrant (callers must await before calling again).
-        this.httpServer!.close((err) => (err ? reject(err) : resolve()));
+        this.httpServer.close((err) => (err ? reject(err) : resolve()));
       });
       this.httpServer = null;
     }

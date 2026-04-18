@@ -54,6 +54,7 @@ function makeOptions(): RouterDeps {
     }),
     getTools: () => [],
     renderPrompt: () => "# System Prompt\n\nYou have access to tools.",
+    getBrowserStatus: () => ({ connected: true, controlGranted: true }),
   };
 }
 
@@ -572,5 +573,61 @@ describe("Router.handleHttpRequest — /bridge/disconnect (SR-01 to SR-05)", () 
       res,
     );
     expect(deps.handleDisconnect).not.toHaveBeenCalled();
+  });
+
+  // ── Browser status endpoint ─────────────────────────────────────────────────
+
+  it("GET /browser/status with valid Bearer returns 200 and browser status", () => {
+    const { res, statusCode, body } = makeRes();
+    router.handleHttpRequest(
+      makeReq({
+        method: "GET",
+        url: "/browser/status",
+        headers: { authorization: "Bearer test-bearer-token", origin: "http://localhost" },
+      }),
+      res,
+    );
+    expect(statusCode()).toBe(200);
+    const parsed = JSON.parse(body());
+    expect(parsed).toEqual({ connected: true, controlGranted: true });
+  });
+
+  it("GET /browser/status without Bearer returns 401", () => {
+    const { res, statusCode } = makeRes();
+    router.handleHttpRequest(
+      makeReq({
+        method: "GET",
+        url: "/browser/status",
+        headers: { origin: "http://localhost" },
+      }),
+      res,
+    );
+    expect(statusCode()).toBe(401);
+  });
+
+  it("GET /browser/status returns 403 for invalid origin", () => {
+    const { res, statusCode } = makeRes();
+    router.handleHttpRequest(
+      makeReq({
+        method: "GET",
+        url: "/browser/status",
+        headers: { authorization: "Bearer test-bearer-token", origin: "https://evil.com" },
+      }),
+      res,
+    );
+    expect(statusCode()).toBe(403);
+  });
+
+  it("GET /browser/status with wrong Bearer returns 401", () => {
+    const { res, statusCode } = makeRes();
+    router.handleHttpRequest(
+      makeReq({
+        method: "GET",
+        url: "/browser/status",
+        headers: { authorization: "Bearer wrong-token", origin: "http://localhost" },
+      }),
+      res,
+    );
+    expect(statusCode()).toBe(401);
   });
 });
