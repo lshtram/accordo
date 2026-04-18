@@ -33,6 +33,7 @@ export interface PanelState {
   _workspaceRoot: string;
   _lastSource: string;
   _currentLayout: LayoutStore | null;
+  _sceneLoadEchoSuppressUntil: number;
 }
 
 // ── Factory ───────────────────────────────────────────────────────────────────
@@ -59,6 +60,7 @@ export function createPanelState(
     _workspaceRoot: resolveWorkspaceRoot(mmdPath),
     _lastSource: "",
     _currentLayout: null,
+    _sceneLoadEchoSuppressUntil: 0,
   };
 }
 

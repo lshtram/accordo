@@ -62,6 +62,9 @@ const mockComputeInitialLayout = vi.fn();
 const mockGetWebviewHtml = vi.fn();
 const mockToExcalidrawPayload = vi.fn();
 const mockParseMermaidToExcalidraw = vi.fn();
+const mockLayoutWithExcalidraw = vi.fn();
+const mockPatchNode = vi.fn();
+const mockPatchEdge = vi.fn();
 
 vi.mock("../parser/adapter.js", () => ({
   parseMermaid: (...args: unknown[]) => mockParseMermaid(...args),
@@ -82,7 +85,8 @@ vi.mock("../layout/layout-store.js", () => ({
     join(wsRoot, ".accordo", "diagrams", mmdPath.replace(/.*\//, "").replace(".mmd", ".layout.json")),
   ),
   createEmptyLayout: vi.fn(() => ({ nodes: {}, edges: {}, clusters: {}, aesthetics: {}, unplaced: [] })),
-  patchNode: vi.fn((layout: Record<string, unknown>, nodeId: string, patch: Record<string, unknown>) => layout),
+  patchNode: (...args: unknown[]) => mockPatchNode(...args),
+  patchEdge: (...args: unknown[]) => mockPatchEdge(...args),
 }));
 
 vi.mock("../layout/auto-layout.js", () => ({
@@ -91,6 +95,14 @@ vi.mock("../layout/auto-layout.js", () => ({
 
 vi.mock("./html.js", () => ({
   getWebviewHtml: (...args: unknown[]) => mockGetWebviewHtml(...args),
+}));
+
+vi.mock("../layout/excalidraw-engine.js", () => ({
+  layoutWithExcalidraw: (...args: unknown[]) => mockLayoutWithExcalidraw(...args),
+}));
+
+vi.mock("./debug-diagram-json.js", () => ({
+  dumpExcalidrawJson: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("./scene-adapter.js", () => ({
@@ -145,6 +157,32 @@ beforeEach(async () => {
   mockGetWebviewHtml.mockReturnValue("<html></html>");
   mockToExcalidrawPayload.mockReturnValue([{ id: "A" }]);
   mockReconcile.mockResolvedValue({ layout: { nodes: { A: {} }, edges: {}, clusters: {}, aesthetics: {}, unplaced: [] } });
+  mockPatchNode.mockImplementation((layout: Record<string, unknown>, nodeId: string, patch: Record<string, unknown>) => {
+    const nodes = (layout.nodes as Record<string, Record<string, unknown>> | undefined) ?? {};
+    return {
+      ...layout,
+      nodes: {
+        ...nodes,
+        [nodeId]: {
+          ...(nodes[nodeId] ?? {}),
+          ...patch,
+        },
+      },
+    };
+  });
+  mockPatchEdge.mockImplementation((layout: Record<string, unknown>, edgeKey: string, patch: Record<string, unknown>) => {
+    const edges = (layout.edges as Record<string, Record<string, unknown>> | undefined) ?? {};
+    return {
+      ...layout,
+      edges: {
+        ...edges,
+        [edgeKey]: {
+          ...(edges[edgeKey] ?? {}),
+          ...patch,
+        },
+      },
+    };
+  });
 
   vi.mocked(mockCommands.executeCommand).mockResolvedValue(undefined);
 });
@@ -186,20 +224,96 @@ describe("loadAndPost", () => {
     expect(msg.message).toBe("Syntax error in flowchart");
   });
 
-  // PCore-04: Non-flowchart types (e.g. stateDiagram-v2) use computeInitialLayout when no layout exists.
-  // Flowcharts with upstream-direct (default) use runUpstreamPlacement instead.
-  it("PCore-04: calls computeInitialLayout for non-flowchart when no layout file exists", async () => {
+  // PCore-04: stateDiagram-v2 first-init tries layoutWithExcalidraw first (SUP-S01).
+  // When layoutWithExcalidraw throws, it falls back to computeInitialLayout.
+  it("PCore-04: falls back to computeInitialLayout for stateDiagram-v2 when layoutWithExcalidraw throws", async () => {
     mockParseMermaid.mockResolvedValueOnce({
       valid: true,
       diagram: { type: "stateDiagram-v2", nodes: {}, edges: [] },
       error: null,
     });
     mockReadLayout.mockResolvedValueOnce(null);
+    // Force layoutWithExcalidraw to throw so we verify the fallback
+    mockLayoutWithExcalidraw.mockRejectedValueOnce(new Error("upstream unavailable"));
     const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
 
     await loadAndPost(panelState as never);
 
+    expect(mockLayoutWithExcalidraw).toHaveBeenCalled();
     expect(mockComputeInitialLayout).toHaveBeenCalled();
+  });
+
+  // PCore-04b: stateDiagram-v2 first-init uses layoutWithExcalidraw (SUP-S01 primary path).
+  // layoutWithExcalidraw calls parseMermaidToExcalidraw internally.
+  it("PCore-04b: stateDiagram-v2 first-init calls layoutWithExcalidraw and writes upstream layout", async () => {
+    const upstreamLayout = {
+      version: "1.0",
+      diagram_type: "stateDiagram-v2",
+      nodes: {
+        root_start: { x: 50, y: 50, w: 30, h: 30, style: { fill: "#fff" } },
+        Idle: { x: 150, y: 40, w: 120, h: 60, style: { fill: "#eee" } },
+        root_end: { x: 400, y: 50, w: 30, h: 30, style: { fill: "#000" } },
+      },
+      edges: {
+        "root_start->Idle:0": {
+          routing: "direct",
+          waypoints: [{ x: 120, y: 90 }],
+          style: { strokeColor: "#333" },
+        },
+      },
+      clusters: {
+        Parent: { x: 20, y: 20, w: 300, h: 200, label: "Parent", style: { fill: "#fafafa" } },
+      },
+      aesthetics: {},
+      unplaced: [],
+    };
+
+    mockParseMermaid.mockResolvedValueOnce({
+      valid: true,
+      diagram: {
+        type: "stateDiagram-v2",
+        nodes: new Map([
+          ["root_start", { id: "root_start", label: "", shape: "stateStart", classes: [] }],
+          ["Idle", { id: "Idle", label: "Idle", shape: "rounded", classes: [] }],
+          ["root_end", { id: "root_end", label: "", shape: "stateEnd", classes: [] }],
+        ]),
+        edges: [],
+        clusters: [{ id: "Parent", label: "Parent" }],
+      },
+      error: null,
+    });
+    mockLayoutWithExcalidraw.mockResolvedValueOnce(upstreamLayout);
+    mockReadLayout.mockResolvedValueOnce(null);
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+
+    await loadAndPost(panelState as never);
+
+    expect(mockLayoutWithExcalidraw).toHaveBeenCalled();
+    // Verify layout was written with upstream positions (not dagre fallback)
+    const writeCall = vi.mocked(mockWriteLayout).mock.calls.find(
+      (call) => (call[0] as string).includes(".layout.json"),
+    );
+    expect(writeCall).toBeDefined();
+    const writtenLayout = writeCall![1] as Record<string, unknown>;
+    const writtenNodes = writtenLayout.nodes as Record<string, { x: number; y: number; w: number; h: number; style: Record<string, unknown> }>;
+    const writtenEdges = writtenLayout.edges as Record<string, { routing: string; waypoints: Array<{ x: number; y: number }>; style: Record<string, unknown> }>;
+    const writtenClusters = writtenLayout.clusters as Record<string, { x: number; y: number; w: number; h: number; label: string; style: Record<string, unknown> }>;
+
+    expect(writtenNodes["Idle"]).toMatchObject({ x: 150, y: 40, w: 120, h: 60, style: { fill: "#eee" } });
+    expect(writtenNodes["root_start"]).toMatchObject({ x: 50, y: 50, w: 30, h: 30, style: { fill: "#fff" } });
+    expect(writtenEdges["root_start->Idle:0"]).toEqual({
+      routing: "direct",
+      waypoints: [{ x: 120, y: 90 }],
+      style: { strokeColor: "#333" },
+    });
+    expect(writtenClusters["Parent"]).toMatchObject({
+      x: 20,
+      y: 20,
+      w: 300,
+      h: 200,
+      label: "Parent",
+      style: { fill: "#fafafa" },
+    });
   });
 
   it("PCore-05: calls reconcile when source changed and layout already exists", async () => {
@@ -292,6 +406,70 @@ describe("loadAndPost", () => {
 
     expect(panelState._lastSource).toBe(SIMPLE_FLOWCHART);
   });
+
+  it("PCore-10b: overlapping loads drop stale writes and stale scene posts", async () => {
+    mockReadLayout.mockResolvedValue(null);
+    mockParseMermaid.mockResolvedValue({
+      valid: true,
+      diagram: { type: "stateDiagram-v2", nodes: {}, edges: [], direction: "TD" },
+      error: null,
+    });
+    let releaseFirstLayout: (() => void) | undefined;
+    let firstLayoutStartedResolve: (() => void) | undefined;
+    const firstLayoutStarted = new Promise<void>((resolve) => {
+      firstLayoutStartedResolve = resolve;
+    });
+    const firstLayout = new Promise<Record<string, unknown>>((resolve) => {
+      releaseFirstLayout = () => resolve({
+        nodes: { A: { x: 100, y: 0, w: 100, h: 50 } },
+        edges: {},
+        clusters: {},
+        aesthetics: {},
+        unplaced: [],
+      });
+    });
+    let excalidrawCalls = 0;
+    mockLayoutWithExcalidraw.mockImplementation(() => {
+      excalidrawCalls += 1;
+      if (excalidrawCalls === 1) {
+        firstLayoutStartedResolve?.();
+        return firstLayout;
+      }
+      return Promise.resolve({
+        nodes: { A: { x: 200, y: 0, w: 100, h: 50 } },
+        edges: {},
+        clusters: {},
+        aesthetics: {},
+        unplaced: [],
+      });
+    });
+    mockGenerateCanvas.mockImplementation((_diagram, layout) => Promise.resolve({
+      elements: [{ id: `scene-${(layout as { nodes: { A: { x: number } } }).nodes.A.x}` }],
+      layout,
+    }));
+    mockToExcalidrawPayload.mockImplementation((elements) => elements);
+
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+    const firstLoad = loadAndPost(panelState as never);
+    await firstLayoutStarted;
+    const secondLoad = loadAndPost(panelState as never);
+    await secondLoad;
+    releaseFirstLayout?.();
+    await firstLoad;
+
+    const writtenXs = mockWriteLayout.mock.calls
+      .map((call) => (call[1] as { nodes?: { A?: { x?: number } } }).nodes?.A?.x)
+      .filter((x): x is number => typeof x === "number");
+    expect(writtenXs).toEqual([200, 200, 200]);
+
+    const loadSceneCalls = vi.mocked(vscPanel.webview.postMessage).mock.calls
+      .map(([msg]) => msg)
+      .filter((msg): msg is { type: string; elements: Array<{ id: string }> } =>
+        typeof msg === "object" && msg !== null && (msg as { type?: string }).type === "host:load-scene",
+      );
+    expect(loadSceneCalls).toHaveLength(1);
+    expect(loadSceneCalls[0]?.elements[0]?.id).toBe("scene-200");
+  });
 });
 
 // ── PCore-11..PCore-16: handleWebviewMessage ─────────────────────────────────
@@ -347,6 +525,111 @@ describe("handleWebviewMessage", () => {
 
     // Should not throw
     expect(() => handleWebviewMessage(panelState as never, { type: "comment:create", blockId: "A", body: "hi" } as WebviewToHostMessage)).not.toThrow();
+  });
+
+  it("PCore-16b: ignores the initial scene-load mutation burst", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+
+    mockGenerateCanvas.mockResolvedValueOnce({
+      elements: [{ id: "A", type: "rectangle" }, { id: "edge-1", type: "arrow" }],
+      layout: {
+        nodes: { A: { x: 10, y: 20, w: 100, h: 50 } },
+        edges: { "A->B:0": { routing: "auto", waypoints: [{ x: 10, y: 20 }], style: {} } },
+        clusters: {},
+        aesthetics: {},
+        unplaced: [],
+      },
+    });
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+
+    await loadAndPost(panelState as never);
+    mockWriteLayout.mockClear();
+
+    handleWebviewMessage(panelState as never, {
+      type: "canvas:edge-routed",
+      edgeKey: "A->B:0",
+      waypoints: [{ x: 1, y: 2 }],
+    });
+    handleWebviewMessage(panelState as never, { type: "canvas:node-moved", nodeId: "A", x: 200, y: 300 });
+    handleWebviewMessage(panelState as never, { type: "canvas:node-resized", nodeId: "A", w: 240, h: 80 });
+    vi.advanceTimersByTime(150);
+
+    expect(panelState._currentLayout?.nodes.A).toMatchObject({ x: 10, y: 20, w: 100, h: 50 });
+    expect(panelState._currentLayout?.edges["A->B:0"]?.waypoints).toEqual([{ x: 10, y: 20 }]);
+    expect(mockWriteLayout).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it("PCore-16c: persists later real mutations after the suppression window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+
+    mockGenerateCanvas.mockResolvedValueOnce({
+      elements: [{ id: "A", type: "rectangle" }, { id: "edge-1", type: "arrow" }],
+      layout: {
+        nodes: { A: { x: 10, y: 20, w: 100, h: 50 } },
+        edges: { "A->B:0": { routing: "auto", waypoints: [{ x: 10, y: 20 }], style: {} } },
+        clusters: {},
+        aesthetics: {},
+        unplaced: [],
+      },
+    });
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+
+    await loadAndPost(panelState as never);
+    mockWriteLayout.mockClear();
+
+    vi.setSystemTime(500);
+    handleWebviewMessage(panelState as never, {
+      type: "canvas:edge-routed",
+      edgeKey: "A->B:0",
+      waypoints: [{ x: 30, y: 40 }],
+    });
+    handleWebviewMessage(panelState as never, { type: "canvas:node-moved", nodeId: "A", x: 200, y: 300 });
+    handleWebviewMessage(panelState as never, { type: "canvas:node-resized", nodeId: "A", w: 240, h: 80 });
+    vi.advanceTimersByTime(150);
+
+    expect(panelState._currentLayout?.nodes.A).toMatchObject({ x: 200, y: 300, w: 240, h: 80 });
+    expect(panelState._currentLayout?.edges["A->B:0"]?.waypoints).toEqual([{ x: 30, y: 40 }]);
+    expect(mockWriteLayout).toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it("PCore-16d: canvas:node-styled still persists during the scene-load echo window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+
+    mockGenerateCanvas.mockResolvedValueOnce({
+      elements: [{ id: "A", type: "rectangle" }],
+      layout: {
+        nodes: { A: { x: 10, y: 20, w: 100, h: 50 } },
+        edges: {},
+        clusters: {},
+        aesthetics: {},
+        unplaced: [],
+      },
+    });
+    const panelState = { ...state, _panel: vscPanel as never } as PanelState & { _panel: never };
+
+    await loadAndPost(panelState as never);
+    mockWriteLayout.mockClear();
+
+    handleWebviewMessage(panelState as never, { type: "canvas:node-styled", nodeId: "A", style: { backgroundColor: "#ff0000" } });
+    vi.advanceTimersByTime(150);
+
+    expect(panelState._currentLayout?.nodes.A).toMatchObject({
+      x: 10,
+      y: 20,
+      w: 100,
+      h: 50,
+      style: { backgroundColor: "#ff0000" },
+    });
+    expect(mockWriteLayout).toHaveBeenCalled();
+
+    vi.useRealTimers();
   });
 });
 

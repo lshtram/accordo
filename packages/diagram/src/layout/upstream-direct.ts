@@ -9,6 +9,19 @@ type ExcalidrawElementSkeleton = Record<string, unknown>;
 
 let shimApplied = false;
 
+interface CanvasTextMetricsLike {
+  width: number;
+  actualBoundingBoxAscent?: number;
+  actualBoundingBoxDescent?: number;
+  fontBoundingBoxAscent?: number;
+  fontBoundingBoxDescent?: number;
+}
+
+interface Canvas2DContextLike {
+  font: string;
+  measureText(text: string): CanvasTextMetricsLike;
+}
+
 interface BBox {
   x: number;
   y: number;
@@ -69,6 +82,52 @@ function parsePath(raw: string | null | undefined): BBox {
     width: Math.max(...xs) - Math.min(...xs),
     height: Math.max(...ys) - Math.min(...ys),
   };
+}
+
+function parseFontSize(font: string): number {
+  const match = /(\d+(?:\.\d+)?)px/.exec(font);
+  const size = match ? Number(match[1]) : 16;
+  return Number.isFinite(size) && size > 0 ? size : 16;
+}
+
+function createCanvas2DContext(): Canvas2DContextLike {
+  return {
+    font: "16px Arial",
+    measureText(text: string): CanvasTextMetricsLike {
+      const fontSize = parseFontSize(this.font);
+      let width = 0;
+      for (const ch of text) {
+        width += ch === " " ? fontSize * 0.35 : fontSize * 0.62;
+      }
+      return {
+        width,
+        actualBoundingBoxAscent: fontSize * 0.8,
+        actualBoundingBoxDescent: fontSize * 0.2,
+        fontBoundingBoxAscent: fontSize * 0.8,
+        fontBoundingBoxDescent: fontSize * 0.2,
+      };
+    },
+  };
+}
+
+function applyCanvasPolyfills(win: Record<string, unknown>): void {
+  const canvasCtor = win.HTMLCanvasElement as { prototype?: Record<string, unknown> } | undefined;
+  if (!canvasCtor?.prototype) return;
+
+  const contexts = new WeakMap<object, Canvas2DContextLike>();
+
+  Object.defineProperty(canvasCtor.prototype, "getContext", {
+    configurable: true,
+    value: function (this: object, kind: string): Canvas2DContextLike | null {
+      if (kind !== "2d") return null;
+      let ctx = contexts.get(this);
+      if (!ctx) {
+        ctx = createCanvas2DContext();
+        contexts.set(this, ctx);
+      }
+      return ctx;
+    },
+  });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -189,6 +248,7 @@ async function applyNodeShim(): Promise<void> {
   const { window } = dom;
   g.window = window as unknown as typeof globalThis;
   g.document = window.document as unknown as Document;
+  applyCanvasPolyfills(window as unknown as Record<string, unknown>);
   applySvgPolyfills(window as unknown as Record<string, unknown>);
 }
 

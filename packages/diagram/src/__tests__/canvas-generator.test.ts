@@ -821,4 +821,38 @@ describe("generateCanvas — auto routing with persisted waypoints", () => {
     expect(arrow!.startBinding).toBeNull();
     expect(arrow!.endBinding).toBeNull();
   });
+
+  it("CG-42: cluster edges honor explicit waypoints instead of centre-to-centre fallback", () => {
+    const k = edgeKey("outer", "P", 0);
+    const parsed: ParsedDiagram = {
+      type: "flowchart",
+      direction: "LR",
+      nodes: new Map([["P", makeNode("P")]]),
+      edges: [makeEdge("outer", "P")],
+      clusters: [makeCluster("outer", ["P"])],
+      renames: [],
+    };
+    const layout = makeLayout({
+      nodes: {
+        P: makeNodeLayout({ x: 300, y: 120, w: 100, h: 60 }),
+      },
+      clusters: {
+        outer: { x: 20, y: 20, w: 180, h: 180, label: "outer", style: {} },
+      },
+      edges: {
+        [k]: { routing: "direct", waypoints: [{ x: 220, y: 40 }, { x: 260, y: 140 }], style: {} },
+      },
+    });
+
+    const scene = generateCanvas(parsed, layout);
+    const arrow = scene.elements.find((e) => e.type === "arrow" && e.mermaidId === k);
+    expect(arrow).toBeDefined();
+    const absolutePoints = arrow!.points!.map(([x, y]) => [x + arrow!.x, y + arrow!.y]);
+    expect(absolutePoints).toEqual([
+      [110, 110],
+      [220, 40],
+      [260, 140],
+      [350, 150],
+    ]);
+  });
 });

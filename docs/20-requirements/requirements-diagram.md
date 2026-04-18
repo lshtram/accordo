@@ -214,6 +214,21 @@ Architecture reference: `docs/10-architecture/diagram-types-architecture.md`
 | BB-R04 | Column-aware layout | Grid layout respects `widthInColumns` and `columns` |
 | BB-R05 | cytoscape-fcose or custom grid layout | New layout engine (separate from dagre) |
 
+#### diag.2.6 — stateDiagram-v2 Upstream Placement
+
+Extends the excalidraw engine path (currently flowchart-only) to support `stateDiagram-v2`.
+The parser (diag.2.1) is already implemented; this module adds upstream placement integration.
+
+| ID | Requirement | Acceptance Criteria |
+|---|---|---|
+| SUP-S01 | Type gate accepts stateDiagram-v2 | `layoutWithExcalidraw()` accepts `parsed.type === "stateDiagram-v2"` without throwing |
+| SUP-S02 | Pseudostate identity matching | `[*]` start/end nodes (shape `stateStart`/`stateEnd`) are matched by shape+position heuristic, not label text (pseudostates have no meaningful label) |
+| SUP-S03 | Composite state cluster mapping | Composite states (`isGroup===true`) map to `ClusterLayout` with correct bounds using the same CLUSTER_MARGIN/CLUSTER_LABEL_HEIGHT convention as dagre |
+| SUP-S04 | Dagre fallback for unmatched nodes | Any state node not matched by the upstream path falls back to dagre positioning (existing behaviour preserved) |
+| SUP-S05 | State-specific post-processing preserved | Cluster member vertical alignment and pseudostate positioning from `auto-layout.ts` are applied after upstream placement (or upstream placement produces equivalent results) |
+| SUP-S06 | Debug instrumentation | Permanent gated structured logging module (`layout-debug.ts`), disabled by default, for upstream parse results, identity matching decisions, and fallback triggers. Must not violate `no-console` ESLint rule. This is permanent infrastructure (not temporary `// DEBUG:` instrumentation) and ships with the extension. |
+| SUP-S07 | Supported-types set updated | `element-mapper.ts` SUPPORTED_TYPES includes the state-diagram shape types emitted by `@excalidraw/mermaid-to-excalidraw` at pinned version `^2.1.1`: `"rectangle"`, `"diamond"`, `"ellipse"`, `"circle"`. Acceptance: `SUPPORTED_TYPES.has(t)` returns `true` for each of these four types; `extractGeometry()` does not filter out any upstream state-diagram element that carries one of these types. |
+
 ### D-03 — Curved Routing (NEXT)
 
 **Research:** `docs/reviews/D-03-curved-routing-research.md` ✅  

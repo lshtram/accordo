@@ -270,7 +270,7 @@ describe("DiagramPanel.requestExport()", () => {
 
 describe("Canvas message dispatch", () => {
   // AP-12: SRP-01 - now waits for host:load-scene before proceeding
-  it("AP-12: canvas:node-moved writes updated layout.json with new position", async () => {
+  it("AP-12: canvas:node-moved after the scene-load echo window writes updated layout.json with new position", async () => {
     await DiagramPanel.create(ctx as never, mmdPath);
 
     // canvas:ready must be sent first to trigger loadAndPost which sets _currentLayout
@@ -294,8 +294,8 @@ describe("Canvas message dispatch", () => {
         resolve();
       }, 10_000);
     });
-    // Extra buffer for loadAndPost to fully complete
-    await new Promise(r => setTimeout(r, 200));
+    // Wait for load completion plus the narrow scene-load echo suppression window.
+    await new Promise(r => setTimeout(r, 350));
 
     vscPanel.webview.simulateMessage({
       type: "canvas:node-moved",
@@ -313,7 +313,7 @@ describe("Canvas message dispatch", () => {
   });
 
   // AP-13: SRP-01 - now waits for host:load-scene before proceeding
-  it("AP-13: canvas:node-resized writes updated layout.json with new dimensions", async () => {
+  it("AP-13: canvas:node-resized after the scene-load echo window writes updated layout.json with new dimensions", async () => {
     await DiagramPanel.create(ctx as never, mmdPath);
 
     // canvas:ready must be sent first to trigger loadAndPost which sets _currentLayout
@@ -337,8 +337,8 @@ describe("Canvas message dispatch", () => {
         resolve();
       }, 10_000);
     });
-    // Extra buffer for loadAndPost to fully complete
-    await new Promise(r => setTimeout(r, 200));
+    // Wait for load completion plus the narrow scene-load echo suppression window.
+    await new Promise(r => setTimeout(r, 350));
 
     vscPanel.webview.simulateMessage({
       type: "canvas:node-resized",

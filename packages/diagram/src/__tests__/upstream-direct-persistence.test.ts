@@ -56,6 +56,7 @@ describe("upstream-direct persistence", () => {
       _commentsBridge: null,
       _onDisposedCallbacks: [],
       _lastSource: "",
+      _sceneLoadEchoSuppressUntil: 0,
       _panel: { webview: { postMessage: vi.fn() } },
       _log: vi.fn(),
       _createTime: Date.now(),

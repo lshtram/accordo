@@ -12,9 +12,25 @@
  *   EXC-05: LayoutStore has correct diagram_type="flowchart"
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { layoutWithExcalidraw } from "../layout/excalidraw-engine.js";
 import type { ParsedDiagram, ParsedNode, ParsedEdge, ParsedCluster } from "../types.js";
+
+const compositeStateSkeletons = [
+  { id: "g-first", type: "rectangle", x: 20, y: 20, width: 140, height: 120, label: "First", groupId: "first" },
+  { id: "g-second", type: "rectangle", x: 260, y: 20, width: 150, height: 120, label: "Second", groupId: "second" },
+  { id: "e-1", type: "arrow", x: 120, y: 85, points: [[0, 0], [60, 35], [140, 35]] },
+];
+
+const defaultSkeletons = [
+  { id: "A", type: "rectangle", x: 10, y: 20, width: 120, height: 60, text: "A" },
+  { id: "B", type: "rectangle", x: 220, y: 20, width: 120, height: 60, text: "B" },
+  { id: "e", type: "arrow", x: 130, y: 50, points: [[0, 0], [90, 0]] },
+];
+
+vi.mock("@excalidraw/mermaid-to-excalidraw", () => ({
+  parseMermaidToExcalidraw: vi.fn(),
+}));
 
 // ── Fixture helpers ─────────────────────────────────────────────────────────────
 
@@ -45,8 +61,14 @@ describe("layoutWithExcalidraw — EXC-01/EXC-02/EXC-03/EXC-04/EXC-05: contract 
   // These tests are RED in Phase B and GREEN in Phase C.
   // All assertions are at the await level so unhandled rejections are impossible.
 
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("EXC-04: resolved layout has version='1.0'", async () => {
     const parsed = makeDiagram("flowchart", [makeNode("A")], []);
+    const { parseMermaidToExcalidraw } = await import("@excalidraw/mermaid-to-excalidraw");
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValueOnce({ elements: defaultSkeletons });
     await expect(layoutWithExcalidraw("graph TD; A;", parsed)).resolves.toMatchObject({
       version: "1.0",
     });
@@ -54,12 +76,16 @@ describe("layoutWithExcalidraw — EXC-01/EXC-02/EXC-03/EXC-04/EXC-05: contract 
 
   it("EXC-05: resolved layout has diagram_type='flowchart'", async () => {
     const parsed = makeDiagram("flowchart", [makeNode("A")], []);
+    const { parseMermaidToExcalidraw } = await import("@excalidraw/mermaid-to-excalidraw");
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValueOnce({ elements: defaultSkeletons });
     await expect(layoutWithExcalidraw("graph TD; A;", parsed)).resolves.toMatchObject({
       diagram_type: "flowchart",
     });
   });
 
   it("EXC-04/EXC-05: resolved layout has nodes, edges, clusters, aesthetics fields", async () => {
+    const { parseMermaidToExcalidraw } = await import("@excalidraw/mermaid-to-excalidraw");
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValueOnce({ elements: defaultSkeletons });
     const parsed = makeDiagram(
       "flowchart",
       [makeNode("A"), makeNode("B")],
@@ -76,6 +102,8 @@ describe("layoutWithExcalidraw — EXC-01/EXC-02/EXC-03/EXC-04/EXC-05: contract 
   });
 
   it("EXC-04/EXC-05: resolved layout places all nodes with finite coordinates", async () => {
+    const { parseMermaidToExcalidraw } = await import("@excalidraw/mermaid-to-excalidraw");
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValueOnce({ elements: defaultSkeletons });
     const parsed = makeDiagram(
       "flowchart",
       [makeNode("A"), makeNode("B")],
@@ -113,8 +141,76 @@ describe("layoutWithExcalidraw — EXC-01/EXC-02/EXC-03/EXC-04/EXC-05: contract 
     await expect(layoutWithExcalidraw("class A {}", parsed)).rejects.toThrow();
   });
 
-  it("EXC-03: throws Error when type is stateDiagram-v2", async () => {
-    const parsed = makeDiagram("stateDiagram-v2", []);
-    await expect(layoutWithExcalidraw("stateDiagram-v2; Idle-->Active;", parsed)).rejects.toThrow();
+  it("EXC-06: matched state composite edges keep upstream waypoints", async () => {
+    const parsed = makeDiagram(
+      "stateDiagram-v2",
+      [],
+      [makeEdge("First", "Second", 0)],
+      [
+        { id: "First", label: "First", members: [] },
+        { id: "Second", label: "Second", members: [] },
+      ],
+    );
+
+    const { parseMermaidToExcalidraw } = await import("@excalidraw/mermaid-to-excalidraw");
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValueOnce({ elements: compositeStateSkeletons });
+
+    const layout = await layoutWithExcalidraw(
+      "stateDiagram-v2\n  state First\n  state Second\n  First --> Second",
+      parsed,
+    );
+
+    expect(layout.edges["First->Second:0"]).toMatchObject({
+      routing: "direct",
+      waypoints: [{ x: 270, y: 180 }],
+    });
+  });
+
+  it("EXC-07: stateDiagram-v2 returns canonical scaled geometry", async () => {
+    const parsed = makeDiagram(
+      "stateDiagram-v2",
+      [makeNode("Ready"), makeNode("Busy")],
+      [makeEdge("Ready", "Busy", 0)],
+      [{ id: "Session", label: "Session", members: ["Ready", "Busy"] }],
+    );
+
+    const { parseMermaidToExcalidraw } = await import("@excalidraw/mermaid-to-excalidraw");
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValueOnce({
+      elements: [
+        { id: "group", type: "rectangle", x: 100, y: 20, width: 400, height: 200, label: "Session", groupId: "session" },
+        { id: "ready", type: "rectangle", x: 180, y: 40, width: 100, height: 50, label: "Ready" },
+        { id: "busy", type: "rectangle", x: 180, y: 120, width: 100, height: 50, label: "Busy" },
+        { id: "edge", type: "arrow", x: 230, y: 90, points: [[0, 0], [5, 15], [10, 30]] },
+      ],
+    });
+
+    const layout = await layoutWithExcalidraw(
+      "stateDiagram-v2\n  state Session { Ready --> Busy }",
+      parsed,
+    );
+
+    expect(layout.nodes["Ready"]).toMatchObject({ x: 270, y: 60, w: 150, h: 75 });
+    expect(layout.nodes["Busy"]).toMatchObject({ x: 270, y: 180, w: 150, h: 75 });
+    expect(layout.edges["Ready->Busy:0"]).toMatchObject({
+      routing: "direct",
+      waypoints: [{ x: 352.5, y: 157.5 }],
+    });
+    expect(layout.clusters["Session"]).toMatchObject({ x: 120, y: -42, w: 660, h: 402 });
+  });
+
+  it("EXC-08: flowchart geometry is not scaled", async () => {
+    const parsed = makeDiagram(
+      "flowchart",
+      [makeNode("A"), makeNode("B")],
+      [makeEdge("A", "B", 0)],
+    );
+
+    const { parseMermaidToExcalidraw } = await import("@excalidraw/mermaid-to-excalidraw");
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValueOnce({ elements: defaultSkeletons });
+
+    const layout = await layoutWithExcalidraw("graph TD; A-->B;", parsed);
+
+    expect(layout.nodes["A"]).toMatchObject({ x: 10, y: 20, w: 120, h: 60 });
+    expect(layout.nodes["B"]).toMatchObject({ x: 220, y: 20, w: 120, h: 60 });
   });
 });

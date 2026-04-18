@@ -23,6 +23,8 @@ import { generateCanvas } from "../canvas/canvas-generator.js";
 import { computeInitialLayout } from "../layout/auto-layout.js";
 import type { LayoutOptions } from "../layout/auto-layout.js";
 import { renderUpstreamDirect } from "../layout/upstream-direct.js";
+import { layoutWithExcalidraw } from "../layout/excalidraw-engine.js";
+import { layoutDebug } from "../layout/layout-debug.js";
 
 // ── Cosmic constant: upstream-direct seed scale ────────────────────────────────
 //
@@ -64,6 +66,57 @@ type PanelStateWithPanel = PanelState & {
   _handleNodeResized?: (id: string, w: number, h: number) => void;
   _handleExportReady?: (f: string, d: string) => void;
 };
+
+const loadTokens = new WeakMap<PanelState, number>();
+const SCENE_LOAD_ECHO_WINDOW_MS = 250;
+
+function beginLoad(state: PanelState): number {
+  const token = (loadTokens.get(state) ?? 0) + 1;
+  loadTokens.set(state, token);
+  return token;
+}
+
+function isCurrentLoad(state: PanelState, token: number): boolean {
+  return loadTokens.get(state) === token;
+}
+
+function armSceneLoadEchoSuppression(state: PanelState): void {
+  state._sceneLoadEchoSuppressUntil = Date.now() + SCENE_LOAD_ECHO_WINDOW_MS;
+}
+
+function shouldSuppressSceneLoadEcho(state: PanelState): boolean {
+  const suppressUntil = state._sceneLoadEchoSuppressUntil ?? 0;
+  if (suppressUntil === 0) {
+    return false;
+  }
+  if (Date.now() > suppressUntil) {
+    state._sceneLoadEchoSuppressUntil = 0;
+    return false;
+  }
+  return true;
+}
+
+function countDiagramNodes(diagram: ParsedDiagram): number {
+  const nodes = (diagram as { nodes?: unknown }).nodes;
+  if (Array.isArray(nodes)) return nodes.length;
+  if (nodes && typeof nodes === "object") return Object.keys(nodes as Record<string, unknown>).length;
+  return 0;
+}
+
+function summarizeLayout(layout: LayoutStore): {
+  nodes: number;
+  edges: number;
+  clusters: number;
+  totalWaypoints: number;
+} {
+  const edges = Object.values(layout.edges ?? {});
+  return {
+    nodes: Object.keys(layout.nodes ?? {}).length,
+    edges: Object.keys(layout.edges ?? {}).length,
+    clusters: Object.keys(layout.clusters ?? {}).length,
+    totalWaypoints: edges.reduce((sum, edge) => sum + (edge.waypoints?.length ?? 0), 0),
+  };
+}
 
 async function runUpstreamPlacement(
   source: string,
@@ -177,78 +230,195 @@ export async function loadAndPost(
   state: PanelStateWithPanel,
 ): Promise<void> {
   const log = state._log ?? ((_msg: string): void => { /* no-op */ });
+  const loadToken = beginLoad(state);
+
+  const isStale = (): boolean => !isCurrentLoad(state, loadToken);
+  const writeLayoutIfCurrent = async (layoutPath: string, layout: LayoutStore): Promise<boolean> => {
+    if (isStale()) return false;
+    await writeLayout(layoutPath, layout);
+    return !isStale();
+  };
+  const postMessageIfCurrent = async (message: HostLoadSceneMessage | HostErrorOverlayMessage): Promise<void> => {
+    if (isStale()) return;
+    state._panel.webview.postMessage(message);
+  };
 
   let source: string;
   try {
     source = await readFile(state.mmdPath, "utf8");
+    layoutDebug({
+      category: "panel-load",
+      message: "read source",
+      data: {
+        mmdPath: state.mmdPath,
+        sourceLength: source.length,
+        loadToken,
+      },
+    });
   } catch (err) {
     log("loadAndPost — file read FAILED: " + String(err));
     throw new PanelFileNotFoundError(state.mmdPath);
   }
 
   const parseResult = await parseMermaid(source);
+  if (isStale()) return;
   if (!parseResult.valid) {
     const errMsg: HostErrorOverlayMessage = {
       type: "host:error-overlay",
       message: parseResult.error.message,
     };
-    state._panel.webview.postMessage(errMsg);
+    await postMessageIfCurrent(errMsg);
     return;
   }
+  layoutDebug({
+    category: "panel-load",
+    message: "parsed diagram",
+    data: {
+      mmdPath: state.mmdPath,
+      diagramType: parseResult.diagram.type,
+      isStateDiagramV2: parseResult.diagram.type === "stateDiagram-v2",
+      parsedNodeCount: countDiagramNodes(parseResult.diagram),
+      parsedEdgeCount: parseResult.diagram.edges.length,
+      loadToken,
+    },
+  });
   const layoutPath = layoutPathFor(state.mmdPath, state._workspaceRoot);
 
   let layout = await readLayout(layoutPath);
+  if (isStale()) return;
   const hadPersistedLayout = layout !== null;
+  layoutDebug({
+    category: "panel-load",
+    message: "read layout",
+    data: {
+      mmdPath: state.mmdPath,
+      layoutPath,
+      hadPersistedLayout,
+      persistedSummary: layout ? summarizeLayout(layout) : null,
+      loadToken,
+    },
+  });
 
   if (layout === null) {
     const requestedEngine = undefined;
     const effectiveEngine =
-      requestedEngine ?? (parseResult.diagram.type === "flowchart" ? "upstream-direct" : "dagre");
-    const isFirstInit = effectiveEngine === "upstream-direct" && parseResult.diagram.type === "flowchart";
+      requestedEngine ??
+      (parseResult.diagram.type === "flowchart"
+        ? "upstream-direct"
+        : parseResult.diagram.type === "stateDiagram-v2"
+          ? "excalidraw"
+          : "dagre");
+    const isFirstInit =
+      (effectiveEngine === "upstream-direct" && parseResult.diagram.type === "flowchart") ||
+      (effectiveEngine === "excalidraw" && parseResult.diagram.type === "stateDiagram-v2");
+    layoutDebug({
+      category: "panel-load",
+      message: "first-init decision",
+      data: {
+        mmdPath: state.mmdPath,
+        diagramType: parseResult.diagram.type,
+        effectiveEngine,
+        isFirstInit,
+        stateDiagramV2PathActive:
+          parseResult.diagram.type === "stateDiagram-v2" && effectiveEngine === "excalidraw",
+        loadToken,
+      },
+    });
 
     if (isFirstInit) {
-      try {
-        const { nodes: upstreamNodes, edges: upstreamEdges, clusters: upstreamClusters } = await runUpstreamPlacement(
-          source,
-          new Set(parseResult.diagram.clusters?.map((c) => c.id) ?? []),
-        );
-        // Apply seed scale uniformly to all geometry before writing layout.
-        // This preserves spatial relationships between nodes, clusters, and edges.
-        applySeedScale(upstreamNodes, upstreamEdges, upstreamClusters);
-        const nodes: Record<string, NodeLayout> = {};
-        for (const [id, pos] of Object.entries(upstreamNodes)) {
-          nodes[id] = { x: pos.x, y: pos.y, w: pos.w, h: pos.h, style: {} };
-        }
-        const edges: Record<string, EdgeLayout> = {};
-        for (const [key, edgeData] of Object.entries(upstreamEdges)) {
-          edges[key] = { routing: "auto", waypoints: edgeData.waypoints, style: {} };
-        }
-        const clusters = Object.fromEntries(
-          (parseResult.diagram.clusters ?? []).map((c) => {
-            const up = upstreamClusters[c.id];
-            return [
-              c.id,
-              {
-                x: up?.x ?? 0,
-                y: up?.y ?? 0,
-                w: up?.w ?? 0,
-                h: up?.h ?? 0,
-                label: c.label,
-                style: {},
-              },
-            ];
-          }),
-        );
-        layout = createEmptyLayout(parseResult.diagram.type as SpatialDiagramType);
-        layout = { ...layout, nodes, edges, clusters };
-        await writeLayout(layoutPath, layout);
-      } catch {
+      if (parseResult.diagram.type === "stateDiagram-v2") {
+        // ── stateDiagram-v2 first-init: use layoutWithExcalidraw (SUP-S01) ─────
         try {
-          const dir = parseResult.diagram.direction;
-          const rankdir = (dir === "TD" ? "TB" : dir) as LayoutOptions["rankdir"];
-          layout = computeInitialLayout(parseResult.diagram, { rankdir });
+          layout = await layoutWithExcalidraw(source, parseResult.diagram);
+          layoutDebug({
+            category: "panel-load",
+            message: "state first-init seeded via layoutWithExcalidraw",
+            data: {
+              mmdPath: state.mmdPath,
+              seededSummary: summarizeLayout(layout),
+              loadToken,
+            },
+          });
+          if (!await writeLayoutIfCurrent(layoutPath, layout)) return;
         } catch {
+          layoutDebug({
+            category: "panel-load",
+            message: "state first-init layoutWithExcalidraw failed; fallback",
+            data: {
+              mmdPath: state.mmdPath,
+              loadToken,
+            },
+          });
+          try {
+            const dir = parseResult.diagram.direction;
+            const rankdir = (dir === "TD" ? "TB" : dir) as LayoutOptions["rankdir"];
+            layout = computeInitialLayout(parseResult.diagram, { rankdir });
+          } catch {
+            layout = createEmptyLayout(parseResult.diagram.type as SpatialDiagramType);
+          }
+        }
+      } else {
+        // ── Flowchart first-init: use renderUpstreamDirect + seed scale ─────────
+        try {
+          const { nodes: upstreamNodes, edges: upstreamEdges, clusters: upstreamClusters } = await runUpstreamPlacement(
+            source,
+            new Set(parseResult.diagram.clusters?.map((c) => c.id) ?? []),
+          );
+          // Apply seed scale uniformly to all geometry before writing layout.
+          // This preserves spatial relationships between nodes, clusters, and edges.
+          applySeedScale(upstreamNodes, upstreamEdges, upstreamClusters);
+          const nodes: Record<string, NodeLayout> = {};
+          for (const [id, pos] of Object.entries(upstreamNodes)) {
+            nodes[id] = { x: pos.x, y: pos.y, w: pos.w, h: pos.h, style: {} };
+          }
+          const edges: Record<string, EdgeLayout> = {};
+          for (const [key, edgeData] of Object.entries(upstreamEdges)) {
+            edges[key] = { routing: "auto", waypoints: edgeData.waypoints, style: {} };
+          }
+          const clusters = Object.fromEntries(
+            (parseResult.diagram.clusters ?? []).map((c) => {
+              const up = upstreamClusters[c.id];
+              return [
+                c.id,
+                {
+                  x: up?.x ?? 0,
+                  y: up?.y ?? 0,
+                  w: up?.w ?? 0,
+                  h: up?.h ?? 0,
+                  label: c.label,
+                  style: {},
+                },
+              ];
+            }),
+          );
           layout = createEmptyLayout(parseResult.diagram.type as SpatialDiagramType);
+          layout = { ...layout, nodes, edges, clusters };
+          layoutDebug({
+            category: "panel-load",
+            message: "flowchart first-init seeded via upstream-direct",
+            data: {
+              mmdPath: state.mmdPath,
+              seededSummary: summarizeLayout(layout),
+              loadToken,
+            },
+          });
+          if (!await writeLayoutIfCurrent(layoutPath, layout)) return;
+        } catch {
+          layoutDebug({
+            category: "panel-load",
+            message: "flowchart first-init upstream-direct failed; fallback",
+            data: {
+              mmdPath: state.mmdPath,
+              loadToken,
+            },
+          });
+          try {
+            const dir = parseResult.diagram.direction;
+            const rankdir = (dir === "TD" ? "TB" : dir) as LayoutOptions["rankdir"];
+            layout = computeInitialLayout(parseResult.diagram, { rankdir });
+          } catch {
+            layout = createEmptyLayout(parseResult.diagram.type as SpatialDiagramType);
+          }
         }
       }
     } else {
@@ -268,41 +438,85 @@ export async function loadAndPost(
   // (waypoints/roundness) with default empty edge layouts.
   if (hadPersistedLayout && state._lastSource !== "" && state._lastSource !== source) {
     try {
+      layoutDebug({
+        category: "panel-load",
+        message: "running reconcile with persisted layout",
+        data: {
+          mmdPath: state.mmdPath,
+          previousSourceLength: state._lastSource.length,
+          currentSourceLength: source.length,
+          beforeSummary: summarizeLayout(layout),
+          loadToken,
+        },
+      });
       const result = await reconcile(state._lastSource, source, layout);
+      if (isStale()) return;
       layout = result.layout;
-      await writeLayout(layoutPath, layout);
+      layoutDebug({
+        category: "panel-load",
+        message: "reconcile applied",
+        data: {
+          mmdPath: state.mmdPath,
+          afterSummary: summarizeLayout(layout),
+          loadToken,
+        },
+      });
+      if (!await writeLayoutIfCurrent(layoutPath, layout)) return;
     } catch {
       // Reconcile errors are non-fatal; proceed with existing layout
     }
   }
 
+  if (isStale()) return;
   state._lastSource = source;
 
   // UD-02: Engine selection policy.
-  // Default for flowcharts is upstream-direct unless explicitly overridden
-  // via layout.metadata.engine = "dagre".
+  // Default for flowcharts is upstream-direct, for stateDiagram-v2 is excalidraw,
+  // unless explicitly overridden via layout.metadata.engine.
   // The chosen engine only affects initial layout seeding (first-init with no existing layout).
   // Runtime renders ALWAYS use generateCanvas + host:load-scene (SRP-01, SRP-03).
   const requestedEngine = layout?.metadata?.engine as string | undefined;
   const effectiveEngine =
-    requestedEngine ?? (parseResult.diagram.type === "flowchart" ? "upstream-direct" : "dagre");
+    requestedEngine ??
+    (parseResult.diagram.type === "flowchart"
+      ? "upstream-direct"
+      : parseResult.diagram.type === "stateDiagram-v2"
+        ? "excalidraw"
+        : "dagre");
 
-  // Persist default engine choice for flowcharts when metadata is missing so
-  // subsequent opens are explicit and deterministic.
-  if (parseResult.diagram.type === "flowchart" && requestedEngine === undefined) {
+  // Persist default engine choice when metadata is missing so subsequent opens
+  // are explicit and deterministic.
+  if (
+    (parseResult.diagram.type === "flowchart" || parseResult.diagram.type === "stateDiagram-v2") &&
+    requestedEngine === undefined
+  ) {
+    const engine =
+      parseResult.diagram.type === "stateDiagram-v2" ? "excalidraw" : "upstream-direct";
     layout = {
       ...layout,
       metadata: {
         ...(layout.metadata ?? {}),
-        engine: "upstream-direct",
+        engine,
       },
     };
-    await writeLayout(layoutPath, layout);
+    if (!await writeLayoutIfCurrent(layoutPath, layout)) return;
   }
 
   const scene = await Promise.resolve(generateCanvas(parseResult.diagram, layout));
-  await writeLayout(layoutPath, scene.layout);
+  if (isStale()) return;
+  layoutDebug({
+    category: "panel-load",
+    message: "generated canvas scene",
+    data: {
+      mmdPath: state.mmdPath,
+      sceneElementCount: scene.elements.length,
+      sceneLayoutSummary: summarizeLayout(scene.layout),
+      loadToken,
+    },
+  });
+  if (!await writeLayoutIfCurrent(layoutPath, scene.layout)) return;
   state._currentLayout = scene.layout;
+  armSceneLoadEchoSuppression(state);
 
   const apiElements = toExcalidrawPayload(scene.elements);
 
@@ -318,7 +532,17 @@ export async function loadAndPost(
     elements: apiElements,
     appState: {},
   };
-  state._panel.webview.postMessage(msg);
+  layoutDebug({
+    category: "panel-load",
+    message: "posted host:load-scene",
+    data: {
+      mmdPath: state.mmdPath,
+      payloadElementCount: apiElements.length,
+      echoSuppressionUntil: state._sceneLoadEchoSuppressUntil,
+      loadToken,
+    },
+  });
+  await postMessageIfCurrent(msg);
 }
 
 // ── handleWebviewMessage ──────────────────────────────────────────────────────
@@ -354,12 +578,38 @@ export function handleWebviewMessage(
       break;
     }
     case "canvas:node-moved": {
+      const suppressed = shouldSuppressSceneLoadEcho(state);
+      layoutDebug({
+        category: "panel-mutation",
+        message: "canvas:node-moved received",
+        data: {
+          nodeId: msg.nodeId,
+          x: msg.x,
+          y: msg.y,
+          suppressed,
+          suppressUntil: state._sceneLoadEchoSuppressUntil ?? 0,
+        },
+      });
+      if (suppressed) break;
       const handler = state._handleNodeMoved ??
         ((id: string, x: number, y: number) => handleNodeMoved(state, id, x, y));
       handler(msg.nodeId, msg.x, msg.y);
       break;
     }
     case "canvas:node-resized": {
+      const suppressed = shouldSuppressSceneLoadEcho(state);
+      layoutDebug({
+        category: "panel-mutation",
+        message: "canvas:node-resized received",
+        data: {
+          nodeId: msg.nodeId,
+          w: msg.w,
+          h: msg.h,
+          suppressed,
+          suppressUntil: state._sceneLoadEchoSuppressUntil ?? 0,
+        },
+      });
+      if (suppressed) break;
       const handler = state._handleNodeResized ??
         ((id: string, w: number, h: number) => handleNodeResized(state, id, w, h));
       handler(msg.nodeId, msg.w, msg.h);
@@ -385,6 +635,20 @@ export function handleWebviewMessage(
       // Validates canvas:edge-routed payload, persists waypoints to layout.json
       // via patchEdge, and schedules a debounced re-render.
       // Source: diagram-update-plan.md §12.5 (P-B)
+      {
+        const suppressed = shouldSuppressSceneLoadEcho(state);
+        layoutDebug({
+          category: "panel-mutation",
+          message: "canvas:edge-routed received",
+          data: {
+            edgeKey: msg.edgeKey,
+            waypointCount: msg.waypoints?.length ?? 0,
+            suppressed,
+            suppressUntil: state._sceneLoadEchoSuppressUntil ?? 0,
+          },
+        });
+        if (suppressed) break;
+      }
       persistEdgeWaypoints(state, msg);
       break;
     case "canvas:node-added":

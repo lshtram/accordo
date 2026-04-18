@@ -83,8 +83,8 @@ export interface WebviewUI {
  * Standalone Excalidraw export utilities, injected by webview.ts.
  * In production, these wrap @excalidraw/excalidraw exportToSvg/exportToBlob,
  * fed by api.getSceneElements() + api.getAppState().
- * Both return serialized strings (SVG markup or base64 PNG) so message-handler
- * never touches DOM or Blob APIs.
+ * exportToSvg returns serialized SVG markup; exportToBlob returns base64 PNG.
+ * message-handler encodes SVG to base64 before posting canvas:export-ready.
  */
 export interface ExcalidrawExportFns {
   /** Returns serialized SVG markup string. */
@@ -115,6 +115,16 @@ export interface EdgeRoutedMutation {
   type: "edge-routed";
   edgeKey: string;
   waypoints: Array<{ x: number; y: number }>;
+}
+
+/** UTF-8-safe base64 encoder for SVG text payloads. */
+function encodeUtf8ToBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
 }
 
 // ── applyHostMessage ──────────────────────────────────────────────────────────
@@ -216,7 +226,8 @@ export async function applyHostMessage(
       const elements = api.getSceneElements();
       const appState = api.getAppState();
       if (msg.format === "svg") {
-        const data = await exportFns.exportToSvg(elements, appState);
+        const svgText = await exportFns.exportToSvg(elements, appState);
+        const data = encodeUtf8ToBase64(svgText);
         ui.postMessage({ type: "canvas:export-ready", format: "svg", data });
       } else {
         const data = await exportFns.exportToBlob(elements, appState);

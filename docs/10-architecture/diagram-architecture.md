@@ -1307,6 +1307,42 @@ packages/diagram/
 
 **Estimated total implementation:** ~3000 lines for diag.1, ~5000 lines for diag.1+diag.2.
 
+### 17.1 diag.2.6 — State Diagram Upstream Placement (SUP-S)
+
+**Scope:** Extend the `@excalidraw/mermaid-to-excalidraw` layout engine to accept `stateDiagram-v2` sources and map upstream geometry back to Accordo's identity model, including pseudostate recognition.
+
+**New modules (layout/):**
+
+| File | Responsibility | Owner |
+|------|---------------|-------|
+| `state-identity.ts` | Pseudostate detection (`matchStatePseudostates`), geometry classification (`isPseudostateGeometry`), state-specific layout mapping (`mapStateGeometryToLayout`) | layout/ — state diagram identity |
+| `layout-debug.ts` | Permanent gated structured logging for the layout pipeline; zero overhead when disabled | layout/ — cross-cutting instrumentation |
+
+**Call graph (stateDiagram-v2 path):**
+
+```
+excalidraw-engine.ts::layoutWithExcalidraw()
+  │  accepts parsed.type === "stateDiagram-v2"
+  │  calls parseMermaidToExcalidraw(source)
+  │  calls extractGeometry(elements)
+  ▼
+element-mapper.ts::mapGeometryToLayout()
+  │  detects parsed.type === "stateDiagram-v2"
+  │  delegates to ──►
+  ▼
+state-identity.ts::mapStateGeometryToLayout()
+  │  calls matchStatePseudostates() for [initial]/[final] nodes
+  │  calls isPseudostateGeometry() per upstream element
+  │  returns MappingResult with state-aware identity
+  ▼
+layout-debug.ts::layoutDebug()   ◄── cross-cutting, called at each stage when gate is open
+```
+
+**Ownership boundaries:**
+- `state-identity.ts` owns all state-diagram-specific identity logic. Generic mapping stays in `element-mapper.ts`.
+- `layout-debug.ts` is shared infrastructure — any layout module may call it. It is permanent and ships with the extension (SUP-S06).
+- `excalidraw-engine.ts` owns the type gate — it decides which `parsed.type` values enter the upstream pipeline.
+
 ---
 
 ## 18. Implementation Roadmap

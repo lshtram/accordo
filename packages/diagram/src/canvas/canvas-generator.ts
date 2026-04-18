@@ -1052,12 +1052,17 @@ export function generateCanvas(
       ? [toCluster.x + toCluster.w / 2, toCluster.y + toCluster.h / 2]
       : [toLayout.x + toLayout.w / 2, toLayout.y + toLayout.h / 2];
 
-    // FC-08b/FC-08c: For cluster edges, route using explicit centre-to-centre
-    // points. This bypasses routeEdge's border clamping and ensures the arrow
-    // endpoint resolves to the cluster bbox centre (per FC-08b/08c requirement).
-    // For normal node edges, use routeEdge with direction-aware routing.
+    // FC-08b/FC-08c: Cluster edges default to centre-to-centre routing so the
+    // endpoint resolves to the cluster bbox centre. But when explicit waypoints
+    // exist, they are authoritative and must survive reopen/re-render unchanged.
     const routeResult = (hasFromCluster || hasToCluster)
-      ? { points: [sc, tc] as [number, number][], startBinding: null, endBinding: null }
+      ? (waypoints.length > 0
+        ? {
+            points: [sc, ...waypoints.map((wp) => [wp.x, wp.y] as [number, number]), tc],
+            startBinding: null,
+            endBinding: null,
+          }
+        : { points: [sc, tc] as [number, number][], startBinding: null, endBinding: null })
       : routeEdge(routing, waypoints, sourceBB, targetBB, parsed.direction);
 
     // Excalidraw arrow points must be relative to the element's x,y.

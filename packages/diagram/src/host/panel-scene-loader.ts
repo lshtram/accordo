@@ -20,6 +20,7 @@ import { reconcile } from "../reconciler/reconciler.js";
 import { generateCanvas } from "../canvas/canvas-generator.js";
 import { computeInitialLayout } from "../layout/auto-layout.js";
 import type { LayoutOptions } from "../layout/auto-layout.js";
+import { layoutWithExcalidraw } from "../layout/excalidraw-engine.js";
 import { toExcalidrawPayload } from "../webview/scene-adapter.js";
 import { dumpExcalidrawJson } from "../webview/debug-diagram-json.js";
 import type { LayoutStore, SpatialDiagramType, NodeLayout, EdgeLayout } from "../types.js";
@@ -30,6 +31,18 @@ import type {
 } from "../webview/protocol.js";
 import { PanelFileNotFoundError } from "../webview/panel.js";
 import { renderUpstreamDirect } from "../layout/upstream-direct.js";
+
+const loadTokens = new WeakMap<object, number>();
+
+function beginLoad(state: object): number {
+  const token = (loadTokens.get(state) ?? 0) + 1;
+  loadTokens.set(state, token);
+  return token;
+}
+
+function isCurrentLoad(state: object, token: number): boolean {
+  return loadTokens.get(state) === token;
+}
 
 // ── Cosmic constant: upstream-direct seed scale ────────────────────────────────
 //
@@ -169,11 +182,23 @@ export async function loadAndPost(ctx: HostContext): Promise<void> {
 
   const state = ctx.state;
   const log = ctx.log ?? ((_msg: string): void => { /* no-op */ });
+  const loadToken = beginLoad(state);
+
+  const isStale = (): boolean => !isCurrentLoad(state, loadToken);
+  const writeLayoutIfCurrent = async (layoutPath: string, layout: LayoutStore): Promise<boolean> => {
+    if (isStale()) return false;
+    await writeLayout(layoutPath, layout);
+    return !isStale();
+  };
+  const postMessageIfCurrent = async (message: HostLoadSceneMessage | HostErrorOverlayMessage): Promise<void> => {
+    if (isStale()) return;
+    await ctx.panel.webview.postMessage(message);
+  };
 
   // Empty path means the panel has no file — send empty scene.
   if (state.mmdPath === "") {
     const emptyMsg: HostLoadSceneMessage = { type: "host:load-scene", elements: [], appState: {} };
-    await ctx.panel.webview.postMessage(emptyMsg);
+    await postMessageIfCurrent(emptyMsg);
     return;
   }
 
@@ -186,71 +211,100 @@ export async function loadAndPost(ctx: HostContext): Promise<void> {
   }
 
   const parseResult = await parseMermaid(source);
+  if (isStale()) return;
   if (!parseResult.valid) {
     const errMsg: HostErrorOverlayMessage = {
       type: "host:error-overlay",
       message: parseResult.error.message,
     };
-    await ctx.panel.webview.postMessage(errMsg);
+    await postMessageIfCurrent(errMsg);
     return;
   }
 
   const layoutPath = layoutPathFor(state.mmdPath, state._workspaceRoot);
 
   let layout = await readLayout(layoutPath);
+  if (isStale()) return;
   const hadPersistedLayout = layout !== null;
   if (layout === null) {
     const requestedEngine = undefined;
     const effectiveEngine =
-      requestedEngine ?? (parseResult.diagram.type === "flowchart" ? "upstream-direct" : "dagre");
-    const isFirstInit = effectiveEngine === "upstream-direct" && parseResult.diagram.type === "flowchart";
+      requestedEngine ??
+      (parseResult.diagram.type === "flowchart"
+        ? "upstream-direct"
+        : parseResult.diagram.type === "stateDiagram-v2"
+          ? "excalidraw"
+          : "dagre");
+    const isFirstInit =
+      (effectiveEngine === "upstream-direct" && parseResult.diagram.type === "flowchart") ||
+      (effectiveEngine === "excalidraw" && parseResult.diagram.type === "stateDiagram-v2");
 
     if (isFirstInit) {
-      try {
-        log("[diag-load] host step3 upstream placement start");
-        const { nodes: upstreamNodes, edges: upstreamEdges, clusters: upstreamClusters } = await runUpstreamPlacement(
-          source,
-          new Set(parseResult.diagram.clusters?.map((c) => c.id) ?? []),
-        );
-        // Apply seed scale uniformly to all geometry before writing layout.
-        // This preserves spatial relationships between nodes, clusters, and edges.
-        applySeedScale(upstreamNodes, upstreamEdges, upstreamClusters);
-        const nodes: Record<string, NodeLayout> = {};
-        for (const [id, pos] of Object.entries(upstreamNodes)) {
-          nodes[id] = { x: pos.x, y: pos.y, w: pos.w, h: pos.h, style: {} };
-        }
-        const edges: Record<string, EdgeLayout> = {};
-        for (const [key, edgeData] of Object.entries(upstreamEdges)) {
-          edges[key] = { routing: "auto", waypoints: edgeData.waypoints, style: {} };
-        }
-        const clusters = Object.fromEntries(
-          (parseResult.diagram.clusters ?? []).map((c) => {
-            const up = upstreamClusters[c.id];
-            return [
-              c.id,
-              {
-                x: up?.x ?? 0,
-                y: up?.y ?? 0,
-                w: up?.w ?? 0,
-                h: up?.h ?? 0,
-                label: c.label,
-                style: {},
-              },
-            ];
-          }),
-        );
-        layout = createEmptyLayout(parseResult.diagram.type as SpatialDiagramType);
-        layout = { ...layout, nodes, edges, clusters };
-        await writeLayout(layoutPath, layout);
-        log(`[diag-load] host step3 upstream seeded layout: nodes=${Object.keys(layout.nodes).length} edges=${Object.keys(layout.edges).length}`);
-      } catch (err) {
-        log(`[diag-load] host step3 upstream failed, dagre fallback: ${String(err)}`);
+      if (parseResult.diagram.type === "stateDiagram-v2") {
+        // ── stateDiagram-v2 first-init: use layoutWithExcalidraw (SUP-S01) ─────
         try {
-          const dir = parseResult.diagram.direction;
-          const rankdir = (dir === "TD" ? "TB" : dir) as LayoutOptions["rankdir"];
-          layout = computeInitialLayout(parseResult.diagram, { rankdir });
-        } catch {
+          log("[diag-load] host step3 excalidraw engine for stateDiagram-v2");
+          layout = await layoutWithExcalidraw(source, parseResult.diagram);
+          if (!await writeLayoutIfCurrent(layoutPath, layout)) return;
+          log(`[diag-load] host step3 excalidraw layout: nodes=${Object.keys(layout.nodes).length} edges=${Object.keys(layout.edges).length}`);
+        } catch (err) {
+          log(`[diag-load] host step3 excalidraw failed, dagre fallback: ${String(err)}`);
+          try {
+            const dir = parseResult.diagram.direction;
+            const rankdir = (dir === "TD" ? "TB" : dir) as LayoutOptions["rankdir"];
+            layout = computeInitialLayout(parseResult.diagram, { rankdir });
+          } catch {
+            layout = createEmptyLayout(parseResult.diagram.type as SpatialDiagramType);
+          }
+        }
+      } else {
+        // ── Flowchart first-init: use renderUpstreamDirect + seed scale ─────────
+        try {
+          log("[diag-load] host step3 upstream placement start");
+          const { nodes: upstreamNodes, edges: upstreamEdges, clusters: upstreamClusters } = await runUpstreamPlacement(
+            source,
+            new Set(parseResult.diagram.clusters?.map((c) => c.id) ?? []),
+          );
+          // Apply seed scale uniformly to all geometry before writing layout.
+          // This preserves spatial relationships between nodes, clusters, and edges.
+          applySeedScale(upstreamNodes, upstreamEdges, upstreamClusters);
+          const nodes: Record<string, NodeLayout> = {};
+          for (const [id, pos] of Object.entries(upstreamNodes)) {
+            nodes[id] = { x: pos.x, y: pos.y, w: pos.w, h: pos.h, style: {} };
+          }
+          const edges: Record<string, EdgeLayout> = {};
+          for (const [key, edgeData] of Object.entries(upstreamEdges)) {
+            edges[key] = { routing: "auto", waypoints: edgeData.waypoints, style: {} };
+          }
+          const clusters = Object.fromEntries(
+            (parseResult.diagram.clusters ?? []).map((c) => {
+              const up = upstreamClusters[c.id];
+              return [
+                c.id,
+                {
+                  x: up?.x ?? 0,
+                  y: up?.y ?? 0,
+                  w: up?.w ?? 0,
+                  h: up?.h ?? 0,
+                  label: c.label,
+                  style: {},
+                },
+              ];
+            }),
+          );
           layout = createEmptyLayout(parseResult.diagram.type as SpatialDiagramType);
+          layout = { ...layout, nodes, edges, clusters };
+          if (!await writeLayoutIfCurrent(layoutPath, layout)) return;
+          log(`[diag-load] host step3 upstream seeded layout: nodes=${Object.keys(layout.nodes).length} edges=${Object.keys(layout.edges).length}`);
+        } catch (err) {
+          log(`[diag-load] host step3 upstream failed, dagre fallback: ${String(err)}`);
+          try {
+            const dir = parseResult.diagram.direction;
+            const rankdir = (dir === "TD" ? "TB" : dir) as LayoutOptions["rankdir"];
+            layout = computeInitialLayout(parseResult.diagram, { rankdir });
+          } catch {
+            layout = createEmptyLayout(parseResult.diagram.type as SpatialDiagramType);
+          }
         }
       }
     } else {
@@ -271,42 +325,56 @@ export async function loadAndPost(ctx: HostContext): Promise<void> {
   if (hadPersistedLayout && state._lastSource !== "" && state._lastSource !== source) {
     try {
       const result = await reconcile(state._lastSource, source, layout);
+      if (isStale()) return;
       layout = result.layout;
-      await writeLayout(layoutPath, layout);
+      if (!await writeLayoutIfCurrent(layoutPath, layout)) return;
     } catch {
       // Reconcile errors are non-fatal; proceed with existing layout
     }
   }
 
+  if (isStale()) return;
   state._lastSource = source;
 
   // UD-02: Engine selection policy.
-  // Default for flowcharts is upstream-direct unless explicitly overridden
-  // via layout.metadata.engine = "dagre".
+  // Default for flowcharts is upstream-direct, for stateDiagram-v2 is excalidraw,
+  // unless explicitly overridden via layout.metadata.engine.
   // The chosen engine only affects initial layout seeding (first-init with no existing layout).
   // Runtime renders ALWAYS use generateCanvas + host:load-scene (SRP-01, SRP-03).
   const requestedEngine = layout?.metadata?.engine as string | undefined;
   const effectiveEngine =
-    requestedEngine ?? (parseResult.diagram.type === "flowchart" ? "upstream-direct" : "dagre");
+    requestedEngine ??
+    (parseResult.diagram.type === "flowchart"
+      ? "upstream-direct"
+      : parseResult.diagram.type === "stateDiagram-v2"
+        ? "excalidraw"
+        : "dagre");
 
-  // Persist default engine choice for flowcharts when metadata is missing so
-  // subsequent opens are explicit and deterministic.
-  if (parseResult.diagram.type === "flowchart" && requestedEngine === undefined) {
+  // Persist default engine choice when metadata is missing so subsequent opens
+  // are explicit and deterministic.
+  if (
+    (parseResult.diagram.type === "flowchart" || parseResult.diagram.type === "stateDiagram-v2") &&
+    requestedEngine === undefined
+  ) {
+    const engine =
+      parseResult.diagram.type === "stateDiagram-v2" ? "excalidraw" : "upstream-direct";
     layout = {
       ...layout,
       metadata: {
         ...(layout.metadata ?? {}),
-        engine: "upstream-direct",
+        engine,
       },
     };
-    await writeLayout(layoutPath, layout);
+    if (!await writeLayoutIfCurrent(layoutPath, layout)) return;
   }
 
   // Single runtime render path: ALWAYS use generateCanvas + host:load-scene.
-  // mermaid-to-excalidraw seeding (when upstream-direct) happens at first-init
-  // via panel-core.ts runUpstreamPlacement; the host side render path is unified.
+  // Upstream/excalidraw seeding for first-init happens here (panel-scene-loader.ts)
+  // for stateDiagram-v2 (via layoutWithExcalidraw) and flowcharts (via renderUpstreamDirect).
+  // Runtime renders always go through generateCanvas + host:load-scene (SRP-01, SRP-03).
   const scene = await Promise.resolve(generateCanvas(parseResult.diagram, layout));
-  await writeLayout(layoutPath, scene.layout);
+  if (isStale()) return;
+  if (!await writeLayoutIfCurrent(layoutPath, scene.layout)) return;
   state._currentLayout = scene.layout;
 
   const apiElements = toExcalidrawPayload(scene.elements);
@@ -325,5 +393,5 @@ export async function loadAndPost(ctx: HostContext): Promise<void> {
     elements: apiElements,
     appState: {},
   };
-  await ctx.panel.webview.postMessage(msg);
+  await postMessageIfCurrent(msg);
 }

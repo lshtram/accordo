@@ -63,6 +63,10 @@ function makeExportFns(): ExcalidrawExportFns & {
   };
 }
 
+function decodeBase64Utf8(input: string): string {
+  return Buffer.from(input, "base64").toString("utf8");
+}
+
 const ELEMENTS: ExcalidrawAPIElement[] = [
   {
     id: "exc-1",
@@ -129,9 +133,32 @@ describe("applyHostMessage", () => {
       expect.objectContaining({
         type: "canvas:export-ready",
         format: "svg",
-        data: "<svg />",
+        data: "PHN2ZyAvPg==",
       }),
     );
+  });
+
+  it("WF-03b: host:request-export svg encodes non-ASCII SVG text as UTF-8-safe base64", async () => {
+    const api = makeHandle();
+    const ui = makeUI();
+    const exportFns = makeExportFns();
+    exportFns.exportToSvg.mockResolvedValueOnce("<svg><text>עברית ✓</text></svg>");
+    const msg = {
+      type: "host:request-export",
+      format: "svg",
+    } as HostToWebviewMessage;
+
+    await applyHostMessage(msg, api, ui, exportFns);
+
+    const posted = ui.postMessage.mock.calls[0]?.[0] as {
+      type: string;
+      format: string;
+      data: string;
+    };
+    expect(posted.type).toBe("canvas:export-ready");
+    expect(posted.format).toBe("svg");
+    expect(posted.data).not.toBe("<svg><text>עברית ✓</text></svg>");
+    expect(decodeBase64Utf8(posted.data)).toBe("<svg><text>עברית ✓</text></svg>");
   });
 
   it("WF-04: host:request-export png → calls exportToBlob and posts canvas:export-ready", async () => {

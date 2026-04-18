@@ -122,6 +122,30 @@ describe("extractGeometry — ELM-01: accepts unknown[] boundary", () => {
     expect(geo.groupId).toBe("g1");
   });
 
+  it("ELM-01: extracts label.text when upstream label is an object", () => {
+    const skeletons: readonly unknown[] = [
+      {
+        type: "rectangle",
+        x: 12,
+        y: 34,
+        width: 90,
+        height: 45,
+        label: { text: "Idle" },
+      },
+    ];
+
+    const [geo] = extractGeometry(skeletons);
+
+    expect(geo).toMatchObject({
+      label: "Idle",
+      x: 12,
+      y: 34,
+      width: 90,
+      height: 45,
+      type: "rectangle",
+    });
+  });
+
   it("ELM-01: elements without a label text property are excluded", () => {
     // Shape element without a label text — no label property at all
     const skeletons: readonly unknown[] = [
@@ -378,6 +402,22 @@ describe("extractGeometry — ELM-02: filters to supported shape types", () => {
     ];
     const result = extractGeometry(supported as readonly unknown[]);
     expect(result).toHaveLength(4);
+  });
+
+  it("ELM-02: unlabeled ellipse pseudostates are passed through", () => {
+    const result = extractGeometry([
+      { type: "ellipse", x: 5, y: 6, width: 24, height: 24 },
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      label: "",
+      type: "ellipse",
+      x: 5,
+      y: 6,
+      width: 24,
+      height: 24,
+    });
   });
 
   it("ELM-02: text, arrow, line, freedraw are excluded", () => {

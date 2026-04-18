@@ -144,6 +144,12 @@ export interface ClusterLayout {
   label: string;
   /** Per-cluster visual style overrides. */
   style: ClusterStyle;
+  /**
+   * Parent cluster ID for nested composite states.
+   * Undefined for top-level clusters.
+   * SUP-S03: propagated from ParsedCluster.parent when mapping upstream geometry.
+   */
+  parent?: string;
 }
 
 /**

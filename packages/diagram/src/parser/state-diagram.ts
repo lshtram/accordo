@@ -133,7 +133,7 @@ export function parseStateDiagram(db: StateDiagramDb): ParsedDiagram {
 
     nodes.set(node.id, {
       id: node.id,
-      label: node.label,
+      label: node.shape === "stateStart" || node.shape === "stateEnd" ? "" : node.label,
       shape: SHAPE_MAP[node.shape] ?? "rounded",
       classes,
       cluster: nodeToCluster.get(node.id),

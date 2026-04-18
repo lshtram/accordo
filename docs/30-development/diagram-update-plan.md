@@ -711,5 +711,19 @@ function resolveEdgeRoundness(
 - [x] P-C: reassess broader mermaid-to-excalidraw expansion — decision: upstream likely supports class/state/ER/sequence structured output; keep Accordo implementation flowchart-only for now, expand later by batch
 - [ ] Decide whether sequence diagrams should enter Accordo’s editable-surface scope
 - [ ] Revalidate upstream support for mindmap/block-beta before planning those engines around mermaid-to-excalidraw
-- [ ] Update `docs/module-map-diagram.md` for the new engine modules
-- [ ] Update `docs/10-architecture/diagram-architecture.md` for dual-engine layout flow
+- [x] Update `docs/module-map-diagram.md` for the new engine modules
+- [x] Update `docs/10-architecture/diagram-architecture.md` for dual-engine layout flow
+
+### diag.2.6 — State Diagram Upstream Placement (SUP-S) — Phase A
+
+**Requirements:** SUP-S01..SUP-S07 in `docs/20-requirements/requirements-diagram.md`
+
+**Phase A stubs (compilable, not implemented):**
+- `layout/state-identity.ts` — `matchStatePseudostates()`, `isPseudostateGeometry()`, `mapStateGeometryToLayout()` — all throw "not implemented"
+- `layout/element-mapper.ts` — dispatch hook: when `parsed.type === "stateDiagram-v2"`, delegates to `mapStateGeometryToLayout()`
+- `layout/excalidraw-engine.ts` — type gate widened to accept `"stateDiagram-v2"` alongside `"flowchart"`
+- `layout/layout-debug.ts` — permanent gated instrumentation (SUP-S06); ships with extension
+
+**Architecture docs updated:**
+- `docs/10-architecture/diagram-architecture.md` §17.1 — call graph, ownership boundaries
+- `docs/module-map-diagram.md` — Key Modules table + Internal Boundaries entries

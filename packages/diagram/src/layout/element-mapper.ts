@@ -10,6 +10,7 @@
  */
 
 import type { ParsedDiagram, NodeLayout, ClusterLayout } from "../types.js";
+import { mapStateGeometryToLayout } from "./state-identity.js";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -89,9 +90,11 @@ export function extractGeometry(
 
     const typed = skeleton as Record<string, unknown>;
 
-    // label/text is required — elements without it are not mappable
-    const label = extractLabel(typed);
-    if (!label) {
+    // label/text is used for matching regular shapes.
+    // For circle/ellipse pseudostate candidates, allow through even with no label —
+    // isPseudostateGeometry() downstream will classify them by size+shape.
+    const label = extractLabel(typed) ?? (isPseudostateType(typed.type) ? "" : undefined);
+    if (label === undefined) {
       continue;
     }
 
@@ -129,6 +132,11 @@ export function mapGeometryToLayout(
   geometries: readonly UpstreamGeometry[],
   parsed: ParsedDiagram,
 ): MappingResult {
+  // ── State diagram dispatch (diag.2.6 SUP-S) ────────────────────────────────
+  if (parsed.type === "stateDiagram-v2") {
+    return mapStateGeometryToLayout(geometries, parsed);
+  }
+
   // Build label → NodeId[] reverse index, preserving insertion order
   const labelToNodeIds = buildLabelIndex(parsed);
 
@@ -270,7 +278,19 @@ function extractLabel(skeleton: Record<string, unknown>): string | undefined {
   if (typeof skeleton.label === "string" && skeleton.label.length > 0) {
     return skeleton.label;
   }
+  if (
+    typeof skeleton.label === "object" &&
+    skeleton.label !== null &&
+    typeof (skeleton.label as { text?: unknown }).text === "string" &&
+    (skeleton.label as { text: string }).text.length > 0
+  ) {
+    return (skeleton.label as { text: string }).text;
+  }
   return undefined;
+}
+
+function isPseudostateType(type: unknown): boolean {
+  return type === "circle" || type === "ellipse";
 }
 
 /**

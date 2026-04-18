@@ -80,4 +80,21 @@ describe("renderUpstreamDirect", () => {
       renderUpstreamDirect("flowchart TD\nA-->B\n")
     ).rejects.toThrow("Unsupported syntax");
   });
+
+  it("UD-04: installs a deterministic 2d canvas measureText shim", async () => {
+    const { parseMermaidToExcalidraw } = await import("@excalidraw/mermaid-to-excalidraw");
+    vi.mocked(parseMermaidToExcalidraw).mockImplementationOnce(async () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      expect(ctx).toBeTruthy();
+      ctx!.font = "20px Arial";
+      const shortWidth = ctx!.measureText("Idle").width;
+      const longWidth = ctx!.measureText("Longer state label").width;
+      expect(shortWidth).toBeGreaterThan(0);
+      expect(longWidth).toBeGreaterThan(shortWidth);
+      return { elements: [] };
+    });
+
+    await renderUpstreamDirect("stateDiagram-v2\n  Idle");
+  });
 });

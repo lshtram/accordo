@@ -23,6 +23,8 @@ VSCode extension that renders Mermaid diagram files (.mmd) as Excalidraw canvase
 | `layout-store.ts` | Reads/writes `.layout.json` files; manages LayoutStore lifecycle | `LayoutStoreManager` class |
 | `layout-store/types.ts` | Layout store file format types | `LayoutStore` JSON schema types |
 | `layout-store/v1.ts` | Layout store v1 read/write implementation | `readLayoutStore()`, `writeLayoutStore()` |
+| `layout/state-identity.ts` | State diagram pseudostate detection and state-specific geometry→identity mapping (diag.2.6 SUP-S) | `matchStatePseudostates()`, `isPseudostateGeometry()`, `mapStateGeometryToLayout()` |
+| `layout/layout-debug.ts` | Permanent gated structured logging for the layout pipeline; zero overhead when disabled (SUP-S06) | `layoutDebug()`, `LAYOUT_DEBUG` gate |
 | `types.ts` (root) | Internal types for the extension (DiagramPanelLike, BridgeAPI) | `BridgeAPI`, `DiagramPanelLike` |
 
 ## Extension Points
@@ -42,3 +44,5 @@ VSCode extension that renders Mermaid diagram files (.mmd) as Excalidraw canvase
 - **`types.ts`** at root contains only pure types with **zero runtime code**. Every other module imports from here. It must not import any module that has side effects.
 - The **`DiagramPanel`** class is created via `DiagramPanel.create()`, `DiagramPanel.createEmpty()`, or `DiagramPanel.createFromExistingPanel()` — callers must use these factory methods, not the constructor directly.
 - **No `vscode` imports outside `webview/panel.ts` and `extension.ts`**: All other modules use the `DiagramPanelLike` interface or direct panel references obtained through the factory methods.
+- **`layout/state-identity.ts`**: Owns all state-diagram-specific identity logic. Generic mapping stays in `element-mapper.ts`; `element-mapper.ts` dispatches to `state-identity.ts` when `parsed.type === "stateDiagram-v2"`.
+- **`layout/layout-debug.ts`**: Permanent gated instrumentation (not temporary). Ships with the extension. Any layout module may call `layoutDebug()`.
