@@ -144,15 +144,14 @@ else
   echo "[start-session] Skipping build (--no-build)"
 fi
 
-# Each project gets its own VS Code user-data-dir so the second `code` invocation
+# Each project gets its own VS Code profile so the second `code` invocation
 # is NOT swallowed by an already-running instance (which would drop all
-# --extensionDevelopmentPath flags).  We derive a stable dir name from the
-# project folder basename so it's deterministic across relaunches.
+# --extensionDevelopmentPath flags).  Using --profile (instead of --user-data-dir)
+# keeps authentication state in the default user data directory where Settings Sync
+# works properly, preventing "signed out" issues across sessions.
 PROJECT_SLUG="$(basename "$PROJECT_DIR")"
-PROJECT_DATA_DIR="${XDG_RUNTIME_DIR:-$HOME/.local/share}/accordo-vscode-$PROJECT_SLUG"
-mkdir -p "$PROJECT_DATA_DIR"
 
-CODE_ARGS=(--user-data-dir "$PROJECT_DATA_DIR")
+CODE_ARGS=(--profile "accordo-$PROJECT_SLUG")
 if [[ "$NEW_WINDOW" -eq 1 ]]; then
   CODE_ARGS+=(--new-window)
 fi
