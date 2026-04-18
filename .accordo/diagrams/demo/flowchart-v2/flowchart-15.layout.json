@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "A": {
+      "x": 12,
+      "y": 12,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "B": {
+      "x": 223,
+      "y": 76,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    }
+  },
+  "edges": {
+    "A->B:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  },
+  "metadata": {
+    "engine": "upstream-direct"
+  }
+}

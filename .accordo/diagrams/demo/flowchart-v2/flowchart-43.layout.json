@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "Node01": {
+      "x": 402.75,
+      "y": 64.5,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "Node02": {
+      "x": 68.25,
+      "y": 64.5,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    }
+  },
+  "edges": {},
+  "clusters": {
+    "SG_RED": {
+      "x": 260.25,
+      "y": 12,
+      "w": 375,
+      "h": 150,
+      "label": "CRITICAL MODULE",
+      "style": {}
+    },
+    "SG_BLUE": {
+      "x": -120.75,
+      "y": 12,
+      "w": 468,
+      "h": 150,
+      "label": "DASHED BORDER MODULE",
+      "style": {}
+    }
+  },
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  },
+  "metadata": {
+    "engine": "upstream-direct"
+  }
+}

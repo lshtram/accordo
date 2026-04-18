@@ -1,0 +1,157 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "AI": {
+      "x": 960,
+      "y": 0,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Hub": {
+      "x": 960,
+      "y": 140,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Bridge": {
+      "x": 960,
+      "y": 280,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Editor": {
+      "x": 0,
+      "y": 420,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Voice": {
+      "x": 240,
+      "y": 420,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Diagram": {
+      "x": 480,
+      "y": 420,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Comments": {
+      "x": 720,
+      "y": 420,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Browser": {
+      "x": 960,
+      "y": 420,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Script": {
+      "x": 1200,
+      "y": 420,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Marp": {
+      "x": 1440,
+      "y": 420,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "MdViewer": {
+      "x": 1680,
+      "y": 420,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    },
+    "Types": {
+      "x": 1920,
+      "y": 420,
+      "w": 180,
+      "h": 60,
+      "style": {}
+    }
+  },
+  "edges": {
+    "AI->Hub:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Hub->Bridge:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Bridge->Editor:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Bridge->Voice:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Bridge->Diagram:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Bridge->Comments:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Bridge->Browser:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Bridge->Script:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Bridge->Marp:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Bridge->MdViewer:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Bridge->Types:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  },
+  "metadata": {
+    "engine": "upstream-direct"
+  }
+}

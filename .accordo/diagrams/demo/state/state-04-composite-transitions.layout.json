@@ -1,0 +1,239 @@
+{
+  "version": "1.0",
+  "diagram_type": "stateDiagram-v2",
+  "nodes": {
+    "root_start": {
+      "x": 192,
+      "y": 12,
+      "w": 21,
+      "h": 21,
+      "style": {}
+    },
+    "First_start": {
+      "x": 180,
+      "y": 164.25,
+      "w": 21,
+      "h": 21,
+      "style": {}
+    },
+    "fir": {
+      "x": 178.5,
+      "y": 297.75,
+      "w": 24,
+      "h": 24,
+      "style": {}
+    },
+    "First_end": {
+      "x": 180,
+      "y": 434.25,
+      "w": 21.02658643222864,
+      "h": 21,
+      "style": {}
+    },
+    "Second_start": {
+      "x": 186.72,
+      "y": 440.97,
+      "w": 7.586586432228637,
+      "h": 7.559999999999999,
+      "style": {}
+    },
+    "sec": {
+      "x": 64.5,
+      "y": 800.25,
+      "w": 24,
+      "h": 24,
+      "style": {}
+    },
+    "Second_end": {
+      "x": 66,
+      "y": 666.75,
+      "w": 21,
+      "h": 21,
+      "style": {}
+    },
+    "Third_start": {
+      "x": 294,
+      "y": 666.75,
+      "w": 21,
+      "h": 21,
+      "style": {}
+    },
+    "thi": {
+      "x": 292.5,
+      "y": 800.25,
+      "w": 24,
+      "h": 24,
+      "style": {}
+    },
+    "Third_end": {
+      "x": 66,
+      "y": 936.75,
+      "w": 21.02658643222864,
+      "h": 21,
+      "style": {}
+    }
+  },
+  "edges": {
+    "root_start->First:0": {
+      "routing": "direct",
+      "waypoints": [
+        {
+          "x": 190.5,
+          "y": 194.625
+        },
+        {
+          "x": 190.6245,
+          "y": 241.6245
+        }
+      ],
+      "style": {}
+    },
+    "First->Second:0": {
+      "routing": "direct",
+      "waypoints": [
+        {
+          "x": 119.7495,
+          "y": 504.126
+        },
+        {
+          "x": 94.7505,
+          "y": 565.476
+        }
+      ],
+      "style": {}
+    },
+    "First->Third:0": {
+      "routing": "direct",
+      "waypoints": [
+        {
+          "x": 285.2505,
+          "y": 504.126
+        },
+        {
+          "x": 310.2495,
+          "y": 565.476
+        }
+      ],
+      "style": {}
+    },
+    "First_start->fir:0": {
+      "routing": "direct",
+      "waypoints": [
+        {
+          "x": 191.1255,
+          "y": 331.7505
+        },
+        {
+          "x": 190.6245,
+          "y": 378.1245
+        }
+      ],
+      "style": {}
+    },
+    "fir->First_end:0": {
+      "routing": "direct",
+      "waypoints": [
+        {
+          "x": 202.5,
+          "y": 39.2505
+        },
+        {
+          "x": 202.5,
+          "y": 70.5
+        }
+      ],
+      "style": {}
+    },
+    "Second_start->sec:0": {
+      "routing": "direct",
+      "waypoints": [
+        {
+          "x": 76.5,
+          "y": 697.125
+        },
+        {
+          "x": 76.6245,
+          "y": 744.1244999999999
+        }
+      ],
+      "style": {}
+    },
+    "sec->Second_end:0": {
+      "routing": "direct",
+      "waypoints": [
+        {
+          "x": 77.1255,
+          "y": 834.2505000000001
+        },
+        {
+          "x": 76.6245,
+          "y": 880.6244999999999
+        }
+      ],
+      "style": {}
+    },
+    "Third_start->thi:0": {
+      "routing": "direct",
+      "waypoints": [
+        {
+          "x": 304.5,
+          "y": 697.125
+        },
+        {
+          "x": 304.6245,
+          "y": 744.1244999999999
+        }
+      ],
+      "style": {}
+    },
+    "thi->Third_end:0": {
+      "routing": "direct",
+      "waypoints": [
+        {
+          "x": 305.1255,
+          "y": 834.2505000000001
+        },
+        {
+          "x": 304.6245,
+          "y": 880.6244999999999
+        }
+      ],
+      "style": {}
+    }
+  },
+  "clusters": {
+    "Third": {
+      "x": 210,
+      "y": 538.5,
+      "w": 189,
+      "h": 505.5,
+      "label": "Third",
+      "style": {}
+    },
+    "Second": {
+      "x": -18,
+      "y": 538.5,
+      "w": 189,
+      "h": 505.5,
+      "label": "Second",
+      "style": {}
+    },
+    "First": {
+      "x": 96,
+      "y": 36,
+      "w": 189,
+      "h": 505.5,
+      "label": "First",
+      "style": {}
+    }
+  },
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  },
+  "metadata": {
+    "engine": "excalidraw"
+  }
+}

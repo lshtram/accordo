@@ -1,0 +1,170 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "c1": {
+      "x": 64.5,
+      "y": 49.5,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "a2": {
+      "x": 445.5,
+      "y": 169.5,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "a1": {
+      "x": 445.5,
+      "y": 49.5,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "b1": {
+      "x": 315.75,
+      "y": 379.5,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "b2": {
+      "x": 518.25,
+      "y": 379.5,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "c2": {
+      "x": 64.5,
+      "y": 586.5,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    }
+  },
+  "edges": {
+    "c1->a2:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 158.25,
+          "y": 132
+        }
+      ],
+      "style": {}
+    },
+    "a1->a2:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 490.5,
+          "y": 132
+        }
+      ],
+      "style": {}
+    },
+    "b1->b2:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 462,
+          "y": 402
+        }
+      ],
+      "style": {}
+    },
+    "c1->c2:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 75.75,
+          "y": 132
+        },
+        {
+          "x": 75.75,
+          "y": 192
+        },
+        {
+          "x": 75.75,
+          "y": 252
+        },
+        {
+          "x": 75.75,
+          "y": 289.5
+        },
+        {
+          "x": 75.75,
+          "y": 419.25
+        },
+        {
+          "x": 75.75,
+          "y": 549
+        }
+      ],
+      "style": {}
+    },
+    "one->two:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 490.5,
+          "y": 289.5
+        }
+      ],
+      "style": {}
+    },
+    "three->two:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "two->c2:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 143.25,
+          "y": 549
+        }
+      ],
+      "style": {}
+    }
+  },
+  "clusters": {
+    "one": {
+      "x": 393,
+      "y": 12,
+      "w": 195,
+      "h": 240,
+      "label": "one",
+      "style": {}
+    },
+    "two": {
+      "x": 259.5,
+      "y": 327,
+      "w": 405,
+      "h": 150,
+      "label": "two",
+      "style": {}
+    },
+    "three": {
+      "x": 12,
+      "y": 12,
+      "w": 195,
+      "h": 657,
+      "label": "three",
+      "style": {}
+    }
+  },
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  },
+  "metadata": {
+    "engine": "upstream-direct"
+  }
+}

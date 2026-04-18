@@ -1,0 +1,61 @@
+{
+  "version": "1.0",
+  "diagram_type": "stateDiagram-v2",
+  "nodes": {
+    "root_start": {
+      "x": 9,
+      "y": 8,
+      "w": 14,
+      "h": 14,
+      "style": {}
+    },
+    "Idle": {
+      "x": 8,
+      "y": 72,
+      "w": 16,
+      "h": 16,
+      "style": {}
+    },
+    "Active": {
+      "x": 8,
+      "y": 138,
+      "w": 16,
+      "h": 16,
+      "style": {}
+    },
+    "root_end": {
+      "x": 9,
+      "y": 204,
+      "w": 14.017724288152426,
+      "h": 14,
+      "style": {}
+    }
+  },
+  "edges": {
+    "root_start->Idle:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Idle->Active:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Active->root_end:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  },
+  "metadata": {
+    "engine": "excalidraw"
+  }
+}

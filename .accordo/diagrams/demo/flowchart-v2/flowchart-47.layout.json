@@ -1,0 +1,225 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "A": {
+      "x": 94.5,
+      "y": 12,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "B": {
+      "x": 117.75,
+      "y": 132,
+      "w": 45,
+      "h": 45,
+      "style": {}
+    },
+    "C": {
+      "x": 12,
+      "y": 252,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "D": {
+      "x": 177,
+      "y": 252,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "E": {
+      "x": 117.75,
+      "y": 372,
+      "w": 45,
+      "h": 45,
+      "style": {}
+    },
+    "F": {
+      "x": 12,
+      "y": 492,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "G": {
+      "x": 177,
+      "y": 492,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "H": {
+      "x": 117.75,
+      "y": 612,
+      "w": 45,
+      "h": 45,
+      "style": {}
+    },
+    "I": {
+      "x": 12,
+      "y": 732,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "J": {
+      "x": 177,
+      "y": 732,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "K": {
+      "x": 94.5,
+      "y": 852,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    }
+  },
+  "edges": {
+    "A->B:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 139.5,
+          "y": 94.5
+        }
+      ],
+      "style": {}
+    },
+    "B->C:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 57,
+          "y": 214.5
+        }
+      ],
+      "style": {}
+    },
+    "B->D:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 222,
+          "y": 214.5
+        }
+      ],
+      "style": {}
+    },
+    "C->E:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 57,
+          "y": 334.5
+        }
+      ],
+      "style": {}
+    },
+    "D->E:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 222,
+          "y": 334.5
+        }
+      ],
+      "style": {}
+    },
+    "E->F:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 57,
+          "y": 454.5
+        }
+      ],
+      "style": {}
+    },
+    "E->G:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 222,
+          "y": 454.5
+        }
+      ],
+      "style": {}
+    },
+    "F->H:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 57,
+          "y": 574.5
+        }
+      ],
+      "style": {}
+    },
+    "G->H:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 222,
+          "y": 574.5
+        }
+      ],
+      "style": {}
+    },
+    "H->I:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 57,
+          "y": 694.5
+        }
+      ],
+      "style": {}
+    },
+    "H->J:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 222,
+          "y": 694.5
+        }
+      ],
+      "style": {}
+    },
+    "I->K:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 57,
+          "y": 814.5
+        }
+      ],
+      "style": {}
+    },
+    "J->K:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 222,
+          "y": 814.5
+        }
+      ],
+      "style": {}
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  },
+  "metadata": {
+    "engine": "upstream-direct"
+  }
+}

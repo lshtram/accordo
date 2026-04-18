@@ -1,0 +1,24 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "id1": {
+      "x": 12,
+      "y": 12,
+      "w": 45,
+      "h": 22.5,
+      "style": {}
+    }
+  },
+  "edges": {},
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  },
+  "metadata": {
+    "engine": "upstream-direct"
+  }
+}

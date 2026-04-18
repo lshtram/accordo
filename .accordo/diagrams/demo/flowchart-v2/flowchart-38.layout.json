@@ -1,0 +1,76 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "A": {
+      "x": 12,
+      "y": 12,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "B": {
+      "x": 163,
+      "y": -54.5,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "C": {
+      "x": 342,
+      "y": 12,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    },
+    "D": {
+      "x": 507,
+      "y": 12,
+      "w": 90,
+      "h": 45,
+      "style": {}
+    }
+  },
+  "edges": {
+    "A->B:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 139.5,
+          "y": 34.5
+        }
+      ],
+      "style": {}
+    },
+    "B->C:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 304.5,
+          "y": 34.5
+        }
+      ],
+      "style": {}
+    },
+    "C->D:0": {
+      "routing": "auto",
+      "waypoints": [
+        {
+          "x": 469.5,
+          "y": 34.5
+        }
+      ],
+      "style": {}
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  },
+  "metadata": {
+    "engine": "upstream-direct"
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "version": "1.0",
+  "diagram_type": "stateDiagram-v2",
+  "nodes": {
+    "root_start": {
+      "x": 52,
+      "y": 8,
+      "w": 14,
+      "h": 14,
+      "style": {}
+    },
+    "Session_start": {
+      "x": 44,
+      "y": 109.5,
+      "w": 14,
+      "h": 14,
+      "style": {}
+    },
+    "Ready": {
+      "x": 43,
+      "y": 198.5,
+      "w": 16,
+      "h": 16,
+      "style": {}
+    },
+    "Busy": {
+      "x": 43,
+      "y": 289.5,
+      "w": 16,
+      "h": 16,
+      "style": {}
+    }
+  },
+  "edges": {
+    "root_start->Session:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Session_start->Ready:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Ready->Busy:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    },
+    "Busy->Ready:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {}
+    }
+  },
+  "clusters": {
+    "Session": {
+      "x": -12,
+      "y": 24,
+      "w": 126,
+      "h": 339,
+      "label": "Session",
+      "style": {}
+    }
+  },
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  },
+  "metadata": {
+    "engine": "excalidraw"
+  }
+}
