@@ -377,7 +377,6 @@ describe("McpHandler", () => {
     });
 
     it("§2.1: tools/call — bridge connected, invoke succeeds → returns content array", async () => {
-      // RED on stub: bridgeServer.invoke() throws "not implemented"
       const { handler: h, bridgeServer } = createHandler([SAMPLE_TOOL]);
       const s = h.createSession();
       vi.spyOn(bridgeServer, "isConnected").mockReturnValue(true);
@@ -499,7 +498,6 @@ describe("McpHandler", () => {
 
     it("§6: tools/call — bridge invoke times out → error -32001", async () => {
       // req-hub §6: "Tool invocation timed out → { code: -32001 }"
-      // RED on stub: bridgeServer.invoke throws "not implemented" (wrong error code)
       const { handler: h, bridgeServer } = createHandler([SAMPLE_TOOL]);
       const s = h.createSession();
       vi.spyOn(bridgeServer, "isConnected").mockReturnValue(true);

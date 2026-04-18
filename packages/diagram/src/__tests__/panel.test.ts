@@ -1,5 +1,5 @@
 /**
- * A15 — DiagramPanel tests (Phase B — all RED, all turn GREEN in Phase C)
+ * A15 — DiagramPanel tests
  *
  * Tests cover the full public contract of webview/panel.ts:
  *   – create() lifecycle                 AP-01..AP-03

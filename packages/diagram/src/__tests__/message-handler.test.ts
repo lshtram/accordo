@@ -1,5 +1,5 @@
 /**
- * A16 — Message handler tests (Phase B — all RED until Phase C)
+ * A16 — Message handler tests
  *
  * Tests cover applyHostMessage() and detectNodeMutations() in
  * webview/message-handler.ts.

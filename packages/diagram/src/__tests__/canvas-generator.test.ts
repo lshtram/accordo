@@ -4,9 +4,6 @@
  * Tests cover the public contract of generateCanvas() in
  * canvas/canvas-generator.ts.
  *
- * Tests are RED in Phase B (stub throws "not implemented").
- * They turn GREEN in Phase C after implementation.
- *
  * BACKFILL NOTE (A10-v2): CG-28..CG-33 were written after per-node style
  * overrides were implemented (implementation-before-test exception agreed by
  * reviewer). The implementation already exists; these tests verify its contract.

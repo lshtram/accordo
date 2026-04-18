@@ -1,5 +1,5 @@
 /**
- * presentation-modularity.test.ts — Phase B failing tests for Presentation + Comments
+ * presentation-modularity.test.ts — tests for Presentation + Comments
  * modularity outcomes.
  *
  * Source: presentation-comments-modularity-A.md §§Frozen + Deferred

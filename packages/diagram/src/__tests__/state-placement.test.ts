@@ -1,5 +1,5 @@
 /**
- * state-placement.test.ts — Phase B failing tests for diag.2.6 SUP-S
+ * state-placement.test.ts — upstream placement tests for diag.2.6 SUP-S
  *
  * Tests the upstream placement integration for stateDiagram-v2:
  *   - First-time layout.json creation (upstream placement)
@@ -472,15 +472,14 @@ describe("SUP-S03: Composite state cluster mapping", () => {
       parsed,
     );
 
-    // SUP-S03: composite state → ClusterLayout with canonical scaled bounds.
-    // UPSTREAM_STATE_03 group normalizes to x=80, y=-28, w=440, h=268,
-    // then the state engine applies the canonical 1.5x scale.
+    // SUP-S03: composite state → ClusterLayout uses the upstream shell geometry
+    // directly, then the state engine applies the canonical 1.5x scale.
     expect(layout.clusters["Session"]).toBeDefined();
     const c = layout.clusters["Session"]!;
-    expect(c.x).toBe(120);
-    expect(c.y).toBe(-42);
-    expect(c.w).toBe(660);
-    expect(c.h).toBe(402);
+    expect(c.x).toBe(150);
+    expect(c.y).toBe(30);
+    expect(c.w).toBe(600);
+    expect(c.h).toBe(300);
     expect(c.label).toBe("Session");
   });
 
@@ -597,10 +596,10 @@ describe("SUP-S05: State-specific post-processing — upstream overrides dagre",
     );
 
     // SUP-S05: cluster bounds stay on the canonical scaled geometry path.
-    expect(layout.clusters["Session"]!.x).toBe(120);
-    expect(layout.clusters["Session"]!.y).toBe(-42);
-    expect(layout.clusters["Session"]!.w).toBe(660);
-    expect(layout.clusters["Session"]!.h).toBe(402);
+    expect(layout.clusters["Session"]!.x).toBe(150);
+    expect(layout.clusters["Session"]!.y).toBe(30);
+    expect(layout.clusters["Session"]!.w).toBe(600);
+    expect(layout.clusters["Session"]!.h).toBe(300);
   });
 
   it("SUP-S05: composite children Y positions match upstream (dagre would differ)", async () => {

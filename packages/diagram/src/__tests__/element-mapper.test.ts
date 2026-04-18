@@ -5,9 +5,6 @@
  * These tests validate the approved design in:
  *   docs/30-development/diagram-update-plan.md §7.2
  *
- * Tests are RED on stubs (each function throws "not implemented").
- * They turn GREEN after Phase C implementation.
- *
  * Requirements:
  *   ELM-01: extractGeometry() accepts unknown[] and returns UpstreamGeometry[]
  *   ELM-02: extractGeometry() filters to supported shape types

@@ -22,8 +22,6 @@
  *   M50-FOCUS-03  Ensures the deck is open (calls accordo.presentation.open if needed)
  *   M50-FOCUS-04  Parses slideIndex from blockId, navigates to that slide
  *   M50-FOCUS-05  Posts comments:focus to webview after navigation settling
- *
- * Test state: ALL tests expected to FAIL with "not implemented" until implementation lands.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";

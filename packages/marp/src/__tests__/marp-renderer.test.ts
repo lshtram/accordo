@@ -8,8 +8,6 @@
  *   M50-RENDER-04  Supports Marp directives: marp: true, theme:, paginate:, _class:, header:, footer:
  *   M50-RENDER-05  Deterministic output for live-reload path (M50-PVD-07 integration in provider tests)
  *   M50-RENDER-06  Processes <!-- notes --> and <!-- speaker_notes --> speaker notes sections
- *
- * Test state on stub: ALL tests expected to FAIL with "not implemented"
  */
 
 import { describe, it, expect } from "vitest";

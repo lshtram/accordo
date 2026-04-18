@@ -1,5 +1,5 @@
 /**
- * Single Render Path Architecture — Phase B Failing Tests
+ * Single Render Path Architecture — tests
  *
  * Architecture summary:
  *   1. Init may use upstream-direct seeding of layout.json (mermaid-to-excalidraw → layout.json)

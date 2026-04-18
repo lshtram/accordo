@@ -20,8 +20,6 @@
  *   M50-PVD-14  Webview initializes Comment SDK via sdk.init() with coordinateToScreen
  *   M50-PVD-15  Webview handles comments:load, comments:add, comments:update, comments:remove, comments:focus
  *   M50-PVD-16  comments:focus handler navigates to slide + calls sdk.openPopover(threadId)
- *
- * Test state: ALL tests expected to FAIL with "not implemented" until implementation lands.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

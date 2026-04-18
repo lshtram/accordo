@@ -1,5 +1,5 @@
 /**
- * M50-WAV — buildWavBuffer + playPcmAudio tests (Phase B — must FAIL before implementation)
+ * M50-WAV — buildWavBuffer + playPcmAudio tests
  *
  * Coverage: M50-WAV-01 through M50-WAV-05
  * Note: createPreSpawnedPlayer and CachedSound removed in v2.0 simplification.

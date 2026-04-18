@@ -10,8 +10,6 @@
  *   M50-STATE-02  Includes isOpen, deckUri, currentSlide, totalSlides, narrationAvailable
  *   M50-STATE-03  Emits updates on open/close, navigation, narration events
  *   M50-STATE-04  Calls bridge.publishState on every state transition
- *
- * Test state: ALL tests expected to FAIL with "not implemented" until implementation lands.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

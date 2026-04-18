@@ -1,7 +1,7 @@
 /**
  * browser-family-modularity.test.ts
  *
- * Phase B failing tests for browser-side extracted modules from the
+ * Tests for browser-side extracted modules from the
  * browser family modularity batch.
  *
  * Tests the extracted module contracts from:
@@ -9,7 +9,6 @@
  *   docs/10-architecture/architecture.md §14-B
  *
  * Each test is labeled with its Phase A requirement ID.
- * All implementation tests fail at assertion level because stubs throw "not implemented".
  *
  * Covered modules (packages/browser):
  *   comment-sync.ts, comment-notifier.ts, relay-lifecycle.ts,

@@ -10,8 +10,6 @@
  *   M50-NAR-03  Narration derived from headings, bullets, speaker notes
  *   M50-NAR-04  Marp notes syntax: <!-- notes --> and <!-- speaker_notes -->
  *   M50-NAR-05  Output is plain text (no markdown), suitable for TTS
- *
- * Test state: ALL tests expected to FAIL with "not implemented" until implementation lands.
  */
 
 import { describe, it, expect } from "vitest";

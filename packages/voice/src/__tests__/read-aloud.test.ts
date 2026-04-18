@@ -1,5 +1,5 @@
 /**
- * M50-RA — accordo_voice_readAloud MCP tool tests (Phase B — must FAIL before implementation)
+ * M50-RA — accordo_voice_readAloud MCP tool tests
  * Coverage: M50-RA-01 through M50-RA-12
  */
 

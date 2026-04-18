@@ -14,8 +14,6 @@
  *   M50-RT-05  Navigation state tracked locally (no server)
  *   M50-RT-06  onSlideChanged fires when webview reports a slide change
  *   M50-RT-07  Adapter emits slide-change events consumed by state publisher
- *
- * Test state: ALL tests expected to FAIL with "not implemented" until implementation lands.
  */
 
 import { describe, it, expect, vi } from "vitest";

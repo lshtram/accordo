@@ -12,8 +12,6 @@
  *   M50-CBR-03  Subscribes to adapter store changes, sends comments:load to webview
  *   M50-CBR-04  Handles missing comments extension gracefully (null adapter = no-op)
  *   M50-CBR-05  blockId encoding: "slide:{slideIndex}:{x.4f}:{y.4f}"
- *
- * Test state: ALL tests expected to FAIL with "not implemented" until implementation lands.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

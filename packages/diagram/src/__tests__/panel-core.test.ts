@@ -1,7 +1,7 @@
 /**
- * A15 — panel-core tests (Phase B — all RED, all turn GREEN in Phase C)
+ * A15 — panel-core tests
  *
- * Tests cover the core logic functions that will be extracted to panel-core.ts:
+ * Tests cover the core logic functions in panel-core.ts:
  *   – loadAndPost               PCore-01..PCore-10
  *   – handleWebviewMessage      PCore-11..PCore-16
  *   – patchLayout               PCore-17..PCore-18

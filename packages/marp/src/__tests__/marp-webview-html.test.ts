@@ -11,8 +11,6 @@
  *   M50-PVD-15  Webview handles comments:load, comments:add, comments:update, comments:remove
  *   M50-PVD-16  comments:focus handler navigates to target slide + sdk.openPopover(threadId)
  *   M50-PVD-17  Alt+click captures normalized coords, encodes blockId, invokes callbacks.onCreate
- *
- * Test state: ALL tests expected to FAIL with assertion errors until implementation lands.
  */
 
 import { describe, it, expect } from "vitest";

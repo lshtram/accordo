@@ -17,8 +17,6 @@
  *   M50-TL-09  generateNarration returns { narrations: [...] } wrapper
  *   M50-NFR-04 Tool handlers return structured errors (no uncaught throws)
  *   M50-NFR-05 All public exports have explicit return types
- *
- * Test state: ALL tests expected to FAIL with "not implemented" until implementation lands.
  */
 
 import { describe, it, expect, vi } from "vitest";

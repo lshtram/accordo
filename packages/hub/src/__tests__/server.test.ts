@@ -301,7 +301,7 @@ describe("HubServer", () => {
       expect(statusCode()).toBe(401);
     });
 
-    it("§2.6: POST /bridge/reauth with correct secret is processed (stub throws, not 401)", () => {
+    it("§2.6: POST /bridge/reauth with correct secret is processed", () => {
       const { res, statusCode } = makeRes();
       try {
         server.handleHttpRequest(
@@ -313,7 +313,7 @@ describe("HubServer", () => {
           res,
         );
       } catch {
-        // handleReauth stub throws — auth passed
+        // auth passed — error after processing
       }
       expect(statusCode()).not.toBe(401);
     });
@@ -366,7 +366,6 @@ describe("HubServer", () => {
   describe("handleHttpRequest — §2.1 Content-Type enforcement", () => {
     it("§2.1: POST /mcp without Content-Type: application/json returns 415", () => {
       // req-hub §2.1: Content-Type must be application/json; missing → 415
-      // RED on stub: handleMcp throws before content-type check → statusCode stays 200
       const { res, statusCode } = makeRes();
       try {
         server.handleHttpRequest(
@@ -377,7 +376,7 @@ describe("HubServer", () => {
           }),
           res,
         );
-      } catch { /* stub throws; after implementation content-type check runs first */ }
+      } catch { /* implementation throws on invalid content-type */ }
       expect(statusCode()).toBe(415);
     });
 
@@ -395,7 +394,7 @@ describe("HubServer", () => {
           }),
           res,
         );
-      } catch { /* stub throws */ }
+      } catch { /* implementation throws on invalid content-type */ }
       expect(statusCode()).toBe(415);
     });
   });
@@ -404,8 +403,7 @@ describe("HubServer", () => {
 
   describe("handleHttpRequest — §2.1 Mcp-Session-Id header", () => {
     it("§2.1: POST /mcp with valid auth and content-type is processed (not 401/403/415)", () => {
-      // Passes all pre-flight checks; if handleMcp is implemented it returns Mcp-Session-Id
-      // RED on stub: handleMcp throws → doesn't send Mcp-Session-Id
+      // Passes all pre-flight checks; handleMcp returns Mcp-Session-Id
       const { res, statusCode } = makeRes();
       try {
         server.handleHttpRequest(
@@ -419,7 +417,7 @@ describe("HubServer", () => {
           }),
           res,
         );
-      } catch { /* stub throws */ }
+      } catch { /* stub behavior noted */ }
       expect(statusCode()).not.toBe(401);
       expect(statusCode()).not.toBe(403);
       expect(statusCode()).not.toBe(415);
@@ -459,7 +457,6 @@ describe("HubServer", () => {
 
     it("§2.1: POST /mcp with unknown Mcp-Session-Id header returns 400", () => {
       // req-hub §2.1: if Mcp-Session-Id is provided but unknown → 400
-      // RED on stub: handleMcp throws before session lookup
       const { res, statusCode } = makeRes();
       try {
         server.handleHttpRequest(
@@ -484,7 +481,6 @@ describe("HubServer", () => {
   describe("handleHttpRequest — §2.6 reauth body validation", () => {
     it("§2.6: POST /bridge/reauth with valid secret but empty body returns 400", () => {
       // req-hub §2.6: body must have newToken + newSecret fields; missing → 400
-      // RED on stub: handleReauth throws before body is parsed
       const { res, statusCode } = makeRes();
       try {
         server.handleHttpRequest(
