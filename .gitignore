@@ -32,6 +32,10 @@ scripts/edge-plain-profile/
 scripts/tmp-edge-profile/
 scripts/slidev-dom-output.html
 
+# Temp/debug image outputs
+tmp/
+tmp-*.svg
+
 # Accordo diagram — Excalidraw snapshots (written by accordo.diagram.writeExcalidrawSnapshot — off by default)
 # Layout JSON files (.layout.json) are user/agent data and are intentionally committed.
 .accordo/diagrams/**/*.excalidraw
