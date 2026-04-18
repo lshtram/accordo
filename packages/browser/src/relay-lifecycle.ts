@@ -22,7 +22,7 @@ import * as os from "os";
 import * as path from "path";
 import { randomUUID } from "node:crypto";
 import type { SecurityConfig } from "./security/index.js";
-import type { BrowserBridgeAPI, BrowserRelayLike } from "./types.js";
+import type { BrowserBridgeAPI, BrowserRelayAction, BrowserRelayLike, BrowserRelayResponse } from "./types.js";
 import { DEFAULT_REDACTION_PATTERNS } from "./security/index.js";
 import { BrowserAuditLog } from "./security/audit-log.js";
 import { generateRelayToken } from "./relay-auth.js";
@@ -36,6 +36,7 @@ import {
   registerBrowserNotifier,
   browserActionToUnifiedTool,
 } from "./comment-notifier.js";
+import { handleBrowserCommentAction } from "./browser-comment-relay-handler.js";
 import {
   readSharedRelayInfo,
   writeSharedRelayInfo,
@@ -259,6 +260,12 @@ export async function activateSharedRelay(
   bridge: BrowserBridgeAPI,
   token: string,
   _commentsAvailable: boolean,
+  handleBrowserComment?: (
+    action: BrowserRelayAction,
+    payload: Record<string, unknown>,
+    relay: SharedRelayClient,
+    correlationId?: string,
+  ) => Promise<BrowserRelayResponse>,
 ): Promise<void> {
   let relayStartError: string | null = null;
   let relayPort = RELAY_BASE_PORT;
@@ -269,7 +276,7 @@ export async function activateSharedRelay(
     // SBR-F-031: Hub path — connect to existing shared relay as client
     out.appendLine(`[accordo-browser] shared relay already running on ${RELAY_BASE_PORT} — connecting as Hub`);
     const hubId = randomUUID();
-    const client = new SharedRelayClient({
+    const client: SharedRelayClient = new SharedRelayClient({
       host: RELAY_HOST,
       port: RELAY_BASE_PORT,
       hubId,
@@ -278,19 +285,24 @@ export async function activateSharedRelay(
       onEvent: (event, details) => {
         out.appendLine(`[accordo-browser:hub] ${event}${details ? ` ${JSON.stringify(details)}` : ""}`);
       },
-      onRelayRequest: async (action, payload) => {
-        out.appendLine(`[onRelayRequest] action=${action} payload=${JSON.stringify(payload)}`);
-        const mapped = browserActionToUnifiedTool(action, payload);
-        if (!mapped) {
-          return { requestId: "", success: false, error: "action-failed" as const };
-        }
-        try {
-          const result = await bridge.invokeTool(mapped.toolName, mapped.args);
-          return { requestId: "", success: true, data: result };
-        } catch {
-          return { requestId: "", success: false, error: "action-failed" as const };
-        }
-      },
+      onRelayRequest: handleBrowserComment
+        ? (action, payload): Promise<BrowserRelayResponse> => {
+            out.appendLine(`[onRelayRequest] action=${action} payload=${JSON.stringify(payload)}`);
+            return handleBrowserComment(action, payload, client);
+          }
+        : async (action, payload): Promise<BrowserRelayResponse> => {
+            out.appendLine(`[onRelayRequest] action=${action} payload=${JSON.stringify(payload)}`);
+            const mapped = browserActionToUnifiedTool(action, payload);
+            if (!mapped) {
+              return { requestId: "", success: false, error: "action-failed" as const };
+            }
+            try {
+              const result = await bridge.invokeTool(mapped.toolName, mapped.args);
+              return { requestId: "", success: true, data: result };
+            } catch {
+              return { requestId: "", success: false, error: "action-failed" as const };
+            }
+          },
     });
 
     client.start();
@@ -358,7 +370,7 @@ export async function activateSharedRelay(
 
       // SBR-F-050: Owner window also connects as a Hub client to its own server.
       // SharedBrowserRelayServer does not implement BrowserRelayLike — only SharedRelayClient does.
-      const ownerClient = new SharedRelayClient({
+      const ownerClient: SharedRelayClient = new SharedRelayClient({
         host: RELAY_HOST,
         port: RELAY_BASE_PORT,
         hubId: ownerInfo.ownerHubId,
@@ -367,19 +379,24 @@ export async function activateSharedRelay(
         onEvent: (event, details) => {
           out.appendLine(`[accordo-browser:owner-hub] ${event}${details ? ` ${JSON.stringify(details)}` : ""}`);
         },
-        onRelayRequest: async (action, payload) => {
-          out.appendLine(`[onRelayRequest:owner] action=${action} payload=${JSON.stringify(payload)}`);
-          const mapped = browserActionToUnifiedTool(action, payload);
-          if (!mapped) {
-            return { requestId: "", success: false, error: "action-failed" as const };
-          }
-          try {
-            const result = await bridge.invokeTool(mapped.toolName, mapped.args);
-            return { requestId: "", success: true, data: result };
-          } catch {
-            return { requestId: "", success: false, error: "action-failed" as const };
-          }
-        },
+        onRelayRequest: handleBrowserComment
+          ? (action, payload): Promise<BrowserRelayResponse> => {
+              out.appendLine(`[onRelayRequest:owner] action=${action} payload=${JSON.stringify(payload)}`);
+              return handleBrowserComment(action, payload, ownerClient);
+            }
+          : async (action, payload): Promise<BrowserRelayResponse> => {
+              out.appendLine(`[onRelayRequest:owner] action=${action} payload=${JSON.stringify(payload)}`);
+              const mapped = browserActionToUnifiedTool(action, payload);
+              if (!mapped) {
+                return { requestId: "", success: false, error: "action-failed" as const };
+              }
+              try {
+                const result = await bridge.invokeTool(mapped.toolName, mapped.args);
+                return { requestId: "", success: true, data: result };
+              } catch {
+                return { requestId: "", success: false, error: "action-failed" as const };
+              }
+            },
       });
       ownerClient.start();
       context.subscriptions.push({ dispose: () => ownerClient.stop() });

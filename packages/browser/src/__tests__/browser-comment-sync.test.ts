@@ -23,6 +23,9 @@ vi.mock("vscode", () => {
         dispose: vi.fn(),
       })),
     },
+    commands: {
+      registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+    },
     Disposable: class Disposable {
       constructor(private readonly fn: () => void) {}
       dispose(): void { this.fn(); }

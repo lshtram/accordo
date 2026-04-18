@@ -201,6 +201,12 @@ export function browserActionToUnifiedTool(
     case "get_comments_version":
       return { toolName: "comment_sync_version", args: {} };
 
+    case "focus_thread": {
+      const threadId = payload["threadId"] as string | undefined;
+      if (!threadId) return null;
+      return { toolName: "accordo_browser.focusThread", args: { threadId } };
+    }
+
     default:
       return null;
   }

@@ -11,6 +11,7 @@ export type BrowserRelayAction =
   | "delete_comment"
   | "delete_thread"
   | "notify_comments_updated"
+  | "focus_thread"
   | "get_page_map"
   | "inspect_element"
   | "get_dom_excerpt"

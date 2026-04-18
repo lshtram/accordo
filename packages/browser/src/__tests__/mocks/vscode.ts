@@ -37,9 +37,14 @@ export const workspace = {
   })),
 };
 
+export const commands = {
+  registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+};
+
 export default {
   extensions,
   window,
   workspace,
+  commands,
   Disposable,
 };
