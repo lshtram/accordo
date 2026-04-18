@@ -27,6 +27,7 @@ export const MESSAGE_TYPES = {
   MCP_GET_SCREENSHOT: "MCP_GET_SCREENSHOT",
   BROWSER_RELAY_ACTION: "BROWSER_RELAY_ACTION",
   RELAY_RECONNECT: "RELAY_RECONNECT",
+  FOCUS_THREAD: "FOCUS_THREAD",
   "mcp:get_comments": "mcp:get_comments",
   "mcp:get_screenshot": "mcp:get_screenshot",
 } as const;

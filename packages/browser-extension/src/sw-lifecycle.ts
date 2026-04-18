@@ -20,6 +20,7 @@ import { DEFAULT_RELAY_CONFIG, getRelayConfig } from "./relay-config.js";
 import { MESSAGE_TYPES } from "./constants.js";
 import { handleNavigationReset } from "./relay-actions.js";
 import type { SwMessage, SwResponse } from "./sw-router.js";
+import { setRelayClient } from "./relay-comment-handlers.js";
 
 const RELAY_TOKEN_STORAGE_KEY = "relayToken";
 
@@ -114,6 +115,8 @@ export async function handleRelayActionWithBroadcast(req: RelayActionRequest): P
 // Started in bootstrap (service-worker.ts) after registerListeners().
 const relayTransport = createTransport();
 export const relayBridge = new RelayBridgeClient(handleRelayActionWithBroadcast, relayTransport);
+// P-5: Wire relay client into the adapter factory so handlers can use selectAdapter()
+setRelayClient(relayBridge);
 
 // Wire transport inbound messages to the bridge's pending-request handler.
 // The transport is created before relayBridge, so we wire the callback here

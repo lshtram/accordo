@@ -41,7 +41,8 @@ export type RelayAction =
   | "navigate"
   | "click"
   | "type"
-  | "press_key";
+  | "press_key"
+  | "focus_thread";
 
 export interface RelayActionRequest {
   requestId: string;

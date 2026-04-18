@@ -19,6 +19,8 @@ import {
   softDeleteThread,
 } from "./store.js";
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
+import { selectAdapter, LocalStorageAdapter, type CommentBackendAdapter } from "./adapters/comment-backend.js";
+import type { RelayBridgeClient } from "./relay-bridge.js";
 import { actionFailed, getErrorMeta } from "./relay-definitions.js";
 import {
   readString,
@@ -29,6 +31,21 @@ import {
   getActiveTabUrl,
   resolveRequestedUrl,
 } from "./relay-forwarder.js";
+
+// Cached relay client reference — set once on module load
+let _relay: RelayBridgeClient | null = null;
+
+export function setRelayClient(relay: RelayBridgeClient): void {
+  _relay = relay;
+}
+
+function getAdapter(): CommentBackendAdapter {
+  if (!_relay) {
+    // Not yet initialized (test environment or startup race) — use offline adapter
+    return new LocalStorageAdapter();
+  }
+  return selectAdapter(_relay);
+}
 
 // ── Comment Handlers ─────────────────────────────────────────────────────────
 
@@ -92,13 +109,12 @@ export async function handleCreateComment(
   const authorName = readOptionalString(request.payload, "authorName") ?? "Agent";
   const anchorContext = readAnchorContext(request.payload);
 
-  const thread = await createThread(
-    url,
-    anchorKey,
-    { body, author: { kind: "user", name: authorName } },
-    anchorContext,
-  );
-  return { requestId: request.requestId, success: true, data: { ...thread, pageUrl: thread.pageUrl } };
+  const thread = await getAdapter().createThread({ url, anchorKey, body, authorName });
+  return {
+    requestId: request.requestId,
+    success: true,
+    data: { pageUrl: thread.pageUrl, comments: [{ body, id: thread.commentId }] },
+  };
 }
 
 export async function handleReplyComment(
@@ -108,11 +124,7 @@ export async function handleReplyComment(
   const body = readString(request.payload, "body");
   const authorName = readOptionalString(request.payload, "authorName") ?? "Agent";
   const commentId = readOptionalString(request.payload, "commentId");
-  const comment = await addComment(threadId, {
-    body,
-    author: { kind: "user", name: authorName },
-    commentId,
-  });
+  const comment = await getAdapter().reply({ threadId, body, authorName, commentId });
   return { requestId: request.requestId, success: true, data: { ...comment, pageUrl: comment.pageUrl } };
 }
 
@@ -121,11 +133,12 @@ export async function handleDeleteComment(
 ): Promise<RelayActionResponse> {
   const threadId = readString(request.payload, "threadId");
   const commentId = readString(request.payload, "commentId");
-  const pageUrl = await softDeleteComment(threadId, commentId);
-  if (!pageUrl) {
+  try {
+    await getAdapter().delete(threadId, commentId);
+    return { requestId: request.requestId, success: true, data: {} };
+  } catch {
     return actionFailed(request);
   }
-  return { requestId: request.requestId, success: true, data: { pageUrl } };
 }
 
 export async function handleResolveThread(
@@ -133,33 +146,36 @@ export async function handleResolveThread(
 ): Promise<RelayActionResponse> {
   const threadId = readString(request.payload, "threadId");
   const resolutionNote = readOptionalString(request.payload, "resolutionNote");
-  const pageUrl = await resolveThread(threadId, resolutionNote);
-  if (!pageUrl) {
+  try {
+    await getAdapter().resolve(threadId, resolutionNote);
+    return { requestId: request.requestId, success: true, data: {} };
+  } catch {
     return actionFailed(request);
   }
-  return { requestId: request.requestId, success: true, data: { pageUrl } };
 }
 
 export async function handleReopenThread(
   request: RelayActionRequest,
 ): Promise<RelayActionResponse> {
   const threadId = readString(request.payload, "threadId");
-  const pageUrl = await reopenThread(threadId);
-  if (!pageUrl) {
+  try {
+    await getAdapter().reopen(threadId);
+    return { requestId: request.requestId, success: true, data: {} };
+  } catch {
     return actionFailed(request);
   }
-  return { requestId: request.requestId, success: true, data: { pageUrl } };
 }
 
 export async function handleDeleteThread(
   request: RelayActionRequest,
 ): Promise<RelayActionResponse> {
   const threadId = readString(request.payload, "threadId");
-  const pageUrl = await softDeleteThread(threadId);
-  if (!pageUrl) {
+  try {
+    await getAdapter().delete(threadId);
+    return { requestId: request.requestId, success: true, data: {} };
+  } catch {
     return actionFailed(request);
   }
-  return { requestId: request.requestId, success: true, data: { pageUrl } };
 }
 
 export async function handleNotifyCommentsUpdated(

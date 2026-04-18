@@ -213,6 +213,21 @@ export function createHandleMessage(
         return { success: true };
       }
 
+      case MESSAGE_TYPES.FOCUS_THREAD: {
+        // BR-F-103: Focus a comment thread in VS Code's Comments Panel.
+        // Sent by the popup when the user clicks a thread item.
+        // Routes through the relay bridge to accordo-browser, which maps
+        // focus_thread → accordo_browser.focusThread → VS Code command.
+        const threadId = (payload?.threadId as string | undefined) ?? "";
+        if (!threadId) return { success: false, error: "missing-thread-id" };
+        try {
+          const result = await relayBridge.send("focus_thread", { threadId }, 5000);
+          return { success: result.success, error: result.error };
+        } catch {
+          return { success: false, error: "action-failed" };
+        }
+      }
+
       default:
         return { success: false, error: "unknown message type" };
     }

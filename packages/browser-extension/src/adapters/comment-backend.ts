@@ -13,6 +13,19 @@
 
 import type { RelayBridgeClient } from "../relay-bridge.js";
 
+import {
+  normalizeUrl,
+  createThread as storeCreateThread,
+  addComment as storeAddComment,
+  resolveThread as storeResolveThread,
+  reopenThread as storeReopenThread,
+  softDeleteThread as storeSoftDeleteThread,
+  softDeleteComment as storeSoftDeleteComment,
+  getActiveThreads,
+} from "../store.js";
+
+import type { BrowserCommentThread } from "../types.js";
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 /** Summary of a comment thread returned by the adapter */
@@ -65,10 +78,10 @@ export interface CommentBackendAdapter {
   listThreads(url: string): Promise<CommentThreadSummary[]>;
 
   /** Create a new comment thread */
-  createThread(params: CreateThreadParams): Promise<{ threadId: string; commentId: string }>;
+  createThread(params: CreateThreadParams): Promise<{ threadId: string; commentId: string; pageUrl: string }>;
 
   /** Reply to an existing thread */
-  reply(params: ReplyParams): Promise<{ commentId: string }>;
+  reply(params: ReplyParams): Promise<{ commentId: string; body: string; pageUrl: string }>;
 
   /** Resolve a thread */
   resolve(threadId: string, resolutionNote?: string): Promise<void>;
@@ -98,34 +111,78 @@ export interface CommentBackendAdapter {
 export class VscodeRelayAdapter implements CommentBackendAdapter {
   constructor(private readonly _relay: RelayBridgeClient) {}
 
-  /** @stub */
-  async listThreads(_url: string): Promise<CommentThreadSummary[]> {
-    throw new Error("not implemented — stub for Wave 2 W2-A");
+  async listThreads(url: string): Promise<CommentThreadSummary[]> {
+    const res = await this._relay.send("get_comments", { url });
+    if (!res.success || !Array.isArray(res.data)) {
+      return [];
+    }
+    const threads = res.data as Array<{
+      id: string;
+      anchorKey: string;
+      anchorContext?: { tagName: string; textSnippet?: string; ariaLabel: string; pageTitle: string };
+      status: "open" | "resolved";
+      comments: Array<{ id: string; body: string; author: { kind: string; name: string }; createdAt: string }>;
+      lastActivity: string;
+    }>;
+    return threads.map((t) => {
+      const activeComments = t.comments.filter((c) => c.body.length > 0);
+      const last = activeComments[activeComments.length - 1];
+      return {
+        threadId: t.id,
+        status: t.status,
+        anchorKey: t.anchorKey,
+        anchorContext: t.anchorContext,
+        lastComment: last?.body ?? "",
+        lastAuthor: last?.author.name ?? "anonymous",
+        lastActivity: t.lastActivity,
+        commentCount: activeComments.length,
+      };
+    });
   }
 
-  /** @stub */
-  async createThread(_params: CreateThreadParams): Promise<{ threadId: string; commentId: string }> {
-    throw new Error("not implemented — stub for Wave 2 W2-A");
+  async createThread(params: CreateThreadParams): Promise<{ threadId: string; commentId: string; pageUrl: string }> {
+    const res = await this._relay.send("create_comment", {
+      body: params.body,
+      url: params.url,
+      anchorKey: params.anchorKey,
+      authorName: params.authorName,
+      threadId: params.threadId,
+      commentId: params.commentId,
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error ?? "Create thread failed");
+    }
+    return res.data as { threadId: string; commentId: string; pageUrl: string };
   }
 
-  /** @stub */
-  async reply(_params: ReplyParams): Promise<{ commentId: string }> {
-    throw new Error("not implemented — stub for Wave 2 W2-A");
+  async reply(params: ReplyParams): Promise<{ commentId: string; body: string; pageUrl: string }> {
+    const res = await this._relay.send("reply_comment", {
+      threadId: params.threadId,
+      body: params.body,
+      commentId: params.commentId,
+      authorName: params.authorName,
+    });
+    if (!res.success || !res.data) {
+      throw new Error(res.error ?? "Reply failed");
+    }
+    return res.data as { commentId: string; body: string; pageUrl: string };
   }
 
-  /** @stub */
-  async resolve(_threadId: string, _resolutionNote?: string): Promise<void> {
-    throw new Error("not implemented — stub for Wave 2 W2-A");
+  async resolve(threadId: string, resolutionNote?: string): Promise<void> {
+    const res = await this._relay.send("resolve_thread", { threadId, resolutionNote });
+    if (!res.success) throw new Error(res.error ?? "Resolve failed");
   }
 
-  /** @stub */
-  async reopen(_threadId: string): Promise<void> {
-    throw new Error("not implemented — stub for Wave 2 W2-A");
+  async reopen(threadId: string): Promise<void> {
+    const res = await this._relay.send("reopen_thread", { threadId });
+    if (!res.success) throw new Error(res.error ?? "Reopen failed");
   }
 
-  /** @stub */
-  async delete(_threadId: string, _commentId?: string): Promise<void> {
-    throw new Error("not implemented — stub for Wave 2 W2-A");
+  async delete(threadId: string, commentId?: string): Promise<void> {
+    const action = commentId ? "delete_comment" : "delete_thread";
+    const payload = commentId ? { threadId, commentId } : { threadId };
+    const res = await this._relay.send(action, payload);
+    if (!res.success) throw new Error(res.error ?? "Delete failed");
   }
 
   isConnected(): boolean {
@@ -146,39 +203,64 @@ export class VscodeRelayAdapter implements CommentBackendAdapter {
  * @see PU-F-42
  */
 export class LocalStorageAdapter implements CommentBackendAdapter {
-  /** @stub */
-  async listThreads(_url: string): Promise<CommentThreadSummary[]> {
-    throw new Error("not implemented — stub for Wave 2 W2-A");
+  async listThreads(url: string): Promise<CommentThreadSummary[]> {
+    const normalized = normalizeUrl(url);
+    const threads = await getActiveThreads(normalized);
+    return threads.map((thread) => this._toSummary(thread));
   }
 
-  /** @stub */
-  async createThread(_params: CreateThreadParams): Promise<{ threadId: string; commentId: string }> {
-    throw new Error("not implemented — stub for Wave 2 W2-A");
+  async createThread(params: CreateThreadParams): Promise<{ threadId: string; commentId: string; pageUrl: string }> {
+    const normalized = normalizeUrl(params.url);
+    const thread = await storeCreateThread(normalized, params.anchorKey, {
+      body: params.body,
+      author: { kind: "user", name: params.authorName ?? "anonymous" },
+    });
+    const firstComment = thread.comments[0];
+    return { threadId: thread.id, commentId: firstComment.id, pageUrl: thread.pageUrl };
   }
 
-  /** @stub */
-  async reply(_params: ReplyParams): Promise<{ commentId: string }> {
-    throw new Error("not implemented — stub for Wave 2 W2-A");
+  async reply(params: ReplyParams): Promise<{ commentId: string; body: string; pageUrl: string }> {
+    const newComment = await storeAddComment(params.threadId, {
+      body: params.body,
+      author: { kind: "user", name: params.authorName ?? "anonymous" },
+      commentId: params.commentId,
+    });
+    return { commentId: newComment.id, body: newComment.body, pageUrl: newComment.pageUrl };
   }
 
-  /** @stub */
-  async resolve(_threadId: string, _resolutionNote?: string): Promise<void> {
-    throw new Error("not implemented — stub for Wave 2 W2-A");
+  async resolve(threadId: string, resolutionNote?: string): Promise<void> {
+    await storeResolveThread(threadId, resolutionNote);
   }
 
-  /** @stub */
-  async reopen(_threadId: string): Promise<void> {
-    throw new Error("not implemented — stub for Wave 2 W2-A");
+  async reopen(threadId: string): Promise<void> {
+    await storeReopenThread(threadId);
   }
 
-  /** @stub */
-  async delete(_threadId: string, _commentId?: string): Promise<void> {
-    throw new Error("not implemented — stub for Wave 2 W2-A");
+  async delete(threadId: string, commentId?: string): Promise<void> {
+    if (commentId) {
+      await storeSoftDeleteComment(threadId, commentId);
+    } else {
+      await storeSoftDeleteThread(threadId);
+    }
   }
 
   isConnected(): boolean {
-    // Local storage is always available
     return true;
+  }
+
+  private _toSummary(thread: BrowserCommentThread): CommentThreadSummary {
+    const activeComments = thread.comments.filter((c) => !c.deletedAt);
+    const lastComment = activeComments[activeComments.length - 1];
+    return {
+      threadId: thread.id,
+      status: thread.status,
+      anchorKey: thread.anchorKey,
+      anchorContext: thread.anchorContext,
+      lastComment: lastComment?.body ?? "",
+      lastAuthor: lastComment?.author.name ?? "anonymous",
+      lastActivity: thread.lastActivity,
+      commentCount: activeComments.length,
+    };
   }
 }
 
@@ -217,5 +299,10 @@ export interface StandaloneMcpAdapterConfig {
  * @see PU-F-43
  */
 export function selectAdapter(relay: RelayBridgeClient): CommentBackendAdapter {
-  throw new Error("not implemented — stub for Wave 2 W2-A");
+  // Priority 1: VscodeRelayAdapter — if the relay WebSocket is connected
+  if (relay.isConnected()) {
+    return new VscodeRelayAdapter(relay);
+  }
+  // Priority 2: LocalStorageAdapter — always available as offline fallback
+  return new LocalStorageAdapter();
 }

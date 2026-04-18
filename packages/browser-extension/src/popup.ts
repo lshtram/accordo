@@ -154,8 +154,15 @@ export function renderThreadList(
     item.appendChild(threadInfo);
     item.appendChild(deleteBtn);
 
-    // Click: tell the content script to open this thread's popover
+    // Click: focus the thread in VS Code's Comments Panel via the relay bridge.
+    // Also scroll the in-page popover into view as a secondary UX signal.
     item.addEventListener("click", () => {
+      // Primary: notify VS Code to focus the thread in the Comments Panel.
+      chrome.runtime.sendMessage({
+        type: MESSAGE_TYPES.FOCUS_THREAD,
+        payload: { threadId: thread.id },
+      }).catch(() => {/* non-fatal — VS Code may be disconnected */});
+      // Secondary: scroll the browser popover into view if content script is active.
       if (tabId) {
         chrome.tabs.sendMessage(tabId, {
           type: "scroll-to-thread",
