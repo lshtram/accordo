@@ -40,3 +40,9 @@ tmp-*.svg
 # Accordo diagram — Excalidraw snapshots (written by accordo.diagram.writeExcalidrawSnapshot — off by default)
 # Layout JSON files (.layout.json) are user/agent data and are intentionally committed.
 .accordo/diagrams/**/*.excalidraw
+
+# Temp diagram debug artifacts
+packages/diagram/tmp_trace_arrows.ts
+packages/diagram/src/__tests__/trace-arrows.test.ts
+tmp_trace_arrows.ts
+**/tmp_trace_arrows.ts
