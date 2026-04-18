@@ -34,6 +34,7 @@ scripts/slidev-dom-output.html
 
 # Temp/debug image outputs
 tmp/
+tmp-*.png
 tmp-*.svg
 
 # Accordo diagram — Excalidraw snapshots (written by accordo.diagram.writeExcalidrawSnapshot — off by default)
