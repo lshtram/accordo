@@ -224,6 +224,15 @@ describe("Status bar — Bridge unified health indicator", () => {
     );
   });
 
+  it("SB-01b: status bar item has command=accordo.bridge.showStatus and a tooltip", async () => {
+    const ctx = makeContext();
+    await extensionModule.activate(ctx as unknown as Parameters<typeof extensionModule.activate>[0]);
+
+    const item = window._getLastStatusBarItem();
+    expect(item.command).toBe("accordo.bridge.showStatus");
+    expect(item.tooltip).toBeTruthy();
+  });
+
   // ── SB-02 ─────────────────────────────────────────────────────────────────
 
   it("SB-02: status bar text is $(check) Accordo when connected and tools > 0", async () => {
@@ -287,8 +296,10 @@ describe("Status bar — Bridge unified health indicator", () => {
       { name: "browser_navigate" },
       { name: "browser_click" },
       { name: "comment_create" },
-      { name: "accordo_voice_start" },
       { name: "accordo_diagram_create" },
+      { name: "accordo_presentation_open" },
+      { name: "accordo_presentation_next" },
+      { name: "accordo_voice_readAloud" },
     ];
 
     const ctx = makeContext();
@@ -317,8 +328,9 @@ describe("Status bar — Bridge unified health indicator", () => {
     const labels = items.map((i) => i.label);
     expect(labels.some((l) => l.includes("Browser"))).toBe(true);
     expect(labels.some((l) => l.includes("Comments"))).toBe(true);
-    expect(labels.some((l) => l.includes("Voice"))).toBe(true);
     expect(labels.some((l) => l.includes("Diagrams"))).toBe(true);
+    expect(labels.some((l) => l.includes("Marp"))).toBe(true);
+    expect(labels.some((l) => l.includes("Voice"))).toBe(true);
   });
 
   // ── SB-06 ─────────────────────────────────────────────────────────────────

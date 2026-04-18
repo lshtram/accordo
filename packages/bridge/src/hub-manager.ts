@@ -470,7 +470,11 @@ export class HubManager {
         this.port = entry.port;
         this.healthState.port = entry.port;
       }
-      this.events.onHubReady(this.port, this.processState.token!);
+      const token = this.processState.token;
+      if (!token) {
+        return;
+      }
+      this.events.onHubReady(this.port, token);
     }
   }
 

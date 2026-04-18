@@ -331,8 +331,9 @@ export function registerCommands(
     const moduleMap: Record<string, string> = {
       browser_: "Browser",
       comment_: "Comments",
-      accordo_voice_: "Voice",
       accordo_diagram_: "Diagrams",
+      accordo_presentation_: "Marp",
+      accordo_voice_: "Voice",
     };
     const detectedModules = new Set<string>();
     for (const tool of tools) {
@@ -344,7 +345,64 @@ export function registerCommands(
       }
     }
 
-    const items = [hubLine, ...moduleItems];
+    // Build base items list (used for both immediate and deferred show)
+    const buildItems = (
+      browserItems: Array<{ label: string }>,
+      voiceItems: Array<{ label: string }>,
+    ): Array<{ label: string }> => [hubLine, ...moduleItems, ...browserItems, ...voiceItems];
+
+    // Enrich with live status: browser relay + control, voice TTS
+    const port = services.hubManager.getPort();
+    const token = services.hubManager.getToken();
+    if (deps.showQuickPick !== undefined && port !== null && token) {
+      const hubUrl = `http://127.0.0.1:${port}`;
+      void Promise.all([
+        // Browser relay + control status
+        fetch(`${hubUrl}/browser/status`, {
+          headers: { authorization: `Bearer ${token}`, origin: "vscode://accordo" },
+        })
+          .then((r) => r.json())
+          .then((body: { connected: boolean; controlGranted: boolean }) => {
+            const items: Array<{ label: string }> = [];
+            if (detectedModules.has("Browser")) {
+              items.push({
+                label: body.connected
+                  ? "$(check) Browser — Relay Connected"
+                  : "$(error) Browser — Relay Disconnected",
+              });
+              if (body.connected) {
+                items.push({
+                  label: body.controlGranted
+                    ? "$(check) Browser — User Granted Control"
+                    : "$(warning) Browser — No User Control",
+                });
+              }
+            }
+            return items;
+          })
+          .catch(() => [] as Array<{ label: string }>),
+        // Voice TTS availability
+        fetch(`${hubUrl}/state`, {
+          headers: { authorization: `Bearer ${token}`, origin: "vscode://accordo" },
+        })
+          .then((r) => r.json())
+          .then((ideState: IDEState) => {
+            const voiceState = ideState.modalities["accordo-voice"] as
+              | { ttsAvailable?: boolean }
+              | undefined;
+            if (voiceState?.ttsAvailable === false) {
+              return [{ label: "$(error) Voice — TTS Unavailable" }];
+            }
+            return [] as Array<{ label: string }>;
+          })
+          .catch(() => [] as Array<{ label: string }>),
+      ]).then(([browserItems, voiceItems]) => {
+        deps.showQuickPick?.(buildItems(browserItems, voiceItems), {
+          canPickMany: false,
+          title: "Accordo System Health",
+        }).catch(() => { /* ignore */ });
+      });
+    }
 
     // showQuickPick is injected via vscode — we call it without importing vscode
     // by reaching through the bootstrap result. But bootstrap has no showQuickPick.
@@ -355,7 +413,7 @@ export function registerCommands(
     // Since it is NOT in BootstrapResult, the only option is to make it available
     // via CompositionDeps. We add a showQuickPick optional field to CompositionDeps.
     if (deps.showQuickPick !== undefined) {
-      deps.showQuickPick(items, { canPickMany: false, title: "Accordo System Health" }).catch(
+      deps.showQuickPick(buildItems([], []), { canPickMany: false, title: "Accordo System Health" }).catch(
         () => { /* ignore */ },
       );
     }
@@ -506,7 +564,6 @@ export function buildShowStatusHandler(deps: CompositionDeps): () => void {
 
     const modules: Array<{ prefix: string | string[]; label: string }> = [
       { prefix: "comment_", label: "Comments" },
-      { prefix: "accordo_voice_", label: "Voice" },
       { prefix: "browser_", label: "Browser" },
       { prefix: "accordo_diagram_", label: "Diagrams" },
       { prefix: ["accordo_presentation_", "accordo_marp_"], label: "Marp" },
@@ -517,19 +574,6 @@ export function buildShowStatusHandler(deps: CompositionDeps): () => void {
       const prefixes = Array.isArray(mod.prefix) ? mod.prefix : [mod.prefix];
       const count = allTools.filter((t) => prefixes.some((p) => t.name.startsWith(p))).length;
       if (count === 0) continue;
-
-      if (mod.label === "Voice") {
-        const vs = modalityStates["accordo-voice"] as Record<string, unknown> | undefined;
-        const ttsOk = vs?.["ttsAvailable"] === true;
-        const sttOk = vs?.["sttAvailable"] === true;
-        if (!ttsOk || !sttOk) {
-          const issues: string[] = [];
-          if (!ttsOk) issues.push("TTS unavailable");
-          if (!sttOk) issues.push("STT unavailable (whisper not found)");
-          moduleItems.push({ label: `$(warning) ${"Voice".padEnd(12)} ${issues.join(" · ")}` });
-          continue;
-        }
-      }
 
       moduleItems.push({ label: `$(check) ${mod.label.padEnd(12)} Registered (${count} tools)` });
     }

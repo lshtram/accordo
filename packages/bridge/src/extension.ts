@@ -189,7 +189,9 @@ export async function activate(
     } else {
       text = "$(error) Accordo";
     }
-    bootstrap!.statusBarItem.text = text;
+    if (bootstrap) {
+      bootstrap.statusBarItem.text = text;
+    }
   });
 
   // 7. Compose and return BridgeAPI

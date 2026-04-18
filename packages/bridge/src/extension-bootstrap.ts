@@ -182,6 +182,8 @@ export async function bootstrapExtension(
 
   // Step 8: Create status bar item and updateStatusBar closure
   const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  statusBarItem.command = "accordo.bridge.showStatus";
+  statusBarItem.tooltip = "Accordo — click for system health";
   statusBarItem.show();
 
   // Mutable delegate: allows extension.ts to inject real logic after services are wired
@@ -340,22 +342,11 @@ export function buildStatusBarUpdater(
     const wsState = wsClient?.getState() ?? "disconnected";
     const toolCount = services?.registry.getAllTools().length ?? 0;
 
-    // Check voice modality health from published state
-    const ideState = (services?.statePublisher.getState() ?? {}) as Record<string, unknown>;
-    const voiceState = ideState["accordo-voice"] as Record<string, unknown> | undefined;
-    const voiceToolsPresent = (services?.registry.getAllTools() ?? []).some(
-      (t) => t.name.startsWith("accordo_voice_"),
-    );
-    const voiceDegraded =
-      voiceToolsPresent &&
-      voiceState !== undefined &&
-      (voiceState["ttsAvailable"] === false || voiceState["sttAvailable"] === false);
-
-    if (connected && toolCount > 0 && !voiceDegraded) {
+    if (connected && toolCount > 0) {
       statusBarItem.text = "$(check) Accordo";
     } else if (wsState === "connecting" || wsState === "reconnecting") {
       statusBarItem.text = "$(warning) Accordo";
-    } else if (connected && (toolCount === 0 || voiceDegraded)) {
+    } else if (connected && toolCount === 0) {
       statusBarItem.text = "$(warning) Accordo";
     } else {
       statusBarItem.text = "$(error) Accordo";
