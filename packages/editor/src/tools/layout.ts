@@ -143,7 +143,7 @@ export const layoutTools: ExtensionToolDefinition[] = [
       required: ["panel"],
     },
     dangerLevel: "safe",
-    idempotent: true,
+    idempotent: false,
     handler: wrapHandler("accordo_panel_toggle", panelToggleHandler),
   },
   {

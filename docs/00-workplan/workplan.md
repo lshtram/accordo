@@ -182,7 +182,7 @@
 - Agent comment on "Usage" h3 heading → not visible as pin ❌
 - Agent comment on "MCP Dispatch" node in diagram → pin visible ✅
 
-**Root cause:** `VscodeRelayAdapter` in `packages/browser-extension/src/adapters/comment-backend.ts` is a stub — all methods throw `"not implemented — stub for Wave 2 W2-A"`. The adapter factory `selectAdapter()` also throws. There is no path for VS Code comment store events to reach the browser extension's local store.
+**Root cause:** `VscodeRelayAdapter` in `packages/browser-extension/src/adapters/comment-backend.ts` delegates to `RelayBridgeClient.send()` for all operations, but the `RelayBridgeClient` itself does not currently forward comment operations to the VS Code comment store. The relay bridge (`relay-bridge.ts`) handles `get_comments` for page understanding tools but does not wire comment create/reply/resolve/reopen/delete mutations through to the VS Code unified comment tools. There is no path for VS Code comment store events to reach the browser extension's local store.
 
 **Scope of impact:**
 - All browser-tab surface comments created by the agent are invisible in the browser
@@ -190,12 +190,9 @@
 - Only user-initiated browser comments are visible as pins in the browser
 
 **Open tasks:**
-1. Implement `VscodeRelayAdapter.listThreads()` — route to VS Code comment store via MCP/Bridge
-2. Implement `VscodeRelayAdapter.createThread()` — bridge comment creation events to VS Code store
-3. Implement `VscodeRelayAdapter.reply()` — bridge reply events to VS Code store
-4. Implement `selectAdapter()` factory — detect VS Code relay availability at runtime
-5. Add bidirectional sync: VS Code store changes → browser extension store (comment:create/update events)
-6. Consider: should agent-created browser-tab comments go through the browser extension's relay-first path instead of direct to VS Code store?
+1. Implement comment mutation forwarding in `RelayBridgeClient` — `create_comment`, `reply_comment`, `resolve_thread`, `reopen_thread`, `delete_comment`, `delete_thread` actions need to be routed to VS Code unified comment tools via the Bridge
+2. Add bidirectional sync: VS Code store changes → browser extension store (comment:create/update events broadcast from service worker to content script)
+3. Verify `selectAdapter()` factory correctly selects `VscodeRelayAdapter` when relay is connected
 
 **Key files:**
 - `packages/browser-extension/src/adapters/comment-backend.ts` — stub adapter (all throw)

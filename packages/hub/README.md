@@ -29,8 +29,12 @@ node packages/hub/dist/index.js --port 3000
 ### CLI Flags
 
 ```
---port <number>     HTTP server port (default: 3000 or ACCORDO_HUB_PORT)
---stdio             Run in MCP stdio transport mode (reads stdin, writes stdout)
+--port <number>       HTTP server port (default: 3000 or ACCORDO_HUB_PORT)
+--host <address>      Bind address (default: 127.0.0.1)
+--stdio               Run in MCP stdio transport mode (reads stdin, writes stdout)
+--log-level <level>   Log level: debug, info, warn, error (default: info)
+--project-id <id>     Register this Hub in hubs.json under this identifier
+--registry <path>      Path to hubs.json registry (default: ~/.accordo/hubs.json)
 ```
 
 ### Start the Hub
@@ -47,7 +51,7 @@ ACCORDO_TOKEN=my-token ACCORDO_BRIDGE_SECRET=my-secret accordo-hub --stdio
 
 ```bash
 curl http://localhost:3000/health
-# {"status":"ok","bridgeConnected":false,"toolCount":0,"uptime":5}
+# {"ok":true,"uptime":5,"bridge":"disconnected","toolCount":0,"protocolVersion":"1","inflight":0,"queued":0}
 ```
 
 ## HTTP Endpoints
@@ -56,9 +60,12 @@ curl http://localhost:3000/health
 |---|---|---|---|
 | GET | `/health` | None | Health check with bridge status |
 | POST | `/mcp` | Bearer token | MCP Streamable HTTP endpoint |
+| GET | `/mcp` | Bearer token | SSE notification stream for MCP clients |
 | GET | `/instructions` | Bearer token | System prompt for agent consumption |
 | GET | `/state` | Bearer token | Current IDE state snapshot |
 | POST | `/bridge/reauth` | Bridge secret | Credential rotation endpoint |
+| POST | `/bridge/disconnect` | Bridge secret | Graceful Bridge disconnection (starts grace window) |
+| GET | `/browser/status` | Bearer token | Browser extension relay connection status |
 
 ## Architecture
 
@@ -77,25 +84,25 @@ AI Agent ─── POST /mcp ───► Hub ─── WebSocket ───► B
 - **MCP protocol**: Full MCP support over HTTP and stdio transports
 - **State caching**: IDE state cached in Hub, delivered via system prompt
 - **Concurrency control**: 16-slot concurrent invocation limit with 64-deep FIFO queue
-- **Grace window**: 15s state hold on Bridge disconnect; seamless reconnect
+- **Grace window**: 10s hold on Bridge disconnect; self-terminates if no reconnect; reconnect cancels timer
 - **Flood protection**: Rate-limited WebSocket messages (configurable per-second limit)
 - **Message size limit**: Configurable max WebSocket payload size
 - **Idempotent retry**: Tools marked `idempotent: true` are retried once on timeout
-- **Audit logging**: JSONL audit trail with size-based rotation
+- **Audit logging**: JSONL audit trail with size-based rotation (10 MB threshold, 2 files retained)
 - **Security**: Bearer token auth, Origin validation, loopback-only binding
 
 ## Development
 
 ```bash
 pnpm build         # Compile TypeScript
-pnpm test          # Run 329 tests
+pnpm test          # Run 552 tests
 pnpm typecheck     # Type-check without emitting
 pnpm test:watch    # Watch mode
 ```
 
 ## Tests
 
-329 unit and integration tests covering:
+552 unit and integration tests covering:
 - Security middleware (token, origin, bridge secret validation)
 - State cache (snapshots, patches, modality clearing)
 - Tool registry (registration, lookup, metrics)
@@ -106,7 +113,7 @@ pnpm test:watch    # Watch mode
 - CLI entry point (arg parsing, config resolution)
 - E2E pipeline (full HTTP + WS + JSON-RPC stack)
 - Stdio transport (buffer handling, message framing)
-- Audit log (append, rotation, gzip archiving)
+- Audit log (append, rotation)
 
 ## License
 

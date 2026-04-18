@@ -15,7 +15,7 @@
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/ide-types.ts src/tool-types.ts src/ws-types.ts src/comment-types.ts src/constants.ts src/index.ts",
+    "lint": "eslint src/",
     "test": "vitest run",
     "test:watch": "vitest watch"
   },
