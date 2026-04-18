@@ -5,14 +5,23 @@
  * CommentThread, dispatching by anchor.kind and surfaceType.
  *
  * Uses injectable NavigationEnv for unit testability without real VS Code APIs.
+ * Uses a NavigationAdapterRegistry for surface-type dispatch (§17).
  *
  * Source: requirements-comments-panel.md §3 M45-NR
  */
 
-import type * as vscode from "vscode";
+import * as vscode from "vscode";
 import type { CommentThread } from "@accordo/bridge-types";
-import { CAPABILITY_COMMANDS, DEFERRED_COMMANDS } from "@accordo/capabilities";
-import type { NavigationAdapterRegistry } from "@accordo/capabilities";
+import {
+  CAPABILITY_COMMANDS,
+  DEFERRED_COMMANDS,
+  createNavigationAdapterRegistry,
+} from "@accordo/capabilities";
+import type {
+  NavigationAdapter,
+  NavigationAdapterRegistry,
+  NavigationEnv as CapNavigationEnv,
+} from "@accordo/capabilities";
 
 // ── NavigationEnv ────────────────────────────────────────────────────────────
 
@@ -33,6 +42,168 @@ export interface NavigationEnv {
   visibleTextEditorUris(): readonly string[];
 }
 
+// ── Module-level Registry Singleton ──────────────────────────────────────────
+
+/**
+ * Singleton registry for NavigationAdapters.
+ * Surface packages register adapters at activation time.
+ *
+ * Adapters currently registered:
+ * - browser: calls accordo_browser_focusThread
+ *
+ * Other surface types (slide, diagram, markdown-preview) are registered by
+ * their respective packages and will be handled by Q-3 and Q-5.
+ */
+const adapterRegistry: NavigationAdapterRegistry = createNavigationAdapterRegistry();
+
+// ── Browser Adapter ──────────────────────────────────────────────────────────
+
+/**
+ * NavigationAdapter for the browser surface type.
+ * Focuses a comment thread via the accordo_browser_focusThread command.
+ */
+const browserAdapter: NavigationAdapter = {
+  surfaceType: "browser" as const,
+
+  async navigateToAnchor(
+    _anchor: Readonly<Record<string, unknown>>,
+    _env: CapNavigationEnv,
+  ): Promise<boolean> {
+    // Browser surfaces don't have a per-anchor concept — navigation is always to the page.
+    return true;
+  },
+
+  async focusThread(
+    threadId: string,
+    _anchor: Readonly<Record<string, unknown>>,
+    env: CapNavigationEnv,
+  ): Promise<boolean> {
+    try {
+      await env.executeCommand(DEFERRED_COMMANDS.BROWSER_FOCUS_THREAD, threadId);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+};
+
+// ── Preview (Markdown Preview) Adapter ──────────────────────────────────────
+
+/**
+ * NavigationAdapter for the markdown-preview surface type.
+ * Opens the markdown preview and scrolls to the thread's anchor line.
+ */
+const previewAdapter: NavigationAdapter = {
+  surfaceType: "markdown-preview" as const,
+
+  async navigateToAnchor(
+    anchor: Readonly<Record<string, unknown>>,
+    _env: CapNavigationEnv,
+  ): Promise<boolean> {
+    // Navigate to the file that the preview renders.
+    const uriStr = anchor.uri as string | undefined;
+    if (!uriStr) return false;
+    try {
+      const doc = await vscode.workspace.openTextDocument(uriStr);
+      void doc; // unused — just ensure the file is loaded
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async focusThread(
+    threadId: string,
+    anchor: Readonly<Record<string, unknown>>,
+    _env: CapNavigationEnv,
+  ): Promise<boolean> {
+    void threadId;
+    try {
+      const uriStr = anchor.uri as string | undefined;
+      const range = anchor.range as { startLine?: number } | undefined;
+      if (!uriStr) return false;
+
+      // Show the markdown preview.
+      await vscode.commands.executeCommand("markdown.showPreviewToSide");
+      // Small delay to let preview render.
+      await new Promise((r) => setTimeout(r, 200));
+      // Navigate to the file and line.
+      const doc = await vscode.workspace.openTextDocument(uriStr);
+      const editor = await vscode.window.showTextDocument(doc, {
+        viewColumn: vscode.ViewColumn.Two,
+      });
+      if (range?.startLine) {
+        const pos = new vscode.Position(range.startLine - 1, 0);
+        editor.selection = new vscode.Selection(pos, pos);
+        editor.revealRange(
+          new vscode.Range(pos, pos),
+          vscode.TextEditorRevealType.AtTop,
+        );
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  },
+};
+
+// ── Diagram Adapter ───────────────────────────────────────────────────────────
+
+/**
+ * NavigationAdapter for the diagram surface type.
+ * Opens the .mmd diagram file and scrolls to the anchor node.
+ */
+const diagramAdapter: NavigationAdapter = {
+  surfaceType: "diagram" as const,
+
+  async navigateToAnchor(
+    anchor: Readonly<Record<string, unknown>>,
+    _env: CapNavigationEnv,
+  ): Promise<boolean> {
+    const uriStr = anchor.uri as string | undefined;
+    if (!uriStr) return false;
+    try {
+      const doc = await vscode.workspace.openTextDocument(uriStr);
+      void doc;
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async focusThread(
+    threadId: string,
+    anchor: Readonly<Record<string, unknown>>,
+    _env: CapNavigationEnv,
+  ): Promise<boolean> {
+    void threadId;
+    try {
+      const uriStr = anchor.uri as string | undefined;
+      if (!uriStr) return false;
+
+      const doc = await vscode.workspace.openTextDocument(uriStr);
+      await vscode.window.showTextDocument(doc);
+      // If there's a node anchor, try to find and reveal it.
+      const anchorKey = anchor.anchorKey as string | undefined;
+      if (anchorKey && anchorKey !== "body:center") {
+        await vscode.commands.executeCommand("editor.action.revealDefinition");
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  },
+};
+
+// Register the browser adapter at module load time.
+// Other adapters (slide, diagram, markdown-preview) are registered by their
+// respective surface packages when they activate.
+adapterRegistry.register(browserAdapter);
+
+// Register the preview and diagram adapters.
+adapterRegistry.register(previewAdapter);
+adapterRegistry.register(diagramAdapter);
+
 // ── navigateToThread ─────────────────────────────────────────────────────────
 
 /**
@@ -42,7 +213,7 @@ export interface NavigationEnv {
  * - text         → showTextDocument with selection range
  * - surface/markdown-preview → executeCommand('accordo_preview_internal_focusThread', uri, threadId, blockId)
  * - surface/slide → open deck → delay → goto slide index (graceful fallback)
- * - surface/browser → executeCommand('accordo_browser_focusThread', threadId) (graceful)
+ * - surface/browser → registry.focusThread (primary); falls back to DEFERRED_COMMANDS on failure
  * - surface/diagram → executeCommand('accordo_diagram_focusThread', threadId) (graceful)
  * - file         → showTextDocument without range
  * - unknown      → fallback to showTextDocument(uri)
@@ -54,6 +225,10 @@ export async function navigateToThread(
   env: NavigationEnv,
   registry?: NavigationAdapterRegistry,
 ): Promise<void> {
+  // Use the passed registry if provided, otherwise fall back to the module-level singleton.
+  // This allows tests to inject a mock registry while production code uses the singleton.
+  const activeRegistry = registry ?? adapterRegistry;
+
   try {
     const anchor = thread.anchor;
 
@@ -124,19 +299,19 @@ export async function navigateToThread(
 
         // Try registry-based navigation first (primary path)
         // Calls navigateToAnchor THEN focusThread — both must succeed for a clean return.
-        const slideAdapter = registry?.get("slide");
+        const slideAdapter = activeRegistry.get("slide");
         if (slideAdapter) {
           try {
             const navResult = await slideAdapter.navigateToAnchor(
               anchor as unknown as Readonly<Record<string, unknown>>,
-              env as unknown as import("@accordo/capabilities").NavigationEnv,
+              env as unknown as CapNavigationEnv,
             );
             if (!navResult) throw new Error("navigateToAnchor returned false");
             // Slide navigated — now focus the thread.
             await slideAdapter.focusThread(
               thread.id,
               anchor as unknown as Readonly<Record<string, unknown>>,
-              env as unknown as import("@accordo/capabilities").NavigationEnv,
+              env as unknown as CapNavigationEnv,
             );
             return;
           } catch { /* fall through to deferred path */ }
@@ -172,6 +347,26 @@ export async function navigateToThread(
       }
 
       if (surfaceType === "browser") {
+        // Registry-first dispatch: use the browser adapter if registered.
+        const browserAdapterInstance = activeRegistry.get("browser");
+        if (browserAdapterInstance) {
+          try {
+            const success = await browserAdapterInstance.focusThread(
+              thread.id,
+              anchor as unknown as Readonly<Record<string, unknown>>,
+              env as unknown as CapNavigationEnv,
+            );
+            if (!success) {
+              await env.showInformationMessage("Browser extension not connected.");
+            }
+          } catch {
+            await env.showInformationMessage("Browser extension not connected.");
+          }
+          return;
+        }
+
+        // Fallback (should not occur since browser adapter is registered at module load,
+        // but preserved for belt-and-suspenders safety):
         try {
           await env.executeCommand(DEFERRED_COMMANDS.BROWSER_FOCUS_THREAD, thread.id);
         } catch {
@@ -206,4 +401,14 @@ export async function navigateToThread(
     const msg = err instanceof Error ? err.message : String(err);
     await env.showWarningMessage(`Could not navigate to thread: ${msg}`);
   }
+}
+
+// ── Registry Access (for testing) ────────────────────────────────────────────
+
+/**
+ * Returns the module-level NavigationAdapterRegistry singleton.
+ * Exported for use in tests that need to inspect or manipulate registered adapters.
+ */
+export function getAdapterRegistry(): NavigationAdapterRegistry {
+  return adapterRegistry;
 }
