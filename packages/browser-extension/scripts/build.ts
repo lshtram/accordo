@@ -6,7 +6,7 @@
  *
  * Entry points:
  *   dist/service-worker.js  — background service worker
- *   dist/content-script.js  — combined content script (pins + input)
+ *   dist/content-script.js  — content script (comment-ui + message-handlers)
  *   dist/popup.js           — extension popup
  *   dist/shadow-tracker.js  — early closed-shadow tracker bootstrap
  *

@@ -16,7 +16,7 @@ import { normalizeUrl } from "./store.js";
 import { handleRelayAction, type RelayActionRequest, type RelayActionResponse } from "./relay-actions.js";
 import { RelayBridgeClient } from "./relay-bridge.js";
 import { RelayTransport, type RelayTransportEvents, type TransportState } from "./relay-transport.js";
-import { DEFAULT_RELAY_CONFIG, getRelayConfig } from "./relay-config.js";
+import { DEFAULT_RELAY_CONFIG } from "./relay-config.js";
 import { MESSAGE_TYPES } from "./constants.js";
 import { handleNavigationReset } from "./relay-actions.js";
 import type { SwMessage, SwResponse } from "./sw-router.js";
