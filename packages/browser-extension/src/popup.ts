@@ -639,7 +639,6 @@ export async function initPopup(container: HTMLElement): Promise<void> {
   versionFooter.style.cssText = "padding: 6px 12px 8px; font-size: 10px; color: #888; text-align: right; border-top: 1px solid #eee; margin-top: 8px;";
   // __BUILD_TIME__ is injected by esbuild via define (scripts/build.ts).
   // Use a safe fallback for environments where the global is not defined (e.g. tests).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const buildTime = typeof (__BUILD_TIME__ as unknown as string | undefined) === "string"
     ? (__BUILD_TIME__ as string)
     : new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC";
