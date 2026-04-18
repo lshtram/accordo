@@ -9,7 +9,7 @@
  *   - extractLastAssistantText(client, sessionId): Promise<string | undefined>  [NP-03]
  *   - summarizeWithGemini(text, apiKey): Promise<string | undefined>     [NP-04]
  *   - callReadAloud(hubUrl, hubToken, text, cleanMode): Promise<boolean> [NP-05, NP-07]
- *   - discoverNarrationMode(hubUrl, hubToken, fallback): Promise<NarrationMode> [NP-06]
+ *   - (discoverNarrationMode removed — mode comes from config directly) [NP-06]
  *   - handleSessionIdle(client, sessionId, config): Promise<void>        [NP-01, NP-02, NP-03, NP-10]
  *   - NarrationPlugin(context): Promise<{ event: (opts) => Promise<void> }> [NP-01, NP-02]
  */
@@ -57,7 +57,6 @@ import {
   extractLastAssistantText,
   summarizeWithGemini,
   callReadAloud,
-  discoverNarrationMode,
   handleSessionIdle,
 } from "./narration.js";
 
@@ -109,7 +108,6 @@ beforeEach(() => {
   debounceTimers.clear();
   globalThis.fetch = fetchMock;
   fetchMock.mockReset();
-  mcpDiscoverNarrationMode = "summary"; // Reset discover mode to default
   setupMcpMock(); // Ensure fetch mock is ready before NarrationPlugin initializes
 });
 afterEach(() => {
@@ -121,8 +119,6 @@ afterEach(() => {
 
 let geminiResponseText: string | undefined = "This is a concise summary of the response.";
 let mcpReadAloudResult = true;
-/** Controls what the discover mock returns. Defaults to "summary". */
-let mcpDiscoverNarrationMode: string = "summary";
 
 function setupMcpMock() {
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -150,27 +146,6 @@ function setupMcpMock() {
         const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
         toolName = body?.params?.name ?? "unknown";
       } catch { /* ignore */ }
-
-      // accordo_voice_discover returns the full voice state as JSON string
-      if (toolName === "accordo_voice_discover") {
-        return {
-          ok: true,
-          json: async () => ({
-            result: {
-              content: [
-                {
-                  type: "text",
-                  text: JSON.stringify({
-                    sttAvailable: true,
-                    ttsAvailable: true,
-                    policy: { narrationMode: `narrate-${mcpDiscoverNarrationMode}` },
-                  }),
-                },
-              ],
-            },
-          }),
-        } as Response;
-      }
 
       // accordo_voice_readAloud returns boolean
       return {
@@ -480,75 +455,6 @@ describe("callReadAloud", () => {
   });
 });
 
-// ── discoverNarrationMode ─────────────────────────────────────────────────────
-
-describe("discoverNarrationMode", () => {
-  beforeEach(() => {
-    setupMcpMock();
-  });
-
-  it("NP-06: calls accordo_voice_discover via MCP to get narration mode", async () => {
-    await discoverNarrationMode(MOCK_HUB_URL, MOCK_HUB_TOKEN, "off");
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${MOCK_HUB_URL}/mcp`,
-      expect.objectContaining({ method: "POST" }),
-    );
-  });
-
-  it("NP-06: extracts narrationMode from the discover response", async () => {
-    // Mock the MCP response — accordo_voice_discover returns voice policy
-    // wrapped as result.content[0].text (the standard MCP tool result envelope)
-    fetchMock.mockImplementationOnce(
-      async () => ({
-        ok: true,
-        json: async () => ({
-          result: {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({ policy: { narrationMode: "summary" } }),
-              },
-            ],
-          },
-        }),
-      } as Response),
-    );
-    const result = await discoverNarrationMode(MOCK_HUB_URL, MOCK_HUB_TOKEN, "off");
-    expect(result).toBe("summary");
-  });
-
-  it("NP-06: falls back to config override when MCP call fails", async () => {
-    fetchMock.mockImplementationOnce(async () => ({ ok: false } as Response));
-    const result = await discoverNarrationMode(MOCK_HUB_URL, MOCK_HUB_TOKEN, "everything");
-    expect(result).toBe("everything");
-  });
-
-  it("NP-06: falls back to config override when narrationMode is missing from response", async () => {
-    fetchMock.mockImplementationOnce(
-      async () => ({
-        ok: true,
-        json: async () => ({ result: {} }),
-      } as Response),
-    );
-    const result = await discoverNarrationMode(MOCK_HUB_URL, MOCK_HUB_TOKEN, "summary");
-    expect(result).toBe("summary");
-  });
-
-  it("NP-06: returns 'off' when discover returns unrecognized narrationMode", async () => {
-    fetchMock.mockImplementationOnce(
-      async () => ({
-        ok: true,
-        json: async () => ({
-          result: { narrationMode: "invalid-mode" },
-        }),
-      } as Response),
-    );
-    const result = await discoverNarrationMode(MOCK_HUB_URL, MOCK_HUB_TOKEN, "off");
-    // parseNarrationMode should normalize unknown values to "off"
-    expect(result).toBe("off");
-  });
-});
-
 // ── handleSessionIdle ──────────────────────────────────────────────────────────
 
 describe("handleSessionIdle", () => {
@@ -606,7 +512,7 @@ describe("handleSessionIdle", () => {
 
   // NP-03: When narrationMode === "everything", readAloud is called with raw text
   it("NP-03: narrationMode 'everything' — readAloud is called with raw response text (no summarization)", async () => {
-    mcpDiscoverNarrationMode = "everything"; // Discover returns "narrate-everything"
+
     const ctx = makePluginContext();
     const config = makeConfig({ narrationMode: "everything" });
     await handleSessionIdle(ctx.client, MOCK_SESSION_ID, config);
@@ -812,11 +718,23 @@ describe("NarrationPlugin", () => {
     expect(readAloudCalls.length).toBe(0);
   });
 
-  it("NP-01: session.idle without sessionId is still processed (mode=off skips readAloud)", async () => {
-    // Even without sessionId in the event, session.idle should be handled
-    // (we no longer filter by sessionId since it's always undefined in practice).
-    // When narrationMode is off, readAloud should not be called.
-    mcpDiscoverNarrationMode = "off"; // Discover returns "narrate-off"
+  it("NP-01: session.idle — mode=off skips readAloud (config-driven, no discover call)", async () => {
+    // With the simplified narration plugin (no discoverNarrationMode call),
+    // narration mode comes directly from config. This test verifies that
+    // when config.narrationMode is "off", no readAloud call is made.
+
+    // Directly patch _resolvers.resolveConfig to return narrationMode: "off"
+    const { _resolvers } = await import("./narration.js");
+    const originalResolver = _resolvers.resolveConfig;
+    _resolvers.resolveConfig = vi.fn().mockReturnValue({
+      geminiApiKey: "test-gemini-key",
+      narrationMode: "off" as const,
+      hubUrl: MOCK_HUB_URL,
+      hubToken: MOCK_HUB_TOKEN,
+      minResponseLength: 100,
+      debounceMs: 1500,
+    });
+
     const ctx = makePluginContext();
     const plugin = await NarrationPlugin(ctx);
     const eventHandler = plugin.event;
@@ -834,6 +752,9 @@ describe("NarrationPlugin", () => {
         JSON.parse(opts.body).params?.name === "accordo_voice_readAloud",
     );
     expect(readAloudCalls.length).toBe(0);
+
+    // Restore
+    _resolvers.resolveConfig = originalResolver;
   });
 });
 

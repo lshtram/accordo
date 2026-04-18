@@ -3,7 +3,7 @@
   "displayName": "Accordo IDE Voice",
   "publisher": "accordo",
   "version": "0.1.0",
-  "description": "Accordo IDE Voice — local STT/TTS narration and dictation via Whisper.cpp + Kokoro",
+  "description": "Accordo IDE Voice — TTS read-aloud via external HTTP TTS (preferred) or Kokoro ONNX (fallback)",
   "categories": [
     "Other"
   ],
@@ -32,125 +32,33 @@
     "lint": "echo 'no lint configured yet'"
   },
   "contributes": {
-    "viewsContainers": {
-      "panel": [
-        {
-          "id": "accordo-voice-container",
-          "title": "Voice",
-          "icon": "$(unmute)"
-        }
-      ]
-    },
-    "views": {
-      "accordo-voice-container": [
-        {
-          "id": "accordo-voice-panel",
-          "name": "Voice",
-          "type": "webview",
-          "contextualTitle": "Accordo Voice"
-        }
-      ]
-    },
     "commands": [
-      {
-        "command": "accordo.voice.startDictation",
-        "title": "Start Dictation",
-        "icon": "$(record)"
-      },
       {
         "command": "accordo.voice.readAloud",
         "title": "Read Selection Aloud",
         "icon": "$(play)"
       },
       {
-        "command": "accordo.voice.testTts",
-        "title": "Test TTS (Smoke Test)",
-        "icon": "$(megaphone)"
-      },
-      {
-        "command": "accordo.voice.testStt",
-        "title": "Test STT (Smoke Test)",
-        "icon": "$(pulse)"
-      },
-      {
         "command": "accordo.voice.stopNarration",
         "title": "Stop Narration",
         "icon": "$(debug-stop)"
-      },
-      {
-        "command": "accordo.voice.pauseNarration",
-        "title": "Pause Narration",
-        "icon": "$(debug-pause)"
-      },
-      {
-        "command": "accordo.voice.resumeNarration",
-        "title": "Resume Narration",
-        "icon": "$(play)"
-      },
-      {
-        "command": "accordo.voice.configure",
-        "title": "Configure Voice",
-        "icon": "$(gear)"
       }
     ],
     "keybindings": [
       {
-        "command": "accordo.voice.startDictation",
-        "key": "ctrl+m",
-        "mac": "ctrl+m"
-      },
-      {
         "command": "accordo.voice.readAloud",
         "key": "ctrl+alt+r",
-        "mac": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
         "when": "editorTextFocus && editorHasSelection"
-      },
-      {
-        "command": "accordo.voice.stopNarration",
-        "key": "escape",
-        "when": "accordo.voice.narrating"
       }
     ],
     "configuration": {
       "title": "Accordo Voice",
       "properties": {
-        "accordo.voice.whisperPath": {
-          "type": "string",
-          "default": "whisper",
-          "description": "Path to whisper.cpp binary. On macOS: `brew install whisper-cpp` then set to `whisper-cpp`. On Windows: download from https://github.com/ggerganov/whisper.cpp/releases or `scoop install whisper-cpp`, then set to the full path or bare name if it's on PATH. On Linux: build from source or use your package manager."
-        },
-        "accordo.voice.whisperModelFolder": {
-          "type": "string",
-          "default": "",
-          "description": "Directory containing whisper.cpp model files (.bin). Leave empty to auto-discover from common locations. On Windows try %APPDATA%\\whisper\\models; on macOS/Linux try ~/.whisper/models."
-        },
-        "accordo.voice.whisperModel": {
-          "type": "string",
-          "default": "ggml-base.en.bin",
-          "description": "Whisper model filename"
-        },
         "accordo.voice.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Enable voice session when providers are available"
-        },
-        "accordo.voice.inputTarget": {
-          "type": "string",
-          "default": "focus-text-input",
-          "enum": [
-            "focus-text-input",
-            "agent-conversation"
-          ],
-          "markdownEnumDescriptions": [
-            "Insert transcript into the currently focused text input.",
-            "Focus the agent chat conversation input and insert transcript there."
-          ],
-          "description": "Where dictation transcripts should be inserted"
-        },
-        "accordo.voice.recordingReadyChime": {
-          "type": "boolean",
-          "default": false,
-          "description": "Play a short ready chime when the microphone is prepared and recording is about to start"
+          "description": "Enable voice session when TTS provider is available"
         },
         "accordo.voice.voice": {
           "type": "string",
@@ -176,7 +84,7 @@
         "accordo.voice.language": {
           "type": "string",
           "default": "en-US",
-          "description": "BCP-47 language code for STT/TTS"
+          "description": "BCP-47 language code for TTS"
         },
         "accordo.voice.narrationMode": {
           "type": "string",
@@ -188,34 +96,20 @@
           ],
           "description": "Default narration mode"
         },
-        "accordo.voice.sttProvider": {
+        "accordo.voice.ttsEndpoint": {
           "type": "string",
-          "default": "faster-whisper-http",
-          "enum": [
-            "faster-whisper-http",
-            "whisper-cpp"
-          ],
-          "markdownEnumDescriptions": [
-            "Use the Docker faster-whisper-server REST API (recommended). Requires the `engram-whisper` container to be running.",
-            "Use a local whisper.cpp CLI binary. Requires the binary to be installed and on PATH."
-          ],
-          "description": "STT backend provider"
+          "default": "",
+          "description": "External TTS HTTP endpoint (e.g. https://api.openai.com/v1). When set, this takes priority over local Kokoro."
         },
-        "accordo.voice.fasterWhisperUrl": {
+        "accordo.voice.ttsAuthToken": {
           "type": "string",
-          "default": "http://localhost:8280",
-          "description": "Base URL for the faster-whisper-server Docker container (used when sttProvider is faster-whisper-http)"
+          "default": "",
+          "description": "Authorization token for external TTS endpoint (Bearer token)"
         },
-        "accordo.voice.fasterWhisperModel": {
+        "accordo.voice.ttsModel": {
           "type": "string",
-          "default": "Systran/faster-whisper-small",
-          "enum": [
-            "Systran/faster-whisper-small",
-            "Systran/faster-whisper-large-v3",
-            "deepdml/faster-whisper-large-v3-turbo-ct2",
-            "Systran/faster-distil-whisper-large-v3"
-          ],
-          "description": "Model name to send in transcription requests to faster-whisper-server (used when sttProvider is faster-whisper-http)"
+          "default": "",
+          "description": "Model name for external TTS (e.g. tts-1). Defaults to provider default."
         }
       }
     }
@@ -228,7 +122,6 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "kokoro-js": "1.2.1",
-    "sherpa-onnx-node": "1.12.28"
+    "kokoro-js": "1.2.1"
   }
 }

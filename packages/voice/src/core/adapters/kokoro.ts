@@ -5,8 +5,7 @@
  */
 
 import { createRequire } from "node:module";
-import type { TtsProvider, TtsSynthesisRequest, TtsSynthesisResult } from "../providers/tts-provider.js";
-import type { CancellationToken } from "../providers/stt-provider.js";
+import type { TtsProvider, TtsSynthesisRequest, TtsSynthesisResult, CancellationToken } from "../providers/tts-provider.js";
 
 /** CJS require scoped to this file — used only for availability check in ESM context. */
 const _cjsRequire = createRequire(import.meta.url);

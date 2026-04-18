@@ -2,11 +2,11 @@
  * M50-WAV — buildWavBuffer + playPcmAudio tests (Phase B — must FAIL before implementation)
  *
  * Coverage: M50-WAV-01 through M50-WAV-05
+ * Note: createPreSpawnedPlayer and CachedSound removed in v2.0 simplification.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { SpawnFn } from "../core/audio/playback.js";
-import { createPreSpawnedPlayer } from "../core/audio/playback.js";
 
 // ---------------------------------------------------------------------------
 // fs/promises mock
@@ -26,7 +26,7 @@ import * as fsMock from "node:fs/promises";
 const flush = (): Promise<void> => new Promise<void>((r) => setImmediate(r));
 
 // ---------------------------------------------------------------------------
-// Fake spawn helper (reuse from whisper-cpp tests style)
+// Fake spawn helper
 // ---------------------------------------------------------------------------
 class FakeProc {
   public spawnCmd = "";
@@ -79,21 +79,33 @@ describe("buildWavBuffer", () => {
   });
 
   it("M50-WAV-01: starts with RIFF signature", () => {
-    const pcm = new Uint8Array(4);
+    const pcm = new Uint8Array(100);
     const result = buildWavBuffer(pcm, 16000, 1);
-    expect(result.toString("ascii", 0, 4)).toBe("RIFF");
+    // RIFF = 0x52 0x49 0x46 0x46
+    expect(result[0]).toBe(0x52); // R
+    expect(result[1]).toBe(0x49); // I
+    expect(result[2]).toBe(0x46); // F
+    expect(result[3]).toBe(0x46); // F
   });
 
   it("M50-WAV-01: contains WAVE format marker at offset 8", () => {
-    const pcm = new Uint8Array(4);
+    const pcm = new Uint8Array(100);
     const result = buildWavBuffer(pcm, 16000, 1);
-    expect(result.toString("ascii", 8, 12)).toBe("WAVE");
+    // WAVE = 0x57 0x41 0x56 0x45
+    expect(result[8]).toBe(0x57);  // W
+    expect(result[9]).toBe(0x41);  // A
+    expect(result[10]).toBe(0x56); // V
+    expect(result[11]).toBe(0x45); // E
   });
 
   it("M50-WAV-01: contains data chunk marker at offset 36", () => {
-    const pcm = new Uint8Array(4);
+    const pcm = new Uint8Array(100);
     const result = buildWavBuffer(pcm, 16000, 1);
-    expect(result.toString("ascii", 36, 40)).toBe("data");
+    // data = 0x64 0x61 0x74 0x61
+    expect(result[36]).toBe(0x64);  // d
+    expect(result[37]).toBe(0x61);  // a
+    expect(result[38]).toBe(0x74);  // t
+    expect(result[39]).toBe(0x61); // a
   });
 });
 
@@ -111,178 +123,64 @@ describe("playPcmAudio", () => {
 
   it("M50-WAV-02: writes temp WAV and invokes platform player", async () => {
     const { spawnFn, procs } = makeSpawn();
-    const promise = playPcmAudio(new Uint8Array([0]), 16000, { platform: "darwin", spawnFn });
+    const p = playPcmAudio(new Uint8Array([0]), 16000, { platform: "linux", spawnFn });
     await flush();
-    expect(procs.length).toBe(1);
-    expect(procs[0]!.spawnCmd).toBe("afplay");
-    procs[0]!.emitClose(0);
-    await promise;
     expect(fsMock.writeFile).toHaveBeenCalled();
+    expect(procs.length).toBe(1);
+    procs[0]!.emitClose(0);
+    await p;
   });
 
   it("M50-WAV-03: uses afplay on macOS", async () => {
     const { spawnFn, procs } = makeSpawn();
-    const promise = playPcmAudio(new Uint8Array([0]), 16000, { platform: "darwin", spawnFn });
+    const p = playPcmAudio(new Uint8Array([0]), 16000, { platform: "darwin", spawnFn });
     await flush();
     expect(procs[0]!.spawnCmd).toBe("afplay");
     procs[0]!.emitClose(0);
-    await promise;
+    await p;
   });
 
   it("M50-WAV-03: uses aplay on Linux", async () => {
     const { spawnFn, procs } = makeSpawn();
-    const promise = playPcmAudio(new Uint8Array([0]), 16000, { platform: "linux", spawnFn });
+    const p = playPcmAudio(new Uint8Array([0]), 16000, { platform: "linux", spawnFn });
     await flush();
     expect(procs[0]!.spawnCmd).toBe("aplay");
     procs[0]!.emitClose(0);
-    await promise;
+    await p;
   });
 
   it("M50-WAV-03: uses powershell on Windows", async () => {
     const { spawnFn, procs } = makeSpawn();
-    const promise = playPcmAudio(new Uint8Array([0]), 16000, { platform: "win32", spawnFn });
+    const p = playPcmAudio(new Uint8Array([0]), 16000, { platform: "win32", spawnFn });
     await flush();
-    expect(procs[0]!.spawnCmd.toLowerCase()).toBe("powershell");
+    expect(procs[0]!.spawnCmd).toBe("powershell");
     procs[0]!.emitClose(0);
-    await promise;
+    await p;
   });
 
   it("M50-WAV-04: temp file is cleaned up after success", async () => {
     const { spawnFn, procs } = makeSpawn();
-    const promise = playPcmAudio(new Uint8Array([0]), 16000, { platform: "darwin", spawnFn });
+    const p = playPcmAudio(new Uint8Array([0]), 16000, { platform: "linux", spawnFn });
     await flush();
     procs[0]!.emitClose(0);
-    await promise;
+    await p;
     expect(fsMock.rm).toHaveBeenCalled();
   });
 
   it("M50-WAV-04: temp file is cleaned up after failure", async () => {
     const { spawnFn, procs } = makeSpawn();
-    const promise = playPcmAudio(new Uint8Array([0]), 16000, { platform: "darwin", spawnFn });
+    const p = playPcmAudio(new Uint8Array([0]), 16000, { platform: "linux", spawnFn });
     await flush();
     procs[0]!.emitClose(1);
-    await expect(promise).rejects.toThrow();
+    await expect(p).rejects.toThrow();
     expect(fsMock.rm).toHaveBeenCalled();
   });
 
   it("M50-WAV-05: player errors are re-thrown as descriptive Error messages", async () => {
     const { spawnFn, procs } = makeSpawn();
-    const promise = playPcmAudio(new Uint8Array([0]), 16000, { platform: "darwin", spawnFn });
+    const p = playPcmAudio(new Uint8Array([0]), 16000, { platform: "darwin", spawnFn });
     await flush();
     procs[0]!.emitClose(1);
-    await expect(promise).rejects.toThrow(/afplay/i);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// createPreSpawnedPlayer — stdin-pipe low-latency playback
-// ---------------------------------------------------------------------------
-
-/** FakeProc extended with a writable stdin for pre-spawn tests. */
-class FakeProcWithStdin extends FakeProc {
-  public stdinChunks: Buffer[] = [];
-  public stdinEnded = false;
-
-  public readonly stdin = {
-    write: (data: Buffer) => { this.stdinChunks.push(data); },
-    end: () => { this.stdinEnded = true; },
-  };
-}
-
-function makeSpawnWithStdin(): { spawnFn: SpawnFn; procs: FakeProcWithStdin[] } {
-  const procs: FakeProcWithStdin[] = [];
-  const spawnFn: SpawnFn = (cmd, args, _opts) => {
-    const p = new FakeProcWithStdin();
-    p.spawnCmd = cmd;
-    p.spawnArgs = args;
-    procs.push(p);
-    return p;
-  };
-  return { spawnFn, procs };
-}
-
-describe("createPreSpawnedPlayer — low-latency stdin-pipe playback", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(fsMock.writeFile).mockResolvedValue(undefined);
-    vi.mocked(fsMock.rm).mockResolvedValue(undefined);
-    vi.mocked(fsMock.mkdtemp).mockResolvedValue("/tmp/accordo-wav-xyz");
-  });
-
-  it("pre-spawns aplay - on Linux (stdin pipe supported)", () => {
-    const { spawnFn, procs } = makeSpawnWithStdin();
-    createPreSpawnedPlayer({ platform: "linux", spawnFn });
-    expect(procs.length).toBe(1);
-    expect(procs[0]!.spawnCmd).toBe("aplay");
-    expect(procs[0]!.spawnArgs).toEqual(["-"]);
-    procs[0]!.emitClose(0);
-  });
-
-  it("macOS deferred path uses writeFile — afplay does not support stdin pipe", async () => {
-    const { spawnFn, procs } = makeSpawnWithStdin();
-    const player = createPreSpawnedPlayer({ platform: "darwin", spawnFn });
-    // No process pre-spawned — afplay requires a seekable file
-    expect(procs.length).toBe(0);
-    const playPromise = player.play(new Uint8Array([0]), 22050);
-    await flush();
-    // Deferred path writes temp file then spawns afplay
-    expect(fsMock.writeFile).toHaveBeenCalled();
-    expect(procs.length).toBe(1);
-    procs[0]!.emitClose(0);
-    await playPromise;
-  });
-
-  it("play() writes WAV to stdin and waits for exit (Linux)", async () => {
-    const { spawnFn, procs } = makeSpawnWithStdin();
-    const player = createPreSpawnedPlayer({ platform: "linux", spawnFn });
-    const playPromise = player.play(new Uint8Array([1, 2, 3, 4]), 22050);
-    await flush();
-    // WAV header + data should have been written to stdin
-    expect(procs[0]!.stdinChunks.length).toBeGreaterThan(0);
-    expect(procs[0]!.stdinEnded).toBe(true);
-    procs[0]!.emitClose(0);
-    await playPromise;
-  });
-
-  it("play() rejects when aplay exits with non-zero code", async () => {
-    const { spawnFn, procs } = makeSpawnWithStdin();
-    const player = createPreSpawnedPlayer({ platform: "linux", spawnFn });
-    const playPromise = player.play(new Uint8Array([0]), 22050);
-    await flush();
-    procs[0]!.emitClose(1);
-    await expect(playPromise).rejects.toThrow(/aplay/i);
-  });
-
-  it("abort() kills the pre-spawned process (Linux)", async () => {
-    const { spawnFn, procs } = makeSpawnWithStdin();
-    const player = createPreSpawnedPlayer({ platform: "linux", spawnFn });
-    player.abort();
-    expect(procs[0]!.killed).toBe(true);
-  });
-
-  it("abort() after play() does nothing (idempotent, Linux)", async () => {
-    const { spawnFn, procs } = makeSpawnWithStdin();
-    const player = createPreSpawnedPlayer({ platform: "linux", spawnFn });
-    const playPromise = player.play(new Uint8Array([0]), 22050);
-    await flush();
-    procs[0]!.emitClose(0);
-    await playPromise;
-    // Should not throw or mutate state after play has completed
-    player.abort();
-    expect(procs[0]!.killed).toBe(false); // kill was not called again
-  });
-
-  it("Windows deferred path uses writeFile (normal temp-file playback)", async () => {
-    const { spawnFn, procs } = makeSpawnWithStdin();
-    const player = createPreSpawnedPlayer({ platform: "win32", spawnFn });
-    // No process spawned yet (deferred)
-    expect(procs.length).toBe(0);
-    const playPromise = player.play(new Uint8Array([0]), 22050);
-    await flush();
-    // Now spawn happened via playPcmAudio → temp file was written
-    expect(fsMock.writeFile).toHaveBeenCalled();
-    expect(procs.length).toBe(1);
-    procs[0]!.emitClose(0);
-    await playPromise;
+    await expect(p).rejects.toThrow(/afplay.*exit.*1/i);
   });
 });

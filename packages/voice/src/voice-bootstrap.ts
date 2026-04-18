@@ -1,38 +1,16 @@
 /**
- * voice-bootstrap.ts — VS Code ceremony layer.
+ * voice-bootstrap.ts — VS Code ceremony layer (minimal TTS-only).
  *
- * Allowed to import from `vscode` and `./ui/*`. Contains config reading,
- * policy loading, UI synchronization, and bridge state publishing.
+ * Allowed to import from `vscode`. Contains config reading,
+ * policy loading, and bridge state publishing.
  *
- * M50-EXT (bootstrap split)
+ * M50-EXT (bootstrap — no STT/UI for minimal voice)
  */
 
 import * as vscode from "vscode";
 import type { SessionFsm } from "./core/fsm/session-fsm.js";
-import type { AudioFsm } from "./core/fsm/audio-fsm.js";
-import type { NarrationFsm } from "./core/fsm/narration-fsm.js";
-import type { VoicePolicy } from "./core/fsm/types.js";
-import type { VoiceStatusBar } from "./ui/status-bar.js";
-import type { VoicePanelProvider } from "./ui/voice-panel.js";
 import type { BridgeAPI } from "./extension.js";
-
-// ── VoiceBootstrapConfig ──────────────────────────────────────────────────────
-
-export interface VoiceBootstrapConfig {
-  enabled: boolean;
-  voice: string;
-  speed: number;
-  language: string;
-  narrationMode: VoicePolicy["narrationMode"];
-  sttProvider: string;
-  whisperPath: string;
-  whisperModelFolder: string;
-  whisperModel: string;
-  fasterWhisperUrl: string;
-  fasterWhisperModel: string;
-  inputTarget: "focus-text-input" | "agent-conversation";
-  recordingReadyChime: boolean;
-}
+import type { TtsProvider } from "./core/providers/tts-provider.js";
 
 // ── readVoiceConfig ───────────────────────────────────────────────────────────
 
@@ -42,22 +20,13 @@ export interface VoiceBootstrapConfig {
  */
 export function readVoiceConfig(
   _context: vscode.ExtensionContext,
-): VoiceBootstrapConfig {
+): { voice: string; speed: number; language: string; narrationMode: "narrate-off" | "narrate-everything" | "narrate-summary" } {
   const cfg = vscode.workspace.getConfiguration("accordo.voice");
   return {
-    enabled: cfg.get<boolean>("enabled", false),
     voice: cfg.get<string>("voice", "af_sarah"),
     speed: cfg.get<number>("speed", 1.0),
     language: cfg.get<string>("language", "en-US"),
-    narrationMode: cfg.get<VoicePolicy["narrationMode"]>("narrationMode", "narrate-off"),
-    sttProvider: cfg.get<string>("sttProvider", "faster-whisper-http"),
-    whisperPath: cfg.get<string>("whisperPath", "whisper"),
-    whisperModelFolder: cfg.get<string>("whisperModelFolder", ""),
-    whisperModel: cfg.get<string>("whisperModel", "ggml-base.en.bin"),
-    fasterWhisperUrl: cfg.get<string>("fasterWhisperUrl", "http://localhost:8280"),
-    fasterWhisperModel: cfg.get<string>("fasterWhisperModel", "Systran/faster-whisper-small"),
-    inputTarget: cfg.get<"focus-text-input" | "agent-conversation">("inputTarget", "focus-text-input"),
-    recordingReadyChime: cfg.get<boolean>("recordingReadyChime", false),
+    narrationMode: cfg.get<"narrate-off" | "narrate-everything" | "narrate-summary">("narrationMode", "narrate-off"),
   };
 }
 
@@ -74,52 +43,23 @@ export function loadPolicyFromConfiguration(sessionFsm: SessionFsm): void {
     voice: voiceCfg.get<string>("voice", "af_sarah"),
     speed: voiceCfg.get<number>("speed", 1.0),
     language: voiceCfg.get<string>("language", "en-US"),
-    narrationMode: voiceCfg.get<VoicePolicy["narrationMode"]>("narrationMode", "narrate-off"),
+    narrationMode: voiceCfg.get<"narrate-off" | "narrate-everything" | "narrate-summary">("narrationMode", "narrate-off"),
   });
-}
-
-// ── updateStatusBar ───────────────────────────────────────────────────────────
-
-/**
- * Updates the status bar from current FSM states.
- * REQ-VB-05
- */
-export function updateStatusBar(
-  statusBar: VoiceStatusBar,
-  sessionFsm: SessionFsm,
-  audioFsm: AudioFsm,
-  narrationFsm: NarrationFsm,
-  micPreparing: boolean,
-): void {
-  statusBar.update(
-    sessionFsm.state,
-    audioFsm.state,
-    narrationFsm.state,
-    sessionFsm.policy,
-    micPreparing,
-  );
 }
 
 // ── publishVoiceState ─────────────────────────────────────────────────────────
 
 /**
- * Publishes current voice state to the bridge.
- * REQ-VB-11, REQ-VB-12
+ * Publishes minimal voice state to the bridge.
+ * REQ-VB-11 (simplified for TTS-only)
  */
 export function publishVoiceState(
   bridge: BridgeAPI,
   sessionFsm: SessionFsm,
-  audioFsm: AudioFsm,
-  narrationFsm: NarrationFsm,
-  sttAvailable: boolean,
   ttsAvailable: boolean,
 ): void {
   bridge.publishState("accordo-voice", {
-    session: sessionFsm.state,
-    audio: audioFsm.state,
-    narration: narrationFsm.state,
     policy: sessionFsm.policy,
-    sttAvailable,
     ttsAvailable,
   });
 }
@@ -127,42 +67,31 @@ export function publishVoiceState(
 // ── syncUiAndState ────────────────────────────────────────────────────────────
 
 /**
- * Synchronizes the status bar, panel, VS Code context, and bridge state.
- * REQ-VB-06 through REQ-VB-10
+ * Synchronizes the VS Code context and bridge state.
+ * REQ-VB-06 through REQ-VB-10 (simplified — no status bar or panel)
  */
 export function syncUiAndState(
   sessionFsm: SessionFsm,
-  audioFsm: AudioFsm,
-  narrationFsm: NarrationFsm,
-  statusBar: VoiceStatusBar,
-  panelProvider: VoicePanelProvider,
+  narrationFsm: { state: string },
   bridge: BridgeAPI | undefined,
-  availabilityKnown: boolean,
-  micPreparing = false,
-  sttAvailable = false,
-  ttsAvailable = false,
+  ttsProvider: TtsProvider,
   log?: (msg: string) => void,
 ): void {
-  updateStatusBar(statusBar, sessionFsm, audioFsm, narrationFsm, micPreparing);
-
-  panelProvider.postMessage({
-    type: "stateChange",
-    session: sessionFsm.state,
-    audio: audioFsm.state,
-    narration: narrationFsm.state,
-  });
-
   void vscode.commands.executeCommand(
     "setContext",
     "accordo.voice.narrating",
     narrationFsm.state === "playing" || narrationFsm.state === "paused",
   );
 
-  if (bridge && availabilityKnown) {
-    try {
-      publishVoiceState(bridge, sessionFsm, audioFsm, narrationFsm, sttAvailable, ttsAvailable);
-    } catch (err) {
-      log?.(`bridge: publishVoiceState failed (transient) — ${String(err)}`);
-    }
+  if (bridge) {
+    Promise.resolve(ttsProvider.isAvailable())
+      .then((ttsAvail) => {
+        try {
+          publishVoiceState(bridge, sessionFsm, ttsAvail);
+        } catch (err) {
+          log?.(`bridge: publishVoiceState failed (transient) — ${String(err)}`);
+        }
+      })
+      .catch(() => {/* best-effort */});
   }
 }

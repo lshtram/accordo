@@ -210,7 +210,63 @@ async function summarizeWithGemini(
   }
 }
 
-// ── MCP readAloud Call ────────────────────────────────────────────────────────
+// ── Core Narration Logic ──────────────────────────────────────────────────────
+
+/**
+ * Handle a session.idle event: extract text, summarize (if needed), narrate.
+ *
+ * NP-01, NP-02, NP-03, NP-04, NP-05, NP-07, NP-10
+ *
+ * This is the main orchestration function. It:
+ * 1. Extracts the last assistant message
+ * 2. Checks minimum length (NP-10)
+ * 3. Resolves narration mode from config (no discover — voice module simplified)
+ * 4. Summarizes if mode is "summary" (NP-04)
+ * 5. Calls readAloud (NP-05)
+ * 6. Swallows all errors (NP-07)
+ */
+async function handleSessionIdle(
+  client: PluginContext["client"],
+  sessionId: string,
+  config: NarrationConfig,
+): Promise<void> {
+  try {
+    const text = await extractLastAssistantText(client, sessionId);
+    if (text === undefined || text.length === 0) {
+      return;
+    }
+
+    // Use the configured narration mode directly (no discover call needed)
+    let currentMode: NarrationMode = config.narrationMode;
+
+    if (currentMode === "off") {
+      return;
+    }
+
+    let narrationText = text;
+    let useCleanMode: "narrate-full" | "narrate-headings" | "raw" = "narrate-full";
+
+    // NP-10: For summary mode, bypass Gemini if response is short
+    if (currentMode === "summary" && text.length >= config.minResponseLength) {
+      // NP-04: Summarize with Gemini
+      if (config.geminiApiKey) {
+        const summary = await summarizeWithGemini(text, config.geminiApiKey);
+        if (summary !== undefined) {
+          narrationText = summary;
+        }
+      }
+    }
+
+    // NP-05: Call readAloud
+    await callReadAloud(config.hubUrl, config.hubToken, narrationText, useCleanMode);
+  } catch (err) {
+    // NP-07: Silent failure — log to stderr only
+    // eslint-disable-next-line no-console
+    console.error("[narration-plugin] error:", err);
+  }
+}
+
+// ── Module-level debounce timer map (NP-02) ────────────────────────────────────
 
 /**
  * Call accordo_voice_readAloud via the Hub's MCP endpoint.
@@ -251,130 +307,6 @@ async function callReadAloud(
   }
 }
 
-// ── Narration Mode Discovery ──────────────────────────────────────────────────
-
-/**
- * Discover the current narration mode from the Accordo voice state.
- *
- * NP-06: Calls accordo_voice_discover via MCP to read the current
- * voice policy. Falls back to the config override if the call fails.
- */
-async function discoverNarrationMode(
-  hubUrl: string,
-  hubToken: string,
-  fallback: NarrationMode,
-): Promise<NarrationMode> {
-  try {
-    const response = await fetch(`${hubUrl}/mcp`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: hubToken,
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: {
-          name: "accordo_voice_discover",
-          arguments: {},
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      return fallback;
-    }
-
-    const data = (await response.json()) as {
-      result?: { content?: Array<{ type: string; text?: string }> };
-    };
-    const toolResult = data.result;
-    const text = toolResult?.content?.[0]?.text;
-    if (!text) return fallback;
-    try {
-      const parsed = JSON.parse(text) as { policy?: { narrationMode?: string } };
-      const value = parsed?.policy?.narrationMode;
-      if (value !== undefined) {
-        return parseNarrationMode(value);
-      }
-    } catch {
-      // JSON parse failed → fall through to fallback
-    }
-
-    // discover succeeded but returned no specific mode; use config
-    return fallback;
-  } catch {
-    // NP-07: silently return fallback on error
-    return fallback;
-  }
-}
-
-// ── Core Narration Logic ──────────────────────────────────────────────────────
-
-/**
- * Handle a session.idle event: extract text, summarize (if needed), narrate.
- *
- * NP-01, NP-02, NP-03, NP-04, NP-05, NP-06, NP-07, NP-10
- *
- * This is the main orchestration function. It:
- * 1. Extracts the last assistant message
- * 2. Checks minimum length (NP-10)
- * 3. Resolves narration mode (NP-06)
- * 4. Summarizes if mode is "summary" (NP-04)
- * 5. Calls readAloud (NP-05)
- * 6. Swallows all errors (NP-07)
- */
-async function handleSessionIdle(
-  client: PluginContext["client"],
-  sessionId: string,
-  config: NarrationConfig,
-): Promise<void> {
-  try {
-    const text = await extractLastAssistantText(client, sessionId);
-    if (text === undefined || text.length === 0) {
-      return;
-    }
-
-    // NP-06: Determine the effective narration mode.
-    // If config says "off", skip discover (no MCP calls needed).
-    // Otherwise re-check from voice policy in case user changed it.
-    let currentMode: NarrationMode = config.narrationMode;
-    if (currentMode !== "off") {
-      currentMode = await discoverNarrationMode(
-        config.hubUrl,
-        config.hubToken,
-        config.narrationMode,
-      );
-    }
-
-    if (currentMode === "off") {
-      return;
-    }
-
-    let narrationText = text;
-    let useCleanMode: "narrate-full" | "narrate-headings" | "raw" = "narrate-full";
-
-    // NP-10: For summary mode, bypass Gemini if response is short
-    if (currentMode === "summary" && text.length >= config.minResponseLength) {
-      // NP-04: Summarize with Gemini
-      if (config.geminiApiKey) {
-        const summary = await summarizeWithGemini(text, config.geminiApiKey);
-        if (summary !== undefined) {
-          narrationText = summary;
-        }
-      }
-    }
-
-    // NP-05: Call readAloud
-    await callReadAloud(config.hubUrl, config.hubToken, narrationText, useCleanMode);
-  } catch (err) {
-    // NP-07: Silent failure — log to stderr only
-    // eslint-disable-next-line no-console
-    console.error("[narration-plugin] error:", err);
-  }
-}
-
 // ── Module-level debounce timer map (NP-02) ────────────────────────────────────
 
 export const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -401,37 +333,34 @@ export const _resolvers = {
 const NarrationPlugin = async (
   context: PluginContext,
 ): Promise<{ event: (opts: PluginEvent) => Promise<void> }> => {
-  await context.client.app.log({ body: { service: "narration", level: "info", message: `Plugin loaded, directory: ${context.directory}` } });
   const config = _resolvers.resolveConfig(context.directory);
-  await context.client.app.log({ body: { service: "narration", level: "info", message: `Config resolved, hubUrl: ${config.hubUrl}, mode: ${config.narrationMode}` } });
 
   return {
     event: async (event: PluginEvent): Promise<void> => {
-      await context.client.app.log({ body: { service: "narration", level: "info", message: `Event fired: ${event.type}` } });
       if (event.type !== "session.idle") return;
 
-      // Note: session.idle events have no sessionId on the event object (it's in the bus context).
-      // We use a fixed debounce key since there's only ever one active session at a time.
-      const DEBOUNCE_KEY = "idle";
+      // session.idle events carry the session id in event.sessionId
+      const sessionId = event.sessionId ?? "idle";
 
-      // NP-02: Clear any pending debounce timer.
+      // NP-02: Clear any pending debounce timer for this session.
       // Only the final idle event (after all subagents complete) triggers narration.
-      const existingTimer = debounceTimers.get(DEBOUNCE_KEY);
+      const existingTimer = debounceTimers.get(sessionId);
       if (existingTimer !== undefined) {
         clearTimeout(existingTimer);
       }
 
       const timer = setTimeout(async () => {
-        debounceTimers.delete(DEBOUNCE_KEY);
-        await context.client.app.log({ body: { service: "narration", level: "info", message: `Debounce timer fired, calling handleSessionIdle` } });
-        await handleSessionIdle(context.client, DEBOUNCE_KEY, config).catch(
+        debounceTimers.delete(sessionId);
+        await handleSessionIdle(context.client, sessionId, config).catch(
           (err) => {
-            context.client.app.log({ body: { service: "narration", level: "error", message: `Error: ${err}` } });
+            // NP-07: silent failure — log to stderr only
+            // eslint-disable-next-line no-console
+            console.error("[narration-plugin] handleSessionIdle error:", err);
           },
         );
       }, config.debounceMs);
 
-      debounceTimers.set(DEBOUNCE_KEY, timer);
+      debounceTimers.set(sessionId, timer);
     },
   };
 };
@@ -444,7 +373,6 @@ export {
   extractLastAssistantText,
   summarizeWithGemini,
   callReadAloud,
-  discoverNarrationMode,
   handleSessionIdle,
 };
 

@@ -1,75 +1,49 @@
 /**
- * voice-adapters.ts — Pure adapter/utility layer.
+ * voice-adapters.ts — Pure TTS adapter/utility layer.
  *
- * No `vscode` imports. This is the leaf layer that creates STT/TTS providers
- * and provides pure utility functions.
+ * No `vscode` imports. Configuration values are passed in by the caller
+ * (extension.ts), keeping this leaf layer vscode-free.
  *
- * M50-EXT (adapter split)
+ * Resolution order:
+ * 1. External HTTP TTS (ExternalTtsAdapter) — preferred when endpoint is configured
+ * 2. Local Kokoro ONNX (KokoroAdapter) — fallback when no external endpoint
+ *
+ * M50-EXT (adapter split — TTS-only, external-first)
  */
 
-import type { SttProvider } from "./core/providers/stt-provider.js";
 import type { TtsProvider } from "./core/providers/tts-provider.js";
-import { WhisperCppAdapter } from "./core/adapters/whisper-cpp.js";
-import { FasterWhisperHttpAdapter } from "./core/adapters/faster-whisper-http.js";
 import { KokoroAdapter } from "./core/adapters/kokoro.js";
-import { SherpaSubprocessAdapter, findSystemNode } from "./core/adapters/sherpa-subprocess.js";
-
-// ── STT provider config ───────────────────────────────────────────────────────
-
-export interface SttProviderConfig {
-  sttProvider?: string;
-  whisperPath?: string;
-  whisperModelFolder?: string;
-  whisperModel?: string;
-  fasterWhisperUrl?: string;
-  fasterWhisperModel?: string;
-}
-
-// ── createSttProvider ─────────────────────────────────────────────────────────
-
-/**
- * Factory: creates the appropriate STT provider based on the given provider name.
- * REQ-VA-01, REQ-VA-02, REQ-VA-03
- */
-export function createSttProvider(
-  sttProviderName: string,
-  log: (msg: string) => void,
-  config?: SttProviderConfig,
-): SttProvider {
-  if (sttProviderName === "faster-whisper-http") {
-    log(`stt: creating FasterWhisperHttpAdapter (provider=${sttProviderName})`);
-    return new FasterWhisperHttpAdapter({
-      baseUrl: config?.fasterWhisperUrl ?? "http://localhost:8280",
-      model: config?.fasterWhisperModel ?? "Systran/faster-whisper-small",
-      log: (msg) => log(`[faster-whisper] ${msg}`),
-    });
-  }
-
-  log(`stt: creating WhisperCppAdapter (provider=${sttProviderName})`);
-  return new WhisperCppAdapter({
-    binaryPath: config?.whisperPath ?? "whisper",
-    modelFolder: config?.whisperModelFolder ?? "",
-    modelFile: config?.whisperModel ?? "ggml-base.en.bin",
-    log: (msg) => log(`[whisper] ${msg}`),
-  });
-}
+import { ExternalTtsAdapter } from "./core/adapters/external-tts.js";
 
 // ── createTtsProvider ─────────────────────────────────────────────────────────
 
 /**
- * Factory: tries Sherpa (C++ subprocess) first; falls back to KokoroJS.
+ * Factory: creates the best available TTS provider.
+ *
+ * Prefers external HTTP TTS when `ttsEndpoint` and `ttsAuthToken` are non-empty.
+ * Falls back to KokoroAdapter (local ONNX) when no external endpoint is set.
  * REQ-VA-04, REQ-VA-05
  */
 export async function createTtsProvider(
   log: (msg: string) => void,
+  ttsEndpoint: string,
+  ttsAuthToken: string,
+  ttsModel: string,
 ): Promise<TtsProvider> {
-  const sherpa = new SherpaSubprocessAdapter();
-  if (await sherpa.isAvailable()) {
-    const nodeBin = findSystemNode();
-    log(`tts: using sherpa-kokoro (C++ subprocess, node=${nodeBin})`);
-    return sherpa;
+  const endpoint = ttsEndpoint.trim();
+  const authToken = ttsAuthToken.trim();
+  const model = ttsModel.trim();
+
+  if (endpoint.length > 0 && authToken.length > 0) {
+    log(`tts: using ExternalTtsAdapter (${endpoint})`);
+    return new ExternalTtsAdapter({
+      endpoint,
+      authToken,
+      model: model || undefined,
+    });
   }
-  log("tts: sherpa model not found — using kokoro-js (JS ONNX). To enable Sherpa: download kokoro-en-v0_19 to ~/.accordo/models/kokoro-en-v0_19");
+
+  log("tts: using KokoroAdapter (kokoro-js ONNX)");
   return new KokoroAdapter();
 }
 

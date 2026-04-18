@@ -7,9 +7,11 @@
  * @module tts-provider
  */
 
-import type { CancellationToken } from "./stt-provider.js";
-
-export type { CancellationToken };
+/** Shared cancellation token used by both STT and TTS providers. */
+export interface CancellationToken {
+  readonly isCancellationRequested: boolean;
+  onCancellationRequested(handler: () => void): void;
+}
 
 /**
  * Input to a synthesis request.

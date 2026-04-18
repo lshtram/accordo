@@ -1,7 +1,7 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
 **Date:** 2026-04-16
-**Status:** Live E2E module testing session completed. Four modalities tested (MD viewer ✅, Marp presentation ⚠️, Diagram ✅, Browser tab ❌). Three new technical debt items identified: (1) comment store silo between VS Code and browser extension, (2) comments panel navigation failures across modalities, (3) Marp user-left comment dismisses presentation on click.  
+**Status:** Live E2E module testing session completed. Four modalities tested (MD viewer ✅, Marp presentation ⚠️, Diagram ✅, Browser tab ❌). Three new technical debt items identified: (1) comment store silo between VS Code and browser extension, (2) comments panel navigation failures across modalities, (3) Marp user-left comment dismisses presentation on click. Voice module simplified to TTS-only (no STT/dictation).  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
