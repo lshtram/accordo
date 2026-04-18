@@ -42,7 +42,7 @@ The following are added to `packages/comments/package.json`. Existing contributi
 "viewsContainers": {
   "activitybar": [
     {
-      "id": "accordo-comments-container",
+      "id": "accordo-comments",
       "title": "Accordo Comments",
       "icon": "$(comment-discussion)"
     }
@@ -54,7 +54,7 @@ The following are added to `packages/comments/package.json`. Existing contributi
 
 ```json
 "views": {
-  "accordo-comments-container": [
+  "accordo-comments": [
     {
       "id": "accordo-comments-panel",
       "name": "Comments",
@@ -122,23 +122,32 @@ The following are added to `packages/comments/package.json`. Existing contributi
 **File:** `src/panel/comments-tree-provider.ts`  
 **Test file:** `src/panel/__tests__/comments-tree-provider.test.ts`
 
-**Purpose:** Implements `vscode.TreeDataProvider<CommentTreeItem>`. Provides two-level tree: group headers at root, thread items grouped under Open/Resolved.
+**Purpose:** Implements `vscode.TreeDataProvider<CommentTreeItem>`. Provides a three-level tree with group-mode-dependent structure:  
+
+- Level 0: Group headers (Open/Resolved in `by-status` mode; file names in `by-file` mode; absent in `by-activity` mode)  
+- Level 1: Thread items — one per `CommentThread`, sorted by location within their group  
+- Level 2: Comment items — one per reply in the thread (leaf nodes, shown when a thread item is expanded)  
+
+Group modes (controlled by `PanelFilters.groupMode`):  
+- `by-status` (default) — `🔴 Open (N)` / `✅ Resolved (N)` headers  
+- `by-file` — one header per distinct filename  
+- `by-activity` — flat sorted list, no group headers, sorted by `lastActivity` descending  
 
 | Requirement ID | Requirement |
 |---|---|
 | M45-TP-01 | Exports `class CommentsTreeProvider` implementing `vscode.TreeDataProvider<CommentTreeItem>` |
 | M45-TP-02 | Constructor accepts `CommentStore` and `PanelFilters` injected dependencies |
 | M45-TP-03 | `getTreeItem(element: CommentTreeItem)` returns the element unchanged (items pre-constructed in `getChildren`) |
-| M45-TP-04 | `getChildren(element?)`: root returns two group-header `CommentTreeItem` instances (`Open` and `Resolved`); each group header's children are filtered + sorted thread items |
-| M45-TP-05 | Thread items within each group sorted by `lastActivity` descending (most recent first) |
+| M45-TP-04 | `getChildren(element?)`: root (no element) returns group headers (varies by `groupMode`); thread items have no children at root level — they become parents for level-2 comment items. `by-status`: two headers (`🔴 Open (N)` / `✅ Resolved (N)`); `by-file`: one header per distinct filename; `by-activity`: flat sorted thread list (no headers). Each thread item's children are its individual comments (level 2) |
+| M45-TP-05 | Thread items within each group sorted by location (URI then anchor position) |
 | M45-TP-06 | Subscribes to `store.onChanged(uri)` in constructor; fires `this._onDidChangeTreeData.fire(undefined)` on every notification |
-| M45-TP-07 | Thread item `label` = anchor label (from `getAnchorLabel(anchor)`) prefixed with `"⚠ "` if `store.isThreadStale(id)` |
-| M45-TP-08 | Thread item `description` = basename of anchor URI + `" · "` + intent emoji (or empty string if no intent) |
-| M45-TP-09 | Thread item `contextValue` = `"accordo-thread-open"` for open non-stale, `"accordo-thread-stale"` for open+stale, `"accordo-thread-resolved"` for resolved |
-| M45-TP-10 | Thread item `iconPath` = `new ThemeIcon("comment-unresolved")` for open/stale; `new ThemeIcon("pass")` for resolved |
-| M45-TP-11 | Thread item `tooltip` = first comment body truncated to 200 chars + `"\n— "` + author name + `" · "` + relative timestamp |
-| M45-TP-12 | Thread item `command` = `{ command: "accordo.commentsPanel.navigateToAnchor", title: "Go to Anchor", arguments: [thread] }` so single click triggers navigation |
-| M45-TP-13 | Group header `label` = `"Open (N)"` / `"Resolved (N)"` where N is filtered count. Open group `collapsibleState = Expanded`; Resolved group `collapsibleState = Collapsed` |
+| M45-TP-07 | Thread item `label` = file basename of `thread.anchor.uri` (e.g. `"auth.ts"`) prefixed with `"⚠ "` if `store.isThreadStale(id)` |
+| M45-TP-08 | Thread item `description` = `"<status-badge> <anchor-label> · [<intent-emoji>] <N> replies · <date> [<first-sentence>]"` e.g. `"🔴 line 42 · 🔧 2 replies · Mar 6 10:00"` — status badge is `🔴` for open, `✅` for resolved |
+| M45-TP-09 | Thread item `contextValue` = `"accordo-thread-open"` for open non-stale, `"accordo-thread-stale"` for open+stale, `"accordo-thread-resolved"` for resolved; comment items use `"accordo-thread-<status>-comment"` |
+| M45-TP-10 | Thread item `iconPath` = file-type `ThemeIcon` based on anchor surface type (e.g. `play` for slides, `markdown` for markdown-preview, `globe` for browser) or extension-based fallback (e.g. `file-code` for `.ts`, `file-text` for `.md`) — not the comment status icon |
+| M45-TP-11 | Thread item `tooltip` = first comment body + `"\n— "` + author name + `" · "` + ISO timestamp |
+| M45-TP-12 | Thread item `command` = `{ command: "accordo.commentsPanel.navigateToAnchor", title: "Go to Anchor", arguments: [thread] }` — single click navigates |
+| M45-TP-13 | Group header `label` format: `by-status` → `"🔴 Open (N)"` / `"✅ Resolved (N)"`; `by-file` → `"<filename> (N)"`; `by-activity` has no headers. Open/status header `collapsibleState = Expanded`; Resolved/status header `collapsibleState = Collapsed` |
 | M45-TP-14 | When active filters reduce count to 0 for a group, that group's header still appears with count 0 (it is not hidden) |
 | M45-TP-15 | `getAnchorLabel(anchor: CommentAnchor): string` — pure function, exported separately; derives human-readable label per the table in architecture §3.5 |
 | M45-TP-16 | `dispose()` method disposes the `onChanged` store subscription |
@@ -203,11 +212,11 @@ Default implementation uses real `vscode` APIs. Tests inject a mock env.
 
 | Requirement ID | Requirement |
 |---|---|
-| M45-CMD-01 | Exports `function registerPanelCommands(context, store, nc, router, filters): vscode.Disposable[]` — returns all disposables for push to `context.subscriptions` |
-| M45-CMD-02 | `accordo.commentsPanel.navigateToAnchor` — receives `CommentTreeItem` or `CommentThread` arg; calls `router.navigateToThread(thread)` |
+| M45-CMD-01 | Exports `function registerPanelCommands(context, store, nc, navEnv, filters, provider, ui?): { dispose(): void }[]` — returns all disposables for push to `context.subscriptions`. Navigation is performed via dynamic import of `navigateToThread` inside each command handler, using `navEnv` and the `NavigationAdapterRegistry` from `accordo-marp` |
+| M45-CMD-02 | `accordo.commentsPanel.navigateToAnchor` — receives `CommentTreeItem` or `CommentThread` arg; acquires `NavigationAdapterRegistry` from `accordo_marp_internal_getNavigationRegistry` (graceful no-op if unavailable); calls `navigateToThread(thread, navEnv, registry)` |
 | M45-CMD-03 | `accordo.commentsPanel.resolve` — `showInputBox({ prompt: "Resolution note" })`; if non-empty calls `store.resolve({ threadId, resolutionNote, author })`; if already resolved shows info message |
 | M45-CMD-04 | `accordo.commentsPanel.reopen` — calls `store.reopen(threadId, author)`; if already open shows info message |
-| M45-CMD-05 | `accordo.commentsPanel.reply` — calls `navigateToThread(thread, env)` to open the correct in-context input UI: gutter widget inline input for text anchors; slide popover reply textarea for surface/slide anchors. Does **not** use `showInputBox` (no top-of-screen dialog). Consistent with the UX principle that replies happen in-context at the anchor surface. |
+| M45-CMD-05 | `accordo.commentsPanel.reply` — navigates to the thread anchor and opens its native inline input UI (gutter widget for text anchors, slide popover for surface anchors). Acquires `NavigationAdapterRegistry` from `accordo_marp_internal_getNavigationRegistry` and calls `navigateToThread(thread, navEnv, registry)` — same navigation path as `navigateToAnchor`. Does **not** use `showInputBox` (no top-of-screen dialog). Consistent with the UX principle that replies happen in-context at the anchor surface |
 | M45-CMD-06 | `accordo.commentsPanel.delete` — `showWarningMessage("Delete thread and all replies?", "Delete", "Cancel")`; on "Delete" calls `store.delete({ threadId })`; on "Cancel" no-ops |
 | M45-CMD-07 | `accordo.commentsPanel.refresh` — fires `provider.refresh()` (calls `_onDidChangeTreeData.fire(undefined)`) |
 | M45-CMD-08 | `accordo.commentsPanel.filterByStatus` — `showQuickPick(["open", "resolved", "all"])`; on selection calls `filters.setStatus()` then `provider.refresh()` |

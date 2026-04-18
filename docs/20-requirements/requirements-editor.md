@@ -42,7 +42,12 @@ export async function activate(context: vscode.ExtensionContext) {
     return;
   }
 
-  const disposable = bridge.registerTools('accordo-editor', editorTools);
+  const allTools: ExtensionToolDefinition[] = [
+    ...editorTools,        // 11 editor tools
+    ...terminalTools,      // 5 terminal tools
+    ...createLayoutTools(() => bridge.getState()),  // 7 layout tools (incl. layout_state, layout_panel)
+  ];
+  const disposable = bridge.registerTools('accordo.accordo-editor', allTools);
   context.subscriptions.push(disposable);
 }
 ```
@@ -59,7 +64,7 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 ---
 
-### 4.1 `accordo.editor.open`
+### 4.1 `accordo_editor_open`
 
 **Purpose:** Open a file in the editor, optionally scrolling to a specific line/column.
 
@@ -96,7 +101,8 @@ Each tool below is defined with its full interface contract: input schema, respo
 **Response:**
 
 ```typescript
-{ opened: true, path: string }  // absolute path of opened file
+{ opened: true, path: string, surface: "editor" | "preview" | "diagram" }
+// surface indicates which editor type was used: "editor" (plain text), "preview" (markdown), "diagram" (mmd)
 ```
 
 **Errors:**
@@ -108,11 +114,13 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 **Implementation:**
 - Resolve path via `resolvePath(path)` utility
-- `vscode.window.showTextDocument(uri, { selection: new Range(line-1, col-1, line-1, col-1) })`
+- `.md` files → `vscode.commands.executeCommand('vscode.openWith', uri, 'accordo.markdownPreview')` — opens in the Accordo Markdown Preview custom editor when md-viewer extension is installed; falls back to standard text editor otherwise. Returns `surface: "preview"`.
+- `.mmd` files → `vscode.commands.executeCommand('accordo-diagram.open', uri)` — opens in the Accordo Diagram custom editor. Returns `surface: "diagram"`.
+- All other files → `vscode.window.showTextDocument(uri, { selection: new Range(line-1, col-1, line-1, col-1) })`. Returns `surface: "editor"`.
 
 ---
 
-### 4.2 `accordo.editor.close`
+### 4.2 `accordo_editor_close`
 
 **Purpose:** Close a specific editor tab, or the active editor if no path given.
 
@@ -148,8 +156,8 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 | Condition | Error message |
 |---|---|
-| Non-.mmd file not open | `"File is not open: <path>"` |
-| .mmd file not open | Falls back to closing the active editor — returns `{ closed: true }` |
+| Path provided but file not open (non-.mmd) | `"File is not open: <path>"` |
+| Path provided but file not open (.mmd) | Falls back to closing the active editor — returns `{ closed: true }` |
 | No path and no active editor | Returns `{ closed: true }` (always succeeds) |
 
 **Implementation:**
@@ -160,10 +168,11 @@ Each tool below is defined with its full interface contract: input schema, respo
   3. If tab still not found:
      - `.mmd` files → `workbench.action.closeActiveEditor` (diagram webviews don't expose URI/label reliably)
      - All other files → return error
+  4. `vscode.window.tabGroups.close(tab, false)` closes the tab
 
 ---
 
-### 4.3 `accordo.editor.scroll`
+### 4.3 `accordo_editor_scroll`
 
 **Purpose:** Scroll the active editor viewport.
 
@@ -213,7 +222,7 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 ---
 
-### 4.4 `accordo.editor.highlight`
+### 4.4 `accordo_editor_highlight`
 
 **Purpose:** Apply a colored highlight decoration to a range of lines.
 
@@ -272,7 +281,7 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 ---
 
-### 4.5 `accordo.editor.clearHighlights`
+### 4.5 `accordo_editor_clearHighlights`
 
 **Purpose:** Remove all highlights created by `accordo.editor.highlight`.
 
@@ -326,7 +335,7 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 ---
 
-### 4.6 `accordo.editor.split`
+### 4.6 `accordo_editor_split`
 
 **Purpose:** Split the editor pane in a given direction.
 
@@ -366,7 +375,7 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 ---
 
-### 4.7 `accordo.editor.focus`
+### 4.7 `accordo_editor_focus`
 
 **Purpose:** Focus a specific editor group by number.
 
@@ -409,7 +418,7 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 ---
 
-### 4.8 `accordo.editor.reveal`
+### 4.8 `accordo_editor_reveal`
 
 **Purpose:** Reveal a file in the Explorer sidebar without opening it in the editor.
 
@@ -452,7 +461,7 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 ---
 
-### 4.9 `accordo.terminal.open`
+### 4.9 `accordo_terminal_open`
 
 **Purpose:** Create and show a new terminal instance.
 
@@ -497,7 +506,7 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 ---
 
-### 4.10 `accordo.terminal.run`
+### 4.10 `accordo_terminal_run`
 
 **Purpose:** Execute a shell command in a terminal.
 
@@ -550,7 +559,7 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 ---
 
-### 4.11 `accordo.terminal.focus`
+### 4.11 `accordo_terminal_focus`
 
 **Purpose:** Focus the terminal panel (make it visible and active).
 
@@ -692,14 +701,30 @@ interface SearchMatch {
 
 ---
 
-### 4.14 `accordo.panel.toggle`
+### 4.12 `accordo_workspace_getTree`
+
+**Status:** Not currently implemented.
+
+> The `getTree` tool (file tree traversal with depth limit and workspace filtering) was specced in a prior version but has not been implemented in the current editor extension. It is retained here as a future-consideration stub. If needed, it should be implemented as a separate VSCode workspace API tool with appropriate pagination/truncation.
+
+---
+
+### 4.13 `accordo_workspace_search`
+
+**Status:** Not currently implemented.
+
+> The `search` tool (full-text regex search via `vscode.workspace.findTextInFiles`) was specced in a prior version but has not been implemented in the current editor extension. It is retained here as a future-consideration stub.
+
+---
+
+### 4.14 `accordo_panel_toggle`
 
 **Purpose:** Show or toggle visibility of a VSCode panel (sidebar views and bottom panel views).
 
 | Property | Value |
 |---|---|
 | Danger level | safe |
-| Idempotent | yes (sidebar views); no (bottom panel views toggle) |
+| Idempotent | no |
 | Requires confirmation | no |
 | Timeout class | fast (5s) |
 
@@ -754,7 +779,7 @@ interface SearchMatch {
 
 ---
 
-### 4.15 `accordo.layout.zen`
+### 4.15 `accordo_layout_zen`
 
 **Purpose:** Toggle Zen Mode (distraction-free fullscreen editing).
 
@@ -786,7 +811,7 @@ interface SearchMatch {
 
 ---
 
-### 4.16 `accordo.layout.fullscreen`
+### 4.16 `accordo_layout_fullscreen`
 
 **Purpose:** Toggle fullscreen mode.
 
@@ -818,7 +843,7 @@ interface SearchMatch {
 
 ---
 
-### 4.23 `accordo.layout.joinGroups`
+### 4.23 `accordo_layout_joinGroups`
 
 **Purpose:** Collapse all editor splits — merge all groups into one.
 
@@ -846,7 +871,7 @@ interface SearchMatch {
 
 ---
 
-### 4.24 `accordo.layout.evenGroups`
+### 4.24 `accordo_layout_evenGroups`
 
 **Purpose:** Equalise the width and height of all editor groups so each pane takes the same space.
 
@@ -874,7 +899,7 @@ interface SearchMatch {
 
 ---
 
-### 4.25 `accordo.layout.state`
+### 4.25 `accordo_layout_state`
 
 **Module ID:** M74-LS  
 **Purpose:** Return the current live IDE layout state on demand — all open tabs (text files and webview panels), active file and cursor, editor groups, active terminal, and per-modality extension state. Solves the agent freshness gap: the `initialize`-time snapshot may be stale; this tool always returns current Bridge-local state.
@@ -930,7 +955,7 @@ interface SearchMatch {
 
 ---
 
-### 4.27 `accordo.layout.panel`
+### 4.27 `accordo_layout_panel`
 
 **Module ID:** E-6  
 **Purpose:** Control VS Code area containers (primary sidebar, bottom panel, auxiliary bar) with explicit open/close semantics and an optional view parameter. Replaces the original 6-tool design (sidebar.open/close, panel.open/close, auxiliaryBar.open/close) with a single combined tool.

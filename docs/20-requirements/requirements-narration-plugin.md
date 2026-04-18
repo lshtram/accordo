@@ -60,8 +60,8 @@ The minimum response length check (NP-10) applies only to whether Gemini summari
 is needed — it does NOT skip narration entirely. Short responses in `narrate-summary`
 mode are narrated in full via `readAloud` with the raw text.
 
-The plugin reads narration mode from the `accordo_voice_discover` tool response
-via MCP, or from a local config override.
+The plugin reads narration mode from the `ACCORDO_NARRATION_MODE` environment variable (primary),
+or from the `accordo.voice.narrationMode` setting as a fallback.
 
 ### NP-07 — Error handling (skip, don't break)
 

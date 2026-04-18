@@ -810,7 +810,7 @@ The following are explicitly deferred:
 - `accordo-chat` — Users have Copilot Chat, Cline, Claude, etc. No custom chat.
 - `accordo-slidev` — Modality. Requires Phase 1 gate to pass first.
 - `accordo-tldraw` — Modality. Requires Phase 1 gate to pass first.
-- `accordo-voice` — Voice modality (TTS + STT + summary narration). Implemented in Phase 2 Session 10. Architecture: [`docs/voice-architecture.md`](voice-architecture.md).
+- `accordo-voice` — Voice modality (TTS read-aloud only — no STT/dictation). Implemented in Phase 2 Session 10. Architecture: [`docs/voice-architecture.md`](voice-architecture.md).
 - `accordo-script` — **Removed (2026-04-16).** Previously implemented in Session 10D. The built-in scripting engine has been removed. External script authoring via Python skill remains available.
 - Custom IDE packaging — No.
 - Cloud/hosted Hub — No. Local-first only.
@@ -901,14 +901,28 @@ Agent ← Hub (MCP) ← Bridge ← accordo-browser ← Chrome relay ← structur
 > See `docs/10-architecture/shared-browser-relay-architecture.md` for the full design.
 > This is an explicit exception to DECISION-MS-07 (see `multi-session-architecture.md`).
 
-Four page-understanding MCP tools plus one wait tool are registered by `accordo-browser` via `bridge.registerTools()`:
-- `browser_get_page_map` — structured DOM tree summary (breadth-first, depth/node-limited)
-- `browser_inspect_element` — deep single-element inspection with anchor generation
-- `browser_get_dom_excerpt` — raw HTML fragment for a CSS selector subtree
-- `browser_capture_region` — cropped viewport screenshot of a specific element or rect
-- `browser_wait_for` — wait for a condition on the active page (text appearance, CSS selector match, or layout stability) with configurable timeout and clear error semantics (B2-WA-001..007)
+Nineteen page-understanding, interaction, and control MCP tools are registered by `accordo-browser` via `buildBrowserTools()` in `tool-assembly.ts`:
+- `accordo_browser_get_page_map` — structured DOM tree summary (breadth-first, depth/node-limited)
+- `accordo_browser_inspect_element` — deep single-element inspection with anchor generation
+- `accordo_browser_get_dom_excerpt` — raw HTML fragment for a CSS selector subtree
+- `accordo_browser_capture_region` — cropped viewport screenshot of a specific element or rect
+- `accordo_browser_list_pages` — enumerate open tabs
+- `accordo_browser_select_page` — activate a tab by tabId
+- `accordo_browser_wait_for` — wait for a condition on the active page (text appearance, CSS selector match, or layout stability) with configurable timeout and clear error semantics (B2-WA-001..007)
+- `accordo_browser_get_text_map` — visible text with reading order
+- `accordo_browser_get_semantic_graph` — a11y tree + landmarks + outline + forms
+- `accordo_browser_diff_snapshots` — DOM change tracking between snapshots
+- `accordo_browser_health` — relay connection health check
+- `accordo_browser_manage_snapshots` — list/clear retained snapshots (GAP-F1)
+- `accordo_browser_manage_screenshots` — list/clear retained screenshots (GAP-G1)
+- `accordo_browser_get_spatial_relations` — pairwise spatial relationships between elements
+- `accordo_browser_navigate` — URL navigation + back/forward/reload
+- `accordo_browser_click` — click an element
+- `accordo_browser_type` — type text into an element
+- `accordo_browser_press_key` — press keyboard key/combo
+- `accordo_browser_pair` — issue pairing code for browser extension connection
 
-These are registered as standard MCP tools (not routed through `comment_*`) because they are read-only inspection/synchronisation tools, not comment operations. `browser_wait_for` follows the same relay → content-script dispatch path as the page-understanding tools.
+These are registered as standard MCP tools (not routed through `comment_*`) because they are read-only inspection/synchronisation tools, not comment operations. Interaction tools (`navigate`, `click`, `type`, `press_key`) follow the same relay → content-script dispatch path as the page-understanding tools.
 
 ### 14.3 Enhanced Anchor Strategy
 
@@ -932,7 +946,7 @@ A `CommentBackendAdapter` interface abstracts comment storage so the browser ext
 - **Local storage adapter** (fallback) — uses `chrome.storage.local` directly
 - **Standalone MCP adapter** (future) — connects directly to Hub without VS Code
 
-### 14.5 Region Capture (`browser_capture_region`)
+### 14.5 Region Capture (`accordo_browser_capture_region`)
 
 > **Agent note [2026-03-26]:** Added during Phase A extension. Gives agents a targeted screenshot of a specific page element or region — avoiding full-viewport screenshots that bloat agent context windows.
 
@@ -944,7 +958,7 @@ A `CommentBackendAdapter` interface abstracts comment storage so the browser ext
 interface BrowserCaptureRegionArgs {
   /** Anchor key or node ref identifying the target element (from page map / inspect) */
   anchorKey?: string;
-  /** Node ref from browser_get_page_map */
+  /** Node ref from accordo_browser_get_page_map */
   nodeRef?: string;
   /** Explicit viewport-relative rectangle (fallback when no element target) */
   rect?: { x: number; y: number; width: number; height: number };
@@ -999,7 +1013,7 @@ interface BrowserCaptureRegionResult {
 
 **Danger level:** `safe` (read-only)  
 **Idempotent:** `true`  
-**MCP tool name:** `browser_capture_region`
+**MCP tool name:** `accordo_browser_capture_region`
 
 **Implementation approach:** The content script resolves the target element to viewport-relative bounding box coordinates, then the service worker captures `captureVisibleTab()` and crops using `OffscreenCanvas` (or `createImageBitmap` + canvas). No CDP, no new browser APIs — the only new API surface is `OffscreenCanvas` for pixel-level cropping.
 
@@ -1011,10 +1025,10 @@ interface BrowserCaptureRegionResult {
 
 | Tool | Token cost | Use when |
 |---|---|---|
-| `browser_get_page_map` | ~200–800 tokens (structured JSON) | Agent needs to understand page layout, find elements, or decide where to place a comment. Start here. |
-| `browser_inspect_element` | ~50–150 tokens | Agent has a target element (from page map `ref` or CSS selector) and needs its anchor key, bounding box, or ARIA context. |
-| `browser_get_dom_excerpt` | ~100–500 tokens (bounded by `maxLength`) | Agent needs the raw structure of a specific subtree (table data, form fields, list items). |
-| `browser_capture_region` | ~1–5 KB base64 (JPEG) | Agent needs *visual* context that structured data cannot convey (styling, color, layout, rendered text, charts). Use only when DOM structure is insufficient. |
+| `accordo_browser_get_page_map` | ~200–800 tokens (structured JSON) | Agent needs to understand page layout, find elements, or decide where to place a comment. Start here. |
+| `accordo_browser_inspect_element` | ~50–150 tokens | Agent has a target element (from page map `ref` or CSS selector) and needs its anchor key, bounding box, or ARIA context. |
+| `accordo_browser_get_dom_excerpt` | ~100–500 tokens (bounded by `maxLength`) | Agent needs the raw structure of a specific subtree (table data, form fields, list items). |
+| `accordo_browser_capture_region` | ~1–5 KB base64 (JPEG) | Agent needs *visual* context that structured data cannot convey (styling, color, layout, rendered text, charts). Use only when DOM structure is insufficient. |
 | Full viewport screenshot | ~10–50 KB base64 | Almost never. Only when agent explicitly needs to see the entire visible page (e.g., layout review). Prefer `capture_region` for focused areas. |
 
 **Anti-patterns (AVOID):**
@@ -1029,12 +1043,12 @@ interface BrowserCaptureRegionResult {
 
 **Recommended workflow for comment placement:**
 
-1. `browser_get_page_map({ maxDepth: 3, maxNodes: 100 })` — orientation
-2. `browser_inspect_element({ ref: "..." })` — get anchor key for target element
-3. (Optional) `browser_capture_region({ anchorKey: "..." })` — only if visual confirmation needed
+1. `accordo_browser_get_page_map({ maxDepth: 3, maxNodes: 100 })` — orientation
+2. `accordo_browser_inspect_element({ ref: "..." })` — get anchor key for target element
+3. (Optional) `accordo_browser_capture_region({ anchorKey: "..." })` — only if visual confirmation needed
 4. `comment_create({ scope: { modality: "browser" }, anchor: { anchorKey: "..." }, body: "..." })`
 
-### 14.7 Server-Side Filtering (`browser_get_page_map` — M102-FILT)
+### 14.7 Server-Side Filtering (`accordo_browser_get_page_map` — M102-FILT)
 
 **Module:** M102-FILT  
 **Requirements:** [`docs/20-requirements/requirements-browser2.0.md`](../20-requirements/requirements-browser2.0.md) — B2-FI-001..008  
@@ -1042,7 +1056,7 @@ interface BrowserCaptureRegionResult {
 
 #### Purpose
 
-Agents frequently need only a subset of the page map — interactive elements, nodes matching a role, or elements within a region. Without server-side filtering, agents must receive the entire page map and discard irrelevant nodes client-side, wasting context tokens. M102-FILT adds six composable filter parameters to `browser_get_page_map` that reduce the returned node set before it leaves the content script.
+Agents frequently need only a subset of the page map — interactive elements, nodes matching a role, or elements within a region. Without server-side filtering, agents must receive the entire page map and discard irrelevant nodes client-side, wasting context tokens. M102-FILT adds six composable filter parameters to `accordo_browser_get_page_map` that reduce the returned node set before it leaves the content script.
 
 #### Filter Parameters
 
@@ -1095,7 +1109,7 @@ The reduction ratio links to the ≥40% reduction target defined in [`browser2.0
 Full architecture: [`docs/90-archive/research/page-understanding-architecture.md`](../90-archive/research/page-understanding-architecture.md)  
 Requirements: [`docs/20-requirements/requirements-browser-extension.md`](../20-requirements/requirements-browser-extension.md) §3.15, §3.18
 
-### 14.9 Snapshot Diffing (`browser_diff_snapshots`)
+### 14.9 Snapshot Diffing (`accordo_browser_diff_snapshots`)
 
 **Module:** M101-DIFF  
 **Requirements:** [`docs/20-requirements/requirements-browser2.0.md`](../20-requirements/requirements-browser2.0.md) — B2-DE-001..007, B2-PF-002  
@@ -1103,14 +1117,14 @@ Requirements: [`docs/20-requirements/requirements-browser-extension.md`](../20-r
 
 #### Purpose
 
-Agents need to detect what changed on a page between observations. `browser_diff_snapshots` compares two page-map snapshots and returns structural additions, removals, and changes — enabling change-driven workflows (form fill verification, SPA transition tracking, polling-until-ready) without re-transferring the entire page map.
+Agents need to detect what changed on a page between observations. `accordo_browser_diff_snapshots` compares two page-map snapshots and returns structural additions, removals, and changes — enabling change-driven workflows (form fill verification, SPA transition tracking, polling-until-ready) without re-transferring the entire page map.
 
 #### Tool Flow
 
 ```
 Agent                 Hub (browser pkg)           Extension (relay)         Service Worker
   │                        │                            │                        │
-  ├─ browser_diff_snapshots ─►                          │                        │
+  ├─ accordo_browser_diff_snapshots ─►                          │                        │
   │  (fromSnapshotId?,      │                           │                        │
   │   toSnapshotId?)        │                           │                        │
   │                        ├─ relay "diff_snapshots" ───►                        │
@@ -1151,7 +1165,7 @@ The tool does **not** accept a `pageId` input. Page identity is encoded in the `
 | `timeout` | Relay round-trip exceeded 5.0s |
 | `action-failed` | Unclassified relay or engine failure |
 
-### 14.10 Text Map (`browser_get_text_map` — M112-TEXT)
+### 14.10 Text Map (`accordo_browser_get_text_map` — M112-TEXT)
 
 **Module:** M112-TEXT  
 **Requirements:** [`docs/20-requirements/requirements-browser2.0.md`](../20-requirements/requirements-browser2.0.md) — B2-TX-001..010  
@@ -1159,14 +1173,14 @@ The tool does **not** accept a `pageId` input. Page identity is encoded in the `
 
 #### Purpose
 
-Agents need to read and reason about the text content of a page — not just the DOM structure. Existing tools (`browser_get_page_map`, `browser_inspect_element`) provide structural information with truncated text per element, but they do not offer: (a) all visible text in reading order, (b) raw vs. normalized text modes, (c) per-text-node bounding boxes, or (d) visibility flags. `browser_get_text_map` closes evaluation checklist Category B by providing a flat, ordered array of `TextSegment` objects representing every text run on the page.
+Agents need to read and reason about the text content of a page — not just the DOM structure. Existing tools (`accordo_browser_get_page_map`, `accordo_browser_inspect_element`) provide structural information with truncated text per element, but they do not offer: (a) all visible text in reading order, (b) raw vs. normalized text modes, (c) per-text-node bounding boxes, or (d) visibility flags. `accordo_browser_get_text_map` closes evaluation checklist Category B by providing a flat, ordered array of `TextSegment` objects representing every text run on the page.
 
 #### Tool Flow
 
 ```
 Agent                  Hub (browser pkg)            Extension (relay)          Content Script
   │                         │                             │                         │
-  ├─ browser_get_text_map ──►                             │                         │
+  ├─ accordo_browser_get_text_map ──►                             │                         │
   │  (maxSegments?)         │                             │                         │
   │                         ├─ relay "get_text_map" ──────►                         │
   │                         │                             ├─ dispatch to CS ────────►
@@ -1229,7 +1243,7 @@ Reuses existing helpers from `page-map-traversal.ts`:
 
 #### Node ID Scope
 
-Text-map `nodeId` values are **per-call scoped** — they are assigned by M112's own counter during each `collectTextMap()` invocation and reset to 0 on every call. They do **not** share identity with page-map ref indices. An agent cannot pass a text-map `nodeId` to `browser_inspect_element` and expect a match; cross-tool element correlation uses `bbox` intersection or CSS-selector re-lookup instead.
+Text-map `nodeId` values are **per-call scoped** — they are assigned by M112's own counter during each `collectTextMap()` invocation and reset to 0 on every call. They do **not** share identity with page-map ref indices. An agent cannot pass a text-map `nodeId` to `accordo_browser_inspect_element` and expect a match; cross-tool element correlation uses `bbox` intersection or CSS-selector re-lookup instead.
 
 This is intentional: text-map traversal visits text nodes (DOM `Text` type), while page-map traversal visits element nodes. A shared counter would produce misleading identities — the same integer would reference different DOM objects across the two tools. Keeping the ID spaces independent avoids correctness bugs and simplifies both collectors.
 
@@ -1252,7 +1266,7 @@ This is intentional: text-map traversal visits text nodes (DOM `Text` type), whi
 
 With `maxSegments: 500` (default), a typical response produces ~800–1,500 tokens of structured JSON. With `maxSegments: 50`, ~100–200 tokens.
 
-### 14.11 Semantic Graph (`browser_get_semantic_graph` — M113-SEM)
+### 14.11 Semantic Graph (`accordo_browser_get_semantic_graph` — M113-SEM)
 
 **Module:** M113-SEM  
 **Requirements:** [`docs/20-requirements/requirements-browser2.0.md`](../20-requirements/requirements-browser2.0.md) — B2-SG-001..015  
@@ -1392,7 +1406,7 @@ With default settings, a typical response produces ~1,000–3,000 tokens of stru
 
 ---
 
-### 14.12 Spatial Relations (`browser_get_spatial_relations` — GAP-D1)
+### 14.12 Spatial Relations (`accordo_browser_get_spatial_relations` — GAP-D1)
 
 #### Problem Statement (Non-Technical)
 
@@ -1408,7 +1422,7 @@ Three components satisfy checklist items D2, D4, and D5:
    - `viewportRatio` (0–1): fraction of the element's bbox visible in the viewport (D4)
    - `containerId` (nodeId): nearest semantic container ancestor — article, section, aside, main, dialog, details, nav, header, footer, form (D5)
 
-3. **New MCP tool `browser_get_spatial_relations`** — Takes `nodeIds: number[]` (max 50, O(n²) cap) from a prior page map and returns pairwise relationships for all pairs (D2). This avoids bloating every page map response with O(n²) data.
+3. **New MCP tool `accordo_browser_get_spatial_relations`** — Takes `nodeIds: number[]` (max 50, O(n²) cap) from a prior page map and returns pairwise relationships for all pairs (D2). This avoids bloating every page map response with O(n²) data.
 
 #### Data Flow
 
@@ -1563,7 +1577,7 @@ interface AnnotationAnchorRef {
 
 Annotations reuse the **same enhanced anchor/locator strategy** defined in §14.3 and detailed in [`docs/90-archive/research/page-understanding-architecture.md`](../90-archive/research/page-understanding-architecture.md) §5. This means:
 
-- Agents use `browser_inspect_element` to get an `anchorKey` for a target element
+- Agents use `accordo_browser_inspect_element` to get an `anchorKey` for a target element
 - That same `anchorKey` is passed to `browser_add_annotation` to anchor the visual mark
 - `resolveAnchorKey()` (from the enhanced anchor module M90-ANC) resolves the key to a DOM element for positioning
 - The tiered strategy hierarchy (id → data-testid → aria → css-path → tag-sibling → viewport-pct) applies identically
@@ -1736,21 +1750,26 @@ interface NavigationAdapterRegistry {
 | Surface Type | Package | Command(s) called |
 |---|---|---|
 | `slide` | `packages/marp/` | `accordo.presentation.internal.focusThread` |
-| `browser` | `packages/browser/` | `accordo_browser_focusThread` |
+| `browser` | `packages/browser/` | `accordo_browser.focusThread` |
 | `diagram` | `packages/diagram/` | `accordo_diagram_focusThread` |
-| `markdown-preview` | `packages/md-viewer/` | `accordo_preview_internal_focusThread` |
+| `markdown-preview` | `packages/comments/` (navigation-router.ts) | `accordo_preview_internal_focusThread` |
 
 ### 17.5 Router Contract
 
-The comments panel router (`packages/comments/src/panel/navigation-router.ts`) follows a registry-first dispatch:
+The comments panel router (`packages/comments/src/panel/navigation-router.ts`) uses explicit branching for most surface types, with registry-based dispatch for `browser` (primary) and `slide` (primary with deferred fallback):
 
 ```
 anchor.kind === "text"     → VS Code commands.executeCommand with PREVIEW_FOCUS_THREAD
-anchor.kind === "surface"  → registry.get(surfaceType) → adapter.focusThread()
+anchor.kind === "surface"  → explicit switch by surfaceType:
+  markdown-preview          → PREVIEW_FOCUS_THREAD command directly
+  browser                  → registry.get("browser").focusThread() (primary);
+                              falls back to DEFERRED_COMMANDS.BROWSER_FOCUS_THREAD
+  slide                    → registry adapter (primary) then DEFERRED_COMMANDS fallback
+  diagram                  → DIAGRAM_FOCUS_THREAD command
 no adapter registered      → env.openTextDocument (generic fallback)
 ```
 
-The `DEFERRED_COMMANDS` fallback path is deprecated. All surfaces must register a `NavigationAdapter` to receive focus events.
+The `DEFERRED_COMMANDS` fallback path remains active for `slide` and `browser` surfaces when the registry adapter is unavailable. All four surface adapters (browser, preview, diagram, slide) are registered at module-load time in `navigation-router.ts`; marp registers the slide adapter at package activation.
 
 ### 17.6 Adding a New Surface
 

@@ -1,6 +1,6 @@
 # Accordo — Marp Presentation Engine Architecture v1.0
 
-**Status:** PROPOSED  
+**Status:** ACTIVE  
 **Date:** 2026-03-19  
 **Scope:** `accordo-marp` — lightweight presentation modality alternative to `accordo-slidev`
 
@@ -152,7 +152,23 @@ accordo.presentation.engine: "marp" | "slidev"   (default: "marp")
 
 Both extensions use the same tool names (`accordo.presentation.*`). Only one registers. The Hub/Bridge layer sees no difference.
 
-### 5.3 Modality state key
+### 5.3 MCP tool naming vs internal command naming
+
+**MCP tools** (what agents call via Hub) use underscores: `accordo_presentation_*`. These are the canonical public surface.
+
+**Internal VS Code commands** (registered by the extension) use dots or underscore+internal patterns:
+
+| MCP tool | Internal command | Notes |
+|---|---|---|
+| `accordo_presentation_open` | `accordo.presentation.open` | VS Code command alias |
+| `accordo_presentation_close` | `accordo.marp.close` | VS Code command |
+| — | `accordo_presentation_internal_goto` | 0-based raw index; used by deferred fallback path in `navigation-router.ts` |
+| — | `accordo.presentation.internal.focusThread` | Full sequence: open deck → navigate → post `comments:focus` to webview |
+| — | `accordo_marp_internal_getNavigationRegistry` | Exposes `NavigationAdapterRegistry` to `accordo-comments` |
+
+The `accordo.presentation.open` alias lets `accordo-comments`'s `navigation-router.ts` open a deck without depending on the `accordo.marp.open` command name directly.
+
+### 5.4 Modality state key
 
 - Marp publishes as `modalities["accordo-marp"]`
 - Slidev publishes as `modalities["accordo-slidev"]`
@@ -270,7 +286,7 @@ document.addEventListener('keydown', (e) => {
 
 The host receives `presentation:slideChanged` messages and updates the adapter's local cursor.
 
-### 6.4 Live reload
+### 6.5 Live reload
 
 ```
 FileSystemWatcher (deck file, debounce: ~300ms)
@@ -295,7 +311,7 @@ Webview JS:
 
 No process restart needed — just a postMessage with new HTML.
 
-### 6.5 Live reload race condition mitigation
+### 6.6 Live reload race condition mitigation
 
 | Concern | Mitigation |
 |---|---|
@@ -307,9 +323,19 @@ No process restart needed — just a postMessage with new HTML.
 
 ## 7. Comments Integration
 
-Identical to Slidev. The Comment SDK overlay is injected into the webview HTML alongside the Marp-rendered slides. The comments bridge uses the same `SurfaceCommentAdapter` and the same `blockId` encoding convention.
+The Comment SDK overlay is injected into the webview HTML alongside the Marp-rendered slides. The comments bridge uses `SurfaceCommentAdapter` and the same `blockId` encoding convention as Slidev.
 
-### 7.1 Anchor mapping
+### 7.1 Navigation adapter registration
+
+`accordo-marp` registers a `NavigationAdapter` for `surfaceType: "slide"` at activation time. The registry is exposed via `accordo_marp_internal_getNavigationRegistry` for retrieval by `accordo-comments`.
+
+The `navigation-router.ts` in `accordo-comments` uses this registry for primary dispatch and falls back to `DEFERRED_COMMANDS.PRESENTATION_GOTO` / `DEFERRED_COMMANDS.PRESENTATION_FOCUS_THREAD` when the registry returns nothing.
+
+### 7.2 Known gap
+
+`accordo-slidev` is not currently available in this workspace. The deferred fallback path (direct `DEFERRED_COMMANDS` commands) is implemented and functional, but the slide adapter registration path requires `accordo-marp` to be the active engine.
+
+### 7.3 Anchor mapping
 
 | Property | Value |
 |---|---|
@@ -321,7 +347,7 @@ Identical to Slidev. The Comment SDK overlay is injected into the webview HTML a
 | `coordinates.x` | 0–1 float (fraction of slide width) |
 | `coordinates.y` | 0–1 float (fraction of slide height) |
 
-### 7.2 blockId encoding
+### 7.4 blockId encoding
 
 ```
 "slide:{slideIndex}:{x}:{y}"

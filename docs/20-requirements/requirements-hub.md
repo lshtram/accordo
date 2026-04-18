@@ -21,7 +21,7 @@ The Hub is the central, editor-agnostic control plane. It speaks MCP to agents, 
 
 | Aspect | Requirement |
 |---|---|
-| Method | `POST` only |
+| Method | `POST` for JSON-RPC requests; `GET` for SSE notification stream |
 | Content-Type (request) | `application/json` |
 | Body (request) | JSON-RPC 2.0 single request or notification |
 | Content-Type (response) | `application/json` for synchronous results; `text/event-stream` for streaming |
@@ -131,7 +131,7 @@ Group 1:
 | Path | `/bridge` |
 | Protocol | `ws://` (localhost only, so no TLS needed) |
 | Authentication | `x-accordo-secret` header validated on upgrade. Value from `ACCORDO_BRIDGE_SECRET` env var. |
-| Max connections | 1. Reject additional connections with HTTP 409. |
+| Max connections | 1. If a second WebSocket connection arrives while one is active, the stale connection is immediately evicted (terminated) and the new one takes over. |
 | Wire format | JSON — see message types below |
 
 ### 2.6 Credential Rotation — `POST /bridge/reauth`
@@ -142,7 +142,7 @@ Group 1:
 | Authentication | `x-accordo-secret: <current-secret>` header. 401 if wrong. |
 | Request body | `{ "newSecret": "<new-secret>", "newToken": "<new-token>" }`. Both fields required. |
 | Response | `200 OK` with empty body on success. |
-| Behaviour | Hub atomically updates `ACCORDO_BRIDGE_SECRET` and `ACCORDO_TOKEN` in memory. The WebSocket server immediately begins accepting the new secret. Active agent MCP sessions are **not disrupted**. No files are written — token exists in memory only. |
+| Behaviour | Hub atomically updates `ACCORDO_BRIDGE_SECRET` and `ACCORDO_TOKEN` in memory. The WebSocket server immediately begins accepting the new secret. Active agent MCP sessions are **not disrupted**. If `tokenFilePath` is configured (default: `~/.accordo/token`), the new token is persisted to that file; otherwise it remains memory-only. |
 | Use case | Bridge calls this before reconnecting with a new secret, avoiding a Hub kill-and-respawn that would disrupt in-flight CLI agent sessions. |
 
 ### 2.7 IDE State Debug Endpoint — `GET /state`
@@ -297,7 +297,7 @@ interface ToolRegistration {
 | Variable | Purpose |
 |---|---|
 | `ACCORDO_HUB_PORT` | Override for `--port`. CLI flag wins. |
-| `ACCORDO_TOKEN` | Bearer token for HTTP auth. Set by Bridge on Hub spawn. Hub holds it in memory only — does NOT write to `~/.accordo/token` or any file. Token lifetime matches Hub lifetime. |
+| `ACCORDO_TOKEN` | Bearer token for HTTP auth. Set by Bridge on Hub spawn. Hub holds it in memory; if `tokenFilePath` is configured (default: `~/.accordo/token`) the rotated token is written there on reauth. |
 | `ACCORDO_BRIDGE_SECRET` | Shared secret for WS auth. Set by Bridge on spawn. Rotates every time Hub is (re)spawned or when `/bridge/reauth` is called. |
 | `ACCORDO_REGISTRY_PATH` | Override for `--registry`. Path to `hubs.json`. `--registry` CLI flag wins when both are set. |
 | `ACCORDO_LOG_DIR` | Directory for log files. Default: `~/.accordo/logs/` |
@@ -332,7 +332,7 @@ interface ToolRegistration {
 
 | Method | Signature | Description |
 |---|---|---|
-| `render` | `(state: IDEState, tools: ToolRegistration[]) → string` | Render system prompt markdown. Only **visible** tools (those without a `group` field) are included in the tool summary section. Grouped tools are excluded — agents discover them via per-group `.discover` stub tools. |
+| `render` | `(state: IDEState, tools: ToolRegistration[]) → string` | Render system prompt markdown. All registered tools are included in the tool summary section regardless of `group` field. The `group` field is metadata only (not used for filtering). |
 | `estimateTokens` | `(text: string) → number` | Approximate token count (`chars / 4`). Apply a **10% safety margin**: treat the effective budget as 1,350 tokens (not 1,500) to account for tokenizer variance on code-heavy content. |
 
 ### 5.4 Bridge Server (`bridge-server.ts`)

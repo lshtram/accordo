@@ -9,6 +9,8 @@
 
 **Current status note:** v1 baseline requirements remain documented here; Session 13 v2a relay + SDK convergence requirements are in §3.12 and are now active.
 
+**Historical note on manifest contract:** The manifest example in §2 reflects the actual build output (`scripts/build.ts`). It may differ from the v1 baseline documented elsewhere. The build produces 4 entry points (service-worker.js, content-script.js, popup.js, shadow-tracker.js). The content script model uses two scripts: `shadow-tracker.js` injected at `document_start` (MAIN world) and `content-script.js` injected at `document_idle` with `all_frames: true`.
+
 ---
 
 ## 1. Purpose
@@ -21,39 +23,46 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 
 ## 2. Extension Manifest Contract
 
+> **Note:** This example reflects the actual build output from `scripts/build.ts`. The v1 baseline (before v2a SDK convergence) had a different manifest. Key differences: (1) build produces **4** entry points (service-worker.js, content-script.js, popup.js, shadow-tracker.js), not 3; (2) content script model uses **two** scripts (shadow-tracker injected at `document_start` MAIN world, content-script at `document_idle` all_frames); (3) `commands` and `icons` sections are not present in the current manifest.
+
 ```json
 {
   "manifest_version": 3,
   "name": "Accordo Comments",
   "version": "0.1.0",
-  "description": "Spatial comments on any web page — standalone, clipboard-first export",
+  "description": "Place spatial comment pins on any web page. Export to clipboard as Markdown or JSON.",
   "permissions": [
     "activeTab",
     "tabs",
     "storage",
     "contextMenus",
-    "scripting"
+    "scripting",
+    "webNavigation",
+    "debugger"
   ],
   "host_permissions": ["<all_urls>"],
   "background": {
-    "service_worker": "dist/service-worker.js",
+    "service_worker": "service-worker.js",
     "type": "module"
   },
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["dist/content-script.js"],
-      "css": ["dist/content-styles.css"],
-      "run_at": "document_idle"
+      "js": ["shadow-tracker.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content-script.js"],
+      "css": ["content-styles.css"],
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ],
   "action": {
-    "default_popup": "dist/popup.html",
-    "default_icon": {
-      "16": "icons/icon-16.png",
-      "48": "icons/icon-48.png",
-      "128": "icons/icon-128.png"
-    }
+    "default_popup": "popup.html",
+    "default_title": "Accordo Comments"
   },
   "commands": {
     "toggle-comments-mode": {
@@ -61,14 +70,15 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
         "default": "Alt+Shift+C",
         "mac": "Alt+Shift+C"
       },
-      "description": "Toggle Comments Mode on/off"
+      "description": "Toggle Comments Mode on/off for the active tab"
     }
   },
-  "icons": {
-    "16": "icons/icon-16.png",
-    "48": "icons/icon-48.png",
-    "128": "icons/icon-128.png"
-  }
+  "web_accessible_resources": [
+    {
+      "resources": ["content-script.js", "content-styles.css"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ]
 }
 ```
 
@@ -216,7 +226,7 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | BR-F-113 | Build copies `manifest.json`, icons, and `popup.html` to `dist/` | All static assets present in build output |
 | BR-F-114 | Extension side-loads in Chrome via `chrome://extensions` → "Load unpacked" pointing to `dist/` | Extension appears in Chrome with correct name and icon |
 | BR-F-115 | `commands` section declares `toggle-comments-mode` with `Alt+Shift+C` suggestion | Keyboard shortcut appears in `chrome://extensions/shortcuts` |
-| BR-F-116 | **v1 baseline only:** `packages/browser-extension/package.json` MUST NOT list `@accordo/comment-sdk` as a dependency (enforces DD-07 for standalone v1) | v1 branch/package state keeps SDK out of extension package dependencies |
+| BR-F-116 | **Historical v1 constraint — superseded by v2a:** v1 baseline required that `packages/browser-extension/package.json` MUST NOT list `@accordo/comment-sdk` as a dependency. In v2a, the extension imports `@accordo/comment-sdk` via a monorepo esbuild plugin; styles are merged at build time (see `scripts/build.ts`) | v1 branch state kept SDK out; v2a uses workspace import via monorepo plugin |
 
 ### 3.12 Session 13 v2a — SDK Convergence + Accordo Connectivity
 

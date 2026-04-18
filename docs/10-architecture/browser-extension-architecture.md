@@ -10,20 +10,19 @@
 
 ## 0. Current Status
 
-- v1 baseline is complete (standalone browser comments, local storage, export).
-- v2a work is active: browser-extension now includes relay client/actions and SDK convergence work.
-- `accordo-browser` relay package exists and registers browser comment tools through Bridge.
-- Historical v1-only statements remain in this doc for traceability and are explicitly marked as baseline/history.
+- **v1 baseline (historical):** Standalone browser comments, local storage, clipboard export. Documented for context.
+- **v2a (current):** Browser extension includes relay client/actions and SDK convergence. `accordo-browser` relay package exists and registers browser comment tools through Bridge. `VscodeRelayAdapter` is implemented (routes to `RelayBridgeClient.send()`) but `RelayBridgeClient` does not yet forward comment mutations to VS Code unified comment tools — see Priority P in workplan.
+- Historical v1-only statements are explicitly marked as baseline/history throughout this doc.
 
 ---
 
 ## 1. Executive Summary
 
-### What This Is
+### What This Is (v2a current)
 
-A Chrome Manifest V3 extension that lets a user place spatial comment pins on any web page element. Comments are stored locally in `chrome.storage.local`, exported to the clipboard, and (in v2a) exposed to Accordo agents via the local relay path.
+A Chrome Manifest V3 extension that lets a user place spatial comment pins on any web page element. Comments are stored locally in `chrome.storage.local`, exported to the clipboard, and exposed to Accordo agents via the local relay path (`accordo-browser` WebSocket relay). The extension imports `@accordo/comment-sdk` via monorepo workspace for shared UI/UX patterns.
 
-The extension is **invisible by default**. A keyboard shortcut or toolbar button toggles "Comments Mode", at which point the user can right-click any element to add a comment. This avoids interfering with normal browsing.
+The extension is **invisible by default**. A keyboard shortcut (`Alt+Shift+C`) or toolbar button toggles "Comments Mode", at which point the user can right-click any element to add a comment. This avoids interfering with normal browsing.
 
 ### Historical v1 baseline (for context)
 
@@ -37,15 +36,30 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 
 ```
 packages/browser-extension/     Chrome Manifest V3 extension
+├── scripts/
+│   └── build.ts               esbuild config — produces 4 entry points
 ├── src/
-│   ├── background/             Service worker
-│   ├── content/                Content script + comment UI
-│   ├── popup/                  Extension popup
-│   ├── mcp/                    MCP handler layer (real logic, stubbed transport)
-│   └── types/                  Shared TypeScript types
-├── manifest.json
-├── icons/
-└── dist/                       Build output (esbuild)
+│   ├── adapters/             CommentBackendAdapter implementations
+│   │   └── comment-backend.ts  (VscodeRelayAdapter, LocalStorageAdapter)
+│   ├── content/              Content script modules + comment UI
+│   │   ├── comment-ui.ts       (pin/popover rendering)
+│   │   ├── content-entry.ts    (esbuild entry for content-script.js IIFE)
+│   │   ├── content-styles.css  (extension CSS, merged with SDK CSS at build)
+│   │   ├── enhanced-anchor.ts  (strategy-prefixed anchor keys)
+│   │   ├── element-inspector.ts
+│   │   ├── message-handlers.ts
+│   │   ├── page-map-collector.ts
+│   │   ├── shadow-root-tracker.ts
+│   │   └── shadow-tracker-entry.ts (esbuild entry for shadow-tracker.js)
+│   ├── popup/
+│   │   └── popup.html
+│   ├── relay-bridge.ts        (WebSocket client → accordo-browser relay)
+│   ├── relay-*.ts             (relay action handlers)
+│   ├── service-worker.ts       (background entry)
+│   ├── store.ts               (chrome.storage.local CRUD)
+│   ├── mcp-handlers.ts
+│   └── manifest.json
+└── dist/                      Build output
 ```
 
 ---
@@ -60,57 +74,19 @@ packages/browser-extension/     Chrome Manifest V3 extension
 
 **Scope:** Comments Mode is **tab-scoped** — each tab has independent ON/OFF state. Opening a new tab does not inherit Comments Mode from another tab. The service worker tracks `{ [tabId]: boolean }` in memory (re-derived from `chrome.storage.local` on worker wake). The keyboard shortcut and toolbar button affect only the active tab.
 
-### DD-02: Right-Click Context Menu for Comment Creation
+### DD-02: Right-Click Context Menu for Comment Creation (v1 Baseline — Historical)
 
-**Decision:** While in Comments Mode, right-clicking any page element shows an "Add Comment" item in the Chrome context menu. The comment is anchored to the element the user right-clicked.
+**v1 baseline decision:** While in Comments Mode, right-clicking any page element shows a DOM-injected "Add Comment" option (a `data-accordo-context-menu` div in the body) and the user right-clicks to trigger. The anchor is captured via `generateAnchorKey()` which generates `{tagName}:{siblingIndex}:{textFingerprint}`.
 
-**Rationale:** Right-click is the standard web interaction for contextual actions. Alt+click (used by the VS Code Comment SDK) conflicts with browser-native behaviors (e.g., force-download on macOS). The Chrome `contextMenus` API is the correct integration point.
+**Note:** The actual implementation uses a DOM-injected context menu element, not the Chrome `contextMenus` API. The manifest declares `contextMenus` permission but the UI uses a DOM-rendered menu item triggered by the content script. The `show-comment-form-at-cursor` message triggers the inline comment form. Service worker context menu creation (`chrome.contextMenus.create`) is not used in the current implementation.
 
-### DD-03: Soft Delete (Never Hard Delete)
+**v2a update:** Right-click comment creation opens the SDK-aligned composer via `openSdkComposerAtAnchor()` in `src/content/sdk-convergence.ts`, which routes through SDK callbacks to the service worker mutation handlers.
 
-**Decision:** When a user "deletes" a comment, the comment's `deletedAt` timestamp is set and it is excluded from UI rendering and normal export. The full record is retained in storage. A hidden export flag can include soft-deleted records for audit/recovery.
+### DD-09: Simple Element Identification (v1 baseline — Historical)
 
-**Rationale:** Enables future recovery, audit trails, and full-history export. Storage cost is negligible for text comments in `chrome.storage.local` (which has a 10MB quota for `local`).
+**v1 baseline decision:** Elements are identified using a composite key: `{tagName}:{siblingIndex}:{textFingerprint}`. Stored as `anchorKey`. Not a full CSS selector path.
 
-### DD-04: Clipboard-First Export with Extensible Architecture
-
-**Decision:** The primary export mechanism is "Copy to Clipboard" (structured JSON or Markdown). The export layer is an abstract `Exporter` interface so that MCP API, file download, or other destinations can be added without touching the core export logic.
-
-**Rationale:** Clipboard is zero-dependency, works everywhere, and is the fastest path to value. Agent integration (MCP) will be the second exporter but requires the relay infrastructure that is deferred from v1.
-
-### DD-05: Screenshot Auto-Capture on Export
-
-**Decision:** When the user triggers export, the extension captures a screenshot of the visible tab using `chrome.tabs.captureVisibleTab()`. The screenshot is stored as a single record per URL in `chrome.storage.local`, keyed by `screenshot:{normalizedUrl}`. Each capture overwrites the previous screenshot for that URL — there is no screenshot history. The record shape is `{ dataUrl: string, capturedAt: number, width: number, height: number }`. The MCP handler `get_screenshot` retrieves it.
-
-**Rationale:** Screenshots provide visual context that complements the structured comment data. Auto-capture on export ensures the screenshot is temporally relevant. One-per-URL keeps storage predictable and simplifies quota management. Storing it internally (not including in clipboard) keeps the clipboard payload clean while making it available to agents.
-
-### DD-06: Extension Icon Badge for Off-Screen Comments
-
-**Decision:** The extension icon shows a badge count of comments whose anchor elements are currently off-screen (below the fold, above the viewport, or in collapsed sections). No floating arrows or scroll-to buttons in v1.
-
-**Rationale:** Minimal UI footprint. The badge is a native Chrome API (`chrome.action.setBadgeText`) — zero DOM manipulation. Users who want to find off-screen comments can open the popup which lists all comments.
-
-### DD-07: No SDK Dependency — Inline Comment UI
-
-**Decision:** The comment UI (pins, popovers, input forms) is built directly in the content script. The `@accordo/comment-sdk` is NOT imported as a dependency. Its patterns (pin states, popover layout, callback contract) are used as reference/inspiration.
-
-**Rationale:** The SDK depends on `--vscode-*` CSS variables (e.g., `--vscode-editor-background`, `--vscode-button-background`) which have no values in a browser context. Remapping them requires a complete CSS variable override layer. Inlining the UI allows browser-native styling (system colors, `prefers-color-scheme`) without the indirection.
-
-**Enforcement:** `packages/browser-extension/package.json` MUST NOT list `@accordo/comment-sdk` as a dependency (neither `dependencies` nor `devDependencies`). This is validated by code review checklist item.
-
-**Session 13 v2a supersession:** DD-07 applies to v1 baseline only. In v2a, browser-extension converges on shared SDK interaction logic via an adapter boundary so browser comment UX evolves with the same SDK behavior as other Accordo modalities.
-
-### DD-08: VS Code Relay in v2a
-
-**Decision:** v1 was fully self-contained. In v2a, extension connects to `accordo-browser` relay over localhost WebSocket to support agent list/get/create/reply/resolve/reopen/delete operations.
-
-**Rationale:** The relay requires a new `accordo-browser` VS Code extension (WebSocket server, auth token flow, Bridge integration). This is significant scope. v1 validates the core UX (commenting on web pages) independently. The relay is the natural v2.
-
-### DD-09: Simple Element Identification (Not Full CSS Selector Paths)
-
-**Decision:** v1 identifies elements using a composite key: `{tagName}:{index-among-same-tag-siblings}:{textFingerprint}`. This is stored as the `anchorKey`. It is NOT a full CSS selector path.
-
-**Rationale:** Full CSS selector generation (as specified in the old `browser-architecture.md` M67-CSS) is complex and fragile across page reloads with dynamic content. v1 anchors are session-scoped — they work as long as the page DOM hasn't changed. Cross-reload re-anchoring is deferred to v2 when the full CSS selector + fingerprint system will be implemented.
+**v2a (current):** Enhanced anchor strategy uses strategy-prefixed keys: `"id:submit-btn"`, `"data-testid:login-form"`, `"aria:Submit/button"`, `"css:main>div>button"`, `"tag:button:3:submit"`, `"body:42%x63%"`. Resolution dispatches based on strategy prefix via `resolveAnchorKey()` in `enhanced-anchor.ts`. Backward compatibility: legacy keys without strategy prefix resolve through the existing `generateAnchorKey()` path.
 
 ### DD-10: MCP/Relay Layer — Real Handlers, Live Transport
 
@@ -197,8 +173,8 @@ packages/browser-extension/     Chrome Manifest V3 extension
                     ┌───────────────────────────────────────────────┐
                     │                                               │
                     ▼                                               │
-              ┌──────────┐    Ctrl+Shift+A / toolbar click    ┌────┴─────┐
-              │   OFF    │ ──────────────────────────────────► │    ON    │
+┌──────────┐    Alt+Shift+C / toolbar click    ┌────┴─────┐
+               │   OFF    │ ──────────────────────────────────► │    ON    │
               │          │                                     │          │
               │ No pins  │ ◄────────────────────────────────── │ Pins     │
               │ No menu  │    Ctrl+Shift+A / toolbar click     │ visible  │
@@ -247,8 +223,8 @@ packages/browser-extension/     Chrome Manifest V3 extension
 
 | From | To | Trigger | Side Effects |
 |---|---|---|---|
-| OFF | ON | `Ctrl+Shift+A` / toolbar click / `chrome.commands` | Create context menu item; show pins for current URL; update badge |
-| ON | OFF | `Ctrl+Shift+A` / toolbar click | Remove context menu item; hide all pins; clear badge |
+| OFF | ON | `Alt+Shift+C` / toolbar click / `chrome.commands` | Create context menu item; show pins for current URL; update badge |
+| ON | OFF | `Alt+Shift+C` / toolbar click | Remove context menu item; hide all pins; clear badge |
 | ON | ON (input) | Right-click element → "Add Comment" | Capture element reference; show inline comment form |
 | ON (input) | ON | Submit comment | Store comment; render pin; update badge |
 | ON (input) | ON | Cancel | Discard form; no state change |
@@ -899,7 +875,7 @@ Session 14 migrates browser comments from a browser-specific public tool family 
 1. **User name default:** Should the extension prompt for a user name on first install, or default to "User"? (Affects M80-POP, M80-TYP)
 2. **Export format preference:** Should the default clipboard format be Markdown or JSON? (Affects M80-EXPORT)
 3. **Screenshot quality/size:** JPEG at quality 0.7 produces ~200KB per screenshot. Is this acceptable, or should we cap at a lower quality? (Affects M80-SCREEN)
-4. **Keyboard shortcut conflict:** `Ctrl+Shift+A` may conflict with "Select All" in some applications. Should we use a different shortcut? (Affects M80-SM)
+4. **Keyboard shortcut conflict:** `Alt+Shift+C` may conflict with some systems (e.g. Linux window management). Should we use `Ctrl+Shift+A` or a chord (`Ctrl+Shift+A, C`)? The current manifest uses `Alt+Shift+C`. (Affects M80-SM)
 5. **Comment character limit:** Should we cap comment body length? Suggested: 2000 chars. (Affects M80-STORE, M80-TYP)
 
 ---

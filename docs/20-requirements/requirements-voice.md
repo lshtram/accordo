@@ -185,7 +185,7 @@ packages/voice/
 ### M50-FSM — Voice FSMs
 
 **File:** `src/core/fsm/types.ts`, `src/core/fsm/session-fsm.ts`, `src/core/fsm/narration-fsm.ts`  
-**Test files:** `src/__tests__/session-fsm.test.ts`, `src/__tests__/narration-fsm.test.ts`
+**Test files:** `src/__tests__/narration-fsm.test.ts` (session-fsm is not independently tested)
 
 #### M50-FSM Types
 
@@ -338,7 +338,7 @@ packages/voice/
 
 | Package | Purpose | Notes |
 |---|---|---|
-| `kokoro-js` | Neural TTS (optional fallback) | `peerDependencies` — only loaded when Kokoro is used |
+| `kokoro-js` | Neural TTS (optional fallback) | `dependencies` — loaded lazily via `require.resolve()` when Kokoro is used |
 | `@accordo/bridge-types` | Shared types | `workspace:*` |
 
 ### 6.2 System Dependencies

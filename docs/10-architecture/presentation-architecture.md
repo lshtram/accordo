@@ -1,8 +1,10 @@
 # Accordo — Presentation Modality Architecture v1.1
 
-**Status:** PROPOSED  
+**Status:** HISTORICAL (Slidev-era)  
 **Date:** 2026-03-05  
 **Scope:** Phase 3 presentations modality (`accordo-slidev`)
+
+> **This document describes the Slidev-era architecture.** It is retained for historical reference. The active presentation engine is **Marp**, documented in [`marp-architecture.md`](marp-architecture.md). The `accordo-slidev` package is not currently available in this workspace.
 
 ---
 

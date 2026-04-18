@@ -44,24 +44,24 @@ Requirements in other categories (snapshot versioning, filtering, diff, security
 
 ## 3. MCP Tool Inventory
 
-The evaluated `accordo_browser_*` surface consists of these tools:
+All browser MCP tools use the `accordo_browser_*` naming convention (underscore-separated). The evaluated surface consists of these tools:
 
 | Tool | Purpose | Eval Category | Key Req Source |
 |---|---|---|---|
-| `browser_list_pages` | List all open tabs with tabId/url/title | A (Session) | PU-F-50..57 |
-| `browser_select_page` | Activate a tab by tabId | A (Session) | PU-F-50..57 |
-| `browser_get_page_map` | Structured DOM tree with filters | C, D, F, G | B2-FI-*, PU-F-01..06 |
-| `browser_inspect_element` | Deep element inspection | C, D, F | PU-F-10..15 |
-| `browser_get_dom_excerpt` | Sanitized HTML fragment | C | PU-F-30..33 |
-| `browser_get_text_map` | Visible text with reading order | B | B2-TX-001..010 |
-| `browser_get_semantic_graph` | A11y tree + landmarks + outline + forms | C | B2-SG-001..015 |
-| `browser_capture_region` | Element/region screenshot | E | CR-F-01..12 |
-| `browser_diff_snapshots` | DOM change tracking | G | B2-DE-001..007 |
-| `browser_wait_for` | Wait for text/selector/stable layout | H | B2-WA-001..007 |
-| `browser_navigate` | URL navigation + back/forward/reload | A | (implicit) |
-| `browser_click` | Click an element | F | (implicit) |
-| `browser_type` | Type text into an element | F | (implicit) |
-| `browser_press_key` | Press keyboard key/combo | F | (implicit) |
+| `accordo_browser_list_pages` | List all open tabs with tabId/url/title | A (Session) | PU-F-50..57 |
+| `accordo_browser_select_page` | Activate a tab by tabId | A (Session) | PU-F-50..57 |
+| `accordo_browser_get_page_map` | Structured DOM tree with filters | C, D, F, G | B2-FI-*, PU-F-01..06 |
+| `accordo_browser_inspect_element` | Deep element inspection | C, D, F | PU-F-10..15 |
+| `accordo_browser_get_dom_excerpt` | Sanitized HTML fragment | C | PU-F-30..33 |
+| `accordo_browser_get_text_map` | Visible text with reading order | B | B2-TX-001..010 |
+| `accordo_browser_get_semantic_graph` | A11y tree + landmarks + outline + forms | C | B2-SG-001..015 |
+| `accordo_browser_capture_region` | Element/region screenshot | E | CR-F-01..12 |
+| `accordo_browser_diff_snapshots` | DOM change tracking | G | B2-DE-001..007 |
+| `accordo_browser_wait_for` | Wait for text/selector/stable layout | H | B2-WA-001..007 |
+| `accordo_browser_navigate` | URL navigation + back/forward/reload | A | (implicit) |
+| `accordo_browser_click` | Click an element | F | (implicit) |
+| `accordo_browser_type` | Type text into an element | F | (implicit) |
+| `accordo_browser_press_key` | Press keyboard key/combo | F | (implicit) |
 
 ---
 
@@ -261,6 +261,8 @@ Browser MCP tools inherit the non-functional requirements from their source docu
 **MCP-NF-001: MCP tool response consistency**  
 All `accordo_browser_*` tools MUST return responses conforming to the `SnapshotEnvelope` (B2-SV-003) for data-producing tools, or the structured error format (MCP-ER-001) for errors. No bare string responses.  
 **Acceptance:** Schema validation of all tool responses passes.
+
+**Naming convention:** All browser MCP tools use the `accordo_browser_*` prefix with underscore-separated identifiers (e.g., `accordo_browser_get_page_map`, `accordo_browser_capture_region`). Internal VS Code commands use dot-separated form (e.g., `accordo_browser.focusThread`). This distinction is intentional: MCP tool names follow the `accordo_<modality>_<action>` convention from the AGENTS.md naming rules, while VS Code commands use dots to denote namespace hierarchy.
 
 ---
 

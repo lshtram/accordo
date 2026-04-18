@@ -4,7 +4,7 @@
  * Contains the PanelState data type, factory function, state accessors,
  * cleanup logic, and workspace-root resolution.
  *
- * Source: diag_workplan.md §4.15
+ * Source: requirements-diagram.md §A15
  */
 
 import { dirname } from "node:path";

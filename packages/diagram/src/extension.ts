@@ -15,7 +15,7 @@
  * If accordo-bridge is absent, activation logs one warning to the output
  * channel and returns — the extension is inert but does not crash.
  *
- * Source: diag_workplan.md §4.17, diag_arch_v4.2.md §14
+ * Source: requirements-diagram.md §A17
  *
  * Requirements:
  *   EX-01  activate() registers all 6 diagram tools with BridgeAPI

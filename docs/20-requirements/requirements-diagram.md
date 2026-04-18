@@ -41,7 +41,7 @@ All diagram work completed in Sessions 11/11b and subsequent Priority H sessions
 | A16 | Webview frontend (`webview.ts`) | ✅ Done — manual + `html.test.ts` |
 | A17 | Extension entry (`extension.ts`) | ✅ Done — 13 tests |
 
-**Total: 568 tests passing.**
+**Total: 1,016 tests passing.**
 
 ### A18 — Diagram Comments Bridge ✅
 
@@ -158,11 +158,18 @@ Beyond parsers, these modules are planned for diag.2 (full list in `diagram-arch
 **Finding:** Excalidraw has no native hexagon/cylinder/parallelogram types. Improved approximations require polygon-based workarounds that add complexity without achieving true native fidelity.  
 **Recommendation:** Keep current diamond/rectangle approximations. Not worth the effort for marginal gain.
 
-### diag.2 — Additional Parsers (NOT STARTED)
+### diag.2 — Additional Parsers (stateDiagram-v2 ✅, classDiagram ✅ — erDiagram/mindmap/block-beta NOT STARTED)
 
 Architecture reference: `docs/10-architecture/diagram-types-architecture.md`
 
-#### diag.2.1 — stateDiagram-v2 Parser
+#### diag.2.1 — stateDiagram-v2 Parser ✅
+
+Already implemented in `parser/state-diagram.ts`. Full pipeline integration complete (A18 + SUP-S).
+
+
+#### diag.2.2 — classDiagram Parser ✅
+
+Already implemented in `parser/class-diagram.ts`. Full pipeline integration complete.
 
 | ID | Requirement | Acceptance Criteria |
 |---|---|---|
@@ -173,16 +180,6 @@ Architecture reference: `docs/10-architecture/diagram-types-architecture.md`
 | SD-R05 | Parse transitions as edges | `db.edges` → `ParsedEdge` with label from `edge.label` |
 | SD-R06 | Ordinal counter for parallel edges | Multiple edges between same states get sequential ordinals |
 | SD-R07 | Full pipeline integration | `parseMermaid()` dispatches to `parseStateDiagram`; layout + canvas succeed end-to-end |
-
-#### diag.2.2 — classDiagram Parser
-
-| ID | Requirement | Acceptance Criteria |
-|---|---|---|
-| CD-R01 | Parse classes with attributes and methods | `db.classes` Map → `ParsedNode` with structured label |
-| CD-R02 | Parse class annotations | `<<interface>>`, `<<abstract>>` preserved in label |
-| CD-R03 | Parse namespaces as clusters | `db.namespaces` → `ParsedCluster`; class `parent` → membership |
-| CD-R04 | Map relation types to EdgeType | EXTENSION→inheritance, COMPOSITION→composition, AGGREGATION→aggregation, DOTTED→realization/dotted |
-| CD-R05 | Parse relationship labels | `relation.title` → `ParsedEdge.label` |
 
 #### diag.2.3 — erDiagram Parser
 
@@ -270,4 +267,4 @@ The parser (diag.2.1) is already implemented; this module adds upstream placemen
 | Edge hit-testing for comments | G-2 | 541 tests pass | `64b76b8` |
 | Pin viewport tracking | G-3 | 590 tests pass | `271b02f` |
 
-**Grand total: 568 tests passing.**
+**Grand total: 1,016 tests passing.**

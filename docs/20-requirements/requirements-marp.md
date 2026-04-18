@@ -61,14 +61,14 @@ Both extensions expose the **same 9 navigation/session MCP tools** under the sam
 {
   "accordo.presentation.engine": {
     "type": "string",
-    "enum": ["marp", "slidev"],
+    "enum": ["marp"],
     "default": "marp",
-    "description": "Presentation engine to use. Only one engine is active at a time."
+    "description": "Presentation engine to use. Only Marp is currently supported."
   }
 }
 ```
 
-> **Note:** This setting is contributed by `accordo-marp` (the default engine). When set to `"slidev"`, `accordo-marp` deactivates its tool registration and defers to `accordo-slidev`.
+> **Note:** `accordo-slidev` is not yet available in this workspace. The `enum` contains only `"marp"`. If slidev support is added later, the enum will expand to `["marp", "slidev"]`.
 
 ---
 
@@ -81,22 +81,34 @@ The tool names are **identical** to Slidev — the MCP surface is engine-agnosti
 
 | Requirement ID | Requirement |
 |---|---|
-| M50-TL-01 | `accordo.presentation.discover` exists and is ungrouped (prompt-visible) |
-| M50-TL-02 | `accordo.presentation.open` opens a deck URI; renders it to HTML via Marp; displays in WebviewPanel; returns error if file does not exist or is not a valid Marp deck |
-| M50-TL-03 | `accordo.presentation.close` ends the active session, disposes the webview, and resets state |
-| M50-TL-04 | `accordo.presentation.listSlides` returns ordered slide metadata |
-| M50-TL-05 | `accordo.presentation.getCurrent` returns current slide index and title |
-| M50-TL-06 | `accordo.presentation.goto` moves to exact slide index |
-| M50-TL-07 | `accordo.presentation.next` advances one slide |
-| M50-TL-08 | `accordo.presentation.prev` goes back one slide |
-| M50-TL-09 | `accordo.presentation.generateNarration` returns narration text for a given slide (or all slides) |
-| M50-TL-10 | `accordo_webview_capture` captures the currently visible slide as a UTF-8-encoded SVG file; writes to a caller-specified output path; requires an open presentation session; returns `{ captured, output_path, slide, bytes }` |
+| M50-TL-01 | `accordo_presentation_discover` exists and is ungrouped (prompt-visible) |
+| M50-TL-02 | `accordo_presentation_open` opens a deck URI; renders it to HTML via Marp; displays in WebviewPanel; returns error if file does not exist or is not a valid Marp deck |
+| M50-TL-03 | `accordo_presentation_close` ends the active session, disposes the webview, and resets state |
+| M50-TL-04 | `accordo_presentation_listSlides` returns ordered slide metadata |
+| M50-TL-05 | `accordo_presentation_getCurrent` returns current slide index and title |
+| M50-TL-06 | `accordo_presentation_goto` moves to exact slide index |
+| M50-TL-07 | `accordo_presentation_next` advances one slide |
+| M50-TL-08 | `accordo_presentation_prev` goes back one slide |
+| M50-TL-09 | `accordo_presentation_generateNarration` returns narration text for a given slide (or all slides) |
+| M50-TL-10 | `accordo_webview_capture` captures the currently visible slide as a UTF-8-encoded SVG file; writes to a caller-specified output path; requires an open presentation session; returns `{ captured, output_path, slide, bytes }`; dangerLevel: `safe` |
 
 ### Tool danger levels
 
 - Navigation/read tools (`discover`, `listSlides`, `getCurrent`, `goto`, `next`, `prev`, `generateNarration`): `safe`, `requiresConfirmation: false`
 - Session management (`open`, `close`): `moderate`, `requiresConfirmation: false`
-- Capture (`accordo_webview_capture`): `moderate`, `requiresConfirmation: false` (writes to disk)
+- Capture (`accordo_webview_capture`): `safe`, `requiresConfirmation: false` (writes to caller-specified path)
+
+### MCP tool naming vs internal command naming
+
+MCP tools exposed to agents use underscores (`accordo_presentation_*`) matching the MCP naming convention. Internal VS Code commands registered by this extension use dots (`accordo.presentation.*`) or underscores with an `internal` segment:
+
+| MCP tool name | Internal command name | Purpose |
+|---|---|---|
+| `accordo_presentation_open` | `accordo.presentation.open` | Alias for `accordo.marp.open` |
+| `accordo_presentation_close` | `accordo.marp.close` | Close session |
+| — | `accordo_presentation_internal_goto` | 0-based raw index goto (used by deferred path) |
+| — | `accordo.presentation.internal.focusThread` | Full focus sequence: open → navigate → post comments:focus |
+| — | `accordo_marp_internal_getNavigationRegistry` | Exposes NavigationAdapterRegistry to accordo-comments |
 
 ---
 
@@ -224,6 +236,7 @@ The tool names are **identical** to Slidev — the MCP surface is engine-agnosti
 | M50-STATE-01 | Publishes state key `modalities["accordo-marp"]` |
 | M50-STATE-02 | Includes `isOpen`, `deckUri`, `currentSlide`, `totalSlides`, `narrationAvailable` |
 | M50-STATE-03 | Emits updates on open/close, navigation, and narration generation events |
+| M50-STATE-05 | `narrationAvailable` is set to `true` on session open (deck has parsed notes from the start); not gated on a prior `generateNarration` call |
 | M50-STATE-04 | Subscribes to adapter events and webview panel lifecycle; calls `bridge.publishState` on every state transition |
 
 ---
@@ -238,7 +251,7 @@ interface PresentationSessionState {
   deckUri: string | null;
   currentSlide: number;
   totalSlides: number;
-  narrationAvailable: boolean;
+  narrationAvailable: boolean; // true immediately on open (deck notes parsed on load)
 }
 ```
 
@@ -329,7 +342,7 @@ interface MarpRenderResult {
 
 Requirements in this document affect:
 
-- `packages/marp` (new)
+- `packages/marp` (`accordo-marp` VS Code extension)
 - `packages/comments` — no changes (surface adapter command already exists from Slidev work)
 - `packages/comment-sdk` — no type changes; `blockId: string` stays as-is; slide anchors use same `"slide:{idx}:{x}:{y}"` convention
 - `packages/bridge-types` — no new types needed
@@ -348,12 +361,11 @@ accordo.presentation.engine: "marp" | "slidev"   (default: "marp")
 
 ### 10.2 Activation rules
 
-| Setting value | `accordo-marp` behavior | `accordo-slidev` behavior |
-|---|---|---|
-| `"marp"` (default) | Registers all 10 tools, publishes state | Does NOT register tools (yields) |
-| `"slidev"` | Does NOT register tools (yields) | Registers all 9 tools, publishes state |
+| Setting value | `accordo-marp` behavior |
+|---|---|
+| `"marp"` (default) | Registers all 10 tools, publishes state |
 
-Both extensions read the same setting on activation. Only the selected engine registers its tools. The MCP tool names are identical (`accordo.presentation.*`), so agents see no difference — the engine swap is transparent.
+Only `accordo-marp` is currently available. The slidev engine is not present in this workspace.
 
 ### 10.3 Changing engine at runtime
 

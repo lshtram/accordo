@@ -149,7 +149,7 @@ export class BlockIdResolver {
 
 | Requirement ID | Requirement |
 |---|---|
-| M41b-RND-01 | `MarkdownRenderer.create(options)` returns a configured renderer instance |
+| M41b-RND-01 | `MarkdownRenderer.create()` (no args) returns a configured renderer instance (async, due to shiki init) |
 | M41b-RND-02 | `.render(markdown, uri, webview)` returns `{ html, blockIdResolver }` |
 | M41b-RND-03 | Syntax highlighting via `@shikijs/markdown-it` (theme: `github-dark` / `github-light` based on VS Code theme) |
 | M41b-RND-04 | Math blocks (`$$...$$` and `$...$`) rendered via KaTeX (server-side) |
@@ -167,9 +167,24 @@ export class BlockIdResolver {
 
 ```typescript
 export interface RenderOptions {
-  themeKind: 1 | 2 | 3 | 4;  // vscode.ColorThemeKind value
-  /** Additional fence renderers keyed by language identifier. Overrides built-ins. */
+  /** Absolute file system path of the markdown document being rendered. Used to resolve relative image paths. */
+  docFsPath: string;
+  /** VS Code webview, used to produce vscode-resource: URIs for local images. Omit in unit tests. */
+  webview?: WebviewLike;
+  /**
+   * The VS Code theme kind — used to choose the shiki highlighting theme.
+   * 1 = light, 2 = dark, 3 = high contrast dark, 4 = high contrast light.
+   * Note: shiki currently always uses 'github-dark' regardless of themeKind (theme switching not yet implemented).
+   */
+  themeKind?: 1 | 2 | 3 | 4;
+  /**
+   * Additional fence renderers keyed by language identifier.
+   * Runs before the default shiki fallback.
+   * Add WaveDrom, Viz.js, Vega, Plotly, Kroki processors here.
+   */
   fenceRenderers?: Map<string, FenceRenderer>;
+  /** Factory to create a proper URI from a file path. In VS Code: pass `vscode.Uri.file`. In tests: omit. */
+  uriFromFsPath?: (fsPath: string) => UriLike;
 }
 
 export interface RenderResult {
@@ -179,14 +194,14 @@ export interface RenderResult {
 
 /**
  * A fence renderer converts a fenced code block into HTML.
- * Processor runs server-side (extension host), not in the webview.
+ * Runs server-side (extension host), not in the webview.
  * @param code     Raw source inside the fence
- * @param options  Arbitrary per-language options (e.g. engine, format)
- * @returns        HTML string, or null to fall through to default syntax-highlight
+ * @param attrs   Key/value pairs parsed from the fence info string (e.g. {engine="dot"})
+ * @returns        HTML string, or null to fall through to shiki syntax highlight
  */
 export type FenceRenderer = (
   code: string,
-  options: Record<string, string>
+  attrs: Record<string, string>
 ) => Promise<string | null>;
 
 export interface WebviewLike {
@@ -194,13 +209,13 @@ export interface WebviewLike {
 }
 
 export interface UriLike {
-  fsPath: string;
   toString(): string;
+  fsPath: string;
 }
 
 export class MarkdownRenderer {
-  static create(options: RenderOptions): MarkdownRenderer;
-  render(markdown: string, docUri: UriLike, webview: WebviewLike): Promise<RenderResult>;
+  static create(): Promise<MarkdownRenderer>;
+  render(markdown: string, options: RenderOptions): Promise<RenderResult>;
 }
 ```
 
@@ -378,7 +393,7 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider { …
 | Requirement ID | Requirement |
 |---|---|
 | M41b-EXT-01 | Calls `vscode.window.registerCustomEditorProvider(PREVIEW_VIEW_TYPE, new CommentablePreview(...))` |
-| M41b-EXT-02 | Retrieves a store adapter via `accordo.comments.internal.getStore` |
+| M41b-EXT-02 | Retrieves a store adapter via `accordo_comments_internal_getStore` command (via `CAPABILITY_COMMANDS.COMMENTS_GET_STORE`) |
 | M41b-EXT-03 | Registers `accordo.preview.open`, `accordo.preview.toggle`, `accordo.preview.openSideBySide` commands |
 | M41b-EXT-04 | All disposables pushed to `context.subscriptions` |
 | M41b-EXT-05 | If `accordo-comments` is unavailable, extension logs a warning and is inert |
@@ -412,7 +427,7 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider { …
 | PreviewBridge | `src/__tests__/preview-bridge.test.ts` | M41b-PBR-01 → PBR-10 |
 | CommentablePreview | `src/__tests__/commentable-preview.test.ts` | M41b-CPE-01 → CPE-08 |
 
-Total Phase B: 76 tests across 6 test files. `extension.ts` (M41b-EXT) tested as part of Phase C integration tests.
+Total Phase B: 76 tests across 7 test files. `extension.ts` (M41b-EXT) has its own integration test file `src/__tests__/extension.test.ts`.
 
 ---
 
@@ -486,4 +501,4 @@ Features that require local tool execution (matplotlib, gnuplot, LaTeX/TikZ/Chem
 - **No MCP tool registration** — `accordo-md-viewer` does not register MCP tools. Agent access to thread data goes through `accordo-comments`.
 - **No PDF or diagram rendering** — this package handles `.md` files only.
 - **No live collaborative editing** — the preview is read-only; source edits happen in the text editor.
-- **No server-side KaTeX** — math is rendered client-side in Phase C (simpler; no native module dependency).
+- **No client-side KaTeX** — math is rendered server-side via `@traptitech/markdown-it-katex` (Phase C decision: simpler, no CDN dependency in webview).

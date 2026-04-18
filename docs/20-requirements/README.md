@@ -49,23 +49,20 @@ All files use **lowercase-kebab-case**: `requirements-{component}.md`
 
 | Document | Package(s) | Scope | Status |
 |---|---|---|---|
-| [requirements-marp.md](requirements-marp.md) | `accordo-editor` (presentation module) | Marp presentation discovery, navigation, narration | Active |
-| [requirements-slidev.md](requirements-slidev.md) | (planned) | Slidev presentation support | Planned |
-| [requirements-md-viewer.md](requirements-md-viewer.md) | `accordo-editor` (markdown module) | Markdown preview and viewer tools | Active |
+| [requirements-marp.md](requirements-marp.md) | `accordo-marp` | Marp presentation discovery, navigation, narration | Active |
+| [requirements-md-viewer.md](requirements-md-viewer.md) | `accordo-md-viewer` | Markdown preview and viewer tools | Active |
 
 ### Diagrams & Visual
 
 | Document | Package(s) | Scope | Status |
 |---|---|---|---|
-| [requirements-diagram.md](requirements-diagram.md) | `accordo-editor` (diagram module) | Mermaid diagram tools — create, patch, style, render | Active |
+| [requirements-diagram.md](requirements-diagram.md) | `accordo-diagram` | Mermaid diagram tools — create, patch, style, render | Active |
 
 ### Voice & Narration
 
 | Document | Package(s) | Scope | Status |
 |---|---|---|---|
-| [requirements-voice.md](requirements-voice.md) | `accordo-editor` (voice module) | TTS, dictation, voice policy tools | Active |
-| [requirements-narration-plugin.md](requirements-narration-plugin.md) | `accordo-editor` (script module) | NarrationScript engine — sequenced IDE automation | **Archived** — removed 2026-04-16 |
-| [requirements-script.md](requirements-script.md) | `accordo-editor` (script module) | Script authoring, discovery, execution | **Archived** — removed 2026-04-16 |
+| [requirements-voice.md](requirements-voice.md) | `accordo-voice` | TTS read-aloud only, no STT/dictation | Active |
 
 ---
 
@@ -96,5 +93,5 @@ Each document uses a unique prefix to avoid ID collisions:
 - **Workplan:** [`docs/00-workplan/workplan.md`](../00-workplan/workplan.md)
 - **Coding guidelines:** [`docs/30-development/coding-guidelines.md`](../30-development/coding-guidelines.md)
 - **Evaluation checklist:** [`docs/30-development/mcp-webview-agent-evaluation-checklist.md`](../30-development/mcp-webview-agent-evaluation-checklist.md)
-- **Current reviews:** [`docs/40-reviews/`](../40-reviews/)
-- **Historical review evidence:** [`docs/50-reviews/`](../50-reviews/)
+- **Current reviews:** [`docs/reviews/`](../../docs/reviews/)
+- **Historical review evidence:** [`60-archive/reviews/`](../../60-archive/reviews/)

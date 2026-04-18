@@ -152,19 +152,19 @@ interface AccordoComment {
 
 | Requirement ID | Requirement |
 |---|---|
-| M38-CT-01 | Tool `accordo_comment_list` — list thread summaries with filters/pagination and optional modality scope |
-| M38-CT-02 | Tool `accordo_comment_get` — get one thread by `threadId` |
-| M38-CT-03 | Tool `accordo_comment_create` — create a thread with modality-specific anchor |
-| M38-CT-04 | Tool `accordo_comment_reply` — append a reply to a thread |
-| M38-CT-05 | Tool `accordo_comment_resolve` — resolve a thread with `resolutionNote` |
-| M38-CT-06 | Tool `accordo_comment_reopen` — reopen a resolved thread |
-| M38-CT-07 | Tool `accordo_comment_delete` — delete a thread, a single comment, or a scoped browser cleanup |
+| M38-CT-01 | Tool `comment_list` — list thread summaries with filters/pagination and optional modality scope |
+| M38-CT-02 | Tool `comment_get` — get one thread by `threadId` |
+| M38-CT-03 | Tool `comment_create` — create a thread with modality-specific anchor |
+| M38-CT-04 | Tool `comment_reply` — append a reply to a thread |
+| M38-CT-05 | Tool `comment_resolve` — resolve a thread with `resolutionNote` |
+| M38-CT-06 | Tool `comment_reopen` — reopen a resolved thread |
+| M38-CT-07 | Tool `comment_delete` — delete a thread, a single comment, or a scoped browser cleanup |
 | M38-CT-08 | All tools return structured JSON matching the CommentThread data model |
 | M38-CT-09 | Tools are registered via `bridge.registerTools('accordo-comments', tools)` |
-| M38-CT-10 | `accordo_comments_discover` exposes schemas/metadata for the comments tool group |
+| M38-CT-10 | `comment_sync_version` exposes store version and thread count for sync drift detection |
 | M38-CT-11 | Browser comments MUST be reachable through the same unified tools (no separate public `accordo_browser_*` tool family after migration) |
 
-#### Tool Schema: `accordo_comment_list`
+#### Tool Schema: `comment_list`
 
 ```typescript
 // Input
@@ -187,7 +187,7 @@ interface AccordoComment {
 { threads: ThreadSummary[]; total: number; hasMore: boolean }
 ```
 
-#### Tool Schema: `accordo_comment_get`
+#### Tool Schema: `comment_get`
 
 ```typescript
 // Input
@@ -195,10 +195,10 @@ interface AccordoComment {
   threadId: string;
 }
 // Output
-{ thread: CommentThread }
+{ success: true; thread: CommentThread }
 ```
 
-#### Tool Schema: `accordo_comment_create`
+#### Tool Schema: `comment_create`
 
 ```typescript
 // Input
@@ -216,9 +216,15 @@ interface AccordoComment {
     | { kind: "browser"; anchorKey?: string };
   body: string;
   intent?: "fix" | "explain" | "refactor" | "review" | "design" | "question";
+  threadId?: string;   // optional caller-supplied ID for cross-surface parity
+  commentId?: string;  // optional caller-supplied first-comment ID
+  context?: Record<string, unknown>; // optional surfaceMetadata, diagnostics, etc.
+  authorKind?: "user" | "agent";
+  authorName?: string;
+  agentId?: string;
 }
 // Output
-{ created: true; threadId: string; commentId: string }
+{ success: true; created: true; threadId: string; commentId: string }
 ```
 
 > **Enhanced anchor keys (Page Understanding):** When `kind` is `"browser"`, `anchorKey`
@@ -229,38 +235,38 @@ interface AccordoComment {
 > `docs/design/page-understanding-architecture.md` §5 for the full anchor strategy
 > hierarchy.
 
-#### Tool Schema: `accordo_comment_reply`
+#### Tool Schema: `comment_reply`
 
 ```typescript
 // Input
-{ threadId: string; body: string; commentId?: string }
+{ threadId: string; body: string; commentId?: string; authorKind?: "user" | "agent"; authorName?: string; agentId?: string }
 // Output
-{ replied: true; commentId: string }
+{ success: true; replied: true; commentId: string }
 ```
 
 > `commentId` is optional. When provided (e.g. by browser-extension relay), the store
 > uses the caller-supplied ID instead of generating a new one, ensuring cross-origin
 > ID parity between the browser local store and the Hub/VS Code CommentStore.
 
-#### Tool Schema: `accordo_comment_resolve`
+#### Tool Schema: `comment_resolve`
 
 ```typescript
 // Input
-{ threadId: string; resolutionNote: string }
+{ threadId: string; resolutionNote: string; agentId?: string }
 // Output
-{ resolved: true; threadId: string }
+{ success: true; resolved: true; threadId: string }
 ```
 
-#### Tool Schema: `accordo_comment_reopen`
+#### Tool Schema: `comment_reopen`
 
 ```typescript
 // Input
-{ threadId: string }
+{ threadId: string; agentId?: string }
 // Output
-{ reopened: true; threadId: string }
+{ success: true; reopened: true; threadId: string }
 ```
 
-#### Tool Schema: `accordo_comment_delete`
+#### Tool Schema: `comment_delete`
 
 ```typescript
 // Input
@@ -273,7 +279,7 @@ interface AccordoComment {
   };
 }
 // Output
-{ deleted: true; deletedCount?: number }
+{ success: true; deleted: true; deletedCount?: number }
 ```
 
 `deleteScope: { modality: "browser", all: true }` is reserved for bulk browser cleanup and is the backend path used by the Comments Panel "Delete All Browser Comments" action.

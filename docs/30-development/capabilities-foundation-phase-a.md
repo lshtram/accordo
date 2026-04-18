@@ -90,7 +90,7 @@ These may exist as placeholders but are explicitly not active.
 | Not allowed | Reason |
 |---|---|
 | New command IDs not listed in §2 | Prevent scope creep |
-| Runtime implementation code in `@accordo/capabilities` | Package must remain types/constants only |
+| Runtime implementation code in `@accordo/capabilities` | Package must remain types/constants only, **except** the minimal `createNavigationAdapterRegistry()` factory which is the sole permitted runtime export |
 | `vscode` imports in `@accordo/capabilities` | Must remain editor-agnostic |
 | Relay wire types in `@accordo/capabilities` | Owned by `@accordo/bridge-types` |
 | Module-specific adapter implementations | Belong to later module batches |
@@ -128,7 +128,7 @@ All gates below must pass before the capabilities foundation is complete.
 | G5 | No local redefinition of stable interfaces | `rg 'interface (SurfaceCommentAdapter|CommentStoreAdapter)' packages --glob '*.ts' | grep -v 'packages/capabilities/'` | Zero matches |
 | G6 | Deferred commands are not active | `rg 'registerCommand.*(PRESENTATION_GOTO|PRESENTATION_FOCUS_THREAD|BROWSER_FOCUS_THREAD)' packages --glob '*.ts'` against constants usage or dedicated scripted equivalent | Zero active registrations |
 | G7 | Deferred interfaces are not implemented as active contracts | `rg 'implements\s+(PresentationCapability|BrowserCapability)' packages --glob '*.ts'` | Zero matches outside deferred area |
-| G8 | Capabilities package is runtime-free | `rg "from ['\"]vscode['\"]" packages/capabilities --glob '*.ts'` and dependency inspection in `package.json` | No `vscode` imports; no runtime dependency creep |
+| G8 | Capabilities package is runtime-free (with exception) | `rg "from ['\"]vscode['\"]" packages/capabilities --glob '*.ts'` and dependency inspection in `package.json` | No `vscode` imports; no runtime dependency creep; `createNavigationAdapterRegistry` factory is the only permitted runtime export |
 | G9 | Legacy aliases are explicitly deprecated | grep / read checks for `@deprecated` tags in the two files listed in §4 | Both aliases carry migration guidance |
 | G10 | Affected package tests remain green | `pnpm --filter @accordo/capabilities test && pnpm --filter accordo-comments test && pnpm --filter accordo-diagram test && pnpm --filter accordo-marp test && pnpm --filter accordo-md-viewer test` | Exit code 0 for all affected packages |
 
@@ -148,6 +148,7 @@ This is the expected output of the capabilities-foundation implementation batch.
 | Active capability constants | `packages/capabilities/src/index.ts` exports the stable `CAPABILITY_COMMANDS` set |
 | Deferred capability constants | `packages/capabilities/src/index.ts` exports `DEFERRED_COMMANDS` separately |
 | Stable interfaces | `packages/capabilities/src/index.ts` exports only the stable interfaces listed in §3.1 |
+| Navigation registry factory | `packages/capabilities/src/navigation.ts` exports `createNavigationAdapterRegistry()` — the sole permitted runtime factory |
 | Deferred interfaces | `packages/capabilities/src/deferred.ts` contains deferred interfaces and is not part of active public surface |
 | Capability map test | `packages/capabilities/src/__tests__/capability-commands.test.ts` exists |
 | Legacy deprecations | TSDoc `@deprecated` added in the two locations listed in §4 |

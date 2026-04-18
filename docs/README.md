@@ -14,8 +14,8 @@
 | Feature requirements | [20-requirements/](20-requirements/) |
 | Code standards and patterns | [30-development/](30-development/) |
 | How to test current features | [40-testing/](40-testing/) |
-| Current authoritative reviews | [40-reviews/](40-reviews/) |
-| Historical review evidence | [50-reviews/](50-reviews/) |
+| Current priorities and gate reviews | [docs/reviews/](docs/reviews/) |
+| Historical review evidence | [60-archive/reviews/](60-archive/reviews/) |
 | Historical docs and superseded plans | [60-archive/](60-archive/) |
 
 ---
@@ -32,7 +32,7 @@
 - **Browser extension** → [10-architecture/browser-extension-architecture.md](10-architecture/browser-extension-architecture.md)
 - **Voice/TTS/STT** → [10-architecture/voice-architecture.md](10-architecture/voice-architecture.md)
 - **Diagrams** → [10-architecture/diagram-architecture.md](10-architecture/diagram-architecture.md)
-- **Presentations** → [10-architecture/presentation-architecture.md](10-architecture/presentation-architecture.md)
+- **Presentations** → [10-architecture/marp-architecture.md](10-architecture/marp-architecture.md)
 
 ### Current priorities (2026-04-08)
 - Browser continuity for agents (non-active-tab access must work)
@@ -63,7 +63,7 @@ Architecture documents by modality. Each doc includes "Last Updated" and "Status
 | [browser-extension-architecture.md](10-architecture/browser-extension-architecture.md) | Chrome extension + relay | ACTIVE |
 | [browser2.0-architecture.md](10-architecture/browser2.0-architecture.md) | Browser upgrade (P1/P2/P3) | DRAFT |
 | [voice-architecture.md](10-architecture/voice-architecture.md) | TTS/STT/voice tools | ACTIVE |
-| [presentation-architecture.md](10-architecture/presentation-architecture.md) | Marp presentations | ACTIVE |
+| [presentation-architecture.md](10-architecture/presentation-architecture.md) | Slidev-era presentation architecture | **Historical** — superseded by `marp-architecture.md` |
 | [diagram-architecture.md](10-architecture/diagram-architecture.md) | Mermaid/Excalidraw diagrams | ACTIVE |
 | [layout-state-architecture.md](10-architecture/layout-state-architecture.md) | IDE state capture | ACTIVE |
 
@@ -98,32 +98,25 @@ Requirements by package/component. Each includes module IDs for TDD traceability
 | [setup-windows.md](30-development/setup-windows.md) | Windows development setup |
 | [retrospective.md](30-development/retrospective.md) | Project retrospectives |
 
-### 40-testing/ — Active Testing Guides
-Testing guides for current/in-progress features.
+### docs/40-testing/ — Active Testing Guides
+Testing guides for current/in-progress features. Guides at the repo root (`testing-guide-*.md`) are the canonical active set; `docs/40-testing/` is preserved as a local working copy.
 
 | File | Feature |
 |---|---|
 | [testing-guide-session-15.md](40-testing/testing-guide-session-15.md) | Page understanding + region capture |
 | [testing-guide-m113-sem.md](40-testing/testing-guide-m113-sem.md) | Semantic graph (browser 2.1 W2) |
 
-### 40-reviews/ — Current Authoritative Reviews
-Current gate reviews, live evaluations, and recent architecture reviews that still describe the active system.
+### docs/reviews/ — Current Authoritative Reviews
+Active gate reviews, live evaluations, and recent architecture reviews that still describe the active system.
 
-### 50-reviews/ — Historical Review Evidence
-Older review evidence and planning-era review material that is still useful for traceability but is no longer the primary reference set.
+### 60-archive/ — Historical Review Evidence
+Older review evidence and planning-era review material that is still useful for traceability but is no longer the primary reference set. Includes all content from former `docs/40-reviews/` and `docs/50-reviews/`.
 
 **2026-03-29 Reviews:**
-- [full-project-modularity-plugin-review-2026-03-29.md](50-reviews/full-project-modularity-plugin-review-2026-03-29.md) — Full project modularity review
-- [browser-stack-readability-modularity-review-2026-03-29.md](50-reviews/browser-stack-readability-modularity-review-2026-03-29.md) — Browser stack review
-- [mcp-webview-evaluation-live-2026-03-29.md](50-reviews/mcp-webview-evaluation-live-2026-03-29.md) — Live evaluation
-- [mcp-webview-evaluation-e2e-2026-03-29.md](50-reviews/mcp-webview-evaluation-e2e-2026-03-29.md) — E2E runtime evidence evaluation
-
-**Current Module Reviews:**
-- m113-sem-*.md — Semantic graph modules
-- m112-text-*.md — Text map modules
-- m111-eval-*.md — Evaluation harness
-- m109-wait-*.md — Wait primitives
-- m10x-* — Browser 2.0 modules
+- [full-project-modularity-plugin-review-2026-03-29.md](60-archive/reviews/full-project-modularity-plugin-review-2026-03-29.md) — Full project modularity review
+- [browser-stack-readability-modularity-review-2026-03-29.md](60-archive/reviews/browser-stack-readability-modularity-review-2026-03-29.md) — Browser stack review
+- [mcp-webview-evaluation-live-2026-03-29.md](60-archive/reviews/mcp-webview-evaluation-live-2026-03-29.md) — Live evaluation
+- [mcp-webview-evaluation-e2e-2026-03-29.md](60-archive/reviews/mcp-webview-evaluation-e2e-2026-03-29.md) — E2E runtime evidence evaluation
 
 ### 60-archive/ — Historical Documents
 Superseded docs, handoffs, and session notes kept for reference.

@@ -98,9 +98,13 @@ Implements `vscode.TreeDataProvider<CommentTreeItem>`.
 
 **Data source:** `store.getAllThreads()` — always reads fresh from the store.
 
-**Grouping (two-level tree):**
-- Level 0: Group header items — `"Open (N)"` and `"Resolved (N)"`. Group headers are `TreeItem` with `collapsibleState: Collapsed` (Resolved) or `Expanded` (Open).
-- Level 1: `CommentTreeItem` instances — one per `CommentThread`, sorted by `lastActivity` descending within their group.
+**Grouping (three-level tree — supersedes earlier two-level design):**
+- Level 0: Group headers — format varies by `PanelFilters.groupMode`:
+  - `"by-status"` (default): `🔴 Open (N)` / `✅ Resolved (N)` headers; Open `Expanded`, Resolved `Collapsed`
+  - `"by-file"`: one header per distinct filename, e.g. `"auth.ts (3)"`; all `Expanded`
+  - `"by-activity"`: no group headers — flat sorted thread list sorted by `lastActivity` descending
+- Level 1: `CommentTreeItem` instances — one per `CommentThread`, sorted by location (URI then anchor position) within their group
+- Level 2: Individual `CommentTreeItem` comment items — children of thread items, shown when a thread is expanded (collapsible); each comment item shows author name, body preview (80 chars), and timestamp
 
 **Refresh cycle:** Subscribes to `store.onChanged(uri)`. On every notification, fires `this._onDidChangeTreeData.fire(undefined)` (full tree refresh). This is acceptable at 500-thread scale — `getAllThreads()` is an in-memory read, not I/O.
 
@@ -110,53 +114,55 @@ Implements `vscode.TreeDataProvider<CommentTreeItem>`.
 
 | Field | Value |
 |---|---|
-| `label` | Anchor label (§3.5) + optional ⚠ stale prefix |
-| `description` | `"<filename> · <intent emoji>"` e.g. `"auth.ts · 🔧"` |
-| `tooltip` | First comment body preview (≤200 chars) + author + timestamp |
-| `iconPath` | `$(comment-unresolved)` for open; `$(pass)` for resolved |
-| `contextValue` | `"accordo-thread-open"` / `"accordo-thread-resolved"` / `"accordo-thread-stale"` |
+| `label` | File basename of `thread.anchor.uri` (e.g. `"auth.ts"`) + optional `"⚠ "` stale prefix |
+| `description` | `"<status-badge> <anchor-label> · [<intent-emoji>] <N> replies · <date> [<first-sentence>]"` e.g. `"🔴 line 42 · 🔧 2 replies · Mar 6 10:00"` |
+| `tooltip` | First comment body + `"\n— "` + author name + `" · "` + ISO timestamp |
+| `iconPath` | File-type `ThemeIcon` based on anchor surface type (`play` for slides, `markdown` for md-preview, `globe` for browser) or extension-based fallback (`file-code` for `.ts`, `file-text` for `.md`) — not comment status icon |
+| `contextValue` | `"accordo-thread-open"` / `"accordo-thread-stale"` / `"accordo-thread-resolved"` for thread items; `"accordo-thread-<status>-comment"` for comment items |
 | `resourceUri` | File URI (for default file icon decoration; optional) |
 | `command` | `accordo.commentsPanel.navigateToAnchor` with `[thread]` arg — fires on single click |
+| `collapsibleState` | `Collapsed` for thread items (expand to reveal comment children); `None` for comment items |
 
 ### 3.2 NavigationRouter (M45-NR)
 
 Pure async function module. No class, no state. Takes a `CommentThread` and executes the correct VS Code command to surface the thread's anchor.
 
-**Routing table:**
+**Routing table (via `NavigationAdapterRegistry` — deferred to accordo-marp for surface commands):**
 
 | `anchor.kind` | `coordinates.type` / `surfaceType` | Action |
 |---|---|---|
 | `text` | n/a | `showTextDocument(uri, { selection: anchorRange, preserveFocus: false })` |
-| `surface` | `markdown-preview` | `executeCommand('accordo.preview.internal.focusThread', uri, threadId, blockId)` |
-| `surface` | `slide` | `executeCommand('accordo.presentation.internal.focusThread', uri, threadId, blockId)` — opens deck if needed, navigates to slide, posts `comments:focus` to webview |
-| `surface` | `browser` | `executeCommand('accordo.browser.focusThread', threadId)` — no-op if not registered |
-| `surface` | `diagram` | `executeCommand('accordo.diagram.focusThread', threadId)` — no-op if not registered (reserved for Phase 5) |
+| `surface` | `markdown-preview` | registry: `focusThread` on preview surface adapter |
+| `surface` | `slide` | registry: `focusThread` on slide surface adapter (opens deck + navigates + posts `comments:focus`) |
+| `surface` | `browser` | registry: `focusThread` on browser surface adapter; if registry unavailable, command `accordo.browser.focusThread` as fallback |
+| `surface` | `diagram` | registry: `focusThread` on diagram surface adapter (reserved for Phase 5) |
 | `file` | n/a | `showTextDocument(uri)` without range |
 | any | unknown | fallback to `showTextDocument(uri)` |
 
 **Error contract:** All navigation errors are caught. On failure, `vscode.window.showWarningMessage('Could not navigate to thread: <message>')`. The function never throws.
 
-**"Surface not open" handling:** For slide navigation, the router delegates entirely to `accordo.presentation.internal.focusThread` (contributed by `accordo-marp`). That command owns the full sequencing: open deck if needed → navigate to slide → post `comments:focus` to webview. The router does not perform its own open/settling logic for slides.
+**Registry-based navigation:** The router acquires `NavigationAdapterRegistry` by calling `executeCommand('accordo_marp_internal_getNavigationRegistry')`. If the registry is unavailable (marp not active), a deferred fallback path attempts `accordo.browser.focusThread` for browser surfaces, or falls back to `showTextDocument(uri)`. Surface adapters in the registry own the full sequencing for their modality (open if needed → navigate → post webview message).
 
-**Dependency note:** `accordo-marp` contributes `accordo.presentation.internal.focusThread` as a VS Code command. If the command is not registered (extension not active), the router catches the error and shows a warning message.
+**Reply UX:** The panel's `Reply` command uses the same registry-backed navigation as `navigateToAnchor` — it opens the anchor surface (text editor, slide deck, etc.) and the user replies via the native input UI at that surface. This is intentionally different from `showInputBox` (which would place a dialog at the top of the screen). In-context reply preserves spatial context and is the correct behavior for spatial comments.
 
 ### 3.3 PanelCommands (M45-CMD)
 
-Registers VS Code commands. Each command receives a `CommentTreeItem` from the tree context menu (or directly from `tree.onDidChangeSelection`).
+Registers VS Code commands. Each command receives a `CommentTreeItem` from the tree context menu (or directly from `tree.onDidChangeSelection`). Commands use dynamic imports to access `navigateToThread` and acquire the `NavigationAdapterRegistry` at runtime.
 
 **Commands:**
 
 | Command ID | Trigger | Behavior |
 |---|---|---|
-| `accordo.commentsPanel.navigateToAnchor` | Tree item click (single) | Calls `NavigationRouter.navigateToThread(item.thread)` |
+| `accordo.commentsPanel.navigateToAnchor` | Tree item click (single) | Acquires `NavigationAdapterRegistry`; calls `navigateToThread(thread, navEnv, registry)` |
 | `accordo.commentsPanel.resolve` | Context menu (open threads) | `showInputBox` for resolution note → `store.resolve()` |
 | `accordo.commentsPanel.reopen` | Context menu (resolved threads) | `store.reopen()` |
-| `accordo.commentsPanel.reply` | Context menu (all threads) | `showInputBox` for body → `store.reply()` |
+| `accordo.commentsPanel.reply` | Context menu (all threads) | Acquires `NavigationAdapterRegistry`; calls `navigateToThread(thread, navEnv, registry)` — same in-context navigation as navigate |
 | `accordo.commentsPanel.delete` | Context menu (all threads) | `showWarningMessage` confirm dialog → `store.delete()` |
-| `accordo.commentsPanel.refresh` | View title toolbar | `provider._onDidChangeTreeData.fire()` |
+| `accordo.commentsPanel.refresh` | View title toolbar | `provider.refresh()` |
 | `accordo.commentsPanel.filterByStatus` | View title toolbar | `showQuickPick(['open', 'resolved', 'all'])` → `filters.setStatus()` |
 | `accordo.commentsPanel.filterByIntent` | View title toolbar | `showQuickPick([...intents])` → `filters.setIntent()` |
 | `accordo.commentsPanel.clearFilters` | View title toolbar | `filters.clear()` |
+| `accordo.commentsPanel.groupBy` | View title toolbar | `showQuickPick(['by-status', 'by-file', 'by-activity'])` → `filters.setGroupMode()` |
 
 **Store sync:** After every mutation, `PanelCommands` calls both `store.X()` (which fires `onChanged`) AND updates the `NativeComments` widget via the same pattern used in `SurfaceCommentAdapter` (see [`extension.ts` getSurfaceAdapter](../../packages/comments/src/extension.ts)). This ensures gutter widgets stay in sync.
 
@@ -230,7 +236,7 @@ The following additions are made to `packages/comments/package.json`:
 "viewsContainers": {
   "activitybar": [
     {
-      "id": "accordo-comments-container",
+      "id": "accordo-comments",
       "title": "Accordo Comments",
       "icon": "$(comment-discussion)"
     }
@@ -244,7 +250,7 @@ If an Accordo activity bar container already exists (e.g., from `accordo-bridge`
 
 ```json
 "views": {
-  "accordo-comments-container": [
+  "accordo-comments": [
     {
       "id": "accordo-comments-panel",
       "name": "Comments",
