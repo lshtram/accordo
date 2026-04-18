@@ -272,7 +272,7 @@ export interface CapabilityCommandMap {
 // ─── Navigation Adapter Registry ───────────────────────────────────────────────
 
 export { createNavigationAdapterRegistry } from "./navigation.js";
-export type { NavigationAdapterRegistry, NavigationEnv } from "./navigation.js";
+export type { NavigationAdapterRegistry, NavigationAdapter, NavigationEnv } from "./navigation.js";
 
 // ─── Deferred Capability Re-exports ───────────────────────────────────────────
 // PresentationCapability and BrowserCapability live in deferred.ts to keep them
