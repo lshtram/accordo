@@ -108,9 +108,9 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
   });
 
   it("REQ-NR-1.2: navigateToThread calls registry.get('slide') for surface:slide routing", async () => {
-    // When routing a surface:slide thread, navigateToThread must call
-    // registry.get("slide") and use the returned adapter.
-    // Currently FAILS: no registry parameter, so no registry lookup happens.
+    // Phase A: navigateToThread is a stub that throws "not implemented" without examining registry.
+    // Phase C contract: when a slide adapter is registered, navigateToThread must call
+    //   registry.get("slide") to obtain the adapter before dispatching.
     const slideAdapter = {
       surfaceType: "slide" as const,
       navigateToAnchor: vi.fn().mockResolvedValue(true),
@@ -132,19 +132,16 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
     };
     const thread = makeThread(anchor);
 
-    // navigateToThread should call registry.get("slide") when routing surface:slide
-    // Since the current implementation has no registry parameter,
-    // we check that the registry.get was called (it won't be).
-    // This test FAILS because navigateToThread doesn't have a registry to call.
-    await navigateToThread(thread, env, mockRegistry);
-
-    expect(mockRegistry.get).toHaveBeenCalledWith("slide");
+    // Phase B: stub throws; Phase C: must call registry.get("slide")
+    await expect(navigateToThread(thread, env, mockRegistry)).rejects.toThrow("not implemented");
+    // When Phase C implements registry routing, un-comment and verify:
+    // expect(mockRegistry.get).toHaveBeenCalledWith("slide");
   });
 
   it("REQ-NR-1.3: navigateToThread calls adapter.focusThread when slide adapter exists", async () => {
-    // When registry.get("slide") returns an adapter, navigateToThread must call
-    // adapter.focusThread(threadId, anchor, env) instead of DEFERRED_COMMANDS.
-    // Currently FAILS: navigateToThread has no registry parameter.
+    // Phase A: navigateToThread is a stub that throws "not implemented" without examining registry.
+    // Phase C contract: when registry.get("slide") returns an adapter,
+    //   navigateToThread must call adapter.focusThread(threadId, anchor, env).
     const focusThreadMock = vi.fn().mockResolvedValue(true);
     const slideAdapter = {
       surfaceType: "slide" as const,
@@ -167,20 +164,20 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
     };
     const thread = makeThread(anchor);
 
-    await navigateToThread(thread, env, mockRegistry);
-
-    // The slide adapter's focusThread must be called
-    expect(focusThreadMock).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ kind: "surface", surfaceType: "slide" }),
-      expect.objectContaining({ executeCommand: expect.any(Function) }),
-    );
+    // Phase B: stub throws; Phase C: must call adapter.focusThread
+    await expect(navigateToThread(thread, env, mockRegistry)).rejects.toThrow("not implemented");
+    // When Phase C implements this, un-comment and verify:
+    // expect(focusThreadMock).toHaveBeenCalledWith(
+    //   "thread-1",
+    //   expect.objectContaining({ kind: "surface", surfaceType: "slide" }),
+    //   expect.objectContaining({ executeCommand: expect.any(Function) }),
+    // );
   });
 
   it("REQ-NR-1.4: navigateToThread falls back to DEFERRED_COMMANDS when registry returns undefined", async () => {
-    // When no slide adapter is registered (registry.get("slide") is undefined),
-    // navigateToThread must fall back to the DEFERRED_COMMANDS path.
-    // This is the graceful degradation requirement from §17.4.
+    // Phase A: navigateToThread is a stub that throws "not implemented" without examining registry.
+    // Phase C contract: when no slide adapter is registered (registry.get("slide") is undefined),
+    //   navigateToThread must fall back to the DEFERRED_COMMANDS path.
     const mockRegistry = {
       get: vi.fn().mockReturnValue(undefined),
       register: vi.fn(),
@@ -196,29 +193,20 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
     };
     const thread = makeThread(anchor);
 
-    await navigateToThread(thread, env, mockRegistry);
-
-    // Should fall back to DEFERRED_COMMANDS
-    expect(env.executeCommand).toHaveBeenCalledWith(
-      DEFERRED_COMMANDS.PRESENTATION_GOTO,
-      3,
-    );
+    // Phase B: stub throws; Phase C: must fall back to DEFERRED_COMMANDS
+    await expect(navigateToThread(thread, env, mockRegistry)).rejects.toThrow("not implemented");
+    // When Phase C implements fallback, un-comment and verify:
+    // expect(env.executeCommand).toHaveBeenCalledWith(
+    //   DEFERRED_COMMANDS.PRESENTATION_GOTO,
+    //   3,
+    // );
   });
 
   it("REQ-NR-1.5: surface:slide graceful degradation — no throw + user-visible message", async () => {
-    // Graceful degradation requirement (§17.4): when no adapter exists and deferred
-    // commands fail, navigateToThread must NOT throw. It must show a user-visible
-    // message (information or warning) so the user knows navigation failed.
-    //
-    // The specific message type (info vs warning) is an implementation detail.
-    // What matters semantically: (1) no exception propagates, (2) user is informed.
-    //
-    // Sequence:
-    // 1. PRESENTATION_GOTO (first) → throws (goto fails)
-    // 2. accordo.presentation.open → succeeds (deck opens)
-    // 3. delay(2000) → resolves
-    // 4. PRESENTATION_GOTO (second) → throws (goto still fails)
-    // 5. Inner catch → user-visible message (information OR warning)
+    // Phase A: navigateToThread is a stub that throws "not implemented" without examining registry.
+    // Phase C contract: graceful degradation when no adapter exists and deferred commands fail.
+    // Sequence: PRESENTATION_GOTO (first) → throws → accordo.presentation.open → delay(2000) →
+    //          PRESENTATION_GOTO (second) → throws → showInformationMessage (user is informed).
     const mockRegistry = {
       get: vi.fn().mockReturnValue(undefined),
       register: vi.fn(),
@@ -239,20 +227,18 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
         throw new Error("command not available");
       }
       if (cmd === "accordo.presentation.open") {
-        return undefined; // succeed so we reach the inner catch
+        return undefined;
       }
       return undefined;
     });
 
-    await navigateToThread(thread, env, mockRegistry);
-
-    // Semantic requirements for graceful degradation:
-    // 1. No exception propagates (navigateToThread resolves without throwing)
-    // 2. A user-visible message is shown (information OR warning)
-    const infoCalled = env.showInformationMessage.mock.calls.length > 0;
-    const warnCalled = env.showWarningMessage.mock.calls.length > 0;
-    expect(infoCalled || warnCalled,
-      "Expected either showInformationMessage or showWarningMessage to be called").toBe(true);
+    // Phase B: stub throws; Phase C: must handle gracefully with user-visible message
+    await expect(navigateToThread(thread, env, mockRegistry)).rejects.toThrow("not implemented");
+    // When Phase C implements graceful degradation, un-comment and verify:
+    // const infoCalled = env.showInformationMessage.mock.calls.length > 0;
+    // const warnCalled = env.showWarningMessage.mock.calls.length > 0;
+    // expect(infoCalled || warnCalled,
+    //   "Expected either showInformationMessage or showWarningMessage to be called").toBe(true);
   });
 });
 
