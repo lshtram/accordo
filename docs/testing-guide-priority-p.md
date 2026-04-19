@@ -1,90 +1,169 @@
-# Testing Guide — Priority P Canvas Interaction Batch
+# Testing Guide — Priority P: Comment Store Unification (VS Code ↔ Browser Extension)
 
-## 1. Automated tests
+**Module:** Priority P — Comment Store Unification
+**Date:** 2026-04-19
+**Phase:** D3 — Testing Guide
 
-- `pnpm test` (run in `packages/diagram`)
-  - Verifies the full diagram package test suite passes.
-  - Confirms class-diagram block grouping and curved-edge waypoint persistence work without regressing the rest of the diagram package.
+---
 
-- `pnpm typecheck` (run in `packages/diagram`)
-  - Verifies the new waypoint persistence path and curved routing changes remain type-safe in both host and webview builds.
+## Section 1 — Automated Tests
 
-- `pnpm test -- src/__tests__/priority-p.test.ts` (run in `packages/diagram`)
-  - Verifies class-diagram composite elements share the same deterministic `groupIds`.
-  - Verifies non-class nodes do not gain grouping unexpectedly.
-  - Verifies `toExcalidrawPayload()` preserves `groupIds`.
-  - Verifies curved routing consumes stored waypoints for one-waypoint and multi-waypoint cases.
-  - Verifies stored edge waypoints survive a render cycle from `layout.edges` into rendered arrow geometry.
+All automated tests are in `packages/browser` and `packages/browser-extension`.
 
-- `pnpm test -- src/__tests__/panel-core.test.ts` (run in `packages/diagram`)
-  - Verifies webview-to-host canvas message handling remains correct.
-  - Covers the `canvas:edge-routed` persistence path through `panel-core.ts` along with existing node-move/node-resize behavior.
+### Run All Priority P Tests
 
-- `pnpm test -- src/__tests__/edge-router.test.ts src/__tests__/edge-router-contract.test.ts` (run in `packages/diagram`)
-  - Verifies edge routing geometry remains correct across direct, orthogonal, curved, and self-loop paths.
-  - Confirms curved routing still preserves auto-curve behavior when no waypoints are stored.
+```bash
+# Browser package (comment-relay-contract + relay-comment-dispatch)
+cd packages/browser && pnpm test -- --run
 
-## 2. User journey tests
+# Browser-extension package (sw-comment-sync-contract)
+cd packages/browser-extension && pnpm test -- --run
+```
 
-Use the demo files in `demo/diagram-layout-engine/`.
+### Test Files and What They Verify
 
-1. Open `demo/diagram-layout-engine/class-fallback.mmd` in the diagram editor.
-   - Expected: you see the `Animal` and `Dog` class blocks rendered as complete class boxes.
-   - Expected: each class block includes its outer box and its internal class content.
-   - Action: drag part of a class block (for example the outer box, title area, or member text area).
-   - Expected: the whole class block moves together as one component; the box and its internal parts do not separate.
+#### `packages/browser/src/__tests__/comment-relay-contract.test.ts`
 
-2. Open `demo/diagram-layout-engine/flowchart-subgraph.mmd`.
-   - Expected: the diagram opens normally with the `Backend` cluster and visible edges.
-   - Action: manually adjust a curved edge or drag an edge path/handle so the route changes visibly.
-   - Expected: the edge visibly follows the new route.
+| Test ID | What It Verifies |
+|---|---|
+| BR-F-144-01 | `normalizeReadResult({ threads: [...] })` returns envelope unchanged |
+| BR-F-144-02 | `normalizeReadResult([...])` (bare array, legacy) returns `{ threads: [...] }` |
+| BR-F-144-03 | `normalizeReadResult(null)` and `normalizeReadResult(undefined)` return `{ threads: [] }` |
+| BR-F-144-04 | `normalizeReadResult({ threads: null })` and `normalizeReadResult({ threads: "bad" })` return `{ threads: [] }` |
+| BR-F-145-01 | `shapeRelayResponse` wraps success result with `success: true` and `requestId` |
+| BR-F-145-02 | `shapeRelayResponse` wraps error result with `success: false` and exact error discriminator |
+| BR-F-145-03 | `shapeRelayResponse` returns stable `requestId` (same action → same ID on repeated calls) |
+| BR-F-144-PARITY-01 | Both relay modes produce the same `{ threads }` shape via `normalizeReadResult` |
 
-3. After changing the edge route in `demo/diagram-layout-engine/flowchart-subgraph.mmd`, save if needed and close the diagram.
-   - Reopen the same demo file.
-   - Expected: the edited edge route is preserved after reopen.
-   - Expected: the edge does not snap back to the old auto-generated path.
+**Expected result:** All 11 tests pass.
 
-4. Repeat the same edge-edit persistence check with `demo/diagram-layout-engine/flowchart-basic.mmd`.
-   - Expected: the edited edge route is preserved after reopen here as well.
+#### `packages/browser/src/__tests__/relay-comment-dispatch.test.ts`
 
-5. Open `demo/diagram-layout-engine/flowchart-duplicate-labels.mmd`.
-   - Expected: all three `Service` nodes still render correctly.
-   - Expected: no regression from the earlier flowchart-engine work while the new waypoint persistence behavior is active.
+| Test ID | What It Verifies |
+|---|---|
+| BR-F-122-01 | `get_comments` routes to `comment_list` tool with `{ url }` |
+| BR-F-122-02 | `get_all_comments` routes to `comment_list` with `{ allWindows: true }` |
+| BR-F-122-03 | `create_comment` routes to `comment_create` with full args |
+| BR-F-122-04 | `reply_comment` routes to `comment_reply` with `{ threadId, body }` |
+| BR-F-122-05 | `resolve_thread` routes to `comment_resolve` with `{ threadId }` |
+| BR-F-122-06 | `reopen_thread` routes to `comment_reopen` with `{ threadId }` |
+| BR-F-122-07 | `delete_comment` routes to `comment_delete` with `{ threadId, commentId }` |
+| BR-F-122-08 | `delete_thread` routes to `comment_delete` with `{ threadId }` |
+| BR-F-145-04 | Error from `invokeTool` returns `success: false` with error discriminator |
+| BR-F-145-05 | (removed — timeout not in Phase A contract) |
+| BR-F-43-01 | Works with any `RelayDispatchDeps` implementation |
 
-## 3. Notes
+**Expected result:** All 11 tests pass.
 
-- The class-block interaction fix is user-visible immediately in the editor.
-- The edge-waypoint persistence fix is only considered successful if the edited edge route survives a close/reopen cycle.
+#### `packages/browser-extension/tests/sw-comment-sync-contract.test.ts`
 
-## 4. Style persistence checks
+| Test ID | What It Verifies |
+|---|---|
+| BR-F-146-01 | Canonical `{ threads }` envelope decoded correctly |
+| BR-F-146-02 | Legacy bare array decoded and wrapped as `{ threads }` |
+| BR-F-146-03 | `null` / `undefined` input returns `[]` without throwing |
+| BR-F-146-04 | `{ threads: null }` / `{ threads: "bad" }` returns `[]` defensively |
+| BR-F-146-05 | Each thread validated: `id`, `anchor.uri`, `anchor.surfaceType`, `comments[0].author.name` exist |
+| BR-F-146-06 | `get_comments` encodes to correct wire format `{ action, payload }` |
+| BR-F-146-07 | `create_comment` and `reply_comment` encode with all required fields |
+| BR-F-146-08 | Unknown action throws `Error("not implemented")` |
 
-Use the same demo files in `demo/diagram-layout-engine/`.
+**Expected result:** All 10 tests pass.
 
-1. Open `demo/diagram-layout-engine/class-fallback.mmd`.
-   - Pick a class box such as `Animal` or `Dog`.
-   - Change the box corner style in the editor from sharp to rounded (or rounded to sharp).
-   - Close and reopen the same diagram.
-   - Expected: the chosen class box keeps the same corner style after reopen.
+---
 
-2. In `demo/diagram-layout-engine/class-fallback.mmd`, change the corner style on one class box only.
-   - Expected: only that box changes.
-   - Expected: other boxes keep their original style.
-   - Reopen the diagram.
-   - Expected: the per-box style difference is preserved.
+## Section 2 — User Journey Tests
 
-3. Open `demo/diagram-layout-engine/flowchart-basic.mmd` or `demo/diagram-layout-engine/flowchart-subgraph.mmd`.
-   - Select an edge.
-   - Change its visual corner treatment so it becomes sharper or more rounded.
-   - Close and reopen the diagram.
-   - Expected: the edge keeps the same corner treatment after reopen.
+### Context
 
-4. In the same flowchart, change only the edge corner style without changing the overall route topology.
-   - Expected: the edge keeps the same path/routing mode, but the corner appearance changes.
-   - Reopen the diagram.
-   - Expected: both the route and the chosen corner style are preserved.
+Priority P fixes a synchronization bug between the VS Code comment store and the browser extension's local store. The fix ensures that comments created or replied to by the agent appear as pins in the browser extension, matching the behavior of user-created comments.
 
-5. Combine both checks on a single flowchart:
-   - move an edge waypoint,
-   - then change the edge’s corner style,
-   - close and reopen.
-   - Expected: both the waypoint position and the sharp/rounded edge style remain as edited.
+### Prerequisites
+
+- VS Code with Accordo IDE extension loaded
+- Accordo Browser Extension installed in Chrome
+- A GitHub page (or any browser-tab surface) that supports comments
+- Agent connected via MCP
+
+### Test Scenario 1: Agent Comment Appears as Browser Pin
+
+**Steps:**
+1. Open VS Code with the Accordo IDE extension active
+2. Connect the browser extension to VS Code via the pairing flow (`accordo_browser_pair`)
+3. Open a GitHub PR page in Chrome (e.g., a Copilot review page)
+4. In the agent (MCP-connected terminal), create a comment on the page:
+   ```
+   accordo_comment_create surfaceType=browser url=<page-url> body="Agent test comment"
+   ```
+5. Observe the page in Chrome — a pin should appear at the comment's anchor location
+6. Verify the pin is visible and shows the comment body
+
+**Pass criteria:** A pin appears on the GitHub page in Chrome containing "Agent test comment".
+
+---
+
+### Test Scenario 2: Agent Reply Appears as Browser Pin
+
+**Steps:**
+1. With the browser extension connected and a page open
+2. Have a user create a comment on the page (user comment → visible as pin ✅)
+3. In the agent terminal, reply to the existing thread:
+   ```
+   accordo_comment_reply threadId=<existing-thread-id> body="Agent reply here"
+   ```
+4. Observe the same page in Chrome — the existing pin should now show the agent's reply
+
+**Pass criteria:** The reply appears in the same pin thread as the user's original comment.
+
+---
+
+### Test Scenario 3: Both Relay Modes Produce Same Pin Behavior
+
+**Steps:**
+1. Test with **shared relay mode** (single browser extension connection):
+   - Connect browser extension normally
+   - Create an agent comment, verify pin appears
+2. Test with **per-window relay mode** (multi-window):
+   - Open a second VS Code window with the extension
+   - Connect a second browser extension window
+   - Create an agent comment in the second window
+   - Verify the pin behavior is identical in both modes
+
+**Pass criteria:** Pin visibility is identical regardless of relay mode activation path.
+
+---
+
+### Test Scenario 4: Error Path — Browser Not Connected
+
+**Steps:**
+1. Disconnect the browser extension from VS Code (close the extension popup)
+2. Attempt to create a comment:
+   ```
+   accordo_comment_create surfaceType=browser url=<page-url> body="Should fail gracefully"
+   ```
+3. Verify the VS Code comment store still records the comment (even if browser pin doesn't appear)
+4. Reconnect the browser extension
+5. The previously created comment should now appear as a pin (comments are persisted in VS Code store)
+
+**Pass criteria:** Comment is created in VS Code even when relay is disconnected. Pin appears when relay reconnects.
+
+---
+
+### Test Scenario 5: Marp Slide Comments — Pin Behavior (Related to Priority R)
+
+**Steps:**
+1. Open a Marp presentation in VS Code (`accordo_marp_deck` or `accordo_marp_present`)
+2. Add a comment on a slide using the agent
+3. Verify the pin appears on the slide
+4. Click the pin — the presentation should **not** dismiss
+5. Verify the popover opens showing the comment thread
+
+**Pass criteria:** Clicking a pin on a slide opens the popover without dismissing the presentation.
+
+---
+
+## Known Limitations
+
+- Comments on browser-tab surfaces require the browser extension to be connected
+- Very large comment threads (> 100 comments on one anchor) may have reduced pin visibility
+- Pin anchoring on complex SVG diagrams may be imprecise (separate tracking item)

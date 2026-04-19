@@ -49,7 +49,8 @@ export function decodeHubThreadsPayload(data: unknown): HubCommentThread[] {
   // Filter out threads that lack required fields (shallow validation)
   return threads.filter((thread) => {
     if (!thread || typeof thread !== "object") return false;
-    const t = thread as Record<string, unknown>;
+    // Clone to plain object for safe dynamic property access
+    const t = Object.assign({}, thread) as unknown as Record<string, unknown>;
     if (typeof t.id !== "string") return false;
     if (!t.anchor || typeof t.anchor !== "object") return false;
     if (!Array.isArray(t.comments)) return false;
