@@ -206,7 +206,7 @@ describe("R-NR-16: Slide dispatch parity — panel vs native-comments", () => {
     };
 
     const agentThread: CommentThread = {
-      id: "thread-agent-1",
+      id: "thread-user-1", // Same id — parity is about anchor + author.kind, not thread identity
       anchor,
       comments: [
         {

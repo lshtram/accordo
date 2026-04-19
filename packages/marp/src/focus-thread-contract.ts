@@ -28,7 +28,10 @@ export interface PresentationFocusThreadPlan {
  * Normalize any deck locator (`file:///...` or fsPath) into an absolute fsPath.
  */
 export function normalizeDeckUriToFsPath(uriOrPath: string): string {
-  throw new Error("not implemented");
+  if (uriOrPath.startsWith("file://")) {
+    return uriOrPath.slice("file://".length);
+  }
+  return uriOrPath;
 }
 
 /**
@@ -36,7 +39,10 @@ export function normalizeDeckUriToFsPath(uriOrPath: string): string {
  * Returns null when the blockId is not a valid slide coordinate id.
  */
 export function parseSlideIndex(blockId: string): number | null {
-  throw new Error("not implemented");
+  const match = /^slide:(\d+):\d+\.\d+:\d+\.\d+$/.exec(blockId);
+  if (!match) return null;
+  const index = Number(match[1]);
+  return Number.isNaN(index) ? null : index;
 }
 
 /**
@@ -45,19 +51,35 @@ export function parseSlideIndex(blockId: string): number | null {
 export function buildPresentationFocusThreadPlan(
   request: PresentationFocusThreadRequest,
 ): PresentationFocusThreadPlan {
-  throw new Error("not implemented");
+  const normalizedRequested = normalizeDeckUriToFsPath(request.requestedDeckUri);
+  const currentDeckNormalized =
+    request.currentDeckUri != null ? normalizeDeckUriToFsPath(request.currentDeckUri) : null;
+  const shouldOpenDeck = currentDeckNormalized !== normalizedRequested;
+  return {
+    normalizedDeckUri: normalizedRequested,
+    shouldOpenDeck,
+    targetSlideIndex: parseSlideIndex(request.blockId),
+    focusMessage: {
+      type: "comments:focus",
+      threadId: request.threadId,
+      blockId: request.blockId,
+    },
+  };
 }
 
 /**
  * Validate whether a slide index is safe for the webview `goTo()` call.
  */
 export function isValidSlideIndex(index: number, slideCount: number): boolean {
-  throw new Error("not implemented");
+  return index >= 0 && index < slideCount && Number.isFinite(index);
 }
 
 /**
  * Convert a URI/path input into a VS Code Uri suitable for openTextDocument calls.
  */
 export function toVsCodeUri(uriOrPath: string): vscode.Uri {
-  throw new Error("not implemented");
+  if (uriOrPath.startsWith("file://")) {
+    return vscode.Uri.parse(uriOrPath);
+  }
+  return vscode.Uri.file(uriOrPath);
 }
