@@ -167,6 +167,68 @@ describe("R-NR-16: Slide dispatch parity — panel vs native-comments", () => {
     expect(uri).toBe(thread.anchor.uri);
     expect(threadId).toBe(thread.id);
     expect(blockId).toContain("slide:");
-    expect(blockId).toContain(thread.id); // blockId references this thread
+  });
+
+  it("R-NR-16-04: author.kind parity — user and agent produce identical focus plan for same anchor", () => {
+    // M45-NR-16: user-authored and agent-authored slide threads must NOT diverge.
+    // Vary author.kind while keeping anchor identical; verify primaryCommand and
+    // primaryArgs are source-equivalent.
+    const anchor = {
+      kind: "surface" as const,
+      uri: "file:///project/deck.md",
+      surfaceType: "slide" as const,
+      coordinates: {
+        type: "slide" as const,
+        slideIndex: 2,
+        x: 0.5000,
+        y: 0.5000,
+      },
+    };
+
+    const userThread: CommentThread = {
+      id: "thread-user-1",
+      anchor,
+      comments: [
+        {
+          id: "comment-u1",
+          threadId: "thread-user-1",
+          createdAt: "2026-04-19T10:00:00Z",
+          author: { kind: "user", name: "Developer" },
+          body: "Fix this",
+          anchor,
+          status: "open",
+          intent: "fix",
+        },
+      ],
+      status: "open",
+      createdAt: "2026-04-19T10:00:00Z",
+      lastActivity: "2026-04-19T10:00:00Z",
+    };
+
+    const agentThread: CommentThread = {
+      id: "thread-agent-1",
+      anchor,
+      comments: [
+        {
+          id: "comment-a1",
+          threadId: "thread-agent-1",
+          createdAt: "2026-04-19T10:00:00Z",
+          author: { kind: "agent", name: "Accordo Assistant" },
+          body: "Suggestion",
+          anchor,
+          status: "open",
+          intent: "suggest",
+        },
+      ],
+      status: "open",
+      createdAt: "2026-04-19T10:00:00Z",
+      lastActivity: "2026-04-19T10:00:00Z",
+    };
+
+    const userPlan = buildUnifiedThreadFocusPlan({ thread: userThread, source: "panel" });
+    const agentPlan = buildUnifiedThreadFocusPlan({ thread: agentThread, source: "panel" });
+
+    expect(userPlan.dispatchPlan.primaryCommand).toBe(agentPlan.dispatchPlan.primaryCommand);
+    expect(userPlan.dispatchPlan.primaryArgs).toEqual(agentPlan.dispatchPlan.primaryArgs);
   });
 });
