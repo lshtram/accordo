@@ -232,6 +232,9 @@ describe("M45-NR NavigationRouter", () => {
       surfaceType: "browser",
       coordinates: { type: "normalized", x: 0.5, y: 0.5 },
     };
+    const thread = makeThread(anchor);
+
+    env.executeCommand.mockRejectedValueOnce(new Error("command not found"));
 
     await navigateToThread(thread, env);
 

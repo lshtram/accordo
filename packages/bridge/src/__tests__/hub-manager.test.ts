@@ -1364,6 +1364,13 @@ describe("HubManager — project-scoped reconnect state (SC-01 to SC-04)", () =>
       secrets: {}, // empty — simulates first launch for this project
       config: { projectId: "projectB", autoStart: true },
     });
+
+    // Mock randomUUID so generateHubCredentials produces deterministic values
+    // (needed so spawn assertion checks exact args, and processState.token is set)
+    vi.spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce("b-secret")
+      .mockReturnValueOnce("b-token");
+
     vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: true, port: 3000 }); // Project A's Hub alive
     const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
     const genCredsSpy = vi.spyOn(manager, "generateHubCredentials").mockResolvedValue({
@@ -1371,6 +1378,11 @@ describe("HubManager — project-scoped reconnect state (SC-01 to SC-04)", () =>
       token: "b-token",
     });
     vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
+
+    // Set processState.token BEFORE activate() so that when _pollAndNotify runs
+    // (inside the async pollHealth chain), it reads the correct token value.
+    // generateHubCredentials is mocked so it doesn't set processState.token itself.
+    (manager as unknown as { processState: { token: string } }).processState.token = "b-token";
 
     await manager.activate();
     await vi.advanceTimersByTimeAsync(0);
