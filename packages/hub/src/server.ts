@@ -266,10 +266,9 @@ export class HubServer {
     this.sseManager.closeAll();
 
     if (this.httpServer) {
+      const server = this.httpServer;
       await new Promise<void>((resolve, reject) => {
-        // Non-null assertion is safe: we checked `this.httpServer` immediately above
-        // and `stop()` is not re-entrant (callers must await before calling again).
-        this.httpServer.close((err) => (err ? reject(err) : resolve()));
+        server.close((err) => (err ? reject(err) : resolve()));
       });
       this.httpServer = null;
     }

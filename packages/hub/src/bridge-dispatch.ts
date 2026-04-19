@@ -187,7 +187,7 @@ export class BridgeDispatch {
 
       // Wrap to clear timer on resolution
       this.pendingStateRequest = {
-        resolve: (state: unknown): void => { clearTimeout(timer); resolve(state); },
+        resolve: (state: unknown): void => { clearTimeout(timer); resolve(state as IDEState); },
         reject: (err: unknown): void => { clearTimeout(timer); reject(err); },
       };
 
