@@ -946,6 +946,23 @@ A `CommentBackendAdapter` interface abstracts comment storage so the browser ext
 - **Local storage adapter** (fallback) — uses `chrome.storage.local` directly
 - **Standalone MCP adapter** (future) — connects directly to Hub without VS Code
 
+**Relay response contract (mode-invariant):**
+- `get_comments` and `get_all_comments` relay actions MUST return `data: { threads: CommentThread[] }`.
+- This envelope shape is required in both relay activation modes (`activateSharedRelay`, `activatePerWindowRelay`).
+- The browser-extension sync/merge path (`sw-comment-sync.ts`) treats `{ threads }` as canonical and may tolerate legacy bare-array responses only as a backward-compatibility fallback.
+
+**In-scope comment relay action set (`BrowserRelayCommentAction`):**
+- `get_comments`
+- `get_all_comments`
+- `create_comment`
+- `reply_comment`
+- `resolve_thread`
+- `reopen_thread`
+- `delete_comment`
+- `delete_thread`
+
+**Parity requirement:** Shared-relay and per-window relay `onRelayRequest` handlers MUST remain behaviorally equivalent for comment actions (mapping, response shaping, and notify push side effects) to prevent mode-specific visibility drift.
+
 ### 14.5 Region Capture (`accordo_browser_capture_region`)
 
 > **Agent note [2026-03-26]:** Added during Phase A extension. Gives agents a targeted screenshot of a specific page element or region — avoiding full-viewport screenshots that bloat agent context windows.

@@ -298,6 +298,9 @@ export async function activateSharedRelay(
             }
             try {
               const result = await bridge.invokeTool(mapped.toolName, mapped.args);
+              // TODO(priority-p-phase-a): apply mode-invariant read shaping via
+              // `normalizeReadResult()` from `comment-relay-contract.ts` for
+              // get_comments/get_all_comments before returning.
               return { requestId: "", success: true, data: result };
             } catch {
               return { requestId: "", success: false, error: "action-failed" as const };
@@ -392,6 +395,9 @@ export async function activateSharedRelay(
               }
               try {
                 const result = await bridge.invokeTool(mapped.toolName, mapped.args);
+                // TODO(priority-p-phase-a): apply mode-invariant read shaping via
+                // `normalizeReadResult()` from `comment-relay-contract.ts` for
+                // get_comments/get_all_comments before returning.
                 return { requestId: "", success: true, data: result };
               } catch {
                 return { requestId: "", success: false, error: "action-failed" as const };
@@ -496,6 +502,9 @@ export async function activatePerWindowRelay(
         }
       }
 
+      // TODO(priority-p-phase-a): replace inline read envelope shaping below with
+      // `normalizeReadResult()` from `comment-relay-contract.ts` so shared/per-window
+      // relay paths use one canonical implementation.
       if (action === "get_comments" || action === "get_all_comments") {
         const threads = Array.isArray(result) ? result : [];
         return { requestId: "", success: true, data: { threads } };

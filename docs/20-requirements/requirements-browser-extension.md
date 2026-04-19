@@ -237,15 +237,15 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | BR-F-119 | Browser extension exposes relay action handlers in service-worker for `get_all_comments`, `get_comments`, `create_comment`, `reply_comment`, `resolve_thread`, `reopen_thread`, `delete_comment`, and `delete_thread` | Relay action dispatch returns typed success/error envelopes and updates storage correctly |
 | BR-F-120 | New `packages/browser` VS Code extension (`accordo-browser`) hosts a localhost WebSocket relay for Chrome extension connectivity | Relay starts on activation, accepts extension connection, and maintains client state |
 | BR-F-121 | Relay authenticates extension connections using a configured token (dev default allowed) and rejects unauthorized clients | Missing/invalid token connections are refused; valid token connects successfully |
-    | BR-F-122 | `accordo-browser` routes browser comment actions through the unified `comment_*` tool set via `onRelayRequest` interceptor; no `accordo_browser_*` tools are registered in the Bridge tool namespace | Browser comment relay actions (`get_comments`, `create_comment`, `reply_comment`, etc.) are dispatched by `browserActionToUnifiedTool` to `comment_list`, `comment_create`, `comment_reply`, etc.; Hub tool list contains unified `comment_*` tools only |
+| BR-F-122 | `accordo-browser` routes browser comment actions through the unified `comment_*` tool set via `onRelayRequest` interceptor in both relay activation modes; no `accordo_browser_*` tools are registered in the Bridge tool namespace for comment CRUD | Browser comment relay actions (`get_comments`, `create_comment`, `reply_comment`, etc.) are dispatched by `browserActionToUnifiedTool` to `comment_list`, `comment_create`, `comment_reply`, etc.; Hub tool list contains unified `comment_*` tools only |
 | BR-F-123 | Each browser comment tool call is forwarded over relay with `requestId` correlation and deterministic timeout handling | Timeouts return typed error; successful responses map to tool output without losing request correlation |
-| BR-F-124 | End-to-end: agent can read, create, reply, resolve/reopen, and delete browser comments through Hub tools and see updated state on subsequent reads | Sequential tool calls reflect storage mutations in browser extension |
+| BR-F-124 | End-to-end: agent can read, create, reply, resolve/reopen, and delete browser comments through Hub tools and see updated state on subsequent reads in both shared-relay and per-window relay modes | Sequential tool calls reflect storage mutations in browser extension in either relay mode |
 | BR-F-125 | Relay/tool response contract includes typed failure classes: `browser-not-connected`, `unauthorized`, `timeout`, `action-failed` | Errors are deterministic and asserted in tests for each failure mode |
 | BR-F-126 | Relay reconnection is automatic for browser-extension disconnect/restart and recovers without VS Code reload | After reconnect, tool calls succeed without manual extension host restart |
 | BR-F-127 | **v2a supersession of DD-07:** browser-extension converges on shared `@accordo/comment-sdk` interaction logic via adapter (workspace source or package import), avoiding duplicated mutation UI logic | Create/reply/resolve/reopen/delete are executed through SDK callback flow with no parallel custom mutation path |
 | BR-F-128 | Browser relay `get_comments` defaults to the active tab URL when `url` is omitted | Tool call without `url` returns comments for active browser tab |
 | BR-F-129 | Browser relay `get_all_comments` returns all commented page URLs sorted by `lastActivity` descending | Most recently worked-on pages appear first with thread/comment summary metadata |
-| BR-F-130 | Browser UI updates without manual page refresh when relay/agent mutations occur | Service worker broadcasts update messages and content/popup refresh automatically |
+| BR-F-130 | Browser UI updates without manual page refresh when relay/agent mutations occur, independent of relay activation mode | Service worker broadcasts update messages and content/popup refresh automatically in both shared and per-window relay paths |
 | BR-F-131 | Browser create tool supports active-tab defaults when `url`/`anchor` are omitted | `accordo_browser_createComment` with `{ body }` creates a thread on active tab using fallback anchor when needed |
 
 ### 3.13 Session 14 — Unified Comments Tools + Panel Registration
@@ -286,10 +286,10 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | PU-F-32 | `get_dom_excerpt` returns plain text content alongside HTML | `text` field contains `textContent` of the subtree |
 | PU-F-33 | `get_dom_excerpt` returns `{ found: false }` when selector matches no elements | No error thrown; graceful empty response |
 | PU-F-40 | `CommentBackendAdapter` interface defines `listThreads`, `createThread`, `reply`, `resolve`, `reopen`, `delete`, `isConnected` | Interface compiles with `strict: true`; all methods are async except `isConnected` |
-| PU-F-41 | `VscodeRelayAdapter` implements `CommentBackendAdapter` by delegating to `RelayBridgeClient.send()` | All operations route through relay WebSocket |
+| PU-F-41 | `VscodeRelayAdapter` implements `CommentBackendAdapter` by delegating to `RelayBridgeClient.send()` | All operations route through relay WebSocket with no direct store mutation path in UI-layer callers |
 | PU-F-42 | `LocalStorageAdapter` implements `CommentBackendAdapter` using existing `store.ts` CRUD | All operations use `chrome.storage.local` |
-| PU-F-43 | Adapter selection: prefer `VscodeRelayAdapter` when relay is connected, fall back to `LocalStorageAdapter` | When relay disconnects, operations use local storage; when relay reconnects, adapter switches back |
-| PU-F-44 | `CommentBackendAdapter` is the single import for all comment operations in content/popup code | No direct `relay.send()` or `store.createThread()` calls outside the adapter layer |
+| PU-F-43 | Adapter selection: prefer `VscodeRelayAdapter` when relay is connected, fall back to `LocalStorageAdapter` | When relay disconnects, operations use local storage; when relay reconnects, adapter switches back with no caller-side branching |
+| PU-F-44 | `CommentBackendAdapter` is the single import for all comment operations in content/popup code | No direct `relay.send()` or `store.createThread()` calls outside the adapter layer; relay/store divergence is isolated behind adapter boundary |
 | PU-F-45 | Future `StandaloneMcpAdapter` slot exists as a typed interface only (no implementation) | Type definition compiles; no runtime code |
 | PU-F-50 | `browser_get_page_map` MCP tool registered via `bridge.registerTools()` in `packages/browser` | Tool appears in Hub `tools/list` response |
 | PU-F-51 | `browser_inspect_element` MCP tool registered via `bridge.registerTools()` in `packages/browser` | Tool appears in Hub `tools/list` response |
@@ -297,7 +297,7 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | PU-F-53 | MCP tool handlers forward to Chrome relay and return structured results | Agent receives typed JSON response from each tool |
 | PU-F-54 | Tools return `{ error: "browser-not-connected" }` when Chrome extension is disconnected | Graceful error response without exception |
 | PU-F-55 | Tools return `{ error: "timeout" }` when Chrome relay does not respond within deadline | Default timeout of 10s for page map, 5s for inspect/excerpt |
-| PU-F-56 | `browserActionToUnifiedTool()` updated for new relay actions | New actions dispatch correctly through interceptor |
+| PU-F-56 | `browserActionToUnifiedTool()` is updated when new comment relay actions are introduced and stays aligned with relay dispatch contracts | Supported actions dispatch correctly through interceptor with no missing action mapping |
 | PU-F-57 | Enhanced anchor keys produced by `inspect_element` are accepted by `comment_create` `anchor.anchorKey` field | Comment creation with `anchorKey: "id:submit-btn"` succeeds end-to-end |
 
 ### 3.16 Session 16 — Bidirectional Sync Remediation
@@ -308,6 +308,14 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | BR-F-141 | Comment-level tombstone suppression: `mergeLocalAndHubThread` excludes hub comments whose IDs match locally soft-deleted comments (comments with `deletedAt` set) | After local comment soft-delete, GET_THREADS merge does not resurrect deleted comments from hub data |
 | BR-F-142 | Periodic sync rehydration: `checkAndSync()` loads comments-mode map from `chrome.storage.local` before iterating tabs, ensuring SW restart recovery detects tabs with Comments Mode ON | After SW restart, periodic sync refreshes tabs that have Comments Mode enabled in storage |
 | BR-F-143 | Fallback pin stacking stability: `_fallbackStackIndex` is only reset at the start of `loadThreads`, not mid-render when anchored pins resolve, preventing overlapping fallback pins in mixed anchor sets | Mixed anchored + unanchored threads render with non-overlapping fallback pin positions |
+| BR-F-144 | Relay read envelope parity: `get_comments` and `get_all_comments` MUST return `data: { threads: CommentThread[] }` in both shared relay and per-window relay paths (never mode-specific bare-array shaping) | In both relay activation modes, browser-extension consumers parse `result.data.threads` without branching; contract tests fail if either mode returns non-envelope data |
+| BR-F-145 | Relay mutation parity: mutating actions (`create_comment`, `reply_comment`, `resolve_thread`, `reopen_thread`, `delete_comment`, `delete_thread`) MUST have identical post-mutation notify behavior in shared and per-window relay paths | After each successful mutation, Chrome receives `notify_comments_updated` in both modes; parity tests assert no stale UI due to mode divergence |
+| BR-F-146 | Browser-extension Hub-thread decode path (`fetchHubThreads`) MUST normalize relay responses with strict preferred envelope decode (`{ threads }`) and backward-compatible legacy bare-array tolerance | Envelope and legacy-array payload fixtures both merge successfully; malformed payloads fail closed to empty with no throw |
+
+**Test guidance for BR-F-144..146:**
+- Run a relay-mode matrix for `get_comments`, `get_all_comments`, and all mutating comment actions through both `activateSharedRelay` and `activatePerWindowRelay`.
+- Add contract assertions that successful read responses expose `data.threads` (array) in both modes.
+- Add browser-extension decode tests for envelope payload, legacy bare-array payload, and malformed payload (fail-closed empty result).
 
 ### 3.17 Stable Page Identity (M114-PID)
 

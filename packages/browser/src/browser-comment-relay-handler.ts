@@ -45,6 +45,9 @@ export function handleBrowserCommentAction(
 
   const { toolName, args } = mapping;
 
+  // TODO(priority-p-phase-a): replace direct executeCommand + Object.values
+  // with `dispatchBrowserCommentAction(...)` from `relay-comment-dispatch.ts`
+  // so argument encoding stays typed and Bridge invokeTool semantics are used.
   return Promise.resolve(vscode.commands.executeCommand(toolName, ...Object.values(args))).then(
     (result) => ({
       requestId: correlationId ?? action,
