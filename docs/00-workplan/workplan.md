@@ -192,29 +192,27 @@
 
 ---
 
-### Priority Q — Comments Panel Navigation: Focus to Surface
+### ~~Priority Q — Comments Panel Navigation: Focus to Surface~~ ✅ COMPLETE (Phase A/B/C/D — 2026-04-19)
 
-**Status:** Phase A complete (design + stubs + requirements/architecture alignment, 2026-04-19)
+**Root cause:** `navigateToThread` used inconsistent command mappings per surface; no surface-inference from `blockId` hints; browser surface always reported disconnected.
 
-**Problem:** When clicking a comment in the VS Code comments panel, the navigation to the correct surface/view is inconsistent or fails across modalities. Observed symptom: browser extension tab shows "not connected" in the comments panel even though the relay is healthy (`accordo_browser_health` returns `connected: true`).
+**What was delivered:**
+1. Phase A — `SURFACE_FOCUS_COMMANDS` map, `NavigationDispatchPlan` interface, `buildNavigationDispatchPlan()` / `buildSlideFocusArgs()` stubs, `BrowserRelayHealthReader` abstraction
+2. Phase B — 501 tests written (M45-NR-*, Q-*, REQ-NR-*, M45-CMD-*)
+3. Phase C — `navigateToThread()`, `navigateWithPlan()`, `buildNavigationDispatchPlan()`, `buildSlideFocusArgs()`, `CommandBackedBrowserRelayHealthReader` implemented
+4. Phase D — fixed skip gate, double-cast, hardcoded browser health, retry propagation
 
-**Observed symptoms:**
-- Comments panel shows browser threads with surface type `browser` but clicking them reports relay as disconnected
-- Comments on Marp slides: user-left comment → clicking dismisses the presentation view entirely
-- Comments on text/MD preview: clicking navigates but may not scroll to the correct line/anchor
-
-**Root cause area:** `navigation-router.ts` `navigateToThread()` — the command dispatched when focusing a comment from the panel. The router uses `CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD` for text surfaces, but different commands for different surface types. The browser surface handler may be routing to the wrong command or the wrong VS Code context.
+**Requirements delivered:** BR-Q-01 through BR-Q-05. Surface→command mapping now correct for `text`, `slide`, `diagram`, `browser`. Browser health reader probes `accordo_browser_health` before dispatch. Slide `blockId` hints take precedence over `.md` text inference.
 
 **Open tasks:**
-1. Map all surface types (`text`, `slide`, `diagram`, `browser`) to the correct focus/navigation command
-2. Verify that `accordo_preview_internal_focusThread` is correctly routing browser-surface threads to the right handler
-3. Verify that browser relay health (`connected: true`) is correctly reflected in the comments panel for all tab states
-4. Fix: clicking user-left Marp slide comment should NOT dismiss the presentation — only open/highlight the pin
+1. ✅ Map all surface types to correct focus/navigation command — `SURFACE_FOCUS_COMMANDS` map
+2. ✅ Browser surface routes to `accordo_browser.focusThread` with real health check
+3. ✅ Browser relay health (`connected: true`) reflected via `CommandBackedBrowserRelayHealthReader`
+4. ✅ (Partial — Priority R covers the Marp slide-dismiss issue specifically)
 
-**Key files:**
-- `packages/comments/src/panel/navigation-router.ts` — `navigateToThread()` dispatch logic
-- `packages/marp/src/extension.ts` — Marp-specific `focusThread` handler vs generic preview handler
-- `packages/md-viewer/src/extension.ts` — preview focus handler
+**Test evidence:** `packages/comments` 501/501 ✅
+**Reviews:** `docs/reviews/priority-q-phase-a.md`, `priority-q-phase-b-review.md`, `priority-q-phase-d-review.md`
+**Testing guide:** `docs/testing-guide-priority-q.md`
 
 ---
 
