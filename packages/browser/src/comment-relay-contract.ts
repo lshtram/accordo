@@ -40,18 +40,58 @@ export interface BrowserRelayResponse<TData = unknown> {
  * activation paths.
  */
 export function normalizeReadResult(data: unknown): BrowserCommentReadEnvelope {
-  void data;
-  throw new Error("not implemented");
+  // null or undefined → safe empty
+  if (data == null) {
+    return { threads: [] };
+  }
+
+  // Canonical { threads } envelope — return as-is
+  if (
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    data !== null &&
+    "threads" in data &&
+    Array.isArray((data as Record<string, unknown>).threads)
+  ) {
+    return { threads: (data as Record<string, unknown>).threads as CommentThread[] };
+  }
+
+  // Bare array (legacy compat) — wrap as { threads: data }
+  if (Array.isArray(data)) {
+    return { threads: data as CommentThread[] };
+  }
+
+  // Malformed shapes ({ threads: null }, { threads: "bad" }, etc.) → defensive empty
+  return { threads: [] };
 }
 
 /**
  * Shape a comment relay action result into the canonical relay response.
  */
 export function shapeRelayResponse<TData>(
-  action: BrowserRelayCommentAction,
+  _action: BrowserRelayCommentAction,
   result: TData,
 ): BrowserRelayResponse<TData | BrowserCommentReadEnvelope> {
-  void action;
-  void result;
-  throw new Error("not implemented");
+  const requestId = crypto.randomUUID();
+
+  // Error-like: has an `error` field (but success:true from invokeTool may also have this)
+  // or is an Error instance
+  if (result instanceof Error) {
+    return { requestId, success: false, error: "action-failed" };
+  }
+
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    "error" in result &&
+    typeof (result as Record<string, unknown>).error === "string"
+  ) {
+    return {
+      requestId,
+      success: false,
+      error: (result as Record<string, unknown>).error as BrowserRelayResponse["error"],
+    };
+  }
+
+  return { requestId, success: true, data: result };
 }
