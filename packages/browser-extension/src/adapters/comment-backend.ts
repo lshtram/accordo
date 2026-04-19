@@ -300,8 +300,12 @@ export interface StandaloneMcpAdapterConfig {
  */
 export function selectAdapter(relay: RelayBridgeClient): CommentBackendAdapter {
   // Priority 1: VscodeRelayAdapter — if the relay WebSocket is connected
-  if (relay.isConnected()) {
-    return new VscodeRelayAdapter(relay);
+  try {
+    if (relay.isConnected()) {
+      return new VscodeRelayAdapter(relay);
+    }
+  } catch {
+    // isConnected() threw — treat as disconnected, fall through to offline adapter
   }
   // Priority 2: LocalStorageAdapter — always available as offline fallback
   return new LocalStorageAdapter();

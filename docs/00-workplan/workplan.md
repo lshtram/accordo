@@ -184,9 +184,9 @@
 **Remaining open tasks:**
 1. ✅ (done) Wire `dispatchBrowserCommentAction()` into `browser-comment-relay-handler.ts` (commit 21c21e8) — replaces `executeCommand(...Object.values(args))` pattern, adds mutation push to Hub/owner client paths
 2. ✅ (done) Bidirectional sync: mutation push (`notify_comments_updated`) now fires after successful Hub/owner client mutations, matching per-window relay behavior (BR-F-145 parity)
-3. Verify `selectAdapter()` correctly selects `VscodeRelayAdapter` in connected state — deferred to follow-up
+3. ✅ (done) Verify `selectAdapter()` correctly selects `VscodeRelayAdapter` in connected state — all 5 tests pass (PU-F-43-01 through PU-F-43-05)
 
-**Test evidence:** `browser` 1142/1142, `browser-extension` 1266/1266, full suite 5016/5016
+**Test evidence:** `browser` 1142/1142, `browser-extension` 1271/1271, full suite 5016/5016
 **Reviews:** `docs/reviews/priority-p-architecture-review.md`, `priority-p-phase-b-review.md`, `priority-p-phase-d-review.md`, `priority-p-D2.md`
 **Testing guide:** `docs/testing-guide-priority-p.md`
 
