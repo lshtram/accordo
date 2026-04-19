@@ -18,11 +18,18 @@ export interface RelayDispatchDeps {
 
 /**
  * Dispatch a browser comment relay action to the unified comment tool layer.
+ *
+ * @param deps          - Relay dispatch dependencies (invokeTool)
+ * @param action        - The browser relay comment action
+ * @param payload       - The action payload
+ * @param correlationId  - Optional request ID for the BrowserRelayResponse.requestId field.
+ *                          Uses action name when omitted (for backward compatibility).
  */
 export async function dispatchBrowserCommentAction(
   deps: RelayDispatchDeps,
   action: BrowserRelayCommentAction,
   payload: unknown,
+  correlationId?: string,
 ): Promise<BrowserRelayResponse> {
   let toolName: string;
   let args: Record<string, unknown>;
@@ -83,19 +90,19 @@ export async function dispatchBrowserCommentAction(
       typeof (result as Record<string, unknown>).error === "string"
     ) {
       return {
-        requestId: crypto.randomUUID(),
+        requestId: correlationId ?? crypto.randomUUID(),
         success: false,
         error: (result as Record<string, unknown>).error as BrowserRelayResponse["error"],
       };
     }
     return {
-      requestId: crypto.randomUUID(),
+      requestId: correlationId ?? crypto.randomUUID(),
       success: true,
       data: result,
     };
   } catch {
     return {
-      requestId: crypto.randomUUID(),
+      requestId: correlationId ?? crypto.randomUUID(),
       success: false,
       error: "action-failed",
     };

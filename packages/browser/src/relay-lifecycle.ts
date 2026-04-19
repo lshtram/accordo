@@ -55,6 +55,8 @@ const EXTENSION_ID = "accordo.accordo-browser";
 const RELAY_BASE_PORT = 40111;
 const RELAY_HOST = "127.0.0.1";
 
+const MUTATING = ["create_comment", "reply_comment", "resolve_thread", "reopen_thread", "delete_comment", "delete_thread"] as const;
+
 // ── Port Discovery ───────────────────────────────────────────────────────────
 
 /**
@@ -301,6 +303,17 @@ export async function activateSharedRelay(
             }
             try {
               const result = await bridge.invokeTool(mapped.toolName, mapped.args);
+              // Bidirectional sync: after a mutation, notify the browser extension
+              // so it refreshes its local comment store. This mirrors the
+              // per-window relay path behavior (BR-F-145 parity).
+              if ((MUTATING as readonly string[]).includes(action)) {
+                const url = payload["url"] as string | undefined;
+                try {
+                  client.push("notify_comments_updated", url ? { url } : {});
+                } catch {
+                  // push is best-effort
+                }
+              }
               if (action === "get_comments" || action === "get_all_comments") {
                 return { requestId: "", success: true, data: normalizeReadResult(result) };
               }
@@ -398,6 +411,16 @@ export async function activateSharedRelay(
               }
               try {
                 const result = await bridge.invokeTool(mapped.toolName, mapped.args);
+                // Bidirectional sync: after a mutation, notify the browser extension
+                // so it refreshes its local comment store (BR-F-145 parity).
+                if ((MUTATING as readonly string[]).includes(action)) {
+                  const url = payload["url"] as string | undefined;
+                  try {
+                    ownerClient.push("notify_comments_updated", url ? { url } : {});
+                  } catch {
+                    // push is best-effort
+                  }
+                }
                 if (action === "get_comments" || action === "get_all_comments") {
                   return { requestId: "", success: true, data: normalizeReadResult(result) };
                 }
