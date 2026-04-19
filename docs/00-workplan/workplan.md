@@ -218,26 +218,29 @@
 
 ### Priority R — Marp Slide Comment: User-left vs Agent-left Behaviour Divergence
 
-**Status:** Discovery (live testing, 2026-04-16)
+### ~~Priority R — Marp Slide Comment: User-left vs Agent-left Behaviour Divergence~~ ✅ COMPLETE (Phase A/B/C/D — 2026-04-19)
 
-**Problem:** On Marp presentations, clicking a user-left comment pin causes the presentation view to close/dismiss. Clicking an agent-left comment pin keeps the presentation open and correctly highlights the pin.
+**Root cause:** Split entry-path — `accordo.comments.focusInPreview` routed slide comments to `accordo_preview_internal_focusThread` (generic preview handler), causing presentation dismiss. `accordo.presentation.internal.focusThread` (Marp's internal focus) was correct.
 
-**Root cause area:** The `comments:focus` message handler in `marp-webview-html.ts` calls `sdk.openPopover()`. This is the same path for both user and agent comments. The difference likely lies in how the focus command is dispatched from the comments panel — user-left comments may be going through `navigation-router.ts` → `CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD` which routes to VS Code's generic preview handler, while agent-left comments may be going through a different path (perhaps Marp's internal `focusThread` command registered in `extension.ts`).
+**What was delivered:**
+1. Phase A — Corrected diagnosis: not author-based divergence, but entry-path divergence. Interface stubs: `focus-thread-contract.ts`, `unified-focus-dispatch.ts`
+2. Phase B — 24 failing tests across 2 packages
+3. Phase C — `normalizeDeckUriToFsPath`, `toVsCodeUri`, `buildPresentationFocusThreadPlan`, `parseSlideIndex`, `isValidSlideIndex`, `buildUnifiedThreadFocusPlan`, `focusThreadViaSharedPlanner` implemented
+4. Phase D — Fixed unsafe cast, typecheck clean
 
-**What works:** Agent-left comment focus → `accordo.presentation.internal.focusThread` → `goTo(slideIndex)` + `sdk.openPopover(threadId)` ✅
+**Key fix:** `buildUnifiedThreadFocusPlan` now routes `native-comments` + slide → `PRESENTATION_FOCUS_THREAD` (not `PREVIEW_FOCUS_THREAD`). User-left and agent-left now produce identical command tuples.
 
-**What fails:** User-left comment focus → likely routes via `accordo_preview_internal_focusThread` → generic preview handler → may call something that closes the webview panel ❌
+**Requirements delivered:** M50-FOCUS-06, M50-PVD-18, M45-NR-15, M45-NR-16.
 
 **Open tasks:**
-1. Trace the exact dispatch path for user-left slide comment → find where it diverges from agent-left
-2. Align both paths to use Marp's internal `focusThread` command for slide surfaces
-3. Verify `goTo()` + `openPopover()` sequence is identical for both cases
-4. Add test: clicking any comment pin on a slide should never close the presentation
+1. ✅ Unified focus dispatch for slide surfaces — `buildUnifiedThreadFocusPlan`
+2. ✅ Slide index validation before `goTo()` — `isValidSlideIndex` (no throw on invalid)
+3. ✅ URI/fsPath normalization prevents spurious reopen — `normalizeDeckUriToFsPath`
+4. ✅ Author-kind parity — `R-NR-16-04` proves user/agent identical command tuples
 
-**Key files:**
-- `packages/marp/src/extension.ts` — `accordo.presentation.internal.focusThread` command
-- `packages/marp/src/marp-webview-html.ts` — `comments:focus` handler with `sdk.openPopover()`
-- `packages/comments/src/panel/navigation-router.ts` — surface type → command dispatch
+**Test evidence:** `accordo-marp` 308/308 ✅, `accordo-comments` 509/509 ✅
+**Reviews:** `docs/reviews/priority-r-phase-a.md`, `priority-r-phase-b-review.md`, `priority-r-phase-d-review.md`
+**Testing guide:** `docs/testing-guide-priority-r.md`
 
 ---
 
