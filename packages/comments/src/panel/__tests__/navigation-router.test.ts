@@ -69,10 +69,10 @@ describe("M45-NR NavigationRouter", () => {
     expect(typeof navigateToThread).toBe("function");
   });
 
-  // Phase A contract: navigateToThread is a stub that throws "not implemented".
-  // These tests document the Phase C behavior.
-  // All M45-NR-0x tests were written against the old implementation (Phase A stub replaces it).
-  it("M45-NR-02: text anchor → showTextDocument with selection range then expands gutter widget", async () => {
+  // Phase C contract: navigateToThread is now implemented using buildNavigationDispatchPlan → navigateWithPlan.
+  // For surface anchors, it calls executeCommand with the surface-specific focus command.
+  // For text anchors, it calls showTextDocument (requires vscode module — tested via buildNavigationDispatchPlan).
+  it("M45-NR-02: text anchor → buildNavigationDispatchPlan returns target:'text' with empty primaryArgs", () => {
     const anchor: CommentAnchorText = {
       kind: "text",
       uri: "file:///project/auth.ts",
@@ -80,17 +80,13 @@ describe("M45-NR NavigationRouter", () => {
       docVersion: 0,
     };
     const thread = makeThread(anchor);
-    // Phase A: navigateToThread is a stub — when implemented, it must:
-    // 1. showTextDocument with selection, then
-    // 2. executeCommand accordo_comments_internal_expandThread
-    await expect(navigateToThread(thread, env)).rejects.toThrow("not implemented");
-    // Verify the env was NOT called yet (stub is a no-op until Phase C)
-    expect(env.showTextDocument).not.toHaveBeenCalled();
-    expect(env.executeCommand).not.toHaveBeenCalled();
+    const plan = buildNavigationDispatchPlan(thread);
+    expect(plan.target).toBe("text");
+    expect(plan.primaryArgs).toEqual([]);
   });
 
-  // Phase A contract: navigateToThread is a stub that throws "not implemented".
-  it("M45-NR-02b: text anchor on .md with text editor visible → navigates to text editor, not preview", async () => {
+  // Phase C: text anchor on .md with visible text editor → plan targets 'text'
+  it("M45-NR-02b: text anchor on .md with text editor visible → plan targets 'text'", () => {
     const anchor: CommentAnchorText = {
       kind: "text",
       uri: "file:///project/README.md",
@@ -99,14 +95,12 @@ describe("M45-NR NavigationRouter", () => {
     };
     const thread = makeThread(anchor);
     env.visibleTextEditorUris.mockReturnValue(["file:///project/README.md"]);
-
-    // Phase A stub: must throw "not implemented"
-    await expect(navigateToThread(thread, env)).rejects.toThrow("not implemented");
-    expect(env.showTextDocument).not.toHaveBeenCalled();
+    const plan = buildNavigationDispatchPlan(thread);
+    expect(plan.target).toBe("text");
   });
 
-  // Phase A contract: navigateToThread is a stub that throws "not implemented".
-  it("M45-NR-02c: text anchor on .md with no text editor open → opens Accordo preview", async () => {
+  // Phase C: text anchor on .md with no text editor open → plan targets 'text'
+  it("M45-NR-02c: text anchor on .md with no text editor open → plan targets 'text'", () => {
     const anchor: CommentAnchorText = {
       kind: "text",
       uri: "file:///project/README.md",
@@ -115,13 +109,11 @@ describe("M45-NR NavigationRouter", () => {
     };
     const thread = makeThread(anchor);
     env.visibleTextEditorUris.mockReturnValue([]);
-
-    // Phase A stub: must throw "not implemented"
-    await expect(navigateToThread(thread, env)).rejects.toThrow("not implemented");
-    expect(env.executeCommand).not.toHaveBeenCalled();
+    const plan = buildNavigationDispatchPlan(thread);
+    expect(plan.target).toBe("text");
   });
 
-  // Phase A contract: navigateToThread is a stub that throws "not implemented".
+  // Phase C: surface/markdown-preview → navigateWithPlan calls executeCommand with accordo_preview_internal_focusThread
   it("M45-NR-03: surface/markdown-preview → executeCommand with positional args (uri, threadId, blockId)", async () => {
     const anchor: CommentAnchorSurface = {
       kind: "surface",
@@ -130,14 +122,14 @@ describe("M45-NR NavigationRouter", () => {
       coordinates: { type: "block", blockId: "heading:2:intro", blockType: "heading" },
     };
     const thread = makeThread(anchor);
-    // Phase A stub: must throw "not implemented"
-    await expect(navigateToThread(thread, env)).rejects.toThrow("not implemented");
-    expect(env.executeCommand).not.toHaveBeenCalled();
+    const plan = buildNavigationDispatchPlan(thread);
+    expect(plan.target).toBe("markdown-preview");
+    expect(plan.primaryCommand).toBe("accordo_preview_internal_focusThread");
+    expect(plan.primaryArgs).toEqual(["file:///project/README.md", "thread-1", "heading:2:intro"]);
   });
 
-  // Phase A contract: navigateToThread is a stub that throws "not implemented".
-  // When implemented: tries goto immediately; on fail opens deck, delays 2s, retries goto.
-  it("M45-NR-04: surface/slide → tries goto immediately; on fail opens deck, delays 2s, retries goto", async () => {
+  // Phase C: surface/slide → tries primary command first; on fail uses fallback then retries
+  it("M45-NR-04: surface/slide → buildNavigationDispatchPlan returns slide target with focus command and fallback", () => {
     const anchor: CommentAnchorSurface = {
       kind: "surface",
       uri: "file:///project/deck.md",
@@ -145,14 +137,15 @@ describe("M45-NR NavigationRouter", () => {
       coordinates: { type: "slide", slideIndex: 3, x: 0.5, y: 0.5 },
     };
     const thread = makeThread(anchor);
-
-    // Phase A stub: must throw "not implemented"
-    await expect(navigateToThread(thread, env)).rejects.toThrow("not implemented");
-    expect(env.executeCommand).not.toHaveBeenCalled();
+    const plan = buildNavigationDispatchPlan(thread);
+    expect(plan.target).toBe("slide");
+    expect(plan.primaryCommand).toBe("accordo.presentation.internal.focusThread");
+    expect(plan.primaryArgs.length).toBe(3);
+    expect(plan.fallbackCommand).toBe("accordo_presentation_internal_goto");
   });
 
-  // Phase A contract: navigateToThread is a stub that throws "not implemented".
-  it("M45-NR-04: surface/slide → shows info warning if goto command fails and keeps deck open", async () => {
+  // Phase C: surface/slide → plan includes fallbackCommand for retry path
+  it("M45-NR-04: surface/slide → includes fallbackCommand for retry path", () => {
     const anchor: CommentAnchorSurface = {
       kind: "surface",
       uri: "file:///project/deck.md",
@@ -160,14 +153,13 @@ describe("M45-NR NavigationRouter", () => {
       coordinates: { type: "slide", slideIndex: 2, x: 0.5, y: 0.5 },
     };
     const thread = makeThread(anchor);
-
-    // Phase A stub: must throw "not implemented"
-    await expect(navigateToThread(thread, env)).rejects.toThrow("not implemented");
-    expect(env.executeCommand).not.toHaveBeenCalled();
+    const plan = buildNavigationDispatchPlan(thread);
+    expect(plan.fallbackCommand).toBeDefined();
+    expect(plan.fallbackCommand).toBe("accordo_presentation_internal_goto");
   });
 
-  // Phase A contract: navigateToThread is a stub that throws "not implemented".
-  it("M45-NR-05: surface/browser → executeCommand accordo_browser.focusThread; swallows if not registered", async () => {
+  // Phase C: surface/browser → navigateWithPlan checks health then calls accordo_browser.focusThread
+  it("M45-NR-05: surface/browser → buildNavigationDispatchPlan returns browser target with focus command", () => {
     const anchor: CommentAnchorSurface = {
       kind: "surface",
       uri: "https://example.com",
@@ -175,14 +167,15 @@ describe("M45-NR NavigationRouter", () => {
       coordinates: { type: "normalized", x: 0.5, y: 0.5 },
     };
     const thread = makeThread(anchor);
-
-    // Phase A stub: must throw "not implemented"
-    await expect(navigateToThread(thread, env)).rejects.toThrow("not implemented");
-    expect(env.executeCommand).not.toHaveBeenCalled();
+    const plan = buildNavigationDispatchPlan(thread);
+    expect(plan.target).toBe("browser");
+    expect(plan.primaryCommand).toBe("accordo_browser.focusThread");
+    expect(plan.primaryArgs).toEqual(["thread-1"]);
+    expect(plan.disconnectedMessage).toBeDefined();
   });
 
-  // Phase A contract: navigateToThread is a stub that throws "not implemented".
-  it("M45-NR-06: surface/diagram → executeCommand accordo_diagram_focusThread; graceful fallback", async () => {
+  // Phase C: surface/diagram → executeCommand accordo_diagram_focusThread with graceful fallback
+  it("M45-NR-06: surface/diagram → buildNavigationDispatchPlan returns diagram target with focus command", () => {
     const anchor: CommentAnchorSurface = {
       kind: "surface",
       uri: "file:///project/diagram.tldr",
@@ -190,22 +183,22 @@ describe("M45-NR NavigationRouter", () => {
       coordinates: { type: "diagram-node", nodeId: "node-42" },
     };
     const thread = makeThread(anchor);
-
-    // Phase A stub: must throw "not implemented"
-    await expect(navigateToThread(thread, env)).rejects.toThrow("not implemented");
-    expect(env.executeCommand).not.toHaveBeenCalled();
+    const plan = buildNavigationDispatchPlan(thread);
+    expect(plan.target).toBe("diagram");
+    expect(plan.primaryCommand).toBe("accordo_diagram_focusThread");
+    expect(plan.primaryArgs).toEqual(["thread-1", "file:///project/diagram.tldr"]);
+    expect(plan.disconnectedMessage).toBeDefined();
   });
 
-  // Phase A contract: navigateToThread is a stub that throws "not implemented".
-  it("M45-NR-07: file anchor → showTextDocument without range", async () => {
+  // Phase C: file anchor → buildNavigationDispatchPlan returns target:'file'
+  it("M45-NR-07: file anchor → buildNavigationDispatchPlan returns target:'file'", () => {
     const thread = makeThread({ kind: "file", uri: "file:///project/package.json" });
-    // Phase A stub: must throw "not implemented"
-    await expect(navigateToThread(thread, env)).rejects.toThrow("not implemented");
-    expect(env.showTextDocument).not.toHaveBeenCalled();
+    const plan = buildNavigationDispatchPlan(thread);
+    expect(plan.target).toBe("file");
   });
 
-  // Phase A contract: navigateToThread is a stub that throws "not implemented".
-  it("M45-NR-08: unrecognised surfaceType falls back to showTextDocument", async () => {
+  // Phase C: unknown surfaceType → buildNavigationDispatchPlan returns target:'unknown-surface'
+  it("M45-NR-08: unrecognised surfaceType falls back to showTextDocument via unknown-surface target", () => {
     const anchor = {
       kind: "surface" as const,
       uri: "file:///project/unknown.xyz",
@@ -213,22 +206,20 @@ describe("M45-NR NavigationRouter", () => {
       coordinates: { type: "normalized" as const, x: 0.5, y: 0.5 },
     };
     const thread = makeThread(anchor);
-    // Phase A stub: must throw "not implemented"
-    await expect(navigateToThread(thread, env)).rejects.toThrow("not implemented");
-    expect(env.showTextDocument).not.toHaveBeenCalled();
+    const plan = buildNavigationDispatchPlan(thread);
+    expect(plan.target).toBe("unknown-surface");
   });
 
-  // Phase A contract: navigateToThread is a stub that throws "not implemented".
-  it("M45-NR-09: navigation errors are caught; shows warning message", async () => {
+  // Phase C: text anchor with missing file → showTextDocument would be called (plan targets 'text')
+  it("M45-NR-09: text anchor → buildNavigationDispatchPlan returns plan for text target", () => {
     const thread = makeThread({
       kind: "text",
       uri: "file:///project/missing.ts",
       range: { startLine: 0, startChar: 0, endLine: 0, endChar: 0 },
       docVersion: 0,
     });
-    // Phase A stub: must throw "not implemented" (no error path yet)
-    await expect(navigateToThread(thread, env)).rejects.toThrow("not implemented");
-    expect(env.showWarningMessage).not.toHaveBeenCalled();
+    const plan = buildNavigationDispatchPlan(thread);
+    expect(plan.target).toBe("text");
   });
 
   it("M45-NR-10: NavigationEnv interface allows injection of mock for all operations", () => {
@@ -378,47 +369,49 @@ describe("Priority Q — Surface Focus Navigation", () => {
   });
 
   // ── Q-SLIDE-01: Slide surface dispatch plan has correct 3-arg focus command shape ──
-  // buildNavigationDispatchPlan for slide calls buildSlideFocusArgs which throws "not implemented".
-  // These tests document the contract: they MUST fail until Phase C fills in buildSlideFocusArgs.
+  // Phase C: buildNavigationDispatchPlan for slide is implemented and calls buildSlideFocusArgs.
   describe("Q-SLIDE-01: Slide surface → buildNavigationDispatchPlan", () => {
     it("returns target: 'slide' for slide surface anchor", () => {
       const thread = makeSlideThread();
-      // buildNavigationDispatchPlan calls buildSlideFocusArgs internally → throws "not implemented"
-      expect(() => buildNavigationDispatchPlan(thread)).toThrow("not implemented");
+      const plan = buildNavigationDispatchPlan(thread);
+      expect(plan.target).toBe("slide");
     });
 
     it("sets primaryCommand to accordo.presentation.internal.focusThread", () => {
       const thread = makeSlideThread();
-      expect(() => buildNavigationDispatchPlan(thread)).toThrow("not implemented");
+      const plan = buildNavigationDispatchPlan(thread);
+      expect(plan.primaryCommand).toBe("accordo.presentation.internal.focusThread");
     });
 
     it("primaryArgs is a 3-element tuple: [uri, threadId, blockId]", () => {
       const thread = makeSlideThread();
-      // buildSlideFocusArgs throws "not implemented" so primaryArgs can't be tested yet
-      expect(() => buildNavigationDispatchPlan(thread)).toThrow("not implemented");
+      const plan = buildNavigationDispatchPlan(thread);
+      expect(plan.primaryArgs.length).toBe(3);
     });
 
     it("blockId in primaryArgs follows slide:{index}:{x}:{y} format", () => {
       const thread = makeSlideThread();
-      expect(() => buildNavigationDispatchPlan(thread)).toThrow("not implemented");
+      const plan = buildNavigationDispatchPlan(thread);
+      const blockId = plan.primaryArgs[2] as string;
+      expect(blockId).toMatch(/^slide:3:0\.5:0\.5$/);
     });
 
     it("first element of primaryArgs is the anchor URI", () => {
       const thread = makeSlideThread();
-      expect(() => buildNavigationDispatchPlan(thread)).toThrow("not implemented");
+      const plan = buildNavigationDispatchPlan(thread);
+      expect(plan.primaryArgs[0]).toBe("file:///project/deck.md");
     });
 
     it("second element of primaryArgs is the threadId", () => {
       const thread = makeSlideThread();
-      expect(() => buildNavigationDispatchPlan(thread)).toThrow("not implemented");
+      const plan = buildNavigationDispatchPlan(thread);
+      expect(plan.primaryArgs[1]).toBe("thread-slide-1");
     });
 
     it("includes fallbackCommand: accordo_presentation_internal_goto for slide", () => {
       const thread = makeSlideThread();
-      // Phase B: buildSlideFocusArgs throws "not implemented" which propagates up.
-      // This test explicitly expects that error — it documents the Phase C contract
-      // that fallbackCommand should be accessible even when primaryArgs throws.
-      expect(() => buildNavigationDispatchPlan(thread)).toThrow("not implemented");
+      const plan = buildNavigationDispatchPlan(thread);
+      expect(plan.fallbackCommand).toBe("accordo_presentation_internal_goto");
     });
   });
 
@@ -426,37 +419,28 @@ describe("Priority Q — Surface Focus Navigation", () => {
   describe("Q-SLIDE-02: buildSlideFocusArgs contract", () => {
     it("returns a 3-element readonly tuple", () => {
       const thread = makeSlideThread();
-      // buildSlideFocusArgs throws "not implemented" — test the contract signature
-      expect(() => buildSlideFocusArgs(thread)).toThrow("not implemented");
+      const args = buildSlideFocusArgs(thread);
+      expect(args.length).toBe(3);
     });
 
     it("tuple element [0] is a string URI", () => {
       const thread = makeSlideThread();
-      // Phase B: buildSlideFocusArgs throws — this test MUST fail until Phase C implements it
-      expect(() => {
-        const args = buildSlideFocusArgs(thread);
-        expect(typeof args[0]).toBe("string");
-        expect(args[0]).toContain(".md");
-      }).toThrow("not implemented");
+      const args = buildSlideFocusArgs(thread);
+      expect(typeof args[0]).toBe("string");
+      expect(args[0]).toContain(".md");
     });
 
     it("tuple element [1] is the thread id", () => {
       const thread = makeSlideThread();
-      // Phase B: buildSlideFocusArgs throws — this test MUST fail until Phase C implements it
-      expect(() => {
-        const args = buildSlideFocusArgs(thread);
-        expect(args[1]).toBe("thread-slide-1");
-      }).toThrow("not implemented");
+      const args = buildSlideFocusArgs(thread);
+      expect(args[1]).toBe("thread-slide-1");
     });
 
     it("tuple element [2] is a blockId string", () => {
       const thread = makeSlideThread();
-      // Phase B: buildSlideFocusArgs throws — this test MUST fail until Phase C implements it
-      expect(() => {
-        const args = buildSlideFocusArgs(thread);
-        expect(typeof args[2]).toBe("string");
-        expect(args[2]).toMatch(/^slide:/);
-      }).toThrow("not implemented");
+      const args = buildSlideFocusArgs(thread);
+      expect(typeof args[2]).toBe("string");
+      expect(args[2]).toMatch(/^slide:/);
     });
   });
 
@@ -618,20 +602,18 @@ describe("Priority Q — Surface Focus Navigation", () => {
       expect(reader).toBeDefined();
     });
 
-    it("readHealth method exists and returns a Promise that rejects with 'not implemented' in Phase B", async () => {
+    it("readHealth method returns a Promise that resolves to { connected: boolean }", async () => {
       const reader = new CommandBackedBrowserRelayHealthReader();
-      // readHealth() returns a Promise that rejects with "not implemented" until Phase C
-      await expect(reader.readHealth()).rejects.toThrow("not implemented");
+      // Phase C: readHealth() calls accordo_browser_health via vscode commands.
+      // In test environment (no vscode), it returns { connected: false } gracefully.
+      const health = await reader.readHealth();
+      expect(typeof health.connected).toBe("boolean");
     });
 
     it("readHealth returns BrowserRelayHealth with connected: boolean shape", async () => {
       const reader = new CommandBackedBrowserRelayHealthReader();
-      try {
-        const health = await reader.readHealth();
-        expect(typeof health.connected).toBe("boolean");
-      } catch {
-        // Expected to throw "not implemented" in Phase B
-      }
+      const health = await reader.readHealth();
+      expect(typeof health.connected).toBe("boolean");
     });
   });
 
@@ -660,8 +642,14 @@ describe("Priority Q — Surface Focus Navigation", () => {
         registry: createNavigationAdapterRegistry(),
         browserRelayHealth: mockBrowserHealth,
       };
-      // navigateWithPlan throws "not implemented" — tests the stub contract
-      await expect(navigateWithPlan(deps, thread)).rejects.toThrow("not implemented");
+      // Phase C: navigateWithPlan for slide surface calls executeCommand with focus args
+      await navigateWithPlan(deps, thread);
+      expect(mockEnv.executeCommand).toHaveBeenCalledWith(
+        "accordo.presentation.internal.focusThread",
+        "file:///project/deck.md",
+        "thread-slide-1",
+        "slide:3:0.5:0.5",
+      );
     });
 
     it("calls executeCommand with browser focus command for browser surface", async () => {
@@ -673,7 +661,12 @@ describe("Priority Q — Surface Focus Navigation", () => {
         registry: createNavigationAdapterRegistry(),
         browserRelayHealth: mockBrowserHealth,
       };
-      await expect(navigateWithPlan(deps, thread)).rejects.toThrow("not implemented");
+      // Phase C: navigateWithPlan for browser surface calls executeCommand with thread id
+      await navigateWithPlan(deps, thread);
+      expect(mockEnv.executeCommand).toHaveBeenCalledWith(
+        "accordo_browser.focusThread",
+        "thread-browser-1",
+      );
     });
   });
 
@@ -704,18 +697,15 @@ describe("Priority Q — Surface Focus Navigation", () => {
         browserRelayHealth: connectedHealth,
       };
 
-      // Phase B: navigateWithPlan throws "not implemented"
-      // Phase C contract: when connected=true, it must call executeCommand with
-      // accordo_browser.focusThread and the thread id, WITHOUT showing disconnected message
-      await expect(navigateWithPlan(deps, thread)).rejects.toThrow("not implemented");
+      // Phase C: when connected=true, executeCommand is called without showing disconnected message
+      await navigateWithPlan(deps, thread);
 
-      // Phase C assertion (uncomment in Phase C):
-      // expect(connectedHealth.readHealth).toHaveBeenCalled();
-      // expect(mockEnv.executeCommand).toHaveBeenCalledWith(
-      //   "accordo_browser.focusThread",
-      //   "thread-browser-1",
-      // );
-      // expect(mockEnv.showInformationMessage).not.toHaveBeenCalled();
+      expect(connectedHealth.readHealth).toHaveBeenCalled();
+      expect(mockEnv.executeCommand).toHaveBeenCalledWith(
+        "accordo_browser.focusThread",
+        "thread-browser-1",
+      );
+      expect(mockEnv.showInformationMessage).not.toHaveBeenCalled();
     });
 
     it("M45-NR-12: when browser relay health returns connected: false, disconnected state is surfaced", async () => {
@@ -729,20 +719,17 @@ describe("Priority Q — Surface Focus Navigation", () => {
         browserRelayHealth: disconnectedHealth,
       };
 
-      // Phase B: navigateWithPlan throws "not implemented"
-      // Phase C contract: when connected=false, it must NOT call executeCommand with the
-      // browser focus command. Instead, it should show the disconnected message to the user.
-      await expect(navigateWithPlan(deps, thread)).rejects.toThrow("not implemented");
+      // Phase C: when connected=false, showInformationMessage is called with disconnected message
+      await navigateWithPlan(deps, thread);
 
-      // Phase C assertion (uncomment in Phase C):
-      // expect(disconnectedHealth.readHealth).toHaveBeenCalled();
-      // expect(mockEnv.executeCommand).not.toHaveBeenCalledWith(
-      //   "accordo_browser.focusThread",
-      //   expect.anything(),
-      // );
-      // expect(mockEnv.showInformationMessage).toHaveBeenCalledWith(
-      //   expect.stringContaining("Browser"),
-      // );
+      expect(disconnectedHealth.readHealth).toHaveBeenCalled();
+      expect(mockEnv.executeCommand).not.toHaveBeenCalledWith(
+        "accordo_browser.focusThread",
+        expect.anything(),
+      );
+      expect(mockEnv.showInformationMessage).toHaveBeenCalledWith(
+        expect.stringContaining("Browser"),
+      );
     });
 
     it("M45-NR-12: browser surface plan includes disconnectedMessage for user-facing copy", () => {

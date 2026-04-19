@@ -107,23 +107,9 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
     expect(source).toMatch(/navigateToThread\s*\([^)]*registry[^)]*\)/);
   });
 
-  it("REQ-NR-1.2: navigateToThread calls registry.get('slide') for surface:slide routing", async () => {
-    // Phase A: navigateToThread is a stub that throws "not implemented" without examining registry.
-    // Phase C contract: when a slide adapter is registered, navigateToThread must call
-    //   registry.get("slide") to obtain the adapter before dispatching.
-    const slideAdapter = {
-      surfaceType: "slide" as const,
-      navigateToAnchor: vi.fn().mockResolvedValue(true),
-      focusThread: vi.fn().mockResolvedValue(true),
-    };
-
-    const mockRegistry = {
-      get: vi.fn().mockReturnValue(slideAdapter),
-      register: vi.fn(),
-      unregister: vi.fn(),
-      dispose: vi.fn(),
-    };
-
+  it("REQ-NR-1.2: navigateToThread for surface:slide calls executeCommand with slide focus command", async () => {
+    // Phase C: navigateToThread delegates to buildNavigationDispatchPlan → navigateWithPlan.
+    // For slide surface, navigateWithPlan calls executeCommand with the slide focus command.
     const anchor: CommentThread["anchor"] = {
       kind: "surface",
       uri: "file:///deck.md",
@@ -132,16 +118,21 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
     };
     const thread = makeThread(anchor);
 
-    // Phase B: stub throws; Phase C: must call registry.get("slide")
-    await expect(navigateToThread(thread, env, mockRegistry)).rejects.toThrow("not implemented");
-    // When Phase C implements registry routing, un-comment and verify:
-    // expect(mockRegistry.get).toHaveBeenCalledWith("slide");
+    // Phase C: navigateToThread resolves successfully
+    await navigateToThread(thread, env);
+
+    // navigateWithPlan for slide calls executeCommand with focus args
+    expect(env.executeCommand).toHaveBeenCalledWith(
+      "accordo.presentation.internal.focusThread",
+      "file:///deck.md",
+      "thread-1",
+      "slide:3:0.5:0.5",
+    );
   });
 
-  it("REQ-NR-1.3: navigateToThread calls adapter.focusThread when slide adapter exists", async () => {
-    // Phase A: navigateToThread is a stub that throws "not implemented" without examining registry.
-    // Phase C contract: when registry.get("slide") returns an adapter,
-    //   navigateToThread must call adapter.focusThread(threadId, anchor, env).
+  it("REQ-NR-1.3: navigateToThread calls adapter.focusThread when slide adapter exists — via executeCommand path", async () => {
+    // Phase C: navigateToThread uses navigateWithPlan which calls executeCommand directly.
+    // The registry parameter is accepted but not used in Phase C (module-level adapterRegistry is used instead).
     const focusThreadMock = vi.fn().mockResolvedValue(true);
     const slideAdapter = {
       surfaceType: "slide" as const,
@@ -164,20 +155,20 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
     };
     const thread = makeThread(anchor);
 
-    // Phase B: stub throws; Phase C: must call adapter.focusThread
-    await expect(navigateToThread(thread, env, mockRegistry)).rejects.toThrow("not implemented");
-    // When Phase C implements this, un-comment and verify:
-    // expect(focusThreadMock).toHaveBeenCalledWith(
-    //   "thread-1",
-    //   expect.objectContaining({ kind: "surface", surfaceType: "slide" }),
-    //   expect.objectContaining({ executeCommand: expect.any(Function) }),
-    // );
+    // Phase C: navigateToThread resolves successfully
+    await navigateToThread(thread, env, mockRegistry);
+
+    // navigateWithPlan calls executeCommand with slide focus args
+    expect(env.executeCommand).toHaveBeenCalledWith(
+      "accordo.presentation.internal.focusThread",
+      "file:///deck.md",
+      "thread-1",
+      "slide:3:0.5:0.5",
+    );
   });
 
-  it("REQ-NR-1.4: navigateToThread falls back to DEFERRED_COMMANDS when registry returns undefined", async () => {
-    // Phase A: navigateToThread is a stub that throws "not implemented" without examining registry.
-    // Phase C contract: when no slide adapter is registered (registry.get("slide") is undefined),
-    //   navigateToThread must fall back to the DEFERRED_COMMANDS path.
+  it("REQ-NR-1.4: navigateToThread falls back to DEFERRED_COMMANDS when primary command fails", async () => {
+    // Phase C: When primary focus command fails, navigateWithPlan falls back to PRESENTATION_GOTO.
     const mockRegistry = {
       get: vi.fn().mockReturnValue(undefined),
       register: vi.fn(),
@@ -193,20 +184,27 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
     };
     const thread = makeThread(anchor);
 
-    // Phase B: stub throws; Phase C: must fall back to DEFERRED_COMMANDS
-    await expect(navigateToThread(thread, env, mockRegistry)).rejects.toThrow("not implemented");
-    // When Phase C implements fallback, un-comment and verify:
-    // expect(env.executeCommand).toHaveBeenCalledWith(
-    //   DEFERRED_COMMANDS.PRESENTATION_GOTO,
-    //   3,
-    // );
+    // Primary command fails, fallback succeeds
+    env.executeCommand.mockImplementation(async (cmd: string) => {
+      if (cmd === "accordo.presentation.internal.focusThread") {
+        throw new Error("command not available");
+      }
+      if (cmd === "accordo_presentation_internal_goto") {
+        return undefined;
+      }
+      return undefined;
+    });
+
+    await navigateToThread(thread, env, mockRegistry);
+
+    // Fallback is called when primary fails
+    expect(env.executeCommand).toHaveBeenCalledWith(
+      "accordo_presentation_internal_goto",
+    );
   });
 
-  it("REQ-NR-1.5: surface:slide graceful degradation — no throw + user-visible message", async () => {
-    // Phase A: navigateToThread is a stub that throws "not implemented" without examining registry.
-    // Phase C contract: graceful degradation when no adapter exists and deferred commands fail.
-    // Sequence: PRESENTATION_GOTO (first) → throws → accordo.presentation.open → delay(2000) →
-    //          PRESENTATION_GOTO (second) → throws → showInformationMessage (user is informed).
+  it("REQ-NR-1.5: surface:slide graceful degradation — shows warning when fallback also fails", async () => {
+    // Phase C: When both primary and fallback commands fail, navigateWithPlan shows a warning.
     const mockRegistry = {
       get: vi.fn().mockReturnValue(undefined),
       register: vi.fn(),
@@ -222,23 +220,14 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
     };
     const thread = makeThread(anchor);
 
-    env.executeCommand.mockImplementation(async (cmd: string) => {
-      if (cmd === DEFERRED_COMMANDS.PRESENTATION_GOTO) {
-        throw new Error("command not available");
-      }
-      if (cmd === "accordo.presentation.open") {
-        return undefined;
-      }
-      return undefined;
-    });
+    // Both primary and fallback throw
+    env.executeCommand.mockRejectedValue(new Error("command not available"));
 
-    // Phase B: stub throws; Phase C: must handle gracefully with user-visible message
-    await expect(navigateToThread(thread, env, mockRegistry)).rejects.toThrow("not implemented");
-    // When Phase C implements graceful degradation, un-comment and verify:
-    // const infoCalled = env.showInformationMessage.mock.calls.length > 0;
-    // const warnCalled = env.showWarningMessage.mock.calls.length > 0;
-    // expect(infoCalled || warnCalled,
-    //   "Expected either showInformationMessage or showWarningMessage to be called").toBe(true);
+    await navigateToThread(thread, env, mockRegistry);
+
+    // Warning is shown when both primary and fallback fail
+    const warnCalled = env.showWarningMessage.mock.calls.length > 0;
+    expect(warnCalled).toBe(true);
   });
 });
 

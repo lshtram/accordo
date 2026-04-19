@@ -113,11 +113,16 @@ export async function navigateToThread(
       }
       // Goto the deck
       if (plan.fallbackCommand) {
-        await env.executeCommand(plan.fallbackCommand, ...(plan.fallbackArgs ?? []));
-        // Wait 2s then retry focus
-        await env.delay(2000);
-        if (plan.primaryCommand && plan.primaryArgs.length > 0) {
-          await env.executeCommand(plan.primaryCommand, ...plan.primaryArgs);
+        try {
+          await env.executeCommand(plan.fallbackCommand, ...(plan.fallbackArgs ?? []));
+          // Wait 2s then retry focus
+          await env.delay(2000);
+          if (plan.primaryCommand && plan.primaryArgs.length > 0) {
+            await env.executeCommand(plan.primaryCommand, ...plan.primaryArgs);
+          }
+        } catch {
+          // fallback failed — show warning
+          await env.showWarningMessage("Deck opened. Navigation may be incomplete.");
         }
       }
       return;
