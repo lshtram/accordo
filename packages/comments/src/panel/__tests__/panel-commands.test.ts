@@ -183,7 +183,13 @@ describe("M45-CMD PanelCommands", () => {
 
     // Phase A stub: navigateToThread throws "not implemented"
     // Phase C contract: handler must call navigateToThread(thread, navEnv, registry)
-    await expect(handler(item)).rejects.toThrow("not implemented");
+    const navigateSpy = vi.spyOn(await import("../../panel/navigation-router.js"), "navigateToThread");
+
+    // Let the stub throw — but re-throw any assertion errors so the test fails
+    await handler(item).catch((e: unknown) => {
+      if (e instanceof Error && e.message === "not implemented") return;
+      throw e;
+    });
 
     // Assert registry was acquired via executeCommand
     expect(vsCommands.executeCommand).toHaveBeenCalledWith(
@@ -191,10 +197,7 @@ describe("M45-CMD PanelCommands", () => {
     );
 
     // Assert navigateToThread was called with all three args: (thread, navEnv, registry)
-    // Phase C: uncomment once navigateToThread is implemented
-    // const navigateSpy = vi.spyOn(await import("../../panel/navigation-router.js"), "navigateToThread");
-    // await handler(item);
-    // expect(navigateSpy).toHaveBeenCalledWith(thread, navEnv, mockRegistry);
+    expect(navigateSpy).toHaveBeenCalledWith(thread, navEnv, mockRegistry);
   });
 
   it("M45-CMD-03: resolve shows inputBox, calls store.resolve, syncs nc", async () => {
@@ -271,18 +274,22 @@ describe("M45-CMD PanelCommands", () => {
     (vsCommands.executeCommand as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockRegistry);
 
     // Phase A stub: navigateToThread throws — Phase C will call navigateToThread
-    await expect(handler(makeTreeItem(thread))).rejects.toThrow("not implemented");
+    const navigateSpy = vi.spyOn(await import("../../panel/navigation-router.js"), "navigateToThread");
+
+    const treeItem = makeTreeItem(thread);
+    // Let the stub throw — but re-throw any assertion errors so the test fails
+    await handler(treeItem).catch((e: unknown) => {
+      if (e instanceof Error && e.message === "not implemented") return;
+      throw e;
+    });
+
+    // Assert navigateToThread was called with all three args: (thread, navEnv, registry)
+    expect(navigateSpy).toHaveBeenCalledWith(thread, navEnv, mockRegistry);
 
     // Assert registry was acquired via executeCommand
     expect(vsCommands.executeCommand).toHaveBeenCalledWith(
       "accordo_marp_internal_getNavigationRegistry",
     );
-
-    // Assert navigateToThread was called with all three args: (thread, navEnv, registry)
-    // Phase C: uncomment once navigateToThread is implemented
-    // const navigateSpy = vi.spyOn(await import("../../panel/navigation-router.js"), "navigateToThread");
-    // await handler(makeTreeItem(thread));
-    // expect(navigateSpy).toHaveBeenCalledWith(thread, navEnv, mockRegistry);
 
     // Does NOT use showInputBox or store.reply (native inline widget handles the reply)
     expect(ui.showInputBox).not.toHaveBeenCalled();
