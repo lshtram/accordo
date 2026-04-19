@@ -182,9 +182,9 @@
 **Requirements delivered:** BR-F-144 (mode-invariant `{ threads }` envelope), BR-F-145 (mutation notify parity), BR-F-146 (legacy bare-array tolerance). Aligned BR-F-122, BR-F-124, BR-F-130, PU-F-41, PU-F-43, PU-F-44, PU-F-56.
 
 **Remaining open tasks:**
-1. Wire `dispatchBrowserCommentAction()` into `browser-comment-relay-handler.ts` (TODO marker left) — replaces `executeCommand(...Object.values(args))` pattern
-2. Bidirectional sync: VS Code store changes → browser extension store (comment:create/update events broadcast from service worker to content script) — deferred to follow-up
-3. Verify `selectAdapter()` correctly selects `VscodeRelayAdapter` in connected state
+1. ✅ (done) Wire `dispatchBrowserCommentAction()` into `browser-comment-relay-handler.ts` (commit 21c21e8) — replaces `executeCommand(...Object.values(args))` pattern, adds mutation push to Hub/owner client paths
+2. ✅ (done) Bidirectional sync: mutation push (`notify_comments_updated`) now fires after successful Hub/owner client mutations, matching per-window relay behavior (BR-F-145 parity)
+3. Verify `selectAdapter()` correctly selects `VscodeRelayAdapter` in connected state — deferred to follow-up
 
 **Test evidence:** `browser` 1142/1142, `browser-extension` 1266/1266, full suite 5016/5016
 **Reviews:** `docs/reviews/priority-p-architecture-review.md`, `priority-p-phase-b-review.md`, `priority-p-phase-d-review.md`, `priority-p-D2.md`
