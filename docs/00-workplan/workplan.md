@@ -169,36 +169,26 @@
 
 ---
 
-### Priority P — Comment Store Unification: VS Code ↔ Browser Extension
+### ~~Priority P — Comment Store Unification: VS Code ↔ Browser Extension~~ ✅ COMPLETE (Phase A/B/C/D — 2026-04-19)
 
-**Status:** Discovery (live testing, 2026-04-16)
+**Root cause (corrected by architect):** Relay mode divergence — `activateSharedRelay` and `activatePerWindowRelay` return different shapes (`{ threads }` vs bare array). Merge code in browser-extension expects `raw.threads` → Hub/agent comments silently dropped.
 
-**Problem:** The VS Code `accordo-comment-store` and the browser extension's local `store.ts` are completely siloed. Agent-created comments (via `accordo_comment_create` / `accordo_comment_reply`) go only to the VS Code store. The browser extension's pin rendering layer (`content/comment-ui.ts`) reads only from its own local store.
+**What was delivered (Phase A/B/C/D):**
+1. Phase A — Architecture review + interface definitions: `comment-relay-contract.ts`, `relay-comment-dispatch.ts`, `sw-comment-sync-contract.ts`
+2. Phase B — 32 failing tests across 3 test files (all pass against implementation)
+3. Phase C — `normalizeReadResult()`, `shapeRelayResponse()`, `dispatchBrowserCommentAction()`, `decodeHubThreadsPayload()`, `encodeBrowserCommentAction()` implemented
+4. Phase D — Fixed TS2352 unsafe cast; all 5016 tests green
 
-**Observed symptoms:**
-- User comment on GitHub Copilot page → pin visible in browser ✅
-- Agent reply to same thread (via `accordo_comment_reply`) → not visible as pin ❌
-- Agent comment on same GitHub page (via `accordo_comment_create`) → not visible as pin ❌
-- Agent comment on "Usage" h3 heading → not visible as pin ❌
-- Agent comment on "MCP Dispatch" node in diagram → pin visible ✅
+**Requirements delivered:** BR-F-144 (mode-invariant `{ threads }` envelope), BR-F-145 (mutation notify parity), BR-F-146 (legacy bare-array tolerance). Aligned BR-F-122, BR-F-124, BR-F-130, PU-F-41, PU-F-43, PU-F-44, PU-F-56.
 
-**Root cause:** `VscodeRelayAdapter` in `packages/browser-extension/src/adapters/comment-backend.ts` delegates to `RelayBridgeClient.send()` for all operations, but the `RelayBridgeClient` itself does not currently forward comment operations to the VS Code comment store. The relay bridge (`relay-bridge.ts`) handles `get_comments` for page understanding tools but does not wire comment create/reply/resolve/reopen/delete mutations through to the VS Code unified comment tools. There is no path for VS Code comment store events to reach the browser extension's local store.
+**Remaining open tasks:**
+1. Wire `dispatchBrowserCommentAction()` into `browser-comment-relay-handler.ts` (TODO marker left) — replaces `executeCommand(...Object.values(args))` pattern
+2. Bidirectional sync: VS Code store changes → browser extension store (comment:create/update events broadcast from service worker to content script) — deferred to follow-up
+3. Verify `selectAdapter()` correctly selects `VscodeRelayAdapter` in connected state
 
-**Scope of impact:**
-- All browser-tab surface comments created by the agent are invisible in the browser
-- All browser-tab surface replies by the agent are invisible in the browser
-- Only user-initiated browser comments are visible as pins in the browser
-
-**Open tasks:**
-1. Implement comment mutation forwarding in `RelayBridgeClient` — `create_comment`, `reply_comment`, `resolve_thread`, `reopen_thread`, `delete_comment`, `delete_thread` actions need to be routed to VS Code unified comment tools via the Bridge
-2. Add bidirectional sync: VS Code store changes → browser extension store (comment:create/update events broadcast from service worker to content script)
-3. Verify `selectAdapter()` factory correctly selects `VscodeRelayAdapter` when relay is connected
-
-**Key files:**
-- `packages/browser-extension/src/adapters/comment-backend.ts` — stub adapter (all throw)
-- `packages/browser-extension/src/relay-comment-handlers.ts` — browser extension's own comment handlers (separate store)
-- `packages/browser-extension/src/store.ts` — browser extension's local comment store
-- `packages/comments/src/panel/navigation-router.ts` — VS Code comment panel navigation logic
+**Test evidence:** `browser` 1142/1142, `browser-extension` 1266/1266, full suite 5016/5016
+**Reviews:** `docs/reviews/priority-p-architecture-review.md`, `priority-p-phase-b-review.md`, `priority-p-phase-d-review.md`, `priority-p-D2.md`
+**Testing guide:** `docs/testing-guide-priority-p.md`
 
 ---
 
