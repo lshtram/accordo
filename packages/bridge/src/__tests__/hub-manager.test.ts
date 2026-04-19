@@ -1368,8 +1368,8 @@ describe("HubManager — project-scoped reconnect state (SC-01 to SC-04)", () =>
     // Mock randomUUID so generateHubCredentials produces deterministic values
     // (needed so spawn assertion checks exact args, and processState.token is set)
     vi.spyOn(crypto, "randomUUID")
-      .mockReturnValueOnce("b-secret")
-      .mockReturnValueOnce("b-token");
+      .mockReturnValueOnce("b-secret" as `${string}-${string}-${string}-${string}-${string}`)
+      .mockReturnValueOnce("b-token" as `${string}-${string}-${string}-${string}-${string}`);
 
     vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: true, port: 3000 }); // Project A's Hub alive
     const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);

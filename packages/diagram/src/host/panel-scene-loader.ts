@@ -379,15 +379,6 @@ export async function loadAndPost(ctx: HostContext): Promise<void> {
 
   const apiElements = toExcalidrawPayload(scene.elements);
 
-  // DEBUG: dump exact Excalidraw JSON before rendering.
-  // Enabled when ACCORDO_DEBUG_DIAGRAM_JSON=1; no-op otherwise (zero cost).
-  await dumpExcalidrawJson({
-    mmdPath: state.mmdPath,
-    workspaceRoot: state._workspaceRoot,
-    source,
-    elements: apiElements,
-  });
-
   const msg: HostLoadSceneMessage = {
     type: "host:load-scene",
     elements: apiElements,

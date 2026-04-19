@@ -528,9 +528,6 @@ export async function activatePerWindowRelay(
         }
       }
 
-      // TODO(priority-p-phase-a): replace inline read envelope shaping below with
-      // `normalizeReadResult()` from `comment-relay-contract.ts` so shared/per-window
-      // relay paths use one canonical implementation.
       if (action === "get_comments" || action === "get_all_comments") {
         return { requestId: "", success: true, data: normalizeReadResult(result) };
       }

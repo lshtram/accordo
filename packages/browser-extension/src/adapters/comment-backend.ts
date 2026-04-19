@@ -113,10 +113,10 @@ export class VscodeRelayAdapter implements CommentBackendAdapter {
 
   async listThreads(url: string): Promise<CommentThreadSummary[]> {
     const res = await this._relay.send("get_comments", { url });
-    if (!res.success || !Array.isArray(res.data)) {
+    if (!res.success) {
       return [];
     }
-    const threads = res.data as Array<{
+    let threads: Array<{
       id: string;
       anchorKey: string;
       anchorContext?: { tagName: string; textSnippet?: string; ariaLabel: string; pageTitle: string };
@@ -124,6 +124,13 @@ export class VscodeRelayAdapter implements CommentBackendAdapter {
       comments: Array<{ id: string; body: string; author: { kind: string; name: string }; createdAt: string }>;
       lastActivity: string;
     }>;
+    if (Array.isArray(res.data)) {
+      threads = res.data;
+    } else if (res.data && typeof res.data === "object" && "threads" in res.data && Array.isArray(res.data.threads)) {
+      threads = (res.data as { threads: typeof threads }).threads;
+    } else {
+      return [];
+    }
     return threads.map((t) => {
       const activeComments = t.comments.filter((c) => c.body.length > 0);
       const last = activeComments[activeComments.length - 1];
