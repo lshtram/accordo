@@ -178,14 +178,17 @@ Group modes (controlled by `PanelFilters.groupMode`):
 | M45-NR-01 | Exports `async function navigateToThread(thread: CommentThread, vscodeEnv?: NavigationEnv): Promise<void>` |
 | M45-NR-02 | `anchor.kind === "text"` → calls `vscode.window.showTextDocument(uri, { selection: new vscode.Range(startLine, 0, endLine, 0), preserveFocus: false, preview: false })`. **Smart viewer**: if `env.findOpenViewForUri(uri)` returns `"markdown-preview"` first route via preview command instead. |
 | M45-NR-03 | `anchor.kind === "surface"` + `surfaceType === "markdown-preview"` → `vscode.commands.executeCommand('accordo_preview_internal_focusThread', uri, thread.id, coords.blockId)` |
-| M45-NR-04 | `anchor.kind === "surface"` + `surfaceType === "slide"` → first executes `accordo_presentation_goto` with `(uri, coords.slideIndex)`; if deck not yet open executes `accordo.presentation.open` first then waits 500ms before navigating; if goto command unavailable shows info warning |
-| M45-NR-05 | `anchor.kind === "surface"` + `surfaceType === "browser"` → executes `accordo.browser.focusThread` with `thread.id`; if command is not registered (throws), silently swallows the error and shows `showInformationMessage('Browser extension not connected')` |
+| M45-NR-04 | `anchor.kind === "surface"` + `surfaceType === "slide"` → **canonical focus command** is `accordo.presentation.internal.focusThread(uri, threadId, blockId)`; router must derive `blockId` from slide coordinates (`slide:{index}:{x}:{y}`). `accordo_presentation_internal_goto` remains optional deferred fallback only |
+| M45-NR-05 | `anchor.kind === "surface"` + `surfaceType === "browser"` → executes `accordo_browser.focusThread(threadId)`; command ID uses underscore naming to match MCP/VS Code command registration |
 | M45-NR-06 | `anchor.kind === "surface"` + `surfaceType === "diagram"` → executes `accordo.diagram.focusThread` with `thread.id`; same graceful fallback as M45-NR-05 |
 | M45-NR-07 | `anchor.kind === "file"` → smart viewer: same logic as M45-NR-11 applied to the file URI |
 | M45-NR-08 | Any unrecognised `surfaceType` falls back to `showTextDocument(anchor.uri)` |
 | M45-NR-09 | All navigation errors (command not found, file not found) are caught; on failure shows `vscode.window.showWarningMessage('Could not navigate to thread: <message>')` |
 | M45-NR-10 | `NavigationEnv` interface — injectable abstraction over `vscode.window`, `vscode.commands`, and `setTimeout` — allows unit testing without real VS Code |
 | M45-NR-11 | **Smart viewer selection**: before opening any file, check `env.findOpenViewForUri(uri)` which returns `"text" \| "markdown-preview" \| "slide" \| null`. If `"markdown-preview"` → route via `accordo_preview_internal_focusThread`. If `"slide"` → route via `accordo_presentation_goto`. If `"text"` or `null` → use `showTextDocument`. If file is not open (`null`) and the URI is `.md`, attempt accordo-preview first (command `accordo.preview.open`); if unavailable fall back to `showTextDocument`. If URI is a presentation deck (`.deck.md` or slidev convention), attempt `accordo.presentation.open` first. |
+| M45-NR-12 | Browser false-positive prevention: on browser focus failure, router MUST probe `accordo_browser_health` before showing a disconnected message. If health reports `connected: true`, message must indicate focus-routing failure (not relay disconnection). |
+| M45-NR-13 | Navigation for browser/diagram/slide surfaces must use one explicit surface→command mapping constant so command IDs are not duplicated in branch logic. |
+| M45-NR-14 | For text anchors in `.md` files, router must avoid forcing markdown preview when the active target is a slide presentation thread; slide-target hints (when present in thread metadata/context) take precedence over markdown-preview smart-viewer fallback. |
 
 **`NavigationEnv` interface (for testability):**
 

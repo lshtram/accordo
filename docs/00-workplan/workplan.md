@@ -194,7 +194,7 @@
 
 ### Priority Q — Comments Panel Navigation: Focus to Surface
 
-**Status:** Discovery (live testing, 2026-04-16)
+**Status:** Phase A complete (design + stubs + requirements/architecture alignment, 2026-04-19)
 
 **Problem:** When clicking a comment in the VS Code comments panel, the navigation to the correct surface/view is inconsistent or fails across modalities. Observed symptom: browser extension tab shows "not connected" in the comments panel even though the relay is healthy (`accordo_browser_health` returns `connected: true`).
 

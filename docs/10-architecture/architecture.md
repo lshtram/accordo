@@ -1766,22 +1766,22 @@ interface NavigationAdapterRegistry {
 
 | Surface Type | Package | Command(s) called |
 |---|---|---|
-| `slide` | `packages/marp/` | `accordo.presentation.internal.focusThread` |
-| `browser` | `packages/browser/` | `accordo_browser.focusThread` |
+| `slide` | `packages/marp/` | `accordo.presentation.internal.focusThread(uri, threadId, blockId)` |
+| `browser` | `packages/browser/` | `accordo_browser.focusThread(threadId)` |
 | `diagram` | `packages/diagram/` | `accordo_diagram_focusThread` |
 | `markdown-preview` | `packages/comments/` (navigation-router.ts) | `accordo_preview_internal_focusThread` |
 
 ### 17.5 Router Contract
 
-The comments panel router (`packages/comments/src/panel/navigation-router.ts`) uses explicit branching for most surface types, with registry-based dispatch for `browser` (primary) and `slide` (primary with deferred fallback):
+The comments panel router (`packages/comments/src/panel/navigation-router.ts`) uses explicit branching for most surface types, with registry-based dispatch for `browser` (primary) and `slide` (primary with deferred fallback). Priority Q also requires health-aware error messaging for browser routing failures (probe `accordo_browser_health` before presenting "disconnected").
 
 ```
-anchor.kind === "text"     → VS Code commands.executeCommand with PREVIEW_FOCUS_THREAD
+anchor.kind === "text"     → VS Code editor reveal path (smart-viewer only when surface hints do not indicate slide)
 anchor.kind === "surface"  → explicit switch by surfaceType:
   markdown-preview          → PREVIEW_FOCUS_THREAD command directly
   browser                  → registry.get("browser").focusThread() (primary);
-                              falls back to DEFERRED_COMMANDS.BROWSER_FOCUS_THREAD
-  slide                    → registry adapter (primary) then DEFERRED_COMMANDS fallback
+                               falls back to DEFERRED_COMMANDS.BROWSER_FOCUS_THREAD
+  slide                    → registry adapter (primary) using PRESENTATION_FOCUS_THREAD(uri, threadId, blockId), then DEFERRED_COMMANDS fallback
   diagram                  → DIAGRAM_FOCUS_THREAD command
 no adapter registered      → env.openTextDocument (generic fallback)
 ```
