@@ -1,5 +1,8 @@
 import { DEFERRED_COMMANDS, CAPABILITY_COMMANDS } from "@accordo/capabilities";
-import type { CommentThread } from "@accordo/bridge-types";
+import type { CommentAnchorText, CommentThread } from "@accordo/bridge-types";
+
+/** CommentAnchorText extended with optional blockId (used for slide-hint on text anchors) */
+type TextAnchorWithBlockId = CommentAnchorText & { blockId?: string };
 import type { NavigationDispatchPlan } from "./navigation-contract.js";
 import { buildSlideFocusArgs } from "./navigation-contract.js";
 
@@ -84,7 +87,7 @@ export function buildUnifiedThreadFocusPlan(
 
   // Text anchor — check for slide blockId hint
   if (anchor.kind === "text") {
-    const blockId = (anchor as { blockId?: string }).blockId;
+    const blockId = (anchor as TextAnchorWithBlockId).blockId;
     if (isSlideBlockId(blockId)) {
       return {
         source,
