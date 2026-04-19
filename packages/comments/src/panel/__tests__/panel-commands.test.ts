@@ -166,7 +166,7 @@ describe("M45-CMD PanelCommands", () => {
   // Phase A: navigateToThread is a stub that throws "not implemented".
   // M45-CMD-02 tests the handler registration and the Phase C contract:
   // handler must call navigateToThread(thread, navEnv, registry).
-  it("M45-CMD-02: navigateToAnchor calls router with thread from tree item", async () => {
+  it("M45-CMD-02: navigateToAnchor calls router with thread from tree item and acquired registry", async () => {
     const thread = makeThread("t1");
     registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
 
@@ -176,10 +176,25 @@ describe("M45-CMD PanelCommands", () => {
 
     expect(handler).toBeDefined();
     const item = makeTreeItem(thread);
-    // Phase A stub: navigateToThread throws — Phase C contract is that handler calls it
+
+    // Mock registry acquisition via executeCommand
+    const mockRegistry = { get: vi.fn(), register: vi.fn(), unregister: vi.fn(), dispose: vi.fn() };
+    (vsCommands.executeCommand as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockRegistry);
+
+    // Phase A stub: navigateToThread throws "not implemented"
+    // Phase C contract: handler must call navigateToThread(thread, navEnv, registry)
     await expect(handler(item)).rejects.toThrow("not implemented");
-    // When Phase C implements navigation, verify it was called:
-    // expect(navigateToThread).toHaveBeenCalledWith(thread, navEnv, registry);
+
+    // Assert registry was acquired via executeCommand
+    expect(vsCommands.executeCommand).toHaveBeenCalledWith(
+      "accordo_marp_internal_getNavigationRegistry",
+    );
+
+    // Assert navigateToThread was called with all three args: (thread, navEnv, registry)
+    // Phase C: uncomment once navigateToThread is implemented
+    // const navigateSpy = vi.spyOn(await import("../../panel/navigation-router.js"), "navigateToThread");
+    // await handler(item);
+    // expect(navigateSpy).toHaveBeenCalledWith(thread, navEnv, mockRegistry);
   });
 
   it("M45-CMD-03: resolve shows inputBox, calls store.resolve, syncs nc", async () => {
@@ -243,7 +258,7 @@ describe("M45-CMD PanelCommands", () => {
   // M45-CMD-05 tests the expected Phase C behavior of the reply handler:
   // when navigateToThread is implemented, it opens the text anchor and expands
   // the gutter widget (inline reply is handled by the inline widget, not store.reply).
-  it("M45-CMD-05: reply navigates to thread anchor — opens gutter widget for text anchors", async () => {
+  it("M45-CMD-05: reply navigates to thread anchor with acquired registry", async () => {
     const thread = makeThread("t1");
     registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
 
@@ -251,13 +266,24 @@ describe("M45-CMD PanelCommands", () => {
       ([id]: string[]) => id === "accordo.commentsPanel.reply",
     )?.[1];
 
+    // Mock registry acquisition via executeCommand
+    const mockRegistry = { get: vi.fn(), register: vi.fn(), unregister: vi.fn(), dispose: vi.fn() };
+    (vsCommands.executeCommand as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockRegistry);
+
     // Phase A stub: navigateToThread throws — Phase C will call navigateToThread
     await expect(handler(makeTreeItem(thread))).rejects.toThrow("not implemented");
-    // When Phase C implements navigateToThread, verify:
-    // expect(navEnv.showTextDocument).toHaveBeenCalled();
-    // expect(navEnv.executeCommand).toHaveBeenCalledWith(
-    //   "accordo_comments_internal_expandThread", "t1",
-    // );
+
+    // Assert registry was acquired via executeCommand
+    expect(vsCommands.executeCommand).toHaveBeenCalledWith(
+      "accordo_marp_internal_getNavigationRegistry",
+    );
+
+    // Assert navigateToThread was called with all three args: (thread, navEnv, registry)
+    // Phase C: uncomment once navigateToThread is implemented
+    // const navigateSpy = vi.spyOn(await import("../../panel/navigation-router.js"), "navigateToThread");
+    // await handler(makeTreeItem(thread));
+    // expect(navigateSpy).toHaveBeenCalledWith(thread, navEnv, mockRegistry);
+
     // Does NOT use showInputBox or store.reply (native inline widget handles the reply)
     expect(ui.showInputBox).not.toHaveBeenCalled();
     expect(store.reply).not.toHaveBeenCalled();
