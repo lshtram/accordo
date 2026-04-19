@@ -7,14 +7,19 @@
  * - dispatch is done via navigateWithPlan
  */
 
-import type * as vscode from "vscode";
-import type { CommentThread } from "@accordo/bridge-types";
+import * as vscode from "vscode";
+import type { CommentThread, CommentRange } from "@accordo/bridge-types";
 import type { NavigationAdapterRegistry } from "@accordo/capabilities";
 import {
   createNavigationAdapterRegistry,
 } from "@accordo/capabilities";
 import type { BrowserRelayHealthReader } from "./browser-relay-health.js";
-import { buildNavigationDispatchPlan } from "./navigation-contract.js";
+import {
+  buildNavigationDispatchPlan,
+} from "./navigation-contract.js";
+import {
+  CommandBackedBrowserRelayHealthReader,
+} from "./browser-relay-health.js";
 import { DEFERRED_COMMANDS } from "@accordo/capabilities";
 
 /**
@@ -71,19 +76,19 @@ export async function navigateToThread(
         // Already open in text editor — reveal the range
         await env.showTextDocument(
           parseUri(uri),
-          { selection: anchor.range as unknown as vscode.Range },
+          { selection: commentRangeToVsCodeRange(anchor.range) },
         );
       } else if (isMd) {
         // .md not open in text editor — open in text editor (not preview)
         await env.showTextDocument(
           parseUri(uri),
-          { selection: anchor.range as unknown as vscode.Range },
+          { selection: commentRangeToVsCodeRange(anchor.range) },
         );
       } else {
         // Non-.md file — always use text editor
         await env.showTextDocument(
           parseUri(uri),
-          { selection: anchor.range as unknown as vscode.Range },
+          { selection: commentRangeToVsCodeRange(anchor.range) },
         );
       }
       // Expand the gutter widget after showing the document
@@ -135,9 +140,7 @@ export async function navigateToThread(
       const deps: NavigationRouterDeps = {
         env,
         registry: adapterRegistry,
-        browserRelayHealth: {
-          readHealth: async () => ({ connected: false }),
-        },
+        browserRelayHealth: new CommandBackedBrowserRelayHealthReader(),
       };
       await navigateWithPlan(deps, thread);
       return;
@@ -204,7 +207,12 @@ export async function navigateWithPlan(
     // Delay then retry focus
     await env.delay(2000);
     if (plan.primaryCommand && plan.primaryArgs.length > 0) {
-      await env.executeCommand(plan.primaryCommand, ...plan.primaryArgs);
+      try {
+        await env.executeCommand(plan.primaryCommand, ...plan.primaryArgs);
+      } catch {
+        // retry failed — surface warning without propagating rejection
+        await env.showWarningMessage("Deck opened. Navigation may be incomplete.");
+      }
     }
   }
 }
@@ -218,12 +226,21 @@ export function getAdapterRegistry(): NavigationAdapterRegistry {
 
 // ── Internal helpers ────────────────────────────────────────────────────────
 
-/** Parse a string URI into a vscode.Uri. Uses vscode.Uri.parse at runtime. */
+/** Parse a string URI into a vscode.Uri. */
 function parseUri(uriString: string): vscode.Uri {
-  // Dynamic import to avoid type-only import of vscode that would prevent
-  // using it as a value. The require is fine here because this module is
-  // only ever imported by the VS Code extension host, never in unit tests.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const vscodeApi = require("vscode") as typeof import("vscode");
-  return vscodeApi.Uri.parse(uriString);
+  return vscode.Uri.parse(uriString);
+}
+
+/**
+ * Convert a CommentRange (startLine, startChar, endLine, endChar) into a
+ * vscode.Range. Uses vscode.Range constructor to create a properly
+ * typed Range without resorting to `as unknown as` double-casting.
+ */
+function commentRangeToVsCodeRange(range: CommentRange): vscode.Range {
+  return new vscode.Range(
+    range.startLine,
+    range.startChar,
+    range.endLine,
+    range.endChar,
+  );
 }

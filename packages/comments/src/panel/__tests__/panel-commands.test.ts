@@ -168,7 +168,7 @@ describe("M45-CMD PanelCommands", () => {
   // handler must call navigateToThread(thread, navEnv, registry).
   // NOTE: Phase C implementation calls parseUri (requires vscode) so this test is skipped.
   // The handler correctly acquires registry and calls navigateToThread — tested via integration.
-  it.skip("M45-CMD-02: navigateToAnchor calls router with thread from tree item and acquired registry", async () => {
+  it("M45-CMD-02: navigateToAnchor calls router with thread from tree item and acquired registry", async () => {
     const thread = makeThread("t1");
     registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
 
@@ -265,7 +265,7 @@ describe("M45-CMD PanelCommands", () => {
   // the gutter widget (inline reply is handled by the inline widget, not store.reply).
   // NOTE: Phase C implementation calls parseUri (requires vscode) so this test is skipped.
   // The handler correctly acquires registry and calls navigateToThread — tested via integration.
-  it.skip("M45-CMD-05: reply navigates to thread anchor with acquired registry", async () => {
+  it("M45-CMD-05: reply navigates to thread anchor with acquired registry", async () => {
     const thread = makeThread("t1");
     registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
 
