@@ -189,6 +189,8 @@ Group modes (controlled by `PanelFilters.groupMode`):
 | M45-NR-12 | Browser false-positive prevention: on browser focus failure, router MUST probe `accordo_browser_health` before showing a disconnected message. If health reports `connected: true`, message must indicate focus-routing failure (not relay disconnection). |
 | M45-NR-13 | Navigation for browser/diagram/slide surfaces must use one explicit surface→command mapping constant so command IDs are not duplicated in branch logic. |
 | M45-NR-14 | For text anchors in `.md` files, router must avoid forcing markdown preview when the active target is a slide presentation thread; slide-target hints (when present in thread metadata/context) take precedence over markdown-preview smart-viewer fallback. |
+| M45-NR-15 | Any comment-thread focus action that originates from the native comment UI (`accordo.comments.focusInPreview`) must delegate to the same navigation-dispatch planner used by `navigateToThread`, so slide anchors never route through markdown-preview focus by accident |
+| M45-NR-16 | Slide-target dispatch parity: user-authored and agent-authored slide threads must resolve to the same focus command tuple `accordo.presentation.internal.focusThread(uri, threadId, blockId)` |
 
 **`NavigationEnv` interface (for testability):**
 

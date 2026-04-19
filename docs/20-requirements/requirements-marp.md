@@ -190,6 +190,7 @@ MCP tools exposed to agents use underscores (`accordo_presentation_*`) matching 
 | M50-PVD-15 | Webview handles `comments:load`, `comments:add`, `comments:update`, `comments:remove`, `comments:focus` messages from host (same protocol as md-viewer) |
 | M50-PVD-16 | `comments:focus` handler navigates to the target slide (if not current) and calls `sdk.openPopover(threadId)` |
 | M50-PVD-17 | Alt+click on the active slide captures normalized (0–1) coordinates, encodes blockId via `slide:{slideIndex}:{x}:{y}`, and invokes `callbacks.onCreate` |
+| M50-PVD-18 | `comments:focus` validates parsed slide indices before calling `goTo()`. Invalid indices (`NaN`, non-finite, out of range) must no-op without mutating active-slide state |
 
 ### M50-FOCUS — Presentation Focus Command
 
@@ -202,6 +203,7 @@ MCP tools exposed to agents use underscores (`accordo_presentation_*`) matching 
 | M50-FOCUS-03 | Ensures the deck is open (calls `accordo.presentation.open` if needed) |
 | M50-FOCUS-04 | Parses `slideIndex` from `blockId`, navigates to that slide |
 | M50-FOCUS-05 | Posts `{ type: 'comments:focus', threadId, blockId }` to the webview after navigation settling |
+| M50-FOCUS-06 | Compares deck identity using normalized URI semantics (`file:///` vs fsPath). Canonically-equal deck references must not force `closeSession()` + reopen during focus |
 
 ### M50-CBR — Comments Bridge
 
