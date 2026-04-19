@@ -20,11 +20,26 @@ export interface BrowserRelayHealthReader {
 }
 
 /**
- * Stub implementation to be replaced in Phase C.
+ * Phase C implementation — calls accordo_browser_health via VS Code commands API.
  */
 export class CommandBackedBrowserRelayHealthReader
 implements BrowserRelayHealthReader {
   async readHealth(): Promise<BrowserRelayHealth> {
-    throw new Error("not implemented");
+    try {
+      const result = await executeCommand("accordo_browser_health");
+      if (typeof result === "object" && result !== null && "connected" in result) {
+        return { connected: Boolean((result as { connected: boolean }).connected) };
+      }
+      return { connected: false };
+    } catch {
+      return { connected: false };
+    }
   }
+}
+
+/** Wraps vscode.commands.executeCommand to allow unit testing */
+async function executeCommand(command: string, ...args: unknown[]): Promise<unknown> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const vscode = require("vscode") as typeof import("vscode");
+  return vscode.commands.executeCommand(command, ...args);
 }
