@@ -3,7 +3,7 @@
 **Package:** `accordo-hub`  
 **Type:** npm package (standalone Node.js process)  
 **Version:** 0.1.0  
-**Date:** 2026-03-02
+**Date:** 2026-04-21
 
 ---
 
@@ -145,7 +145,16 @@ Group 1:
 | Behaviour | Hub atomically updates `ACCORDO_BRIDGE_SECRET` and `ACCORDO_TOKEN` in memory. The WebSocket server immediately begins accepting the new secret. Active agent MCP sessions are **not disrupted**. If `tokenFilePath` is configured (default: `~/.accordo/token`), the new token is persisted to that file; otherwise it remains memory-only. |
 | Use case | Bridge calls this before reconnecting with a new secret, avoiding a Hub kill-and-respawn that would disrupt in-flight CLI agent sessions. |
 
-### 2.7 IDE State Debug Endpoint — `GET /state`
+### 2.7 Graceful Bridge Disconnect — `POST /bridge/disconnect`
+
+| Aspect | Requirement |
+|---|---|
+| Method | `POST` |
+| Authentication | `x-accordo-secret: <current-secret>` header. 401 if wrong. |
+| Response | `200 OK` with `{ "ok": true, "graceWindowMs": 10000 }` |
+| Behaviour | Starts hub-side grace timer for reconnect-first flow. If no Bridge reconnects during the grace window, Hub exits. A reconnect cancels the timer. |
+
+### 2.8 IDE State Debug Endpoint — `GET /state`
 
 | Aspect | Requirement |
 |---|---|
@@ -156,6 +165,16 @@ Group 1:
 | Response body | Current `IDEState` snapshot as pretty-printed JSON. |
 
 **Comment Threads enrichment (M43):** When `state.modalities["accordo-comments"]` contains a `threads` field (array of `CommentThread`), the response body includes an additional top-level `commentThreads` key equal to that array. This exposes un-truncated thread data for tooling without changing the `IDEState` wire schema. When the modality is absent or has no `threads` array, `commentThreads` is omitted from the response.
+
+### 2.9 Browser Relay Status — `GET /browser/status`
+
+| Aspect | Requirement |
+|---|---|
+| Method | `GET` |
+| Authentication | `Authorization: Bearer <ACCORDO_TOKEN>` required. 401 if missing/invalid. |
+| Response Content-Type | `application/json` |
+| Cache | `Cache-Control: no-cache` |
+| Response body | `{ "connected": <boolean>, "controlGranted": <boolean> }` sourced from `state.modalities["accordo-browser"]` defaults. |
 
 ---
 
@@ -168,7 +187,7 @@ Group 1:
 interface InvokeMessage {
   type: "invoke";
   id: string;                        // UUID v4
-  tool: string;                      // "accordo.editor.open"
+  tool: string;                      // "accordo_editor_open"
   args: Record<string, unknown>;
   timeout: number;                   // milliseconds
 }
@@ -260,7 +279,7 @@ interface IDEState {
 
 ```typescript
 interface ToolRegistration {
-  name: string;                      // "accordo.editor.open"
+  name: string;                      // "accordo_editor_open"
   description: string;               // one-liner for prompt
   inputSchema: {                     // JSON Schema object
     type: "object";
@@ -297,14 +316,14 @@ interface ToolRegistration {
 | Variable | Purpose |
 |---|---|
 | `ACCORDO_HUB_PORT` | Override for `--port`. CLI flag wins. |
-| `ACCORDO_TOKEN` | Bearer token for HTTP auth. Set by Bridge on Hub spawn. Hub holds it in memory; if `tokenFilePath` is configured (default: `~/.accordo/token`) the rotated token is written there on reauth. |
+| `ACCORDO_TOKEN` | Bearer token for HTTP auth. Set by Bridge on Hub spawn. Hub holds active token in memory; if `tokenFilePath` is configured (default: `~/.accordo/token`) the rotated token is written there on reauth. |
 | `ACCORDO_BRIDGE_SECRET` | Shared secret for WS auth. Set by Bridge on spawn. Rotates every time Hub is (re)spawned or when `/bridge/reauth` is called. |
 | `ACCORDO_REGISTRY_PATH` | Override for `--registry`. Path to `hubs.json`. `--registry` CLI flag wins when both are set. |
 | `ACCORDO_LOG_DIR` | Directory for log files. Default: `~/.accordo/logs/` |
 | `ACCORDO_AUDIT_FILE` | Audit log path. Default: `~/.accordo/audit.jsonl` |
 | `ACCORDO_MAX_CONCURRENT_INVOCATIONS` | Maximum in-flight tool invocations Hub-wide across all agents. Default: `16`. |
 
-**File permissions:** Hub creates `~/.accordo/` with mode `0700` if it does not exist, but only when audit logging or log files are configured. No token, PID, or port files are written. See `multi-session-architecture.md` §8.
+**File permissions:** Hub creates `~/.accordo/` with mode `0700` when writing logs/registry/token files. Hub does not write PID/port files.
 
 ---
 
@@ -332,7 +351,7 @@ interface ToolRegistration {
 
 | Method | Signature | Description |
 |---|---|---|
-| `render` | `(state: IDEState, tools: ToolRegistration[]) → string` | Render system prompt markdown. All registered tools are included in the tool summary section regardless of `group` field. The `group` field is metadata only (not used for filtering). |
+| `renderPrompt` | `(state: IDEState, tools: ToolRegistration[]) → string` | Render system prompt markdown. All registered tools are included in the tool summary section regardless of `group` field. The `group` field is metadata only (not used for filtering). |
 | `estimateTokens` | `(text: string) → number` | Approximate token count (`chars / 4`). Apply a **10% safety margin**: treat the effective budget as 1,350 tokens (not 1,500) to account for tokenizer variance on code-heavy content. |
 
 ### 5.4 Bridge Server (`bridge-server.ts`)
@@ -362,9 +381,9 @@ interface ToolRegistration {
 | Method | Signature | Description |
 |---|---|---|
 | `validateOrigin` | `(req: http.IncomingMessage) → boolean` | Check Origin header. Return true if absent or localhost. |
-| `validateBearer` | `(req: http.IncomingMessage) → boolean` | Check Authorization header against ACCORDO_TOKEN. |
-| `validateBridgeSecret` | `(req: http.IncomingMessage) → boolean` | Check x-accordo-secret against ACCORDO_BRIDGE_SECRET. |
-| `generateToken` | `() → string` | Generate and persist a new bearer token. |
+| `validateBearer` | `(req: http.IncomingMessage, token: string) → boolean` | Check Authorization header against ACCORDO_TOKEN. |
+| `validateBridgeSecret` | `(req: http.IncomingMessage, secret: string) → boolean` | Check x-accordo-secret against ACCORDO_BRIDGE_SECRET. |
+| `generateToken` | `() → string` | Generate a new random bearer token string. |
 
 ---
 
@@ -374,7 +393,7 @@ interface ToolRegistration {
 |---|---|
 | Bridge not connected when tool call arrives | Return MCP error: `{ code: -32603, message: "Bridge not connected" }` |
 | Tool not found in registry | Return MCP error: `{ code: -32601, message: "Unknown tool: <name>" }` |
-| Tool invocation times out | Return MCP error: `{ code: -32001, message: "Tool invocation timed out" }` |
+| Tool invocation times out | Return timeout-class error (`-32000`) / tool-call timeout result (`isError`) depending on call path |
 | Invocation queue full | Return MCP error: `{ code: -32004, message: "Server busy — invocation queue full" }` |
 | Invalid JSON-RPC request | Return JSON-RPC error: `{ code: -32600, message: "Invalid request" }` |
 | Invalid MCP session | Return HTTP 400 with `{ error: "Invalid or expired session" }` |
@@ -450,5 +469,5 @@ interface AuditEntry {
 | Integration: MCP Streamable HTTP | initialize → tools/list → tools/call → result |
 | Integration: MCP stdio | same flow over stdin/stdout |
 | Integration: WebSocket lifecycle | connect → stateSnapshot → stateUpdate → invoke → result → disconnect → reconnect |
-| Integration: heartbeat | ping → pong, missed pong → disconnect detection |
+| Integration: heartbeat | ping emission + pong handling on active Bridge socket |
 | E2E: Full stack | Hub + Bridge + Editor tools → agent tool call → editor action |

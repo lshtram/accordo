@@ -24,5 +24,7 @@
 - `docs/testing-guide-diagram.md`
 - `docs/testing-guide-bridge.md`
 - `docs/testing-guide-bridge-types.md`
+- `docs/testing-guide-global-docs.md`
+- `docs/testing-guide-hub.md`
 
 These root-level guides are transitional and should be moved or mirrored under `docs/40-testing/` in future cleanup batches.

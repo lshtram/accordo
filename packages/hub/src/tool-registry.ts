@@ -110,7 +110,12 @@ export class ToolRegistry {
 
   /**
    * Return all registered tools (Hub-native + Bridge).
-   * Hub-native tools appear first.
+   *
+   * Merge semantics:
+   * - Bridge tools are loaded first.
+   * - Hub-native tools overwrite same-name Bridge tools on collision.
+   * - Iteration order remains insertion-order based; this method does not
+   *   guarantee Hub-native tools appear first.
    */
   list(): ToolRegistration[] {
     const merged = new Map<string, ToolRegistration>();

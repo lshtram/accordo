@@ -1,7 +1,7 @@
 # ADR: Reconnect-First Hub Lifecycle (Reload Survival)
 
 **Date:** 2026-04-05  
-**Status:** Proposed  
+**Status:** Accepted (Implemented)  
 **Module:** `packages/bridge`, `packages/hub`, `packages/bridge-types`
 
 ---

@@ -8,7 +8,6 @@
  *
  * Requirements: adr-reload-reconnect.md §D1
  *
- * NOTE: This is a STUB file. All methods throw "not implemented".
  */
 
 // ─── Types ──────────────────────────────────────────────────────────────────

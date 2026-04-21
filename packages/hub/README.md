@@ -59,8 +59,8 @@ curl http://localhost:3000/health
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/health` | None | Health check with bridge status |
-| POST | `/mcp` | Bearer token | MCP Streamable HTTP endpoint |
-| GET | `/mcp` | Bearer token | SSE notification stream for MCP clients |
+| POST | `/mcp` | Bearer token | MCP JSON-RPC endpoint (Streamable HTTP transport) |
+| GET | `/mcp` | Bearer token | SSE notification stream (server notifications such as `notifications/tools/list_changed`) |
 | GET | `/instructions` | Bearer token | System prompt for agent consumption |
 | GET | `/state` | Bearer token | Current IDE state snapshot |
 | POST | `/bridge/reauth` | Bridge secret | Credential rotation endpoint |
@@ -84,7 +84,7 @@ AI Agent ─── POST /mcp ───► Hub ─── WebSocket ───► B
 - **MCP protocol**: Full MCP support over HTTP and stdio transports
 - **State caching**: IDE state cached in Hub, delivered via system prompt
 - **Concurrency control**: 16-slot concurrent invocation limit with 64-deep FIFO queue
-- **Grace window**: 10s hold on Bridge disconnect; self-terminates if no reconnect; reconnect cancels timer
+- **Reconnect-first grace window**: 10s hold on Bridge disconnect via `/bridge/disconnect`; self-terminates if no reconnect; reconnect cancels timer
 - **Flood protection**: Rate-limited WebSocket messages (configurable per-second limit)
 - **Message size limit**: Configurable max WebSocket payload size
 - **Idempotent retry**: Tools marked `idempotent: true` are retried once on timeout
@@ -95,14 +95,14 @@ AI Agent ─── POST /mcp ───► Hub ─── WebSocket ───► B
 
 ```bash
 pnpm build         # Compile TypeScript
-pnpm test          # Run 552 tests
+pnpm test          # Run 555 tests
 pnpm typecheck     # Type-check without emitting
 pnpm test:watch    # Watch mode
 ```
 
 ## Tests
 
-552 unit and integration tests covering:
+555 unit and integration tests covering:
 - Security middleware (token, origin, bridge secret validation)
 - State cache (snapshots, patches, modality clearing)
 - Tool registry (registration, lookup, metrics)
