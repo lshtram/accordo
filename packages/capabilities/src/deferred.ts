@@ -1,9 +1,9 @@
 /**
  * @accordo/capabilities — deferred contracts
  *
- * Deferred interfaces that are reserved for future module batches.
- * These are NOT part of the active public surface of @accordo/capabilities.
- * They must NOT be implemented as active contracts outside this file.
+ * Deferred interfaces reserved for non-stable capability pathways.
+ * They may be re-exported as types from package root, but remain explicitly
+ * outside the stable active capability set.
  *
  * Source: capabilities-foundation-phase-a.md §3.2
  */
@@ -11,7 +11,7 @@
 
 
 /**
- * PresentationCapability — to be registered by accordo-marp (not yet wired).
+ * PresentationCapability — deferred presentation contract.
  *
  * Navigate to a slide and/or focus a comment thread in the presentation webview.
  *
@@ -37,7 +37,7 @@ export interface PresentationCapability {
 }
 
 /**
- * BrowserCapability — to be registered by accordo-browser (not yet wired).
+ * BrowserCapability — deferred browser-focus contract.
  *
  * Focus a comment thread in the Chrome browser extension popup/content script.
  *

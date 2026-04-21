@@ -1,6 +1,6 @@
 # Capabilities Foundation — Phase A Source of Truth
 
-**Status:** Proposed Phase A design for implementation gating  
+**Status:** Implemented baseline rules (reference for ongoing cleanup)  
 **Authority:** This document is the single source of truth for the capabilities-foundation batch.  
 **Related docs:**
 - `docs/30-development/modularity.md` — repo-wide governance rules
@@ -82,7 +82,7 @@ These may exist as placeholders but are explicitly not active.
 | Category | Deferred set | Rule | Target batch |
 |---|---|---|---|
 | Command IDs | `PRESENTATION_GOTO`, `PRESENTATION_FOCUS_THREAD`, `BROWSER_FOCUS_THREAD` | Must live in `DEFERRED_COMMANDS`, not `CAPABILITY_COMMANDS` | Presentation / Browser follow-up |
-| Interfaces | `PresentationCapability`, `BrowserCapability` | May exist in `deferred.ts`; must not be exported from package root as active contracts | Presentation / Browser follow-up |
+| Interfaces | `PresentationCapability`, `BrowserCapability` | Must live in `deferred.ts`; package-root type re-export is allowed, but they remain deferred (non-stable) contracts | Presentation / Browser follow-up |
 | Helpers | typed runtime wrapper `invoke<K>()` | Deferred utility only, not needed for foundation | later utility batch |
 
 ### 3.3 Not allowed in foundation
@@ -149,7 +149,7 @@ This is the expected output of the capabilities-foundation implementation batch.
 | Deferred capability constants | `packages/capabilities/src/index.ts` exports `DEFERRED_COMMANDS` separately |
 | Stable interfaces | `packages/capabilities/src/index.ts` exports only the stable interfaces listed in §3.1 |
 | Navigation registry factory | `packages/capabilities/src/navigation.ts` exports `createNavigationAdapterRegistry()` — the sole permitted runtime factory |
-| Deferred interfaces | `packages/capabilities/src/deferred.ts` contains deferred interfaces and is not part of active public surface |
+| Deferred interfaces | `packages/capabilities/src/deferred.ts` contains deferred interfaces; root may type-export them, but they remain outside the stable active set |
 | Capability map test | `packages/capabilities/src/__tests__/capability-commands.test.ts` exists |
 | Legacy deprecations | TSDoc `@deprecated` added in the two locations listed in §4 |
 | CI / script checks | G1–G10 commands are runnable and documented in repo automation or scripts |

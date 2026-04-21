@@ -15,7 +15,8 @@
  *   - BrowserCapability     — browser focus capability (from deferred.ts)
  *   - CapabilityCommandMap  — maps each stable command to args tuple + return type
  *
- * No runtime code — purely types and constants.
+ * Runtime scope is intentionally minimal: types/constants + navigation registry
+ * factory re-export (`createNavigationAdapterRegistry`).
  * Import types from @accordo/bridge-types where they already exist.
  */
 
@@ -275,9 +276,9 @@ export { createNavigationAdapterRegistry } from "./navigation.js";
 export type { NavigationAdapterRegistry, NavigationAdapter, NavigationEnv } from "./navigation.js";
 
 // ─── Deferred Capability Re-exports ───────────────────────────────────────────
-// PresentationCapability and BrowserCapability live in deferred.ts to keep them
-// off the stable public surface. Re-export here for consumers that import them
-// from @accordo/capabilities directly.
+// PresentationCapability and BrowserCapability live in deferred.ts and are
+// deferred contracts (not part of the stable active set). They are re-exported
+// as types from package root for convenience/discoverability.
 
 export type { PresentationCapability } from "./deferred.js";
 export type { BrowserCapability } from "./deferred.js";

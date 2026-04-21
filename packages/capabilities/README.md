@@ -21,7 +21,7 @@ The package exports two command constant namespaces:
 | `CAPABILITY_COMMANDS` | 8 stable commands (comments, preview, diagram) | Active — consumers must use these |
 | `DEFERRED_COMMANDS` | 3 deferred commands (presentation, browser focus) | Deferred — for fallback invocation only |
 
-Three interfaces are also deferred and live in `deferred.ts` (not re-exported from package root as active contracts):
+Two interfaces are deferred and live in `deferred.ts` (type-exported from package root for convenience, but still deferred/non-stable contracts):
 
 - `PresentationCapability`
 - `BrowserCapability`
@@ -29,7 +29,7 @@ Three interfaces are also deferred and live in `deferred.ts` (not re-exported fr
 ## Command naming conventions
 
 **MCP tool names** use underscores: `accordo_<modality>_<action>`
-e.g. `accordo_presentation_open`, `accordo_comments_get_store`
+e.g. `accordo_presentation_open`, `accordo_comment_list`
 
 **Internal VS Code command names** use dots or underscores with `internal` segment:
 e.g. `accordo.presentation.open`, `accordo_comments_internal_getStore`, `accordo_presentation_internal_goto`

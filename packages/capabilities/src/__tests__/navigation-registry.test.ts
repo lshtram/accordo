@@ -14,8 +14,8 @@
  *   ✓ NavigationAdapterRegistry.dispose — 2 tests
  *
  * These tests verify the registry implementation matches the frozen contract.
- * The factory + basic lifecycle tests PASS against the current implementation.
- * The structural/adapter tests FAIL because accordo-marp doesn't register an adapter yet.
+ * The registry lifecycle and contract tests validate current implementation
+ * guarantees only (no assumptions about specific surface registration timing).
  */
 
 import { describe, it, expect, vi } from "vitest";

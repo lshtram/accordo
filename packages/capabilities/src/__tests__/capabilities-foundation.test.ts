@@ -9,7 +9,7 @@
  * - REQ-3 (§3.2 table): DEFERRED_COMMANDS exists with correct canonical string values
  * - REQ-4 (§3.1 rule):  CapabilityCommandMap has exactly the 8 stable command keys (set equality)
  * - REQ-5 (§3.1 table): Stable interfaces exported with correct method signatures
- * - REQ-6 (§3.2 rule):  Deferred interfaces NOT exported from package root
+ * - REQ-6 (§3.2 rule):  Deferred interfaces are not declared as active root interfaces
  * - REQ-7 (§3.2 table): deferred.ts exists and exports deferred interfaces
  * - REQ-8/G8 (§3.3 + §5 G8): Package is runtime-free (no vscode, exact allowed deps)
  */
@@ -614,18 +614,19 @@ describe("CAPABILITIES-REQ-5: Stable interfaces with correct signatures", () => 
   }
 });
 
-// ─── REQ-6: Deferred interfaces NOT exported from package root ─────────────────
+// ─── REQ-6: Deferred interfaces not declared as active root interfaces ──────────
 /**
  * Source: Phase A §3.2 rule
- * Deferred interfaces must NOT appear as exports in index.ts.
+ * Deferred interfaces must not be declared as `export interface` in index.ts.
+ * (Type-only re-export from deferred.ts is allowed.)
  */
-describe("CAPABILITIES-REQ-6: Deferred interfaces NOT exported from package root", () => {
+describe("CAPABILITIES-REQ-6: Deferred interfaces not declared as active root interfaces", () => {
   for (const iface of DEFERRED_INTERFACES) {
-    it(`RE6-${iface}: ${iface} is NOT exported from index.ts`, () => {
+    it(`RE6-${iface}: ${iface} is not declared in index.ts`, () => {
       const source = readFileSync(CAPABILITIES_SRC, "utf-8");
       expect(
         hasActualExport(source, `export interface ${iface}`),
-        `${iface} must NOT be exported from index.ts — it belongs in deferred.ts`
+        `${iface} must not be declared via export interface in index.ts — it belongs in deferred.ts`
       ).toBe(false);
     });
   }

@@ -11,9 +11,9 @@ Verifies the capabilities foundation contract surface.
   - checks stable vs deferred command separation
   - checks deferred commands live in `DEFERRED_COMMANDS`
   - checks stable interfaces remain on the active package surface
-  - checks deferred interfaces live outside the active root surface
+  - checks deferred interfaces remain deferred contracts (type re-export allowed; no active root declarations)
   - checks interface signatures stay frozen
-  - checks the package remains runtime-free
+  - checks the package runtime scope stays minimal (no vscode imports; no runtime dependency creep)
 
 ### `pnpm --filter @accordo/capabilities build`
 Verifies the capabilities package compiles cleanly with the approved public contract split.
