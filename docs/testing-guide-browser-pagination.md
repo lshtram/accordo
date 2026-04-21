@@ -26,7 +26,7 @@ Behavior implemented:
 ## Prerequisites
 
 1. Browser package dependencies installed
-2. Run commands from: `/data/projects/accordo/packages/browser`
+2. Run commands from the repository root
 
 ---
 
@@ -35,8 +35,7 @@ Behavior implemented:
 ### 1a. Pagination-focused browser tests
 
 ```bash
-cd /data/projects/accordo/packages/browser
-pnpm exec vitest run src/__tests__/text-map-tool.test.ts src/__tests__/page-understanding-tools.test.ts
+pnpm --filter accordo-browser exec vitest run src/__tests__/text-map-tool.test.ts src/__tests__/page-understanding-tools.test.ts
 ```
 
 **Expected:** 193 tests pass across 2 files. 0 failures.
@@ -48,8 +47,7 @@ This command covers the pagination feature directly.
 Run with:
 
 ```bash
-cd /data/projects/accordo/packages/browser
-pnpm exec vitest run src/__tests__/text-map-tool.test.ts
+pnpm --filter accordo-browser exec vitest run src/__tests__/text-map-tool.test.ts
 ```
 
 Pagination coverage in this file:
@@ -81,8 +79,7 @@ Pagination coverage in this file:
 Run with:
 
 ```bash
-cd /data/projects/accordo/packages/browser
-pnpm exec vitest run src/__tests__/page-understanding-tools.test.ts
+pnpm --filter accordo-browser exec vitest run src/__tests__/page-understanding-tools.test.ts
 ```
 
 Pagination coverage in this file:
@@ -112,8 +109,7 @@ Pagination coverage in this file:
 ### 1b. Browser-extension relay pagination regression tests
 
 ```bash
-cd /data/projects/accordo/packages/browser-extension
-pnpm exec vitest run tests/relay-page-map-frames.test.ts
+pnpm --filter browser-extension exec vitest run tests/relay-page-map-frames.test.ts
 ```
 
 **Expected:** 16 tests pass in 1 file. 0 failures.
@@ -128,30 +124,27 @@ Pagination coverage in this file:
 ### 1c. Full browser package regression suite
 
 ```bash
-cd /data/projects/accordo/packages/browser
-pnpm test -- --run
+pnpm --filter accordo-browser test
 ```
 
-**Expected:** 1084 tests pass across 37 files. 0 failures.
+**Expected:** 1142 tests pass across 41 files. 0 failures.
 
 Verifies the pagination work does not regress unrelated browser tools.
 
 ### 1d. Full browser-extension regression suite
 
 ```bash
-cd /data/projects/accordo/packages/browser-extension
-pnpm test -- --run
+pnpm --filter browser-extension test
 ```
 
-**Expected:** 1255 tests pass across 50 files. 0 failures.
+**Expected:** 1271 tests pass across 52 files. 0 failures.
 
 Verifies the pagination work does not regress other browser-extension relay and collector behavior.
 
 ### 1e. Type checker
 
 ```bash
-cd /data/projects/accordo/packages/browser
-pnpm typecheck
+pnpm --filter accordo-browser typecheck
 ```
 
 **Expected:** exits 0. Zero TypeScript errors.
@@ -161,8 +154,7 @@ Verifies the new pagination types and handler changes are type-safe.
 ### 1f. Linter
 
 ```bash
-cd /data/projects/accordo/packages/browser
-pnpm lint
+pnpm --filter accordo-browser lint
 ```
 
 **Expected:** exits 0. No lint errors.

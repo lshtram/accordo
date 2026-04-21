@@ -16,7 +16,7 @@ The Shared Browser Relay allows multiple VS Code windows to share a single Chrom
 
 ## Prerequisites
 
-1. **Package built:** `cd packages/browser && pnpm build`
+1. **Package built:** `pnpm --filter accordo-browser build`
 2. For user journey tests: Full system deployed — Hub process running, Bridge connected, `accordo-browser` extension loaded in VS Code
 
 ---
@@ -26,31 +26,29 @@ The Shared Browser Relay allows multiple VS Code windows to share a single Chrom
 ### 1a. Run all shared-relay module tests
 
 ```bash
-cd /data/projects/accordo/packages/browser
-pnpm test -- --run src/__tests__/relay-discovery.test.ts \
-                    src/__tests__/shared-relay-server.test.ts \
-                    src/__tests__/shared-relay-client.test.ts \
-                    src/__tests__/write-lease.test.ts \
-                    src/__tests__/relay-onrelay.test.ts \
-                    src/__tests__/shared-relay-feature-flag.test.ts
+pnpm --filter accordo-browser exec vitest run \
+  src/__tests__/relay-discovery.test.ts \
+  src/__tests__/shared-relay-server.test.ts \
+  src/__tests__/shared-relay-client.test.ts \
+  src/__tests__/write-lease.test.ts \
+  src/__tests__/relay-onrelay.test.ts \
+  src/__tests__/shared-relay-feature-flag.test.ts
 ```
 
-**Expected:** 111 tests pass across 6 files. 0 failures.
+**Expected:** 116 tests pass across 6 files. 0 failures.
 
 ### 1b. Run the full browser package test suite
 
 ```bash
-cd /data/projects/accordo/packages/browser
-pnpm test -- --run
+pnpm --filter accordo-browser test
 ```
 
-**Expected:** 928 tests pass (33 test files). 0 failures.
+**Expected:** 1142 tests pass (41 test files). 0 failures.
 
 ### 1c. Type checker
 
 ```bash
-cd /data/projects/accordo/packages/browser
-pnpm exec tsc --noEmit
+pnpm --filter accordo-browser typecheck
 ```
 
 **Expected:** exits 0. Zero TypeScript errors.
@@ -58,8 +56,7 @@ pnpm exec tsc --noEmit
 ### 1d. Linter
 
 ```bash
-cd /data/projects/accordo/packages/browser
-pnpm run lint
+pnpm --filter accordo-browser lint
 ```
 
 **Expected:** No lint errors or warnings.

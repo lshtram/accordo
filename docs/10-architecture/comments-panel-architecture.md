@@ -141,7 +141,7 @@ Pure async function module. No class, no state. Takes a `CommentThread` and exec
 
 **Error contract:** All navigation errors are caught. On failure, `vscode.window.showWarningMessage('Could not navigate to thread: <message>')`. The function never throws.
 
-**Current navigation model:** The router uses explicit command-dispatch planning (`buildNavigationDispatchPlan`) and does not require runtime registry acquisition for primary paths. Browser navigation uses `accordo_browser_focusThread` with an explicit `accordo_browser_health` probe; markdown preview uses `accordo_preview_internal_focusThread`; slide uses `accordo.presentation.internal.focusThread` with delayed fallback/retry. Generic `showTextDocument(uri)` fallback remains for unknown or non-surface anchors.
+**Current navigation model:** The router uses explicit command-dispatch planning (`buildNavigationDispatchPlan`) and does not require runtime registry acquisition for primary paths. Browser navigation uses `accordo_browser.focusThread` with an explicit `accordo_browser_health` probe; markdown preview uses `accordo_preview_internal_focusThread`; slide uses `accordo.presentation.internal.focusThread` with delayed fallback/retry. Generic `showTextDocument(uri)` fallback remains for unknown or non-surface anchors.
 
 **Reply UX:** The panel's `Reply` command uses the same registry-backed navigation as `navigateToAnchor` — it opens the anchor surface (text editor, slide deck, etc.) and the user replies via the native input UI at that surface. This is intentionally different from `showInputBox` (which would place a dialog at the top of the screen). In-context reply preserves spatial context and is the correct behavior for spatial comments.
 

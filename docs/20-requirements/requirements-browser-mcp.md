@@ -3,7 +3,7 @@
 **Scope:** `accordo_browser_*` MCP tools — the agent-facing page understanding, interaction, and visual capture surface  
 **Type:** Consolidated requirements for the MCP-visible browser tool surface  
 **Version:** 0.2.0  
-**Date:** 2026-04-04 (revised)  
+**Date:** 2026-04-21 (revised)  
 **Evaluation checklist:** [`docs/30-development/mcp-webview-agent-evaluation-checklist.md`](../30-development/mcp-webview-agent-evaluation-checklist.md)  
 **Evaluation results:** [`docs/50-reviews/M110-TC-browser-tools-evaluation.md`](../50-reviews/M110-TC-browser-tools-evaluation.md)  
 **Improvement plan:** [`docs/50-reviews/M110-TC-improvement-plan.md`](../50-reviews/M110-TC-improvement-plan.md)
@@ -72,28 +72,28 @@ All browser MCP tools use the `accordo_browser_*` naming convention (underscore-
 > **Context:** The M110-TC evaluation scored Visual Capture at 3/5. E1 (viewport) and E2 (full-page) screenshots are missing from the `accordo_browser_*` surface. Only region capture exists.
 
 **MCP-VC-001: Viewport screenshot mode**  
-`browser_capture_region` MUST accept an optional `mode` parameter with value `"viewport"`. When `mode: "viewport"`, the tool captures the currently visible browser viewport without requiring a bounding box or element target. The `rect`, `anchorKey`, and `nodeRef` parameters are ignored in this mode.  
+`accordo_browser_capture_region` MUST accept an optional `mode` parameter with value `"viewport"`. When `mode: "viewport"`, the tool captures the currently visible browser viewport without requiring a bounding box or element target. The `rect`, `anchorKey`, and `nodeRef` parameters are ignored in this mode.  
 **Acceptance:** `capture_region(mode: "viewport")` returns a JPEG/PNG data URL of the full visible viewport with `width` and `height` matching `viewport.width` and `viewport.height`.
 
 **MCP-VC-002: Full-page screenshot mode**  
-`browser_capture_region` MUST accept `mode: "fullPage"`. When `mode: "fullPage"`, the tool captures the entire scrollable page area. Implementation may use CDP `Page.captureScreenshot` with `captureBeyondViewport: true` via the relay's existing connection.  
+`accordo_browser_capture_region` MUST accept `mode: "fullPage"`. When `mode: "fullPage"`, the tool captures the entire scrollable page area. Implementation may use CDP `Page.captureScreenshot` with `captureBeyondViewport: true` via the relay's existing connection.  
 **Acceptance:** `capture_region(mode: "fullPage")` returns a data URL with height exceeding the viewport height on a scrollable page. Max output dimension limits (CR-F-09) still apply.
 
 **MCP-VC-003: Default mode is region (backward-compatible)**  
-When `mode` is omitted, `browser_capture_region` MUST behave exactly as today — requiring `rect`, `anchorKey`, or `nodeRef`. This is equivalent to `mode: "region"`.  
+When `mode` is omitted, `accordo_browser_capture_region` MUST behave exactly as today — requiring `rect`, `anchorKey`, or `nodeRef`. This is equivalent to `mode: "region"`.  
 **Acceptance:** All existing tests pass without modification. Existing callers that omit `mode` see no behavior change.
 
 **MCP-VC-004: PNG format support**  
-`browser_capture_region` MUST accept an optional `format` parameter: `"jpeg"` (default) or `"png"`. When `format: "png"`, the output data URL uses `image/png` encoding. Quality parameter is ignored for PNG (lossless). WebP is deferred.  
+`accordo_browser_capture_region` MUST accept an optional `format` parameter: `"jpeg"` (default) or `"png"`. When `format: "png"`, the output data URL uses `image/png` encoding. Quality parameter is ignored for PNG (lossless). WebP is deferred.  
 **Acceptance:** `capture_region(format: "png")` returns a `data:image/png;base64,...` data URL.
 
 **MCP-VC-005: Redaction warning on screenshot responses**  
-When a `RedactionPolicy` is configured (i.e., `redactPatterns` is non-empty), ALL screenshot responses from `browser_capture_region` (in any `mode`: region, viewport, or fullPage) MUST include a `redactionWarning` field with value `"screenshots-not-subject-to-redaction-policy"`. This makes explicit that screenshot content has not been redacted, even though text-producing tools apply redaction. When no `RedactionPolicy` is configured, the field is omitted.  
+When a `RedactionPolicy` is configured (i.e., `redactPatterns` is non-empty), ALL screenshot responses from `accordo_browser_capture_region` (in any `mode`: region, viewport, or fullPage) MUST include a `redactionWarning` field with value `"screenshots-not-subject-to-redaction-policy"`. This makes explicit that screenshot content has not been redacted, even though text-producing tools apply redaction. When no `RedactionPolicy` is configured, the field is omitted.  
 **Acceptance:** With a `RedactionPolicy` containing at least one pattern, `capture_region(mode: "viewport")` response includes `redactionWarning: "screenshots-not-subject-to-redaction-policy"`. Without a policy, the field is absent.  
 **Cross-reference:** B2-PS-007 (screenshot redaction deferred), B2-PS-004 (text redaction).
 
 **MCP-VC-006: artifactMode metadata on successful screenshot responses**  
-All successful screenshot responses from `browser_capture_region` (in any `mode`: region, viewport, or fullPage) MUST include an `artifactMode` field with value `"inline"`. This advertises to agents that screenshots are returned as base64 data URLs embedded in `dataUrl`, not stored to files or remote references. The value `"file-ref"` and `"remote-ref"` are reserved for future storage subsystems and MUST NOT be used until those subsystems are implemented. Error responses MUST NOT include `artifactMode`.  
+All successful screenshot responses from `accordo_browser_capture_region` (in any `mode`: region, viewport, or fullPage) MUST include an `artifactMode` field with value `"inline"`. This advertises to agents that screenshots are returned as base64 data URLs embedded in `dataUrl`, not stored to files or remote references. The value `"file-ref"` and `"remote-ref"` are reserved for future storage subsystems and MUST NOT be used until those subsystems are implemented. Error responses MUST NOT include `artifactMode`.  
 **Acceptance:** `capture_region(mode: "viewport")`, `capture_region(mode: "fullPage")`, and region capture all return `artifactMode: "inline"` on success. A failed capture (e.g. `no-target` error) does not include the field.  
 **Cross-reference:** MCP checklist §3.1 (`artifactMode` field in canonical object model).
 
@@ -106,7 +106,7 @@ All `accordo_browser_*` tool error responses MUST return a structured error obje
 **Acceptance:** Every error response from every browser tool matches this shape. Bare string errors are eliminated.
 
 **MCP-ER-001a: snapshot-not-found includes eviction hint (Feature 3)**  
-For `browser_diff_snapshots`, when `snapshot-not-found` is returned and the local `SnapshotRetentionStore` has snapshots for the same `pageId`, the response MUST include structured `details.eviction` with:
+For `accordo_browser_diff_snapshots`, when `snapshot-not-found` is returned and the local `SnapshotRetentionStore` has snapshots for the same `pageId`, the response MUST include structured `details.eviction` with:
 - `requestedSnapshotId`: the ID the agent requested
 - `retentionWindow`: the FIFO window size (number of retained snapshots)
 - `wasEvicted`: `true` when the store is at capacity and the missing version is older than the oldest retained snapshot
@@ -134,8 +134,8 @@ The following error codes MUST include `retryable: false`:
 **Acceptance:** Each listed error code returns the correct `retryable` and `retryAfterMs` values.
 
 **MCP-ER-004: Minimum-contract capture error codes**  
-All error codes defined in the `CaptureError` type (`element-not-found`, `element-off-screen`, `image-too-large`, `capture-failed`, `no-target`) MUST be returned by the MCP handler layer for `browser_capture_region` in the corresponding failure scenarios. These codes are already implemented at the content script level (CR-F-12 in `requirements-browser-extension.md`) and MUST propagate through the relay → MCP handler path as structured error objects (MCP-ER-001).  
-**Acceptance:** Each of the five `CaptureError` codes is returned by the MCP-level `browser_capture_region` handler (not just the content script) with the structured error shape. Integration tests verify end-to-end propagation.  
+All error codes defined in the `CaptureError` type (`element-not-found`, `element-off-screen`, `image-too-large`, `capture-failed`, `no-target`) MUST be returned by the MCP handler layer for `accordo_browser_capture_region` in the corresponding failure scenarios. These codes are already implemented at the content script level (CR-F-12 in `requirements-browser-extension.md`) and MUST propagate through the relay → MCP handler path as structured error objects (MCP-ER-001).  
+**Acceptance:** Each of the five `CaptureError` codes is returned by the MCP-level `accordo_browser_capture_region` handler (not just the content script) with the structured error shape. Integration tests verify end-to-end propagation.  
 **Cross-reference:** CR-F-11, CR-F-12 in `requirements-browser-extension.md`; `CaptureError` type in `packages/browser/src/page-tool-types.ts`.
 
 **MCP-ER-003: Connection health action**  
@@ -147,7 +147,7 @@ The browser relay MUST support a `connection-health` action (not necessarily a p
 > **Context:** Navigate response returns empty `title` on fresh navigation and no readiness state.
 
 **MCP-NAV-001: Ready state in navigate response**  
-`browser_navigate` response MUST include a `readyState` field with value `"loading" | "interactive" | "complete"`, reflecting `document.readyState` at the time the response is sent. The tool SHOULD wait for at least `"interactive"` before responding (i.e., `DOMContentLoaded` fired).  
+`accordo_browser_navigate` response MUST include a `readyState` field with value `"loading" | "interactive" | "complete"`, reflecting `document.readyState` at the time the response is sent. The tool SHOULD wait for at least `"interactive"` before responding (i.e., `DOMContentLoaded` fired).  
 **Acceptance:** After `navigate(url: "https://example.com")`, response includes `readyState: "interactive"` or `"complete"`, and `title` is non-empty for pages that set `<title>`.
 
 ### 4.4 Accessibility Tree Enrichment (MCP-A11Y)
@@ -155,7 +155,7 @@ The browser relay MUST support a `connection-health` action (not necessarily a p
 > **Context:** The a11y tree from `get_semantic_graph` and `inspect_element` lacks element state information (disabled, readonly, expanded, etc.).
 
 **MCP-A11Y-001: Element actionability states**  
-A11y tree nodes in `browser_get_semantic_graph` and the element object in `browser_inspect_element` MUST include an optional `states` array containing applicable ARIA state indicators. Collected from DOM properties and ARIA attributes.
+A11y tree nodes in `accordo_browser_get_semantic_graph` and the element object in `accordo_browser_inspect_element` MUST include an optional `states` array containing applicable ARIA state indicators. Collected from DOM properties and ARIA attributes.
 
 Supported states:
 | State | Source |
@@ -183,7 +183,7 @@ All data-producing `accordo_browser_*` tools MUST accept optional `allowedOrigin
 **Cross-reference:** B2-PS-001..003, B2-ER-007.
 
 **MCP-SEC-002: PII redaction parameter**  
-All text-producing read tools — `browser_get_text_map`, `browser_get_semantic_graph`, `browser_get_page_map`, `browser_inspect_element`, and `browser_get_dom_excerpt` — MUST accept an optional `redactPII: boolean` parameter. When `true`, the handler scans all text-bearing fields in the response for email addresses, phone numbers, and API key patterns using regex and replaces matches with `[REDACTED]`. The response includes `redactionApplied: true` when any substitution was made.  
+All text-producing read tools — `accordo_browser_get_text_map`, `accordo_browser_get_semantic_graph`, `accordo_browser_get_page_map`, `accordo_browser_inspect_element`, and `accordo_browser_get_dom_excerpt` — MUST accept an optional `redactPII: boolean` parameter. When `true`, the handler scans all text-bearing fields in the response for email addresses, phone numbers, and API key patterns using regex and replaces matches with `[REDACTED]`. The response includes `redactionApplied: true` when any substitution was made.  
 **Acceptance:** On a page containing `user@example.com`, calling `get_text_map({ redactPII: true })` returns segments where `user@example.com` is replaced with `[REDACTED]` and `redactionApplied: true` is present. Calling `inspect_element({ selector: ..., redactPII: true })` or `get_dom_excerpt({ selector: ..., redactPII: true })` similarly redacts matching text-bearing fields before the response is returned.  
 **Cross-reference:** B2-PS-004..005, I1-text.
 

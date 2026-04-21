@@ -16,7 +16,9 @@ VSCode extension that hosts a local WebSocket relay server (`127.0.0.1:40111`), 
 | `relay-router.ts` | Maps Chrome relay events to handler responses; manages token validation | `RelayRouter` class |
 | `shared-relay-server.ts` | Shared relay server for multi-window scenarios; Hub client connections | `SharedBrowserRelayServer` class |
 | `shared-relay-client.ts` | Per-window client connecting to the shared relay server | `SharedRelayClient` class |
-| `page-tool-definitions.ts` | Builds 6 page-understanding tool definitions (browser_get_page_map, browser_inspect_element, browser_get_dom_excerpt, browser_capture_region, browser_list_pages, browser_select_page) | `buildPageUnderstandingTools()`, `resolveAnchorMetadata()` |
+| `relay-discovery.ts` | Shared relay discovery/ownership files (`shared-relay.json`, lock, liveness checks) | `readSharedRelayInfo()`, `writeSharedRelayInfo()`, `acquireRelayLock()`, `releaseRelayLock()`, `isRelayAlive()` |
+| `write-lease.ts` | Mutating-action coordination in shared mode (single writer, FIFO queue, expiry) | `WriteLeaseManager` class |
+| `page-tool-definitions.ts` | Builds 6 page-understanding tool definitions (`accordo_browser_get_page_map`, `accordo_browser_inspect_element`, `accordo_browser_get_dom_excerpt`, `accordo_browser_capture_region`, `accordo_browser_list_pages`, `accordo_browser_select_page`) | `buildPageUnderstandingTools()`, `resolveAnchorMetadata()` |
 | `page-tool-handlers.ts` | Barrel re-exporting handler implementations and types | All handler functions and types |
 | `page-tool-handlers-impl.ts` | Actual handler implementations — forward requests to Chrome via relay, persist snapshots to retention store | `handleGetPageMap()`, `handleInspectElement()`, etc. |
 | `page-tool-types.ts` | All tool input/output type definitions and timeout constants | `GetPageMapArgs`, `CaptureRegionArgs`, etc. |
@@ -28,7 +30,8 @@ VSCode extension that hosts a local WebSocket relay server (`127.0.0.1:40111`), 
 | `manage-snapshots-tool.ts` | Implements `browser_manage_snapshots` tool (GAP-F1) | `buildManageSnapshotsTool()` |
 | `manage-screenshots-tool.ts` | Implements `browser_manage_screenshots` tool (GAP-G1) | `buildManageScreenshotsTool()` |
 | `spatial-relations-tool.ts` | Implements `browser_get_spatial_relations` tool (GAP-D1) | `buildSpatialRelationsTool()` |
-| `control-tools.ts` | Implements navigation/interaction tools: browser_navigate, browser_click, browser_type, browser_press_key | `buildControlTools()` |
+| `control-tool-types.ts` | Canonical implementation for control tools: `accordo_browser_navigate`, `accordo_browser_click`, `accordo_browser_type`, `accordo_browser_press_key` | `buildControlTools()`, `buildNavigateTool()`, `buildClickTool()`, `buildTypeTool()`, `buildPressKeyTool()` |
+| `control-tools.ts` | Backward-compatible barrel re-export for control-tool APIs | Re-exports from `control-tool-types.ts` |
 | `snapshot-retention.ts` | 5-slot per-page FIFO snapshot retention store for page-understanding tools | `SnapshotRetentionStore` class |
 | `screenshot-retention.ts` | Screenshot retention store for file-ref capture mode (GAP-G1) | `ScreenshotRetentionStore` class |
 | `eval-harness.ts` | Ephemeral eval context for untrusted browser code | `EvalHarness` class |
@@ -36,6 +39,7 @@ VSCode extension that hosts a local WebSocket relay server (`127.0.0.1:40111`), 
 | `eval-types.ts` | TypeScript types for the eval subsystem | `EvalConfig`, `EvalResult`, etc. |
 | `types.ts` | Shared types for BridgeAPI, BrowserBridgeAPI, BrowserRelayAction | `BrowserBridgeAPI`, `BrowserRelayAction` union |
 | `relay-lifecycle.ts` | Shared relay activation logic (per-window vs shared mode) | `activateSharedRelay()`, `activatePerWindowRelay()` |
+| `browser-tools.ts` | Deprecated legacy browser comment-tool surface retained for compatibility tests/reference (not registered in active MCP tool assembly) | `createBrowserTools()` |
 
 ## MCP Tool Inventory (19 tools)
 
