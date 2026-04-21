@@ -21,6 +21,7 @@
 1. Current work status: `docs/00-workplan/workplan.md`
 2. Completed work ledger: `docs/00-workplan/accomplished-tasks.md`
 3. System architecture: `docs/10-architecture/architecture.md`
+   - Presentation engine architecture: `docs/10-architecture/marp-architecture.md`
 4. Requirements index: `docs/20-requirements/README.md`
 5. Coding rules: `docs/30-development/coding-guidelines.md`
 

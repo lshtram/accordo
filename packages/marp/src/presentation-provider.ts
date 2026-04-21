@@ -33,6 +33,7 @@ export class PresentationProvider {
   private slideSubscription: { dispose(): void } | null = null;
   private disposeCallbacks: Array<() => void> = [];
   private fileWatcher: vscode.FileSystemWatcher | null = null;
+  private reloadDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _pendingCapture: { resolve: (buf: Buffer) => void; reject: (err: Error) => void } | null = null;
   private extensionUri: vscode.Uri;
 
@@ -130,7 +131,13 @@ export class PresentationProvider {
 
     this.fileWatcher = vscode.workspace.createFileSystemWatcher(deckUri);
     this.fileWatcher.onDidChange(() => {
-      void this.reloadDeck();
+      if (this.reloadDebounceTimer !== null) {
+        clearTimeout(this.reloadDebounceTimer);
+      }
+      this.reloadDebounceTimer = setTimeout(() => {
+        this.reloadDebounceTimer = null;
+        void this.reloadDeck();
+      }, 300);
     });
 
     this.panel.onDidDispose(() => {
@@ -245,6 +252,10 @@ export class PresentationProvider {
     this.slideSubscription = null;
     this.fileWatcher?.dispose();
     this.fileWatcher = null;
+    if (this.reloadDebounceTimer !== null) {
+      clearTimeout(this.reloadDebounceTimer);
+      this.reloadDebounceTimer = null;
+    }
     this.currentSlide = 0;
     this.revision = 0;
 

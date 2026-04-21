@@ -52,7 +52,7 @@
     "test": "vitest run",
     "test:watch": "vitest watch",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'no lint configured yet'"
+    "lint": "echo 'lint intentionally deferred for accordo-marp (workspace ESLint config not yet wired for this package)'"
   },
   "dependencies": {
     "@accordo/capabilities": "workspace:*",

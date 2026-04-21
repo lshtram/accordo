@@ -43,7 +43,7 @@ export function buildMarpWebviewHtml(opts: MarpWebviewHtmlOptions): string {
     // sdk.loadThreads() clears existing pins first (thread-manager.ts loadThreads
     // removes all pin DOM nodes before rendering), so this correctly replaces
     // stale pins from the previous slide with pins for the new slide.
-    var refreshPins = function() {
+    refreshPins = function() {
       var filtered = allThreads.filter(function(t) {
         if (!t.blockId) return false;
         var parts = t.blockId.split(':');
@@ -114,11 +114,13 @@ export function buildMarpWebviewHtml(opts: MarpWebviewHtmlOptions): string {
             allThreads = allThreads.map(function(t) {
               return t.id === msg.thread.id ? msg.thread : t;
             });
+            refreshPins();
           }
           break;
         case 'comments:remove':
           if (msg.threadId) {
             allThreads = allThreads.filter(function(t) { return t.id !== msg.threadId; });
+            refreshPins();
           }
           break;
         case 'comments:focus':
@@ -129,6 +131,9 @@ export function buildMarpWebviewHtml(opts: MarpWebviewHtmlOptions): string {
             var targetSlide = current;
             if (parts.length >= 2 && parts[0] === 'slide') {
               targetSlide = parseInt(parts[1], 10);
+            }
+            if (!Number.isFinite(targetSlide) || targetSlide < 0 || targetSlide >= slides.length) {
+              break;
             }
             if (targetSlide !== current) {
               goTo(targetSlide);
@@ -175,7 +180,7 @@ export function buildMarpWebviewHtml(opts: MarpWebviewHtmlOptions): string {
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' ${cspSource}; style-src ${cspSource} 'unsafe-inline'; img-src ${cspSource} data: https: blob:; font-src ${cspSource} data:; connect-src ${cspSource};">${sdkHeadAssets}
-  <style nonce="${nonce}">${marpCss}</style>
+  <style id="marp-core-css" nonce="${nonce}">${marpCss}</style>
   <style nonce="${nonce}">
     html, body { margin: 0; padding: 0; background: #1e1e1e; overflow-x: hidden; }
     div.marpit { width: 100%; }
@@ -210,16 +215,25 @@ export function buildMarpWebviewHtml(opts: MarpWebviewHtmlOptions): string {
     var vscode = window.acquireVsCodeApi ? window.acquireVsCodeApi() : null;
     var slides = Array.from(document.querySelectorAll('svg[data-marpit-svg]'));
     var current = 0;
+    var lastReceivedRevision = -1;
+    var refreshPins = function() {};
 
     slides.forEach(function(s, i) { if (i === 0) s.classList.add('active'); });
     document.getElementById('btn-prev').disabled = true;
     document.getElementById('btn-next').disabled = slides.length <= 1;
 
     function goTo(index) {
+      if (!Number.isFinite(index)) return;
+      index = Math.trunc(index);
+      if (slides.length === 0) return;
       if (index < 0 || index >= slides.length) return;
-      slides[current].classList.remove('active');
+      if (slides[current]) {
+        slides[current].classList.remove('active');
+      }
       current = index;
-      slides[current].classList.add('active');
+      if (slides[current]) {
+        slides[current].classList.add('active');
+      }
       document.getElementById('slide-counter').textContent = (current + 1) + ' / ' + slides.length;
       document.getElementById('btn-prev').disabled = current === 0;
       document.getElementById('btn-next').disabled = current === slides.length - 1;
@@ -235,6 +249,47 @@ export function buildMarpWebviewHtml(opts: MarpWebviewHtmlOptions): string {
       var msg = event.data;
       if (!msg || typeof msg !== 'object') return;
       if (msg.type === 'slide-index') goTo(msg.index);
+      if (msg.type === 'marp:update') {
+        if (typeof msg.revision === 'number' && msg.revision <= lastReceivedRevision) {
+          return;
+        }
+
+        if (typeof msg.html === 'string') {
+          var slideContainer = document.getElementById('slide-container');
+          if (slideContainer) {
+            slideContainer.innerHTML = msg.html;
+          }
+        }
+        if (typeof msg.css === 'string') {
+          var cssTag = document.getElementById('marp-core-css');
+          if (cssTag) {
+            cssTag.textContent = msg.css;
+          }
+        }
+
+        slides = Array.from(document.querySelectorAll('svg[data-marpit-svg]'));
+        if (slides.length === 0) {
+          current = 0;
+          document.getElementById('slide-counter').textContent = '0 / 0';
+          document.getElementById('btn-prev').disabled = true;
+          document.getElementById('btn-next').disabled = true;
+          if (typeof msg.revision === 'number') {
+            lastReceivedRevision = msg.revision;
+          }
+          refreshPins();
+          return;
+        }
+
+        var requested = typeof msg.currentSlide === 'number' ? Math.trunc(msg.currentSlide) : current;
+        var clamped = Math.max(0, Math.min(requested, slides.length - 1));
+        current = Math.min(current, slides.length - 1);
+        goTo(clamped);
+
+        if (typeof msg.revision === 'number') {
+          lastReceivedRevision = msg.revision;
+        }
+        refreshPins();
+      }
       if (msg.type === 'host:request-capture') {
         var active = slides[current];
         if (!active) {
@@ -255,6 +310,10 @@ export function buildMarpWebviewHtml(opts: MarpWebviewHtmlOptions): string {
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown') goTo(current + 1);
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') goTo(current - 1);
     });${altClickHandler}${sdkInitScript}${sdkMessageHandlers}
+
+    if (vscode) {
+      vscode.postMessage({ type: 'webview:ready' });
+    }
   </script>
 </body>
 </html>`;

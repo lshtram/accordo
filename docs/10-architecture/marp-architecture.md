@@ -1,7 +1,7 @@
 # Accordo — Marp Presentation Engine Architecture v1.0
 
 **Status:** ACTIVE  
-**Date:** 2026-03-19  
+**Date:** 2026-04-21  
 **Scope:** `accordo-marp` — lightweight presentation modality alternative to `accordo-slidev`
 
 ---
@@ -150,7 +150,7 @@ accordo.presentation.engine: "marp" | "slidev"   (default: "marp")
     yield (no-op)          yield (no-op)
 ```
 
-Both extensions use the same tool names (`accordo.presentation.*`). Only one registers. The Hub/Bridge layer sees no difference.
+Both engines expose the same public MCP tool names (`accordo_presentation_*`). Only one engine extension registers tools at a time. The Hub/Bridge layer sees a single presentation tool surface.
 
 ### 5.3 MCP tool naming vs internal command naming
 

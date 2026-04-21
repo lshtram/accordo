@@ -26,5 +26,6 @@
 - `docs/testing-guide-bridge-types.md`
 - `docs/testing-guide-global-docs.md`
 - `docs/testing-guide-hub.md`
+- `docs/testing-guide-marp.md`
 
 These root-level guides are transitional and should be moved or mirrored under `docs/40-testing/` in future cleanup batches.

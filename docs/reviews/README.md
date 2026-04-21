@@ -14,6 +14,7 @@ Active reviews live in `docs/reviews/`.
 Recent cleanup reviews:
 - `global-docs-cleanup-review.md`
 - `hub-cleanup-review.md`
+- `marp-cleanup-review.md`
 
 ## Historical review lanes
 

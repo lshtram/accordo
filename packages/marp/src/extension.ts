@@ -24,7 +24,6 @@ interface SessionState {
   adapter: MarpAdapter | null;
   deck: ParsedDeck | null;
   deckContent: string | null;
-  slideSubscription: { dispose(): void } | null;
 }
 
 // Module-level registry shared with accordo-comments for surface:slide navigation routing.
@@ -39,7 +38,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const bridgeExt = vscode.extensions.getExtension<BridgeAPI>("accordo.accordo-bridge");
   if (!bridgeExt) return;
 
-  const bridge: BridgeAPI = bridgeExt.exports;
+  const bridge: BridgeAPI = (await bridgeExt.activate()) ?? bridgeExt.exports;
 
   const stateContrib = new PresentationStateContribution(bridge);
   stateContrib.update({
@@ -95,7 +94,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     adapter: null,
     deck: null,
     deckContent: null,
-    slideSubscription: null,
   };
 
   const deps: PresentationToolDeps = {
@@ -266,8 +264,6 @@ function closeSession(
   provider: PresentationProvider,
   stateContrib: PresentationStateContribution,
 ): void {
-  session.slideSubscription?.dispose();
-  session.slideSubscription = null;
   session.adapter = null;
   session.deck = null;
   session.deckContent = null;

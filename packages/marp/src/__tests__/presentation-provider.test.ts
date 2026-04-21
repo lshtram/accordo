@@ -22,7 +22,7 @@
  *   M50-PVD-16  comments:focus handler navigates to slide + calls sdk.openPopover(threadId)
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   PresentationProvider,
   buildWebviewHtml,
@@ -287,9 +287,14 @@ describe("PresentationProvider.close", () => {
 
 describe("PresentationProvider — live reload (M50-PVD-07, M50-PVD-09, M50-PVD-10)", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.mocked(window.createWebviewPanel).mockReturnValue(
       new MockWebviewPanel("accordo.marp.presentation", "Deck"),
     );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("M50-PVD-07 / M50-PVD-09: file change triggers marp:update with revision to webview", async () => {
@@ -315,8 +320,8 @@ describe("PresentationProvider — live reload (M50-PVD-07, M50-PVD-09, M50-PVD-
     // Simulate a file change
     if (onDidChangeCallback) onDidChangeCallback();
 
-    // Wait for async re-render (if any)
-    await Promise.resolve();
+    // Run debounce timer + async reload
+    await vi.advanceTimersByTimeAsync(350);
 
     expect(panel.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "marp:update", revision: expect.any(Number) }),
@@ -345,8 +350,9 @@ describe("PresentationProvider — live reload (M50-PVD-07, M50-PVD-09, M50-PVD-
 
     // Trigger two file changes
     changeCallbacks.forEach((cb) => cb());
+    await vi.advanceTimersByTimeAsync(350);
     changeCallbacks.forEach((cb) => cb());
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(350);
 
     const updateCalls = (panel.webview.postMessage as ReturnType<typeof vi.fn>).mock.calls
       .filter(([msg]: [{ type: string }]) => msg.type === "marp:update")
@@ -389,7 +395,7 @@ describe("PresentationProvider — live reload (M50-PVD-07, M50-PVD-09, M50-PVD-
     provider.setRenderer(smallRenderer);
 
     if (onDidChangeCallback) onDidChangeCallback();
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(350);
 
     // currentSlide must be clamped to Math.min(4, 2-1) = 1
     const updateCall = (panel.webview.postMessage as ReturnType<typeof vi.fn>).mock.calls

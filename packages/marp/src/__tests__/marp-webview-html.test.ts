@@ -18,8 +18,6 @@ import type { MarpRenderResult } from "../types.js";
 
 /**
  * These tests import buildMarpWebviewHtml from marp-webview-html.ts.
- * The file doesn't exist yet — this is the Phase B failure.
- *
  * Interface (from design doc §4):
  *   export interface MarpWebviewHtmlOptions {
  *     renderResult: MarpRenderResult;

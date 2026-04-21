@@ -183,12 +183,8 @@ describe("REQ-MOD-1: handleViewSlideChanged event seam", () => {
  * PresentationProvider.open() accepts PresentationRenderer (not concrete MarpRenderer).
  * This allows engine substitution without changing the provider.
  *
- * Phase A verified: MarpRenderer satisfies PresentationRenderer.
- * Phase B gap: Provider constructs new MarpRenderer() internally in constructor,
- * making renderer injection non-functional for callers who want to substitute
- * a different engine or mock AFTER construction.
- *
- * setRenderer() exists and works for post-construction renderer replacement.
+ * Provider must preserve the renderer-injection seam so callers can substitute
+ * alternate renderers/mocks without changing provider internals.
  */
 
 describe("REQ-MOD-2: PresentationRenderer seam", () => {
@@ -235,20 +231,8 @@ describe("REQ-MOD-2: PresentationRenderer seam", () => {
   });
 
   it("REQ-MOD-2.2: open() assigns the renderer parameter to instance (structural check)", () => {
-    // Phase B requirement: open() must assign the injected renderer parameter to
-    // the provider instance so that render calls use the injected renderer.
-    //
-    // Valid implementation: open() does `this.renderer = renderer` (or `setRenderer(renderer)`)
-    // then uses `this.renderer.render(...)`. This satisfies both dependency injection
-    // and the existing render call site.
-    //
-    // Current broken implementation: open() accepts `renderer` parameter but NEVER assigns it.
-    // The constructor creates `new MarpRenderer()` and open() calls `this.renderer.render(...)`
-    // which uses the constructor's instance, not the injected renderer.
-    //
-    // This structural check verifies that open() assigns the renderer parameter.
-    // FAILS on current code (no assignment in open()).
-    // PASSES on valid fix (open() does `this.renderer = renderer` or `setRenderer(renderer)`).
+    // open() must assign the injected renderer parameter to the provider instance
+    // so render calls use the injected renderer.
     const providerSource = readFileSync(
       resolve(__dirname, "../presentation-provider.ts"),
       "utf-8"
@@ -274,7 +258,6 @@ describe("REQ-MOD-2: PresentationRenderer seam", () => {
 
     // The renderer parameter must be assigned to the instance in open()
     // Valid patterns: this.renderer = renderer  OR  setRenderer(renderer)
-    // This check FAILS on current code (parameter never assigned in open())
     const hasAssignment = /this\.renderer\s*=\s*renderer/.test(openMethodBody) ||
                         /setRenderer\s*\(\s*renderer\s*\)/.test(openMethodBody);
     expect(hasAssignment, "open() must assign the renderer parameter to the instance (this.renderer = renderer or setRenderer(renderer))").toBe(true);
@@ -294,22 +277,15 @@ describe("REQ-MOD-2: PresentationRenderer seam", () => {
   });
 
   it("REQ-MOD-2.4: Provider constructor does NOT hard-code MarpRenderer (structural source check)", () => {
-    // Phase B requirement: Provider must NOT construct a concrete MarpRenderer
+    // Provider must NOT construct a concrete MarpRenderer
     // in its constructor. Instead, it should accept a renderer via constructor
     // or rely on open() to set it.
-    //
-    // Currently FAILS: constructor has `this.renderer = new MarpRenderer()` (line 122).
-    // This instantiates MarpRenderer regardless of what the caller passes to open().
-    //
-    // This is a structural source check: the constructor must NOT call `new MarpRenderer()`.
     const providerSource = readFileSync(
       resolve(__dirname, "../presentation-provider.ts"),
       "utf-8"
     );
 
-    // The constructor should NOT contain `new MarpRenderer()`
-    // Currently it does at line 122: `this.renderer = new MarpRenderer()`
-    // This is the structural violation of the renderer injection principle.
+    // The constructor should NOT contain `new MarpRenderer()`.
     expect(providerSource).not.toMatch(/this\.renderer\s*=\s*new\s+MarpRenderer\s*\(\s*\)/);
   });
 });
@@ -319,10 +295,9 @@ describe("REQ-MOD-2: PresentationRenderer seam", () => {
  * Source: presentation-comments-modularity-A.md §17.4 Deferred Navigation Registry Wiring
  * + architecture.md §17.4
  *
- * Phase A deferred: accordo-marp registers a NavigationAdapter with surfaceType "slide"
- * at extension activation. The registry wiring in comments routing is also deferred.
- *
- * Phase A ONLY established the contracts. Full wiring is Phase B scope.
+ * accordo-marp registers a NavigationAdapter with surfaceType "slide"
+ * at extension activation. The registry wiring in comments routing uses this
+ * adapter for unified focus dispatch.
  * These tests verify the structural pre-condition: the extension source code
  * must import and use NavigationAdapterRegistry.
  */
@@ -332,7 +307,6 @@ describe("REQ-MOD-3: NavigationAdapter registration (deferred — structural)", 
 
   it("REQ-MOD-3.1: extension.ts imports createNavigationAdapterRegistry from @accordo/capabilities", () => {
     // The extension must import the registry factory to create a registry at activation.
-    // Currently FAILS: extension.ts does not import NavigationAdapterRegistry.
     const source = readFileSync(EXTENSION_SRC, "utf-8");
     expect(source).toContain("createNavigationAdapterRegistry");
     expect(source).toContain("from \"@accordo/capabilities\"");
@@ -340,7 +314,6 @@ describe("REQ-MOD-3: NavigationAdapter registration (deferred — structural)", 
 
   it("REQ-MOD-3.2: extension.ts creates a NavigationAdapterRegistry at activation", () => {
     // The extension must create a registry instance that adapters are registered into.
-    // Currently FAILS: extension.ts has no createNavigationAdapterRegistry call.
     const source = readFileSync(EXTENSION_SRC, "utf-8");
     expect(source).toMatch(/createNavigationAdapterRegistry\s*\(\s*\)/);
   });
@@ -348,7 +321,6 @@ describe("REQ-MOD-3: NavigationAdapter registration (deferred — structural)", 
   it("REQ-MOD-3.3: extension.ts registers a NavigationAdapter with surfaceType 'slide'", () => {
     // At activation, the extension must register a slide NavigationAdapter so that
     // comments can route focusThread through the registry.
-    // Currently FAILS: no NavigationAdapter is created or registered in extension.ts.
     const source = readFileSync(EXTENSION_SRC, "utf-8");
 
     // Should contain: register({ surfaceType: "slide", ... })
@@ -371,7 +343,6 @@ describe("REQ-MOD-3: NavigationAdapter registration (deferred — structural)", 
 
   it("REQ-MOD-3.5: NavigationAdapter.navigateToAnchor delegates to executeCommand(PRESENTATION_GOTO)", () => {
     // The slide adapter's navigateToAnchor must invoke the PRESENTATION_GOTO command.
-    // Currently FAILS: no adapter exists in extension.ts.
     const source = readFileSync(EXTENSION_SRC, "utf-8");
     expect(source).toContain("PRESENTATION_GOTO");
   });

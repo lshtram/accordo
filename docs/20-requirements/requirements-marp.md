@@ -4,7 +4,7 @@
 **Type:** VS Code extension  
 **Publisher:** `accordo`  
 **Version:** 0.1.0  
-**Date:** 2026-03-19
+**Date:** 2026-04-21
 
 ---
 
@@ -14,7 +14,7 @@ Accordo Marp is a lightweight presentation modality for Accordo IDE, built on [M
 
 ### 1.1 Relationship to `accordo-slidev`
 
-Both extensions expose the **same 9 navigation/session MCP tools** under the same `accordo.presentation.*` namespace, plus one capture tool (`accordo_webview_capture`) that is engine-specific. The Accordo system prompt configuration (`accordo.presentation.engine`) determines which extension is active. Only one engine is active at a time.
+Both engines expose the **same 9 navigation/session MCP tools** under the public `accordo_presentation_*` namespace, plus one capture tool (`accordo_webview_capture`) that is engine-specific. The Accordo system prompt configuration (`accordo.presentation.engine`) determines which extension is active. Only one engine is active at a time.
 
 ### 1.2 Why Marp
 
