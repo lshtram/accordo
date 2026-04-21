@@ -28,6 +28,8 @@ import {
   resolveRegistryPath,
   ACCORDO_REGISTRY_PATH,
 } from "./hub-registry.js";
+import { doRestart } from "./hub-manager-lifecycle.js";
+import type { RestartContext } from "./hub-manager-lifecycle.js";
 
 // Re-export types from hub-process.ts for backwards compatibility
 export type { ChildProcess } from "node:child_process";
@@ -430,35 +432,29 @@ export class HubManager {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
+  private _makeRestartContext(): RestartContext {
+    return {
+      projectId: this.config.projectId,
+      configRegistryPath: this.config.registryPath ?? resolveRegistryPath(),
+      secretStorage: this.secretStorage,
+      processState: this.processState,
+      healthState: this.healthState,
+      events: this.events,
+      killHub: () => this.killHub(),
+      spawn: (secret, token, port) =>
+        this.hubProcess.spawn(secret, token, port, {
+          projectId: this.config.projectId,
+          registryPath: this.config.registryPath ?? resolveRegistryPath(),
+        }),
+      pollHealth: (maxWaitMs?: number, intervalMs?: number) =>
+        this.pollHealth(maxWaitMs, intervalMs),
+      attemptReauth: (currentSecret, newSecret, newToken) =>
+        this.attemptReauth(currentSecret, newSecret, newToken),
+    };
+  }
+
   private async _doRestart(): Promise<void> {
-    const bridgeSecretKey = scopedSecretKey(BRIDGE_SECRET_KEY, this.config.projectId);
-    const hubTokenKey = scopedSecretKey(HUB_TOKEN_KEY, this.config.projectId);
-    const newSecret = crypto.randomUUID();
-    const newToken = crypto.randomUUID();
-    const reauthOk = await this.attemptReauth(
-      this.processState.secret ?? "",
-      newSecret,
-      newToken,
-    );
-    if (reauthOk) {
-      this.processState.secret = newSecret;
-      this.processState.token = newToken;
-      await this.secretStorage.store(bridgeSecretKey, newSecret);
-      await this.secretStorage.store(hubTokenKey, newToken);
-      this.events.onCredentialsRotated(newToken, newSecret);
-      return;
-    }
-    await this.killHub();
-    await this.spawn(newSecret, newToken);
-    this._pollAndNotify()
-      .then(() => {
-        this.processState.secret = newSecret;
-        this.processState.token = newToken;
-        void this.secretStorage.store(bridgeSecretKey, newSecret);
-        void this.secretStorage.store(hubTokenKey, newToken);
-        this.events.onCredentialsRotated(newToken, newSecret);
-      })
-      .catch(() => {});
+    await doRestart(this._makeRestartContext());
   }
 
   private async _pollAndNotify(): Promise<void> {

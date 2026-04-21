@@ -679,7 +679,8 @@ describe("HubManager", () => {
       const { manager } = makeManager();
       vi.spyOn(manager, "attemptReauth").mockResolvedValue(false);
       vi.spyOn(manager, "killHub").mockResolvedValue(undefined);
-      const spawnSpy = vi.spyOn(manager, "spawn").mockResolvedValue(undefined);
+      // hardRestart calls ctx.spawn() → hubProcess.spawn(), not manager.spawn()
+      const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
       vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
       await manager.restart().catch(() => {});
       expect(spawnSpy).toHaveBeenCalled();
