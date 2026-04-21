@@ -320,18 +320,7 @@ Note: `staleOnly` filtering requires access to `store.isThreadStale(id)`. Pass `
 
 ---
 
-## 5. Prerequisite Fix
-
-Before TDD for M45 begins, apply the following bug fix to `@accordo/comment-sdk`:
-
-**File:** `packages/comment-sdk/src/sdk.ts`  
-**Bug:** `updateThread()` queries `.accordo-pin-badge` but the badge element is created with class `accordo-pin__badge`. Count badges never update on reply.  
-**Fix:** Change `.accordo-pin-badge` → `.accordo-pin__badge` (two occurrences in `updateThread()`).  
-**Commit:** `fix(comment-sdk): badge selector mismatch in updateThread`
-
----
-
-## 6. Test Coverage Summary
+## 5. Test Coverage Summary
 
 | Module | Test file | Requirement IDs covered | Approx. test count |
 |---|---|---|---|

@@ -1,5 +1,5 @@
 /**
- * AccordoCommentSDK — unit tests (Phase B — all must fail on stubs)
+ * AccordoCommentSDK — unit tests for current SDK guarantees
  *
  * Requirements tested:
  *   M41-SDK-01  init() — attaches layer, enables Alt+click

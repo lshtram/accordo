@@ -14,6 +14,8 @@
   },
   "scripts": {
     "build": "tsc -b",
+    "bundle:browser": "node scripts/bundle-browser.mjs",
+    "build:browser": "pnpm run build && pnpm run bundle:browser",
     "clean": "rm -rf dist *.tsbuildinfo",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

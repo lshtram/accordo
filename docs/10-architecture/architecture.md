@@ -819,16 +819,16 @@ The following are explicitly deferred:
 
 ### 12.1 Role
 
-A framework-free, browser-bundled JS library (`sdk.browser.js` + `sdk.css`) that any Accordo webview can embed to get pins, popovers, and comment interactions. It has **no VS Code dependency** — it communicates with the host extension exclusively via `postMessage`.
+A framework-free browser/webview library (`@accordo/comment-sdk`) that any Accordo webview can embed to get pins, popovers, and comment interactions. It has **no VS Code dependency**.
 
 ### 12.2 Surface-agnostic contract
 
 Any webview that wants commenting support:
 
-1. Loads `sdk.browser.js` + `sdk.css` (copied into the extension's WebviewPanel via `localResourceRoots`)
-2. Calls `sdk.init({ container, callbacks: { onReply, onResolve, onReopen, onDelete, onNew } })`
+1. Loads SDK JS + CSS (`@accordo/comment-sdk` and `@accordo/comment-sdk/css`, or a consumer-generated browser wrapper when needed)
+2. Calls `sdk.init({ container, coordinateToScreen, callbacks: { onCreate, onReply, onResolve, onReopen, onDelete } })`
 3. Assigns `data-block-id` attributes to content nodes
-4. Handles inbound `postMessage` types: `comments:load`, `comments:add`, `comments:update`, `comments:remove`, `comments:focus`
+4. Host consumer wires inbound transport/messages and maps them to SDK methods (`loadThreads`, `addThread`, `updateThread`, `removeThread`, `openPopover`)
 
 Improvements to the SDK (richer popover, threaded reply view, reactions, markdown rendering) automatically propagate to **all surfaces that embed it**: markdown preview (`accordo-md-viewer`), future HTML viewer, image viewer, diagram viewer, presentation extensions.
 
@@ -836,11 +836,11 @@ Improvements to the SDK (richer popover, threaded reply view, reactions, markdow
 
 ```
 CommentStore (accordo-comments)
-    └── PreviewBridge (per-panel)
-           └── postMessage → webview
-                   └── CommentSDK (sdk.browser.js)
+    └── Host consumer bridge (md-viewer / marp / diagram / browser-extension)
+           └── host transport/message wiring
+                   └── CommentSDK (@accordo/comment-sdk)
                            └── pin + popover DOM
-                                   └── callback → postMessage → extension command → CommentStore
+                                   └── callback → host bridge → extension command/store mutation
 ```
 
 ### 12.4 Built-in Comments panel limitation
