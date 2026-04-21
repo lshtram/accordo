@@ -1,13 +1,13 @@
-# Accordo — Custom Comments Panel Architecture v1.0
+# Accordo — Custom Comments Panel Architecture
 
-**Status:** FINAL  
-**Date:** 2026-03-06  
-**Scope:** Custom `vscode.TreeView` sidebar panel to replace the built-in VS Code Comments panel as the primary navigation and triage surface for `accordo-comments`.  
-**Depends on:** Phase 2 completion (accordo-comments M35–M40-EXT-11), Phase 3 (accordo-slidev M44)  
+**Status:** ACTIVE  
+**Date:** 2026-04-21  
+**Scope:** Custom `vscode.TreeView` sidebar panel that serves as the primary navigation and triage surface for `accordo-comments`, while native inline comments remain active.  
+**Depends on:** `accordo-comments` core modules and cross-surface focus commands from md-viewer/marp/browser/diagram integrations  
 **References:**
 - `docs/30-development/patterns.md` P-12 — root-cause analysis of native Comments panel limitations
 - `docs/10-architecture/architecture.md` §12.4 — architectural decision record
-- `docs/00-workplan/workplan.md` deferred backlog item #7
+- `docs/00-workplan/workplan.md` (historical planning context)
 - `docs/20-requirements/requirements-comments-panel.md` — module specifications and requirement IDs
 
 ---
@@ -127,15 +127,15 @@ Implements `vscode.TreeDataProvider<CommentTreeItem>`.
 
 Pure async function module. No class, no state. Takes a `CommentThread` and executes the correct VS Code command to surface the thread's anchor.
 
-**Routing table (via `NavigationAdapterRegistry` — deferred to accordo-marp for surface commands):**
+**Routing table (command-plan-driven via `buildNavigationDispatchPlan`):**
 
 | `anchor.kind` | `coordinates.type` / `surfaceType` | Action |
 |---|---|---|
 | `text` | n/a | `showTextDocument(uri, { selection: anchorRange, preserveFocus: false })` |
-| `surface` | `markdown-preview` | registry: `focusThread` on preview surface adapter |
-| `surface` | `slide` | registry: `focusThread` on slide surface adapter (opens deck + navigates + posts `comments:focus`) |
-| `surface` | `browser` | registry: `focusThread` on browser surface adapter; if registry unavailable, command `accordo.browser.focusThread` as fallback |
-| `surface` | `diagram` | registry: `focusThread` on diagram surface adapter (reserved for Phase 5) |
+| `surface` | `markdown-preview` | command `accordo_preview_internal_focusThread(uri, threadId, blockId)` |
+| `surface` | `slide` | command `accordo.presentation.internal.focusThread(uri, threadId, blockId)` with fallback `accordo_presentation_internal_goto` + delayed retry |
+| `surface` | `browser` | command `accordo_browser.focusThread(threadId)` + health probe via `accordo_browser_health` |
+| `surface` | `diagram` | command `accordo_diagram_focusThread(threadId, uri)` |
 | `file` | n/a | `showTextDocument(uri)` without range |
 | any | unknown | fallback to `showTextDocument(uri)` |
 
@@ -143,20 +143,20 @@ Pure async function module. No class, no state. Takes a `CommentThread` and exec
 
 **Current navigation model:** The router uses explicit command-dispatch planning (`buildNavigationDispatchPlan`) and does not require runtime registry acquisition for primary paths. Browser navigation uses `accordo_browser.focusThread` with an explicit `accordo_browser_health` probe; markdown preview uses `accordo_preview_internal_focusThread`; slide uses `accordo.presentation.internal.focusThread` with delayed fallback/retry. Generic `showTextDocument(uri)` fallback remains for unknown or non-surface anchors.
 
-**Reply UX:** The panel's `Reply` command uses the same registry-backed navigation as `navigateToAnchor` — it opens the anchor surface (text editor, slide deck, etc.) and the user replies via the native input UI at that surface. This is intentionally different from `showInputBox` (which would place a dialog at the top of the screen). In-context reply preserves spatial context and is the correct behavior for spatial comments.
+**Reply UX:** The panel's `Reply` command uses the same navigation path as `navigateToAnchor` — it opens the anchor surface (text editor, slide deck, etc.) and the user replies via the native input UI at that surface. This is intentionally different from `showInputBox` (which would place a dialog at the top of the screen). In-context reply preserves spatial context and is the correct behavior for spatial comments.
 
 ### 3.3 PanelCommands (M45-CMD)
 
-Registers VS Code commands. Each command receives a `CommentTreeItem` from the tree context menu (or directly from `tree.onDidChangeSelection`). Commands use dynamic imports to access `navigateToThread` and acquire the `NavigationAdapterRegistry` at runtime.
+Registers VS Code commands. Each command receives a `CommentTreeItem` from the tree context menu (or directly from `tree.onDidChangeSelection`). Commands use dynamic imports to access `navigateToThread`.
 
 **Commands:**
 
 | Command ID | Trigger | Behavior |
 |---|---|---|
-| `accordo.commentsPanel.navigateToAnchor` | Tree item click (single) | Acquires `NavigationAdapterRegistry`; calls `navigateToThread(thread, navEnv, registry)` |
+| `accordo.commentsPanel.navigateToAnchor` | Tree item click (single) | Calls `navigateToThread(thread, navEnv, registry?)`; dispatch is command-plan-driven |
 | `accordo.commentsPanel.resolve` | Context menu (open threads) | `showInputBox` for resolution note → `store.resolve()` |
 | `accordo.commentsPanel.reopen` | Context menu (resolved threads) | `store.reopen()` |
-| `accordo.commentsPanel.reply` | Context menu (all threads) | Acquires `NavigationAdapterRegistry`; calls `navigateToThread(thread, navEnv, registry)` — same in-context navigation as navigate |
+| `accordo.commentsPanel.reply` | Context menu (all threads) | Calls `navigateToThread(thread, navEnv, registry?)` — same in-context navigation as navigate |
 | `accordo.commentsPanel.delete` | Context menu (all threads) | `showWarningMessage` confirm dialog → `store.delete()` |
 | `accordo.commentsPanel.refresh` | View title toolbar | `provider.refresh()` |
 | `accordo.commentsPanel.filterByStatus` | View title toolbar | `showQuickPick(['open', 'resolved', 'all'])` → `filters.setStatus()` |
@@ -383,7 +383,7 @@ Phase 1 delivers the TreeView list. Phase 2 adds an optional side panel that sho
 └──────────────────────────┘  └────────────────────────────────────────┘
 ```
 
-**Implementation note:** The detail pane is a `vscode.WebviewView` registered via `window.registerWebviewViewProvider('accordo-thread-detail', provider)`. It renders thread comments as markdown (reusing the Comment SDK popover HTML patterns). The pane updates via `TreeView.onDidChangeSelection`. This requires an additional `M46-DETAIL` module and is not part of Session 9.
+**Implementation note (historical/deferred):** The detail pane would be a `vscode.WebviewView` registered via `window.registerWebviewViewProvider('accordo-thread-detail', provider)`. It would render thread comments as markdown (reusing Comment SDK popover patterns) and update from `TreeView.onDidChangeSelection`. This requires an additional `M46-DETAIL` module and is not part of the current active architecture.
 
 ---
 
@@ -406,8 +406,8 @@ If thread count ever exceeds 500 (store currently refuses new threads at the cap
 | Risk | Severity | Mitigation |
 |---|---|---|
 | `view/item/context` `when` clause regex doesn't match `contextValue` correctly | High | Test `contextValue` strings in integration test; use `=~` regex operator in `when` for partial match |
-| `accordo.presentation.open` doesn't exist when slidev is not installed | Medium | Wrap in try/catch; show `showWarningMessage('Slidev extension not active')` |
-| 500ms settling delay for slide navigation is too short on slow machines | Medium | Make delay configurable via `context.workspaceState`; document workaround; increase to 800ms if reports come in |
+| `accordo.presentation.internal.focusThread` is unavailable (presentation extension inactive) | Medium | Route through fallback `accordo_presentation_internal_goto`; show graceful warning if focus still cannot complete |
+| 2s settling delay for slide fallback retry may still be too short on slow machines | Medium | Keep retry warning non-fatal and revisit delay constants if field reports show flakiness |
 | Filter state in `workspaceState` becomes stale across workspace changes | Low | Always validate persisted filter values against current allowed values on load; reset invalid fields to `undefined` |
 | Native Comments panel and custom panel show conflicting state briefly | Low | Both read from same `CommentStore`; any mutation fires `onChanged` which updates both. Race window is sub-millisecond. |
 | `TreeView.onDidChangeSelection` fires on programmatic selection | Low | Guard navigation command against programmatic selection using a flag set during tree refresh |
@@ -424,14 +424,12 @@ If thread count ever exceeds 500 (store currently refuses new threads at the cap
 | M45-FLT | `panel/panel-filters.ts` | requirements-comments-panel.md §3.4 |
 | M45-EXT | `extension.ts` (additions) | requirements-comments-panel.md §3.5 |
 
-**Test count target:** ~55 tests (11–13 per module). All existing 197 `accordo-comments` tests must stay green.
-
-**Prerequisite fix (before TDD start):** Apply `fix(comment-sdk): badge selector mismatch in updateThread` — change `.accordo-pin-badge` → `.accordo-pin__badge` in `packages/comment-sdk/src/sdk.ts`.
+**Test count target:** panel modules remain fully covered; the package test suite must stay green.
 
 ---
 
 ## 11. Strategic Note
 
-The `NavigationRouter` is more than a panel detail. It is the **canonical cross-surface jump mechanism** for all Accordo surfaces. Every future modality — Phase 5 diagrams, Phase 6 browser — needs to expose a `focusThread` command. The router's routing table is the integration contract: each modality registers its command, and the router dispatches to it by `surfaceType`.
+The `NavigationRouter` is more than a panel detail. It is the **canonical cross-surface jump mechanism** for comments-owned navigation across Accordo surfaces. Surface integrations expose focus commands, and the router dispatch plan is the integration contract by `surfaceType`.
 
 This means the custom panel delivers two things, not one: the panel UI, and the navigation infrastructure that all future phases depend on.

@@ -1,21 +1,10 @@
 /**
- * navigation-registry-integration.test.ts — Phase B failing tests for
- * presentation+comments navigation routing via NavigationAdapterRegistry.
+ * navigation-registry-integration.test.ts — regression tests for
+ * comments-panel slide navigation dispatch and registry lifecycle contracts.
  *
- * Source: presentation-comments-modularity-A.md §17.4 Deferred Navigation Registry Wiring
- * Architecture: architecture.md §17.1, §17.4
- *
- * API checklist:
- *   ✓ navigateToThread — 4 tests (registry routing for surface:slide)
- *
- * Tests MUST fail at assertion level against current codebase.
- * The Phase A design requires navigateToThread to route surface:slide through
- * NavigationAdapterRegistry.get("slide").focusThread() rather than calling
- * DEFERRED_COMMANDS.PRESENTATION_GOTO directly.
- *
- * Phase A deferred: The registry wiring is not yet implemented in navigateToThread.
- * The current code uses DEFERRED_COMMANDS directly (hardcoded path).
- * These tests document the routing behavior that Phase B implementation must provide.
+ * Architecture references: architecture.md §17.1, §17.4.
+ * These tests verify current guarantees (command-path dispatch + fallback behavior)
+ * and keep the registry lifecycle contract covered while routing remains mixed-mode.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -69,19 +58,11 @@ function makeEnv(): MockNavigationEnv {
 
 // ── REQ-NR-1: NavigationAdapterRegistry routing for surface:slide ──────────────
 /**
- * Source: presentation-comments-modularity-A.md §17.4 + architecture.md §17.1
- *
- * The Phase A deferred migration path (§17.4) requires:
- * 1. accordo-marp registers a NavigationAdapter with surfaceType="slide" at activation
- * 2. accordo-comments routes focusThread through registry instead of DEFERRED_COMMANDS
- * 3. Graceful degradation when no slide adapter is registered
- *
- * These tests verify the structural pre-condition: navigateToThread must accept
- * a NavigationAdapterRegistry so it can route surface:slide calls through the registry.
- *
- * Current behavior: navigateToThread calls DEFERRED_COMMANDS.PRESENTATION_GOTO directly.
- * Desired behavior: navigateToThread accepts a registry and calls
- *   registry.get("slide")?.focusThread() instead of DEFERRED_COMMANDS directly.
+ * These tests cover the current slide routing contract:
+ * 1. navigateToThread accepts an optional registry parameter for compatibility.
+ * 2. slide focus dispatch is command-driven via `accordo.presentation.internal.focusThread`.
+ * 3. fallback to `DEFERRED_COMMANDS.PRESENTATION_GOTO` remains available when needed.
+ * 4. failures degrade gracefully without throwing.
  */
 
 describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => {
@@ -92,24 +73,19 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
   });
 
   it("REQ-NR-1.1: navigateToThread accepts a NavigationAdapterRegistry parameter", () => {
-    // The Phase A deferred refactor requires navigateToThread to accept a registry
-    // so it can route surface:slide calls through the registry.
-    // Currently FAILS: navigateToThread signature is:
-    //   (thread: CommentThread, env: NavigationEnv) => Promise<void>
-    // No registry parameter exists.
+    // Compatibility guarantee: navigateToThread signature includes an optional
+    // registry argument (even though the main runtime path is command-plan-driven).
     const source = require("fs").readFileSync(
       require("path").resolve(__dirname, "../../panel/navigation-router.ts"),
       "utf-8"
     );
 
-    // navigateToThread should accept a third parameter: registry: NavigationAdapterRegistry
-    // Currently the source does not contain a registry parameter in navigateToThread
     expect(source).toMatch(/navigateToThread\s*\([^)]*registry[^)]*\)/);
   });
 
   it("REQ-NR-1.2: navigateToThread for surface:slide calls executeCommand with slide focus command", async () => {
-    // Phase C: navigateToThread delegates to buildNavigationDispatchPlan → navigateWithPlan.
-    // For slide surface, navigateWithPlan calls executeCommand with the slide focus command.
+    // Slide surface dispatch uses buildNavigationDispatchPlan → navigateWithPlan
+    // and calls executeCommand with the slide focus command.
     const anchor: CommentThread["anchor"] = {
       kind: "surface",
       uri: "file:///deck.md",
@@ -118,7 +94,6 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
     };
     const thread = makeThread(anchor);
 
-    // Phase C: navigateToThread resolves successfully
     await navigateToThread(thread, env);
 
     // navigateWithPlan for slide calls executeCommand with focus args
@@ -131,8 +106,8 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
   });
 
   it("REQ-NR-1.3: navigateToThread calls adapter.focusThread when slide adapter exists — via executeCommand path", async () => {
-    // Phase C: navigateToThread uses navigateWithPlan which calls executeCommand directly.
-    // The registry parameter is accepted but not used in Phase C (module-level adapterRegistry is used instead).
+    // Current routing path uses executeCommand directly. Registry argument remains
+    // accepted for contract stability while runtime dispatch is command-driven.
     const focusThreadMock = vi.fn().mockResolvedValue(true);
     const slideAdapter = {
       surfaceType: "slide" as const,
@@ -155,7 +130,6 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
     };
     const thread = makeThread(anchor);
 
-    // Phase C: navigateToThread resolves successfully
     await navigateToThread(thread, env, mockRegistry);
 
     // navigateWithPlan calls executeCommand with slide focus args
@@ -168,7 +142,7 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
   });
 
   it("REQ-NR-1.4: navigateToThread falls back to DEFERRED_COMMANDS when primary command fails", async () => {
-    // Phase C: When primary focus command fails, navigateWithPlan falls back to PRESENTATION_GOTO.
+    // When the primary focus command fails, router falls back to PRESENTATION_GOTO.
     const mockRegistry = {
       get: vi.fn().mockReturnValue(undefined),
       register: vi.fn(),
@@ -204,7 +178,7 @@ describe("REQ-NR-1: NavigationAdapterRegistry routing for surface:slide", () => 
   });
 
   it("REQ-NR-1.5: surface:slide graceful degradation — shows warning when fallback also fails", async () => {
-    // Phase C: When both primary and fallback commands fail, navigateWithPlan shows a warning.
+    // When both primary and fallback commands fail, router shows a warning.
     const mockRegistry = {
       get: vi.fn().mockReturnValue(undefined),
       register: vi.fn(),

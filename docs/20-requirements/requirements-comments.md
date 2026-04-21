@@ -4,7 +4,7 @@
 **Type:** VSCode extension  
 **Publisher:** `accordo`  
 **Version:** 0.1.0  
-**Date:** 2025-01-01
+**Date:** 2026-04-21
 
 ---
 
@@ -164,6 +164,20 @@ interface AccordoComment {
 | M38-CT-10 | `comment_sync_version` exposes store version and thread count for sync drift detection |
 | M38-CT-11 | Browser comments MUST be reachable through the same unified tools (no separate public `accordo_browser_*` tool family after migration) |
 
+#### Canonical MCP tool inventory (8 tools)
+
+- `comment_list`
+- `comment_get`
+- `comment_create`
+- `comment_reply`
+- `comment_resolve`
+- `comment_reopen`
+- `comment_delete`
+- `comment_sync_version`
+
+> `comment_list` supports `detail: true` for callers that need full `CommentThread[]`
+> payloads instead of summaries.
+
 #### Tool Schema: `comment_list`
 
 ```typescript
@@ -231,7 +245,7 @@ interface AccordoComment {
 > accepts both the existing `tagName:siblingIndex:textFingerprint` format (e.g.
 > `"button:3:submit"`) and the new strategy-prefixed format (e.g. `"id:submit-btn"`,
 > `"data-testid:login-form"`, `"css:main>div>button"`). Strategy-prefixed keys are
-> produced by `browser_inspect_element` and offer higher re-anchor stability. See
+> produced by `accordo_browser_inspect_element` and offer higher re-anchor stability. See
 > `docs/design/page-understanding-architecture.md` §5 for the full anchor strategy
 > hierarchy.
 
@@ -319,9 +333,9 @@ interface AccordoComment {
 | M40-EXT-06 | Creates `StateContribution` and wires it to `CommentStore` + Bridge |
 | M40-EXT-07 | Registers all VS Code command handlers (`accordo.comments.*`) |
 | M40-EXT-08 | All disposables pushed to `context.subscriptions` |
-| M40-EXT-09 | Exposes internal commands for inter-extension calls from `accordo-md-viewer`, including `accordo.comments.internal.getStore` |
+| M40-EXT-09 | Exposes internal commands for inter-extension calls from `accordo-md-viewer`, including `accordo_comments_internal_getStore` |
 | M40-EXT-10 | `deactivate()` exported (empty implementation) |
-| M40-EXT-11 | Exposes `accordo.comments.internal.getSurfaceAdapter` — a generalized surface adapter command for any surface modality (slides, diagrams, browser, etc.) |
+| M40-EXT-11 | Exposes `accordo_comments_internal_getSurfaceAdapter` — a generalized surface adapter command for any surface modality (slides, diagrams, browser, etc.) |
 | M40-EXT-12 | Registers panel action command `accordo.commentsPanel.deleteAllBrowserComments` that removes all browser-surface threads after confirmation |
 | M40-EXT-13 | Browser-surface threads are included in `CommentsTreeProvider` source so they appear in the shared Accordo Comments Panel |
 
@@ -335,18 +349,18 @@ interface AccordoComment {
 
 | Command | Arguments | Returns |
 |---|---|---|
-| `accordo.comments.internal.getStore` | none | store adapter `{ createThread, reply, resolve, reopen, delete, getThreadsForUri, onChanged }` — markdown-preview-specific (takes `blockId` + optional `line`) |
-| `accordo.comments.internal.getThreadsForUri` | `uri: string` | `CommentThread[]` |
-| `accordo.comments.internal.createSurfaceComment` | `{ uri, anchor, body, intent? }` | `CreateCommentResult` |
-| `accordo.comments.internal.resolveThread` | `threadId: string` | `void` |
+| `accordo_comments_internal_getStore` | none | store adapter `{ createThread, reply, resolve, reopen, delete, getThreadsForUri, onChanged }` — markdown-preview-specific (takes `blockId` + optional `line`) |
+| `accordo_comments_internal_getThreadsForUri` | `uri: string` | `CommentThread[]` |
+| `accordo_comments_internal_createSurfaceComment` | `{ uri, anchor, body, intent? }` | `CreateCommentResult` |
+| `accordo_comments_internal_resolveThread` | `threadId: string` | `void` |
 
 ### 5.2 Generalized Surface Adapter (new — M40-EXT-11)
 
 | Command | Arguments | Returns |
 |---|---|---|
-| `accordo.comments.internal.getSurfaceAdapter` | none | `SurfaceCommentAdapter` (see below) |
+| `accordo_comments_internal_getSurfaceAdapter` | none | `SurfaceCommentAdapter` (see below) |
 
-The generalized adapter allows **any surface modality** (slides, Excalidraw, browser extension, future surfaces) to create comment threads with full anchor control. Unlike `getStore`, which constructs anchors internally from `blockId`, this adapter lets the caller provide the complete `CommentAnchor`.
+The generalized adapter allows **any surface modality** (slides, Excalidraw, browser extension, and additional surfaces) to create comment threads with full anchor control. Unlike `getStore`, which constructs anchors internally from `blockId`, this adapter lets the caller provide the complete `CommentAnchor`.
 
 ```ts
 interface SurfaceCommentAdapter {
@@ -372,7 +386,7 @@ interface SurfaceCommentAdapter {
 | Markdown preview | `"markdown-preview"` | `BlockCoordinates { type: "block", blockId, blockType }` |
 | Slides | `"slide"` | `SlideCoordinates { type: "slide", slideIndex, x, y }` |
 | Excalidraw (Phase 5) | `"diagram"` | `DiagramNodeCoordinates { type: "diagram-node", nodeId }` |
-| Browser (future) | `"browser"` | `NormalizedCoordinates { type: "normalized", x, y }` |
+| Browser | `"browser"` | `NormalizedCoordinates { type: "normalized", x, y }` |
 
 These are `vscode.commands.executeCommand` invocations — not MCP tools.
 
@@ -396,6 +410,6 @@ The existing `getStore` command remains unchanged. `md-viewer` continues to use 
 
 ## 7. Non-Requirements (explicitly out of scope)
 
-- **No webview rendering** — `accordo-comments` never creates webviews. All richvisual rendering is handled by `accordo-md-viewer`.
+- **No webview rendering** — `accordo-comments` never creates webviews. Rich visual rendering is handled by host surface extensions (`accordo-md-viewer`, `accordo-marp`, `accordo-diagram`, browser extension UI).
 - **No markdown parsing** — parsing and block-ID injection belongs to `accordo-md-viewer`.
 - **No dependency on `@accordo/comment-sdk`** — the SDK is a webview library; the VS Code host never loads it.

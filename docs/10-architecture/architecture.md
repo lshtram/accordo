@@ -845,7 +845,7 @@ CommentStore (accordo-comments)
 
 ### 12.4 Built-in Comments panel limitation
 
-The VS Code **built-in Comments panel** (bottom-bar `workbench.panel.comments`) does **not** support custom context menu contributions or click-to-navigate overrides. See `docs/patterns.md` P-12 for full analysis. A custom **Accordo Comments TreeView** sidebar panel is tracked in `docs/workplan.md` deferred backlog #7 and will replace the built-in panel as the primary navigation surface.
+The VS Code **built-in Comments panel** (bottom-bar `workbench.panel.comments`) does **not** support custom context menu contributions or click-to-navigate overrides. See `docs/patterns.md` P-12 for full analysis. Accordo uses a custom **Accordo Comments TreeView** sidebar panel (`accordo-comments-panel`) as the primary comments navigation surface.
 
 ---
 
@@ -1721,7 +1721,7 @@ optionally summarizes it, and calls Accordo's `readAloud` tool.
 
 ### 17.1 Purpose
 
-The `NavigationAdapterRegistry` (`packages/capabilities/src/navigation.ts`) provides a host-agnostic, plug-and-play mechanism for routing comment thread focus and anchor navigation to any surface type. Instead of hard-coding surface-specific `if` branches in the comments panel router, each modality registers a `NavigationAdapter` at activation time.
+The `NavigationAdapterRegistry` (`packages/capabilities/src/navigation.ts`) provides a host-agnostic, plug-and-play mechanism for routing comment thread focus and anchor navigation to any surface type. The current comments router keeps explicit command-dispatch plans as the primary path, with registry contracts retained for compatibility and future convergence.
 
 ### 17.2 Interface
 
@@ -1781,11 +1781,12 @@ To add comment support for a new surface type (e.g. PDF viewer):
 
 1. Implement `NavigationAdapter` with `surfaceType: "pdf"`
 2. In the surface's `extension.ts` activation, call `registry.register(myAdapter)`
-3. No changes to `navigation-router.ts` — the router discovers the adapter automatically
+3. Add/update explicit dispatch-plan mapping in `navigation-contract.ts` when the surface requires first-class command-path support
 
 ### 17.7 State Ownership
 
-- The registry is owned by the comments panel (`packages/comments/`)
+- The registry type/factory are owned by `@accordo/capabilities`
+- The active router instance is created in `packages/comments/src/panel/navigation-router.ts`
 - Adapters are owned by their respective surface packages
 - The registry is a plain `Map` — no persistence, cleared on VS Code restart
 - Adapters must re-register on every activation (no persistence requirement)

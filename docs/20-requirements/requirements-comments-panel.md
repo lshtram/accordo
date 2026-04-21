@@ -2,10 +2,9 @@
 
 **Package:** `accordo-comments` (additions)  
 **Type:** VSCode extension — new panel module  
-**Session:** 9  
 **Module range:** M45-TP, M45-NR, M45-CMD, M45-FLT, M45-EXT  
-**Date:** 2026-03-06  
-**Architecture reference:** `docs/comments-panel-architecture.md`
+**Date:** 2026-04-21  
+**Architecture reference:** `docs/10-architecture/comments-panel-architecture.md`
 
 ---
 
@@ -13,11 +12,12 @@
 
 The custom Accordo Comments Panel is a `vscode.TreeView`-based sidebar panel that replaces the built-in VS Code Comments panel as the primary navigation and triage surface for comment threads in the Accordo workspace.
 
-**Why:** The built-in Comments panel (a) does not support `view/item/context` menus from extensions, (b) navigates via `editor.revealRange` which cannot open webview surfaces, and (c) provides no click-intercept hook. See `docs/patterns.md` P-12 and `docs/comments-panel-architecture.md` §1 for full root-cause analysis.
+**Why:** The built-in Comments panel (a) does not support `view/item/context` menus from extensions, (b) navigates via `editor.revealRange` which cannot open webview surfaces, and (c) provides no click-intercept hook. See `docs/30-development/patterns.md` P-12 and `docs/10-architecture/comments-panel-architecture.md` §1 for full root-cause analysis.
 
-**Scope of Session 9:**
-- Phase 1: `TreeView` list with full context menus, filter state, anchor-aware navigation.
-- Phase 2 (deferred M46): `WebviewView` detail pane with full conversation + markdown rendering.
+**Current scope:**
+- `TreeView` list with full context menus, filter state, and anchor-aware navigation.
+- In-context reply flow (navigate to anchor surface, then reply in native inline UI).
+- Optional future detail-pane work is historical/deferred and not part of this spec.
 
 **Invariants:**
 - `CommentStore` remains the single source of truth. Panel is read-only presentation layer.
@@ -25,10 +25,11 @@ The custom Accordo Comments Panel is a `vscode.TreeView`-based sidebar panel tha
 - All new code lives in `packages/comments/src/panel/`.
 - Accessibility: every action reachable by keyboard (command palette) as well as context menu.
 
-**Cross-package dependency for Session 9:**
-- Slide navigation from panel requires a VS Code command in `accordo-slidev` that accepts a target slide index.
-- Acceptable command IDs: `accordo.presentation.goto` (preferred) or `accordo.presentation.internal.goto`.
-- If neither command exists at runtime, router behavior is: open deck + show informational warning (no throw).
+**Cross-package dependencies:**
+- Slide focus dispatch targets `accordo.presentation.internal.focusThread(uri, threadId, blockId)`.
+- Browser focus dispatch targets `accordo_browser.focusThread(threadId)`.
+- Markdown-preview focus dispatch targets `accordo_preview_internal_focusThread(uri, threadId, blockId)`.
+- Slide fallback remains `accordo_presentation_internal_goto` with delayed focus retry.
 
 ---
 
@@ -176,18 +177,18 @@ Group modes (controlled by `PanelFilters.groupMode`):
 | Requirement ID | Requirement |
 |---|---|
 | M45-NR-01 | Exports `async function navigateToThread(thread: CommentThread, vscodeEnv?: NavigationEnv): Promise<void>` |
-| M45-NR-02 | `anchor.kind === "text"` → calls `vscode.window.showTextDocument(uri, { selection: new vscode.Range(startLine, 0, endLine, 0), preserveFocus: false, preview: false })`. **Smart viewer**: if `env.findOpenViewForUri(uri)` returns `"markdown-preview"` first route via preview command instead. |
+| M45-NR-02 | `anchor.kind === "text"` → calls `showTextDocument(uri, { selection: range })`; then executes `accordo_comments_internal_expandThread(threadId)` to reveal inline reply context. |
 | M45-NR-03 | `anchor.kind === "surface"` + `surfaceType === "markdown-preview"` → `vscode.commands.executeCommand('accordo_preview_internal_focusThread', uri, thread.id, coords.blockId)` |
 | M45-NR-04 | `anchor.kind === "surface"` + `surfaceType === "slide"` → **canonical focus command** is `accordo.presentation.internal.focusThread(uri, threadId, blockId)`; router must derive `blockId` from slide coordinates (`slide:{index}:{x}:{y}`). `accordo_presentation_internal_goto` remains optional deferred fallback only |
-| M45-NR-05 | `anchor.kind === "surface"` + `surfaceType === "browser"` → executes `accordo_browser.focusThread(threadId)`; command ID uses underscore naming to match MCP/VS Code command registration |
+| M45-NR-05 | `anchor.kind === "surface"` + `surfaceType === "browser"` → executes `accordo_browser.focusThread(threadId)` |
 | M45-NR-06 | `anchor.kind === "surface"` + `surfaceType === "diagram"` → executes `accordo.diagram.focusThread` with `thread.id`; same graceful fallback as M45-NR-05 |
-| M45-NR-07 | `anchor.kind === "file"` → smart viewer: same logic as M45-NR-11 applied to the file URI |
+| M45-NR-07 | `anchor.kind === "file"` → executes `showTextDocument(uri)` |
 | M45-NR-08 | Any unrecognised `surfaceType` falls back to `showTextDocument(anchor.uri)` |
 | M45-NR-09 | All navigation errors (command not found, file not found) are caught; on failure shows `vscode.window.showWarningMessage('Could not navigate to thread: <message>')` |
-| M45-NR-10 | `NavigationEnv` interface — injectable abstraction over `vscode.window`, `vscode.commands`, and `setTimeout` — allows unit testing without real VS Code |
-| M45-NR-11 | **Smart viewer selection**: before opening any file, check `env.findOpenViewForUri(uri)` which returns `"text" \| "markdown-preview" \| "slide" \| null`. If `"markdown-preview"` → route via `accordo_preview_internal_focusThread`. If `"slide"` → route via `accordo_presentation_goto`. If `"text"` or `null` → use `showTextDocument`. If file is not open (`null`) and the URI is `.md`, attempt accordo-preview first (command `accordo.preview.open`); if unavailable fall back to `showTextDocument`. If URI is a presentation deck (`.deck.md` or slidev convention), attempt `accordo.presentation.open` first. |
+| M45-NR-10 | `NavigationEnv` is an injectable abstraction over `vscode.window`, `vscode.commands`, and delay/visibility helpers (`visibleTextEditorUris`) for unit testing without real VS Code |
+| M45-NR-11 | Routing is command-plan-driven via `buildNavigationDispatchPlan(thread)` in `navigation-contract.ts`; `navigateToThread` dispatches from the plan and never throws |
 | M45-NR-12 | Browser false-positive prevention: on browser focus failure, router MUST probe `accordo_browser_health` before showing a disconnected message. If health reports `connected: true`, message must indicate focus-routing failure (not relay disconnection). |
-| M45-NR-13 | Navigation for browser/diagram/slide surfaces must use one explicit surface→command mapping constant so command IDs are not duplicated in branch logic. |
+| M45-NR-13 | Navigation for browser/diagram/slide/preview surfaces uses one explicit surface→command mapping constant (`SURFACE_FOCUS_COMMANDS`) so command IDs are not duplicated in branch logic |
 | M45-NR-14 | For text anchors in `.md` files, router must avoid forcing markdown preview when the active target is a slide presentation thread; slide-target hints (when present in thread metadata/context) take precedence over markdown-preview smart-viewer fallback. |
 | M45-NR-15 | Any comment-thread focus action that originates from the native comment UI (`accordo.comments.focusInPreview`) must delegate to the same navigation-dispatch planner used by `navigateToThread`, so slide anchors never route through markdown-preview focus by accident |
 | M45-NR-16 | Slide-target dispatch parity: user-authored and agent-authored slide threads must resolve to the same focus command tuple `accordo.presentation.internal.focusThread(uri, threadId, blockId)` |
@@ -201,6 +202,7 @@ interface NavigationEnv {
   showWarningMessage(message: string): Thenable<string | undefined>;
   showInformationMessage(message: string): Thenable<string | undefined>;
   delay(ms: number): Promise<void>;
+  visibleTextEditorUris(): readonly string[];
 }
 ```
 
@@ -307,14 +309,14 @@ Note: `staleOnly` filtering requires access to `store.isThreadStale(id)`. Pass `
 ## 4. Non-Requirements (Phase 1 — explicitly out of scope)
 
 - **No WebviewView detail pane.** Full thread conversation with markdown rendering is Phase 2 (M46). See architecture §7.
-- **No inline editing in tree.** Replies via `showInputBox` only. Rich text editing deferred.
+- **No inline editing in tree rows.** Replies happen in-context at the anchor surface (editor/webview native UI), not in the tree itself.
 - **No drag-and-drop** thread reordering.
 - **No unread tracking.** Requires a session/user identity concept not currently in the store.
 - **No comment search.** Global text search across comment bodies deferred to Phase 3.
-- **No bulk actions.** Resolve-all / delete-all deferred.
+- **No generic bulk actions.** Global resolve-all/delete-all remain deferred. (Exception: browser-only bulk delete via `accordo.commentsPanel.deleteAllBrowserComments` is supported.)
 - **No thread badges on file explorer nodes.** Annotation of the Explorer via `FileDecorationProvider` deferred.
 - **No notifications** when agent creates a comment. Deferred to Phase 3 (see architecture §13 comments-architecture.md).
-- **No changes to MCP tools.** The panel is presentation only; `accordo.comment.*` tools are unchanged.
+- **No changes to MCP tools.** The panel is presentation/navigation only; `comment_*` tool contracts are unchanged.
 - **No changes to `CommentStore`** API or data model.
 - **No changes to `NativeComments`** or the `CommentController`. Two-surface strategy is preserved.
 
@@ -331,4 +333,4 @@ Note: `staleOnly` filtering requires access to `store.isThreadStale(id)`. Pass `
 | M45-EXT Extension Integration | `__tests__/extension.test.ts` (additions) | M45-EXT-01 → M45-EXT-10 | 10 |
 | **Total** | | | **~87** |
 
-All 197 existing `accordo-comments` tests must remain green after M45 implementation. Test command: `pnpm --filter accordo-comments test 2>&1 | tail -15`.
+All existing `accordo-comments` tests must remain green. Test command: `pnpm --filter accordo-comments test`.
