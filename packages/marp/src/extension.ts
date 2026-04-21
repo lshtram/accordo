@@ -6,7 +6,7 @@
 
 import * as vscode from "vscode";
 import { CAPABILITY_COMMANDS, DEFERRED_COMMANDS } from "@accordo/capabilities";
-import type { SurfaceCommentAdapter, NavigationAdapterRegistry } from "@accordo/capabilities";
+import type { SurfaceCommentAdapter, NavigationAdapterRegistry, NavigationAdapter } from "@accordo/capabilities";
 import { createNavigationAdapterRegistry } from "@accordo/capabilities";
 import type { BridgeAPI, ParsedDeck } from "./types.js";
 import { parseDeck } from "./narration.js";
@@ -30,37 +30,10 @@ interface SessionState {
 // Registered at activation; accordo-comments acquires it via the getNavigationRegistry command.
 let sharedRegistry: NavigationAdapterRegistry | null = null;
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const engineSetting =
-    vscode.workspace.getConfiguration().get<string>("accordo.presentation.engine") ?? "marp";
-  if (engineSetting === "slidev") return;
-
-  const bridgeExt = vscode.extensions.getExtension<BridgeAPI>("accordo.accordo-bridge");
-  if (!bridgeExt) return;
-
-  const bridge: BridgeAPI = (await bridgeExt.activate()) ?? bridgeExt.exports;
-
-  const stateContrib = new PresentationStateContribution(bridge);
-  stateContrib.update({
-    isOpen: false,
-    deckUri: null,
-    currentSlide: 0,
-    totalSlides: 0,
-    narrationAvailable: false,
-  });
-
-  const commentsAdapter = await acquireCommentsAdapter();
-  const provider = new PresentationProvider({ context });
-
-  // Navigation adapter for surface:slide routing via comments panel.
-  // Stored at module level (sharedRegistry) and exposed via command for accordo-comments.
-  sharedRegistry = createNavigationAdapterRegistry();
-  const registry = sharedRegistry;
-  const slideAdapter: NavigationAdapterRegistry extends { get(s: string): infer A } ? A : never = {
+function createSlideNavigationAdapter(): NavigationAdapter {
+  return {
     surfaceType: "slide",
     navigateToAnchor: async (anchor) => {
-      // anchor is a CommentAnchorSurface cast to Record<string, unknown>.
-      // The real slideIndex lives at anchor.coordinates.slideIndex.
       const a = anchor as { coordinates?: { slideIndex?: number } };
       const slideIndex = a.coordinates?.slideIndex;
       if (typeof slideIndex === "number") {
@@ -73,9 +46,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return false;
     },
     focusThread: async (threadId, anchor) => {
-      // M50-FOCUS is the single canonical focus path.
-      // Call accordo.presentation.internal.focusThread directly with the full context
-      // so it can open the deck, navigate to the slide, and post comments:focus.
       const a = anchor as { uri?: string; coordinates?: { slideIndex?: number }; blockId?: string } | undefined;
       const uri = a?.uri ?? "";
       const blockId = a?.blockId ?? (a?.coordinates?.slideIndex !== undefined ? `slide:${a.coordinates.slideIndex}:0.5000:0.5000` : "");
@@ -88,37 +58,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return true;
     },
   };
-  registry.register(slideAdapter);
+}
 
-  const session: SessionState = {
-    adapter: null,
-    deck: null,
-    deckContent: null,
-  };
-
-  const deps: PresentationToolDeps = {
-    discoverDeckFiles,
-    openSession: (uri) => openSession(uri, session, provider, stateContrib, commentsAdapter),
-    closeSession: () => { closeSession(session, provider, stateContrib); },
-    listSlides: () => listSlides(session),
-    getCurrent: () => getCurrent(session),
-    goto: (index) => gotoSlide(index, session, stateContrib),
-    next: () => nextSlide(session, stateContrib),
-    prev: () => prevSlide(session, stateContrib),
-    generateNarration: (target) => generateNarration(target, session),
-    capture: () => provider.requestCapture(),
-    getSessionDeckUri: () => provider.getCurrentDeckUri(),
-  };
-
-  const tools = createPresentationTools(deps);
-  let toolRegistration: { dispose(): void };
-  try {
-    toolRegistration = bridge.registerTools("accordo-marp", tools);
-  } catch {
-    return;
-  }
-
-  context.subscriptions.push(
+function registerPresentationCommands(
+  session: SessionState,
+  provider: PresentationProvider,
+  stateContrib: PresentationStateContribution,
+  commentsAdapter: SurfaceCommentAdapter | null,
+): vscode.Disposable[] {
+  return [
     vscode.commands.registerCommand("accordo.marp.open", (uri?: vscode.Uri) => {
       if (uri) {
         void openSession(uri.fsPath, session, provider, stateContrib, commentsAdapter);
@@ -130,8 +78,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         });
       }
     }),
-    // Alias for accordo.marp.open — used by accordo-comments navigation router
-    // when opening a deck from a comment thread on a slide surface.
     vscode.commands.registerCommand("accordo.presentation.open", (uri?: vscode.Uri) => {
       if (uri) {
         void openSession(uri.fsPath, session, provider, stateContrib, commentsAdapter);
@@ -159,53 +105,102 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("accordo_presentation_prev", () =>
       prevSlide(session, stateContrib),
     ),
-    // Internal commands used by the NavigationAdapter registry (surface:slide routing)
-    // and by DEFERRED_COMMANDS fallback in accordo-comments navigation-router.
-    // PRESENTATION_GOTO: takes a 0-based raw slide index (matches CapabilityCommandMap)
     vscode.commands.registerCommand("accordo_presentation_internal_goto", (slideIndex: unknown) => {
       if (typeof slideIndex === "number") {
         return gotoSlide(slideIndex, session, stateContrib);
       }
       return Promise.resolve({});
     }),
-
-    // M50-FOCUS: Canonical focusThread command (M50-FOCUS-01 through M50-FOCUS-05).
-    // Handles the full focus sequence: open deck → parse slide → navigate → post to webview.
     vscode.commands.registerCommand(
       "accordo.presentation.internal.focusThread",
       async (uri: string, threadId: string, blockId: string) => {
-        // M50-FOCUS-03: open the deck if not already open
         const currentDeckUri = provider.getCurrentDeckUri();
         if (currentDeckUri !== uri) {
           try {
             await openSession(uri, session, provider, stateContrib, commentsAdapter);
           } catch {
-            // If we can't open the deck, continue anyway to allow focus message to be posted
+            // Allow downstream focus post even if open fails.
           }
         }
 
-        // M50-FOCUS-04: parse slideIndex from blockId (format: slide:{idx}:{x}:{y})
         const match = /^slide:(\d+):[\d.]+:[\d.]+$/.exec(blockId);
         if (match) {
           const slideIndex = parseInt(match[1], 10);
           await gotoSlide(slideIndex, session, stateContrib);
         }
 
-        // M50-FOCUS-05: post comments:focus to webview after navigation
         const panel = provider.getPanel();
         if (panel) {
           panel.webview.postMessage({ type: "comments:focus", threadId, blockId });
         }
 
-        // Always return a defined value so the command promise resolves predictably
         return { uri, threadId, blockId };
       },
     ),
-    // Expose the navigation registry to accordo-comments for surface:slide routing.
-    // Returns the shared registry (or null if marp hasn't activated yet).
     vscode.commands.registerCommand("accordo_marp_internal_getNavigationRegistry", () =>
       sharedRegistry,
     ),
+  ];
+}
+
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  const engineSetting =
+    vscode.workspace.getConfiguration().get<string>("accordo.presentation.engine") ?? "marp";
+  if (engineSetting === "slidev") return;
+
+  const bridgeExt = vscode.extensions.getExtension<BridgeAPI>("accordo.accordo-bridge");
+  if (!bridgeExt) return;
+
+  const bridge: BridgeAPI = (await bridgeExt.activate()) ?? bridgeExt.exports;
+
+  const stateContrib = new PresentationStateContribution(bridge);
+  stateContrib.update({
+    isOpen: false,
+    deckUri: null,
+    currentSlide: 0,
+    totalSlides: 0,
+    narrationAvailable: false,
+  });
+
+  const commentsAdapter = await acquireCommentsAdapter();
+  const provider = new PresentationProvider({ context });
+
+  const session: SessionState = {
+    adapter: null,
+    deck: null,
+    deckContent: null,
+  };
+
+  // Navigation adapter for surface:slide routing via comments panel.
+  // Stored at module level (sharedRegistry) and exposed via command for accordo-comments.
+  sharedRegistry = createNavigationAdapterRegistry();
+  const registry = sharedRegistry;
+  registry.register(createSlideNavigationAdapter());
+
+  const deps: PresentationToolDeps = {
+    discoverDeckFiles,
+    openSession: (uri) => openSession(uri, session, provider, stateContrib, commentsAdapter),
+    closeSession: () => { closeSession(session, provider, stateContrib); },
+    listSlides: () => listSlides(session),
+    getCurrent: () => getCurrent(session),
+    goto: (index) => gotoSlide(index, session, stateContrib),
+    next: () => nextSlide(session, stateContrib),
+    prev: () => prevSlide(session, stateContrib),
+    generateNarration: (target) => generateNarration(target, session),
+    capture: () => provider.requestCapture(),
+    getSessionDeckUri: () => provider.getCurrentDeckUri(),
+  };
+
+  const tools = createPresentationTools(deps);
+  let toolRegistration: { dispose(): void };
+  try {
+    toolRegistration = bridge.registerTools("accordo-marp", tools);
+  } catch {
+    return;
+  }
+
+  context.subscriptions.push(
+    ...registerPresentationCommands(session, provider, stateContrib, commentsAdapter),
     toolRegistration,
   );
 }

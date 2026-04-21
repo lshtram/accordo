@@ -44,6 +44,85 @@ export class PresentationProvider {
     this.extensionUri = _options.context.extensionUri;
   }
 
+  private async readDeckContent(deckUri: string): Promise<string> {
+    try {
+      const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(deckUri));
+      return Buffer.from(bytes).toString("utf8");
+    } catch {
+      throw new Error(`Could not open deck file: ${deckUri}`);
+    }
+  }
+
+  private createPanel(): vscode.WebviewPanel {
+    return vscode.window.createWebviewPanel(
+      "accordo.marp.presentation",
+      "Marp Presentation",
+      vscode.ViewColumn.One,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+      },
+    );
+  }
+
+  private getSdkAssetUris(panel: vscode.WebviewPanel): { sdkJsUri?: string; sdkCssUri?: string } {
+    if (!this.commentsBridge) {
+      return {};
+    }
+
+    return {
+      sdkJsUri: panel.webview
+        .asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "sdk.browser.js"))
+        .toString(),
+      sdkCssUri: panel.webview
+        .asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "sdk.css"))
+        .toString(),
+    };
+  }
+
+  private bindCommentsSender(panel: vscode.WebviewPanel): void {
+    if (!this.commentsBridge) {
+      return;
+    }
+
+    this.commentsBridge.bindToSender({
+      postMessage: (msg: unknown) => panel.webview.postMessage(msg),
+    });
+  }
+
+  private wirePanelMessageHandling(panel: vscode.WebviewPanel, deckUri: string): void {
+    panel.webview.onDidReceiveMessage((msg: unknown) => {
+      if (this.commentsBridge && (msg as { type?: string }).type === "webview:ready") {
+        this.commentsBridge.loadThreadsForUri(deckUri);
+      }
+      this.handleWebviewMessage(msg);
+    });
+
+    if (this.commentsBridge) {
+      this.commentsBridge.loadThreadsForUri(deckUri);
+    }
+  }
+
+  private setupAdapterSubscription(panel: vscode.WebviewPanel, adapter: PresentationRuntimeAdapter): void {
+    this.slideSubscription = adapter.onSlideChanged((index) => {
+      this.currentSlide = index;
+      panel.webview.postMessage({ type: "slide-index", index });
+    });
+  }
+
+  private setupDeckWatcher(deckUri: string): void {
+    this.fileWatcher = vscode.workspace.createFileSystemWatcher(deckUri);
+    this.fileWatcher.onDidChange(() => {
+      if (this.reloadDebounceTimer !== null) {
+        clearTimeout(this.reloadDebounceTimer);
+      }
+      this.reloadDebounceTimer = setTimeout(() => {
+        this.reloadDebounceTimer = null;
+        void this.reloadDeck();
+      }, 300);
+    });
+  }
+
   async open(
     deckUri: string,
     adapter: PresentationRuntimeAdapter,
@@ -63,84 +142,25 @@ export class PresentationProvider {
     this.renderer = renderer;
     this.commentsBridge = commentsBridge;
 
-    let deckContent: string;
-    try {
-      const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(deckUri));
-      deckContent = Buffer.from(bytes).toString("utf8");
-    } catch {
-      throw new Error(`Could not open deck file: ${deckUri}`);
-    }
+    const deckContent = await this.readDeckContent(deckUri);
 
     const renderResult = this.renderer.render(deckContent);
 
     const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
 
-    this.panel = vscode.window.createWebviewPanel(
-      "accordo.marp.presentation",
-      "Marp Presentation",
-      vscode.ViewColumn.One,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-      },
-    );
-    const cspSource = this.panel.webview.cspSource;
+    const panel = this.createPanel();
+    this.panel = panel;
 
-    // Compute SDK asset URIs if comments bridge is present.
-    // Must be done after panel creation so webview is available.
-    let sdkJsUri: string | undefined;
-    let sdkCssUri: string | undefined;
-    if (this.commentsBridge) {
-      sdkJsUri = this.panel.webview
-        .asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "sdk.browser.js"))
-        .toString();
-      sdkCssUri = this.panel.webview
-        .asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "sdk.css"))
-        .toString();
+    this.bindCommentsSender(panel);
+    const cspSource = panel.webview.cspSource;
+    const { sdkJsUri, sdkCssUri } = this.getSdkAssetUris(panel);
+    panel.webview.html = buildWebviewHtml(renderResult, nonce, cspSource, sdkJsUri, sdkCssUri);
 
-      // Rebind the bridge sender to the real webview.postMessage.
-      // This must happen after panel creation so we have a real sender.
-      const realSender = this.commentsBridge.bindToSender({
-        postMessage: (msg: unknown) => this.panel!.webview.postMessage(msg),
-      });
-      void realSender; // bindToSender returns the same bridge instance (for chaining)
-    }
+    this.wirePanelMessageHandling(panel, deckUri);
+    this.setupAdapterSubscription(panel, adapter);
+    this.setupDeckWatcher(deckUri);
 
-    this.panel.webview.html = buildWebviewHtml(renderResult, nonce, cspSource, sdkJsUri, sdkCssUri);
-
-    // Single onDidReceiveMessage registration — consolidates:
-    //  a) webview:ready → reload threads (commentsBridge restart/reload scenario)
-    //  b) all other messages → handleWebviewMessage (slide changes, comments, capture)
-    this.panel.webview.onDidReceiveMessage((msg: unknown) => {
-      if (this.commentsBridge && (msg as { type?: string }).type === "webview:ready") {
-        this.commentsBridge.loadThreadsForUri(deckUri);
-      }
-      this.handleWebviewMessage(msg);
-    });
-
-    // Immediate load on open — needed for real integration (before webview:ready fires)
-    // and for tests that don't fire webview:ready at all.
-    if (this.commentsBridge) {
-      this.commentsBridge.loadThreadsForUri(deckUri);
-    }
-
-    this.slideSubscription = adapter.onSlideChanged((index) => {
-      this.currentSlide = index;
-      this.panel?.webview.postMessage({ type: "slide-index", index });
-    });
-
-    this.fileWatcher = vscode.workspace.createFileSystemWatcher(deckUri);
-    this.fileWatcher.onDidChange(() => {
-      if (this.reloadDebounceTimer !== null) {
-        clearTimeout(this.reloadDebounceTimer);
-      }
-      this.reloadDebounceTimer = setTimeout(() => {
-        this.reloadDebounceTimer = null;
-        void this.reloadDeck();
-      }, 300);
-    });
-
-    this.panel.onDidDispose(() => {
+    panel.onDidDispose(() => {
       this.close();
     });
   }
