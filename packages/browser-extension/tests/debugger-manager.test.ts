@@ -91,6 +91,22 @@ describe("DebuggerManager", () => {
       expect(globalThis.chrome.debugger.attach).not.toHaveBeenCalled();
     });
 
+    it("re-attaches when the in-memory attached state is stale", async () => {
+      await ensureAttached(1);
+
+      (globalThis.chrome.debugger.attach as ReturnType<typeof vi.fn>).mockClear();
+      (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>)
+        .mockRejectedValueOnce(new Error("Debugger is not attached to the tab with id: 1"))
+        .mockResolvedValue({});
+
+      await ensureAttached(1);
+
+      expect(globalThis.chrome.debugger.attach).toHaveBeenCalledWith(
+        expect.objectContaining({ tabId: 1 }),
+        "1.3"
+      );
+    });
+
     it("adds tabId to internal attachedTabs set on successful attach", async () => {
       await ensureAttached(10);
       expect(debuggerAttachedTabs.has(10)).toBe(true);
@@ -127,6 +143,20 @@ describe("DebuggerManager", () => {
 
       // onDetach listener should have been registered
       expect(globalThis.chrome.debugger.onDetach.addListener).toHaveBeenCalled();
+    });
+
+    it("MV3 recovery: rejects when the inherited debugger session is unusable", async () => {
+      (globalThis.chrome.debugger.attach as ReturnType<typeof vi.fn>).mockImplementationOnce(
+        (target: chrome.debugger.Debuggee, _version: string) => {
+          debuggerAttachedTabs.add(target.tabId as number);
+          return Promise.reject(new Error("Another debugger is already attached to the tab with id: 81"));
+        }
+      );
+      (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>)
+        .mockRejectedValueOnce(new Error("Debugger is not attached to the tab with id: 81"));
+
+      await expect(ensureAttached(81)).rejects.toThrow("Another debugger is already attached");
+      expect(isAttached(81)).toBe(false);
     });
 
     it("throws 'unsupported-page' for chrome:// or devtools:// pages", async () => {

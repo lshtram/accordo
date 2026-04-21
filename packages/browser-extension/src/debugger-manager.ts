@@ -26,6 +26,48 @@ const detachListeners = new Map<number, Array<(source: chrome.debugger.Debuggee,
  */
 const detachingTabs = new Set<number>();
 
+function removeDetachListeners(tabId: number): void {
+  const listeners = detachListeners.get(tabId);
+  if (!listeners) return;
+
+  listeners.forEach((listener) => {
+    try {
+      chrome.debugger.onDetach.removeListener(listener);
+    } catch {
+      // Ignore removal errors
+    }
+  });
+
+  detachListeners.delete(tabId);
+}
+
+async function canUseDebuggerSession(tabId: number): Promise<boolean> {
+  try {
+    await chrome.debugger.sendCommand(
+      { tabId },
+      "Runtime.evaluate",
+      { expression: "1", returnByValue: true }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function registerDetachListener(tabId: number): void {
+  removeDetachListeners(tabId);
+
+  const listener = (source: chrome.debugger.Debuggee, _reason: string): void => {
+    if (source.tabId === tabId) {
+      attachedTabs.delete(tabId);
+      removeDetachListeners(tabId);
+    }
+  };
+
+  chrome.debugger.onDetach.addListener(listener);
+  detachListeners.set(tabId, [listener]);
+}
+
 /**
  * Ensure the debugger is attached to the given tab. No-op if already attached.
  *
@@ -38,65 +80,30 @@ const detachingTabs = new Set<number>();
  */
 export async function ensureAttached(tabId: number): Promise<void> {
   // Fast path: already attached
-  if (attachedTabs.has(tabId)) return;
+  if (attachedTabs.has(tabId)) {
+    if (await canUseDebuggerSession(tabId)) {
+      return;
+    }
+
+    attachedTabs.delete(tabId);
+    removeDetachListeners(tabId);
+  }
 
   try {
     await chrome.debugger.attach({ tabId }, CDP_PROTOCOL_VERSION);
     attachedTabs.add(tabId);
-
-    // Register onDetach listener
-    const listener = (source: chrome.debugger.Debuggee, reason: string): void => {
-      if (source.tabId === tabId) {
-        // Mark as detached first to prevent re-entrant calls
-        attachedTabs.delete(tabId);
-
-        // Clean up listeners for this tab
-        const listeners = detachListeners.get(tabId);
-        if (listeners) {
-          listeners.forEach((l) => {
-            try {
-              chrome.debugger.onDetach.removeListener(l);
-            } catch {
-              // Ignore removal errors
-            }
-          });
-          detachListeners.delete(tabId);
-        }
-
-        // Notify additional listeners (e.g., permission cleanup)
-        // But don't call chrome.debugger.detach again
-      }
-    };
-
-    chrome.debugger.onDetach.addListener(listener);
-    detachListeners.set(tabId, [listener]);
+    registerDetachListener(tabId);
   } catch (e) {
     const error = e as Error;
     if (error.message.includes("Another debugger is already attached")) {
-      // MV3 recovery: SW restarted but Chrome kept the session alive
+      // MV3 recovery: SW restarted but Chrome kept the session alive.
+      // Verify the session is actually usable before trusting it.
+      if (!(await canUseDebuggerSession(tabId))) {
+        throw e;
+      }
+
       attachedTabs.add(tabId);
-
-      // Still register the onDetach listener
-      const listener = (source: chrome.debugger.Debuggee, reason: string): void => {
-        if (source.tabId === tabId) {
-          attachedTabs.delete(tabId);
-
-          const listeners = detachListeners.get(tabId);
-          if (listeners) {
-            listeners.forEach((l) => {
-              try {
-                chrome.debugger.onDetach.removeListener(l);
-              } catch {
-                // Ignore removal errors
-              }
-            });
-            detachListeners.delete(tabId);
-          }
-        }
-      };
-
-      chrome.debugger.onDetach.addListener(listener);
-      detachListeners.set(tabId, [listener]);
+      registerDetachListener(tabId);
     } else if (error.message.includes("Cannot attach to this target")) {
       throw new Error("unsupported-page");
     } else {
@@ -117,18 +124,7 @@ export async function detach(tabId: number): Promise<void> {
 
   try {
     // Clean up listeners first
-    const listeners = detachListeners.get(tabId);
-    if (listeners) {
-      listeners.forEach((listener) => {
-        try {
-          chrome.debugger.onDetach.removeListener(listener);
-        } catch {
-          // Ignore
-        }
-      });
-      detachListeners.delete(tabId);
-    }
-
+    removeDetachListeners(tabId);
     attachedTabs.delete(tabId);
     await chrome.debugger.detach({ tabId });
   } finally {

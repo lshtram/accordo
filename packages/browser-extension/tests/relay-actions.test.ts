@@ -322,6 +322,7 @@ describe("B2-CTX-001: multi-tab support", () => {
             action: "get_page_map",
             payload: expect.objectContaining({ tabId: 42 }),
           }),
+          { frameId: 0 },
         );
       } finally {
         Object.defineProperty(globalThis, "document", { value: originalDocument, writable: true });
@@ -360,6 +361,7 @@ describe("B2-CTX-001: multi-tab support", () => {
             action: "get_page_map",
             payload: expect.objectContaining({ maxDepth: 4 }),
           }),
+          { frameId: 0 },
         );
       } finally {
         Object.defineProperty(globalThis, "document", { value: originalDocument, writable: true });
@@ -393,6 +395,7 @@ describe("B2-CTX-001: multi-tab support", () => {
             action: "wait_for",
             payload: expect.objectContaining({ tabId: 77, texts: ["Done"] }),
           }),
+          { frameId: 0 },
         );
       } finally {
         Object.defineProperty(globalThis, "document", { value: originalDocument, writable: true });
@@ -422,6 +425,7 @@ describe("B2-CTX-001: multi-tab support", () => {
         expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
           1, // active tab id
           expect.objectContaining({ action: "wait_for" }),
+          { frameId: 0 },
         );
       } finally {
         Object.defineProperty(globalThis, "document", { value: originalDocument, writable: true });

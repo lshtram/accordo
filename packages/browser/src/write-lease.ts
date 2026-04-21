@@ -97,15 +97,22 @@ export class WriteLeaseManager {
       const next = this.queue.shift()!;
       this.grantTo(next);
     } else {
-      // SBR-F-025: No queued waiters — extend the lease by leaseExtensionMs.
-      // Timer fires: if queue non-empty, grant to next; else holder stays.
+      // SBR-F-025: No queued waiters — extend the lease briefly, then release it.
+      // This preserves short follow-up mutations from the same hub without letting
+      // a stale holder block all future control actions indefinitely.
       this.expiryTimer = setTimeout(() => {
+        if (this.holder !== hubId) {
+          this.expiryTimer = null;
+          return;
+        }
+
         if (this.queue.length > 0) {
           const next = this.queue.shift()!;
           this.grantTo(next);
+          return;
         }
-        // Queue empty: holder stays (indefinitely until next acquire),
-        // expiryTimer remains null — no auto-expiry while idle with no waiters.
+
+        this.holder = null;
         this.expiryTimer = null;
       }, this.leaseExtensionMs);
     }

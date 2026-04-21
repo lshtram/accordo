@@ -200,30 +200,33 @@ describe("SBR-F-025: Successful completion of mutating action extends lease by l
     expect(opts.leaseExtensionMs).toBe(2_000);
   });
 
-  it("SBR-F-025: release() by holder extends the lease by leaseExtensionMs (does not grant to queue)", async () => {
+  it("SBR-F-025: release() by holder extends the lease by leaseExtensionMs before releasing when no queue", async () => {
     const manager = new WriteLeaseManager(makeOptions({ leaseExtensionMs: 1_000 }));
     await manager.acquire(HUB_A);
     // Hub A completes a mutation and calls release().
-    // This extends the lease (not grants to B), because holder is re-acquiring.
+    // This keeps the lease briefly so immediate follow-up writes from the same hub
+    // can proceed without reacquiring.
     manager.release(HUB_A);
     expect(manager.currentHolder()).toBe(HUB_A);
     // 500ms passes — within the extension window.
     vi.advanceTimersByTime(500);
     expect(manager.currentHolder()).toBe(HUB_A);
-    // After 1100ms (beyond extension), lease would expire — but extension was 1000ms.
+    // After 1100ms (beyond extension), the lease is released if nobody queued.
     vi.advanceTimersByTime(600);
-    // The extension has expired; if there were queued requests they'd get it.
-    expect(manager.currentHolder()).toBe(HUB_A); // still A (no queue)
+    expect(manager.currentHolder()).toBe(null);
   });
 
-  it("SBR-F-025: successful action followed by release() extends enough to cover normal action duration", async () => {
+  it("SBR-F-025: successful action followed by release() still leaves a short follow-up window", async () => {
     const manager = new WriteLeaseManager(makeOptions({ leaseDurationMs: 10_000, leaseExtensionMs: 2_000 }));
     await manager.acquire(HUB_A);
-    // Simulate a "successful mutation" by calling release() immediately.
-    // This extends the lease by 2s on top of the remaining duration.
+    // Simulate a successful mutation and verify the lease remains with the same hub
+    // during the brief extension window.
     manager.release(HUB_A);
-    // Hub A is still the holder.
     expect(manager.currentHolder()).toBe(HUB_A);
+    vi.advanceTimersByTime(1_999);
+    expect(manager.currentHolder()).toBe(HUB_A);
+    vi.advanceTimersByTime(2);
+    expect(manager.currentHolder()).toBe(null);
   });
 });
 

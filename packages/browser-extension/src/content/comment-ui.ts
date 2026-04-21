@@ -126,7 +126,8 @@ export function wireSdkCallbacks(handlers: {
  * Exported for use by message-handlers.ts (LOAD_COMMENTS, etc.).
  */
 export async function loadAndRenderPins(): Promise<void> {
-  if (!_sdk) return;
+  const sdk = _sdk;
+  if (!sdk) return;
   const pageUrl = window.location.href;
   dbg(`loadAndRenderPins: fetching threads for url=${pageUrl}`);
   try {
@@ -136,7 +137,8 @@ export async function loadAndRenderPins(): Promise<void> {
       const threads = response.data as BrowserCommentThread[];
       dbg(`loadAndRenderPins: rendering ${threads.length} threads via SDK`);
       _fallbackStackIndex = 0;
-      _sdk.loadThreads(threads.map(toSdkThread));
+      if (_sdk !== sdk) return;
+      sdk.loadThreads(threads.map(toSdkThread));
     }
   } catch (err) {
     dbgErr(`loadAndRenderPins: failed — ${(err as Error)?.message ?? err}`);
