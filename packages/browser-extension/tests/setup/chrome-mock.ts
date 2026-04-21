@@ -316,13 +316,17 @@ function createTabsMock() {
       (
         _tabId: number,
         message: unknown,
+        optionsOrCallback?: chrome.tabs.MessageSendOptions | ((response: unknown) => void),
         callback?: (response: unknown) => void
       ): Promise<unknown> => {
+        const actualCallback = typeof optionsOrCallback === "function"
+          ? optionsOrCallback
+          : callback;
         // Support test-injected rejection to simulate "no receiver" errors
         if (pendingSendMessageRejection !== undefined) {
           const err = pendingSendMessageRejection;
           pendingSendMessageRejection = undefined; // auto-clear after one use
-          if (callback) callback(undefined);
+          if (actualCallback) actualCallback(undefined);
           return Promise.reject(err);
         }
         // Return sensible defaults based on message type so handlers can succeed
@@ -340,7 +344,7 @@ function createTabsMock() {
             viewport: { width: 1280, height: 720, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
           };
         }
-        if (callback) callback(response);
+        if (actualCallback) actualCallback(response);
         return Promise.resolve(response);
       }
     ),

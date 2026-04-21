@@ -132,15 +132,14 @@ const TAG_ROLES: Readonly<Record<string, string>> = {
 /**
  * Get bounding client rect for an element.
  *
- * In the test environment, `vi.stubGlobal("getBoundingClientRect", fn)` patches
- * `window.getBoundingClientRect` with a function that uses `this` as the element.
- * This wrapper calls that patched global when available, falling back to the
- * standard element method in real browser contexts.
+ * In tests, `__accordoTestGetBoundingClientRect` can be attached to `window`
+ * to override geometry reads. Real pages must always use the element method so
+ * page-defined globals cannot interfere with text extraction.
  */
 function getElementRect(el: HTMLElement): DOMRect {
   const win = window as unknown as Record<string, unknown>;
-  if (typeof win["getBoundingClientRect"] === "function") {
-    return (win["getBoundingClientRect"] as (this: HTMLElement) => DOMRect).call(el);
+  if (typeof win["__accordoTestGetBoundingClientRect"] === "function") {
+    return (win["__accordoTestGetBoundingClientRect"] as (this: HTMLElement) => DOMRect).call(el);
   }
   return el.getBoundingClientRect();
 }
@@ -237,6 +236,10 @@ function collectRawSegments(doc: Document, frameId: string = "main"): TextSegmen
   const segments: TextSegment[] = [];
   let nodeIdCounter = 0;
 
+  if (!(doc.body instanceof HTMLElement)) {
+    return segments;
+  }
+
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
 
   let current: Node | null = walker.currentNode;
@@ -245,8 +248,13 @@ function collectRawSegments(doc: Document, frameId: string = "main"): TextSegmen
       const tag = current.tagName.toLowerCase();
 
       if (!TEXT_EXCLUDED_TAGS.has(tag)) {
-        const rawText = getDirectText(current);
-        if (rawText.trim().length > 0) {
+        try {
+          const rawText = getDirectText(current);
+          if (rawText.trim().length === 0) {
+            current = walker.nextNode();
+            continue;
+          }
+
           const rect = getElementRect(current);
           const visibility = getVisibility(current);
           const role = getRole(current);
@@ -273,6 +281,9 @@ function collectRawSegments(doc: Document, frameId: string = "main"): TextSegmen
           if (accessibleName !== undefined) segment.accessibleName = accessibleName;
 
           segments.push(segment);
+        } catch {
+          // Live pages can contain elements whose geometry/style access throws.
+          // Skip only the problematic element instead of failing the whole text map.
         }
       }
     }

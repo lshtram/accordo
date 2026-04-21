@@ -232,9 +232,11 @@ describe("B2-CTX-005: requestContentScriptEnvelope uses explicit tabId when prov
    */
   it("B2-CTX-005 RED: requestContentScriptEnvelope uses explicit tabId when provided", async () => {
     let capturedTabId: number | undefined;
+    let capturedOptions: chrome.tabs.MessageSendOptions | undefined;
     (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
-      async (tabId: number, _message: unknown) => {
+      async (tabId: number, _message: unknown, options?: chrome.tabs.MessageSendOptions) => {
         capturedTabId = tabId;
+        capturedOptions = options;
         // Return a valid envelope shape
         return {
           pageId: "page",
@@ -257,6 +259,7 @@ describe("B2-CTX-005: requestContentScriptEnvelope uses explicit tabId when prov
 
     // This FAILS currently: capturedTabId === 1 (active tab) instead of 42
     expect(capturedTabId).toBe(42);
+    expect(capturedOptions).toEqual({ frameId: 0 });
   });
 
   /**
@@ -265,9 +268,11 @@ describe("B2-CTX-005: requestContentScriptEnvelope uses explicit tabId when prov
    */
   it("B2-CTX-005: requestContentScriptEnvelope falls back to active tab when tabId omitted", async () => {
     let capturedTabId: number | undefined;
+    let capturedOptions: chrome.tabs.MessageSendOptions | undefined;
     (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
-      async (tabId: number, _message: unknown) => {
+      async (tabId: number, _message: unknown, options?: chrome.tabs.MessageSendOptions) => {
         capturedTabId = tabId;
+        capturedOptions = options;
         return {
           pageId: "page",
           frameId: "main",
@@ -284,6 +289,7 @@ describe("B2-CTX-005: requestContentScriptEnvelope uses explicit tabId when prov
 
     // Should use active tab (tab 1)
     expect(capturedTabId).toBe(1);
+    expect(capturedOptions).toEqual({ frameId: 0 });
   });
 
   it("M114: requestContentScriptEnvelope throws when content script is unavailable", async () => {

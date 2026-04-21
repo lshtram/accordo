@@ -75,10 +75,14 @@ export async function requestContentScriptEnvelope(
     throw new Error("no-active-tab");
   }
 
-  const response = await chrome.tabs.sendMessage(targetTabId, {
-    type: "CAPTURE_SNAPSHOT_ENVELOPE",
-    source,
-  });
+  const response = await chrome.tabs.sendMessage(
+    targetTabId,
+    {
+      type: "CAPTURE_SNAPSHOT_ENVELOPE",
+      source,
+    },
+    { frameId: 0 },
+  );
   if (isSnapshotEnvelope(response)) {
     return response;
   }
@@ -186,4 +190,38 @@ export async function forwardToFrame(
     return null;
   }
   return hasDataField(response) ? response.data : response;
+}
+
+/**
+ * Forward a page-understanding action to the top document content script.
+ *
+ * Without an explicit frameId, Chrome may deliver the message to any frame and
+ * the first responder wins. Top-level browser tools should target frame 0.
+ */
+export async function forwardToMainFrame(
+  tabId: number,
+  action: string,
+  payload: Record<string, unknown>,
+): Promise<unknown | null | typeof NO_CONTENT_SCRIPT> {
+  return forwardToFrame(tabId, 0, action, payload);
+}
+
+/**
+ * Best-effort injection fallback for tabs that do not yet have the current
+ * content script attached (common after extension reinstall/reload).
+ */
+export async function ensureContentScriptInjected(tabId: number): Promise<void> {
+  await chrome.scripting.executeScript({
+    target: { tabId, allFrames: true },
+    files: ["content-script.js"],
+  });
+
+  try {
+    await chrome.scripting.insertCSS({
+      target: { tabId, allFrames: true },
+      files: ["content-styles.css"],
+    });
+  } catch {
+    // CSS is secondary for page-understanding flows.
+  }
 }

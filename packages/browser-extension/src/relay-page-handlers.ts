@@ -16,7 +16,9 @@ import {
   resolveTargetTabId,
   resolveRequestedUrl,
   forwardToContentScript,
+  forwardToMainFrame,
   forwardToFrame,
+  ensureContentScriptInjected,
   NO_CONTENT_SCRIPT,
 } from "./relay-forwarder.js";
 import { normalizeUrl } from "./store.js";
@@ -187,15 +189,26 @@ async function handlePageUnderstandingAction(
   }
 
   // F12: If frameId is provided, resolve the iframe and forward to it
-  const frameId = request.payload.frameId as string | undefined;
+  const rawFrameId = request.payload.frameId;
+  const frameId = typeof rawFrameId === "string" && rawFrameId.trim().length > 0
+    ? rawFrameId
+    : undefined;
   if (frameId !== undefined) {
     return handleFrameIdRequest(request, tabId, frameId, saveToStore);
   }
 
   const startMs = Date.now();
-  const data = await forwardToContentScript(tabId, request.action, request.payload);
+  let data = await forwardToMainFrame(tabId, request.action, request.payload);
   if (data === NO_CONTENT_SCRIPT) {
-    return actionFailed(request, "no-content-script");
+    try {
+      await ensureContentScriptInjected(tabId);
+      data = await forwardToMainFrame(tabId, request.action, request.payload);
+    } catch {
+      return actionFailed(request, "no-content-script");
+    }
+    if (data === NO_CONTENT_SCRIPT) {
+      return actionFailed(request, "no-content-script");
+    }
   }
   if (data === null) {
     return actionFailed(request);
@@ -554,7 +567,18 @@ export async function handleGetPageMap(
 
   const traverseFrames = request.payload.traverseFrames === true;
 
-  const data = await forwardToContentScript(tabId, request.action, request.payload);
+  let data = await forwardToMainFrame(tabId, request.action, request.payload);
+  if (data === NO_CONTENT_SCRIPT) {
+    try {
+      await ensureContentScriptInjected(tabId);
+      data = await forwardToMainFrame(tabId, request.action, request.payload);
+    } catch {
+      return actionFailed(request, "no-content-script");
+    }
+    if (data === NO_CONTENT_SCRIPT) {
+      return actionFailed(request, "no-content-script");
+    }
+  }
   if (data === null) {
     return actionFailed(request);
   }
@@ -802,11 +826,30 @@ export async function handleWaitFor(
     return actionFailed(request);
   }
 
-  const waitResponse = await chrome.tabs.sendMessage(tabId, {
-    type: "PAGE_UNDERSTANDING_ACTION",
-    action: request.action,
-    payload: request.payload,
-  });
+  let waitResponse: unknown;
+  try {
+    waitResponse = await chrome.tabs.sendMessage(tabId, {
+      type: "PAGE_UNDERSTANDING_ACTION",
+      action: request.action,
+      payload: request.payload,
+    }, { frameId: 0 });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const noReceiver = msg.includes("Receiving end does not exist") || msg.includes("Could not establish connection");
+    if (!noReceiver) {
+      return actionFailed(request);
+    }
+    try {
+      await ensureContentScriptInjected(tabId);
+      waitResponse = await chrome.tabs.sendMessage(tabId, {
+        type: "PAGE_UNDERSTANDING_ACTION",
+        action: request.action,
+        payload: request.payload,
+      }, { frameId: 0 });
+    } catch {
+      return actionFailed(request, "no-content-script");
+    }
+  }
 
   if (!waitResponse || hasErrorField(waitResponse)) {
     const errCode = hasErrorField(waitResponse) ? waitResponse.error : undefined;

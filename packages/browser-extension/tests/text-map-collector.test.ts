@@ -91,7 +91,7 @@ function mockGetBoundingClientRect(this: HTMLElement): DOMRect {
 beforeEach(() => {
   setupTestDOM();
   // Mock getBoundingClientRect
-  vi.stubGlobal("getBoundingClientRect", mockGetBoundingClientRect);
+  vi.stubGlobal("__accordoTestGetBoundingClientRect", mockGetBoundingClientRect);
   // Mock window.innerWidth/innerHeight for viewport checks
   Object.defineProperty(window, "innerWidth", { value: 1280, writable: true });
   Object.defineProperty(window, "innerHeight", { value: 800, writable: true });
@@ -599,5 +599,37 @@ describe("M112-TEXT edge cases", () => {
     hiddenSegments.forEach((s) => {
       expect(s.visibility).toBe("hidden");
     });
+  });
+
+  it("skips elements whose geometry access throws without failing the whole collection", () => {
+    document.body.innerHTML = `
+      <div id="good-a">Alpha</div>
+      <div id="bad-node">Broken</div>
+      <div id="good-b">Beta</div>
+    `;
+
+    vi.stubGlobal("__accordoTestGetBoundingClientRect", function (this: HTMLElement): DOMRect {
+      if (this.id === "bad-node") {
+        throw new Error("geometry-unavailable");
+      }
+      const top = this.id === "good-b" ? 60 : 10;
+      return {
+        x: 10,
+        y: top,
+        width: 100,
+        height: 20,
+        top,
+        right: 110,
+        bottom: top + 20,
+        left: 10,
+      } as DOMRect;
+    });
+
+    const result = collectTextMap();
+    const texts = result.segments.map((s) => s.textNormalized);
+
+    expect(texts).toContain("Alpha");
+    expect(texts).toContain("Beta");
+    expect(texts).not.toContain("Broken");
   });
 });

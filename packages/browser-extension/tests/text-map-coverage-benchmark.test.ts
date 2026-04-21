@@ -65,8 +65,8 @@ function makeBoundingRect(el: HTMLElement): DOMRect {
  */
 function buildBenchmarkPage(html: string): void {
   document.body.innerHTML = html;
-  // Patch the global used by getElementRect() in text-map-collector.ts
-  vi.stubGlobal("getBoundingClientRect", function (this: HTMLElement) {
+  // Patch the namespaced test hook used by getElementRect() in text-map-collector.ts
+  vi.stubGlobal("__accordoTestGetBoundingClientRect", function (this: HTMLElement) {
     return makeBoundingRect(this);
   });
   Object.defineProperty(window, "innerWidth", { value: 1280, writable: true, configurable: true });

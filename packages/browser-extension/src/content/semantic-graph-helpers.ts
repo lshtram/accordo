@@ -56,15 +56,14 @@ export class NodeIdRegistry {
 /**
  * Get bounding client rect for an element.
  *
- * In the test environment, `vi.stubGlobal("getBoundingClientRect", fn)` patches
- * `window.getBoundingClientRect` with a function that uses `this` as the element.
- * This wrapper calls that patched global when available, falling back to the
- * standard element method in real browser contexts.
+ * In tests, `__accordoTestGetBoundingClientRect` can be attached to `window`
+ * to override geometry reads. Real pages must always use the element method so
+ * page-defined globals cannot interfere with semantic extraction.
  */
 export function getElementRect(el: HTMLElement): DOMRect {
   const win = window as unknown as Record<string, unknown>;
-  if (typeof win["getBoundingClientRect"] === "function") {
-    return (win["getBoundingClientRect"] as (this: HTMLElement) => DOMRect).call(el);
+  if (typeof win["__accordoTestGetBoundingClientRect"] === "function") {
+    return (win["__accordoTestGetBoundingClientRect"] as (this: HTMLElement) => DOMRect).call(el);
   }
   return el.getBoundingClientRect();
 }

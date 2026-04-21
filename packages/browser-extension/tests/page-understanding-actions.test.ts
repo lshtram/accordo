@@ -549,6 +549,7 @@ describe("SW→CS forwarding via tabs.sendMessage (service worker context)", () 
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ type: "PAGE_UNDERSTANDING_ACTION", action: "get_page_map" }),
+      { frameId: 0 },
     );
     expect(response.success).toBe(true);
     expect(response.data).toEqual(fakePageMap);
@@ -570,6 +571,7 @@ describe("SW→CS forwarding via tabs.sendMessage (service worker context)", () 
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ type: "PAGE_UNDERSTANDING_ACTION", action: "inspect_element" }),
+      { frameId: 0 },
     );
     expect(response.success).toBe(true);
     expect(response.data).toEqual(fakeResult);
@@ -591,9 +593,46 @@ describe("SW→CS forwarding via tabs.sendMessage (service worker context)", () 
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ type: "PAGE_UNDERSTANDING_ACTION", action: "get_dom_excerpt" }),
+      { frameId: 0 },
     );
     expect(response.success).toBe(true);
     expect(response.data).toEqual(fakeResult);
+  });
+
+  it("PU-F-SW-05: injects content script and retries when initial receiver is missing", async () => {
+    const fakePageMap = {
+      pageUrl: "https://example.com/page",
+      title: "Test Page",
+      viewport: { width: 1280, height: 720 },
+      nodes: [],
+      totalElements: 0,
+      truncated: false,
+    };
+
+    (chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 1, url: "https://example.com/page", active: true }
+    ]);
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error("Could not establish connection. Receiving end does not exist."))
+      .mockResolvedValueOnce({ data: fakePageMap });
+
+    const response = await handleRelayAction({
+      requestId: "test-sw-reinject",
+      action: "get_page_map",
+      payload: { maxDepth: 4 },
+    });
+
+    expect(chrome.scripting.executeScript).toHaveBeenCalledWith({
+      target: { tabId: 1, allFrames: true },
+      files: ["content-script.js"],
+    });
+    expect(chrome.scripting.insertCSS).toHaveBeenCalledWith({
+      target: { tabId: 1, allFrames: true },
+      files: ["content-styles.css"],
+    });
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(2);
+    expect(response.success).toBe(true);
+    expect(response.data).toEqual(fakePageMap);
   });
 
   it("PU-F-SW-04: returns action-failed when no active tab is found in SW context", async () => {

@@ -125,7 +125,32 @@ describe("M109-WAIT — wait_for routing in service worker context", () => {
         action: "wait_for",
         payload,
       }),
+      { frameId: 0 },
     );
+  });
+
+  it("B2-WA-RT-09: injects content script and retries when wait_for has no receiver", async () => {
+    const waitResult = { met: true, matchedCondition: "Loaded", elapsedMs: 80 };
+
+    (chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 3, url: "https://example.com/", active: true },
+    ]);
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error("Could not establish connection. Receiving end does not exist."))
+      .mockResolvedValueOnce(waitResult);
+
+    const response = await handleRelayAction({
+      requestId: "req-wait-reinject",
+      action: "wait_for",
+      payload: { texts: ["Loaded"], timeout: 3000 },
+    });
+
+    expect(chrome.scripting.executeScript).toHaveBeenCalledWith({
+      target: { tabId: 3, allFrames: true },
+      files: ["content-script.js"],
+    });
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(2);
+    expect(response.success).toBe(true);
   });
 
   /**

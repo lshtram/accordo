@@ -165,7 +165,7 @@ function mockGetBoundingClientRect(this: HTMLElement): DOMRect {
 
 beforeEach(() => {
   setupTestDOM();
-  vi.stubGlobal("getBoundingClientRect", mockGetBoundingClientRect);
+  vi.stubGlobal("__accordoTestGetBoundingClientRect", mockGetBoundingClientRect);
   Object.defineProperty(window, "innerWidth", { value: 1280, writable: true });
   Object.defineProperty(window, "innerHeight", { value: 800, writable: true });
 });
@@ -1164,7 +1164,7 @@ describe("B2-SG-010: Performance budget", () => {
   it("B2-SG-010: collectSemanticGraph with ~5000-node fixture completes under 15000ms", async () => {
     // Build a large DOM with ~5000 nodes to exercise realistic DOM complexity
     setupLargeDOM(5000);
-    vi.stubGlobal("getBoundingClientRect", mockGetBoundingClientRect);
+    vi.stubGlobal("__accordoTestGetBoundingClientRect", mockGetBoundingClientRect);
 
     const start = Date.now();
     const result = await collectGraph();

@@ -631,6 +631,39 @@ describe("Feature 12: iframe-cross-origin contract for frameId-targeted requests
     expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
   });
 
+  it("F12: get_text_map with blank frameId treats it as main-frame request", async () => {
+    const request = {
+      requestId: "f12-4c",
+      action: "get_text_map" as const,
+      payload: { tabId: 1, frameId: "" },
+    };
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (options?.frameId === 0 && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        return {
+          data: {
+            segments: [{ text: "main frame", bounds: { x: 0, y: 0, width: 10, height: 10 }, visible: true, role: "main" }],
+          },
+        };
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleGetTextMap } = await import("../src/relay-page-handlers.js");
+      response = await handleGetTextMap(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("segments");
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("PAG-03 passthrough: get_page_map preserves content-script response when metadata is omitted", async () => {
     const request = {
       requestId: "pag-page-1",
