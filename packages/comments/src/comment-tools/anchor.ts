@@ -31,6 +31,9 @@ export function buildAnchor(
 
   if (kind === "text") {
     const startLine = input["startLine"] as number;
+    if (typeof startLine !== "number" || !Number.isFinite(startLine)) {
+      throw new Error("startLine is required and must be a finite number for text anchors");
+    }
     const endLine = (input["endLine"] as number | undefined) ?? startLine;
     return {
       kind: "text",
