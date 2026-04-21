@@ -112,7 +112,7 @@ export interface TextMapResponse extends SnapshotEnvelopeFields {
  */
 export interface TextMapToolError {
   success: false;
-  error: "browser-not-connected" | "timeout" | "action-failed" | "iframe-cross-origin" | "no-content-script";
+  error: "browser-not-connected" | "timeout" | "action-failed" | "iframe-cross-origin" | "no-content-script" | "origin-blocked";
 }
 
 // ── Tool Definition ──────────────────────────────────────────────────────────
@@ -270,10 +270,11 @@ async function handleGetTextMap(
     );
 
     if (!response.success || response.data === undefined) {
-      const errCode = response.error ?? "action-failed";
+      const errCode = String(response.error ?? "action-failed");
       const mappedError: TextMapToolError["error"] =
         errCode === "browser-not-connected" ? "browser-not-connected"
         : errCode === "timeout" ? "timeout"
+        : errCode === "origin-blocked" ? "origin-blocked"
         : errCode === "iframe-cross-origin" ? "iframe-cross-origin"
         : errCode === "no-content-script" ? "no-content-script"
         : "action-failed";

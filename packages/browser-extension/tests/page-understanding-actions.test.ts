@@ -199,6 +199,22 @@ describe("M90-ACT page-understanding actions return structured data", () => {
     expect(response.data).toHaveProperty("found");
   });
 
+  it("PU-F-31b: inspect_element ignores empty uid/ref placeholders and uses selector", async () => {
+    const response = await handleRelayAction({
+      requestId: "test-inspect-empty-placeholders",
+      action: "inspect_element",
+      payload: {
+        uid: "",
+        ref: "",
+        selector: "#main",
+        nodeId: 0,
+      },
+    });
+
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("found", true);
+  });
+
   /**
    * PU-F-32: get_dom_excerpt case returns structured ExcerptResult
    */

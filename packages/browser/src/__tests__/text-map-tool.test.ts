@@ -356,6 +356,20 @@ describe("B2-TX-010: Backward compatibility", () => {
     }
   });
 
+  it("MCP-SEC-001: Handler preserves relay origin-blocked errors", async () => {
+    const relay = createMockRelay({
+      response: Promise.resolve({ success: false, requestId: "test", error: "origin-blocked" as const }),
+    });
+    const store = new SnapshotRetentionStore();
+    const result = await invokeToolHandler(relay, store);
+    expect(result).toHaveProperty("success");
+    if ("success" in result) {
+      expect(result.success).toBe(false);
+      expect((result as { error: string }).error).toBe("origin-blocked");
+      expect((result as { retryable: boolean }).retryable).toBe(false);
+    }
+  });
+
   it("B2-TX-010: Handler maps browser-not-connected relay error correctly", async () => {
     const relay = createMockRelay({
       response: Promise.resolve({ success: false, requestId: "test", error: "browser-not-connected" as const }),

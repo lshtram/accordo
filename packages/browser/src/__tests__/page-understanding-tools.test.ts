@@ -945,6 +945,23 @@ describe("PU-F-53: handler forwards to relay and returns structured result", () 
     expect(result).toHaveProperty("truncated");
   });
 
+  it("MCP-SEC-001: handleGetPageMap preserves relay origin-blocked errors", async () => {
+    const relay = {
+      request: vi.fn().mockResolvedValue({
+        success: false,
+        requestId: "blocked",
+        error: "origin-blocked",
+      }),
+      isConnected: vi.fn().mockReturnValue(true),
+      getDebuggerUrl: vi.fn().mockReturnValue(undefined),
+    };
+
+    const result = await handleGetPageMap(relay as any, {}, noopStore);
+
+    expect(result.error).toBe("origin-blocked");
+    expect(result.retryable).toBe(false);
+  });
+
   it("B2-VD-005..009: handleGetPageMap forwards traverseFrames to relay", async () => {
     const relay = createMockRelay();
     const args: GetPageMapArgs = { traverseFrames: true };

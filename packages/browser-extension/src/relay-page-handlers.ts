@@ -415,22 +415,32 @@ type InspectPayload =
   | { selector: string };
 
 function toInspectPayload(raw: Record<string, unknown>): InspectPayload {
+  const uid = typeof raw.uid === "string" && raw.uid.length > 0
+    ? raw.uid
+    : undefined;
+  const ref = typeof raw.ref === "string" && raw.ref.length > 0
+    ? raw.ref
+    : undefined;
+  const selector = typeof raw.selector === "string" && raw.selector.length > 0
+    ? raw.selector
+    : undefined;
+
   // B2-UID-001: uid takes precedence — it unambiguously identifies a node
-  if (typeof raw.uid === "string" && raw.uid.length > 0) {
+  if (uid !== undefined) {
     return {
-      uid: raw.uid,
-      ref: typeof raw.ref === "string" ? raw.ref : undefined,
-      selector: typeof raw.selector === "string" ? raw.selector : undefined,
+      uid,
+      ref,
+      selector,
     };
   }
-  if (typeof raw.ref === "string") {
+  if (ref !== undefined) {
     return {
-      ref: raw.ref,
-      selector: typeof raw.selector === "string" ? raw.selector : undefined,
+      ref,
+      selector,
     };
   }
-  if (typeof raw.selector === "string" && raw.selector !== "") {
-    return { selector: raw.selector };
+  if (selector !== undefined) {
+    return { selector };
   }
   if (typeof raw.nodeId === "number") {
     return { nodeId: raw.nodeId };

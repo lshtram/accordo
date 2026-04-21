@@ -12,6 +12,38 @@ import { openSdkComposerAtAnchor } from "./sdk-convergence.js";
 
 const STORAGE_KEY = "commentsMode";
 
+type InspectPayload =
+  | { uid: string; ref?: string; selector?: string }
+  | { nodeId: number }
+  | { ref: string; selector?: string }
+  | { selector: string };
+
+function toInspectPayload(raw: Record<string, unknown>): InspectPayload {
+  const uid = typeof raw.uid === "string" && raw.uid.length > 0
+    ? raw.uid
+    : undefined;
+  const ref = typeof raw.ref === "string" && raw.ref.length > 0
+    ? raw.ref
+    : undefined;
+  const selector = typeof raw.selector === "string" && raw.selector.length > 0
+    ? raw.selector
+    : undefined;
+
+  if (uid !== undefined) {
+    return { uid, ref, selector };
+  }
+  if (ref !== undefined) {
+    return { ref, selector };
+  }
+  if (selector !== undefined) {
+    return { selector };
+  }
+  if (typeof raw.nodeId === "number") {
+    return { nodeId: raw.nodeId };
+  }
+  return { selector: "" };
+}
+
 // ── Message wrappers ──────────────────────────────────────────────────────────────
 
 async function submitNewComment(anchorKey: string, body: string, anchorContext?: BrowserCommentThread["anchorContext"]): Promise<void> {
@@ -88,7 +120,10 @@ chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown
             const { defaultStore, isVersionedSnapshot } = await import("../relay-definitions.js");
             if (isVersionedSnapshot(data)) { await defaultStore.save((data as { pageId: string }).pageId, data as Parameters<typeof defaultStore.save>[1]); }
           }
-          else if (action === "inspect_element") { const { inspectElement } = await import("./element-inspector.js"); data = inspectElement(payload as Parameters<typeof inspectElement>[0]); }
+          else if (action === "inspect_element") {
+            const { inspectElement } = await import("./element-inspector.js");
+            data = inspectElement(toInspectPayload(payload));
+          }
           else if (action === "get_dom_excerpt") { const { getDomExcerpt } = await import("./element-inspector.js"); const { selector = "body", maxDepth, maxLength } = payload as { selector?: string; maxDepth?: number; maxLength?: number }; data = getDomExcerpt(selector, maxDepth, maxLength); }
           else if (action === "wait_for") { const { handleWaitForAction } = await import("./wait-provider.js"); data = await handleWaitForAction(payload); }
           else if (action === "get_text_map") { const { collectTextMap } = await import("./text-map-collector.js"); data = collectTextMap(payload as Parameters<typeof collectTextMap>[0]); }
