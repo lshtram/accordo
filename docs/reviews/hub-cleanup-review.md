@@ -1,7 +1,7 @@
 # Hub Cleanup Review
 
 **Date:** 2026-04-21  
-**Scope:** `clean-up-plan-hub.md` alignment pass
+**Scope:** Hub cleanup alignment pass
 
 ## Summary
 
