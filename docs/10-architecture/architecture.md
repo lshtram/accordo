@@ -1769,24 +1769,23 @@ interface NavigationAdapterRegistry {
 | `slide` | `packages/marp/` | `accordo.presentation.internal.focusThread(uri, threadId, blockId)` |
 | `browser` | `packages/browser/` | `accordo_browser.focusThread(threadId)` |
 | `diagram` | `packages/diagram/` | `accordo_diagram_focusThread` |
-| `markdown-preview` | `packages/comments/` (navigation-router.ts) | `accordo_preview_internal_focusThread` |
+| `markdown-preview` | `packages/md-viewer/` (command implementation), dispatched from `packages/comments/` router | `accordo_preview_internal_focusThread` |
 
 ### 17.5 Router Contract
 
-The comments panel router (`packages/comments/src/panel/navigation-router.ts`) uses explicit branching for most surface types, with registry-based dispatch for `browser` (primary) and `slide` (primary with deferred fallback). Priority Q also requires health-aware error messaging for browser routing failures (probe `accordo_browser_health` before presenting "disconnected").
+The comments panel router (`packages/comments/src/panel/navigation-router.ts`) currently uses explicit branching for all primary surface paths (`text`, `file`, `slide`, `markdown-preview`, `diagram`, `browser`) and a typed `NavigationDispatchPlan` for command selection. Priority Q also requires health-aware error messaging for browser routing failures (probe `accordo_browser_health` before presenting "disconnected").
 
 ```
 anchor.kind === "text"     → VS Code editor reveal path (smart-viewer only when surface hints do not indicate slide)
 anchor.kind === "surface"  → explicit switch by surfaceType:
-  markdown-preview          → PREVIEW_FOCUS_THREAD command directly
-  browser                  → registry.get("browser").focusThread() (primary);
-                               falls back to DEFERRED_COMMANDS.BROWSER_FOCUS_THREAD
-  slide                    → registry adapter (primary) using PRESENTATION_FOCUS_THREAD(uri, threadId, blockId), then DEFERRED_COMMANDS fallback
+  markdown-preview         → PREVIEW_FOCUS_THREAD command directly
+  browser                  → BROWSER_FOCUS_THREAD command, with browser health probe and disconnected messaging
+  slide                    → PRESENTATION_FOCUS_THREAD(uri, threadId, blockId), then deferred fallback + retry
   diagram                  → DIAGRAM_FOCUS_THREAD command
 no adapter registered      → env.openTextDocument (generic fallback)
 ```
 
-The `DEFERRED_COMMANDS` fallback path remains active for `slide` and `browser` surfaces when the registry adapter is unavailable. All four surface adapters (browser, preview, diagram, slide) are registered at module-load time in `navigation-router.ts`; marp registers the slide adapter at package activation.
+The `DEFERRED_COMMANDS` fallback path remains active for `slide` navigation retries. Registry types remain available via `@accordo/capabilities`, but current runtime routing is command-driven in the comments router.
 
 ### 17.6 Adding a New Surface
 

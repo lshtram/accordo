@@ -167,7 +167,7 @@ Hub atomically replaces `ACCORDO_TOKEN` and `ACCORDO_BRIDGE_SECRET` → Bridge r
 2. **diff_snapshots fix** — CDP DOM diff reimplementation
 3. **Tool registration verification** — live E2E smoke tests
 4. **Bottom panel control** — toggle terminal/output/problems
-5. **md-viewer MCP tool** — programmatic preview control
+5. **md-viewer navigation polish** — strengthen preview focus/reveal behaviour across comments/editor flows
 
 ---
 

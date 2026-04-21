@@ -4,7 +4,7 @@
 **Type:** VSCode extension  
 **Publisher:** `accordo`  
 **Version:** 0.1.0  
-**Date:** 2025-01-01
+**Date:** 2026-04-21
 
 ---
 
@@ -150,8 +150,8 @@ export class BlockIdResolver {
 | Requirement ID | Requirement |
 |---|---|
 | M41b-RND-01 | `MarkdownRenderer.create()` (no args) returns a configured renderer instance (async, due to shiki init) |
-| M41b-RND-02 | `.render(markdown, uri, webview)` returns `{ html, blockIdResolver }` |
-| M41b-RND-03 | Syntax highlighting via `@shikijs/markdown-it` (theme: `github-dark` / `github-light` based on VS Code theme) |
+| M41b-RND-02 | `.render(markdown, options)` returns `{ html, resolver }` |
+| M41b-RND-03 | Syntax highlighting via `@shikijs/markdown-it` using fixed `github-dark` theme (current behavior) |
 | M41b-RND-04 | Math blocks (`$$...$$` and `$...$`) rendered via KaTeX (server-side) |
 | M41b-RND-05 | Mermaid fenced code blocks (`\`\`\`mermaid`) preserved as `<div class="mermaid">` for client-side rendering |
 | M41b-RND-06 | GitHub Flavored Markdown: task lists, tables, footnotes, front-matter stripped |
@@ -162,6 +162,7 @@ export class BlockIdResolver {
 | M41b-RND-11 | Emoji shortcodes (`:smile:`) rendered as Unicode characters |
 | M41b-RND-12 | Container blocks (`::: warning`) rendered with semantic class names |
 | M41b-RND-13 | Heading anchors (`markdown-it-anchor`) added for in-page navigation |
+| M41b-RND-14 | `RenderOptions.fenceRenderers` is currently a reserved API field and is not wired in the runtime pipeline |
 
 **Exports:**
 
@@ -172,15 +173,14 @@ export interface RenderOptions {
   /** VS Code webview, used to produce vscode-resource: URIs for local images. Omit in unit tests. */
   webview?: WebviewLike;
   /**
-   * The VS Code theme kind — used to choose the shiki highlighting theme.
+   * The VS Code theme kind — currently accepted for forward compatibility.
    * 1 = light, 2 = dark, 3 = high contrast dark, 4 = high contrast light.
-   * Note: shiki currently always uses 'github-dark' regardless of themeKind (theme switching not yet implemented).
+   * Current implementation uses fixed 'github-dark' highlighting.
    */
   themeKind?: 1 | 2 | 3 | 4;
   /**
-   * Additional fence renderers keyed by language identifier.
-   * Runs before the default shiki fallback.
-   * Add WaveDrom, Viz.js, Vega, Plotly, Kroki processors here.
+   * Reserved for future extensibility.
+   * Current implementation does not invoke custom fence renderers.
    */
   fenceRenderers?: Map<string, FenceRenderer>;
   /** Factory to create a proper URI from a file path. In VS Code: pass `vscode.Uri.file`. In tests: omit. */
@@ -189,7 +189,7 @@ export interface RenderOptions {
 
 export interface RenderResult {
   html: string;
-  blockIdResolver: BlockIdResolver;
+  resolver: BlockIdResolver;
 }
 
 /**
@@ -426,8 +426,9 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider { …
 | WebviewTemplate | `src/__tests__/webview-template.test.ts` | M41b-TPL-01 → TPL-08 |
 | PreviewBridge | `src/__tests__/preview-bridge.test.ts` | M41b-PBR-01 → PBR-10 |
 | CommentablePreview | `src/__tests__/commentable-preview.test.ts` | M41b-CPE-01 → CPE-08 |
+| Extension entrypoint | `src/__tests__/extension.test.ts` | M41b-EXT-01 → EXT-05 |
 
-Total Phase B: 76 tests across 7 test files. `extension.ts` (M41b-EXT) has its own integration test file `src/__tests__/extension.test.ts`.
+Current automated coverage: **131 tests across 7 test files** (`vitest run`, 2026-04-21).
 
 ---
 
@@ -467,11 +468,11 @@ None — VS Code extensions bundle their dependencies at build time.
 
 The renderer is designed to grow toward feature parity with Markdown Preview Enhanced without architectural change.
 
-### 10.1 Adding a new client-side diagram renderer
+### 10.1 Future: adding a new client-side diagram renderer
 
-Pattern for adding WaveDrom, Viz.js, Vega, Vega-lite, Plotly, etc.:
+Pattern for a future implementation (once `fenceRenderers` is wired):
 
-1. **Fence processor** — register a `FenceRenderer` for the language identifier (e.g. `wavedrom`, `dot`, `vega`) in `RenderOptions.fenceRenderers`. For client-side libraries the processor emits a wrapper `<div class="diagrams-{lang}">` preserving raw source; the library renders it in the webview.
+1. **Fence processor** — register a `FenceRenderer` for the language identifier (e.g. `wavedrom`, `dot`, `vega`) in `RenderOptions.fenceRenderers`.
 2. **Script injection** — add the CDN/local URI to `TemplateOptions.additionalScripts`.
 3. No changes to `TemplateOptions` named fields, `PreviewBridge`, `BlockIdPlugin`, or `CommentablePreview`.
 
