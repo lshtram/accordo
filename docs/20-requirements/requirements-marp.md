@@ -175,7 +175,7 @@ MCP tools exposed to agents use underscores (`accordo_presentation_*`) matching 
 |---|---|
 | M50-PVD-01 | Opens deck in a VS Code WebviewPanel |
 | M50-PVD-02 | Renders deck Markdown → HTML via `MarpRenderer` and injects directly into webview (NO iframe, NO child process) |
-| M50-PVD-03 | Webview HTML includes slide navigation JS (scroll/section-based, keyboard arrow keys) |
+| M50-PVD-03 | Webview HTML includes slide navigation JS (active-slide SVG model, keyboard arrow keys) |
 | M50-PVD-04 | Injects Comment SDK overlay when comments integration is enabled |
 | M50-PVD-05 | Handles panel lifecycle cleanup (`dispose`): resets session state |
 | M50-PVD-06 | Supports reopen/focus of existing session for same deck URI (no re-render) |
@@ -294,11 +294,9 @@ interface MarpRenderResult {
 
 ### Webview → Host
 
-- `presentation:ready`
+- `webview:ready`
 - `presentation:slideChanged { index: number }`
 - `presentation:capture-ready { data: string | null, error?: string }` — response to `host:request-capture`; `data` is a base64-encoded UTF-8 SVG string (using `btoa(unescape(encodeURIComponent(svgString)))`); `null` on error
-- `nav:next`
-- `nav:prev`
 - Comment SDK messages (`comment:create`, `comment:reply`, `comment:resolve`, `comment:delete`)
 
 ### Host → Webview

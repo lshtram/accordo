@@ -1,7 +1,7 @@
 # Marp Cleanup Review
 
 **Date:** 2026-04-21  
-**Scope:** `clean-up-plan-marp.md` alignment pass
+**Scope:** Marp cleanup alignment pass
 
 ## Summary
 
@@ -28,9 +28,8 @@
    - Ensured bridge extension activation is explicit (`await bridgeExt.activate()`).
 
 4. **Repo hygiene cleanup**
-   - Removed stale generated artifacts:
-     - `packages/marp/slide1.svg`
-     - root `tmp-slide*.png/svg` captures
+  - Removed stale tracked generated artifact:
+    - `packages/marp/slide1.svg`
    - Kept lint script explicitly deferred (workspace ESLint config not yet wired for this package).
 
 ## Validation evidence

@@ -216,10 +216,8 @@ The following table is the canonical protocol between webview and extension host
 
 | Message type | Payload | Sender | Handler module |
 |---|---|---|---|
-| `presentation:ready` | (none) | Webview JS (on DOMContentLoaded) | `presentation-provider.ts` — sends initial `slide-index` to synchronize |
+| `webview:ready` | (none) | Webview JS (after initialization) | `presentation-provider.ts` — reloads comments for the active deck |
 | `presentation:slideChanged` | `{ index: number }` | Webview JS (after scroll/nav) | `marp-adapter.ts` — updates local cursor; fires `onSlideChanged` listeners |
-| `nav:next` | (none) | Webview JS (keyboard/button) | `marp-adapter.ts` → `next()` → `goto(current+1)` → sends `slide-index` back |
-| `nav:prev` | (none) | Webview JS (keyboard/button) | `marp-adapter.ts` → `prev()` → `goto(current-1)` → sends `slide-index` back |
 | `comment:create` | Comment SDK payload | Comment SDK overlay | `presentation-comments-bridge.ts` |
 | `comment:reply` | Comment SDK payload | Comment SDK overlay | `presentation-comments-bridge.ts` |
 | `comment:resolve` | Comment SDK payload | Comment SDK overlay | `presentation-comments-bridge.ts` |
@@ -252,20 +250,21 @@ When an agent calls a navigation tool (e.g., `accordo.presentation.goto`), the f
 9. Tool handler returns { currentSlide: index, title } to agent
 ```
 
-For `nav:next`/`nav:prev` originating from webview keyboard input, the flow starts at step 6 (webview-initiated) — the adapter updates its local cursor and fires state change events.
+For webview-originated keyboard/button navigation, the flow starts at step 6 (webview-initiated) — the adapter updates its local cursor and fires state change events.
 
 ### 6.3 In-webview navigation model
 
-Marp renders each slide as a `<section>` element. Navigation is handled by in-webview JavaScript:
+Marp renders slide SVGs (`svg[data-marpit-svg]`). Navigation is handled by in-webview JavaScript by toggling the active SVG:
 
 ```js
 // Simplified navigation logic injected into webview
-const slides = document.querySelectorAll('section[id^="slide-"]');
+const slides = document.querySelectorAll('svg[data-marpit-svg]');
 let currentIndex = 0;
 
 function gotoSlide(index) {
   if (index < 0 || index >= slides.length) return;
-  slides[index].scrollIntoView({ behavior: 'smooth' });
+  slides[currentIndex].classList.remove('active');
+  slides[index].classList.add('active');
   currentIndex = index;
   vscode.postMessage({ type: 'presentation:slideChanged', index });
 }
@@ -279,8 +278,8 @@ window.addEventListener('message', (event) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') gotoSlide(currentIndex + 1);
-  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') gotoSlide(currentIndex - 1);
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown') gotoSlide(currentIndex + 1);
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') gotoSlide(currentIndex - 1);
 });
 ```
 
@@ -521,7 +520,7 @@ The logically-identical modules between `accordo-marp` and `accordo-slidev` are:
 
 | Invariant | Description |
 |---|---|
-| Message names | Webview messages use the same `type` strings: `presentation:ready`, `presentation:slideChanged`, `nav:next`, `nav:prev`, `slide-index`, `comments:load`, etc. |
+| Message names | Webview messages use stable `type` strings across provider/runtime boundaries: `webview:ready`, `presentation:slideChanged`, `slide-index`, `marp:update`, `comments:load`, etc. |
 | `blockId` format | Comment block IDs follow `"slide:{slideIndex}:{x}:{y}"` encoding (4-decimal floats for x/y) |
 | Slide-index synchronization | 0-based slide index; adapter tracks `currentSlide` locally; state publisher subscribes to `onSlideChanged` |
 | State shape | `PresentationSessionState` has identical fields: `isOpen`, `deckUri`, `currentSlide`, `totalSlides`, `narrationAvailable` |
