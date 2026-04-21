@@ -39,6 +39,64 @@ function pcmToUint8Array(pcm: ArrayLike<number>): Uint8Array {
   return new Uint8Array(buf.buffer);
 }
 
+function readAscii(bytes: Uint8Array, start: number, length: number): string {
+  return String.fromCharCode(...bytes.subarray(start, start + length));
+}
+
+function readU16Le(bytes: Uint8Array, start: number): number {
+  return bytes[start] | (bytes[start + 1] << 8);
+}
+
+function readU32Le(bytes: Uint8Array, start: number): number {
+  return (
+    bytes[start]
+    | (bytes[start + 1] << 8)
+    | (bytes[start + 2] << 16)
+    | (bytes[start + 3] << 24)
+  ) >>> 0;
+}
+
+function decodePcmWav(audio: Uint8Array): { pcm: Uint8Array; sampleRate: number } | undefined {
+  if (audio.length < 44 || readAscii(audio, 0, 4) !== "RIFF" || readAscii(audio, 8, 4) !== "WAVE") {
+    return undefined;
+  }
+
+  let offset = 12;
+  let sampleRate = 24000;
+  let pcm: Uint8Array | undefined;
+
+  while (offset + 8 <= audio.length) {
+    const chunkId = readAscii(audio, offset, 4);
+    const chunkSize = readU32Le(audio, offset + 4);
+    const chunkStart = offset + 8;
+    const chunkEnd = chunkStart + chunkSize;
+    if (chunkEnd > audio.length) break;
+
+    if (chunkId === "fmt ") {
+      const audioFormat = readU16Le(audio, chunkStart);
+      const channels = readU16Le(audio, chunkStart + 2);
+      sampleRate = readU32Le(audio, chunkStart + 4);
+      const bitsPerSample = readU16Le(audio, chunkStart + 14);
+      if (audioFormat !== 1 || channels !== 1 || bitsPerSample !== 16) {
+        throw new Error("ExternalTtsAdapter: unsupported WAV format");
+      }
+    }
+
+    if (chunkId === "data") {
+      pcm = audio.slice(chunkStart, chunkEnd);
+      break;
+    }
+
+    offset = chunkEnd + (chunkSize % 2);
+  }
+
+  if (!pcm) {
+    throw new Error("ExternalTtsAdapter: WAV response missing data chunk");
+  }
+
+  return { pcm, sampleRate };
+}
+
 export class ExternalTtsAdapter implements TtsProvider {
   readonly kind = "tts" as const;
   readonly id = "external";
@@ -71,9 +129,11 @@ export class ExternalTtsAdapter implements TtsProvider {
       body: JSON.stringify({
         model: this._model,
         input: request.text,
+        text: request.text,
         voice: request.voice ?? "alloy",
+        language: request.language ?? "en-US",
         speed: request.speed ?? 1.0,
-        response_format: "pcm",
+        response_format: "wav",
       }),
     });
 
@@ -81,13 +141,14 @@ export class ExternalTtsAdapter implements TtsProvider {
       throw new Error(`ExternalTtsAdapter: HTTP ${response.status} — ${response.statusText}`);
     }
 
-    // Most external TTS APIs return MP3/OGG by default; we request PCM via response_format.
-    // If the server ignores the format, it returns bytes we treat as raw PCM.
     const arrayBuffer = await response.arrayBuffer();
-    const pcm = new Uint8Array(arrayBuffer);
+    const audio = new Uint8Array(arrayBuffer);
+    const wav = decodePcmWav(audio);
+    if (wav) {
+      return { audio: wav.pcm, sampleRate: wav.sampleRate };
+    }
 
-    // If sample rate is not advertised by the server, assume 24000 (common for external TTS).
-    return { audio: pcm, sampleRate: 24000 };
+    return { audio, sampleRate: 24000 };
   }
 
   async dispose(): Promise<void> {
