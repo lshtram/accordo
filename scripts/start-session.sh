@@ -30,6 +30,7 @@ Options:
                    Auto-detected if not specified: packages/, extensions/, ext/
   --no-build       Skip 'pnpm build' before launch
   --clean          Run 'pnpm clean' in all packages before building (fixes stale tsbuildinfo)
+  --new-window     Force a new VS Code window
   --reuse-window   Use current VS Code window instead of --new-window
   -h, --help       Show this help
 
@@ -91,6 +92,10 @@ while [[ $# -gt 0 ]]; do
       NEW_WINDOW=0
       shift
       ;;
+    --new-window)
+      NEW_WINDOW=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -144,14 +149,7 @@ else
   echo "[start-session] Skipping build (--no-build)"
 fi
 
-# Each project gets its own VS Code profile so the second `code` invocation
-# is NOT swallowed by an already-running instance (which would drop all
-# --extensionDevelopmentPath flags).  Using --profile (instead of --user-data-dir)
-# keeps authentication state in the default user data directory where Settings Sync
-# works properly, preventing "signed out" issues across sessions.
-PROJECT_SLUG="$(basename "$PROJECT_DIR")"
-
-CODE_ARGS=(--profile "accordo-$PROJECT_SLUG")
+CODE_ARGS=()
 if [[ "$NEW_WINDOW" -eq 1 ]]; then
   CODE_ARGS+=(--new-window)
 fi
@@ -167,15 +165,32 @@ if [[ ${#PKG_DIRS[@]} -eq 0 ]]; then
   exit 1
 fi
 
-# Workspace must come FIRST, then extension development paths
+# If an Accordo extension-development instance is already running,
+# opening a new folder with extensionDevelopmentPath flags can be ignored
+# by VS Code CLI routing. In that case, open a plain new/reused window and
+# let the already-running extension-development host handle tooling.
+ACCORDO_ALREADY_RUNNING=0
+if command -v code >/dev/null 2>&1; then
+  CODE_STATUS_OUTPUT="$(code --status 2>/dev/null || true)"
+  if [[ "$CODE_STATUS_OUTPUT" == *"--extensionDevelopmentPath=${PKG_DIRS[0]}"* ]]; then
+    ACCORDO_ALREADY_RUNNING=1
+  fi
+fi
+
+# Workspace must come FIRST
 CODE_ARGS+=("$PROJECT_DIR")
 
-for pkg in "${PKG_DIRS[@]}"; do
-  CODE_ARGS+=("--extensionDevelopmentPath=$pkg")
-done
+if [[ "$ACCORDO_ALREADY_RUNNING" -eq 0 ]]; then
+  for pkg in "${PKG_DIRS[@]}"; do
+    CODE_ARGS+=("--extensionDevelopmentPath=$pkg")
+  done
+fi
 
 echo "[start-session] Launching VS Code with extension dev stack..."
 echo "[start-session] Project: $PROJECT_DIR"
+if [[ "$ACCORDO_ALREADY_RUNNING" -eq 1 ]]; then
+  echo "[start-session] Detected active Accordo dev instance; opening project window without re-registering extensionDevelopmentPath flags"
+fi
 echo "[start-session] Packages: ${PKG_DIRS[*]}"
 code "${CODE_ARGS[@]}"
 
