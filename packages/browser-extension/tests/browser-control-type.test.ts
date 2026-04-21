@@ -12,8 +12,8 @@
  * REQ-TC-012: Supports submitKey option (Enter, Tab, Escape)
  *
  * API checklist (handleType):
- * - type text into element via uid → RESOLVE_ELEMENT_COORDS then Input.insertText
- * - type text via selector → RESOLVE_ELEMENT_COORDS with selector
+ * - type text into element via uid → TYPE_IN_ELEMENT in main frame
+ * - type text via selector → TYPE_IN_ELEMENT with selector
  * - type with clearFirst → dispatches Ctrl+A then Delete before typing
  * - type with delay between chars → optional delay between key events
  * - type with submitKey → dispatches keyDown+keyUp for the submit key after typing
@@ -65,20 +65,16 @@ describe("handleType — uid resolution", () => {
     grantPermission(1);
   });
 
-  it("REQ-TC-009: resolves uid to input area coordinates via RESOLVE_ELEMENT_COORDS", async () => {
-    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
-      x: 200,
-      y: 150,
-      bounds: { x: 100, y: 100, width: 200, height: 40 },
-      inViewport: true,
-    });
+  it("REQ-TC-009: types into uid target via TYPE_IN_ELEMENT", async () => {
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ typed: true });
 
     const request = makeRequest({ tabId: 1, text: "hello", uid: "input-name" });
     await handleType(request);
 
     expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", uid: "input-name" })
+      expect.objectContaining({ type: "TYPE_IN_ELEMENT", uid: "input-name", text: "hello" }),
+      { frameId: 0 }
     );
   });
 
@@ -103,20 +99,16 @@ describe("handleType — selector resolution", () => {
     grantPermission(1);
   });
 
-  it("REQ-TC-009: uses selector as alternative to uid for coordinate resolution", async () => {
-    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
-      x: 200,
-      y: 150,
-      bounds: { x: 100, y: 100, width: 200, height: 40 },
-      inViewport: true,
-    });
+  it("REQ-TC-009: uses selector as alternative to uid for TYPE_IN_ELEMENT", async () => {
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ typed: true });
 
     const request = makeRequest({ tabId: 1, text: "hello", selector: "#username-input" });
     await handleType(request);
 
     expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", selector: "#username-input" })
+      expect.objectContaining({ type: "TYPE_IN_ELEMENT", selector: "#username-input", text: "hello" }),
+      { frameId: 0 }
     );
   });
 });
@@ -187,15 +179,27 @@ describe("handleType — clearFirst", () => {
     const keyEventCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls
       .filter(([, method]) => method === "Input.dispatchKeyEvent");
 
-    // Should have Ctrl+A (rawKeyDown + keyUp) and Delete (keyDown + keyUp) before insertText
-    const rawKeyDownEvents = keyEventCalls.filter(([, , params]) => params?.type === "rawKeyDown");
-    expect(rawKeyDownEvents.length).toBeGreaterThanOrEqual(2);
-
-    // Find Ctrl+A
-    const ctrlAKeyDown = keyEventCalls.find(
+    const ctrlKeyDownIndex = keyEventCalls.findIndex(
       ([, , params]) => params?.type === "rawKeyDown" && params?.key === "Control"
     );
-    expect(ctrlAKeyDown).toBeDefined();
+    const aKeyDownIndex = keyEventCalls.findIndex(
+      ([, , params]) => params?.type === "keyDown" && params?.key === "a" && params?.code === "KeyA"
+    );
+    const aKeyUpIndex = keyEventCalls.findIndex(
+      ([, , params]) => params?.type === "keyUp" && params?.key === "a" && params?.code === "KeyA"
+    );
+    const ctrlKeyUpIndex = keyEventCalls.findIndex(
+      ([, , params]) => params?.type === "keyUp" && params?.key === "Control"
+    );
+    const deleteKeyDownIndex = keyEventCalls.findIndex(
+      ([, , params]) => params?.type === "rawKeyDown" && params?.key === "Delete"
+    );
+
+    expect(ctrlKeyDownIndex).toBeGreaterThanOrEqual(0);
+    expect(aKeyDownIndex).toBeGreaterThan(ctrlKeyDownIndex);
+    expect(aKeyUpIndex).toBeGreaterThan(aKeyDownIndex);
+    expect(ctrlKeyUpIndex).toBeGreaterThan(aKeyUpIndex);
+    expect(deleteKeyDownIndex).toBeGreaterThan(ctrlKeyUpIndex);
   });
 });
 
@@ -278,20 +282,35 @@ describe("handleType — element focus", () => {
     grantPermission(1);
   });
 
-  it("REQ-TC-009: focuses element via Runtime.evaluate before typing", async () => {
-    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
-      x: 200,
-      y: 150,
-      bounds: { x: 100, y: 100, width: 200, height: 40 },
-      inViewport: true,
-    });
+  it("REQ-TC-009: targeted typing no longer depends on separate focus call", async () => {
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ typed: true });
 
     const request = makeRequest({ tabId: 1, text: "hello", uid: "input-field" });
     await handleType(request);
 
-    // Should have called Runtime.evaluate to focus the element
-    const evaluateCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls
-      .filter(([, method]) => method === "Runtime.evaluate");
-    expect(evaluateCalls.length).toBeGreaterThan(0);
+    expect(globalThis.chrome.tabs.sendMessage).toHaveBeenNthCalledWith(
+      1,
+      1,
+      expect.objectContaining({ type: "TYPE_IN_ELEMENT", uid: "input-field", text: "hello" }),
+      { frameId: 0 }
+    );
+  });
+
+  it("REQ-TC-009: resolves element coordinates in the main frame", async () => {
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ typed: true });
+
+    const request = makeRequest({ tabId: 1, text: "hello", selector: "textarea#APjFqb" });
+    await handleType(request);
+
+    expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        type: "TYPE_IN_ELEMENT",
+        selector: "textarea#APjFqb",
+        text: "hello",
+      }),
+      { frameId: 0 }
+    );
   });
 });

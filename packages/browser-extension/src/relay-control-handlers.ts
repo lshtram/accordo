@@ -73,8 +73,53 @@ async function resolveElementCoords(
     type: "RESOLVE_ELEMENT_COORDS",
     uid,
     selector,
-  });
+  }, { frameId: 0 });
   return response as { x: number; y: number; bounds: { x: number; y: number; width: number; height: number }; inViewport: boolean } | { error: string };
+}
+
+async function focusElement(
+  tabId: number,
+  uid?: string,
+  selector?: string,
+  clearFirst?: boolean,
+): Promise<{ focused: boolean } | { error: string }> {
+  const response = await chrome.tabs.sendMessage(tabId, {
+    type: "FOCUS_ELEMENT",
+    uid,
+    selector,
+    clearFirst,
+  }, { frameId: 0 });
+  return response as { focused: boolean } | { error: string };
+}
+
+async function scrollElementIntoView(
+  tabId: number,
+  uid?: string,
+  selector?: string,
+): Promise<{ scrolled: true } | { error: string }> {
+  const response = await chrome.tabs.sendMessage(tabId, {
+    type: "SCROLL_ELEMENT_INTO_VIEW",
+    uid,
+    selector,
+  }, { frameId: 0 });
+  return response as { scrolled: true } | { error: string };
+}
+
+async function typeInElement(
+  tabId: number,
+  text: string,
+  uid?: string,
+  selector?: string,
+  clearFirst?: boolean,
+): Promise<{ typed: true } | { error: string }> {
+  const response = await chrome.tabs.sendMessage(tabId, {
+    type: "TYPE_IN_ELEMENT",
+    uid,
+    selector,
+    text,
+    clearFirst,
+  }, { frameId: 0 });
+  return response as { typed: true } | { error: string };
 }
 
 type WaitUntil = "load" | "domcontentloaded" | "networkidle";
@@ -366,10 +411,24 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
 
       // Scroll into view if needed
       if (!coords.inViewport) {
-        await sendCommand(tabId, "DOM.scrollIntoViewIfNeeded", {
-          node: undefined,
-          rect: coords.bounds,
-        });
+        const scrollResult = await scrollElementIntoView(tabId, uid, selector);
+        if ("error" in scrollResult) {
+          if (scrollResult.error === "not-found" || scrollResult.error === "zero-size") {
+            return actionFailed(request, "element-not-found");
+          }
+          return actionFailed(request, "action-failed");
+        }
+
+        const updatedCoords = await resolveElementCoords(tabId, uid, selector);
+        if ("error" in updatedCoords) {
+          if (updatedCoords.error === "not-found" || updatedCoords.error === "zero-size") {
+            return actionFailed(request, "element-not-found");
+          }
+          return actionFailed(request, "action-failed");
+        }
+
+        x = updatedCoords.x;
+        y = updatedCoords.y;
       }
     }
 
@@ -426,37 +485,32 @@ export async function handleType(request: RelayActionRequest): Promise<RelayActi
     const uid = payload.uid as string | undefined;
     const selector = payload.selector as string | undefined;
 
+    const clearFirst = payload.clearFirst === true;
     if (uid || selector) {
-      const coords = await resolveElementCoords(tabId, uid, selector);
-
-      if ("error" in coords) {
-        if (coords.error === "not-found" || coords.error === "zero-size") {
+      const typeResult = await typeInElement(tabId, text, uid, selector, clearFirst);
+      if ("error" in typeResult) {
+        if (typeResult.error === "not-found" || typeResult.error === "zero-size") {
           return actionFailed(request, "element-not-found");
+        }
+        if (typeResult.error === "not-focusable") {
+          return actionFailed(request, "element-not-focusable");
         }
         return actionFailed(request, "action-failed");
       }
-
-      // Focus element via Runtime.evaluate
-      await sendCommand(tabId, "Runtime.evaluate", {
-        expression: `(function() {
-          var el = document.elementFromPoint(${coords.x}, ${coords.y});
-          if (el && typeof el.focus === 'function') el.focus();
-          return true;
-        })()`,
-      });
-    }
-
-    const clearFirst = payload.clearFirst === true;
-    if (clearFirst) {
+    } else if (clearFirst) {
       // Ctrl+A then Delete
       await sendCommand(tabId, "Input.dispatchKeyEvent", { type: "rawKeyDown", modifiers: MODIFIER_CONTROL, key: "Control", windowsVirtualKeyCode: 17, nativeVirtualKeyCode: 17 });
+      await sendCommand(tabId, "Input.dispatchKeyEvent", { type: "keyDown", modifiers: MODIFIER_CONTROL, key: "a", code: "KeyA", windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 });
+      await sendCommand(tabId, "Input.dispatchKeyEvent", { type: "keyUp", modifiers: MODIFIER_CONTROL, key: "a", code: "KeyA", windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 });
       await sendCommand(tabId, "Input.dispatchKeyEvent", { type: "keyUp", modifiers: MODIFIER_CONTROL, key: "Control", windowsVirtualKeyCode: 17, nativeVirtualKeyCode: 17 });
       await sendCommand(tabId, "Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Delete", windowsVirtualKeyCode: 46, nativeVirtualKeyCode: 46 });
       await sendCommand(tabId, "Input.dispatchKeyEvent", { type: "keyUp", key: "Delete", windowsVirtualKeyCode: 46, nativeVirtualKeyCode: 46 });
     }
 
-    // Insert text via insertText
-    await sendCommand(tabId, "Input.insertText", { text });
+    if (!uid && !selector) {
+      // Insert text via insertText only when targeting the current focused element.
+      await sendCommand(tabId, "Input.insertText", { text });
+    }
 
     // Submit key if specified
     const submitKey = payload.submitKey as string | undefined;

@@ -474,7 +474,8 @@ describe("handleClick", () => {
 
     expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", uid: "btn-submit" })
+      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", uid: "btn-submit" }),
+      { frameId: 0 }
     );
   });
 
@@ -523,22 +524,31 @@ describe("handleClick", () => {
     expect(lastClick[2]).toMatchObject({ clickCount: 2, button: "left" });
   });
 
-  it("REQ-TC-006: sends DOM.scrollIntoViewIfNeeded when inViewport is false", async () => {
+  it("REQ-TC-006: sends SCROLL_ELEMENT_INTO_VIEW when inViewport is false", async () => {
     (globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({ controlGrantedTabs: [1] });
-    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
-      x: 100,
-      y: 2000, // below viewport
-      bounds: { x: 0, y: 2000, width: 100, height: 50 },
-      inViewport: false,
-    });
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        x: 100,
+        y: 2000,
+        bounds: { x: 0, y: 2000, width: 100, height: 50 },
+        inViewport: false,
+      })
+      .mockResolvedValueOnce({ scrolled: true })
+      .mockResolvedValueOnce({
+        x: 100,
+        y: 300,
+        bounds: { x: 0, y: 250, width: 100, height: 50 },
+        inViewport: true,
+      });
 
     const request = makeRequest("click", { tabId: 1, uid: "below-fold-btn" });
     await handleClick(request);
 
-    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
-      expect.objectContaining({ tabId: 1 }),
-      "DOM.scrollIntoViewIfNeeded",
-      expect.any(Object)
+    expect(globalThis.chrome.tabs.sendMessage).toHaveBeenNthCalledWith(
+      2,
+      1,
+      expect.objectContaining({ type: "SCROLL_ELEMENT_INTO_VIEW", uid: "below-fold-btn" }),
+      { frameId: 0 }
     );
   });
 
@@ -556,7 +566,8 @@ describe("handleClick", () => {
 
     expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", selector: "#my-button" })
+      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", selector: "#my-button" }),
+      { frameId: 0 }
     );
   });
 
@@ -585,40 +596,31 @@ describe("handleType", () => {
     setMockTabUrl(1, "https://example.com");
   });
 
-  it("REQ-TC-009: resolves uid to input area coordinates via RESOLVE_ELEMENT_COORDS", async () => {
+  it("REQ-TC-009: types into uid target via TYPE_IN_ELEMENT", async () => {
     (globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({ controlGrantedTabs: [1] });
-    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
-      x: 200,
-      y: 150,
-      bounds: { x: 100, y: 100, width: 200, height: 40 },
-      inViewport: true,
-    });
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ typed: true });
 
     const request = makeRequest("type", { tabId: 1, text: "hello", uid: "input-name" });
     await handleType(request);
 
     expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", uid: "input-name" })
+      expect.objectContaining({ type: "TYPE_IN_ELEMENT", uid: "input-name", text: "hello" }),
+      { frameId: 0 }
     );
   });
 
-  it("REQ-TC-010: uses Input.insertText to insert the full string at once", async () => {
+  it("REQ-TC-010: uses TYPE_IN_ELEMENT to insert targeted text", async () => {
     (globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({ controlGrantedTabs: [1] });
-    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
-      x: 200,
-      y: 150,
-      bounds: { x: 100, y: 100, width: 200, height: 40 },
-      inViewport: true,
-    });
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ typed: true });
 
-    const request = makeRequest("type", { tabId: 1, text: "hello world" });
+    const request = makeRequest("type", { tabId: 1, text: "hello world", uid: "input-name" });
     await handleType(request);
 
-    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
-      expect.objectContaining({ tabId: 1 }),
-      "Input.insertText",
-      expect.objectContaining({ text: "hello world" })
+    expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ type: "TYPE_IN_ELEMENT", uid: "input-name", text: "hello world" }),
+      { frameId: 0 }
     );
   });
 
@@ -637,19 +639,32 @@ describe("handleType", () => {
     const keyEventCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls
       .filter(([, method]) => method === "Input.dispatchKeyEvent");
 
-    // Should have Ctrl+A (keyDown + keyUp) and Delete (keyDown + keyUp) before insertText
-    const keyDownEvents = keyEventCalls.filter(([, , params]) => params?.type === "rawKeyDown");
-    expect(keyDownEvents.length).toBeGreaterThanOrEqual(2);
+    const ctrlKeyDownIndex = keyEventCalls.findIndex(
+      ([, , params]) => params?.type === "rawKeyDown" && params?.key === "Control"
+    );
+    const aKeyDownIndex = keyEventCalls.findIndex(
+      ([, , params]) => params?.type === "keyDown" && params?.key === "a" && params?.code === "KeyA"
+    );
+    const aKeyUpIndex = keyEventCalls.findIndex(
+      ([, , params]) => params?.type === "keyUp" && params?.key === "a" && params?.code === "KeyA"
+    );
+    const ctrlKeyUpIndex = keyEventCalls.findIndex(
+      ([, , params]) => params?.type === "keyUp" && params?.key === "Control"
+    );
+    const deleteKeyDownIndex = keyEventCalls.findIndex(
+      ([, , params]) => params?.type === "rawKeyDown" && params?.key === "Delete"
+    );
+
+    expect(ctrlKeyDownIndex).toBeGreaterThanOrEqual(0);
+    expect(aKeyDownIndex).toBeGreaterThan(ctrlKeyDownIndex);
+    expect(aKeyUpIndex).toBeGreaterThan(aKeyDownIndex);
+    expect(ctrlKeyUpIndex).toBeGreaterThan(aKeyUpIndex);
+    expect(deleteKeyDownIndex).toBeGreaterThan(ctrlKeyUpIndex);
   });
 
   it("REQ-TC-012: submitKey:'Enter' dispatches Enter keydown+keyup after insertText", async () => {
     (globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({ controlGrantedTabs: [1] });
-    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
-      x: 200,
-      y: 150,
-      bounds: { x: 100, y: 100, width: 200, height: 40 },
-      inViewport: true,
-    });
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ typed: true });
 
     const request = makeRequest("type", { tabId: 1, text: "hello", submitKey: "Enter" });
     await handleType(request);
@@ -669,12 +684,7 @@ describe("handleType", () => {
 
   it("REQ-TC-012: submitKey:'Tab' dispatches Tab keydown+keyup after insertText", async () => {
     (globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({ controlGrantedTabs: [1] });
-    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
-      x: 200,
-      y: 150,
-      bounds: { x: 100, y: 100, width: 200, height: 40 },
-      inViewport: true,
-    });
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ typed: true });
 
     const request = makeRequest("type", { tabId: 1, text: "hello", submitKey: "Tab" });
     await handleType(request);
@@ -686,12 +696,7 @@ describe("handleType", () => {
 
   it("REQ-TC-012: submitKey:'Escape' dispatches Escape keydown+keyup after insertText", async () => {
     (globalThis.chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({ controlGrantedTabs: [1] });
-    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
-      x: 200,
-      y: 150,
-      bounds: { x: 100, y: 100, width: 200, height: 40 },
-      inViewport: true,
-    });
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ typed: true });
 
     const request = makeRequest("type", { tabId: 1, text: "hello", submitKey: "Escape" });
     await handleType(request);

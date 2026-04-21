@@ -547,7 +547,7 @@ describe("handleClick — REQ-TC-005..008", () => {
     );
     expect(relay.request).toHaveBeenCalledWith(
       "click",
-      expect.objectContaining({ uid: "my-button" }),
+      { uid: "my-button" },
       expect.any(Number)
     );
   });

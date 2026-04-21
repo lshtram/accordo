@@ -103,6 +103,66 @@ async function syncFromStorage(): Promise<void> {
 async function activateCommentsModeFromHandlers(): Promise<void> { const { activateCommentsMode } = await import("./comment-ui.js"); await activateCommentsMode(); }
 function deactivateCommentsModeFromHandlers(): void { const { deactivateCommentsMode } = require("./comment-ui.js"); deactivateCommentsMode(); }
 
+async function resolveElementTarget(uid?: string, selector?: string): Promise<Element | null> {
+  let element: Element | null = null;
+
+  if (uid) {
+    const { getElementByRef } = await import("./page-map-traversal.js");
+    element = getElementByRef(uid) ?? null;
+    if (!element) {
+      const colonIdx = uid.indexOf(":");
+      if (colonIdx >= 0) {
+        const nodeId = Number.parseInt(uid.slice(colonIdx + 1), 10);
+        if (!Number.isNaN(nodeId)) {
+          element = getElementByRef(`ref-${nodeId}`) ?? null;
+        }
+      }
+    }
+    if (!element) {
+      const { resolveAnchorKey } = await import("./enhanced-anchor.js");
+      element = resolveAnchorKey(uid);
+    }
+  }
+
+  if (!element && selector) {
+    element = document.querySelector(selector);
+  }
+
+  return element;
+}
+
+function typeIntoResolvedElement(element: Element, text: string, clearFirst: boolean): { typed: true } | { error: string } {
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    element.focus();
+
+    const start = clearFirst ? 0 : (element.selectionStart ?? element.value.length);
+    const end = clearFirst ? element.value.length : (element.selectionEnd ?? element.value.length);
+    const nextValue = `${element.value.slice(0, start)}${text}${element.value.slice(end)}`;
+
+    element.value = nextValue;
+    const caret = start + text.length;
+    element.setSelectionRange(caret, caret);
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+    return { typed: true };
+  }
+
+  if (element instanceof HTMLElement && element.isContentEditable) {
+    element.focus();
+    element.textContent = clearFirst ? text : `${element.textContent ?? ""}${text}`;
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+    return { typed: true };
+  }
+
+  return { error: "not-focusable" };
+}
+
+function scrollResolvedElementIntoView(element: Element): { scrolled: true } {
+  element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+  return { scrolled: true };
+}
+
 // ── Message listener ──────────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown }, _sender, _sendResponse: (response: unknown) => void) => {
@@ -188,18 +248,7 @@ chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown
         if (!uid && !selector) {
           _sendResponse({ error: "no-identifier" }); return;
         }
-        let element: Element | null = null;
-        if (uid) {
-          const { getElementByRef } = await import("./page-map-traversal.js");
-          element = getElementByRef(uid) ?? null;
-          if (!element) {
-            const { resolveAnchorKey } = await import("./enhanced-anchor.js");
-            element = resolveAnchorKey(uid);
-          }
-        }
-        if (!element && selector) {
-          element = document.querySelector(selector);
-        }
+        const element = await resolveElementTarget(uid, selector);
         if (!element) {
           _sendResponse({ error: "not-found" }); return;
         }
@@ -211,6 +260,62 @@ chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown
         const y = rect.top + rect.height / 2;
         const inViewport = x >= 0 && y >= 0 && x <= window.innerWidth && y <= window.innerHeight;
         _sendResponse({ x, y, bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height }, inViewport });
+      })();
+      return true;
+    }
+    case "FOCUS_ELEMENT": {
+      void (async (): Promise<void> => {
+        const { uid, selector, clearFirst } = (message as { uid?: string; selector?: string; clearFirst?: boolean });
+        if (!uid && !selector) {
+          _sendResponse({ error: "no-identifier" }); return;
+        }
+        const element = await resolveElementTarget(uid, selector);
+        if (!element) {
+          _sendResponse({ error: "not-found" }); return;
+        }
+
+        const focusable = element as HTMLElement & { focus?: () => void; select?: () => void };
+        if (typeof focusable.focus !== "function") {
+          _sendResponse({ error: "not-focusable" }); return;
+        }
+
+        focusable.focus();
+        if (clearFirst === true && (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) && typeof focusable.select === "function") {
+          focusable.select();
+        }
+
+        _sendResponse({ focused: document.activeElement === element });
+      })();
+      return true;
+    }
+    case "TYPE_IN_ELEMENT": {
+      void (async (): Promise<void> => {
+        const { uid, selector, text, clearFirst } = (message as { uid?: string; selector?: string; text?: string; clearFirst?: boolean });
+        if ((!uid && !selector) || typeof text !== "string") {
+          _sendResponse({ error: "no-identifier" }); return;
+        }
+        const element = await resolveElementTarget(uid, selector);
+        if (!element) {
+          _sendResponse({ error: "not-found" }); return;
+        }
+
+        const result = typeIntoResolvedElement(element, text, clearFirst === true);
+        _sendResponse(result);
+      })();
+      return true;
+    }
+    case "SCROLL_ELEMENT_INTO_VIEW": {
+      void (async (): Promise<void> => {
+        const { uid, selector } = (message as { uid?: string; selector?: string });
+        if (!uid && !selector) {
+          _sendResponse({ error: "no-identifier" }); return;
+        }
+        const element = await resolveElementTarget(uid, selector);
+        if (!element) {
+          _sendResponse({ error: "not-found" }); return;
+        }
+
+        _sendResponse(scrollResolvedElementIntoView(element));
       })();
       return true;
     }

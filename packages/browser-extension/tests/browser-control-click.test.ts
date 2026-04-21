@@ -17,7 +17,7 @@
  * - click by selector found → sends RESOLVE_ELEMENT_COORDS with selector
  * - click by selector not found → returns element-not-found error
  * - click zero-size element → returns element-not-found error
- * - click scrolls into viewport → sends DOM.scrollIntoViewIfNeeded when inViewport=false
+ * - click scrolls into viewport → sends SCROLL_ELEMENT_INTO_VIEW when inViewport=false
  * - dblClick sends correct CDP sequence (5 events)
  */
 
@@ -80,7 +80,8 @@ describe("handleClick — uid resolution", () => {
 
     expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", uid: "btn-submit" })
+      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", uid: "btn-submit" }),
+      { frameId: 0 }
     );
   });
 
@@ -129,7 +130,8 @@ describe("handleClick — selector resolution", () => {
 
     expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", selector: "#my-button" })
+      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", selector: "#my-button" }),
+      { frameId: 0 }
     );
   });
 
@@ -247,21 +249,30 @@ describe("handleClick — scroll into viewport", () => {
     grantPermission(1);
   });
 
-  it("REQ-TC-006: sends DOM.scrollIntoViewIfNeeded when inViewport is false", async () => {
-    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
-      x: 100,
-      y: 2000, // below viewport
-      bounds: { x: 0, y: 2000, width: 100, height: 50 },
-      inViewport: false,
-    });
+  it("REQ-TC-006: sends SCROLL_ELEMENT_INTO_VIEW when inViewport is false", async () => {
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        x: 100,
+        y: 2000,
+        bounds: { x: 0, y: 2000, width: 100, height: 50 },
+        inViewport: false,
+      })
+      .mockResolvedValueOnce({ scrolled: true })
+      .mockResolvedValueOnce({
+        x: 100,
+        y: 300,
+        bounds: { x: 0, y: 250, width: 100, height: 50 },
+        inViewport: true,
+      });
 
     const request = makeRequest({ tabId: 1, uid: "below-fold-btn" });
     await handleClick(request);
 
-    expect(globalThis.chrome.debugger.sendCommand).toHaveBeenCalledWith(
-      expect.objectContaining({ tabId: 1 }),
-      "DOM.scrollIntoViewIfNeeded",
-      expect.any(Object)
+    expect(globalThis.chrome.tabs.sendMessage).toHaveBeenNthCalledWith(
+      2,
+      1,
+      expect.objectContaining({ type: "SCROLL_ELEMENT_INTO_VIEW", uid: "below-fold-btn" }),
+      { frameId: 0 }
     );
   });
 
