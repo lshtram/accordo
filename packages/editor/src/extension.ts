@@ -2,7 +2,7 @@
  * accordo-editor — VSCode Extension Entry Point
  *
  * Activates by acquiring the BridgeAPI from accordo-bridge and registering
- * all 21 editor/terminal/layout tools.
+ * all 23 editor/terminal/layout tools.
  *
  * If accordo-bridge is not installed, the extension is silently inert.
  *

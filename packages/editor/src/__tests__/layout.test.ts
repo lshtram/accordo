@@ -221,6 +221,10 @@ describe("layoutTools registration — Module 20", () => {
       expect(typeof tool.handler).toBe("function");
     }
   });
+
+  it("M20-REG-08: accordo_panel_toggle is non-idempotent (true toggle semantics)", () => {
+    expect(byName("accordo_panel_toggle").idempotent).toBe(false);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

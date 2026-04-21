@@ -4,7 +4,7 @@
 **Type:** VSCode extension  
 **Publisher:** `accordo`  
 **Version:** 0.1.0  
-**Date:** 2026-03-02
+**Date:** 2026-04-21
 
 ---
 
@@ -45,7 +45,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const allTools: ExtensionToolDefinition[] = [
     ...editorTools,        // 11 editor tools
     ...terminalTools,      // 5 terminal tools
-    ...createLayoutTools(() => bridge.getState()),  // 7 layout tools (incl. layout_state, layout_panel)
+    ...createLayoutTools(() => bridge.getState()),  // 7 layout tools
   ];
   const disposable = bridge.registerTools('accordo.accordo-editor', allTools);
   context.subscriptions.push(disposable);
@@ -114,7 +114,7 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 **Implementation:**
 - Resolve path via `resolvePath(path)` utility
-- `.md` files → `vscode.commands.executeCommand('vscode.openWith', uri, 'accordo.markdownPreview')` — opens in the Accordo Markdown Preview custom editor when md-viewer extension is installed; falls back to standard text editor otherwise. Returns `surface: "preview"`.
+- `.md` files → `vscode.commands.executeCommand('vscode.openWith', uri, 'accordo.markdownPreview')` — opens in the Accordo Markdown Preview custom editor when md-viewer extension is installed; falls back to standard text editor otherwise. If `line`/`column` is provided, also calls `accordo_preview_internal_revealLine` with a 0-based line to align preview navigation. Returns `surface: "preview"`.
 - `.mmd` files → `vscode.commands.executeCommand('accordo-diagram.open', uri)` — opens in the Accordo Diagram custom editor. Returns `surface: "diagram"`.
 - All other files → `vscode.window.showTextDocument(uri, { selection: new Range(line-1, col-1, line-1, col-1) })`. Returns `surface: "editor"`.
 
@@ -283,7 +283,7 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 ### 4.5 `accordo_editor_clearHighlights`
 
-**Purpose:** Remove all highlights created by `accordo.editor.highlight`.
+**Purpose:** Remove all highlights created by `accordo_editor_highlight`.
 
 | Property | Value |
 |---|---|
@@ -591,129 +591,19 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 ---
 
-### 4.12 `accordo.workspace.getTree`
+### 4.12 `accordo_workspace_getTree` (de-scoped)
 
-**Purpose:** Return the workspace file tree as a structured object.
+**Status:** Not implemented in the current editor extension.
 
-| Property | Value |
-|---|---|
-| Danger level | safe |
-| Idempotent | yes |
-| Requires confirmation | no |
-| Timeout class | interactive (30s) |
-
-**Input Schema:**
-
-```typescript
-{
-  type: "object",
-  properties: {
-    depth: {
-      type: "number",
-      description: "Max directory depth to traverse. Default: 3"
-    },
-    path: {
-      type: "string",
-      description: "Subdirectory to start from. Default: workspace root"
-    }
-  },
-  required: []
-}
-```
-
-**Response:**
-
-```typescript
-{
-  tree: TreeNode[]
-}
-
-interface TreeNode {
-  name: string;
-  type: "file" | "directory";
-  children?: TreeNode[];   // only for directories
-}
-```
-
-**Constraints:**
-- Max total nodes: 1000. Truncate with a `{ name: "... (truncated)", type: "file" }` sentinel.
-- Respects VSCode `files.exclude` settings and `.gitignore`.
-
-**Implementation:**
-- `vscode.workspace.fs.readDirectory()` recursively
-- Filter through `vscode.workspace.getConfiguration('files').get('exclude')` patterns
-- Read `.gitignore` via a lightweight parser or use glob patterns
+This tool was part of an older workspace-surface proposal and is currently out of scope for `accordo-editor`.
 
 ---
 
-### 4.13 `accordo.workspace.search`
+### 4.13 `accordo_workspace_search` (de-scoped)
 
-**Purpose:** Full-text search across workspace files.
+**Status:** Not implemented in the current editor extension.
 
-| Property | Value |
-|---|---|
-| Danger level | safe |
-| Idempotent | yes |
-| Requires confirmation | no |
-| Timeout class | interactive (30s) |
-
-**Input Schema:**
-
-```typescript
-{
-  type: "object",
-  properties: {
-    query: {
-      type: "string",
-      description: "Search text or regex pattern"
-    },
-    include: {
-      type: "string",
-      description: "Glob pattern for files to include. Default: '**/*'"
-    },
-    maxResults: {
-      type: "number",
-      description: "Maximum results to return. Default: 50"
-    }
-  },
-  required: ["query"]
-}
-```
-
-**Response:**
-
-```typescript
-{
-  results: SearchMatch[]
-}
-
-interface SearchMatch {
-  path: string;        // relative to workspace
-  line: number;        // 1-based
-  column: number;      // 1-based
-  text: string;        // the matching line, trimmed to 200 chars max
-}
-```
-
-**Implementation:**
-- `vscode.workspace.findTextInFiles(new TextSearchQuery(query), { include, maxResults })`
-- Collect results, format, return
-
----
-
-### 4.12 `accordo_workspace_getTree`
-
-**Status:** Not currently implemented.
-
-> The `getTree` tool (file tree traversal with depth limit and workspace filtering) was specced in a prior version but has not been implemented in the current editor extension. It is retained here as a future-consideration stub. If needed, it should be implemented as a separate VSCode workspace API tool with appropriate pagination/truncation.
-
----
-
-### 4.13 `accordo_workspace_search`
-
-**Status:** Not currently implemented.
-
-> The `search` tool (full-text regex search via `vscode.workspace.findTextInFiles`) was specced in a prior version but has not been implemented in the current editor extension. It is retained here as a future-consideration stub.
+This tool was part of an older workspace-surface proposal and is currently out of scope for `accordo-editor`.
 
 ---
 
@@ -775,7 +665,7 @@ interface SearchMatch {
 - `problems` uses a show/focus command — opens the Problems panel but does not toggle.
 - The tool cannot detect current visibility state due to VS Code API limitations.
 
-**Design document:** `docs/00-workplan/panel-toggle-architecture.md`
+**Design document:** `docs/20-requirements/requirements-editor.md` §4.14 and implementation in `packages/editor/src/tools/layout.ts`.
 
 ---
 
@@ -904,7 +794,7 @@ interface SearchMatch {
 **Module ID:** M74-LS  
 **Purpose:** Return the current live IDE layout state on demand — all open tabs (text files and webview panels), active file and cursor, editor groups, active terminal, and per-modality extension state. Solves the agent freshness gap: the `initialize`-time snapshot may be stale; this tool always returns current Bridge-local state.
 
-**Architecture reference:** `docs/layout-state-architecture.md` §4
+**Architecture reference:** `docs/10-architecture/architecture.md` (state cache and tool registration flow)
 
 | Property | Value |
 |---|---|
@@ -1041,7 +931,7 @@ interface SearchMatch {
 
 ---
 
-### 4.17 `accordo.editor.save`
+### 4.17 `accordo_editor_save`
 
 **Purpose:** Save a specific file, or the active editor if no path given.
 
@@ -1086,7 +976,7 @@ interface SearchMatch {
 
 ---
 
-### 4.18 `accordo.editor.saveAll`
+### 4.18 `accordo_editor_saveAll`
 
 **Purpose:** Save all modified (unsaved) editors.
 
@@ -1120,7 +1010,7 @@ interface SearchMatch {
 
 ---
 
-### 4.19 `accordo.editor.format`
+### 4.19 `accordo_editor_format`
 
 **Purpose:** Run the configured formatter on the active document (or a specific file's editor).
 
@@ -1166,68 +1056,15 @@ interface SearchMatch {
 
 ---
 
-### 4.20 `accordo.diagnostics.list`
+### 4.20 `accordo_diagnostics_list` (de-scoped)
 
-**Purpose:** Return current diagnostics (errors, warnings, hints) from the Language Server across all files or a specific file.
+**Status:** Not implemented in the current editor extension.
 
-| Property | Value |
-|---|---|
-| Danger level | safe |
-| Idempotent | yes |
-| Requires confirmation | no |
-| Timeout class | fast (5s) |
-
-**Input Schema:**
-
-```typescript
-{
-  type: "object",
-  properties: {
-    path: {
-      type: "string",
-      description: "Limit diagnostics to this file. If omitted, returns diagnostics for all open files."
-    },
-    severity: {
-      type: "string",
-      enum: ["error", "warning", "information", "hint"],
-      description: "Filter by minimum severity. Default: all severities."
-    }
-  },
-  required: []
-}
-```
-
-**Response:**
-
-```typescript
-{
-  diagnostics: DiagnosticItem[]
-}
-
-interface DiagnosticItem {
-  path: string;       // absolute file path
-  line: number;       // 1-based
-  column: number;     // 1-based
-  severity: "error" | "warning" | "information" | "hint";
-  message: string;
-  source?: string;    // e.g. "ts", "eslint", "pylint"
-  code?: string;      // diagnostic code if present
-}
-```
-
-**Constraints:**
-- Maximum 500 diagnostics returned. Truncate with a final sentinel item: `{ path: "", line: 0, column: 0, severity: "hint", message: "... (truncated, total: <n>)" }`.
-- Severity enum mapping: `vscode.DiagnosticSeverity.Error → "error"`, `Warning → "warning"`, `Information → "information"`, `Hint → "hint"`.
-
-**Implementation:**
-- `vscode.languages.getDiagnostics()` → returns `[Uri, Diagnostic[]][]` for all files.
-- If `path` given: `vscode.languages.getDiagnostics(uri)` for just that file.
-- Map severity enum, offset line/column (VSCode is 0-based → return 1-based).
-- Filter by severity if given.
+This diagnostics tool was part of an older proposal and is currently out of scope for `accordo-editor`.
 
 ---
 
-### 4.21 `accordo.terminal.list`
+### 4.21 `accordo_terminal_list`
 
 **Purpose:** List all currently open terminal instances with their stable accordo IDs.
 
@@ -1269,7 +1106,7 @@ interface TerminalInfo {
 
 ---
 
-### 4.22 `accordo.terminal.close`
+### 4.22 `accordo_terminal_close`
 
 **Purpose:** Close a specific terminal by its stable accordo ID.
 
@@ -1329,12 +1166,9 @@ Multi-root aware. Workspace folders come from `vscode.workspace.workspaceFolders
 
 2. If input is relative:
    a. Collect all workspace folder root paths
-   b. Attempt to resolve against each root in order
-   c. If exactly one root produces an existing (or creatable) path → return it
-   d. If multiple roots could match → throw "Ambiguous relative path '<input>': matches
-      <folderA> and <folderB>. Use an absolute path."
-   e. If no root matches but single-root workspace → resolve against that root
-   f. Normalize separators to forward slashes
+   b. If workspace has exactly one root → resolve against that root
+   c. If workspace has multiple roots → throw "Ambiguous relative path '<input>' — specify an absolute path in a multi-root workspace"
+   d. Normalize separators to forward slashes
 
 3. No symlink resolution (use paths as-is)
 ```
@@ -1392,11 +1226,9 @@ function getTerminalId(terminal: vscode.Terminal): string | undefined {
 |---|---|
 | Extension activation time | < 200ms (no heavy work — just registerTools) |
 | Tool handler latency (typical) | < 100ms for editor/layout tools |
-| getTree latency (depth=3) | < 2s |
-| search latency (50 results) | < 5s |
 | Memory | < 15 MB |
 | VSCode engine | >= 1.100.0 |
-| Dependencies | Zero npm dependencies. Uses only `vscode` API + `@accordo/bridge-types`. |
+| Dependencies | Uses `vscode` API and workspace packages (`@accordo/bridge-types`, `@accordo/capabilities`). |
 
 ---
 
@@ -1408,10 +1240,8 @@ function getTerminalId(terminal: vscode.Terminal): string | undefined {
 | Unit: wrapHandler | success, throw, non-serializable return |
 | Unit: each tool handler | Happy path with mock VSCode API |
 | Unit: input validation | Missing required fields, wrong types, out-of-range values |
-| Integration: tool registration | activate → registerTools called → Bridge receives 24 tools |
+| Integration: tool registration | activate → registerTools called → Bridge receives 23 tools |
 | Integration: tool invocation | Bridge sends invoke → handler runs → result returned |
-| Integration: getTree truncation | Workspace with >1000 files → truncated correctly |
-| Unit: diagnostics.list | Severity filter, path filter, 0-based→1-based offset, truncation at 500 |
 | Unit: terminal.list | Tracked IDs, untracked terminals, isActive flag |
 | Unit: terminal.close | Happy path, already-closed terminal (stale map entry) |
 | E2E: full round-trip | Agent calls tools/call → Hub → Bridge → Editor handler → result back to agent |

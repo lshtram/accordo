@@ -20,7 +20,7 @@ All files use **lowercase-kebab-case**: `requirements-{component}.md`
 |---|---|---|---|
 | [requirements-hub.md](requirements-hub.md) | `accordo-hub` | MCP gateway, tool registry, auth, session management | Active |
 | [requirements-bridge.md](requirements-bridge.md) | `accordo-bridge` | VS Code ↔ Hub bridge, tool registration, relay | Active |
-| [requirements-editor.md](requirements-editor.md) | `accordo-editor` | 16 editor/terminal/workspace MCP tools | Active |
+| [requirements-editor.md](requirements-editor.md) | `accordo-editor` | 23 editor/terminal/layout MCP tools | Active |
 
 ### Browser
 

@@ -151,6 +151,7 @@ export const window = {
   })),
   createTerminal: vi.fn(),
   showWarningMessage: vi.fn().mockResolvedValue(undefined),
+  onDidCloseTerminal: vi.fn().mockImplementation(() => ({ dispose: vi.fn() })),
 };
 
 // ── workspace ────────────────────────────────────────────────────────────────
@@ -184,6 +185,7 @@ export const workspace = {
 
 export const commands = {
   executeCommand: vi.fn().mockResolvedValue(undefined),
+  registerCommand: vi.fn().mockImplementation(() => ({ dispose: vi.fn() })),
 };
 
 // ── languages ────────────────────────────────────────────────────────────────

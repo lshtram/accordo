@@ -3,7 +3,7 @@
   "displayName": "Accordo IDE Editor Tools",
   "publisher": "accordo",
   "version": "0.1.0",
-  "description": "Accordo IDE Editor Tools — 22 MCP tools exposing VSCode editor, terminal, and workspace capabilities",
+  "description": "Accordo IDE Editor Tools — 23 MCP tools exposing VSCode editor, terminal, and layout capabilities",
   "categories": [
     "Other"
   ],

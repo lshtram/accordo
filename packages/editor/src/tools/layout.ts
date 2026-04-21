@@ -27,7 +27,7 @@ interface PanelEntry {
  *
  * Sidebar views use show/focus commands (idempotent — always opens).
  * Bottom panel views use toggle commands where available (flip visibility).
- * See docs/00-workplan/panel-toggle-architecture.md §4.1 for rationale.
+ * See docs/20-requirements/requirements-editor.md §4.14 for command rationale.
  */
 const PANEL_COMMANDS: Readonly<Record<string, PanelEntry>> = {
   // ── Primary sidebar views (show/focus) ──

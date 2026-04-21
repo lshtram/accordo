@@ -35,7 +35,7 @@ The project is built as a **layer on top of VSCode**. The human keeps their exis
 │                                                                          │
 │  ┌──────────────────────────────────────────────────────────────────────┐│
 │  │  accordo-editor   (extensionKind: ["workspace"])                     ││
-│  │  • 16 editor/terminal/workspace MCP tools                            ││
+│  │  • 23 editor/terminal/layout MCP tools                               ││
 │  │  • Registers tools via BridgeAPI.registerTools()                     ││
 │  └──────────────────────┬───────────────────────────────────────────────┘│
 │                         │ BridgeAPI (same extension host, direct import)  │
@@ -148,7 +148,7 @@ Tools are registered at runtime by Bridge. The registry stores metadata only —
 ```typescript
 // Wire format: what Bridge sends to Hub
 interface ToolRegistration {
-  name: string;                    // "accordo.editor.open"
+  name: string;                    // "accordo_editor_open"
   description: string;
   inputSchema: JSONSchema;
   dangerLevel: 'safe' | 'moderate' | 'destructive';
@@ -324,7 +324,7 @@ All messages are JSON over WebSocket.
 interface InvokeMessage {
   type: "invoke";
   id: string;                    // UUID for correlation
-  tool: string;                  // "accordo.editor.open"
+  tool: string;                  // "accordo_terminal_run"
   args: Record<string, unknown>;
   timeout: number;               // ms — Hub's deadline for this call
 }
@@ -525,39 +525,27 @@ export async function activate(context: vscode.ExtensionContext) {
     ?.exports as BridgeAPI;
   if (!bridge) return; // Bridge not installed — extension is inert
 
-  const disposable = bridge.registerTools('accordo-editor', editorTools);
+  const allTools = [...editorTools, ...terminalTools, ...createLayoutTools(() => bridge.getState())];
+  const disposable = bridge.registerTools('accordo.accordo-editor', allTools);
   context.subscriptions.push(disposable);
 }
 ```
 
 ### 5.4 Tool Set
 
-| Tool | Args | Returns | Danger | Idempotent |
-|---|---|---|---|---|
-| `accordo.editor.open` | `path`, `line?`, `column?` | `{ opened, path }` | safe | yes |
-| `accordo.editor.close` | `path?` | `{ closed }` | safe | yes |
-| `accordo.editor.scroll` | `direction` (up\|down), `by` (lines\|page) | `{ line }` | safe | no |
-| `accordo.editor.highlight` | `path`, `startLine`, `endLine`, `color?` | `{ highlighted }` | safe | yes |
-| `accordo.editor.clearHighlights` | — | `{ cleared }` | safe | yes |
-| `accordo.editor.split` | `direction` (right\|down) | `{ groups }` | safe | no |
-| `accordo.editor.focus` | `group` (1–9) | `{ focused }` | safe | yes |
-| `accordo.editor.reveal` | `path` | `{ revealed }` | safe | yes |
-| `accordo.terminal.open` | `name?`, `cwd?` | `{ terminalId }` | moderate | no |
-| `accordo.terminal.run` | `command`, `terminalId?` | `{ sent, terminalId }` | destructive | no |
-| `accordo.terminal.focus` | — | `{ focused }` | safe | yes |
-| `accordo.workspace.getTree` | `depth?`, `path?` | `{ tree: TreeNode[] }` | safe | yes |
-| `accordo.workspace.search` | `query`, `include?`, `maxResults?` | `{ results: Match[] }` | safe | yes |
-| `accordo.panel.toggle` | `panel` (explorer\|search\|git\|debug\|extensions) | `{ visible }` | safe | yes |
-| `accordo.layout.zen` | — | `{ active }` | safe | no |
-| `accordo.layout.fullscreen` | — | `{ active }` | safe | no |
+| Tool family | Count | Notes |
+|---|---:|---|
+| Editor tools (`accordo_editor_*`) | 11 | open/close/scroll/split/focus/reveal/highlight/save/format |
+| Terminal tools (`accordo_terminal_*`) | 5 | open/run/focus/list/close with stable terminal IDs |
+| Layout tools (`accordo_panel_toggle`, `accordo_layout_*`) | 7 | panel toggle + explicit area control + layout state snapshot |
+| **Total** | **23** | Registered under `accordo.accordo-editor` |
 
 ### 5.5 Implementation Notes
 
-- File paths in tool arguments are resolved by the `resolvePath(input, context)` utility, which is multi-root-aware: it accepts either an absolute path or a path in the form `<workspaceFolderPath>/<relativePath>`. If the workspace has exactly one folder, a bare relative path is accepted and resolved against that folder. Tools always return absolute paths in their responses. Paths that resolve outside all workspace folders are rejected.
-- `accordo.editor.highlight` uses `vscode.window.createTextEditorDecorationType`
-- `accordo.terminal.run` uses `terminal.sendText(command, true)`
-- `accordo.workspace.getTree` respects VSCode file excludes + .gitignore
-- `accordo.workspace.search` uses `vscode.workspace.findTextInFiles()`
+- File paths are resolved by `resolvePath(input)`: absolute paths must remain inside workspace roots; relative paths are accepted only for single-root workspaces (multi-root requires absolute paths).
+- `accordo_editor_open` has surface-aware behavior: `.md` uses markdown preview (`accordo.markdownPreview`) with optional line reveal command; `.mmd` uses `accordo-diagram.open`; other files open as text editors.
+- `accordo_editor_highlight` uses `vscode.window.createTextEditorDecorationType`.
+- `accordo_terminal_run` uses `terminal.sendText(command, true)`.
 
 ### 5.6 Internal File Structure
 
@@ -566,10 +554,10 @@ accordo-editor/
 ├── src/
 │   ├── extension.ts           — activate(), tool registration
 │   ├── tools/
-│   │   ├── editor.ts          — open, close, scroll, highlight, split, focus, reveal
-│   │   ├── terminal.ts        — open, run, focus
-│   │   ├── workspace.ts       — getTree, search
-│   │   └── layout.ts          — panel.toggle, zen, fullscreen
+│   │   ├── editor.ts / editor-handlers.ts / editor-definitions.ts
+│   │   ├── terminal.ts
+│   │   ├── layout.ts
+│   │   └── bar.ts             — accordo_layout_panel explicit open/close area control
 │   └── util.ts                — path resolution, error wrapping
 ├── package.json
 ├── tsconfig.json
@@ -666,7 +654,7 @@ Same topology as SSH. The Codespace VM runs the workspace extension host + Hub. 
 All tool invocations are logged to `~/.accordo/audit.jsonl`:
 
 ```json
-{"ts":"2026-03-02T10:30:00Z","tool":"accordo.terminal.run","args_hash":"sha256:abc123","agent":"opencode","result":"success","duration_ms":150}
+{"ts":"2026-03-02T10:30:00Z","tool":"accordo_terminal_run","args_hash":"sha256:abc123","agent":"opencode","result":"success","duration_ms":150}
 ```
 
 Args are hashed (not logged in cleartext) to avoid logging secrets. Result is `success` or `error`. Log uses size-based rotation: when the file exceeds **10 MB** it is renamed to `audit.1.jsonl` (overwriting any previous rotation); Hub then starts a new `audit.jsonl`. Maximum retained: 2 files (~20 MB total).
@@ -767,7 +755,7 @@ Messages exceeding this limit cause `ws` to close the connection with a protocol
 13. Bridge registers Hub as native MCP server (Copilot — via settings or lm API)
 14. Bridge writes opencode.json / .claude/mcp.json if configured (token from SecretStorage)
 15. Agent starts, connects MCP, fetches /instructions
-16. Agent sees IDE state + 16 editor tools. Session is live.
+16. Agent sees IDE state + 23 editor tools. Session is live.
 ```
 
 ---

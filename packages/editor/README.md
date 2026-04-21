@@ -1,6 +1,6 @@
 # accordo-editor
 
-VSCode extension providing 19 MCP tools that expose editor, terminal, and layout capabilities to AI agents via the Accordo Bridge.
+VSCode extension providing 23 MCP tools that expose editor, terminal, and layout capabilities to AI agents via the Accordo Bridge.
 
 ## Installation
 
@@ -14,7 +14,7 @@ pnpm package       # produces .vsix file
 
 **Dependency:** Requires `accordo-bridge` to be installed and active.
 
-## Tools (19)
+## Tools (23)
 
 ### Editor Tools (11)
 
@@ -59,7 +59,7 @@ pnpm package       # produces .vsix file
 On activation, the extension:
 
 1. Acquires the `BridgeAPI` from `accordo.accordo-bridge`
-2. Registers all 19 tool definitions with the Bridge under extension id `accordo.accordo-editor`
+2. Registers all 23 tool definitions with the Bridge under extension id `accordo.accordo-editor`
 3. The Bridge forwards tool metadata to the Hub
 4. When an agent calls a tool via MCP, the Hub sends an `invoke` message to the Bridge
 5. The Bridge dispatches to the editor extension's handler
@@ -73,6 +73,8 @@ pnpm test          # Run unit tests
 pnpm typecheck     # Type-check without emitting
 pnpm test:watch    # Watch mode
 ```
+
+Current suite size (2026-04-21): 9 test files, 354 tests.
 
 ## License
 
