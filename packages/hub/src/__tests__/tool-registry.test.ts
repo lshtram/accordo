@@ -97,6 +97,13 @@ describe("ToolRegistry", () => {
     it("§5.1: get returns undefined on empty registry", () => {
       expect(registry.get("accordo_editor_open")).toBeUndefined();
     });
+
+    it("returns canonical comment tool for accordo_comment_* alias", () => {
+      const commentList = makeTool("comment_list");
+      registry.register([commentList]);
+
+      expect(registry.get("accordo_comment_list")).toEqual(commentList);
+    });
   });
 
   // ── list ──────────────────────────────────────────────────────────────────
@@ -120,6 +127,15 @@ describe("ToolRegistry", () => {
       registry.register([TOOL_OPEN]);
       registry.list().push(TOOL_CLOSE);
       expect(registry.size).toBe(1);
+    });
+
+    it("includes accordo_comment_* aliases for canonical comment tools", () => {
+      const commentList = makeTool("comment_list");
+      registry.register([commentList]);
+
+      const names = registry.list().map((tool) => tool.name);
+      expect(names).toContain("comment_list");
+      expect(names).toContain("accordo_comment_list");
     });
   });
 
@@ -174,6 +190,15 @@ describe("ToolRegistry", () => {
       expect(mcpNames).toContain("accordo_editor_discover");
       expect(mcpNames).toContain("accordo_editor_open");
       expect(mcpNames).toContain("accordo_editor_close");
+    });
+
+    it("includes accordo_comment_* aliases in MCP tools/list", () => {
+      const commentCreate = makeTool("comment_create");
+      registry.register([commentCreate]);
+
+      const mcpNames = registry.toMcpTools().map((tool) => tool.name);
+      expect(mcpNames).toContain("comment_create");
+      expect(mcpNames).toContain("accordo_comment_create");
     });
   });
 

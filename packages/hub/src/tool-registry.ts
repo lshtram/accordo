@@ -48,6 +48,45 @@ export class ToolRegistry {
     this.hubTools.set(tool.name, tool);
   }
 
+  private toAliasName(name: string): string | null {
+    if (!name.startsWith("comment_")) {
+      return null;
+    }
+
+    return `accordo_${name}`;
+  }
+
+  private fromAliasName(name: string): string | null {
+    if (!name.startsWith("accordo_comment_")) {
+      return null;
+    }
+
+    return name.slice("accordo_".length);
+  }
+
+  private aliasTool(tool: ToolRegistration): ToolRegistration | null {
+    const aliasName = this.toAliasName(tool.name);
+    if (aliasName === null) {
+      return null;
+    }
+
+    return {
+      ...tool,
+      name: aliasName,
+    };
+  }
+
+  private withAliases(tools: ToolRegistration[]): ToolRegistration[] {
+    const expanded = [...tools];
+    for (const tool of tools) {
+      const alias = this.aliasTool(tool);
+      if (alias !== null) {
+        expanded.push(alias);
+      }
+    }
+    return expanded;
+  }
+
   /**
    * Look up a single tool by its fully qualified name.
    * Hub-native tools take precedence over Bridge tools.
@@ -56,7 +95,17 @@ export class ToolRegistry {
    * @returns The tool registration, or undefined if not found
    */
   get(name: string): ToolRegistration | undefined {
-    return this.hubTools.get(name) ?? this.bridgeTools.get(name);
+    const direct = this.hubTools.get(name) ?? this.bridgeTools.get(name);
+    if (direct !== undefined) {
+      return direct;
+    }
+
+    const canonicalName = this.fromAliasName(name);
+    if (canonicalName === null) {
+      return undefined;
+    }
+
+    return this.hubTools.get(canonicalName) ?? this.bridgeTools.get(canonicalName);
   }
 
   /**
@@ -72,7 +121,7 @@ export class ToolRegistry {
     for (const [name, tool] of this.hubTools) {
       merged.set(name, tool);
     }
-    return Array.from(merged.values());
+    return this.withAliases(Array.from(merged.values()));
   }
 
   /**
