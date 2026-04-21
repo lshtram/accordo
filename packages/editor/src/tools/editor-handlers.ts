@@ -67,6 +67,9 @@ export async function openHandler(
       // Open .md files in the Accordo markdown preview (if md-viewer is installed).
       // Falls back to standard text editor if the custom editor is not available.
       await vscode.commands.executeCommand("vscode.openWith", uri, "accordo.markdownPreview");
+      if (line > 1 || column > 1) {
+        await vscode.commands.executeCommand("accordo_preview_internal_revealLine", uri.toString(), line - 1);
+      }
       return { opened: true, path: resolved, surface: "preview" };
     }
 

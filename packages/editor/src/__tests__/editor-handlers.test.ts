@@ -231,6 +231,17 @@ describe("openHandler — §4.1", () => {
     );
   });
 
+  it("OPEN-04b: .md file with line scroll requests preview reveal for the 0-based line", async () => {
+    makeWorkspace();
+    await openHandler({ path: "/workspace/src/readme.md", line: 121, column: 1 });
+
+    expect(vi.mocked(commands.executeCommand)).toHaveBeenCalledWith(
+      "accordo_preview_internal_revealLine",
+      "file:///workspace/src/readme.md",
+      120,
+    );
+  });
+
   it("OPEN-05: .mmd file opens in accordo-diagram, returns surface: 'diagram'", async () => {
     makeWorkspace();
     const result = await openHandler({ path: "/workspace/src/diagram.mmd" });
