@@ -314,4 +314,26 @@ describe("handleClick — explicit coordinates", () => {
       .find(([, method, params]) => method === "Input.dispatchMouseEvent" && params?.type === "mousePressed");
     expect(mousePressedCall?.[2]).toMatchObject({ x: 77, y: 88 });
   });
+
+  it("REQ-TC-006: prefers uid target over explicit coordinates when both are provided", async () => {
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      x: 150,
+      y: 250,
+      bounds: { x: 100, y: 200, width: 100, height: 100 },
+      inViewport: true,
+    });
+
+    const request = makeRequest({ tabId: 1, uid: "btn-submit", coordinates: { x: 77, y: 88 } });
+    await handleClick(request);
+
+    expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", uid: "btn-submit" }),
+      { frameId: 0 }
+    );
+
+    const mousePressedCall = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls
+      .find(([, method, params]) => method === "Input.dispatchMouseEvent" && params?.type === "mousePressed");
+    expect(mousePressedCall?.[2]).toMatchObject({ x: 150, y: 250 });
+  });
 });

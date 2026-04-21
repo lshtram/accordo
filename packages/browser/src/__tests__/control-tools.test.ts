@@ -613,6 +613,20 @@ describe("handleClick — REQ-TC-005..008", () => {
       expect.any(Number)
     );
   });
+
+  it("REQ-TC-005: omits coordinates when uid target is provided", async () => {
+    const relay = makeRelayResolve<ClickResponse>({ success: true, target: "btn-submit" });
+    const result = await expectHandle(
+      () => handleClick(relay, { uid: "btn-submit", coordinates: { x: 100, y: 200 } }),
+      "REQ-TC-005"
+    ) as ClickResponse;
+    expect(result.success).toBe(true);
+    expect(relay.request).toHaveBeenCalledWith(
+      "click",
+      { uid: "btn-submit" },
+      expect.any(Number)
+    );
+  });
 });
 
 // ── handleClick: permission error handling ───────────────────────────────────

@@ -200,7 +200,9 @@ export async function handleClick(
     if (args.tabId !== undefined) payload["tabId"] = args.tabId;
     if (args.uid !== undefined) payload["uid"] = args.uid;
     if (args.selector !== undefined) payload["selector"] = args.selector;
-    if (args.coordinates !== undefined) payload["coordinates"] = args.coordinates;
+    if (args.coordinates !== undefined && args.uid === undefined && args.selector === undefined) {
+      payload["coordinates"] = args.coordinates;
+    }
     if (args.dblClick !== undefined) payload["dblClick"] = args.dblClick;
 
     const response = await relay.request("click", payload, CONTROL_ACTION_TIMEOUT_MS);

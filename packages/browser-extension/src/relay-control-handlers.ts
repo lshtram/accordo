@@ -388,15 +388,11 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
     let x: number;
     let y: number;
 
-    // Explicit coordinates
-    if (payload.coordinates && typeof payload.coordinates === "object") {
-      const coords = payload.coordinates as { x: number; y: number };
-      x = coords.x;
-      y = coords.y;
-    } else {
-      // Resolve via content script
-      const uid = payload.uid as string | undefined;
-      const selector = payload.selector as string | undefined;
+    const uid = payload.uid as string | undefined;
+    const selector = payload.selector as string | undefined;
+
+    // Prefer element targets when both an element handle and explicit coordinates are present.
+    if (uid || selector) {
       const coords = await resolveElementCoords(tabId, uid, selector);
 
       if ("error" in coords) {
@@ -430,6 +426,12 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
         x = updatedCoords.x;
         y = updatedCoords.y;
       }
+    } else if (payload.coordinates && typeof payload.coordinates === "object") {
+      const coords = payload.coordinates as { x: number; y: number };
+      x = coords.x;
+      y = coords.y;
+    } else {
+      return actionFailed(request, "invalid-request");
     }
 
     const dblClick = payload.dblClick === true;
