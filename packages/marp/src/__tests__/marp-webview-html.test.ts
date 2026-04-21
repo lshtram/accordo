@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import vm from "node:vm";
 import type { MarpRenderResult } from "../types.js";
 
 /**
@@ -369,5 +370,263 @@ describe("CSP and security properties", () => {
     const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
     const html = buildMarpWebviewHtml({ renderResult: RENDER_RESULT, nonce: NONCE, cspSource: CSP_SOURCE });
     expect(html).toContain("style-src");
+  });
+});
+
+// ── Executable webview script behavior checks (runtime, not string-only) ─────
+
+interface RuntimeHarness {
+  dispatchMessage: (msg: Record<string, unknown>) => void;
+  getPostMessages: () => Array<Record<string, unknown>>;
+  getSlideContainerHtml: () => string;
+  getSdkLoadCalls: () => number;
+}
+
+function extractInlineScript(html: string): string {
+  const matches = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
+  const body = matches.at(-1)?.[1];
+  if (!body) throw new Error("inline script not found");
+  return body;
+}
+
+function createRuntimeHarness(html: string): RuntimeHarness {
+  const script = extractInlineScript(html);
+
+  type ListenerMap = Record<string, Array<(event: unknown) => void>>;
+  const listeners: ListenerMap = {};
+  const postMessages: Array<Record<string, unknown>> = [];
+  let sdkLoadCalls = 0;
+
+  const makeButton = () => ({
+    disabled: false,
+    addEventListener: (type: string, cb: (event: unknown) => void): void => {
+      listeners[type] = listeners[type] ?? [];
+      listeners[type].push(cb);
+    },
+  });
+
+  const counterEl = { textContent: "" };
+  let slideContainerHtml = "";
+  let slides: Array<{
+    active: boolean;
+    classList: { add: (name: string) => void; remove: (name: string) => void };
+    getBoundingClientRect: () => { left: number; top: number; width: number; height: number };
+    setAttribute: (name: string, value: string) => void;
+    removeAttribute: (name: string) => void;
+  }> = [];
+
+  const rebuildSlides = (source: string): void => {
+    const count = Math.max(0, (source.match(/data-marpit-svg/g) ?? []).length);
+    slides = Array.from({ length: count }, () => {
+      const slide = {
+        active: false,
+        classList: {
+          add: (name: string): void => {
+            if (name === "active") slide.active = true;
+          },
+          remove: (name: string): void => {
+            if (name === "active") slide.active = false;
+          },
+        },
+        getBoundingClientRect: (): { left: number; top: number; width: number; height: number } => ({
+          left: 10,
+          top: 20,
+          width: 800,
+          height: 600,
+        }),
+        setAttribute: (): void => {},
+        removeAttribute: (): void => {},
+      };
+      return slide;
+    });
+  };
+
+  const slideContainer = {
+    get innerHTML(): string {
+      return slideContainerHtml;
+    },
+    set innerHTML(value: string) {
+      slideContainerHtml = value;
+      rebuildSlides(value);
+    },
+    addEventListener: (type: string, cb: (event: unknown) => void): void => {
+      listeners[type] = listeners[type] ?? [];
+      listeners[type].push(cb);
+    },
+  };
+
+  // Seed with whatever HTML was rendered into the container at document load
+  const initialContainer = /<div id="slide-container">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
+  slideContainer.innerHTML = initialContainer;
+
+  const cssTag = { textContent: "" };
+
+  const documentStub = {
+    querySelectorAll: (selector: string): unknown[] =>
+      selector === "svg[data-marpit-svg]" ? (slides as unknown[]) : [],
+    querySelector: (selector: string): unknown => {
+      if (selector === "svg[data-marpit-svg].active") {
+        return (slides.find((s) => s.active) ?? null) as unknown;
+      }
+      return null;
+    },
+    getElementById: (id: string): unknown => {
+      if (id === "slide-container") return slideContainer;
+      if (id === "btn-prev") return makeButton();
+      if (id === "btn-next") return makeButton();
+      if (id === "slide-counter") return counterEl;
+      if (id === "marp-core-css") return cssTag;
+      return null;
+    },
+    addEventListener: (type: string, cb: (event: unknown) => void): void => {
+      listeners[type] = listeners[type] ?? [];
+      listeners[type].push(cb);
+    },
+    body: {},
+  };
+
+  const sdkInstance = {
+    init: (): void => {},
+    loadThreads: (): void => {
+      sdkLoadCalls++;
+    },
+    openPopover: (): void => {},
+  };
+
+  const context: Record<string, unknown> = {
+    window: {
+      addEventListener: (type: string, cb: (event: unknown) => void): void => {
+        listeners[type] = listeners[type] ?? [];
+        listeners[type].push(cb);
+      },
+      acquireVsCodeApi: (): { postMessage: (msg: Record<string, unknown>) => void } => ({
+        postMessage: (msg: Record<string, unknown>) => {
+          postMessages.push(msg);
+        },
+      }),
+      AccordoSDK: {
+        AccordoCommentSDK: function AccordoCommentSDK(this: Record<string, unknown>) {
+          Object.assign(this, sdkInstance);
+        },
+      },
+      scrollTo: (): void => {},
+    },
+    document: documentStub,
+    console,
+    setTimeout,
+    clearTimeout,
+    Number,
+    Math,
+    Array,
+    JSON,
+    XMLSerializer: function XMLSerializer() {
+      this.serializeToString = (): string => "<svg data-marpit-svg class='active'></svg>";
+    },
+    btoa: (value: string): string => Buffer.from(value, "utf8").toString("base64"),
+    unescape,
+    encodeURIComponent,
+  };
+
+  vm.createContext(context);
+  vm.runInContext(script, context);
+
+  return {
+    dispatchMessage: (msg: Record<string, unknown>): void => {
+      const handlers = listeners["message"] ?? [];
+      for (const handler of handlers) {
+        handler({ data: msg });
+      }
+    },
+    getPostMessages: (): Array<Record<string, unknown>> => postMessages,
+    getSlideContainerHtml: (): string => slideContainer.innerHTML,
+    getSdkLoadCalls: (): number => sdkLoadCalls,
+  };
+}
+
+describe("Executable webview runtime behavior", () => {
+  it("emits webview:ready at startup", async () => {
+    const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
+    const renderResult: MarpRenderResult = {
+      html: "<svg data-marpit-svg></svg><svg data-marpit-svg></svg>",
+      css: "svg { display:block; }",
+      slideCount: 2,
+      comments: ["", ""],
+    };
+    const html = buildMarpWebviewHtml({
+      renderResult,
+      nonce: NONCE,
+      cspSource: CSP_SOURCE,
+      sdkJsUri: "vscode-resource://sdk/sdk.js",
+      sdkCssUri: "vscode-resource://sdk/sdk.css",
+    });
+
+    const runtime = createRuntimeHarness(html);
+    expect(runtime.getPostMessages()).toContainEqual({ type: "webview:ready" });
+  });
+
+  it("drops stale marp:update revisions (runtime execution)", async () => {
+    const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
+    const renderResult: MarpRenderResult = {
+      html: "<svg data-marpit-svg></svg><svg data-marpit-svg></svg>",
+      css: "svg { display:block; }",
+      slideCount: 2,
+      comments: ["", ""],
+    };
+    const html = buildMarpWebviewHtml({ renderResult, nonce: NONCE, cspSource: CSP_SOURCE });
+    const runtime = createRuntimeHarness(html);
+
+    runtime.dispatchMessage({
+      type: "marp:update",
+      html: "<svg data-marpit-svg id='new-1'></svg>",
+      css: "svg{color:red}",
+      currentSlide: 0,
+      revision: 10,
+    });
+    const updated = runtime.getSlideContainerHtml();
+    expect(updated).toContain("new-1");
+
+    runtime.dispatchMessage({
+      type: "marp:update",
+      html: "<svg data-marpit-svg id='stale'></svg>",
+      css: "svg{color:blue}",
+      currentSlide: 0,
+      revision: 9,
+    });
+    expect(runtime.getSlideContainerHtml()).toBe(updated);
+  });
+
+  it("comments:update and comments:remove trigger pin refresh (sdk.loadThreads)", async () => {
+    const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
+    const renderResult: MarpRenderResult = {
+      html: "<svg data-marpit-svg></svg><svg data-marpit-svg></svg>",
+      css: "svg { display:block; }",
+      slideCount: 2,
+      comments: ["", ""],
+    };
+    const html = buildMarpWebviewHtml({
+      renderResult,
+      nonce: NONCE,
+      cspSource: CSP_SOURCE,
+      sdkJsUri: "vscode-resource://sdk/sdk.js",
+      sdkCssUri: "vscode-resource://sdk/sdk.css",
+    });
+    const runtime = createRuntimeHarness(html);
+
+    runtime.dispatchMessage({
+      type: "comments:load",
+      threads: [{ id: "t1", blockId: "slide:0:0.5:0.5" }],
+    });
+    const afterLoad = runtime.getSdkLoadCalls();
+
+    runtime.dispatchMessage({
+      type: "comments:update",
+      thread: { id: "t1", blockId: "slide:0:0.3:0.3" },
+    });
+    runtime.dispatchMessage({
+      type: "comments:remove",
+      threadId: "t1",
+    });
+
+    expect(runtime.getSdkLoadCalls()).toBeGreaterThan(afterLoad + 1);
   });
 });
