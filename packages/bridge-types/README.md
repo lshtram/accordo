@@ -1,6 +1,8 @@
 # @accordo/bridge-types
 
-Shared TypeScript type definitions, schemas, and protocol constants for the Accordo IDE system. This package is the single source of truth for all types and constants used across Hub, Bridge, and Editor packages.
+Shared TypeScript contracts and protocol constants for Accordo packages.
+
+This package intentionally ships small runtime JS for constants (for example protocol versions and limits), plus type declarations for cross-package contracts.
 
 **Import policy:** All consumers import from the package root only (`@accordo/bridge-types`). Subpath imports (`@accordo/bridge-types/foo`) are prohibited — see [REQ-2 barrel-only import policy](./src/__tests__/bridge-types.test.ts).
 
@@ -60,15 +62,16 @@ import {
 
 | Constant | Value | Purpose |
 |---|---|---|
-| `ACCORDO_PROTOCOL_VERSION` | `"1.0"` | Accordo wire protocol version |
+| `ACCORDO_PROTOCOL_VERSION` | `"1"` | Accordo wire protocol version |
 | `MCP_PROTOCOL_VERSION` | `"2025-03-26"` | MCP transport protocol version |
-| `COMMENT_MAX_THREADS` | `100` | Max comment threads per store |
-| `HEARTBEAT_INTERVAL_MS` | `30_000` | WebSocket heartbeat interval |
+| `COMMENT_MAX_THREADS` | `500` | Max comment threads per workspace |
+| `HEARTBEAT_INTERVAL_MS` | `5_000` | WebSocket heartbeat interval |
 
 ## Development
 
 ```bash
 pnpm build       # Compile TypeScript
+pnpm lint        # Lint all source files (excluding tests)
 pnpm typecheck   # Type-check without emitting
 pnpm test        # Run vitest test suite
 pnpm clean       # Remove build artifacts
@@ -77,10 +80,18 @@ pnpm clean       # Remove build artifacts
 ## Consumers
 
 This package is consumed by:
-- `accordo-hub` — MCP server, imports types for Hub↔Bridge WebSocket protocol
-- `accordo-bridge` — VSCode extension host side, imports types and constants
-- `accordo-editor` — Editor tools (16 tools), imports types for tool registration
-- `voice`, `browser`, `browser-extension`, `marp`, `script`, `md-viewer`, `diagram`, `comments`, `comment-sdk` — Feature packages
+- `accordo-hub` — Hub/bridge protocol, state/tool contracts, constants
+- `accordo-bridge` — registration/state wire contracts + constants
+- `accordo-editor` — tool definition and IDE state types
+- `accordo-browser` — tool definitions and shared contracts
+- `accordo-comments` — shared comment/thread model
+- `accordo-diagram` — tool definitions
+- `accordo-marp` — tool definitions
+- `accordo-md-viewer` — shared comment/thread model
+- `accordo-voice` — tool definitions
+- `@accordo/capabilities` — shared comment/navigation contracts
+
+Use `rg '"@accordo/bridge-types"' packages/*/package.json` to refresh this list.
 
 ## License
 

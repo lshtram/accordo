@@ -1,5 +1,9 @@
 ## Review — bridge-types — Phase B2 (Re-review)
 
+> Historical snapshot note (2026-04-21): this review reflects superseded examples.
+> Current contracts use `IDEState.openTabs` and flat `ToolRegistration` (no `definition` wrapper).
+> Treat this file as archival context, not current acceptance criteria.
+
 ### Scope Reviewed
 - `packages/bridge-types/tsconfig.json`
 - `packages/bridge-types/src/__tests__/type-contracts.ts`

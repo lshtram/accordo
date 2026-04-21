@@ -767,15 +767,16 @@ accordo-hub/                  npm package — "accordo-hub"
   Published: npmjs.com
   Install: npm install -g accordo-hub (or auto-spawned by bridge)
 
-@accordo/bridge-types/        npm package — TypeScript type definitions only
+@accordo/bridge-types/        npm package — shared TypeScript contracts + protocol constants
   Published: npmjs.com
-  Used by: all extension authors for typed BridgeAPI
+  Used by: Hub/Bridge/extensions for shared wire-safe contracts
   Internal structure (barrel re-export, no subpath imports):
     src/index.ts          — barrel: re-exports all public symbols
     src/ide-types.ts      — IDEState, OpenTab, OPEN_TAB_TYPES
     src/tool-types.ts     — ExtensionToolDefinition, ToolRegistration, McpTool, schemas
     src/ws-types.ts       — Hub↔Bridge WebSocket message types
     src/comment-types.ts  — comment anchors, threads, storage, scale constants
+    src/relay-types.ts    — browser relay shared wire contract
     src/constants.ts      — protocol constants, AuditEntry, HealthResponse, etc.
 
 accordo-bridge/               VSCode extension — "accordo.accordo-bridge"

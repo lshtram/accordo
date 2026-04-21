@@ -36,6 +36,7 @@ describe("BRIDGE-TYPES-REQ-1: All original exports preserved", () => {
       "tool-types.js",
       "ws-types.js",
       "comment-types.js",
+      "relay-types.js",
       "constants.js",
     ];
     const missing = domainFiles.filter(
@@ -199,6 +200,13 @@ describe("BRIDGE-TYPES-REQ-6: IDEState has required fields", () => {
 // ─── REQ-7: ToolRegistration structure ───────────────────────────────────────
 
 import type { ToolRegistration, ToolInputSchema } from "../index.js";
+import type {
+  BrowserRelayAction,
+  SnapshotEnvelopeFields,
+  BrowserRelayRequest,
+  BrowserRelayResponse,
+  CapturePayload,
+} from "../index.js";
 
 describe("BRIDGE-TYPES-REQ-7: ToolRegistration structure", () => {
   it("RE7: ToolRegistration is flat — name, description, dangerLevel at top level", () => {
@@ -238,5 +246,40 @@ describe("BRIDGE-TYPES-REQ-7: ToolRegistration structure", () => {
       // @ts-expect-error — handler is not valid on ToolRegistration
       handler: async () => {},
     };
+  });
+
+  it("RE7: relay shared contract types are exported from root barrel", () => {
+    const _action: BrowserRelayAction = "get_page_map";
+
+    const _request: BrowserRelayRequest = {
+      requestId: "req-1",
+      action: _action,
+      payload: {},
+    };
+
+    const _response: BrowserRelayResponse = {
+      requestId: "req-1",
+      success: true,
+      data: {},
+    };
+
+    const _capture: CapturePayload = {
+      format: "png",
+      mode: "viewport",
+    };
+
+    const _snapshot: SnapshotEnvelopeFields = {
+      pageId: "main",
+      frameId: "main",
+      snapshotId: "main:1",
+      capturedAt: new Date().toISOString(),
+      viewport: { width: 100, height: 100, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom",
+    };
+
+    expect(_request.action).toBe("get_page_map");
+    expect(_response.success).toBe(true);
+    expect(_capture.format).toBe("png");
+    expect(_snapshot.source).toBe("dom");
   });
 });

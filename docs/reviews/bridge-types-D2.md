@@ -1,5 +1,8 @@
 ## Review — bridge-types — Phase D2
 
+> Historical snapshot note (2026-04-21): line 16 references an outdated `ReauthRequest` example.
+> Current contract is `{ newToken, newSecret }`.
+
 ### PASS
 - Tests: **10 passing, zero failures** (`pnpm --filter @accordo/bridge-types test`)
 - Type check: **clean** (`pnpm --filter @accordo/bridge-types run typecheck`)
@@ -13,7 +16,7 @@
   - Compile-time contracts in `src/__tests__/type-contracts.ts` enforce `_REQ7_flat_*` and `_REQ7_no_handler`
   - Runtime tests in `src/__tests__/bridge-types.test.ts` cover REQ-1..REQ-7 and validate no `definition` wrapper / no `handler`
   - `MCP_PROTOCOL_VERSION` is `"2025-03-26"` (`requirements-hub.md §2.4`)
-  - `ReauthRequest` shape is `{ secret, token }` (`requirements-hub.md §2.6`)
+  - `ReauthRequest` shape is `{ newToken, newSecret }` (`requirements-hub.md §2.6`)
   - `ToolRegistration` shape matches Bridge wire contract (`requirements-bridge.md §3.2`)
 
 ### FAIL — must fix before Phase E

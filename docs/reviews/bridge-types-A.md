@@ -1,5 +1,9 @@
 ## Review — bridge-types — Phase A (Re-review)
 
+> Historical snapshot note (2026-04-21): this review contains outdated contract examples.
+> Current `ReauthRequest` is `{ newToken, newSecret }` (not `{ token, secret }`).
+> Use newer cleanup reviews and current requirements as source of truth.
+
 ### Scope Reviewed
 - `packages/bridge-types/src/ide-types.ts`
 - `packages/bridge-types/src/tool-types.ts`

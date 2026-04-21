@@ -12,6 +12,7 @@
  *   - tool-types.ts     — Tool registration and schemas
  *   - ws-types.ts       — WebSocket message types (Hub ↔ Bridge)
  *   - comment-types.ts  — Comment system types and scale constants
+ *   - relay-types.ts    — Browser relay shared wire contract
  *   - constants.ts      — Protocol constants, audit, health, reauth, concurrency
  */
 
@@ -92,6 +93,19 @@ export {
   COMMENT_CREATE_RATE_LIMIT,
   COMMENT_CREATE_RATE_WINDOW_MS,
 } from "./comment-types.js";
+
+// ─── Browser Relay Shared Contract ──────────────────────────────────────────
+
+export type {
+  BrowserRelayAction,
+  SnapshotSource,
+  Viewport,
+  SnapshotEnvelopeFields,
+  BrowserRelayRequest,
+  BrowserRelayResponse,
+  BrowserRelayError,
+  CapturePayload,
+} from "./relay-types.js";
 
 // ─── Constants & Operational Types ──────────────────────────────────────────
 
