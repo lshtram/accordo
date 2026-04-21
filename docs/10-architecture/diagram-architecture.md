@@ -1,8 +1,8 @@
-# Accordo — Diagram Modality Architecture v4.2
+# Accordo — Diagram Modality Architecture
 
-**Status:** DRAFT — Supersedes v4.1
-**Date:** 2026-03-03
-**Scope:** Full diagram modality — creation, editing, rendering, and collaboration
+**Status:** ACTIVE
+**Date:** 2026-04-21
+**Scope:** Current `accordo-diagram` modality architecture — create/edit/render workflows, layout persistence, and comments integration
 
 ---
 
@@ -368,7 +368,7 @@ The adapter module has one function per diagram type. Each function accesses the
 
 ### 6.4 Version pinning and upgrade strategy
 
-- Pin `mermaid` to an exact version (e.g., `11.4.1`) in `package.json`.
+- Pin `mermaid` to an exact version (current: `11.12.3`) in `package.json`.
 - The adapter module has a comprehensive test suite — one test per node shape, edge type, and cluster configuration for each supported diagram type.
 - On mermaid upgrade: run the adapter tests. If they fail, update the adapter. The rest of the system is unaffected because it programs against `ParsedDiagram`.
 - The adapter file is expected to be ~400 lines for all diag.1+diag.2 diagram types.
@@ -712,7 +712,7 @@ Full scene regeneration is O(n) in diagram size. For diagrams with 50+ nodes, th
 
 ## 10. MCP Tool Specifications
 
-The diagram extension registers these tools via `BridgeAPI.registerTools()`, following the same pattern as `accordo-editor`.
+The diagram extension registers these tools via `BridgeAPI.registerTools()`.
 
 ### Tool table
 
@@ -722,16 +722,8 @@ The diagram extension registers these tools via `BridgeAPI.registerTools()`, fol
 | `accordo_diagram_get` | safe | yes | fast |
 | `accordo_diagram_create` | moderate | no | fast |
 | `accordo_diagram_patch` | moderate | no | interactive |
-| `accordo_diagram_add_node` | moderate | no | fast |
-| `accordo_diagram_remove_node` | moderate | no | fast |
-| `accordo_diagram_add_edge` | moderate | no | fast |
-| `accordo_diagram_remove_edge` | moderate | no | fast |
-| `accordo_diagram_add_cluster` | moderate | no | fast |
-| `accordo_diagram_move_node` | safe | yes | fast |
-| `accordo_diagram_resize_node` | safe | yes | fast |
-| `accordo_diagram_set_node_style` | safe | yes | fast |
-| `accordo_diagram_set_edge_routing` | safe | yes | fast |
-| `accordo_diagram_render` | safe | yes | interactive |
+| `accordo_diagram_render` | moderate | yes | interactive |
+| `accordo_diagram_style_guide` | safe | yes | fast |
 
 ### `accordo_diagram_list`
 
@@ -827,6 +819,11 @@ output: {
   layout_preserved: number; // count of nodes with preserved positions
 }
 ```
+
+> Historical/deferred note: previously proposed fine-grained topology/layout
+> tools (`accordo_diagram_add_node`, `accordo_diagram_remove_node`,
+> `accordo_diagram_add_edge`, etc.) are design backlog items and are not part
+> of the current active MCP tool surface.
 
 ### `accordo_diagram_add_node`
 
@@ -1140,12 +1137,9 @@ Selection writes to `layout.json aesthetics` and triggers a canvas re-render. Th
 
 | Command | Action |
 |---|---|
-| `accordo.diagram.new` | Open diagram type picker, create new diagram |
-| `accordo.diagram.open` | Open existing `.mmd` in appropriate panel |
-| `accordo.diagram.reconcile` | Force full reconciliation pass |
-| `accordo.diagram.render` | Export canvas as SVG or PNG via Excalidraw API |
-| `accordo.diagram.resetLayout` | Discard layout.json, re-run auto-layout |
-| `accordo.diagram.fitView` | Fit canvas viewport to all nodes |
+| `accordo-diagram.open` | Open existing `.mmd` in the diagram panel |
+| `accordo-diagram.newCanvas` | Open a blank diagram canvas |
+| `accordo_diagram_focusThread` | Focus a comment thread in an open diagram panel (internal cross-package command) |
 
 ### 14.4 Canvas → Mermaid sync
 
@@ -1191,7 +1185,7 @@ Mermaid itself (v11.x) is composed on multiple layout engines — they are split
 | `mindmap` | Spatial | Radial tree from root | `d3-hierarchy` | diag.2 |
 
 **Why not "use Mermaid's layout by rendering to SVG and parsing coordinates" (Kroki extraction approach):**
-Mermaid's rendering layer (`dagre-d3-es`) fuses layout and SVG drawing into one pass. Extracting positions from the SVG output is fragile — the coordinate transform chain (viewBox, CSS offsets, nested `<g>` transforms) changes between Mermaid versions. Since we pin Mermaid at `11.4.1` and the underlying layout libraries are stable independent packages, calling them directly gives us the same quality with zero fragility.
+Mermaid's rendering layer (`dagre-d3-es`) fuses layout and SVG drawing into one pass. Extracting positions from the SVG output is fragile — the coordinate transform chain (viewBox, CSS offsets, nested `<g>` transforms) changes between Mermaid versions. Since we pin Mermaid at `11.12.3` and the underlying layout libraries are stable independent packages, calling them directly gives us the same quality with zero fragility.
 
 **Per-type db API reference:** See `docs/10-architecture/diagram-types-architecture.md` for the verified, runtime-inspected Mermaid `diag.db` data structures for all 6 spatial types.
 
@@ -1346,6 +1340,9 @@ layout-debug.ts::layoutDebug()   ◄── cross-cutting, called at each stage w
 ---
 
 ## 18. Implementation Roadmap
+
+> Historical planning context: this phased roadmap captures design-era sequencing.
+> For current shipped state and evidence, use `docs/20-requirements/requirements-diagram.md`.
 
 ### diag.1 — Core engine (MVP)
 

@@ -162,8 +162,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       log(`accordo_diagram_focusThread: opening panel for ${mmdPath}`);
       await vscode.commands.executeCommand("accordo-diagram.open", mmdPath);
-      // Wait for canvas:ready → _loadAndPost → loadThreadsForUri → comments:load
-      // to complete before asking the webview to open the popover.
+      // Synchronization strategy (current): wait for panel bootstrap pipeline
+      // (canvas:ready → _loadAndPost → loadThreadsForUri → comments:load)
+      // before requesting popover focus. This fixed-delay path is intentionally
+      // conservative; migrate to an explicit readiness signal when available.
       await new Promise<void>(resolve => setTimeout(resolve, 2000));
       for (const panel of _registry.values()) {
         panel.focusThread(tid);

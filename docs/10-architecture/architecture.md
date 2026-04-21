@@ -1759,6 +1759,8 @@ interface NavigationAdapterRegistry {
 | `diagram` | `packages/diagram/` | `accordo_diagram_focusThread` |
 | `markdown-preview` | `packages/md-viewer/` (command implementation), dispatched from `packages/comments/` router | `accordo_preview_internal_focusThread` |
 
+Diagram focus command ownership is in `@accordo/capabilities` (`CAPABILITY_COMMANDS.DIAGRAM_FOCUS_THREAD`), implemented by `packages/diagram/src/extension.ts`, and consumed by the comments router via the navigation dispatch plan.
+
 ### 17.5 Router Contract
 
 The comments panel router (`packages/comments/src/panel/navigation-router.ts`) currently uses explicit branching for all primary surface paths (`text`, `file`, `slide`, `markdown-preview`, `diagram`, `browser`) and a typed `NavigationDispatchPlan` for command selection. Priority Q also requires health-aware error messaging for browser routing failures (probe `accordo_browser_health` before presenting "disconnected").

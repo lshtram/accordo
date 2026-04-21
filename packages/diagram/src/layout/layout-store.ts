@@ -5,7 +5,8 @@
  * Mutations: all other functions are pure — they take a LayoutStore and return
  * a new one. Callers decide when to persist via writeLayout.
  *
- * Source: diag_arch_v4.2.md §5, diag_workplan.md §4.3
+ * Source: docs/20-requirements/requirements-diagram.md (A3),
+ *         docs/10-architecture/diagram-architecture.md §5
  */
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";

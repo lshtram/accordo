@@ -1,74 +1,52 @@
-# Module Map: `@accordo/diagram`
+# Module Map: `accordo-diagram`
 
 ## Purpose
-VSCode extension that renders Mermaid diagram files (.mmd) as Excalidraw canvases, with stable layout persistence across edits, comment anchoring on diagram nodes/edges, and 6 MCP tools for AI agents to create, read, update, and delete diagram elements.
+`accordo-diagram` is a VS Code extension that opens Mermaid `.mmd` files in a custom Excalidraw-backed editor, preserves layout in `.accordo/diagrams/**/*.layout.json`, and exposes diagram MCP tools for agent-driven create/read/patch/render workflows.
 
 ## Composition Root
-`extension.ts` — `activate()` acquires BridgeAPI, registers the `accordo-diagram.open` and `accordo-diagram.newCanvas` commands, registers a CustomEditorProvider for `.mmd` files, creates a path-keyed panel registry, registers all 6 diagram tools with the Bridge, and publishes diagram state on panel open/close. Also registers the `accordo_diagram_focusThread` command (from `@accordo/capabilities`) for comment thread navigation.
+`src/extension.ts` is the composition root. It:
+- registers VS Code commands: `accordo-diagram.open`, `accordo-diagram.newCanvas`;
+- registers custom editor provider `accordo-diagram.diagramEditor`;
+- keeps a path-keyed live panel registry;
+- registers MCP diagram tools through Bridge when available;
+- publishes diagram modality state;
+- registers comment-focus command `accordo_diagram_focusThread`.
 
 ## Key Modules
 
-| File | Responsibility | Public API |
-|------|---------------|------------|
-| `extension.ts` | VSCode entry point; owns panel registry, Bridge tool registration, command registration, state publishing | `activate()`, `deactivate()`, `getPanel()` |
-| `types.ts` | All pure type definitions for the diagram domain (DiagramType, NodeId, EdgeKey, LayoutStore, ParsedDiagram, ParseResult, ReconcileResult, ExcalidrawElement, CanvasScene) | All domain types |
-| `tools/diagram-tools.ts` | Re-exports tool definitions and handlers from `diagram-tool-definitions.ts` and `diagram-tool-handlers.ts` | `createDiagramTools()`, `DiagToolError`, handler functions |
-| `tools/diagram-tool-definitions.ts` | Factory for 6 MCP tool definitions | `createDiagramTools()` |
-| `tools/diagram-tool-handlers.ts` | Tool handler implementations; `DiagramToolContext` provides `getPanel()` for the active canvas | `listHandler`, `getHandler`, `createHandler`, `patchHandler`, `renderHandler`, `styleGuideHandler` |
-| `webview/panel.ts` | VSCode Webview panel hosting the Excalidraw canvas; owns the Mermaid→Excalidraw rendering pipeline | `DiagramPanel` class with factory methods |
-| `parser/adapter.ts` | Wraps mermaid.js parser; produces a `ParsedDiagram` (nodes, edges, clusters, direction, renames) | `parseMermaid()` |
-| `parser/flowchart.ts` | Flowchart parser (LR/TB/RL/BT directions, subgraphs, edge labels) | `parseFlowchart()` |
-| `parser/state-diagram.ts` | stateDiagram-v2 parser (states, pseudostates, composite states, transitions) | `parseStateDiagram()` |
-| `parser/class-diagram.ts` | classDiagram parser (classes, namespaces, relationships) | `parseClassDiagram()` |
-| `parser/decode-html.ts` | HTML entity decoding for Mermaid node labels | `decodeHtml()` |
-| `layout/auto-layout.ts` | Dagre-based auto-layout engine; computes node positions from topology | `computeInitialLayout()` |
-| `layout/excalidraw-engine.ts` | Upstream Excalidraw integration for stateDiagram-v2 | `layoutWithExcalidraw()` |
-| `layout/upstream-direct.ts` | Direct layout store read/write bypassing mermaid for already-parsed diagrams | `upstreamDirect()` |
-| `layout/element-mapper.ts` | Maps parsed nodes/edges to Excalidraw elements; dispatches state-diagram identity to `state-identity.ts` | `mapElements()` |
-| `layout/state-identity.ts` | State diagram pseudostate detection and state-specific geometry→identity mapping (diag.2.6 SUP-S) | `matchStatePseudostates()`, `isPseudostateGeometry()`, `mapStateGeometryToLayout()` |
-| `layout/layout-debug.ts` | Permanent gated structured logging for the layout pipeline; zero overhead when disabled (SUP-S06) | `layoutDebug()`, `LAYOUT_DEBUG` gate |
-| `layout/layout-store.ts` | Reads/writes `.layout.json` files; manages LayoutStore lifecycle | `LayoutStoreManager` class |
-| `canvas/canvas-generator.ts` | Generates Excalidraw elements from ParsedDiagram + LayoutStore | `generateCanvas()` |
-| `canvas/edge-router.ts` | Dagre-based edge routing with self-loop and waypoint support | `routeEdge()`, `routeAuto()` |
-| `canvas/shape-map.ts` | Maps Mermaid shape types to Excalidraw shapes | `getShape()` |
-| `reconciler/reconciler.ts` | Reconciles updated Mermaid source against existing LayoutStore; produces structural changes | `reconcile()` |
-| `reconciler/placement.ts` | Unplaced node placement with collision avoidance | `placeNewNodes()` |
-| `reconciler/edge-identity.ts` | Stable edge identity across source edits | `matchEdge()` |
-| `webview/panel-state.ts` | PanelState data type, factory, accessors, cleanup | `createPanelState()`, `assertNotDisposed()`, `cleanupOnDispose()` |
-| `webview/panel-core.ts` | Core panel logic (message dispatch, canvas operations) | Panel message handlers |
-| `webview/panel-commands.ts` | VSCode command handlers for the webview | Panel command handlers |
-| `webview/comment-overlay.ts` | Alt+click comment pin overlay | Comment pin overlay |
-| `webview/scene-adapter.ts` | Converts generator output to Excalidraw-compatible scene format | `toExcalidrawScene()` |
-| `webview/excalidraw-canvas.ts` | Excalidraw canvas initialization and message handling | Excalidraw canvas |
-| `webview/message-handler.ts` | Inbound/outbound message routing for canvas messages | Message handlers |
-| `webview/protocol.ts` | Canvas <→ extension wire protocol types | Protocol types |
-| `host/panel-setup.ts` | Panel initialization (webview HTML, mermaid warmup) | Panel setup |
-| `host/panel-message-router.ts` | Routes inbound webview messages to handlers | Message router |
-| `host/panel-scene-loader.ts` | Loads Excalidraw scene from layout store or fresh canvas | Scene loader |
-| `host/panel-export.ts` | PNG/SVG export | Export logic |
-| `host/host-context.ts` | Shared host context (workspace root, capabilities) | Host context |
-| `host/panel-comments-adapter.ts` | Comments bridge adapter for the host layer | Comments adapter |
-| `host/panel-layout-patcher.ts` | Layout patching from canvas mutations | Layout patcher |
-| `comments/diagram-comments-bridge.ts` | Three-layer comments bridge (panel ↔ host ↔ extension) | `DiagramCommentsBridge` |
-| `webview/html.ts` | Webview HTML document | HTML template |
-| `tools/diagram-tool-types.ts` | Shared tool result types and error codes | Tool result types |
+| Area | Files | Responsibility |
+|---|---|---|
+| Extension entry | `extension.ts` | Activation, bridge/tool wiring, panel registry, state publishing |
+| Tool surface | `tools/diagram-tool-definitions.ts`, `tools/diagram-tool-handlers.ts`, `tools/diagram-tools.ts`, `tools/diagram-tool-types.ts` | MCP tool definitions + handlers |
+| Parser | `parser/adapter.ts`, `parser/flowchart.ts`, `parser/state-diagram.ts`, `parser/class-diagram.ts`, `parser/decode-html.ts` | Mermaid parsing + normalization to internal graph |
+| Layout | `layout/auto-layout.ts`, `layout/layout-store.ts`, `layout/element-mapper.ts`, `layout/excalidraw-engine.ts`, `layout/upstream-direct.ts`, `layout/state-identity.ts`, `layout/layout-debug.ts` | Initial layout, persisted layout I/O, upstream placement integration, diagnostics |
+| Canvas generation | `canvas/canvas-generator.ts`, `canvas/edge-router.ts`, `canvas/shape-map.ts` | Excalidraw element generation from parsed graph + layout |
+| Reconciliation | `reconciler/reconciler.ts`, `reconciler/placement.ts`, `reconciler/edge-identity.ts` | Source/layout reconciliation and unplaced-node placement |
+| Panel host + webview | `webview/panel.ts`, `webview/panel-core.ts`, `webview/panel-state.ts`, `webview/panel-commands.ts`, `webview/html.ts`, `webview/protocol.ts`, `webview/message-handler.ts`, `webview/excalidraw-canvas.ts`, `webview/scene-adapter.ts`, `webview/comment-overlay.ts` | Custom editor runtime, host↔webview protocol, canvas interaction, export |
+| Host split modules | `host/*.ts` | Factored host concerns (setup, message routing, scene load, export, comments adapter, layout patching) |
+| Comments integration | `comments/diagram-comments-bridge.ts` | Surface comment bridge wiring between diagram panel and comments adapter |
+| Shared types | `types.ts` | Diagram domain/runtime type contracts |
 
-## Extension Points
+## Public Tool/Command Surface
 
-- **`DiagramPanelLike`** interface: Abstract interface for diagram panel operations (load, getDiagramType, createNode, updateNode, deleteNode, createEdge, etc.). Allows tool handlers to operate on any panel implementation without depending on VSCode types.
-- **`DiagramToolContext`**: Passed to all tool handlers. Provides `getPanel()` returning the most recently opened panel. Allows AI agents to operate on the active canvas.
-- **6 MCP tools**: `diagram_create`, `diagram_read`, `diagram_update`, `diagram_delete`, `diagram_rename`, `diagram_list`. Adding a new tool follows the same pattern in `diagram-tool-definitions.ts`.
-- **`parseMermaid()`**: The single parser entry point in `parser/adapter.ts`. Dispatches to `parseFlowchart()`, `parseStateDiagram()`, or `parseClassDiagram()` based on diagram type.
-- **`reconcile()`** in `reconciler/reconciler.ts`: Changes to reconciliation logic (node identity, rename handling, layout promotion) are made here.
+### MCP tools (registered by diagram extension)
+- `accordo_diagram_list`
+- `accordo_diagram_get`
+- `accordo_diagram_create`
+- `accordo_diagram_patch`
+- `accordo_diagram_render`
+- `accordo_diagram_style_guide`
+
+### VS Code commands (contributed)
+- `accordo-diagram.open`
+- `accordo-diagram.newCanvas`
+
+### Internal/cross-package focus command
+- `accordo_diagram_focusThread` (from `@accordo/capabilities` constants)
 
 ## Internal Boundaries
 
-- **`webview/panel.ts`** imports `vscode` directly and is the only file that should — it owns all VSCode webview and CustomEditorProvider infrastructure. Several other `webview/` and `host/` subdirectory files additionally import `vscode` for command registration, webview panels, and Disposable types.
-- **`layout/` subdirectory**: Internal layout pipeline. External callers use `layoutWithExcalidraw()` from `excalidraw-engine.ts` or `computeInitialLayout()` from `auto-layout.ts`. These entry points hide dagre layout algorithm details and Excalidraw API specifics.
-- **`parser/` subdirectory**: Internal parsing. The public contract is `parseMermaid()` in `parser/adapter.ts` (returns `ParseResult`). This hides mermaid.js internals from the rest of the system.
-- **`canvas/` subdirectory**: Internal rendering pipeline. `generateCanvas()` in `canvas-generator.ts` is the entry point — it hides edge routing algorithm details and Excalidraw API specifics.
-- **`reconciler/` subdirectory**: Internal reconciliation pipeline. `reconcile()` in `reconciler/reconciler.ts` is the entry point — it hides placement and edge identity logic.
-- **`types.ts`** at root contains only pure types with **zero runtime code**. Every other module imports from here. It must not import any module that has side effects.
-- The **`DiagramPanel`** class is created via `DiagramPanel.create()`, `DiagramPanel.createEmpty()`, or `DiagramPanel.createFromExistingPanel()` — callers must use these factory methods, not the constructor directly.
-- **`layout/state-identity.ts`**: Owns all state-diagram-specific identity logic. Generic mapping stays in `element-mapper.ts`; `element-mapper.ts` dispatches to `state-identity.ts` when `parsed.type === "stateDiagram-v2"`.
-- **`layout/layout-debug.ts`**: Permanent gated instrumentation (not temporary). Ships with the extension. Any layout module may call `layoutDebug()`.
+- `types.ts` is the foundational domain type module.
+- Parser/layout/canvas/reconciler directories are internal implementation layers; callers should use extension/tool entry points rather than deep-linking internals.
+- Multiple files legitimately import `vscode` (not just `webview/panel.ts`) across extension, panel host, and command wiring.
+- `layout/layout-debug.ts` is permanent gated instrumentation (disabled by default), not temporary debug code.

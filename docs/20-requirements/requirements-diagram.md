@@ -5,8 +5,8 @@
 **Publisher:** `accordo`  
 **Version:** 0.1.0  
 **Date:** 2026-03-15  
-**Last updated:** 2026-04-03  
-**Architecture reference:** `docs/10-architecture/diagram-architecture.md` (v4.2)  
+**Last updated:** 2026-04-21  
+**Architecture reference:** `docs/10-architecture/diagram-architecture.md` (ACTIVE)  
 **Workplan:** `docs/00-workplan/workplan.md`
 
 ---
@@ -139,9 +139,9 @@ StrokeStyle on edges was silently dropped by `detectNodeMutations` (edge mermaid
 
 ## 3. Open Items
 
-### diag.2 — Future Modules (NOT STARTED)
+### Remaining roadmap modules (partially shipped)
 
-Beyond parsers, these modules are planned for diag.2 (full list in `diagram-architecture.md §18`):
+The modules below are still open backlog items (see `diagram-architecture.md §18`):
 
 | Module | Notes |
 |---|---|
@@ -158,7 +158,7 @@ Beyond parsers, these modules are planned for diag.2 (full list in `diagram-arch
 **Finding:** Excalidraw has no native hexagon/cylinder/parallelogram types. Improved approximations require polygon-based workarounds that add complexity without achieving true native fidelity.  
 **Recommendation:** Keep current diamond/rectangle approximations. Not worth the effort for marginal gain.
 
-### diag.2 — Additional Parsers (stateDiagram-v2 ✅, classDiagram ✅ — erDiagram/mindmap/block-beta NOT STARTED)
+### Additional parser roadmap (stateDiagram-v2 ✅, classDiagram ✅; erDiagram/mindmap/block-beta pending)
 
 Architecture reference: `docs/10-architecture/diagram-types-architecture.md`
 
@@ -181,7 +181,7 @@ Already implemented in `parser/class-diagram.ts`. Full pipeline integration comp
 | SD-R06 | Ordinal counter for parallel edges | Multiple edges between same states get sequential ordinals |
 | SD-R07 | Full pipeline integration | `parseMermaid()` dispatches to `parseStateDiagram`; layout + canvas succeed end-to-end |
 
-#### diag.2.3 — erDiagram Parser
+#### diag.2.3 — erDiagram Parser (pending)
 
 | ID | Requirement | Acceptance Criteria |
 |---|---|---|
@@ -191,7 +191,7 @@ Already implemented in `parser/class-diagram.ts`. Full pipeline integration comp
 | ER-R04 | Map relationship types | IDENTIFYING→arrow, NON_IDENTIFYING→dotted |
 | ER-R05 | Default LR direction | ER diagrams default to left-to-right layout |
 
-#### diag.2.4 — mindmap Parser
+#### diag.2.4 — mindmap Parser (pending)
 
 | ID | Requirement | Acceptance Criteria |
 |---|---|---|
@@ -201,7 +201,7 @@ Already implemented in `parser/class-diagram.ts`. Full pipeline integration comp
 | MM-R04 | Map node types to shapes | nodeType enum → rounded/rectangle/circle/ellipse/hexagon |
 | MM-R05 | d3-hierarchy radial layout | New layout engine (separate from dagre) |
 
-#### diag.2.5 — block-beta Parser
+#### diag.2.5 — block-beta Parser (pending)
 
 | ID | Requirement | Acceptance Criteria |
 |---|---|---|
