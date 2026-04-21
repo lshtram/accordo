@@ -14,8 +14,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import vm from "node:vm";
 import type { MarpRenderResult } from "../types.js";
+import { createRuntimeHarness } from "./helpers/runtime-harness.js";
 
 /**
  * These tests import buildMarpWebviewHtml from marp-webview-html.ts.
@@ -30,7 +30,7 @@ import type { MarpRenderResult } from "../types.js";
  *   export function buildMarpWebviewHtml(opts: MarpWebviewHtmlOptions): string;
  */
 
-// ── Test Helpers ───────────────────────────────────────────────────────────────
+// ── Test Helpers ────────────────────────────────────────────────────────────────
 
 const RENDER_RESULT: MarpRenderResult = {
   html: "<section id='s0'><h1>Slide One</h1></section><section id='s1'><h1>Slide Two</h1></section>",
@@ -46,13 +46,11 @@ const CSP_SOURCE = "https://localhost";
 
 describe("M50-PVD-12: buildMarpWebviewHtml exported", () => {
   it("buildMarpWebviewHtml is exported from src/marp-webview-html.ts", async () => {
-    // The function must exist as a named export.
     const mod = await import("../marp-webview-html.js");
     expect(typeof mod.buildMarpWebviewHtml).toBe("function");
   });
 
   it("produces a complete HTML document", async () => {
-    // Must be a full document, not a fragment.
     const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
     const html = buildMarpWebviewHtml({ renderResult: RENDER_RESULT, nonce: NONCE, cspSource: CSP_SOURCE });
     expect(html).toContain("<!DOCTYPE html>");
@@ -71,9 +69,7 @@ describe("M50-PVD-13: Comment SDK asset injection", () => {
       renderResult: RENDER_RESULT, nonce: NONCE, cspSource: CSP_SOURCE,
       sdkJsUri: "vscode-resource://comment-sdk/sdk.js",
     });
-    // The script tag must be present with a nonce attribute.
     expect(html).toMatch(/<script[^>]*src=["']vscode-resource:\/\/comment-sdk\/sdk\.js["'][^>]*>/);
-    // And the nonce must be propagated.
     expect(html).toContain("nonce-test-nonce-123");
   });
 
@@ -83,7 +79,6 @@ describe("M50-PVD-13: Comment SDK asset injection", () => {
       renderResult: RENDER_RESULT, nonce: NONCE, cspSource: CSP_SOURCE,
       sdkCssUri: "vscode-resource://comment-sdk/sdk.css",
     });
-    // The stylesheet link must be present with a nonce attribute.
     expect(html).toMatch(/<link[^>]*href=["']vscode-resource:\/\/comment-sdk\/sdk\.css["'][^>]*>/);
     expect(html).toContain("nonce-test-nonce-123");
   });
@@ -91,7 +86,6 @@ describe("M50-PVD-13: Comment SDK asset injection", () => {
   it("when sdkJsUri is NOT provided — HTML contains no SDK script tag", async () => {
     const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
     const html = buildMarpWebviewHtml({ renderResult: RENDER_RESULT, nonce: NONCE, cspSource: CSP_SOURCE });
-    // Without SDK URIs, no SDK script should be loaded.
     expect(html).not.toContain("sdk.js");
     expect(html).not.toContain("sdk.min.js");
   });
@@ -108,7 +102,6 @@ describe("M50-PVD-13: Comment SDK asset injection", () => {
       renderResult: RENDER_RESULT, nonce: NONCE, cspSource: CSP_SOURCE,
       sdkJsUri: "vscode-resource://sdk/sdk.js",
     });
-    // All script nonces must use the same value (nonce-based CSP).
     const nonceAttr = 'nonce="test-nonce-123"';
     expect(html).toContain(nonceAttr);
   });
@@ -134,7 +127,6 @@ describe("M50-PVD-14: sdk.init() and coordinateToScreen", () => {
       sdkJsUri: "vscode-resource://sdk/sdk.js",
       sdkCssUri: "vscode-resource://sdk/sdk.css",
     });
-    // sdk.init() must be called in the script.
     expect(html).toContain("sdk.init");
   });
 
@@ -145,7 +137,6 @@ describe("M50-PVD-14: sdk.init() and coordinateToScreen", () => {
       sdkJsUri: "vscode-resource://sdk/sdk.js",
       sdkCssUri: "vscode-resource://sdk/sdk.css",
     });
-    // coordinateToScreen is a required init option for slide surfaces.
     expect(html).toContain("coordinateToScreen");
   });
 
@@ -156,9 +147,8 @@ describe("M50-PVD-14: sdk.init() and coordinateToScreen", () => {
       sdkJsUri: "vscode-resource://sdk/sdk.js",
       sdkCssUri: "vscode-resource://sdk/sdk.css",
     });
-    // The webview script must contain the parsing logic for the slide format.
     expect(html).toContain("slide:");
-    expect(html).toMatch(/slide:\d+/);
+    expect(html).toContain("slide:(\\d+):");
   });
 
   it("coordinateToScreen returns pixel position within active slide SVG", async () => {
@@ -168,7 +158,6 @@ describe("M50-PVD-14: sdk.init() and coordinateToScreen", () => {
       sdkJsUri: "vscode-resource://sdk/sdk.js",
       sdkCssUri: "vscode-resource://sdk/sdk.css",
     });
-    // Must reference the active SVG element.
     expect(html).toContain("data-marpit-svg");
     expect(html).toContain("active");
   });
@@ -180,14 +169,12 @@ describe("M50-PVD-14: sdk.init() and coordinateToScreen", () => {
       sdkJsUri: "vscode-resource://sdk/sdk.js",
       sdkCssUri: "vscode-resource://sdk/sdk.css",
     });
-    // Must handle the non-current-slide case.
     expect(html).toContain("coordinateToScreen");
   });
 
   it("without SDK URIs — no sdk.init call appears in HTML", async () => {
     const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
     const html = buildMarpWebviewHtml({ renderResult: RENDER_RESULT, nonce: NONCE, cspSource: CSP_SOURCE });
-    // When no SDK is configured, the init call must not appear.
     expect(html).not.toContain("sdk.init");
   });
 });
@@ -375,174 +362,6 @@ describe("CSP and security properties", () => {
 
 // ── Executable webview script behavior checks (runtime, not string-only) ─────
 
-interface RuntimeHarness {
-  dispatchMessage: (msg: Record<string, unknown>) => void;
-  getPostMessages: () => Array<Record<string, unknown>>;
-  getSlideContainerHtml: () => string;
-  getSdkLoadCalls: () => number;
-}
-
-function extractInlineScript(html: string): string {
-  const matches = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
-  const body = matches.at(-1)?.[1];
-  if (!body) throw new Error("inline script not found");
-  return body;
-}
-
-function createRuntimeHarness(html: string): RuntimeHarness {
-  const script = extractInlineScript(html);
-
-  type ListenerMap = Record<string, Array<(event: unknown) => void>>;
-  const listeners: ListenerMap = {};
-  const postMessages: Array<Record<string, unknown>> = [];
-  let sdkLoadCalls = 0;
-
-  const makeButton = () => ({
-    disabled: false,
-    addEventListener: (type: string, cb: (event: unknown) => void): void => {
-      listeners[type] = listeners[type] ?? [];
-      listeners[type].push(cb);
-    },
-  });
-
-  const counterEl = { textContent: "" };
-  let slideContainerHtml = "";
-  let slides: Array<{
-    active: boolean;
-    classList: { add: (name: string) => void; remove: (name: string) => void };
-    getBoundingClientRect: () => { left: number; top: number; width: number; height: number };
-    setAttribute: (name: string, value: string) => void;
-    removeAttribute: (name: string) => void;
-  }> = [];
-
-  const rebuildSlides = (source: string): void => {
-    const count = Math.max(0, (source.match(/data-marpit-svg/g) ?? []).length);
-    slides = Array.from({ length: count }, () => {
-      const slide = {
-        active: false,
-        classList: {
-          add: (name: string): void => {
-            if (name === "active") slide.active = true;
-          },
-          remove: (name: string): void => {
-            if (name === "active") slide.active = false;
-          },
-        },
-        getBoundingClientRect: (): { left: number; top: number; width: number; height: number } => ({
-          left: 10,
-          top: 20,
-          width: 800,
-          height: 600,
-        }),
-        setAttribute: (): void => {},
-        removeAttribute: (): void => {},
-      };
-      return slide;
-    });
-  };
-
-  const slideContainer = {
-    get innerHTML(): string {
-      return slideContainerHtml;
-    },
-    set innerHTML(value: string) {
-      slideContainerHtml = value;
-      rebuildSlides(value);
-    },
-    addEventListener: (type: string, cb: (event: unknown) => void): void => {
-      listeners[type] = listeners[type] ?? [];
-      listeners[type].push(cb);
-    },
-  };
-
-  // Seed with whatever HTML was rendered into the container at document load
-  const initialContainer = /<div id="slide-container">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
-  slideContainer.innerHTML = initialContainer;
-
-  const cssTag = { textContent: "" };
-
-  const documentStub = {
-    querySelectorAll: (selector: string): unknown[] =>
-      selector === "svg[data-marpit-svg]" ? (slides as unknown[]) : [],
-    querySelector: (selector: string): unknown => {
-      if (selector === "svg[data-marpit-svg].active") {
-        return (slides.find((s) => s.active) ?? null) as unknown;
-      }
-      return null;
-    },
-    getElementById: (id: string): unknown => {
-      if (id === "slide-container") return slideContainer;
-      if (id === "btn-prev") return makeButton();
-      if (id === "btn-next") return makeButton();
-      if (id === "slide-counter") return counterEl;
-      if (id === "marp-core-css") return cssTag;
-      return null;
-    },
-    addEventListener: (type: string, cb: (event: unknown) => void): void => {
-      listeners[type] = listeners[type] ?? [];
-      listeners[type].push(cb);
-    },
-    body: {},
-  };
-
-  const sdkInstance = {
-    init: (): void => {},
-    loadThreads: (): void => {
-      sdkLoadCalls++;
-    },
-    openPopover: (): void => {},
-  };
-
-  const context: Record<string, unknown> = {
-    window: {
-      addEventListener: (type: string, cb: (event: unknown) => void): void => {
-        listeners[type] = listeners[type] ?? [];
-        listeners[type].push(cb);
-      },
-      acquireVsCodeApi: (): { postMessage: (msg: Record<string, unknown>) => void } => ({
-        postMessage: (msg: Record<string, unknown>) => {
-          postMessages.push(msg);
-        },
-      }),
-      AccordoSDK: {
-        AccordoCommentSDK: function AccordoCommentSDK(this: Record<string, unknown>) {
-          Object.assign(this, sdkInstance);
-        },
-      },
-      scrollTo: (): void => {},
-    },
-    document: documentStub,
-    console,
-    setTimeout,
-    clearTimeout,
-    Number,
-    Math,
-    Array,
-    JSON,
-    XMLSerializer: function XMLSerializer() {
-      this.serializeToString = (): string => "<svg data-marpit-svg class='active'></svg>";
-    },
-    btoa: (value: string): string => Buffer.from(value, "utf8").toString("base64"),
-    unescape,
-    encodeURIComponent,
-  };
-
-  vm.createContext(context);
-  vm.runInContext(script, context);
-
-  return {
-    dispatchMessage: (msg: Record<string, unknown>): void => {
-      const handlers = listeners["message"] ?? [];
-      for (const handler of handlers) {
-        handler({ data: msg });
-      }
-    },
-    getPostMessages: (): Array<Record<string, unknown>> => postMessages,
-    getSlideContainerHtml: (): string => slideContainer.innerHTML,
-    getSdkLoadCalls: (): number => sdkLoadCalls,
-  };
-}
-
 describe("Executable webview runtime behavior", () => {
   it("emits webview:ready at startup", async () => {
     const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
@@ -628,5 +447,118 @@ describe("Executable webview runtime behavior", () => {
     });
 
     expect(runtime.getSdkLoadCalls()).toBeGreaterThan(afterLoad + 1);
+  });
+
+  it("comments:focus navigates to the target slide and calls sdk.openPopover", async () => {
+    const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
+    const renderResult: MarpRenderResult = {
+      html: "<svg data-marpit-svg></svg><svg data-marpit-svg></svg>",
+      css: "svg { display:block; }",
+      slideCount: 2,
+      comments: ["", ""],
+    };
+    const html = buildMarpWebviewHtml({
+      renderResult,
+      nonce: NONCE,
+      cspSource: CSP_SOURCE,
+      sdkJsUri: "vscode-resource://sdk/sdk.js",
+      sdkCssUri: "vscode-resource://sdk/sdk.css",
+    });
+    const runtime = createRuntimeHarness(html);
+
+    runtime.dispatchMessage({
+      type: "comments:focus",
+      threadId: "thread-abc",
+      blockId: "slide:1:0.2500:0.7500",
+    });
+
+    const posts = runtime.getPostMessages();
+    expect(posts).toContainEqual({ type: "sdk:openPopover", threadId: "thread-abc" });
+    expect(posts).toContainEqual({ type: "presentation:slideChanged", index: 1 });
+  });
+
+  it("host:request-capture emits presentation:capture-ready with base64 data", async () => {
+    const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
+    const renderResult: MarpRenderResult = {
+      html: "<svg data-marpit-svg></svg><svg data-marpit-svg></svg>",
+      css: "svg { display:block; }",
+      slideCount: 2,
+      comments: ["", ""],
+    };
+    const html = buildMarpWebviewHtml({
+      renderResult,
+      nonce: NONCE,
+      cspSource: CSP_SOURCE,
+    });
+    const runtime = createRuntimeHarness(html);
+
+    runtime.dispatchMessage({ type: "host:request-capture" });
+
+    const posts = runtime.getPostMessages();
+    const capture = posts.find((p) => p.type === "presentation:capture-ready");
+    expect(capture).toBeDefined();
+    expect(capture).toHaveProperty("data");
+    expect(typeof capture?.data).toBe("string");
+    expect((capture?.data as string).length).toBeGreaterThan(0);
+    expect(capture).not.toHaveProperty("error");
+  });
+
+  it("host:request-capture with no active slide emits error 'No active slide'", async () => {
+    const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
+    const renderResult: MarpRenderResult = {
+      html: "",
+      css: "svg { display:block; }",
+      slideCount: 0,
+      comments: [],
+    };
+    const html = buildMarpWebviewHtml({
+      renderResult,
+      nonce: NONCE,
+      cspSource: CSP_SOURCE,
+    });
+    const runtime = createRuntimeHarness(html);
+
+    runtime.dispatchMessage({ type: "host:request-capture" });
+
+    const posts = runtime.getPostMessages();
+    const capture = posts.find((p) => p.type === "presentation:capture-ready");
+    expect(capture).toBeDefined();
+    expect(capture).toHaveProperty("data", null);
+    expect(capture).toHaveProperty("error", "No active slide");
+  });
+
+  it("Alt+click sets data-block-id on active SVG then clears it via setTimeout(0)", async () => {
+    const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
+    const renderResult: MarpRenderResult = {
+      html: "<svg data-marpit-svg></svg><svg data-marpit-svg></svg>",
+      css: "svg { display:block; }",
+      slideCount: 2,
+      comments: ["", ""],
+    };
+    const html = buildMarpWebviewHtml({
+      renderResult,
+      nonce: NONCE,
+      cspSource: CSP_SOURCE,
+      sdkJsUri: "vscode-resource://sdk/sdk.js",
+      sdkCssUri: "vscode-resource://sdk/sdk.css",
+    });
+    const runtime = createRuntimeHarness(html);
+
+    // Verify slide 0 is active before the click
+    expect(runtime.getSlideActiveStates()).toEqual([true, false]);
+
+    // Alt+click in the middle of the active slide (400 = center of 800-wide rect at left=10)
+    runtime.simulateAltClick(10 + 400, 20 + 300);
+
+    // Immediately after Alt+click (before setTimeout fires):
+    // data-block-id must be set on the active SVG with the correct format
+    const blockId = runtime.getActiveSvgDataBlockId();
+    expect(blockId).toMatch(/^slide:0:0\.5\d+:0\.5\d+$/);
+
+    // Drain the setTimeout(0) that clears the attribute
+    runtime.flushTimeouts();
+
+    // After flush, data-block-id must be null
+    expect(runtime.getActiveSvgDataBlockId()).toBeNull();
   });
 });
