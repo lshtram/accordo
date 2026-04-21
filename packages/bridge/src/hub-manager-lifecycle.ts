@@ -1,18 +1,9 @@
 /**
- * Hub lifecycle helpers extracted from HubManager.
- *
- * These functions are tightly coupled to HubManager's internal state and are
- * extracted purely for modularity (coding-guidelines.md §3.1).
- *
- * Responsibilities:
- * - Restart soft/hard path orchestration
- * - Health polling + onHubReady notification
- * - Hub spawn orchestration
- *
+ * Hub lifecycle helpers (restart orchestration, polling, port resolution).
  * Requirements: requirements-bridge.md §4 (LCM-12), adr-reload-reconnect.md §D1-D3
  */
 
-import type { HubManagerEvents, SecretStorage } from "./hub-manager.js";
+import type { HubManagerEvents, SecretStorage } from "./hub-manager-state.js";
 import type { HubProcessSharedState } from "./hub-process.js";
 import type { HubHealthSharedState } from "./hub-health.js";
 import { scopedSecretKey, BRIDGE_SECRET_KEY, HUB_TOKEN_KEY } from "./project-identity.js";
@@ -113,6 +104,27 @@ export async function doRestart(ctx: RestartContext): Promise<void> {
   } else {
     await hardRestart(ctx, newSecret, newToken);
   }
+}
+
+/**
+ * Build a RestartContext from HubManager's injected dependencies.
+ * Extracted to keep HubManager._makeRestartContext small.
+ */
+export function makeRestartContext(
+  deps: {
+    projectId: string;
+    configRegistryPath: string;
+    secretStorage: SecretStorage;
+    processState: HubProcessSharedState;
+    healthState: HubHealthSharedState;
+    events: HubManagerEvents;
+    killHub: () => Promise<void>;
+    spawn: (secret: string, token: string, port: number) => Promise<void>;
+    pollHealth: (maxWaitMs?: number, intervalMs?: number) => Promise<boolean>;
+    attemptReauth: (currentSecret: string, newSecret: string, newToken: string) => Promise<boolean>;
+  },
+): RestartContext {
+  return deps as unknown as RestartContext;
 }
 
 /**
