@@ -1,139 +1,97 @@
-# Testing Guide — Narration Plugin (session.idle)
+# Testing Guide — Narration Plugin (`.opencode/plugins/narration.ts`)
 
-## What This Tests
+## Section 1 — Automated tests
 
-The `session.idle` narration plugin (`narration.ts`) automatically narrates agent responses via `readAloud` after every response. It lives in `.opencode/plugins/` and activates when OpenCode connects to Accordo Hub.
-
-## Prerequisites
-
-1. **Accordo Hub running** at `localhost:3000` with `accordo.voice.enabled: true` and `narrationMode: "narrate-summary"` (or `"narrate-full"`) in VS Code settings
-2. **OpenCode connected to Accordo Hub** via MCP (`opencode.json` → `http://localhost:3000/mcp`)
-3. **Gemini API key** set as `GEMINI_API_KEY` environment variable (for summarization in `narrate-summary` mode)
-4. **Plugin installed** at `.opencode/plugins/narration.ts`
-
-## Section 1 — Agent-Automated Tests
-
-Run the unit test suite:
+Run from repo root:
 
 ```bash
-cd /data/projects/accordo
 npx vitest run .opencode/plugins/narration.test.ts .opencode/plugins/narration.resolve-config.test.ts
 ```
 
-**Expected:** 50/50 tests pass.
+What this verifies:
+- `session.idle` hook + debounce behavior
+- narration-mode parsing (`summary` / `everything` / `off`, including `narrate-*` aliases)
+- assistant-message extraction from OpenCode session API
+- Gemini summarization path for long responses in summary mode
+- direct raw narration path for short responses in summary mode
+- MCP `tools/call` invocation for `accordo_voice_readAloud`
+- fail-safe behavior (errors are swallowed, user workflow continues)
+
+## Section 2 — User journey tests
+
+These are manual checks in a real OpenCode session.
+
+### Prerequisites
+
+1. Accordo Hub is running and reachable
+2. OpenCode is connected to Hub via MCP
+3. Plugin exists at `.opencode/plugins/narration.ts`
+4. Environment variables are set as needed:
+   - `ACCORDO_NARRATION_MODE=summary|everything|off`
+   - `GEMINI_API_KEY` (required only when summary mode should call Gemini)
 
 ---
 
-## Section 2 — User Journey Tests
+### NP-01: summary mode narrates a long response as a short summary
 
-These test the plugin in a live OpenCode session.
+1. Set `ACCORDO_NARRATION_MODE=summary`
+2. Ask for a long answer (e.g., “Give me a detailed 3-paragraph explanation of X”)
+3. Wait for the assistant to finish
 
-### Setup
-
-1. Open a terminal with OpenCode connected to Accordo Hub
-2. Ensure voice settings are correct: `accordo.voice.enabled: true`, `accordo.voice.narrationMode: "narrate-summary"`
-3. Set `GEMINI_API_KEY` in your environment if testing `narrate-summary`
-
----
-
-### M2-NARR-01: `narrate-summary` — response is summarized and narrated
-
-**Steps:**
-1. Ask the agent: "Give me a 3-paragraph summary of the history of the Roman Empire"
-2. Wait for the agent to finish responding
-3. Observe: `session.idle` fires → 1.5s debounce → Gemini summarizes → `readAloud` is called
-
-**Expected:** You hear a 2-3 sentence spoken summary of the response. No `[TTS]` tag visible in the text. The summary plays while you're reading or right after.
-
-**Pass criteria:** Audio narration starts within ~2-3 seconds of the agent finishing. The narration is a summary, not the full text.
+Expected:
+- narration starts shortly after response completion
+- spoken text is a short summary, not full output
 
 ---
 
-### M2-NARR-02: `narrate-summary` — short responses narrated in full
+### NP-02: summary mode narrates short responses directly (no Gemini summary)
 
-**Steps:**
-1. Ask the agent: "What is 2+2?"
-2. Wait for the response
+1. Keep `ACCORDO_NARRATION_MODE=summary`
+2. Ask a short question (e.g., “What is 2+2?”)
 
-**Expected:** The short response ("4") is narrated directly (no Gemini summarization needed).
-
-**Pass criteria:** You hear "4" narrated. No Gemini call is made for trivial responses.
-
----
-
-### M2-NARR-03: `narrate-full` — full response is narrated
-
-**Steps:**
-1. Set `accordo.voice.narrationMode: "narrate-full"` in VS Code settings
-2. Ask the agent: "What is the capital of France?"
-3. Wait for the response
-
-**Expected:** The full response is narrated (not summarized).
-
-**Pass criteria:** You hear the complete agent response read aloud.
+Expected:
+- short raw answer is narrated directly
+- no visible failure even if Gemini is unavailable
 
 ---
 
-### M2-NARR-04: `narrate-off` — no narration
+### NP-03: everything mode narrates full response
 
-**Steps:**
-1. Set `accordo.voice.narrationMode: "narrate-off"` in VS Code settings
-2. Ask the agent: "What is 1+1?"
-3. Wait for the response
+1. Set `ACCORDO_NARRATION_MODE=everything`
+2. Ask any normal question
 
-**Expected:** No audio plays.
-
-**Pass criteria:** Silence after the agent responds. No `readAloud` tool call fires.
+Expected:
+- full assistant response is narrated
+- narration happens without summarization
 
 ---
 
-### M2-NARR-05: Debounce — rapid subagent completions don't double-narrate
+### NP-04: off mode disables narration
 
-**Steps:**
-1. Set `accordo.voice.narrationMode: "narrate-summary"`
-2. Ask the agent a complex multi-step task: "Write a Python script that downloads 3 web pages in parallel"
-3. Observe: The agent may call multiple sub-agents or tools in rapid succession
+1. Set `ACCORDO_NARRATION_MODE=off`
+2. Ask any question
 
-**Expected:** `session.idle` fires after each subagent, but only the final idle triggers narration (after the 1.5s debounce window).
-
-**Pass criteria:** Exactly one narration audio plays after the final response. Not multiple overlapping narrations.
+Expected:
+- no audio narration
+- text response still works normally
 
 ---
 
-### M2-NARR-06: Error handling — `readAloud` failure is silent
+### NP-05: debounce prevents duplicate narration for bursty completions
 
-**Steps:**
-1. Disconnect the voice extension (or set `accordo.voice.enabled: false`)
-2. Ask the agent: "What is the capital of Italy?"
-3. Observe: Agent responds normally
+1. Set `ACCORDO_NARRATION_MODE=summary`
+2. Ask a complex task likely to trigger subagent/tool bursts
 
-**Expected:** No error message appears. The agent's text response is shown. No crash.
-
-**Pass criteria:** Graceful degradation — text is always visible, narration is best-effort.
+Expected:
+- at most one narration for the final response window
 
 ---
 
-## Troubleshooting
+### NP-06: narration failures are silent (best-effort)
 
-| Symptom | Likely Cause | Fix |
-|---|---|---|
-| No narration at all | `GEMINI_API_KEY` missing or invalid | Set valid key in environment |
-| Narration says "undefined" | `accordo_voice_readAloud` not registered | Restart Hub, verify tool is listed in `tools/list` |
-| Double narration | `narrate-mode` also set in Hub prompt AND plugin active | Set Hub prompt to `narrate-off` when using plugin |
-| Audio plays over previous narration | `session.idle` fires while previous narration is still playing | Normal — new narration queues or replaces previous |
-| Debounce too long | `debounceMs` is 1500ms | Edit `narration.ts` line 33 — reduce `debounceMs` |
+1. Stop Hub or break MCP auth token
+2. Ask a question while narration mode is `summary` or `everything`
 
-## Quick Verification Commands
-
-```bash
-# Verify Hub is running and tools are registered
-curl -X POST http://localhost:3000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-  | python3 -m json.tool | grep accordo_voice
-
-# Verify voice settings
-# In VS Code: Settings → accordo.voice.enabled = true
-# Settings → accordo.voice.narrationMode = "narrate-summary"
-```
+Expected:
+- assistant response still appears normally
+- no blocking error popup from plugin

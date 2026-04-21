@@ -13,6 +13,15 @@ import {
 import { extensions, commands, createExtensionContextMock } from "./mocks/vscode.js";
 import type { TtsProvider } from "../core/providers/tts-provider.js";
 
+vi.mock("../core/audio/playback.js", () => ({
+  playPcmAudio: vi.fn().mockResolvedValue(undefined),
+  startPcmPlayback: vi.fn().mockResolvedValue({
+    stop: vi.fn().mockResolvedValue(undefined),
+    waitForExit: vi.fn().mockResolvedValue(undefined),
+    isPlaying: vi.fn().mockReturnValue(false),
+  }),
+}));
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function createMockBridge(): BridgeAPI {
@@ -33,7 +42,7 @@ function makeTtsProvider(available = true): TtsProvider {
     kind: "tts" as const,
     id: "mock-tts",
     isAvailable: vi.fn().mockResolvedValue(available),
-    synthesize: vi.fn(),
+    synthesize: vi.fn().mockResolvedValue({ audio: new Uint8Array([1, 2, 3]), sampleRate: 22050 }),
     dispose: vi.fn().mockResolvedValue(undefined),
   } as unknown as TtsProvider;
 }
@@ -114,6 +123,20 @@ describe("M50-EXT-12 Tool registration", () => {
     const [, tools] = (bridge.registerTools as ReturnType<typeof vi.fn>).mock.calls[0];
     const names = tools.map((t: { name: string }) => t.name);
     expect(names).toContain("accordo_voice_readAloud");
+  });
+
+  it("M50-EXT-07: MCP tool path updates context/state via sync callback parity", async () => {
+    const bridge = createMockBridge();
+    setupBridge(bridge);
+    const ctx = createExtensionContextMock();
+
+    await activate(ctx, makeAvailableDeps());
+
+    const [, tools] = (bridge.registerTools as ReturnType<typeof vi.fn>).mock.calls[0] as [string, Array<{ handler: (args: Record<string, unknown>) => Promise<unknown> }>] ;
+    await tools[0].handler({ text: "Narrate from MCP" });
+
+    expect(commands.executeCommand).toHaveBeenCalledWith("setContext", "accordo.voice.narrating", expect.any(Boolean));
+    expect((bridge.publishState as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(1);
   });
 });
 

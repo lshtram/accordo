@@ -23,7 +23,7 @@ VS Code extension providing TTS read-aloud via `accordo_voice_readAloud` MCP too
 | File | Responsibility | Public API |
 |------|---------------|------------|
 | `extension.ts` | VS Code entry point; owns activation, provider creation, FSM setup, tool/command registration | `activate()`, `deactivate()`, `BridgeAPI`, `VoiceActivateDeps` |
-| `voice-bootstrap.ts` | VS Code ceremony: config reading, policy loading, context sync, Bridge state publishing | `readVoiceConfig()`, `loadPolicyFromConfiguration()`, `syncUiAndState()`, `publishVoiceState()` |
+| `voice-bootstrap.ts` | VS Code ceremony: policy loading, context sync, Bridge state publishing | `loadPolicyFromConfiguration()`, `syncUiAndState()`, `publishVoiceState()` |
 | `voice-adapters.ts` | TtsProvider factory: creates ExternalTtsAdapter or KokoroAdapter based on config | `createTtsProvider()` |
 | `tools/read-aloud.ts` | MCP tool: accordo_voice_readAloud — single-shot TTS synthesize + play | `createReadAloudTool()` |
 | `core/fsm/session-fsm.ts` | Session state machine (policy holder) | `SessionFsm` class |
@@ -57,7 +57,7 @@ VS Code extension providing TTS read-aloud via `accordo_voice_readAloud` MCP too
 
 - **`BridgeAPI`**: Minimal interface (`registerTools`, `publishState`) consumed from `extension.ts`.
 - **`TtsProvider` interface**: Allows swapping TTS backends. New providers implement this interface and are instantiated in `voice-adapters.ts`.
-- **`NarrationDeps`** (removed): Was the dependency injection bag. No longer needed — tool uses direct deps.
+- **`createReadAloudTool(... onStateChange)`**: shared state-sync callback keeps MCP tool playback and VS Code command playback in parity for context key + bridge state updates.
 
 ---
 

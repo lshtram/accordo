@@ -6,6 +6,16 @@
 
 The second pass is **not yet acceptable as done** for the intended simplification. The core direction is correct (TTS-only, STT removed, Hub narration directives removed), but there are still functional and coherence defects that must be fixed first.
 
+### A.1 Status update (2026-04-21)
+
+- ✅ Fixed in follow-up cleanup:
+  - `read-aloud` schema/implementation drift (`block`) no longer applies (field removed in current tool contract)
+  - package description now external-first + Kokoro fallback
+  - requirements dependency table now matches manifest (`kokoro-js` as runtime dependency)
+  - MCP tool playback path now triggers the same state/context sync callback used by command flow
+- ⚠️ Still historical context / follow-up only:
+  - this review remains a historical FAIL snapshot; current acceptance should use a fresh review artifact
+
 ---
 
 ### B) Findings grouped by severity

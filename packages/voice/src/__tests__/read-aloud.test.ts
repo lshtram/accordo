@@ -54,6 +54,7 @@ function makeDeps(overrides: Partial<ReadAloudToolDeps> = {}): ReadAloudToolDeps
     ttsProvider: makeTtsProvider(),
     cleanText: vi.fn().mockImplementation((t: string) => `CLEANED:${t}`),
     playAudio: vi.fn().mockResolvedValue(undefined) as PlayAudioFn,
+    onStateChange: vi.fn(),
     ...overrides,
   };
 }
@@ -184,6 +185,14 @@ describe("createReadAloudTool", () => {
 
     expect(playAudio).toHaveBeenCalledWith(pcm, 24000);
   });
-});
 
+  it("M50-RA-09: invokes onStateChange during MCP playback flow", async () => {
+    const onStateChange = vi.fn();
+    const tool = createReadAloudTool(makeDeps({ onStateChange }));
+
+    await tool.handler({ text: "state sync" });
+
+    expect(onStateChange).toHaveBeenCalledTimes(3);
+  });
+});
 

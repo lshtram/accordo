@@ -1645,15 +1645,14 @@ The architectural reservation ensures that:
 
 **Location:** `.opencode/plugins/narration.ts`  
 **Runtime:** Bun (OpenCode's runtime — native `fetch`, no Node.js)  
-**Architecture ref:** Alternative to `voice-architecture.md` ADR-03 for the OpenCode agent client  
+**Architecture ref:** OpenCode narration control plane for `accordo-voice` (`readAloud`)  
 **Requirements:** `docs/20-requirements/requirements-narration-plugin.md`
 
 ### 16.1 Purpose
 
 The narration plugin provides automatic voice narration of agent responses in OpenCode.
-It exists because OpenCode lacks a reliable hook to inject voice directives into the
-system prompt (the standard ADR-03 approach for Copilot/Claude). Instead, the plugin
-operates **post-hoc**: it observes when the agent finishes, extracts the response,
+For OpenCode sessions, this plugin is the canonical narration control plane.
+It operates **post-hoc**: it observes when the agent finishes, extracts the response,
 optionally summarizes it, and calls Accordo's `readAloud` tool.
 
 ### 16.2 Data Flow
@@ -1699,21 +1698,18 @@ optionally summarizes it, and calls Accordo's `readAloud` tool.
 |---|---|---|
 | OpenCode plugin API | `session.idle` event, `client.session.messages()` | Plugin ← OpenCode |
 | Google AI API | `POST generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | Plugin → Google |
-| Accordo Hub MCP | `POST /mcp` (JSON-RPC 2.0, bearer auth) — `tools/call` for `accordo_voice_readAloud` and `accordo_voice_discover` | Plugin → Hub |
+| Accordo Hub MCP | `POST /mcp` (JSON-RPC 2.0, bearer auth) — `tools/call` for `accordo_voice_readAloud` | Plugin → Hub |
 | `opencode.json` | Read Hub URL + bearer token from `mcp.accordo` config | Plugin ← Filesystem |
 | Environment variables | `GEMINI_API_KEY`, `ACCORDO_NARRATION_MODE` | Plugin ← Environment |
 
-### 16.5 Relationship to ADR-03
+### 16.5 Relationship to Voice Extension
 
-This plugin is a **complement** to ADR-03 (agent-driven summary narration), not a replacement:
-
-| Aspect | ADR-03 (agent-driven) | §16 Plugin (client-driven) |
+| Aspect | Narration plugin (`.opencode/plugins/narration.ts`) | Voice extension (`accordo-voice`) |
 |---|---|---|
-| Mechanism | System prompt injects `readAloud` directive | Plugin observes idle, calls readAloud externally |
-| Summarization | Agent summarizes its own response | External LLM (Gemini Flash) summarizes |
-| Clients | Copilot, Claude (instruction URL consumers) | OpenCode only |
-| Hub changes | Prompt engine renders voice section | None |
-| Reliability | Depends on agent following instructions | Deterministic (always triggers on idle) |
+| Responsibility | Decide *when/how* to narrate OpenCode responses | Execute TTS playback for `accordo_voice_readAloud` |
+| Mode authority | `ACCORDO_NARRATION_MODE` | Uses current policy + tool args during synthesis |
+| Runtime | OpenCode plugin runtime (Bun) | VS Code extension host |
+| Hub/Bridge changes | None | Registers one tool + publishes minimal voice state |
 
 ---
 

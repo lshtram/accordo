@@ -12,29 +12,10 @@ import type { SessionFsm } from "./core/fsm/session-fsm.js";
 import type { BridgeAPI } from "./extension.js";
 import type { TtsProvider } from "./core/providers/tts-provider.js";
 
-// ── readVoiceConfig ───────────────────────────────────────────────────────────
-
-/**
- * Reads all voice configuration from VS Code workspace settings.
- * REQ-VB-01, REQ-VB-02
- */
-export function readVoiceConfig(
-  _context: vscode.ExtensionContext,
-): { voice: string; speed: number; language: string; narrationMode: "narrate-off" | "narrate-everything" | "narrate-summary" } {
-  const cfg = vscode.workspace.getConfiguration("accordo.voice");
-  return {
-    voice: cfg.get<string>("voice", "af_sarah"),
-    speed: cfg.get<number>("speed", 1.0),
-    language: cfg.get<string>("language", "en-US"),
-    narrationMode: cfg.get<"narrate-off" | "narrate-everything" | "narrate-summary">("narrationMode", "narrate-off"),
-  };
-}
-
 // ── loadPolicyFromConfiguration ───────────────────────────────────────────────
 
 /**
  * Reads voice policy config and calls sessionFsm.updatePolicy.
- * REQ-VB-03, REQ-VB-04
  */
 export function loadPolicyFromConfiguration(sessionFsm: SessionFsm): void {
   const voiceCfg = vscode.workspace.getConfiguration("accordo.voice");
@@ -51,7 +32,6 @@ export function loadPolicyFromConfiguration(sessionFsm: SessionFsm): void {
 
 /**
  * Publishes minimal voice state to the bridge.
- * REQ-VB-11 (simplified for TTS-only)
  */
 export function publishVoiceState(
   bridge: BridgeAPI,
@@ -68,7 +48,6 @@ export function publishVoiceState(
 
 /**
  * Synchronizes the VS Code context and bridge state.
- * REQ-VB-06 through REQ-VB-10 (simplified — no status bar or panel)
  */
 export function syncUiAndState(
   sessionFsm: SessionFsm,

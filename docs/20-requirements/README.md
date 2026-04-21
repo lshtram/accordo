@@ -63,6 +63,7 @@ All files use **lowercase-kebab-case**: `requirements-{component}.md`
 | Document | Package(s) | Scope | Status |
 |---|---|---|---|
 | [requirements-voice.md](requirements-voice.md) | `accordo-voice` | TTS read-aloud only, no STT/dictation | Active |
+| [requirements-narration-plugin.md](requirements-narration-plugin.md) | `.opencode/plugins/narration.ts` | OpenCode narration control plane (`session.idle` → `accordo_voice_readAloud`) | Active |
 
 ---
 
@@ -83,6 +84,7 @@ Each document uses a unique prefix to avoid ID collisions:
 | `CP-*` | requirements-comments-panel | `CP-F-01` |
 | `DG-*` | requirements-diagram | `DG-F-01` |
 | `VO-*` | requirements-voice | `VO-F-01` |
+| `NP-*` | requirements-narration-plugin | `NP-01` |
 | `SC-*` | requirements-script | `SC-F-01` |
 
 ---

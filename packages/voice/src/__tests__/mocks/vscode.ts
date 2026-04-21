@@ -127,15 +127,14 @@ export function createExtensionContextMock() {
 // ── workspace ─────────────────────────────────────────────────────────────────
 
 const mockConfig = new Map<string, unknown>([
-  ["accordo.voice.whisperPath", "whisper"],
-  ["accordo.voice.whisperModelFolder", "/usr/local/share/whisper"],
-  ["accordo.voice.whisperModel", "ggml-base.en.bin"],
   ["accordo.voice.voice", "af_sarah"],
   ["accordo.voice.speed", 1.0],
   ["accordo.voice.language", "en-US"],
   ["accordo.voice.narrationMode", "narrate-off"],
-  ["accordo.voice.llmEndpoint", ""],
-  ["accordo.voice.llmModel", ""],
+  ["accordo.voice.enabled", false],
+  ["accordo.voice.ttsEndpoint", ""],
+  ["accordo.voice.ttsAuthToken", ""],
+  ["accordo.voice.ttsModel", ""],
 ]);
 
 export const workspace = {

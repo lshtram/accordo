@@ -142,6 +142,7 @@ export async function activate(
           ttsProvider: tts,
           cleanText: cleanTextForNarration,
           playAudio: playPcmAudio,
+          onStateChange: doSyncUiAndState,
           log,
         }),
       ];

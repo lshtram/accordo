@@ -168,7 +168,7 @@ packages/voice/
 ### M50-ET — ExternalTtsAdapter (Preferred)
 
 **File:** `src/core/adapters/external-tts.ts`  
-**Test file:** (tested via TtsProvider interface contract)
+**Test file:** `src/__tests__/external-tts.test.ts`
 
 | Requirement ID | Requirement |
 |---|---|
@@ -185,7 +185,7 @@ packages/voice/
 ### M50-FSM — Voice FSMs
 
 **File:** `src/core/fsm/types.ts`, `src/core/fsm/session-fsm.ts`, `src/core/fsm/narration-fsm.ts`  
-**Test files:** `src/__tests__/narration-fsm.test.ts` (session-fsm is not independently tested)
+**Test files:** `src/__tests__/narration-fsm.test.ts`, `src/__tests__/session-fsm.test.ts`
 
 #### M50-FSM Types
 
@@ -313,7 +313,7 @@ packages/voice/
 | M50-EXT-04 | Registers VS Code commands: `readAloud`, `stopNarration` |
 | M50-EXT-05 | Registers `accordo_voice_readAloud` MCP tool via BridgeAPI |
 | M50-EXT-06 | Publishes voice state `{ policy, ttsAvailable }` on activation |
-| M50-EXT-07 | Sets context key `accordo.voice.narrating` during playback |
+| M50-EXT-07 | Keeps MCP tool playback path and VS Code command path in state/context parity (both update `accordo.voice.narrating` and publish bridge state via shared sync callback) |
 | M50-EXT-08 | Responds to `accordo.voice` configuration changes |
 | M50-EXT-09 | `deactivate()` disposes TTS provider |
 | M50-EXT-10 | Graceful degradation: extension activates even without Bridge |

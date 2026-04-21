@@ -1,9 +1,9 @@
 # Accordo — Narration Plugin Requirements
 
-**Status:** DRAFT  
-**Date:** 2026-03-31  
+**Status:** Active  
+**Date:** 2026-04-21  
 **Scope:** OpenCode plugin for automatic response narration via Accordo voice  
-**Architecture ref:** `docs/10-architecture/voice-architecture.md` ADR-03 (alternative approach)
+**Architecture ref:** `docs/10-architecture/voice-architecture.md` and `docs/10-architecture/architecture.md` §16
 
 ---
 
@@ -14,9 +14,9 @@ and speaks them aloud via Accordo's `readAloud` MCP tool — without relying on
 system prompt injection (which is unreliable in OpenCode due to broken
 `chat.system.transform` and absence of a before-prompt hook).
 
-This is an **alternative to ADR-03** (agent-driven summary narration) specifically
-for the OpenCode agent client. ADR-03 remains the primary approach for agents
-where system prompt injection works (Copilot, Claude via instructions URL).
+For OpenCode sessions, this plugin is the **canonical narration control path**.
+The voice extension remains a TTS execution surface (`accordo_voice_readAloud`),
+while mode selection is driven by `ACCORDO_NARRATION_MODE`.
 
 ---
 
@@ -60,8 +60,11 @@ The minimum response length check (NP-10) applies only to whether Gemini summari
 is needed — it does NOT skip narration entirely. Short responses in `narrate-summary`
 mode are narrated in full via `readAloud` with the raw text.
 
-The plugin reads narration mode from the `ACCORDO_NARRATION_MODE` environment variable (primary),
-or from the `accordo.voice.narrationMode` setting as a fallback.
+The plugin reads narration mode from the `ACCORDO_NARRATION_MODE` environment variable.
+Accepted values are:
+- `summary` or `narrate-summary`
+- `everything` or `narrate-everything`
+- any other value => `off`
 
 ### NP-07 — Error handling (skip, don't break)
 

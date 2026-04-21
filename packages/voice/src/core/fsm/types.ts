@@ -55,7 +55,7 @@ export const DEFAULT_VOICE_POLICY: VoicePolicy = {
   narrationMode: "narrate-off",
   speed: 1.0,
   voice: "af_sarah",
-  language: "en",
+  language: "en-US",
 };
 
 // ---------------------------------------------------------------------------

@@ -19,13 +19,15 @@ export interface ReadAloudToolDeps {
   ttsProvider: TtsProvider;
   cleanText: (text: string, mode: CleanMode) => string;
   playAudio: PlayAudioFn;
+  /** Optional callback for UI/context + bridge-state sync after FSM transitions. */
+  onStateChange?: () => void;
   /** Optional logger for timing/instrumentation lines. */
   log?: (msg: string) => void;
 }
 
 /** M50-RA */
 export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefinition {
-  const { sessionFsm, narrationFsm, ttsProvider, cleanText, playAudio, log } = deps;
+  const { sessionFsm, narrationFsm, ttsProvider, cleanText, playAudio, onStateChange, log } = deps;
 
   return {
     name: "accordo_voice_readAloud",
@@ -75,6 +77,7 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
 
       narrationFsm.enqueue({ text: processedText, mode: effectiveMode });
       narrationFsm.startProcessing();
+      onStateChange?.();
 
       try {
         const result = await ttsProvider.synthesize({
@@ -85,8 +88,10 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
         });
 
         narrationFsm.audioReady();
+        onStateChange?.();
         await playAudio(result.audio, result.sampleRate ?? 22050);
         narrationFsm.complete();
+        onStateChange?.();
 
         return {
           spoken: true,
@@ -98,6 +103,7 @@ export function createReadAloudTool(deps: ReadAloudToolDeps): ExtensionToolDefin
         };
       } catch (err) {
         narrationFsm.error();
+        onStateChange?.();
         log?.(`[readAloud] playback failed: ${String(err)}`);
         return { error: `Read aloud failed: ${String(err)}` };
       }

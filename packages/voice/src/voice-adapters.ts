@@ -22,7 +22,6 @@ import { ExternalTtsAdapter } from "./core/adapters/external-tts.js";
  *
  * Prefers external HTTP TTS when `ttsEndpoint` and `ttsAuthToken` are non-empty.
  * Falls back to KokoroAdapter (local ONNX) when no external endpoint is set.
- * REQ-VA-04, REQ-VA-05
  */
 export async function createTtsProvider(
   log: (msg: string) => void,
@@ -45,27 +44,4 @@ export async function createTtsProvider(
 
   log("tts: using KokoroAdapter (kokoro-js ONNX)");
   return new KokoroAdapter();
-}
-
-// ── buildReadyChimePcm ────────────────────────────────────────────────────────
-
-/**
- * Synthesizes a short two-tone chime as raw PCM audio.
- * REQ-VA-06 through REQ-VA-10
- */
-export function buildReadyChimePcm(
-  sampleRate = 22050,
-  durationMs = 140,
-  frequencyHz = 880,
-): Uint8Array {
-  const totalSamples = Math.max(1, Math.floor((sampleRate * durationMs) / 1000));
-  const data = new Int16Array(totalSamples);
-  for (let i = 0; i < totalSamples; i++) {
-    const t = i / sampleRate;
-    const fade = Math.min(1, i / 260) * Math.min(1, (totalSamples - i) / 260);
-    const secondTone = Math.sin(2 * Math.PI * (frequencyHz * 1.33) * t) * 0.35;
-    const value = (Math.sin(2 * Math.PI * frequencyHz * t) + secondTone) * 0.28 * fade;
-    data[i] = Math.round(value * 32767);
-  }
-  return new Uint8Array(data.buffer);
 }
