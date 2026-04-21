@@ -1,99 +1,45 @@
-# Requirements Directory — Index
+# Requirements Index (Authoritative)
 
-**Last updated:** 2026-04-21
-
-This directory contains functional and non-functional requirements specifications for all Accordo IDE packages and modules.
-
----
-
-## Naming Convention
-
-All files use **lowercase-kebab-case**: `requirements-{component}.md`
+**Status:** ACTIVE  
+**Owner:** Accordo maintainers  
+**Last reviewed:** 2026-04-21  
+**Canonical for:** active requirements routing and package ownership mapping
 
 ---
 
-## Requirements Documents
+## Active requirements documents
 
-### Core Platform
-
-| Document | Package(s) | Scope | Status |
-|---|---|---|---|
-| [requirements-hub.md](requirements-hub.md) | `accordo-hub` | MCP gateway, tool registry, auth, session management | Active |
-| [requirements-bridge.md](requirements-bridge.md) | `accordo-bridge` | VS Code ↔ Hub bridge, tool registration, relay | Active |
-| [requirements-editor.md](requirements-editor.md) | `accordo-editor` | 23 editor/terminal/layout MCP tools | Active |
-
-### Browser
-
-| Document | Package(s) | Scope | Status |
-|---|---|---|---|
-| [requirements-browser-mcp.md](requirements-browser-mcp.md) | `packages/browser`, `packages/browser-extension` | Agent-facing `accordo_browser_*` MCP tool surface — page understanding, interaction, visual capture | **Active** — consolidates MCP-visible requirements |
-| [requirements-browser-extension.md](requirements-browser-extension.md) | `packages/browser-extension` | Chrome extension internals — content scripts, comment UI, relay infrastructure, storage, anchor strategy | Active — internal implementation |
-| [requirements-browser2.0.md](requirements-browser2.0.md) | `packages/browser`, `packages/browser-extension` | Snapshot versioning, diff engine, filtering, text extraction, semantic graph, privacy/security | Active — extends browser-extension |
-| [requirements-browser.md](requirements-browser.md) | (archived) | Original relay + comment bridge design (M60–M73) | **Archived** — superseded by `requirements-browser-extension.md` |
-
-**Browser requirements reading guide (authoritative order):**
-1. Start with `requirements-browser-mcp.md` for the canonical agent-visible MCP tool contract
-2. Then read `requirements-browser-extension.md` for Chrome runtime behavior (service worker/content/popup/relay wiring)
-3. Then read `requirements-browser2.0.md` for shared internals (snapshot versioning, diff/filtering, semantic extraction, security)
-4. Treat `requirements-browser.md` as historical only (archived)
-
-### Comments
-
-| Document | Package(s) | Scope | Status |
-|---|---|---|---|
-| [requirements-comments.md](requirements-comments.md) | `accordo-bridge` (comments module) | Unified comment model, comment store, thread lifecycle | Active |
-| [requirements-comments-sdk.md](requirements-comments-sdk.md) | `@accordo/comment-sdk` | Comment SDK — UI components, adapters, surface abstraction | Active |
-| [requirements-comments-panel.md](requirements-comments-panel.md) | `accordo-bridge` (panel module) | VS Code comments panel — filtering, grouping, display | Active |
-
-### Presentations & Documents
-
-| Document | Package(s) | Scope | Status |
-|---|---|---|---|
-| [requirements-marp.md](requirements-marp.md) | `accordo-marp` | Marp presentation discovery, navigation, narration | Active |
-| [requirements-md-viewer.md](requirements-md-viewer.md) | `accordo-md-viewer` | Markdown preview and viewer tools | Active |
-
-### Diagrams & Visual
-
-| Document | Package(s) | Scope | Status |
-|---|---|---|---|
-| [requirements-diagram.md](requirements-diagram.md) | `accordo-diagram` | Mermaid diagram tools — create, patch, style, render | Active |
-
-### Voice & Narration
-
-| Document | Package(s) | Scope | Status |
-|---|---|---|---|
-| [requirements-voice.md](requirements-voice.md) | `accordo-voice` | TTS read-aloud only, no STT/dictation | Active |
-| [requirements-narration-plugin.md](requirements-narration-plugin.md) | `.opencode/plugins/narration.ts` | OpenCode narration control plane (`session.idle` → `accordo_voice_readAloud`) | Active |
-
----
-
-## Requirement ID Prefixes
-
-Each document uses a unique prefix to avoid ID collisions:
-
-| Prefix Pattern | Document | Example |
+| Document | Owning package(s) | Scope |
 |---|---|---|
-| `HUB-*` | requirements-hub | `HUB-F-01` |
-| `BR-F-*`, `BR-NF-*` | requirements-bridge | `BR-F-01` |
-| `ED-*` | requirements-editor | `ED-F-01` |
-| `BR-F-*`, `PU-F-*`, `CR-F-*` | requirements-browser-extension | `PU-F-01`, `CR-F-01` |
-| `B2-*` | requirements-browser2.0 | `B2-SV-001`, `B2-TX-001` |
-| `MCP-*` | requirements-browser-mcp | `MCP-VC-001`, `MCP-ER-001` |
-| `CM-*` | requirements-comments | `CM-F-01` |
-| `CS-*` | requirements-comments-sdk | `CS-F-01` |
-| `CP-*` | requirements-comments-panel | `CP-F-01` |
-| `DG-*` | requirements-diagram | `DG-F-01` |
-| `VO-*` | requirements-voice | `VO-F-01` |
-| `NP-*` | requirements-narration-plugin | `NP-01` |
-| `SC-*` | requirements-script | `SC-F-01` |
+| `requirements-hub.md` | `accordo-hub` | Hub runtime, MCP transport, auth, tool/state core |
+| `requirements-bridge.md` | `accordo-bridge` | VS Code bridge lifecycle, routing, registration |
+| `requirements-editor.md` | `accordo-editor` | Editor/terminal/layout tool surface |
+| `requirements-browser-mcp.md` | `accordo-browser` + `browser-extension` integration | Agent-visible browser MCP contract |
+| `requirements-browser-extension.md` | `browser-extension` | Chrome extension internals, relay and UI behaviors |
+| `requirements-browser2.0.md` | `accordo-browser` + `browser-extension` | Snapshot/diff/filter/semantic/browser hardening waves |
+| `requirements-shared-browser-relay.md` | `accordo-browser` | Shared relay lifecycle and multi-window coordination |
+| `requirements-comments.md` | `accordo-comments` | Comment store, tools, internal command contracts |
+| `requirements-comments-panel.md` | `accordo-comments` | Custom comments panel behavior |
+| `requirements-comments-sdk.md` | `@accordo/comment-sdk` | Webview comment SDK contracts |
+| `requirements-md-viewer.md` | `accordo-md-viewer` | Markdown viewer integration |
+| `requirements-marp.md` | `accordo-marp` | Presentation/deck tool surface and integration |
+| `requirements-diagram.md` | `accordo-diagram` | Diagram parser/layout/tooling contracts |
+| `requirements-diagram-hardening.md` | `accordo-diagram` | Diagram hardening wave requirements |
+| `requirements-diagram-fidelity.md` | `accordo-diagram` | Flowchart fidelity requirement batches |
+| `requirements-voice.md` | `accordo-voice` | TTS voice tool surface (current voice scope) |
 
----
+## Legacy / historical requirements (non-canonical)
 
-## Cross-References
+These remain in this folder for historical traceability but are **not** the current active contract source:
 
-- **Architecture:** [`docs/10-architecture/architecture.md`](../10-architecture/architecture.md)
-- **Workplan:** [`docs/00-workplan/workplan.md`](../00-workplan/workplan.md)
-- **Coding guidelines:** [`docs/30-development/coding-guidelines.md`](../30-development/coding-guidelines.md)
-- **Evaluation checklist:** [`docs/30-development/mcp-webview-agent-evaluation-checklist.md`](../30-development/mcp-webview-agent-evaluation-checklist.md)
-- **Current reviews:** [`docs/reviews/`](../../docs/reviews/)
-- **Historical review evidence:** [`60-archive/reviews/`](../../60-archive/reviews/)
+- `requirements-browser.md` (superseded by browser MCP + extension + browser2.0 docs)
+- `requirements-browser-relay-auth.md` (historical phase-specific requirements)
+- `requirements-slidev.md` (legacy presentation track; active package is `accordo-marp`)
+- `requirements-script.md` (retired capability)
+- `requirements-narration-plugin.md` (historical plugin-specific spec; keep for reference)
+
+## Supporting indexes
+
+- Package ownership matrix: `ownership-matrix.md`
+- Cross-module architecture: `../10-architecture/architecture.md`
+- Active workplan: `../00-workplan/workplan.md`

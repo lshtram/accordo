@@ -12,7 +12,7 @@
 | Comments modality (`accordo-comments`) | ✅ Completed |
 | Presentations modality | ✅ Completed |
 | Voice modality (`accordo-voice`) incl. hardening | ✅ Completed |
-| Scripted walkthroughs (`accordo-script`) | ✅ Completed |
+| Scripted walkthroughs (`accordo-script`) | ✅ Completed historically — **retired from active product scope** |
 | Diagrams modality (`accordo-diagram`) | ✅ Completed |
 | Browser extension v1 (`packages/browser-extension`) | ✅ Completed |
 | Browser relay/tools v2 (`packages/browser`) | ✅ Completed |
