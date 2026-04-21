@@ -46,7 +46,7 @@ The project is built as a **layer on top of VSCode**. The human keeps their exis
 │  │  • Publishes IDE state events → Hub                                  ││
 │  │  • Extension registration API (BridgeAPI)                            ││
 │  │  • Hub lifecycle manager                                             ││
-│  │  • Native MCP registration via McpHttpServerDefinition               ││
+│  │  • Native MCP registration via user-level mcp.json sync              ││
 │  └──────────────────────┬───────────────────────────────────────────────┘│
 └─────────────────────────┼────────────────────────────────────────────────┘
                           │ WebSocket (ws://localhost:3000/bridge)
@@ -445,25 +445,23 @@ Watches VSCode API events and sends state patches to Hub:
 
 ### 4.7 Native MCP Registration
 
-Bridge registers the already-running Hub as a native MCP server with VSCode using the Streamable HTTP transport:
+Bridge registers the already-running Hub for Copilot by synchronizing user-level `~/.vscode/mcp.json`:
 
-```typescript
-vscode.lm.registerMcpServerDefinitionProvider('accordo', {
-  provideMcpServerDefinitions(): vscode.McpServerDefinition[] {
-    const port = config.get('accordo.hub.port', 3000);
-    const token = await secretStorage.get(`accordo.${projectId}.hubToken`);
-    return [
-      new vscode.McpHttpServerDefinition(
-        'accordo-hub',
-        vscode.Uri.parse(`http://localhost:${port}/mcp`),
-        { 'Authorization': `Bearer ${token}` }
-      )
-    ];
+```json
+{
+  "servers": {
+    "accordo": {
+      "type": "http",
+      "url": "http://localhost:{port}/mcp",
+      "headers": {
+        "Authorization": "Bearer <token>"
+      }
+    }
   }
-});
+}
 ```
 
-**Critical:** This uses `McpHttpServerDefinition` (Streamable HTTP), NOT `McpStdioServerDefinition`. Pointing to the already-running Hub ensures Copilot and all VSCode-native MCP clients share the same Hub instance, with the same live state and tool registry, that the Bridge manages. A stdio definition would spawn a second, isolated Hub process with no active Bridge connection.
+Bridge rewrites this entry only when needed (port/token changed), preserving other servers and avoiding unnecessary consent churn.
 
 ### 4.8 Remote Development Handling
 
@@ -484,14 +482,19 @@ Phase 1 has no UI-kind extensions, so `exports` API is sufficient.
 accordo-bridge/
 ├── src/
 │   ├── extension.ts           — activate(), deactivate(), export BridgeAPI
-│   ├── hub-manager.ts         — spawn, health-check, restart Hub
+│   ├── extension-bootstrap.ts — output channel, config read, status bar, mcp.json sync
+│   ├── extension-service-factory.ts — construct HubManager/Registry/Router/StatePublisher
+│   ├── extension-composition.ts — BridgeAPI wiring, command registration, cleanup
+│   ├── hub-manager.ts         — reconnect-first lifecycle, spawn/restart/softDisconnect
+│   ├── hub-process.ts         — child-process spawn/kill + stdout/stderr streaming
+│   ├── hub-health.ts          — /health, /bridge/reauth, /bridge/disconnect client
 │   ├── ws-client.ts           — WebSocket client to Hub, reconnect logic
-│   ├── command-router.ts      — routes invoke messages to registered handlers
-│   ├── state-publisher.ts     — watches VSCode events, debounced state patches
+│   ├── command-router.ts      — routes invoke/cancel messages to registered handlers
+│   ├── state-publisher.ts     — watches host events, debounced state patches + keyframes
+│   ├── state-collector.ts     — host environment adapters + state derivation helpers
+│   ├── state-diff.ts          — pure IDEState diff/empty-state helpers
 │   ├── extension-registry.ts  — stores ExtensionToolDefinition[], handler map
-│   ├── mcp-registration.ts    — registers Hub with VSCode lm API
-│   ├── protocol.ts            — shared message types
-│   └── config.ts              — reads VSCode settings, defaults
+│   └── agent-config.ts        — opencode/claude/copilot config builders + writers
 ├── package.json
 ├── tsconfig.json
 └── README.md

@@ -15,7 +15,7 @@ The central VSCode extension that bootstraps the Hub process, mediates WebSocket
 | `extension-service-factory.ts` | Creates all service instances (HubManager, ExtensionRegistry, CommandRouter, StatePublisher) | `createServices()`, `Services` interface |
 | `extension-composition.ts` | Wires BridgeAPI, registers VS Code commands, manages WsClient lifecycle, cleanup on deactivate | `buildHubManagerEvents()`, `composeExtension()`, `cleanupExtension()` |
 | `hub-manager.ts` | Manages Hub child process lifecycle: health-check, spawn/kill, secret storage, reauth restart | `HubManager` class, `HubManagerEvents` interface |
-| `hub-process.ts` | Spawns and kills the Hub Node.js child process; reads/writes PID files | Internal to HubManager |
+| `hub-process.ts` | Spawns and kills the Hub Node.js child process; streams stdout/stderr; process-kill fallback logic | Internal to HubManager |
 | `hub-health.ts` | HTTP health-check polling against Hub; handles reauth rotation via POST /bridge/reauth | Internal to HubManager |
 | `extension-registry.ts` | Manages tool registrations from multiple VSCode extensions; debounces toolRegistry WS messages | `ExtensionRegistry` class |
 | `command-router.ts` | Routes Hub→Bridge invoke/cancel messages to registered handlers; enforces timeouts and confirmation dialogs | `CommandRouter` class |
@@ -23,7 +23,7 @@ The central VSCode extension that bootstraps the Hub process, mediates WebSocket
 | `state-collector.ts` | Raw VSCode event subscription and state collection; path normalization utilities | `HostEnvironment` interface, `collectCurrentState()` |
 | `state-diff.ts` | Computes minimal diff patches between IDEState snapshots | `computePatch()`, `emptyState()` |
 | `ws-client.ts` | Manages Bridge→Hub WebSocket connection; handles auth, reconnection backoff, ping/pong | `WsClient` class |
-| `agent-config.ts` | Generates and writes `opencode.json` and `.claude/mcp.json` agent config files | `writeAgentConfigs()`, `removeWorkspaceThreshold()` |
+| `agent-config.ts` | Builds and writes `opencode.json`, `.claude/mcp.json`, and `.vscode/mcp.json` config files (schema-aware merge) | `writeAgentConfigs()`, `buildOpencodeConfig()`, `buildClaudeConfig()`, `buildCopilotConfig()`, `removeWorkspaceThreshold()` |
 | `extension-vscode-adapter.ts` | Thin adapter extracting VS Code API surface for injection | `createVsCodeApi()`, `createConfirmationFn()` |
 
 ## Extension Points

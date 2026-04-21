@@ -22,7 +22,6 @@ import { syncMcpSettings } from "./extension-bootstrap.js";
 import type { BridgeConfig, BootstrapResult, SecretStorageAdapter } from "./extension-bootstrap.js";
 import type { Services } from "./extension-service-factory.js";
 import { writeAgentConfigs } from "./agent-config.js";
-import { StatePublisher } from "./state-publisher.js";
 import type { IDEState } from "@accordo/bridge-types";
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import { scopedSecretKey, BRIDGE_SECRET_KEY } from "./project-identity.js";
@@ -404,14 +403,6 @@ export function registerCommands(
       });
     }
 
-    // showQuickPick is injected via vscode — we call it without importing vscode
-    // by reaching through the bootstrap result. But bootstrap has no showQuickPick.
-    // We must use the registerFn-provided vscode indirectly. Since the composition
-    // module must not import vscode, we need to receive showQuickPick via deps.
-    // The test mocks window.showQuickPick globally via the vscode mock.
-    // We call it via a dynamic require trick or via bootstrap.showQuickPick if available.
-    // Since it is NOT in BootstrapResult, the only option is to make it available
-    // via CompositionDeps. We add a showQuickPick optional field to CompositionDeps.
     if (deps.showQuickPick !== undefined) {
       deps.showQuickPick(buildItems([], []), { canPickMany: false, title: "Accordo System Health" }).catch(
         () => { /* ignore */ },
@@ -531,56 +522,4 @@ export async function cleanupExtension(
 
   // Dispose registry
   services.registry.dispose();
-}
-
-// ── Show-status command handler ───────────────────────────────────────────────
-
-/**
- * Build the full "Accordo System Health" showQuickPick handler.
- *
- * Extracted from extension.ts so the main file stays thin.
- * All the rich $(check)/$(warning)/$(error) detail lives here.
- *
- * @param deps  Composition dependencies (services, state, showQuickPick)
- * @returns     Zero-arg callback suitable for vscode.commands.registerCommand
- */
-export function buildShowStatusHandler(deps: CompositionDeps): () => void {
-  return (): void => {
-    const { services, state } = deps;
-    const connected = state.wsClient?.isConnected() ?? false;
-    const wsState = state.wsClient?.getState() ?? "disconnected";
-    const allTools = services.registry.getAllTools();
-
-    // Hub connection line
-    const hubLabel = connected
-      ? `$(check) Hub          Connected · ws://localhost:${state.currentHubPort} · ${allTools.length} tools`
-      : wsState === "connecting" || wsState === "reconnecting"
-        ? `$(warning) Hub        ${wsState === "connecting" ? "Connecting..." : "Reconnecting..."}`
-        : `$(error) Hub          Disconnected`;
-
-    // Read published modality states
-    const ideState = services.statePublisher.getState() ?? StatePublisher.emptyState();
-    const modalityStates = ideState as unknown as Record<string, unknown>;
-
-    const modules: Array<{ prefix: string | string[]; label: string }> = [
-      { prefix: "comment_", label: "Comments" },
-      { prefix: "browser_", label: "Browser" },
-      { prefix: "accordo_diagram_", label: "Diagrams" },
-      { prefix: ["accordo_presentation_", "accordo_marp_"], label: "Marp" },
-    ];
-
-    const moduleItems: Array<{ label: string }> = [];
-    for (const mod of modules) {
-      const prefixes = Array.isArray(mod.prefix) ? mod.prefix : [mod.prefix];
-      const count = allTools.filter((t) => prefixes.some((p) => t.name.startsWith(p))).length;
-      if (count === 0) continue;
-
-      moduleItems.push({ label: `$(check) ${mod.label.padEnd(12)} Registered (${count} tools)` });
-    }
-
-    const items = [{ label: hubLabel }, ...moduleItems];
-    if (deps.showQuickPick !== undefined) {
-      deps.showQuickPick(items, { canPickMany: false, title: "Accordo System Health" }).catch(() => { /* ignore */ });
-    }
-  };
 }

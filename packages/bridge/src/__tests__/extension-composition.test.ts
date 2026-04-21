@@ -3,10 +3,9 @@
  * Requirements: requirements-bridge.md §3, §5, §8, §9
  * Reconnect scenarios: docs/10-architecture/reload-reconnect-test-scenarios.md §7–8
  *
- * Phase B design:
- * - All functions throw "not implemented" on the stub → all tests are RED.
- * - Mocks: vscode API, node:fs, node:ws, WsClient, HubManager, agent-config, etc.
- * - Tests cover all public functions and their wiring behaviours.
+ * Test design:
+ * - Uses mocks for vscode API, node:fs, node:ws, WsClient, HubManager, agent-config, etc.
+ * - Verifies composition wiring and callback behavior without a real VSCode host.
  *
  * API checklist:
  * - buildHubManagerEvents(deps: CompositionDeps) → HubManagerEvents  [8 tests]  (6 existing + AR-05, AR-06)

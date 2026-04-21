@@ -1,9 +1,9 @@
 /**
- * Hub Process Lifecycle — child_process spawn, kill, PID file management
+ * Hub Process Lifecycle — child_process spawn and kill
  *
  * Pure process-management responsibilities:
  * - execFile spawn with correct env vars (LCM-05, LCM-06)
- * - PID file write on spawn + cleanup on exit (M29)
+ * - Legacy PID helper methods retained for compatibility with older tests/tooling
  * - Hub stdout/stderr streaming to OutputChannel (LCM-09)
  * - Exit handler callback for HubManager
  *

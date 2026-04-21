@@ -25,14 +25,15 @@ All settings are under the `accordo.*` namespace in VSCode settings:
 | `accordo.hub.executablePath` | string | `""` | Node.js executable path (empty = extension host's node) |
 | `accordo.agent.configureOpencode` | boolean | `true` | Auto-generate `opencode.json` MCP config |
 | `accordo.agent.configureCopilot` | boolean | `true` | Register Hub as native MCP server for Copilot |
+| `accordo.agent.configureClaude` | boolean | `true` | Auto-generate `.claude/mcp.json` MCP config |
 
 ## What It Does
 
 ### Hub Lifecycle Management
 - Spawns the Hub process on activation (if `autoStart` is true)
 - Polls `/health` to confirm Hub is ready
-- Writes `~/.accordo/hub.pid` for process tracking
-- Cleans up Hub on deactivation
+- Uses reconnect-first lifecycle via `POST /bridge/disconnect` on deactivation
+- Reuses live Hub for the same workspace when available (registry + health probe)
 
 ### WebSocket Connection
 - Connects to `ws://localhost:{port}/bridge` with exponential backoff
@@ -49,7 +50,7 @@ All settings are under the `accordo.*` namespace in VSCode settings:
 ### Agent Configuration
 - Writes `opencode.json` to workspace root (OpenCode MCP config)
 - Writes `.claude/mcp.json` to workspace root (Claude MCP config)
-- Registers Hub as native VSCode MCP server (Copilot integration)
+- Writes `.vscode/mcp.json` user entry for Copilot MCP integration
 
 ### State Publishing
 - Tracks active file, open editors, visible editors, workspace folders
@@ -62,7 +63,8 @@ All settings are under the `accordo.*` namespace in VSCode settings:
 Other extensions (like `accordo-editor`) consume the Bridge via its exported API:
 
 ```typescript
-import type { BridgeAPI } from "@accordo/bridge-types";
+// BridgeAPI is exported by the accordo-bridge extension itself.
+// Use a typed extension lookup instead of importing from bridge-types.
 
 const bridge = vscode.extensions.getExtension("accordo.accordo-bridge")?.exports as BridgeAPI;
 
@@ -102,15 +104,16 @@ const result = await bridge.invokeTool("my-extension_myTool", { arg: "value" });
 
 ```bash
 pnpm build         # Compile TypeScript
-pnpm test          # Run 296 tests
+pnpm test          # Run bridge unit tests
+pnpm lint          # Lint source files
 pnpm typecheck     # Type-check without emitting
 pnpm test:watch    # Watch mode
 ```
 
 ## Tests
 
-296 unit tests covering:
-- Hub manager (process lifecycle, PID file, health polling)
+Unit tests cover:
+- Hub manager (process lifecycle, reconnect-first behavior, health polling)
 - WebSocket client (connect, reconnect, backoff, auth)
 - Extension registry (tool registration, debouncing, metrics)
 - Command router (invoke dispatch, cancel, confirmation flow)

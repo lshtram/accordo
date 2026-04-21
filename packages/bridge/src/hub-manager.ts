@@ -206,8 +206,11 @@ export class HubManager {
   }
 
   /**
-   * LCM-11: Graceful deactivation. Kill Hub so no orphan processes are left
-   * when the VS Code window or extension host closes.
+   * Legacy hard-shutdown path.
+   *
+   * Current extension deactivation uses `softDisconnect()` from
+   * `cleanupExtension()` to support reconnect-first reload survival.
+   * This method is retained for explicit hard-stop flows/tests.
    */
   async deactivate(): Promise<void> {
     this.deactivated = true;

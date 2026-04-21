@@ -4,7 +4,7 @@
 **Type:** VSCode extension  
 **Publisher:** `accordo`  
 **Version:** 0.1.0  
-**Date:** 2026-03-02
+**Date:** 2026-04-21
 
 ---
 
@@ -127,6 +127,12 @@ export interface BridgeAPI {
    * Event that fires when Bridge connection status changes.
    */
   onConnectionStatusChanged: vscode.Event<boolean>;
+
+  /**
+   * Invoke a registered tool directly through the Bridge registry.
+   * Used by browser relay routing and internal integration paths.
+   */
+  invokeTool(toolName: string, args: Record<string, unknown>, timeout?: number): Promise<unknown>;
 }
 ```
 
@@ -134,7 +140,7 @@ export interface BridgeAPI {
 
 ```typescript
 interface ExtensionToolDefinition {
-  /** Fully qualified tool name. Convention: "accordo.<category>.<action>" */
+  /** Fully qualified tool name. Convention: "accordo_<modality>_<action>" */
   name: string;
 
   /** One-line description. Appears in system prompt. Max 120 chars. */
@@ -226,7 +232,7 @@ The Bridge constructs `ToolRegistration` from `ExtensionToolDefinition` by:
 | LCM-08 | If health check times out, show `vscode.window.showErrorMessage` with "Accordo Hub failed to start" and offer "Retry" and "Show Log" actions. |
 | LCM-09 | Stream Hub stdout/stderr to an `OutputChannel` named "Accordo Hub". |
 | LCM-10 | If Hub process exits unexpectedly, attempt restart once (generates new secret/token). If second attempt fails, show error and stop. |
-| LCM-11 | On VSCode shutdown (`deactivate()`), kill the Hub process: send SIGTERM, wait up to 2 seconds for exit, then SIGKILL if still alive. The Hub is ephemeral — it lives and dies with the VSCode window. See `multi-session-architecture.md` §3. `deactivate()` must be `async` to await the kill sequence. |
+| LCM-11 | On VSCode shutdown (`deactivate()`), send `POST /bridge/disconnect` (`softDisconnect`) and close Bridge WS client. Do **not** kill Hub immediately. Hub starts a grace timer (default 10s) and exits only if no Bridge reconnects in time. |
 | LCM-12 | On `accordo.hub.restart` command — **soft restart (preferred):** Generate new ACCORDO_BRIDGE_SECRET + ACCORDO_TOKEN → POST `/bridge/reauth` with current secret → if 200: persist new credentials, reconnect WS, rewrite agent config files. Hub never stops; CLI agent sessions are uninterrupted. **Hard fallback** (if reauth returns non-200 or Hub is unreachable): close WS → kill Hub process → generate new credentials → re-run spawn sequence. |
 
 ### 4.2 Spawn Sequence Diagram
@@ -354,7 +360,7 @@ When Hub sends a `CancelMessage`:
 All file paths in IDEState are **multi-root aware**:
 - `activeFile`, `openEditors`, `visibleEditors`: stored as absolute paths. The prompt engine in Hub converts to workspace-relative where possible.
 - `workspaceFolders`: absolute paths to each workspace root, in VSCode's folder order.
-- Paths returned by tools (e.g., `accordo.editor.open`) are always absolute.
+- Paths returned by tools (e.g., `accordo_editor_open`) are always absolute.
 - Path inputs to tools accept: (a) absolute path, (b) path relative to a specific workspace folder if that folder's root is known. The `resolvePath` utility resolves (b) against the matching workspace folder, checking all roots. Ambiguous relative paths matching multiple roots are rejected with an error.
 - Forward slash separators always (even on Windows).
 
@@ -445,11 +451,11 @@ export interface OpenTab {
 | ID | Requirement |
 |---|---|
 | MCP-01 | If `accordo.agent.configureCopilot` is true, register Accordo Hub as an MCP server for Copilot. |
-| MCP-02 | Write `mcp.servers.accordo` to VSCode **Global** (user-level) settings using `vscode.workspace.getConfiguration("mcp").update(...)`. Entry: `{ type: "http", url: "http://localhost:{port}/mcp", headers: { Authorization: "Bearer <token>" } }`. Using the Global settings scope (not workspace scope) ensures the server definition survives workspace switches, multi-root folder changes, and window reloads without re-activation. Skip the write if the existing entry already matches (token and URL unchanged) — avoids resetting Copilot's consent checkbox. |
+| MCP-02 | Write/update user-level `~/.vscode/mcp.json` under `servers.accordo` with `{ type: "http", url: "http://localhost:{port}/mcp", headers: { Authorization: "Bearer <token>" } }`. Skip writes when entry already matches to avoid resetting Copilot consent state. |
 | MCP-03 | If `getConfiguration("mcp")` is unavailable or the update call fails, skip silently and log to the OutputChannel. |
 | MCP-04 | Re-write the `mcp.servers.accordo` entry when Hub is restarted and the token rotates, so Copilot always has the correct credentials. |
 
-> **Design note (deliberate deviation from original spec):** The original spec specified `vscode.lm.registerMcpServerDefinitionProvider` / `McpHttpServerDefinition`. During implementation, the settings-based approach (`mcp.servers` in Global scope) proved more reliable: it persists across workspace switches, requires no `lm` API availability check, and produces no flickering in Copilot's server list on reconnect. The `lm` provider API was not available in the target VSCode version. This note records the intentional change so reviewers do not treat the implementation as non-compliant.
+> **Design note (deliberate deviation from original spec):** The original spec targeted `vscode.lm.registerMcpServerDefinitionProvider` / `McpHttpServerDefinition`. Current Bridge implementation uses `~/.vscode/mcp.json` synchronization instead, which is stable across workspace switches and reconnects without depending on `lm` API availability.
 
 ### 8.2 Agent Config Files
 
@@ -458,7 +464,7 @@ export interface OpenTab {
 | CFG-01 | If `accordo.agent.configureOpencode` is true, write `opencode.json` to workspace root. |
 | CFG-02 | If `accordo.agent.configureClaude` is true, write `.claude/mcp.json` to workspace root (merge, don't overwrite). |
 | CFG-03 | Config files use HTTP transport with the bearer token so agents connect to the **shared running Hub** instance (not a fresh stdio process). |
-| CFG-04 | Include `"instructions_url": "http://localhost:{port}/instructions"` in opencode config. |
+| CFG-04 | OpenCode config uses schema-compliant shape: `$schema` + `mcp.accordo` remote server entry. Do not emit legacy `instructions_url` fields. |
 | CFG-05 | Respect existing entries in `.claude/mcp.json` — merge, never clobber. |
 | CFG-06 | After writing config files, append their paths to `.gitignore` (workspace root). These files contain credentials and must not be committed. Write config files with mode `0600` (owner read/write only). |
 | CFG-07 | Token is read from `context.secrets.get('accordo.<projectId>.hubToken')` at write time. If Hub is restarted (new token), Bridge rewrites the config files for that project. |
@@ -467,16 +473,16 @@ export interface OpenTab {
 
 ```json
 {
-  "mcpServers": {
-    "accordo-hub": {
-      "type": "http",
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "accordo": {
+      "type": "remote",
       "url": "http://localhost:3000/mcp",
       "headers": {
         "Authorization": "Bearer <TOKEN>"
       }
     }
-  },
-  "instructions_url": "http://localhost:3000/instructions"
+  }
 }
 ```
 
@@ -485,7 +491,7 @@ export interface OpenTab {
 ```json
 {
   "mcpServers": {
-    "accordo-hub": {
+    "accordo": {
       "type": "http",
       "url": "http://localhost:3000/mcp",
       "headers": {
@@ -502,7 +508,7 @@ export interface OpenTab {
 
 | ID | Requirement |
 |---|---|
-| CFG-08 | Before writing `opencode.json`, validate that the format matches the known schema (presence of `mcpServers`, `instructions_url` fields). Log a warning to the Accordo Hub OutputChannel if the expected fields are absent — this may indicate an OpenCode schema change. |
+| CFG-08 | Before writing `opencode.json`, validate schema-critical keys (`$schema`, `mcp.accordo.type=url=headers`) and remove legacy fields (e.g. `instructions_url`) when present. Warn via OutputChannel on malformed existing config. |
 | CFG-09 | Before merging into `.claude/mcp.json`, validate that the existing file (if present) is parseable JSON. If it is not, back it up as `.claude/mcp.json.bak` before overwriting. |
 | CFG-10 | Record the config format version used (e.g., `"_accordo_schema": "1.0"`) as a comment or metadata field so future Bridge versions can detect and migrate stale config files. |
 
@@ -514,9 +520,9 @@ export interface OpenTab {
 
 | ID | Requirement |
 |---|---|
-| SB-01 | Show a status bar item with connection status: `$(plug) Accordo: Connected` or `$(warning) Accordo: Disconnected`. |
+| SB-01 | Show a status bar item with dynamic state: `$(check) Accordo` when WS connected and tools registered; `$(warning) Accordo` while connecting/reconnecting or connected with no tools; `$(error) Accordo` when disconnected. |
 | SB-02 | Clicking the status bar item runs `accordo.bridge.showStatus` command. |
-| SB-03 | The `showStatus` command shows a quick pick with: Hub URL, connection state, tool count, uptime. |
+| SB-03 | The `showStatus` command shows a quick pick with Hub connection line, detected module registrations, and best-effort enrichment from Hub endpoints (`/browser/status`, `/state`) for browser relay/control and voice TTS availability. |
 
 ---
 
