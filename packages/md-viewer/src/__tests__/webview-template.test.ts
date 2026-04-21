@@ -128,6 +128,19 @@ describe("buildWebviewHtml", () => {
     // directly (which would be the namespace object, not the constructor).
     expect(html).toContain("new AccordoSDK.AccordoCommentSDK()");
   });
+
+  it("uses window scroll offsets when converting block coordinates to screen space", () => {
+    const html = buildWebviewHtml(SAMPLE_OPTS);
+    expect(html).toContain("rect.left + window.scrollX - 4");
+    expect(html).toContain("rect.top + window.scrollY + 11");
+  });
+
+  it("supports preview:revealBlock messages for line-based preview navigation", () => {
+    const html = buildWebviewHtml(SAMPLE_OPTS);
+    expect(html).toContain("msg.type === 'preview:revealBlock'");
+    expect(html).toContain("revealEl.scrollIntoView({ behavior: 'smooth', block: 'center' })");
+  });
+
   it("M41b-TPL-03: optional markdownCssUri is injected as a link tag when provided", () => {
     const mdUri = "vscode-resource:/ext/dist/markdown-body.css";
     const html = buildWebviewHtml({ ...SAMPLE_OPTS, markdownCssUri: mdUri });
@@ -168,4 +181,3 @@ describe("themeKindToClass", () => {
     expect(themeKindToClass(99 as never)).toBe("vscode-dark");
   });
 });
-

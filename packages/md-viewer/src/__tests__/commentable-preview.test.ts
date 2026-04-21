@@ -64,6 +64,7 @@ function makeMockWebviewPanel() {
   };
   return {
     webview,
+    reveal: vi.fn(),
     onDidDispose: vi.fn().mockImplementation((cb: () => void) => {
       disposeListeners.push(cb);
       return { dispose: vi.fn() };
@@ -165,6 +166,10 @@ describe("CommentablePreview", () => {
   beforeEach(() => {
     resetMockState();
     vi.clearAllMocks();
+    CommentablePreview.livePanels.clear();
+    CommentablePreview.liveResolvers.clear();
+    CommentablePreview.pendingRevealLines.clear();
+    CommentablePreview.readyUris.clear();
     mockRender.mockResolvedValue({ html: "<p>hello</p>", resolver: {} });
     mockBuildWebviewHtml.mockReturnValue("<html>mock</html>");
     mockLoadThreads.mockReset();
@@ -203,6 +208,28 @@ describe("CommentablePreview", () => {
     msgListeners?.forEach((cb) => cb({ type: "webview:ready" }));
 
     expect(mockLoadThreads).toHaveBeenCalledOnce();
+  });
+
+  it("queues line reveal until the webview is ready, then scrolls the matching block", async () => {
+    const panel = makeMockWebviewPanel();
+    const resolver = { blockIdToLine: vi.fn(), lineToBlockId: vi.fn().mockReturnValue("heading:3:34-mcp-transport-streamable-http") };
+    mockRender.mockResolvedValue({ html: "<p>hello</p>", resolver });
+
+    const cp = new CommentablePreview(makeMockContext() as never, makeMockStore() as never);
+    await cp.resolveCustomTextEditor(makeMockDocument() as never, panel as never);
+
+    expect(CommentablePreview.requestRevealLine("file:///project/README.md", 120)).toBe(false);
+    expect(panel.webview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "preview:revealBlock" }),
+    );
+
+    const msgListeners = (panel.webview as Record<string, unknown> & { _msgListeners?: Array<(m: unknown) => void> })._msgListeners;
+    msgListeners?.forEach((cb) => cb({ type: "webview:ready" }));
+
+    expect(panel.webview.postMessage).toHaveBeenCalledWith({
+      type: "preview:revealBlock",
+      blockId: "heading:3:34-mcp-transport-streamable-http",
+    });
   });
 
   it("M41b-CPE-05: inert mode — no bridge when store is null, preview still renders", async () => {

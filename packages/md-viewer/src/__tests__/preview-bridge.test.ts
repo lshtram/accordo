@@ -103,12 +103,16 @@ describe("PreviewBridge", () => {
 
   // ── M41b-PBR-03: comment:create ─────────────────────────────────────────
 
-  it("M41b-PBR-03: comment:create message calls store.createThread", async () => {
-    new PreviewBridge(store as never, webview as never, DOC_URI);
+  it("M41b-PBR-03: comment:create calls store.createThread immediately when blockId resolves to a line", async () => {
+    const resolver: ResolverLike = {
+      blockIdToLine: (id: string) => (id === "p:0" ? 7 : null),
+      lineToBlockId: () => null,
+    };
+    new PreviewBridge(store as never, webview as never, DOC_URI, resolver);
     webview._send({ type: "comment:create", blockId: "p:0", body: "Looks good" });
     await Promise.resolve();
     expect(store.createThread).toHaveBeenCalledWith(
-      expect.objectContaining({ body: "Looks good" })
+      expect.objectContaining({ body: "Looks good", line: 7 })
     );
   });
 
@@ -125,16 +129,19 @@ describe("PreviewBridge", () => {
     );
   });
 
-  it("M41b-PBR-03: comment:create passes line=undefined when resolver returns null", async () => {
+  it("M41b-PBR-03: comment:create queues when blockId cannot be resolved yet and flushes on loadThreadsForUri", async () => {
     const resolver: ResolverLike = {
       blockIdToLine: () => null,
       lineToBlockId: () => null,
     };
-    new PreviewBridge(store as never, webview as never, DOC_URI, resolver);
+    const bridge = new PreviewBridge(store as never, webview as never, DOC_URI, resolver);
     webview._send({ type: "comment:create", blockId: "unknown:99", body: "No line" });
     await Promise.resolve();
+    expect(store.createThread).not.toHaveBeenCalled();
+    (store.createThread as Mock).mockClear();
+    bridge.loadThreadsForUri();
     expect(store.createThread).toHaveBeenCalledWith(
-      expect.objectContaining({ blockId: "unknown:99", line: undefined })
+      expect.objectContaining({ blockId: "unknown:99", body: "No line", line: undefined })
     );
   });
 

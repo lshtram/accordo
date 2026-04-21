@@ -129,6 +129,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return false;
       },
     ),
+
+    vscode.commands.registerCommand(
+      "accordo_preview_internal_revealLine",
+      (uri: string, line: number): boolean => CommentablePreview.requestRevealLine(uri, line),
+    ),
   );
 }
 

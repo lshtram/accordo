@@ -128,7 +128,7 @@ ${extraScripts}
         const rect = el.getBoundingClientRect();
         // Place pin at the left gutter — aligned with the 3px gutter marker border,
         // vertically centred on the first text line (~11px from top of element).
-        return { x: rect.left - 4, y: rect.top + 11 };
+        return { x: rect.left + window.scrollX - 4, y: rect.top + window.scrollY + 11 };
       }
 
       try {
@@ -179,6 +179,9 @@ ${extraScripts}
             if (pinEl) pinEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
           sdk.openPopover(msg.threadId);
+        } else if (msg.type === 'preview:revealBlock') {
+          var revealEl = document.querySelector('[data-block-id="' + msg.blockId + '"]');
+          if (revealEl) revealEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       });
 

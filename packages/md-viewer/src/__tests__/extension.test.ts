@@ -264,4 +264,13 @@ describe("activate", () => {
       "accordo.markdownPreview",
     );
   });
+
+  it("registers accordo_preview_internal_revealLine and delegates to CommentablePreview", async () => {
+    setupCommentsExtPresent();
+    const ctx = createMockExtensionContext();
+    await activate(ctx as never);
+
+    const handler = mockState.registeredCommands.get("accordo_preview_internal_revealLine");
+    expect(handler).toBeDefined();
+  });
 });

@@ -90,6 +90,33 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
    * comments:focus messages to the correct webview.
    */
   static readonly livePanels = new Map<string, vscode.WebviewPanel>();
+  static readonly liveResolvers = new Map<string, ResolverLike>();
+  static readonly pendingRevealLines = new Map<string, number>();
+  static readonly readyUris = new Set<string>();
+
+  static requestRevealLine(uri: string, line: number): boolean {
+    this.pendingRevealLines.set(uri, line);
+    return this.flushPendingReveal(uri);
+  }
+
+  static flushPendingReveal(uri: string): boolean {
+    const panel = this.livePanels.get(uri);
+    const resolver = this.liveResolvers.get(uri);
+    const line = this.pendingRevealLines.get(uri);
+    if (!panel || !resolver || line === undefined || !this.readyUris.has(uri)) {
+      return false;
+    }
+
+    const blockId = resolver.lineToBlockId(line);
+    this.pendingRevealLines.delete(uri);
+    if (!blockId) {
+      return false;
+    }
+
+    panel.reveal(undefined, false);
+    void panel.webview.postMessage({ type: "preview:revealBlock", blockId });
+    return true;
+  }
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -179,21 +206,25 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
       blockIdToLine: (id) => latestResolver?.blockIdToLine(id) ?? null,
       lineToBlockId: (line) => latestResolver?.lineToBlockId(line) ?? null,
     };
+    CommentablePreview.liveResolvers.set(docUri, resolverAdapter);
 
     // Create bridge only when a real CommentStore is available (not inert)
     let bridge: PreviewBridge | undefined;
     if (this.store) {
       bridge = new PreviewBridge(this.store, webviewPanel.webview, docUri, resolverAdapter);
-      // Wait for the webview to signal readiness before pushing threads.
-      // Setting webview.html is asynchronous; the message listener in the webview
-      // may not be registered yet when we reach this line synchronously.
-      const readySub = webviewPanel.webview.onDidReceiveMessage((msg: unknown) => {
-        if ((msg as { type?: string }).type === "webview:ready") {
-          readySub.dispose();
-          bridge!.loadThreadsForUri();
-        }
-      });
     }
+
+    // Wait for the webview to signal readiness before pushing threads or reveal messages.
+    // Setting webview.html is asynchronous; the message listener in the webview
+    // may not be registered yet when we reach this line synchronously.
+    const readySub = webviewPanel.webview.onDidReceiveMessage((msg: unknown) => {
+      if ((msg as { type?: string }).type === "webview:ready") {
+        readySub.dispose();
+        CommentablePreview.readyUris.add(docUri);
+        bridge?.loadThreadsForUri();
+        CommentablePreview.flushPendingReveal(docUri);
+      }
+    });
 
     // M41b-CPE-06: re-render on text change for this document
     // The render() guard (renderSeq check) discards stale HTML, but we also
@@ -204,7 +235,10 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
         const seqAtStart = renderSeq;
         void render().then(() => {
           // Only reload threads if this render was not superseded
-          if (seqAtStart + 1 === renderSeq) bridge?.loadThreadsForUri();
+          if (seqAtStart + 1 === renderSeq) {
+            bridge?.loadThreadsForUri();
+            CommentablePreview.flushPendingReveal(docUri);
+          }
         });
       }
     });
@@ -212,6 +246,9 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
     // M41b-CPE-07: dispose all subscriptions when panel closes
     webviewPanel.onDidDispose(() => {
       CommentablePreview.livePanels.delete(docUri);
+      CommentablePreview.liveResolvers.delete(docUri);
+      CommentablePreview.pendingRevealLines.delete(docUri);
+      CommentablePreview.readyUris.delete(docUri);
       docChangeSub.dispose();
       bridge?.dispose();
     });

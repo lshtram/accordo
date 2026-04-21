@@ -106,6 +106,7 @@ export class PreviewBridge {
   private readonly _resolver: ResolverLike | undefined;
   private _storeDisposable: { dispose(): void } | undefined;
   private _msgDisposable: { dispose(): void } | undefined;
+  private readonly _pendingCreates: Array<{ blockId: string; body: string; intent?: string }> = [];
 
   constructor(store: CommentStoreLike, webview: WebviewLike, uri: string, resolver?: ResolverLike) {
     this._store = store;
@@ -140,6 +141,21 @@ export class PreviewBridge {
    */
   loadThreadsForUri(): void {
     this._pushLoad();
+    void this._flushPendingCreates();
+  }
+
+  private async _flushPendingCreates(): Promise<void> {
+    const pending = this._pendingCreates.splice(0);
+    for (const { blockId, body, intent } of pending) {
+      const line = this._resolver?.blockIdToLine(blockId) ?? undefined;
+      await this._store.createThread({
+        uri: this._uri,
+        blockId,
+        body,
+        intent: intent as never,
+        line,
+      });
+    }
   }
 
   /**
@@ -151,13 +167,17 @@ export class PreviewBridge {
     try {
       if (msg.type === "comment:create") {
         const line = this._resolver?.blockIdToLine(msg.blockId) ?? undefined;
-        await this._store.createThread({
-          uri: this._uri,
-          blockId: msg.blockId,
-          body: msg.body,
-          intent: msg.intent,
-          line: line ?? undefined,
-        });
+        if (line !== undefined) {
+          await this._store.createThread({
+            uri: this._uri,
+            blockId: msg.blockId,
+            body: msg.body,
+            intent: msg.intent,
+            line,
+          });
+        } else {
+          this._pendingCreates.push({ blockId: msg.blockId, body: msg.body, intent: msg.intent });
+        }
       } else if (msg.type === "comment:reply") {
         await this._store.reply({ threadId: msg.threadId, body: msg.body });
       } else if (msg.type === "comment:resolve") {
