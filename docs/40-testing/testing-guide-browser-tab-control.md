@@ -4,8 +4,8 @@
 **Design doc:** `docs/10-architecture/browser-tab-control-architecture.md`  
 **Phase A review:** `docs/reviews/browser-tab-control-architecture.md`  
 **Phase B review:** `docs/reviews/browser-tab-control-Phase-B.md`  
-**Date:** 2026-04-03  
-**Test status:** 931/931 unit tests pass (all green after chrome-mock factory fix)
+**Date:** 2026-04-21  
+**Test status:** 1271/1271 unit tests pass (all green)
 
 ---
 
@@ -17,10 +17,10 @@
 pnpm --filter browser-extension test
 ```
 
-**Expected output:**
+**Expected output (current baseline):**
 ```
-Test Files  43 passed (43)
-     Tests  931 passed (931)
+Test Files  52 passed (52)
+     Tests  1271 passed (1271)
 ```
 
 **Test coverage map:**
@@ -65,7 +65,7 @@ The Browser Tab Control module requires a **live Chrome browser with CDP debuggi
 2. **No running Chrome extension host** — The extension must be installed in Chrome and connected to the Accordo Hub
 3. **CDP requires real browser** — Debugger commands like `Input.dispatchMouseEvent` and `Page.navigate` can only execute in a real Chrome tab
 
-All 931 unit tests verify handler logic, permission checks, message routing, CDP command sequencing (double-click 5-event sequence, modifier bitmask application), and error handling at the `sendCommand` mock level. 462 additional tests in `accordo-browser` (Hub relay side) also pass.
+All 1271 unit tests verify handler logic, permission checks, message routing, CDP command sequencing (double-click 5-event sequence, modifier bitmask application), and error handling at the `sendCommand` mock level. 1142 additional tests in `accordo-browser` (Hub relay side) also pass.
 
 ---
 
@@ -210,14 +210,11 @@ These steps require:
 
 | Verification | Command | Result |
 |---|---|---|
-| Unit tests | `pnpm --filter browser-extension test` | 931/931 pass ✅ |
+| Unit tests | `pnpm --filter browser-extension test` | 1271/1271 pass ✅ |
 | Type check | `pnpm --filter browser-extension exec tsc --noEmit` | Clean ✅ |
 | Lint | `pnpm --filter browser-extension lint` | Clean ✅ |
-| Accordo-browser tests | `pnpm --filter accordo-browser test` | 462/464 pass (2 env failures — see below) |
+| Accordo-browser tests | `pnpm --filter accordo-browser test` | 1142/1142 pass ✅ |
 | E2E | Manual Chrome testing (see journeys above) | See notes |
-
-**Accordo-browser environmental failures (pre-existing, not code bugs):**
-- `BR-F-120`: relay server start times out because VS Code occupies ports 40111/40112
 - `BR-F-123`: relay state publishes on wrong port due to port conflict
 
 These fail in any environment where VS Code is running with the Accordo extension. Not reproducible in CI without a dedicated test environment.

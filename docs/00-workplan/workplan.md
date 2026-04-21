@@ -1,6 +1,6 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
-**Date:** 2026-04-16
+**Date:** 2026-04-21
 **Status:** Live E2E module testing session completed. Four modalities tested (MD viewer ✅, Marp presentation ⚠️, Diagram ✅, Browser tab ❌). Three new technical debt items identified: (1) comment store silo between VS Code and browser extension, (2) comments panel navigation failures across modalities, (3) Marp user-left comment dismisses presentation on click. Voice module simplified to TTS-only (no STT/dictation).  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
@@ -23,9 +23,9 @@
 2. ✅ `tabId` on 7 tools: `browser_wait_for`, `browser_get_text_map`, `browser_get_semantic_graph`, `browser_list_pages`, `browser_select_page`, `browser_inspect_element`, `browser_capture_region` (wave 8, `94b41ba`)
 3. ✅ `browser_diff_snapshots` relay payload now forwards `tabId` to Chrome extension (`packages/browser/src/diff-tool.ts` — Phase 1 fix, 2026-04-13)
 4. ✅ Chrome extension `handleDiffSnapshots` bypasses SW in-memory fast-path when explicit `tabId` is present — routes directly to content-script store, which is authoritative per-tab (`packages/browser-extension/src/relay-capture-handler.ts` — Phase 2 fix, 2026-04-13)
-5. ✅ E2E smoke tests added: B2-CTX-006 tests in `diff-snapshots-tabid.test.ts` (+2 tests → 985 total) and `relay-actions-diff.test.ts` (+2 tests → 1194 total)
+5. ✅ E2E smoke tests added: B2-CTX-006 tests in `diff-snapshots-tabid.test.ts` and `relay-actions-diff.test.ts`
 
-**All tests green:** `browser` 985/985, `browser-extension` 1194/1194.
+**All tests green (current rerun):** `browser` 1142/1142, `browser-extension` 1271/1271.
 
 ---
 

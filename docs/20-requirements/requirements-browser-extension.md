@@ -3,7 +3,7 @@
 **Package:** `packages/browser-extension` (Chrome Manifest V3 extension)  
 **Type:** Chrome browser extension + local VS Code relay integration (v2a)  
 **Version:** 0.1.0  
-**Date:** 2026-03-19  
+**Date:** 2026-04-21  
 **Architecture:** [`docs/10-architecture/browser-extension-architecture.md`](../10-architecture/browser-extension-architecture.md) v2.1  
 **Supersedes:** [`docs/20-requirements/requirements-browser.md`](requirements-browser.md) (over-engineered; relay + VSCode extension removed from v1)
 
@@ -23,7 +23,7 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 
 ## 2. Extension Manifest Contract
 
-> **Note:** This example reflects the actual build output from `scripts/build.ts`. The v1 baseline (before v2a SDK convergence) had a different manifest. Key differences: (1) build produces **4** entry points (service-worker.js, content-script.js, popup.js, shadow-tracker.js), not 3; (2) content script model uses **two** scripts (shadow-tracker injected at `document_start` MAIN world, content-script at `document_idle` all_frames); (3) `commands` and `icons` sections are not present in the current manifest.
+> **Note:** This example reflects the actual build output from `scripts/build.ts`. The v1 baseline (before v2a SDK convergence) had a different manifest. Key differences: (1) build produces **4** entry points (service-worker.js, content-script.js, popup.js, shadow-tracker.js); (2) content script model uses **two** scripts (shadow-tracker injected at `document_start` MAIN world, content-script at `document_idle` with `all_frames: true`); (3) `commands` is present in the current manifest, while `icons` is intentionally omitted.
 
 ```json
 {
@@ -104,8 +104,8 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | BR-F-10 | Comments Mode defaults to OFF on extension install and browser launch | `chrome.storage.local` `settings.commentsMode` is `false` after `onInstalled` |
 | BR-F-11 | `Alt+Shift+C` toggles Comments Mode between OFF and ON | Toggle flips storage value and notifies content script within 100ms |
 | BR-F-12 | Toolbar button click toggles Comments Mode between OFF and ON | Same behaviour as keyboard shortcut |
-| BR-F-13 | When Comments Mode transitions to ON: context menu "Add Comment" item is created; existing pins for the current URL become visible; badge is updated | Context menu item exists (verified via `chrome.contextMenus.create` call); content script receives `comments-mode-on` message |
-| BR-F-14 | When Comments Mode transitions to OFF: context menu "Add Comment" item is removed; all pins are hidden; badge is cleared | Context menu item removed; content script receives `comments-mode-off` message; badge text is empty |
+| BR-F-13 | When Comments Mode transitions to ON: the in-page Add Comment affordance becomes available; existing pins for the current URL become visible; badge is updated | Content script receives `comments-mode-on`; Add Comment affordance is available in page context; badge text is `ON` |
+| BR-F-14 | When Comments Mode transitions to OFF: Add Comment affordance is disabled/hidden; all pins are hidden; badge is cleared | Content script receives `comments-mode-off`; `accordo-*` overlay elements are removed; badge text is empty |
 | BR-F-15 | Extension icon title reflects current state: "Accordo Comments (OFF)" or "Accordo Comments (ON)" | `chrome.action.setTitle` called with correct string on each transition |
 | BR-F-16 | Comments Mode is **tab-scoped**: each tab has independent ON/OFF state; opening a new tab defaults to OFF regardless of other tabs | New tab starts in OFF state; toggling in tab A does not affect tab B |
 
@@ -132,7 +132,7 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | BR-F-40 | Service worker initializes on `chrome.runtime.onInstalled` with default settings | `settings` key in storage has `commentsMode: false` and default `userName` |
 | BR-F-41 | Service worker routes messages from content script: `create-comment`, `reply-comment`, `resolve-thread`, `reopen-thread`, `delete-comment`, `delete-thread`, `get-threads` | Each message type dispatched to correct M80-STORE function |
 | BR-F-42 | Service worker routes messages from popup: `toggle-mode`, `export-comments`, `get-threads`, `get-settings` | Each message type dispatched to correct handler |
-| BR-F-43 | Context menu `onClicked` handler captures the clicked element info and sends `show-comment-form` message to the content script | Content script receives the element's anchor key |
+| BR-F-43 | Right-click flow routes through content-script/event messaging and sends `show-comment-form-at-cursor` when Add Comment is triggered | Content script opens the SDK composer at the captured cursor/anchor context |
 | BR-F-44 | Service worker re-initializes state from `chrome.storage.local` on wake (MV3 lifecycle) | No in-memory state survives worker termination; all state read from storage |
 | BR-F-45 | Badge count updated after every comment/thread mutation | `chrome.action.setBadgeText` called with current off-screen count |
 
@@ -222,7 +222,7 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 |---|---|---|
 | BR-F-110 | `manifest.json` declares Manifest V3 with all required permissions | Extension loads in Chrome without permission errors |
 | BR-F-111 | Content script matches `http://*/*` and `https://*/*` only (no `chrome://`, `file://`, extension pages) | Content script does not inject on excluded URLs |
-| BR-F-112 | Build produces 3 entry points via esbuild: `service-worker.js`, `content-script.js`, `popup.js` | All 3 files exist in `dist/` after build |
+| BR-F-112 | Build produces 4 entry points via esbuild: `service-worker.js`, `content-script.js`, `popup.js`, `shadow-tracker.js` | All 4 files exist in `dist/` after build |
 | BR-F-113 | Build copies `manifest.json`, icons, and `popup.html` to `dist/` | All static assets present in build output |
 | BR-F-114 | Extension side-loads in Chrome via `chrome://extensions` → "Load unpacked" pointing to `dist/` | Extension appears in Chrome with correct name and icon |
 | BR-F-115 | `commands` section declares `toggle-comments-mode` with `Alt+Shift+C` suggestion | Keyboard shortcut appears in `chrome://extensions/shortcuts` |
@@ -246,7 +246,7 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | BR-F-128 | Browser relay `get_comments` defaults to the active tab URL when `url` is omitted | Tool call without `url` returns comments for active browser tab |
 | BR-F-129 | Browser relay `get_all_comments` returns all commented page URLs sorted by `lastActivity` descending | Most recently worked-on pages appear first with thread/comment summary metadata |
 | BR-F-130 | Browser UI updates without manual page refresh when relay/agent mutations occur, independent of relay activation mode | Service worker broadcasts update messages and content/popup refresh automatically in both shared and per-window relay paths |
-| BR-F-131 | Browser create tool supports active-tab defaults when `url`/`anchor` are omitted | `accordo_browser_createComment` with `{ body }` creates a thread on active tab using fallback anchor when needed |
+| BR-F-131 | Browser create relay action supports active-tab defaults when `url`/`anchor` are omitted | `create_comment` action with `{ body }` creates a thread on the active tab using fallback anchor when needed |
 
 ### 3.13 Session 14 — Unified Comments Tools + Panel Registration
 
@@ -291,9 +291,9 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 | PU-F-43 | Adapter selection: prefer `VscodeRelayAdapter` when relay is connected, fall back to `LocalStorageAdapter` | When relay disconnects, operations use local storage; when relay reconnects, adapter switches back with no caller-side branching |
 | PU-F-44 | `CommentBackendAdapter` is the single import for all comment operations in content/popup code | No direct `relay.send()` or `store.createThread()` calls outside the adapter layer; relay/store divergence is isolated behind adapter boundary |
 | PU-F-45 | Future `StandaloneMcpAdapter` slot exists as a typed interface only (no implementation) | Type definition compiles; no runtime code |
-| PU-F-50 | `browser_get_page_map` MCP tool registered via `bridge.registerTools()` in `packages/browser` | Tool appears in Hub `tools/list` response |
-| PU-F-51 | `browser_inspect_element` MCP tool registered via `bridge.registerTools()` in `packages/browser` | Tool appears in Hub `tools/list` response |
-| PU-F-52 | `browser_get_dom_excerpt` MCP tool registered via `bridge.registerTools()` in `packages/browser` | Tool appears in Hub `tools/list` response |
+| PU-F-50 | `accordo_browser_get_page_map` MCP tool registered via `bridge.registerTools()` in `packages/browser` | Tool appears in Hub `tools/list` response |
+| PU-F-51 | `accordo_browser_inspect_element` MCP tool registered via `bridge.registerTools()` in `packages/browser` | Tool appears in Hub `tools/list` response |
+| PU-F-52 | `accordo_browser_get_dom_excerpt` MCP tool registered via `bridge.registerTools()` in `packages/browser` | Tool appears in Hub `tools/list` response |
 | PU-F-53 | MCP tool handlers forward to Chrome relay and return structured results | Agent receives typed JSON response from each tool |
 | PU-F-54 | Tools return `{ error: "browser-not-connected" }` when Chrome extension is disconnected | Graceful error response without exception |
 | PU-F-55 | Tools return `{ error: "timeout" }` when Chrome relay does not respond within deadline | Default timeout of 10s for page map, 5s for inspect/excerpt |

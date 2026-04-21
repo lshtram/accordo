@@ -27,7 +27,8 @@ Chrome browser extension (service worker + content scripts) that captures page s
 | `snapshot-versioning.ts` | Snapshot ID minting, version tracking, navigation reset | `VersionedSnapshot`, `SnapshotEnvelope`, `resetDefaultManager()` |
 | `content-anchor.ts` | Resolves comment anchors within page content | Content script utility |
 | `content-input.ts` | Captures user input state within page forms | Content script utility |
-| `content-pins.ts` | Manages visual pin overlays for comments in the browser | Content script utility |
+| `content/comment-ui.ts` | Canonical SDK-converged comment UI path for pin/popover/composer interactions | `CommentUI` class |
+| `content-pins.ts` | Legacy pre-SDK pin helper retained for historical/tests-only compatibility; not part of the primary runtime path | Legacy utility (no primary imports) |
 | `exporter.ts` | Serialises snapshot data for export | `exportSnapshots()` |
 
 ## Extension Points

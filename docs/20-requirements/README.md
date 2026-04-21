@@ -1,6 +1,6 @@
 # Requirements Directory — Index
 
-**Last updated:** 2026-04-04
+**Last updated:** 2026-04-21
 
 This directory contains functional and non-functional requirements specifications for all Accordo IDE packages and modules.
 
@@ -31,11 +31,11 @@ All files use **lowercase-kebab-case**: `requirements-{component}.md`
 | [requirements-browser2.0.md](requirements-browser2.0.md) | `packages/browser`, `packages/browser-extension` | Snapshot versioning, diff engine, filtering, text extraction, semantic graph, privacy/security | Active — extends browser-extension |
 | [requirements-browser.md](requirements-browser.md) | (archived) | Original relay + comment bridge design (M60–M73) | **Archived** — superseded by `requirements-browser-extension.md` |
 
-**Browser requirements reading guide:**
-- Start with `requirements-browser-mcp.md` for the agent-visible MCP tool contract
-- Consult `requirements-browser-extension.md` for Chrome extension internals and relay infrastructure
-- Consult `requirements-browser2.0.md` for snapshot/diff/filter/security internals
-- Ignore `requirements-browser.md` (archived)
+**Browser requirements reading guide (authoritative order):**
+1. Start with `requirements-browser-mcp.md` for the canonical agent-visible MCP tool contract
+2. Then read `requirements-browser-extension.md` for Chrome runtime behavior (service worker/content/popup/relay wiring)
+3. Then read `requirements-browser2.0.md` for shared internals (snapshot versioning, diff/filtering, semantic extraction, security)
+4. Treat `requirements-browser.md` as historical only (archived)
 
 ### Comments
 

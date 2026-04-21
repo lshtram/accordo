@@ -1,7 +1,7 @@
-# Accordo — Browser Extension Architecture v2.1
+# Accordo — Browser Extension Architecture v2.2
 
-**Status:** ACTIVE — v1 shipped; v2a relay + SDK convergence in progress  
-**Date:** 2026-03-21  
+**Status:** ACTIVE — v1 baseline shipped; v2a relay + SDK convergence implemented  
+**Date:** 2026-04-21  
 **Scope:** Chrome Manifest V3 browser extension + `accordo-browser` relay for agent actions  
 **Supersedes:** `docs/browser-architecture.md` v1.0 (over-engineered; relay + VSCode extension removed from v1)  
 **Requirements:** [`docs/20-requirements/requirements-browser-extension.md`](../20-requirements/requirements-browser-extension.md)
@@ -11,7 +11,7 @@
 ## 0. Current Status
 
 - **v1 baseline (historical):** Standalone browser comments, local storage, clipboard export. Documented for context.
-- **v2a (current):** Browser extension includes relay client/actions and SDK convergence. `accordo-browser` relay package exists and registers browser comment tools through Bridge. `VscodeRelayAdapter` is implemented (routes to `RelayBridgeClient.send()`) but `RelayBridgeClient` does not yet forward comment mutations to VS Code unified comment tools — see Priority P in workplan.
+- **v2a (current):** Browser extension includes relay client/actions and SDK convergence. `VscodeRelayAdapter` and `selectAdapter()` are implemented, and relay comment mutations are forwarded through unified `comment_*` tool paths (Priority P complete).
 - Historical v1-only statements are explicitly marked as baseline/history throughout this doc.
 
 ---
@@ -35,31 +35,24 @@ The extension is **invisible by default**. A keyboard shortcut (`Alt+Shift+C`) o
 ### Package Location
 
 ```
-packages/browser-extension/     Chrome Manifest V3 extension
+packages/browser-extension/        Chrome Manifest V3 extension
 ├── scripts/
-│   └── build.ts               esbuild config — produces 4 entry points
+│   └── build.ts                   esbuild config — builds service-worker/content-script/popup/shadow-tracker
 ├── src/
-│   ├── adapters/             CommentBackendAdapter implementations
-│   │   └── comment-backend.ts  (VscodeRelayAdapter, LocalStorageAdapter)
-│   ├── content/              Content script modules + comment UI
-│   │   ├── comment-ui.ts       (pin/popover rendering)
-│   │   ├── content-entry.ts    (esbuild entry for content-script.js IIFE)
-│   │   ├── content-styles.css  (extension CSS, merged with SDK CSS at build)
-│   │   ├── enhanced-anchor.ts  (strategy-prefixed anchor keys)
-│   │   ├── element-inspector.ts
-│   │   ├── message-handlers.ts
-│   │   ├── page-map-collector.ts
-│   │   ├── shadow-root-tracker.ts
-│   │   └── shadow-tracker-entry.ts (esbuild entry for shadow-tracker.js)
-│   ├── popup/
-│   │   └── popup.html
-│   ├── relay-bridge.ts        (WebSocket client → accordo-browser relay)
-│   ├── relay-*.ts             (relay action handlers)
-│   ├── service-worker.ts       (background entry)
-│   ├── store.ts               (chrome.storage.local CRUD)
+│   ├── service-worker.ts          service-worker entrypoint + bootstrap
+│   ├── sw-lifecycle.ts            listeners, relay wiring, periodic sync
+│   ├── sw-router.ts               runtime message router
+│   ├── sw-comment-sync.ts         hub/local merge + sync contract
+│   ├── adapters/comment-backend.ts
+│   ├── relay-bridge.ts            WebSocket bridge client to accordo-browser relay
+│   ├── relay-*.ts                 relay action definitions/handlers/router
+│   ├── content/                   content-side collectors, UI, anchor/snapshot helpers
+│   ├── popup.ts
+│   ├── popup/popup.html
 │   ├── mcp-handlers.ts
+│   ├── store.ts
 │   └── manifest.json
-└── dist/                      Build output
+└── dist/                          generated build output
 ```
 
 ---
@@ -68,7 +61,7 @@ packages/browser-extension/     Chrome Manifest V3 extension
 
 ### DD-01: Comments Mode Toggle (Invisible by Default)
 
-**Decision:** The extension is invisible by default. A keyboard shortcut (`Ctrl+Shift+A` / `Cmd+Shift+A`) or the extension toolbar button toggles "Comments Mode" on/off. Only while Comments Mode is active does the right-click context menu show "Add Comment" and are existing pins visible.
+**Decision:** The extension is invisible by default. A keyboard shortcut (`Alt+Shift+C`) or the extension toolbar button toggles "Comments Mode" on/off. Only while Comments Mode is active does the right-click Add Comment flow become available and existing pins are visible.
 
 **Rationale:** Chrome extensions that modify every page's right-click menu are intrusive. Users browse thousands of pages but comment on few. The toggle ensures zero interference with normal browsing. The extension icon badge shows an indicator when Comments Mode is active.
 
@@ -109,7 +102,7 @@ packages/browser-extension/     Chrome Manifest V3 extension
 │  Chrome Browser                                                       │
 │                                                                       │
 │  ┌──────────────────────────────────────────────────────────────────┐ │
-│  │  Background Service Worker  (background/service-worker.ts)        │ │
+│  │  Background Service Worker  (src/service-worker.ts + sw-lifecycle.ts) │ │
 │  │                                                                   │ │
 │  │  • Comments Mode state machine (OFF ↔ ON)                         │ │
 │  │  • Context menu lifecycle (create/remove "Add Comment" item)      │ │
@@ -123,7 +116,7 @@ packages/browser-extension/     Chrome Manifest V3 extension
 │               │ .sendMessage            │ .sendMessage                 │
 │  ┌────────────▼──────────────────┐  ┌───▼──────────────────────────┐  │
 │  │  Content Script               │  │  Popup UI                    │  │
-│  │  (content/content-script.ts)  │  │  (popup/popup.html+ts)       │  │
+│  │  (src/content/content-entry.ts)│ │  (src/popup/popup.html + popup.ts)│ │
 │  │                               │  │                              │  │
 │  │  • Pin renderer (inline CSS)  │  │  • Comment list for page     │  │
 │  │  • Popover renderer           │  │  • Export buttons (JSON/MD)  │  │
@@ -134,12 +127,12 @@ packages/browser-extension/     Chrome Manifest V3 extension
 │  └───────────────────────────────┘  └──────────────────────────────┘  │
 │                                                                       │
 │  ┌──────────────────────────────────────────────────────────────────┐ │
-│  │  MCP Handler Layer  (mcp/mcp-types.ts + mcp/mcp-handlers.ts)     │ │
+│  │  MCP Handler Layer  (src/mcp-handlers.ts + relay handlers)       │ │
 │  │                                                                   │ │
 │  │  • TypeScript types: McpToolRequest, McpToolResponse               │ │
 │  │  • get_screenshot: reads real screenshot from storage              │ │
 │  │  • get_comments: reads real comments from storage + applies filter │ │
-│  │  • Future: WebSocket relay client connects here (transport only)   │ │
+│  │  • Relay transport is active via `relay-bridge.ts`                 │ │
 │  └──────────────────────────────────────────────────────────────────┘ │
 │                                                                       │
 │  ┌──────────────────────────────────────────────────────────────────┐ │
@@ -153,8 +146,8 @@ packages/browser-extension/     Chrome Manifest V3 extension
 └──────────────────────────────────────────────────────────────────────┘
 
                     │
-                    │ Future v2: WebSocket to accordo-browser
-                    │ VSCode extension relay → Bridge → Hub
+                    │ Active path: WebSocket to accordo-browser
+                    │ VS Code extension relay → Bridge → Hub
                     ▼
 
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -177,7 +170,7 @@ packages/browser-extension/     Chrome Manifest V3 extension
                │   OFF    │ ──────────────────────────────────► │    ON    │
               │          │                                     │          │
               │ No pins  │ ◄────────────────────────────────── │ Pins     │
-              │ No menu  │    Ctrl+Shift+A / toolbar click     │ visible  │
+              │ No menu  │    Alt+Shift+C / toolbar click      │ visible  │
               │ No badge │                                     │ Menu     │
               └──────────┘                                     │ active   │
                                                                │ Badge    │
@@ -399,15 +392,13 @@ interface GetCommentsResult {
 ### 6.2 Handler Contract
 
 ```typescript
-// mcp/mcp-handlers.ts
+// src/mcp-handlers.ts
 
 /**
- * MCP handler functions. Fully implemented in v1 — read real data from
- * chrome.storage.local. What is "stubbed" is only the transport: no external
- * agent can call these yet (the WebSocket relay does not exist in v1).
+ * MCP handler functions read real data from chrome.storage.local and are
+ * invoked through current relay/runtime routing.
  *
- * In v2, a relay-client.ts module will forward incoming WebSocket messages
- * to these same handler functions — no logic changes required.
+ * Transport and routing can evolve independently without changing handler logic.
  */
 
 /** Handle get_screenshot tool call */
@@ -432,35 +423,22 @@ async function handleGetComments(
 }
 ```
 
-### 6.3 Future Relay Integration Path
+### 6.3 Relay Integration Path (current)
 
 ```
-v2 architecture (NOT built in v1):
-
-Chrome Extension                     accordo-browser VSCode ext
-     │                                         │
-     │ ← WebSocket ─────────────────────────── │
-     │   ws://localhost:3001/browser             │
-     │                                          │
-     │  MCP stub handlers                       │  BridgeAPI
-     │  (mcp-stubs.ts)                          │  .registerTools()
-     │     ↓                                    │     ↓
-     │  Forward tool calls ───────────────────► │  Route to Hub
-     │  via WebSocket                           │  via existing Bridge
-     │                                          │
-     │  Receive responses ◄──────────────────── │  Hub MCP response
-     │  via WebSocket                           │
-
-The MCP handler module has a clear integration seam:
-1. mcp-handlers.ts exports handler functions with typed signatures
-2. v1: handlers are called via service worker message router (mcp: namespace)
-3. v2 adds a WebSocket client module (relay-client.ts)
-4. relay-client.ts receives tool calls from the WebSocket and routes to the same handlers
-5. Handler logic is unchanged — they already read real data from storage
-6. Relay forwards responses back to accordo-browser VSCode ext → Bridge → Hub
-
-No type changes required. No handler logic changes. Only a transport module is added.
+Chrome Extension                          accordo-browser VS Code extension
+     │                                                │
+     │ ← WebSocket (RelayBridgeClient) ───────────── │
+     │                                                │
+     │ relay actions (`get_*`, `create_*`, etc.)     │ BridgeAPI.registerTools()
+     │     ↓                                          │     ↓
+     │ dispatch via relay handlers (`relay-*.ts`) ─► │ Route to Hub via Bridge
+     │                                                │
+     │ responses + sync notifications ◄───────────── │ Hub MCP response / tool result
 ```
+
+The browser-extension side keeps typed handlers in `mcp-handlers.ts` and relay action routing in `relay-actions.ts`/`relay-handlers.ts`.
+This separation keeps storage logic stable while transport/routing evolves.
 
 ---
 
@@ -538,91 +516,20 @@ No changes to comment storage, content script, or service worker.
 
 ---
 
-## 8. Module List
+## 8. Module List (current runtime)
 
-### M80-TYP — Shared Types
+> Historical v1 module naming (for example `src/background/*`, `src/mcp/*`, `pin-renderer.ts`) has been superseded.
+> The canonical live module inventory is tracked in `docs/module-map-browser-extension.md`.
 
-**File:** `src/types/comment-types.ts`  
-**Responsibility:** All TypeScript types for comments, threads, storage, export, and MCP stubs. No runtime code.  
-**Estimated LOC:** ~120  
-**Dependencies:** None  
-
-### M80-SM — Comments Mode State Machine
-
-**File:** `src/background/comments-mode.ts`  
-**Responsibility:** Manages the OFF ↔ ON state for Comments Mode. Creates/removes context menu items. Updates extension icon badge and title. Handles keyboard shortcut and toolbar toggle.  
-**Estimated LOC:** ~100  
-**Dependencies:** Chrome APIs (`chrome.contextMenus`, `chrome.action`, `chrome.commands`)  
-
-### M80-STORE — Comment Storage Manager
-
-**File:** `src/background/comment-store.ts`  
-**Responsibility:** CRUD operations on comments and threads in `chrome.storage.local`. Enforces soft-delete semantics. URL normalization. Provides filtered queries (active threads, all threads including deleted).  
-**Estimated LOC:** ~180  
-**Dependencies:** Chrome APIs (`chrome.storage.local`), M80-TYP  
-
-### M80-SW — Background Service Worker
-
-**File:** `src/background/service-worker.ts`  
-**Responsibility:** Entry point for the background context. Wires together Comments Mode, storage, context menu handlers, screenshot capture, message routing between content scripts and popup. Handles `chrome.runtime.onInstalled` for first-run setup.  
-**Estimated LOC:** ~150  
-**Dependencies:** M80-SM, M80-STORE, M80-SCREEN, M80-MCP, Chrome APIs  
-
-### M80-CS-PINS — Content Script: Pin Rendering & Positioning
-
-**File:** `src/content/pin-renderer.ts`  
-**Responsibility:** Injects pin markers into the DOM adjacent to anchored elements. Positions pins using element bounding rects. Repositions on scroll/resize via `requestAnimationFrame`. Monitors DOM mutations via `MutationObserver` to refresh pins on SPA navigation. Detects off-screen pins and reports count to service worker for badge update. Removes all pins when Comments Mode transitions to OFF.  
-**Estimated LOC:** ~130  
-**Dependencies:** M80-TYP, M80-STORE, M80-SM, M80-CSS, Chrome APIs (`chrome.runtime`)  
-
-### M80-CS-INPUT — Content Script: Comment Input & Popovers
-
-**File:** `src/content/comment-input.ts`  
-**Responsibility:** Shows inline comment input form when context menu "Add Comment" is triggered. Renders thread popover on pin click (all non-deleted comments, reply field, resolve/reopen button, per-comment delete button). Generates `anchorKey` from right-clicked element. Sends `create-comment`, `reply-comment`, `resolve-thread`, `reopen-thread`, `delete-comment` messages to service worker. Communicates with M80-CS-PINS to trigger pin creation/update after mutations.  
-**Estimated LOC:** ~150  
-**Dependencies:** M80-TYP, M80-STORE, M80-SM, M80-CS-PINS, M80-CSS, Chrome APIs (`chrome.runtime`)  
-
-### M80-CSS — Content Script Styles
-
-**File:** `src/content/content-styles.css`  
-**Responsibility:** All CSS for pins, popovers, input forms, and the overlay container. Uses browser-native styling with `prefers-color-scheme` for light/dark. No `--vscode-*` variables.  
-**Estimated LOC:** ~200 (CSS)  
-**Dependencies:** None  
-
-### M80-EXPORT — Export Layer
-
-**File:** `src/content/export.ts`  
-**Responsibility:** `Exporter` interface, `ClipboardExporter` implementation, Markdown/JSON formatters, export payload builder. Called from popup UI.  
-**Estimated LOC:** ~120  
-**Dependencies:** M80-TYP  
-
-### M80-SCREEN — Screenshot Capture
-
-**File:** `src/background/screenshot.ts`  
-**Responsibility:** Captures visible tab screenshot via `chrome.tabs.captureVisibleTab()`. Stores in `chrome.storage.local` keyed by normalized URL. Retrieves stored screenshots for MCP stub.  
-**Estimated LOC:** ~60  
-**Dependencies:** Chrome APIs (`chrome.tabs`), M80-TYP  
-
-### M80-MCP — MCP Handler Layer
-
-**File:** `src/mcp/mcp-types.ts` + `src/mcp/mcp-handlers.ts`  
-**Responsibility:** TypeScript type definitions for `get_screenshot` and `get_comments` MCP tools. Fully implemented handler functions that read real data from `chrome.storage.local` — screenshots via M80-SCREEN, comments via M80-STORE. Returns data in the `McpToolResponse` shape. What is stubbed is only the transport: no external agent can invoke these handlers in v1. Clear integration seam for v2 relay (add `relay-client.ts`, wire to same handlers).  
-**Estimated LOC:** ~100 (types: ~60, handlers: ~40)  
-**Dependencies:** M80-TYP, M80-STORE, M80-SCREEN  
-
-### M80-POP — Popup UI
-
-**File:** `src/popup/popup.html` + `src/popup/popup.ts`  
-**Responsibility:** Extension action popup. Shows comment list for the current page. Export buttons (Markdown to clipboard, JSON to clipboard). Comments Mode toggle. Off-screen comment count. Settings (user name, future relay config).  
-**Estimated LOC:** ~180 (HTML: ~50, TS: ~130)  
-**Dependencies:** M80-TYP, M80-EXPORT, Chrome APIs  
-
-### M80-MANIFEST — Chrome Manifest & Build
-
-**File:** `manifest.json` + `esbuild.config.ts`  
-**Responsibility:** Manifest V3 declaration (permissions, content scripts, service worker, commands). Build configuration for esbuild (3 entry points: service-worker, content-script, popup).  
-**Estimated LOC:** ~60 (manifest: ~40, build: ~20)  
-**Dependencies:** None  
+| Area | Current files | Responsibility |
+|---|---|---|
+| Service-worker orchestration | `src/service-worker.ts`, `src/sw-lifecycle.ts`, `src/sw-router.ts`, `src/sw-comment-sync.ts` | bootstrap, listeners, relay sync, mutation broadcast parity |
+| Relay transport + dispatch | `src/relay-bridge.ts`, `src/relay-actions.ts`, `src/relay-definitions.ts`, `src/relay-handlers.ts`, `src/relay-*.ts` | WS transport, action routing, typed request/response contracts |
+| Adapter boundary | `src/adapters/comment-backend.ts` | `selectAdapter()` and backend selection between relay/local paths |
+| Content runtime | `src/content/comment-ui.ts`, `src/content/sdk-convergence.ts`, collectors/anchor helpers in `src/content/*` | in-page UI, anchor resolution, page-understanding data extraction |
+| Popup | `src/popup.ts`, `src/popup/popup.html` | user controls, pairing UX, export and mode toggles |
+| Storage + snapshots | `src/store.ts`, `src/snapshot-store.ts`, `src/snapshot-versioning.ts`, `src/screenshot.ts` | comment/screenshot persistence and snapshot lifecycle |
+| Manifest/build | `src/manifest.json`, `scripts/build.ts` | MV3 declaration + 4-entry build output (`service-worker.js`, `content-script.js`, `popup.js`, `shadow-tracker.js`) |
 
 ---
 
@@ -830,7 +737,7 @@ Session 14 migrates browser comments from a browser-specific public tool family 
 
 1. **Unified public MCP tools**
    - Browser operations are invoked via `accordo_comment_*` with `scope.modality = "browser"`.
-   - `accordo_browser_*` tools remain temporary compatibility aliases only during migration.
+   - Browser-specific comment CRUD aliases are no longer the canonical public path.
 
 2. **Panel unification**
    - Browser threads are projected into the same comments panel dataset used by text/diagram/slide/preview.
@@ -852,7 +759,7 @@ Session 14 migrates browser comments from a browser-specific public tool family 
 |---|---|---|
 | `chrome.storage.local` quota (10MB) exceeded by screenshots | Medium | JPEG quality at 0.7; store only latest screenshot per URL; warn at 8MB and auto-purge oldest |
 | Content script CSS conflicts with host page styles | Medium | All CSS classes prefixed with `accordo-`; use `all: initial` on root container; high z-index (2147483646) |
-| Context menu "Add Comment" conflicts with other extensions | Low | Chrome handles menu item ordering; our item is namespaced under extension name |
+| In-page Add Comment affordance conflicts with host-page overlays | Low | Affordance is only enabled in Comments Mode and uses `accordo-*` namespaced classes/high z-index layering |
 | Service worker terminated by Chrome (MV3 lifecycle) | High | All state in `chrome.storage.local` (not in worker memory); worker re-initializes from storage on wake |
 | Anchor keys invalid after DOM mutation (SPA navigation) | High | v1 anchors are session-scoped; document this limitation; MutationObserver refreshes pins on DOM change |
 | Screenshot capture requires `activeTab` permission | Low | Already declared in manifest; user grants on install |
@@ -862,7 +769,7 @@ Session 14 migrates browser comments from a browser-specific public tool family 
 
 ## 14. Assumptions
 
-1. **Chrome 120+** — Manifest V3 service worker, `chrome.storage.local`, `chrome.contextMenus`, `chrome.tabs.captureVisibleTab` are all stable.
+1. **Chrome 120+** — Manifest V3 service worker, `chrome.storage.local`, `chrome.commands`, and `chrome.tabs.captureVisibleTab` are all stable.
 2. **Single user per browser profile** — No multi-user conflict resolution needed.
 3. **Pages are HTTP/HTTPS** — `chrome://`, `file://`, and extension pages are excluded from content script injection.
 4. **English UI only** in v1 — Internationalization deferred.
