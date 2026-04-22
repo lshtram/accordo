@@ -89,6 +89,18 @@ describe("handleType — uid resolution", () => {
     expect(response.success).toBe(false);
     expect(response.error).toBe("element-not-found");
   });
+
+  it("REQ-TC-011: returns element-not-focusable error when target cannot receive text", async () => {
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      error: "not-focusable",
+    });
+
+    const request = makeRequest({ tabId: 1, text: "hello", uid: "non-focusable-target" });
+    const response = await handleType(request);
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("element-not-focusable");
+  });
 });
 
 describe("handleType — selector resolution", () => {

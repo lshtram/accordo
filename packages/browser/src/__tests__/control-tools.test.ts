@@ -371,6 +371,19 @@ describe("handleNavigate — REQ-TC-001..004", () => {
     );
   });
 
+  it("REQ-TC-004: forwards timeout to the navigate relay action", async () => {
+    const relay = makeRelayResolve<NavigateResponse>({ success: true, url: "https://example.com" });
+    await expectHandle(
+      () => handleNavigate(relay, { type: "url", url: "https://example.com", timeout: 2500 }),
+      "REQ-TC-004"
+    );
+    expect(relay.request).toHaveBeenCalledWith(
+      "navigate",
+      expect.objectContaining({ type: "url", url: "https://example.com", timeout: 2500 }),
+      expect.any(Number)
+    );
+  });
+
   it("REQ-TC-004: relay timeout is NAVIGATE_RELAY_TIMEOUT_MS for URL navigation", async () => {
     const relay = makeRelayResolve<NavigateResponse>({ success: true, url: "https://example.com" });
     await expectHandle(

@@ -489,11 +489,58 @@ describe("handleNavigate — back/forward edge cases", () => {
       return {};
     });
 
-    const request = makeRequest({ tabId: 1, type: "back" });
+    const request = makeRequest({ tabId: 1, type: "back", timeout: 250 });
     const navigatePromise = handleNavigate(request);
 
-    // Advance time past the 10-second waiter timeout
-    await vi.advanceTimersByTimeAsync(11000);
+    // Advance time past the explicit short waiter timeout
+    await vi.advanceTimersByTimeAsync(300);
+    const response = await navigatePromise;
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("action-failed");
+    vi.useRealTimers();
+  });
+
+  it("honors custom timeout for type:back waiters", async () => {
+    vi.useFakeTimers();
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (_target, method) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.getNavigationHistory") {
+        return { currentIndex: 1, entries: [{ id: 10 }, { id: 20 }] };
+      }
+      if (method === "Page.navigateToHistoryEntry") {
+        return undefined;
+      }
+      return {};
+    });
+
+    const request = makeRequest({ tabId: 1, type: "back", timeout: 250 });
+    const navigatePromise = handleNavigate(request);
+
+    await vi.advanceTimersByTimeAsync(300);
+    const response = await navigatePromise;
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("action-failed");
+    vi.useRealTimers();
+  });
+
+  it("honors custom timeout for type:url lifecycle waiters", async () => {
+    vi.useFakeTimers();
+    const mockSendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    mockSendCommand.mockImplementation(async (_target, method) => {
+      if (method === "Page.enable") return undefined;
+      if (method === "Page.setLifecycleEventsEnabled") return undefined;
+      if (method === "Page.getFrameTree") return { frameTree: { frame: { id: "main-frame", title: "Example" } } };
+      if (method === "Page.navigate") return {};
+      return {};
+    });
+
+    const request = makeRequest({ tabId: 1, type: "url", url: "https://example.com/slow", timeout: 250 });
+    const navigatePromise = handleNavigate(request);
+
+    await vi.advanceTimersByTimeAsync(300);
     const response = await navigatePromise;
 
     expect(response.success).toBe(false);
@@ -517,7 +564,7 @@ describe("handleNavigate — back/forward edge cases", () => {
       return {};
     });
 
-    const request = makeRequest({ tabId: 1, type: "back" });
+    const request = makeRequest({ tabId: 1, type: "back", timeout: 1000 });
     const navigatePromise = handleNavigate(request);
 
     // Step 1: Fire wrong-tab event — waiter should NOT resolve (filtered by tabId)
@@ -569,11 +616,11 @@ describe("handleNavigate — back/forward edge cases", () => {
       return {};
     });
 
-    const request = makeRequest({ tabId: 1, type: "back" });
+    const request = makeRequest({ tabId: 1, type: "back", timeout: 250 });
     const navigatePromise = handleNavigate(request);
 
-    // Advance time past the 10-second waiter timeout
-    await vi.advanceTimersByTimeAsync(11000);
+    // Advance time past the explicit short waiter timeout
+    await vi.advanceTimersByTimeAsync(300);
     const response = await navigatePromise;
 
     expect(response.success).toBe(false);

@@ -123,6 +123,17 @@ async function typeInElement(
 }
 
 type WaitUntil = "load" | "domcontentloaded" | "networkidle";
+const NAVIGATE_DEFAULT_TIMEOUT_MS = 15_000;
+const NAVIGATE_MAX_TIMEOUT_MS = 30_000;
+
+function getNavigateTimeoutMs(payload: Record<string, unknown>): number {
+  const requested = payload.timeout;
+  if (typeof requested !== "number" || !Number.isFinite(requested)) {
+    return NAVIGATE_DEFAULT_TIMEOUT_MS;
+  }
+
+  return Math.min(Math.max(0, requested), NAVIGATE_MAX_TIMEOUT_MS);
+}
 
 export function toLifecycleEventName(waitUntil: WaitUntil): string {
   switch (waitUntil) {
@@ -140,7 +151,7 @@ export function toLifecycleEventName(waitUntil: WaitUntil): string {
  * Wait for Page.frameNavigated (used for back/forward where cached pages
  * don't fire lifecycle events like DOMContentLoaded).
  */
-function createFrameNavigatedWaiter(tabId: number): { promise: Promise<void>; cancel: () => void } {
+function createFrameNavigatedWaiter(tabId: number, timeoutMs: number): { promise: Promise<void>; cancel: () => void } {
   let settled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -170,7 +181,7 @@ function createFrameNavigatedWaiter(tabId: number): { promise: Promise<void>; ca
       settled = true;
       chrome.debugger.onEvent.removeListener(listener);
       reject(new Error("Page.frameNavigated timed out"));
-    }, 10000);
+    }, timeoutMs);
 
     chrome.debugger.onEvent.addListener(listener);
   });
@@ -190,7 +201,7 @@ function createFrameNavigatedWaiter(tabId: number): { promise: Promise<void>; ca
  * Wait for a Page.lifecycleEvent with the given name, for the main frame only.
  * @param mainFrameId - The frameId of the main frame, used to filter out iframe events.
  */
-function createLifecycleWaiter(tabId: number, eventName: string, mainFrameId: string): { promise: Promise<void>; cancel: () => void } {
+function createLifecycleWaiter(tabId: number, eventName: string, mainFrameId: string, timeoutMs: number): { promise: Promise<void>; cancel: () => void } {
   let settled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -223,7 +234,7 @@ function createLifecycleWaiter(tabId: number, eventName: string, mainFrameId: st
       settled = true;
       chrome.debugger.onEvent.removeListener(listener);
       reject(new Error(`waitUntil ${eventName} timed out`));
-    }, 30000);
+    }, timeoutMs);
 
     chrome.debugger.onEvent.addListener(listener);
   });
@@ -261,6 +272,7 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
     const type = (payload.type as string) || "url";
     const waitUntil = (payload.waitUntil as WaitUntil) || "domcontentloaded";
     const eventName = toLifecycleEventName(waitUntil);
+    const timeoutMs = getNavigateTimeoutMs(payload);
 
     if (type === "url") {
       const url = payload.url as string;
@@ -273,7 +285,7 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
       if (!mainFrameId) {
         return actionFailed(request, "action-failed");
       }
-      const lifecycle = createLifecycleWaiter(tabId, eventName, mainFrameId);
+      const lifecycle = createLifecycleWaiter(tabId, eventName, mainFrameId, timeoutMs);
       try {
         await sendCommand(tabId, "Page.navigate", { url });
         await lifecycle.promise;
@@ -289,7 +301,7 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
       if (!history || history.currentIndex <= 0) {
         return actionFailed(request, "action-failed");
       }
-      const waiter = createFrameNavigatedWaiter(tabId);
+      const waiter = createFrameNavigatedWaiter(tabId, timeoutMs);
       try {
         await sendCommand(tabId, "Page.navigateToHistoryEntry", {
           entryId: history.entries[history.currentIndex - 1].id,
@@ -307,7 +319,7 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
       if (!history || history.currentIndex >= history.entries.length - 1) {
         return actionFailed(request, "action-failed");
       }
-      const waiter = createFrameNavigatedWaiter(tabId);
+      const waiter = createFrameNavigatedWaiter(tabId, timeoutMs);
       try {
         await sendCommand(tabId, "Page.navigateToHistoryEntry", {
           entryId: history.entries[history.currentIndex + 1].id,
@@ -324,7 +336,7 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
       if (!mainFrameId) {
         return actionFailed(request, "action-failed");
       }
-      const lifecycle = createLifecycleWaiter(tabId, eventName, mainFrameId);
+      const lifecycle = createLifecycleWaiter(tabId, eventName, mainFrameId, timeoutMs);
       try {
         await sendCommand(tabId, "Page.reload");
         await lifecycle.promise;

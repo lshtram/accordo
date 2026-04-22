@@ -86,6 +86,7 @@ export interface RelayActionResponse {
     | "tab-not-found"
     | "unsupported-page"
     | "element-not-found"
+    | "element-not-focusable"
     | "element-off-screen"
     | "iframe-cross-origin"
     | "no-content-script"
