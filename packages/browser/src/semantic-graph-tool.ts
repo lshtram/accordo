@@ -369,6 +369,9 @@ async function handleGetSemanticGraph(
     if (args.piercesShadow !== undefined) payload["piercesShadow"] = args.piercesShadow;
     if (args.tabId !== undefined) payload["tabId"] = args.tabId;
     if (args.frameId !== undefined) payload["frameId"] = args.frameId;
+    if (args.redactPII !== undefined) payload["redactPII"] = args.redactPII;
+    if (args.allowedOrigins !== undefined) payload["allowedOrigins"] = args.allowedOrigins;
+    if (args.deniedOrigins !== undefined) payload["deniedOrigins"] = args.deniedOrigins;
 
     const response = await relay.request(
       "get_semantic_graph",

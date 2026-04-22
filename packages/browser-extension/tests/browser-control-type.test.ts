@@ -325,4 +325,28 @@ describe("handleType — element focus", () => {
       { frameId: 0 }
     );
   });
+
+  it("REQ-TC-009: routes iframe-scoped uid typing to the resolved child frame", async () => {
+    (globalThis.chrome.webNavigation.getAllFrames as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com" },
+      { frameId: 7, parentFrameId: 0, url: "https://example.com/frame" },
+    ]);
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: {
+          iframes: [{ frameId: "comments-frame", src: "https://example.com/frame", sameOrigin: true }],
+        },
+      })
+      .mockResolvedValueOnce({ typed: true });
+
+    const request = makeRequest({ tabId: 1, text: "hello", uid: "comments-frame:5" });
+    await handleType(request);
+
+    expect(globalThis.chrome.tabs.sendMessage).toHaveBeenNthCalledWith(
+      2,
+      1,
+      expect.objectContaining({ type: "TYPE_IN_ELEMENT", uid: "comments-frame:5", text: "hello" }),
+      { frameId: 7 }
+    );
+  });
 });

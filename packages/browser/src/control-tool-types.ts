@@ -62,7 +62,7 @@ export interface NavigateResponse {
   title?: string;
   /** GAP-A1: document.readyState at the time of the response */
   readyState?: "loading" | "interactive" | "complete";
-  error?: "control-not-granted" | "invalid-url" | "navigation-failed" | "timeout" | "browser-not-connected";
+  error?: "control-not-granted" | "tab-not-found" | "unsupported-page" | "invalid-request" | "invalid-url" | "navigation-failed" | "timeout" | "browser-not-connected" | "action-failed";
 }
 
 // ── browser_click ─────────────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ export interface ClickResponse {
   success: boolean;
   /** What was clicked (uid, selector, or coordinates) */
   target?: string;
-  error?: "control-not-granted" | "element-not-found" | "element-off-screen" | "no-target" | "browser-not-connected" | "timeout" | "action-failed";
+  error?: "control-not-granted" | "tab-not-found" | "element-not-found" | "element-off-screen" | "no-target" | "browser-not-connected" | "timeout" | "action-failed";
 }
 
 // ── browser_type ─────────────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ export interface TypeArgs {
  */
 export interface TypeResponse {
   success: boolean;
-  error?: "control-not-granted" | "element-not-found" | "element-not-focusable" | "no-target" | "browser-not-connected" | "timeout" | "action-failed";
+  error?: "control-not-granted" | "tab-not-found" | "element-not-found" | "element-not-focusable" | "no-target" | "browser-not-connected" | "timeout" | "action-failed" | "invalid-request";
 }
 
 // ── browser_press_key ────────────────────────────────────────────────────────
@@ -152,7 +152,72 @@ export interface PressKeyResponse {
   success: boolean;
   /** The key that was pressed (echoed back) */
   key?: string;
-  error?: "control-not-granted" | "invalid-key" | "browser-not-connected" | "timeout" | "action-failed";
+  error?: "control-not-granted" | "tab-not-found" | "invalid-key" | "browser-not-connected" | "timeout" | "action-failed" | "invalid-request";
+}
+
+function mapNavigateError(error: unknown): NavigateResponse["error"] {
+  switch (error) {
+    case "control-not-granted":
+    case "tab-not-found":
+    case "unsupported-page":
+    case "invalid-request":
+    case "timeout":
+    case "browser-not-connected":
+    case "action-failed":
+      return error;
+    default:
+      return "navigation-failed";
+  }
+}
+
+function mapClickError(error: unknown): ClickResponse["error"] {
+  switch (error) {
+    case "control-not-granted":
+    case "tab-not-found":
+    case "element-not-found":
+    case "element-off-screen":
+    case "no-target":
+    case "browser-not-connected":
+    case "timeout":
+    case "action-failed":
+      return error;
+    case "invalid-request":
+      return "no-target";
+    default:
+      return "action-failed";
+  }
+}
+
+function mapTypeError(error: unknown): TypeResponse["error"] {
+  switch (error) {
+    case "control-not-granted":
+    case "tab-not-found":
+    case "element-not-found":
+    case "element-not-focusable":
+    case "no-target":
+    case "browser-not-connected":
+    case "timeout":
+    case "action-failed":
+    case "invalid-request":
+      return error;
+    default:
+      return "action-failed";
+  }
+}
+
+function mapPressKeyError(error: unknown): PressKeyResponse["error"] {
+  switch (error) {
+    case "control-not-granted":
+    case "tab-not-found":
+    case "invalid-key":
+    case "browser-not-connected":
+    case "timeout":
+    case "action-failed":
+    case "invalid-request":
+      return error;
+    default:
+      return "action-failed";
+  }
 }
 
 // ── Tool Handlers ─────────────────────────────────────────────────────────────
@@ -182,9 +247,9 @@ export async function handleNavigate(
         readyState: d.readyState as NavigateResponse["readyState"],
       };
     }
-    return { success: false, error: (response.error as NavigateResponse["error"]) ?? "navigation-failed" };
+    return { success: false, error: mapNavigateError(response.error) };
   } catch (err: unknown) {
-    return { success: false, error: classifyRelayError(err) };
+    return { success: false, error: mapNavigateError(classifyRelayError(err)) };
   }
 }
 
@@ -209,9 +274,9 @@ export async function handleClick(
     if (response.success) {
       return { success: true, target: args.uid ?? args.selector ?? (args.coordinates ? `${args.coordinates.x},${args.coordinates.y}` : undefined) };
     }
-    return { success: false, error: (response.error as ClickResponse["error"]) ?? "action-failed" };
+    return { success: false, error: mapClickError(response.error) };
   } catch (err: unknown) {
-    return { success: false, error: classifyRelayError(err) };
+    return { success: false, error: mapClickError(classifyRelayError(err)) };
   }
 }
 
@@ -234,9 +299,9 @@ export async function handleType(
     if (response.success) {
       return { success: true };
     }
-    return { success: false, error: (response.error as TypeResponse["error"]) ?? "action-failed" };
+    return { success: false, error: mapTypeError(response.error) };
   } catch (err: unknown) {
-    return { success: false, error: classifyRelayError(err) };
+    return { success: false, error: mapTypeError(classifyRelayError(err)) };
   }
 }
 
@@ -255,9 +320,9 @@ export async function handlePressKey(
     if (response.success) {
       return { success: true, key: args.key };
     }
-    return { success: false, error: (response.error as PressKeyResponse["error"]) ?? "action-failed" };
+    return { success: false, error: mapPressKeyError(response.error) };
   } catch (err: unknown) {
-    return { success: false, error: classifyRelayError(err) };
+    return { success: false, error: mapPressKeyError(classifyRelayError(err)) };
   }
 }
 

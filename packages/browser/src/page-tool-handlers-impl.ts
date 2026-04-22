@@ -821,6 +821,9 @@ export async function handleGetSemanticGraphInline(
     if (args.visibleOnly !== undefined) payload["visibleOnly"] = args.visibleOnly;
     if (args.piercesShadow !== undefined) payload["piercesShadow"] = args.piercesShadow;
     if (args.frameId !== undefined) payload["frameId"] = args.frameId;
+    if (args.allowedOrigins !== undefined) payload["allowedOrigins"] = args.allowedOrigins;
+    if (args.deniedOrigins !== undefined) payload["deniedOrigins"] = args.deniedOrigins;
+    if (args.redactPII !== undefined) payload["redactPII"] = args.redactPII;
 
     const response = await relay.request("get_semantic_graph", payload, SEMANTIC_GRAPH_TIMEOUT_MS);
     if (!response.success || response.data === undefined) {

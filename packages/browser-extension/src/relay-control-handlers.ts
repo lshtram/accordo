@@ -30,11 +30,12 @@ import { actionFailed } from "./relay-definitions.js";
 import { hasPermission } from "./control-permission.js";
 import { ensureAttached, sendCommand } from "./debugger-manager.js";
 import { KeyCodeMap, parseKeyCombination, MODIFIER_ALT, MODIFIER_CONTROL, MODIFIER_META, MODIFIER_SHIFT } from "./key-code-map.js";
+import { NO_CONTENT_SCRIPT, forwardToMainFrame } from "./relay-forwarder.js";
 
 /**
  * Resolve target tabId from payload, defaulting to active tab.
  */
-async function resolveTargetTabId(payload: Record<string, unknown>): Promise<number> {
+async function resolveTargetTabId(payload: Record<string, unknown>): Promise<number | undefined> {
   if (typeof payload.tabId === "number") {
     return payload.tabId;
   }
@@ -43,7 +44,7 @@ async function resolveTargetTabId(payload: Record<string, unknown>): Promise<num
   if (tabs[0]?.id !== undefined) {
     return tabs[0].id;
   }
-  return 1; // fallback
+  return undefined;
 }
 
 /**
@@ -66,6 +67,7 @@ async function tabExists(tabId: number): Promise<boolean> {
  */
 async function resolveElementCoords(
   tabId: number,
+  frameId: number,
   uid?: string,
   selector?: string
 ): Promise<{ x: number; y: number; bounds: { x: number; y: number; width: number; height: number }; inViewport: boolean } | { error: string }> {
@@ -73,12 +75,13 @@ async function resolveElementCoords(
     type: "RESOLVE_ELEMENT_COORDS",
     uid,
     selector,
-  }, { frameId: 0 });
+  }, { frameId });
   return response as { x: number; y: number; bounds: { x: number; y: number; width: number; height: number }; inViewport: boolean } | { error: string };
 }
 
 async function focusElement(
   tabId: number,
+  frameId: number,
   uid?: string,
   selector?: string,
   clearFirst?: boolean,
@@ -88,12 +91,13 @@ async function focusElement(
     uid,
     selector,
     clearFirst,
-  }, { frameId: 0 });
+  }, { frameId });
   return response as { focused: boolean } | { error: string };
 }
 
 async function scrollElementIntoView(
   tabId: number,
+  frameId: number,
   uid?: string,
   selector?: string,
 ): Promise<{ scrolled: true } | { error: string }> {
@@ -101,12 +105,13 @@ async function scrollElementIntoView(
     type: "SCROLL_ELEMENT_INTO_VIEW",
     uid,
     selector,
-  }, { frameId: 0 });
+  }, { frameId });
   return response as { scrolled: true } | { error: string };
 }
 
 async function typeInElement(
   tabId: number,
+  frameId: number,
   text: string,
   uid?: string,
   selector?: string,
@@ -118,8 +123,85 @@ async function typeInElement(
     selector,
     text,
     clearFirst,
-  }, { frameId: 0 });
+  }, { frameId });
   return response as { typed: true } | { error: string };
+}
+
+function parseUidFrameKey(uid?: string): string | undefined {
+  if (!uid) return undefined;
+  const colonIdx = uid.indexOf(":");
+  if (colonIdx <= 0) return undefined;
+  return uid.slice(0, colonIdx);
+}
+
+async function resolveNumericChildFrameId(
+  tabId: number,
+  iframe: Record<string, unknown>,
+): Promise<number | null> {
+  const frames = await chrome.webNavigation.getAllFrames({ tabId }).catch(() => []);
+  if (!Array.isArray(frames) || frames.length === 0) {
+    return null;
+  }
+
+  const childFrames = frames.filter((frame) => frame.frameId !== 0 && frame.parentFrameId === 0);
+  const iframeSrc = typeof iframe.src === "string" ? iframe.src : "";
+  const inheritedOriginFrame = iframeSrc === "" || iframeSrc === "about:blank" || iframeSrc.startsWith("about:srcdoc");
+
+  let matchingFrame: chrome.webNavigation.GetAllFrameResultDetails | undefined;
+
+  if (!inheritedOriginFrame && iframeSrc.length > 0) {
+    const exactMatches = childFrames.filter((frame) => frame.url === iframeSrc);
+    if (exactMatches.length === 1) {
+      matchingFrame = exactMatches[0];
+    }
+  }
+
+  if (!matchingFrame && inheritedOriginFrame) {
+    const inheritedCandidates = childFrames.filter((frame) => {
+      if (!frame.url) return false;
+      return frame.url === "about:blank" || frame.url === "";
+    });
+    if (inheritedCandidates.length === 1) {
+      matchingFrame = inheritedCandidates[0];
+    }
+  }
+
+  if (!matchingFrame && iframeSrc.length > 0) {
+    const sameOriginCandidates = childFrames.filter((frame) => {
+      if (!frame.url) return false;
+      try {
+        return new URL(frame.url).origin === new URL(iframeSrc).origin;
+      } catch {
+        return false;
+      }
+    });
+    if (sameOriginCandidates.length === 1) {
+      matchingFrame = sameOriginCandidates[0];
+    }
+  }
+
+  return matchingFrame?.frameId ?? null;
+}
+
+async function resolveControlFrameId(tabId: number, uid?: string): Promise<number | null> {
+  const frameKey = parseUidFrameKey(uid);
+  if (!frameKey || frameKey === "main") {
+    return 0;
+  }
+
+  const pageMapData = await forwardToMainFrame(tabId, "get_page_map", { traverseFrames: true });
+  if (pageMapData === NO_CONTENT_SCRIPT || pageMapData === null) {
+    return null;
+  }
+
+  const pageMap = pageMapData as Record<string, unknown>;
+  const iframes = Array.isArray(pageMap.iframes) ? pageMap.iframes as Array<Record<string, unknown>> : [];
+  const iframe = iframes.find((entry) => entry.frameId === frameKey);
+  if (!iframe || iframe.sameOrigin === false) {
+    return null;
+  }
+
+  return resolveNumericChildFrameId(tabId, iframe);
 }
 
 type WaitUntil = "load" | "domcontentloaded" | "networkidle";
@@ -255,6 +337,9 @@ export async function handleNavigate(request: RelayActionRequest): Promise<Relay
 
   try {
     const tabId = await resolveTargetTabId(payload);
+    if (tabId === undefined) {
+      return actionFailed(request);
+    }
 
     // REQ-TC-017: when caller explicitly provides a tabId, verify the tab exists
     if (typeof payload.tabId === "number" && !(await tabExists(tabId))) {
@@ -384,6 +469,9 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
 
   try {
     const tabId = await resolveTargetTabId(payload);
+    if (tabId === undefined) {
+      return actionFailed(request);
+    }
 
     // REQ-TC-017: when caller explicitly provides a tabId, verify the tab exists
     if (typeof payload.tabId === "number" && !(await tabExists(tabId))) {
@@ -402,10 +490,14 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
 
     const uid = payload.uid as string | undefined;
     const selector = payload.selector as string | undefined;
+    const frameId = await resolveControlFrameId(tabId, uid);
+    if (frameId === null) {
+      return actionFailed(request, "action-failed");
+    }
 
     // Prefer element targets when both an element handle and explicit coordinates are present.
     if (uid || selector) {
-      const coords = await resolveElementCoords(tabId, uid, selector);
+      const coords = await resolveElementCoords(tabId, frameId, uid, selector);
 
       if ("error" in coords) {
         if (coords.error === "not-found" || coords.error === "zero-size") {
@@ -419,7 +511,7 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
 
       // Scroll into view if needed
       if (!coords.inViewport) {
-        const scrollResult = await scrollElementIntoView(tabId, uid, selector);
+        const scrollResult = await scrollElementIntoView(tabId, frameId, uid, selector);
         if ("error" in scrollResult) {
           if (scrollResult.error === "not-found" || scrollResult.error === "zero-size") {
             return actionFailed(request, "element-not-found");
@@ -427,7 +519,7 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
           return actionFailed(request, "action-failed");
         }
 
-        const updatedCoords = await resolveElementCoords(tabId, uid, selector);
+        const updatedCoords = await resolveElementCoords(tabId, frameId, uid, selector);
         if ("error" in updatedCoords) {
           if (updatedCoords.error === "not-found" || updatedCoords.error === "zero-size") {
             return actionFailed(request, "element-not-found");
@@ -477,6 +569,9 @@ export async function handleType(request: RelayActionRequest): Promise<RelayActi
 
   try {
     const tabId = await resolveTargetTabId(payload);
+    if (tabId === undefined) {
+      return actionFailed(request);
+    }
 
     // REQ-TC-017: when caller explicitly provides a tabId, verify the tab exists
     if (typeof payload.tabId === "number" && !(await tabExists(tabId))) {
@@ -498,10 +593,14 @@ export async function handleType(request: RelayActionRequest): Promise<RelayActi
     // Resolve element
     const uid = payload.uid as string | undefined;
     const selector = payload.selector as string | undefined;
+    const frameId = await resolveControlFrameId(tabId, uid);
+    if (frameId === null) {
+      return actionFailed(request, "action-failed");
+    }
 
     const clearFirst = payload.clearFirst === true;
     if (uid || selector) {
-      const typeResult = await typeInElement(tabId, text, uid, selector, clearFirst);
+      const typeResult = await typeInElement(tabId, frameId, text, uid, selector, clearFirst);
       if ("error" in typeResult) {
         if (typeResult.error === "not-found" || typeResult.error === "zero-size") {
           return actionFailed(request, "element-not-found");
@@ -550,6 +649,9 @@ export async function handlePressKey(request: RelayActionRequest): Promise<Relay
 
   try {
     const tabId = await resolveTargetTabId(payload);
+    if (tabId === undefined) {
+      return actionFailed(request);
+    }
 
     // REQ-TC-017: when caller explicitly provides a tabId, verify the tab exists
     if (typeof payload.tabId === "number" && !(await tabExists(tabId))) {

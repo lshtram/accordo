@@ -218,6 +218,11 @@ describe("MCP-SEC-002 + MCP-SEC-005: redactPII parameter on get_semantic_graph",
 
     if ("success" in result && !result.success) return;
     expect(result).toHaveProperty("redactionApplied");
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_semantic_graph",
+      expect.objectContaining({ redactPII: true }),
+      expect.any(Number)
+    );
   });
 
   it("MCP-SEC-005: get_semantic_graph without redactPII includes redactionWarning", async () => {
@@ -233,6 +238,31 @@ describe("MCP-SEC-002 + MCP-SEC-005: redactPII parameter on get_semantic_graph",
     if ("success" in result && !result.success) return;
     expect(result).toHaveProperty("redactionWarning");
     expect(result.redactionWarning).toContain("PII");
+  });
+});
+
+describe("MCP-SEC-001: origin policy passthrough on get_semantic_graph", () => {
+  it("forwards allowedOrigins and deniedOrigins to the relay request", async () => {
+    const relay = createMockRelay({
+      response: { success: true, requestId: "test", data: MOCK_SEMANTIC_GRAPH_WITH_PII },
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tool = buildSemanticGraphTool(relay, store, security);
+
+    await (tool.handler as any)({
+      allowedOrigins: ["https://example.com"],
+      deniedOrigins: ["https://blocked.example.com"],
+    });
+
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_semantic_graph",
+      expect.objectContaining({
+        allowedOrigins: ["https://example.com"],
+        deniedOrigins: ["https://blocked.example.com"],
+      }),
+      expect.any(Number)
+    );
   });
 });
 

@@ -206,6 +206,46 @@ describe("REQ-TC-017: tab-not-found error when explicit tabId is invalid", () =>
       expect(response.error).not.toBe("tab-not-found");
       expect(response.error).toBe("control-not-granted");
     });
+
+    it("returns action-failed when no active tab is available for implicit navigation", async () => {
+      (globalThis.chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+      const request = makeRequest("navigate", { url: "https://example.com/new" });
+      const response = await handleNavigate(request);
+
+      expect(response.success).toBe(false);
+      expect(response.error).toBe("action-failed");
+    });
+
+    it("returns action-failed when no active tab is available for implicit click", async () => {
+      (globalThis.chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+      const request = makeRequest("click", { coordinates: { x: 10, y: 20 } });
+      const response = await handleClick(request);
+
+      expect(response.success).toBe(false);
+      expect(response.error).toBe("action-failed");
+    });
+
+    it("returns action-failed when no active tab is available for implicit type", async () => {
+      (globalThis.chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+      const request = makeRequest("type", { text: "hello" });
+      const response = await handleType(request);
+
+      expect(response.success).toBe(false);
+      expect(response.error).toBe("action-failed");
+    });
+
+    it("returns action-failed when no active tab is available for implicit press_key", async () => {
+      (globalThis.chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+      const request = makeRequest("press_key", { key: "Enter" });
+      const response = await handlePressKey(request);
+
+      expect(response.success).toBe(false);
+      expect(response.error).toBe("action-failed");
+    });
   });
 });
 

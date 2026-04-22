@@ -445,6 +445,16 @@ describe("handleNavigate — permission / tab-not-found error handling", () => {
     expect(result.error).toBe("tab-not-found");
   });
 
+  it("returns unsupported-page when relay reports unsupported-page", async () => {
+    const relay = makeRelayResolve<NavigateResponse>({ success: false, error: "unsupported-page" });
+    const result = await expectHandle(
+      () => handleNavigate(relay, { url: "https://example.com" }),
+      "unsupported-page"
+    ) as NavigateResponse;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("unsupported-page");
+  });
+
   it("REQ-TC-016: returns browser-not-connected when relay is disconnected", async () => {
     const relay = makeRelayNotConnected();
     const result = await expectHandle(
@@ -948,11 +958,31 @@ describe("handlePressKey — permission error handling", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("invalid-key");
   });
+
+  it("returns invalid-request when relay rejects malformed press_key payload", async () => {
+    const relay = makeRelayResolve<PressKeyResponse>({ success: false, error: "invalid-request" as PressKeyResponse["error"] });
+    const result = await expectHandle(
+      () => handlePressKey(relay, { key: "Enter" }),
+      "invalid-request"
+    ) as PressKeyResponse;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("invalid-request");
+  });
 });
 
 // ── Edge cases ────────────────────────────────────────────────────────────────
 
 describe("handleClick — edge cases", () => {
+  it("maps invalid-request from relay to no-target", async () => {
+    const relay = makeRelayResolve<ClickResponse>({ success: false, error: "invalid-request" as ClickResponse["error"] });
+    const result = await expectHandle(
+      () => handleClick(relay, {}),
+      "invalid-request"
+    ) as ClickResponse;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("no-target");
+  });
+
   it("REQ-TC-005..008: returns no-target error when neither uid, selector, nor coordinates provided", async () => {
     const relay = makeRelayResolve<ClickResponse>({ success: false, error: "no-target" });
     const result = await expectHandle(

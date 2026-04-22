@@ -336,4 +336,33 @@ describe("handleClick — explicit coordinates", () => {
       .find(([, method, params]) => method === "Input.dispatchMouseEvent" && params?.type === "mousePressed");
     expect(mousePressedCall?.[2]).toMatchObject({ x: 150, y: 250 });
   });
+
+  it("routes iframe-scoped uid clicks to the resolved child frame", async () => {
+    (globalThis.chrome.webNavigation.getAllFrames as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com" },
+      { frameId: 7, parentFrameId: 0, url: "https://example.com/frame" },
+    ]);
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: {
+          iframes: [{ frameId: "comments-frame", src: "https://example.com/frame", sameOrigin: true }],
+        },
+      })
+      .mockResolvedValueOnce({
+        x: 150,
+        y: 250,
+        bounds: { x: 100, y: 200, width: 100, height: 100 },
+        inViewport: true,
+      });
+
+    const request = makeRequest({ tabId: 1, uid: "comments-frame:5" });
+    await handleClick(request);
+
+    expect(globalThis.chrome.tabs.sendMessage).toHaveBeenNthCalledWith(
+      2,
+      1,
+      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", uid: "comments-frame:5" }),
+      { frameId: 7 }
+    );
+  });
 });
