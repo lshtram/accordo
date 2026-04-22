@@ -21,7 +21,6 @@ import {
   ensureContentScriptInjected,
   NO_CONTENT_SCRIPT,
 } from "./relay-forwarder.js";
-import { normalizeUrl } from "./store.js";
 import { hasErrorField, hasDataField, readBoundsLiteral } from "./relay-type-guards.js";
 import {
   isOriginBlockedByPolicy,
@@ -306,8 +305,11 @@ async function handleFrameIdRequest(
   const pageMap = pageMapData as Record<string, unknown>;
   const iframes = Array.isArray(pageMap.iframes) ? pageMap.iframes as Array<Record<string, unknown>> : [];
 
+  const framePathIndex = await buildFramePathIndex(tabId);
+  await stitchIframeNodes(tabId, iframes, request.payload as Record<string, unknown>, framePathIndex);
+
   // Find the matching iframe entry by frameId
-  const iframe = iframes.find((f) => f.frameId === frameId);
+  const iframe = findIframeMetadataByPath(iframes, frameId);
   if (!iframe) {
     // Frame not found — keep minimal failure behavior
     return actionFailed(request);
@@ -319,14 +321,17 @@ async function handleFrameIdRequest(
   }
 
   // Same-origin iframe — resolve numeric frameId and forward
-  const numericFrameId = await resolveNumericFrameId(tabId, iframe);
-  if (numericFrameId === null) {
+  const numericFrameId = framePathIndex.get(frameId);
+  if (numericFrameId === undefined) {
     return actionFailed(request);
   }
 
   // Forward to the child frame (strip frameId from payload to avoid recursion)
   const { frameId: _frameId, ...forwardPayload } = request.payload as Record<string, unknown>;
-  const data = await forwardToFrame(tabId, numericFrameId, request.action, forwardPayload);
+  const data = await forwardToFrame(tabId, numericFrameId, request.action, {
+    ...forwardPayload,
+    logicalFrameId: frameId,
+  });
   if (data === NO_CONTENT_SCRIPT) {
     return actionFailed(request, "no-content-script");
   }
@@ -339,71 +344,86 @@ async function handleFrameIdRequest(
   return { requestId: request.requestId, success: true, data };
 }
 
-/**
- * F12: Resolve the numeric Chrome frameId for a same-origin iframe metadata entry.
- *
- * Uses chrome.webNavigation.getAllFrames() to find the matching child frame,
- * applying the same URL-matching logic as handleGetPageMap for consistency.
- */
-async function resolveNumericFrameId(
-  tabId: number,
-  iframe: Record<string, unknown>,
-): Promise<number | null> {
+async function buildFramePathIndex(tabId: number): Promise<Map<string, number>> {
+  const pathIndex = new Map<string, number>([["main", 0]]);
   const frames = await chrome.webNavigation.getAllFrames({ tabId }).catch(() => []);
   if (!Array.isArray(frames) || frames.length === 0) {
-    return null;
+    return pathIndex;
   }
 
-  const childFrames = frames.filter((frame) => frame.frameId !== 0 && frame.parentFrameId === 0);
-  const iframeSrc = typeof iframe.src === "string" ? iframe.src : "";
-  const inheritedOriginFrame = iframeSrc === "" || iframeSrc === "about:blank" || iframeSrc.startsWith("about:srcdoc");
-  const normalizedIframeSrc = iframeSrc ? normalizeUrl(iframeSrc) : null;
+  await Promise.all(
+    frames
+      .filter((frame) => frame.frameId !== 0)
+      .map(async (frame) => {
+        const framePath = await forwardToFrame(tabId, frame.frameId, "get_frame_path", {});
+        if (framePath && typeof framePath === "object" && typeof (framePath as { frameId?: unknown }).frameId === "string") {
+          pathIndex.set((framePath as { frameId: string }).frameId, frame.frameId);
+        }
+      }),
+  );
 
-  // Match using same logic as handleGetPageMap
-  let matchingFrame: chrome.webNavigation.GetAllFrameResultDetails | undefined;
+  return pathIndex;
+}
 
-  if (!inheritedOriginFrame && iframeSrc.length > 0) {
-    const exactMatches = childFrames.filter((frame) => frame.url === iframeSrc);
-    if (exactMatches.length === 1) {
-      matchingFrame = exactMatches[0];
+function findIframeMetadataByPath(
+  iframes: Array<Record<string, unknown>>,
+  frameId: string,
+): Record<string, unknown> | undefined {
+  for (const iframe of iframes) {
+    if (iframe.frameId === frameId) {
+      return iframe;
+    }
+    const nested = Array.isArray(iframe.iframes)
+      ? findIframeMetadataByPath(iframe.iframes as Array<Record<string, unknown>>, frameId)
+      : undefined;
+    if (nested) {
+      return nested;
     }
   }
+  return undefined;
+}
 
-  if (!matchingFrame && normalizedIframeSrc !== null) {
-    const normalizedMatches = childFrames.filter((frame) => {
-      if (!frame.url) return false;
-      return normalizeUrl(frame.url) === normalizedIframeSrc;
-    });
-    if (normalizedMatches.length === 1) {
-      matchingFrame = normalizedMatches[0];
-    }
-  }
-
-  if (!matchingFrame && inheritedOriginFrame) {
-    const inheritedCandidates = childFrames.filter((frame) => {
-      if (!frame.url) return false;
-      return frame.url === "about:blank" || frame.url === "";
-    });
-    if (inheritedCandidates.length === 1) {
-      matchingFrame = inheritedCandidates[0];
-    }
-  }
-
-  if (!matchingFrame && normalizedIframeSrc !== null) {
-    const sameOriginCandidates = childFrames.filter((frame) => {
-      if (!frame.url) return false;
-      try {
-        return new URL(frame.url).origin === new URL(iframeSrc).origin;
-      } catch {
-        return false;
+async function stitchIframeNodes(
+  tabId: number,
+  iframes: Array<Record<string, unknown>>,
+  payload: Record<string, unknown>,
+  framePathIndex: Map<string, number>,
+): Promise<void> {
+  await Promise.all(
+    iframes.map(async (iframe) => {
+      const logicalFrameId = typeof iframe.frameId === "string" ? iframe.frameId : undefined;
+      if (logicalFrameId === undefined || iframe.sameOrigin !== true) {
+        return;
       }
-    });
-    if (sameOriginCandidates.length === 1) {
-      matchingFrame = sameOriginCandidates[0];
-    }
-  }
 
-  return matchingFrame?.frameId ?? null;
+      const numericFrameId = framePathIndex.get(logicalFrameId);
+      if (numericFrameId === undefined) {
+        return;
+      }
+
+      const fresh = await forwardToFrame(
+        tabId,
+        numericFrameId,
+        "get_page_map",
+        { ...payload, traverseFrames: true, logicalFrameId },
+      );
+
+      if (fresh && typeof fresh === "object") {
+        if (Array.isArray((fresh as { nodes?: unknown[] }).nodes)) {
+          iframe.nodes = (fresh as { nodes: unknown[] }).nodes;
+        }
+        if (Array.isArray((fresh as { iframes?: unknown[] }).iframes)) {
+          iframe.iframes = (fresh as { iframes: unknown[] }).iframes;
+          await stitchIframeNodes(
+            tabId,
+            iframe.iframes as Array<Record<string, unknown>>,
+            payload,
+            framePathIndex,
+          );
+        }
+      }
+    }),
+  );
 }
 
 // ── Page-map payload narrowing ───────────────────────────────────────────────
@@ -599,74 +619,12 @@ export async function handleGetPageMap(
   // child frame via chrome.webNavigation.getAllFrames() and fetch child nodes via
   // frame-targeted messaging. Cross-origin frames remain metadata-only.
   if (traverseFrames && Array.isArray(result.iframes)) {
-    const frames = await chrome.webNavigation.getAllFrames({ tabId }).catch(() => []);
-    const childFrames = Array.isArray(frames)
-      ? frames.filter((frame) => frame.frameId !== 0 && frame.parentFrameId === 0)
-      : [];
-
-    const usedFrameIds = new Set<number>();
-    await Promise.all(
-      (result.iframes as Array<Record<string, unknown>>).map(async (iframe) => {
-        if (iframe.sameOrigin === true) {
-          const iframeSrc = typeof iframe.src === "string" ? iframe.src : "";
-          const inheritedOriginFrame = iframeSrc === "" || iframeSrc === "about:blank" || iframeSrc.startsWith("about:srcdoc");
-          const normalizedIframeSrc = iframeSrc ? normalizeUrl(iframeSrc) : null;
-
-          let matchingFrame = childFrames.find((frame) => {
-            if (inheritedOriginFrame) return false;
-            if (usedFrameIds.has(frame.frameId) || !frame.url || iframeSrc.length === 0) return false;
-            return frame.url === iframeSrc;
-          });
-
-          if (!matchingFrame && normalizedIframeSrc !== null) {
-            const normalizedMatches = childFrames.filter((frame) => {
-              if (usedFrameIds.has(frame.frameId) || !frame.url) return false;
-              return normalizeUrl(frame.url) === normalizedIframeSrc;
-            });
-            if (normalizedMatches.length === 1) {
-              matchingFrame = normalizedMatches[0];
-            }
-          }
-
-          if (!matchingFrame && inheritedOriginFrame) {
-            const inheritedCandidates = childFrames.filter((frame) => {
-              if (usedFrameIds.has(frame.frameId) || !frame.url) return false;
-              return frame.url === "about:blank" || frame.url === "";
-            });
-            if (inheritedCandidates.length === 1) {
-              matchingFrame = inheritedCandidates[0];
-            }
-          }
-
-          if (!matchingFrame && normalizedIframeSrc !== null) {
-            const sameOriginCandidates = childFrames.filter((frame) => {
-              if (usedFrameIds.has(frame.frameId) || !frame.url) return false;
-              try {
-                return new URL(frame.url).origin === new URL(iframeSrc).origin;
-              } catch {
-                return false;
-              }
-            });
-            if (sameOriginCandidates.length === 1) {
-              matchingFrame = sameOriginCandidates[0];
-            }
-          }
-
-          if (!matchingFrame) return;
-          usedFrameIds.add(matchingFrame.frameId);
-
-          const fresh = await forwardToFrame(
-            tabId,
-            matchingFrame.frameId,
-            "get_page_map",
-            { ...request.payload, traverseFrames: false },
-          );
-
-          if (fresh && typeof fresh === "object" && Array.isArray((fresh as { nodes?: unknown }).nodes)) {
-            iframe.nodes = (fresh as { nodes: unknown[] }).nodes;
-          }
-        }
-      }),
+    const framePathIndex = await buildFramePathIndex(tabId);
+    await stitchIframeNodes(
+      tabId,
+      result.iframes as Array<Record<string, unknown>>,
+      request.payload as Record<string, unknown>,
+      framePathIndex,
     );
   }
 

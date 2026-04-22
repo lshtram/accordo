@@ -188,6 +188,8 @@ export interface SemanticGraphOptions {
    * referencing the host element's nodeId. Default: false.
    */
   piercesShadow?: boolean;
+  /** Internal SW-provided logical frame path used for stable uid identity. */
+  logicalFrameId?: string;
 }
 
 /**

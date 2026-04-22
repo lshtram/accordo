@@ -345,7 +345,7 @@ describe("handleClick — explicit coordinates", () => {
     (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
         data: {
-          iframes: [{ frameId: "comments-frame", src: "https://example.com/frame", sameOrigin: true }],
+          iframes: [{ frameId: "comments-frame", src: "https://example.com/frame", sameOrigin: true, bounds: { x: 400, y: 300, width: 300, height: 200 } }],
         },
       })
       .mockResolvedValueOnce({
@@ -364,5 +364,9 @@ describe("handleClick — explicit coordinates", () => {
       expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", uid: "comments-frame:5" }),
       { frameId: 7 }
     );
+
+    const mousePressedCall = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls
+      .find(([, method, params]) => method === "Input.dispatchMouseEvent" && params?.type === "mousePressed");
+    expect(mousePressedCall?.[2]).toMatchObject({ x: 550, y: 550 });
   });
 });

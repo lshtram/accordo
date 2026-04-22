@@ -64,6 +64,8 @@ export interface TextSegment {
 export interface TextMapOptions {
   /** Maximum number of segments to return (default: 500, max: 2000). B2-TX-008. */
   maxSegments?: number;
+  /** Internal SW-provided logical frame path used for stable uid identity. */
+  logicalFrameId?: string;
 }
 
 /**
@@ -346,7 +348,7 @@ function assignReadingOrder(segments: TextSegment[], doc: Document): void {
 export function collectTextMap(options?: TextMapOptions): TextMapResult {
   // B2-TX-007: capture snapshot envelope first so we can use its frameId
   const envelope: SnapshotEnvelope = captureSnapshotEnvelope("dom");
-  const frameId = envelope.frameId ?? "main";
+  const frameId = options?.logicalFrameId ?? envelope.frameId ?? "main";
 
   // B2-TX-008: resolve effective max, clamp to MAX_SEGMENTS_LIMIT
   const requestedMax = options?.maxSegments ?? DEFAULT_MAX_SEGMENTS;

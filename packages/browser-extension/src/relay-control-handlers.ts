@@ -183,10 +183,16 @@ async function resolveNumericChildFrameId(
   return matchingFrame?.frameId ?? null;
 }
 
-async function resolveControlFrameId(tabId: number, uid?: string): Promise<number | null> {
+type ControlFrameTarget = {
+  frameId: number;
+  offsetX: number;
+  offsetY: number;
+};
+
+async function resolveControlFrameTarget(tabId: number, uid?: string): Promise<ControlFrameTarget | null> {
   const frameKey = parseUidFrameKey(uid);
   if (!frameKey || frameKey === "main") {
-    return 0;
+    return { frameId: 0, offsetX: 0, offsetY: 0 };
   }
 
   const pageMapData = await forwardToMainFrame(tabId, "get_page_map", { traverseFrames: true });
@@ -201,7 +207,18 @@ async function resolveControlFrameId(tabId: number, uid?: string): Promise<numbe
     return null;
   }
 
-  return resolveNumericChildFrameId(tabId, iframe);
+  const frameId = await resolveNumericChildFrameId(tabId, iframe);
+  if (frameId === null) {
+    return null;
+  }
+
+  const rawBounds = typeof iframe.bounds === "object" && iframe.bounds !== null
+    ? iframe.bounds as Record<string, unknown>
+    : {};
+  const offsetX = typeof rawBounds.x === "number" ? rawBounds.x : 0;
+  const offsetY = typeof rawBounds.y === "number" ? rawBounds.y : 0;
+
+  return { frameId, offsetX, offsetY };
 }
 
 type WaitUntil = "load" | "domcontentloaded" | "networkidle";
@@ -490,14 +507,14 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
 
     const uid = payload.uid as string | undefined;
     const selector = payload.selector as string | undefined;
-    const frameId = await resolveControlFrameId(tabId, uid);
-    if (frameId === null) {
+    const frameTarget = await resolveControlFrameTarget(tabId, uid);
+    if (frameTarget === null) {
       return actionFailed(request, "action-failed");
     }
 
     // Prefer element targets when both an element handle and explicit coordinates are present.
     if (uid || selector) {
-      const coords = await resolveElementCoords(tabId, frameId, uid, selector);
+      const coords = await resolveElementCoords(tabId, frameTarget.frameId, uid, selector);
 
       if ("error" in coords) {
         if (coords.error === "not-found" || coords.error === "zero-size") {
@@ -506,12 +523,12 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
         return actionFailed(request, "action-failed");
       }
 
-      x = coords.x;
-      y = coords.y;
+      x = coords.x + frameTarget.offsetX;
+      y = coords.y + frameTarget.offsetY;
 
       // Scroll into view if needed
       if (!coords.inViewport) {
-        const scrollResult = await scrollElementIntoView(tabId, frameId, uid, selector);
+        const scrollResult = await scrollElementIntoView(tabId, frameTarget.frameId, uid, selector);
         if ("error" in scrollResult) {
           if (scrollResult.error === "not-found" || scrollResult.error === "zero-size") {
             return actionFailed(request, "element-not-found");
@@ -519,7 +536,7 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
           return actionFailed(request, "action-failed");
         }
 
-        const updatedCoords = await resolveElementCoords(tabId, frameId, uid, selector);
+        const updatedCoords = await resolveElementCoords(tabId, frameTarget.frameId, uid, selector);
         if ("error" in updatedCoords) {
           if (updatedCoords.error === "not-found" || updatedCoords.error === "zero-size") {
             return actionFailed(request, "element-not-found");
@@ -527,8 +544,8 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
           return actionFailed(request, "action-failed");
         }
 
-        x = updatedCoords.x;
-        y = updatedCoords.y;
+        x = updatedCoords.x + frameTarget.offsetX;
+        y = updatedCoords.y + frameTarget.offsetY;
       }
     } else if (payload.coordinates && typeof payload.coordinates === "object") {
       const coords = payload.coordinates as { x: number; y: number };
@@ -593,14 +610,14 @@ export async function handleType(request: RelayActionRequest): Promise<RelayActi
     // Resolve element
     const uid = payload.uid as string | undefined;
     const selector = payload.selector as string | undefined;
-    const frameId = await resolveControlFrameId(tabId, uid);
-    if (frameId === null) {
+    const frameTarget = await resolveControlFrameTarget(tabId, uid);
+    if (frameTarget === null) {
       return actionFailed(request, "action-failed");
     }
 
     const clearFirst = payload.clearFirst === true;
     if (uid || selector) {
-      const typeResult = await typeInElement(tabId, frameId, text, uid, selector, clearFirst);
+      const typeResult = await typeInElement(tabId, frameTarget.frameId, text, uid, selector, clearFirst);
       if ("error" in typeResult) {
         if (typeResult.error === "not-found" || typeResult.error === "zero-size") {
           return actionFailed(request, "element-not-found");

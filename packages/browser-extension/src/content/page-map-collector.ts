@@ -174,6 +174,8 @@ export interface PageMapOptions {
    * Default: false (B2-VD-009).
    */
   traverseFrames?: boolean;
+  /** Internal SW-provided logical frame path used for stable uid/frame identity. */
+  logicalFrameId?: string;
 }
 
 /**
@@ -184,9 +186,8 @@ export interface PageMapOptions {
  * parent's perspective — no child-frame DOM content is included at this stage.
  */
 export interface IframeMetadata {
-  /** Frame identifier — derived from the iframe's `name` attribute,
-   * `id` attribute, or a generated `iframe-{index}` fallback. Used to route
-   * `browser_inspect_element` and other frame-aware requests. */
+  /** Stable logical frame identifier. Direct children use `name`/`id`/`iframe-{index}`;
+   * nested same-origin frames are prefixed with their parent path. */
   frameId: string;
   /** The iframe's `src` attribute — may be empty for srcdoc or about:blank frames. */
   src: string;
@@ -252,6 +253,9 @@ export interface IframeMetadata {
    * They live under the `iframes[]` entry for the frame that contains them.
    */
   nodes?: PageNode[];
+
+  /** Nested iframe metadata discovered inside this same-origin child frame. */
+  iframes?: IframeMetadata[];
 }
 
 /** Result of page map collection — includes full SnapshotEnvelope (B2-SV-003) */
@@ -404,18 +408,24 @@ function classifyIframeInline(
  * and return metadata only. Same-origin child-frame DOM stitching is performed
  * later by the service worker using frame-targeted messaging.
  */
-export function enumerateIframes(): IframeMetadata[] {
+function toLocalIframeKey(iframe: HTMLIFrameElement, index: number): string {
+  if (iframe.name && iframe.name.trim() !== "") {
+    return iframe.name;
+  }
+  if (iframe.id && iframe.id.trim() !== "") {
+    return iframe.id;
+  }
+  return `iframe-${index}`;
+}
+
+export function enumerateIframes(parentLogicalFrameId: string = "main"): IframeMetadata[] {
   try {
     const iframes = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe"));
     return iframes.map((iframe, index) => {
-      let frameId: string;
-      if (iframe.name && iframe.name.trim() !== "") {
-        frameId = iframe.name;
-      } else if (iframe.id && iframe.id.trim() !== "") {
-        frameId = iframe.id;
-      } else {
-        frameId = `iframe-${index}`;
-      }
+      const localFrameId = toLocalIframeKey(iframe, index);
+      const frameId = parentLogicalFrameId === "main"
+        ? localFrameId
+        : `${parentLogicalFrameId}/${localFrameId}`;
 
       const src = iframe.src ?? "";
 
@@ -525,7 +535,7 @@ export function collectPageMap(options?: PageMapOptions): PageMapResult {
 
   // B2-UID-001: frameId from envelope — "main" for content script context.
   // Passed to traversal so uid="{frameId}:{nodeId}" is set on all nodes.
-  const frameId = envelope.frameId ?? "main";
+  const frameId = options?.logicalFrameId ?? envelope.frameId ?? "main";
 
   const traversalOpts: TraversalOptions = {
     maxDepth,
@@ -576,7 +586,7 @@ export function collectPageMap(options?: PageMapOptions): PageMapResult {
 
   // B2-VD-005..009: Enumerate iframe metadata when traverseFrames is true
   const iframes = options?.traverseFrames === true
-    ? enumerateIframes()
+    ? enumerateIframes(frameId)
     : undefined;
 
   return {

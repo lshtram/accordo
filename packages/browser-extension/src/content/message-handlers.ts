@@ -163,6 +163,44 @@ function scrollResolvedElementIntoView(element: Element): { scrolled: true } {
   return { scrolled: true };
 }
 
+function getLocalIframeKey(iframe: HTMLIFrameElement, index: number): string {
+  if (iframe.name && iframe.name.trim() !== "") {
+    return iframe.name;
+  }
+  if (iframe.id && iframe.id.trim() !== "") {
+    return iframe.id;
+  }
+  return `iframe-${index}`;
+}
+
+function getLogicalFrameId(): string {
+  try {
+    if (window.top === window) {
+      return "main";
+    }
+
+    const parts: string[] = [];
+    let currentWindow: Window = window;
+
+    while (currentWindow.top !== currentWindow) {
+      const frameElement = currentWindow.frameElement;
+      if (!(frameElement instanceof HTMLIFrameElement)) {
+        return "main";
+      }
+
+      const parentDoc = currentWindow.parent.document;
+      const parentFrames = Array.from(parentDoc.querySelectorAll("iframe"));
+      const index = parentFrames.indexOf(frameElement);
+      parts.unshift(getLocalIframeKey(frameElement, index >= 0 ? index : 0));
+      currentWindow = currentWindow.parent;
+    }
+
+    return parts.join("/") || "main";
+  } catch {
+    return "main";
+  }
+}
+
 // ── Message listener ──────────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown }, _sender, _sendResponse: (response: unknown) => void) => {
@@ -188,6 +226,7 @@ chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown
           else if (action === "wait_for") { const { handleWaitForAction } = await import("./wait-provider.js"); data = await handleWaitForAction(payload); }
           else if (action === "get_text_map") { const { collectTextMap } = await import("./text-map-collector.js"); data = collectTextMap(payload as Parameters<typeof collectTextMap>[0]); }
           else if (action === "get_semantic_graph") { const { collectSemanticGraph } = await import("./semantic-graph-collector.js"); data = collectSemanticGraph(payload as Parameters<typeof collectSemanticGraph>[0]); }
+          else if (action === "get_frame_path") { data = { frameId: getLogicalFrameId() }; }
           else if (action === "get_spatial_relations") { const { handleGetSpatialRelationsAction } = await import("./spatial-relations-handler.js"); const result = handleGetSpatialRelationsAction(payload); if ("error" in result) { _sendResponse({ error: result["error"] }); return; } data = result["data"]; }
           else if (action === "diff_snapshots") {
             const { defaultStore } = await import("../relay-definitions.js");

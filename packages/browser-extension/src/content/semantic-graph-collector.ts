@@ -90,7 +90,7 @@ export function collectSemanticGraph(options?: SemanticGraphOptions): SemanticGr
 
   // B2-UID-001: Set frameId on registry so uid is available on all sub-tree nodes.
   // The content script frame is always "main" — iframe frameIds are assigned by the SW.
-  registry.frameId = envelope.frameId ?? "main";
+  registry.frameId = options?.logicalFrameId ?? envelope.frameId ?? "main";
 
   // Build all four sub-trees — visibleOnly applied consistently to all. B2-SG-009.
   const a11yTree = buildA11yTree(registry, effectiveMaxDepth, visibleOnly, piercesShadow);

@@ -46,6 +46,10 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
         };
       }
 
+      if (options?.frameId === 7 && (message as { action?: string }).action === "get_frame_path") {
+        return { data: { frameId: "child-frame" } };
+      }
+
       if (options?.frameId === 7 && (message as { action?: string }).action === "get_page_map") {
         return {
           data: {
@@ -175,6 +179,10 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
           },
         };
       }
+      if (options?.frameId === 9 && (message as { action?: string }).action === "get_frame_path") {
+        return { data: { frameId: "blank-frame" } };
+      }
+
       if (options?.frameId === 9 && (message as { action?: string }).action === "get_page_map") {
         return {
           data: {
@@ -351,6 +359,10 @@ describe("Feature 11: service-worker frame stitching for get_page_map", () => {
           },
         };
       }
+      if (options?.frameId === 14 && (message as { action?: string }).action === "get_frame_path") {
+        return { data: { frameId: "child-frame" } };
+      }
+
       if (options?.frameId === 14) {
         return { data: { nodes: [{ ref: "c3", tag: "div", nodeId: 0, text: "origin fallback child" }] } };
       }
@@ -483,6 +495,10 @@ describe("Feature 12: iframe-cross-origin contract for frameId-targeted requests
           };
         }
       }
+      if (options?.frameId === 7 && (message as { action?: string }).action === "get_frame_path") {
+        return { data: { frameId: "child-frame" } };
+      }
+
       if (options?.frameId === 7 && (message as { action?: string }).action === "inspect_element") {
         return {
           data: {
@@ -860,6 +876,10 @@ describe("Feature 12: iframe-cross-origin contract for frameId-targeted requests
           };
         }
       }
+      if (options?.frameId === 9 && (message as { action?: string }).action === "get_frame_path") {
+        return { data: { frameId: "child-frame" } };
+      }
+
       if (options?.frameId === 9 && (message as { action?: string }).action === "get_text_map") {
         return {
           data: {
