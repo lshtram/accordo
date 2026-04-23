@@ -205,13 +205,18 @@ export function buildCommentToolHandlers(
       // Bulk delete by modality (M38-CT-07)
       if (deleteScope && deleteScope["all"] === true && deleteScope["modality"]) {
         const modality = deleteScope["modality"] as string;
-        const count = await store.deleteAllByModality(modality);
-        return { success: true, deleted: true, deletedCount: count };
+        const result = await store.deleteAllByModality(modality);
+        if (result.deletedIds.length > 0) {
+          ui?.removeThreads(result.deletedIds);
+        }
+        return { success: true, deleted: true, deletedCount: result.count };
       }
 
       const threadId = args["threadId"] as string;
       if (!threadId) throw new Error("Either threadId or deleteScope is required");
-      const commentId = args["commentId"] as string | undefined;
+      const rawCommentId = args["commentId"] as string | undefined;
+      // Normalize empty/blank commentId to undefined so store deletes the whole thread
+      const commentId = rawCommentId !== undefined && rawCommentId.trim() !== "" ? rawCommentId : undefined;
       await store.delete({ threadId, commentId });
       if (commentId) {
         const updatedThread = store.getThread(threadId);

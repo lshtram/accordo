@@ -1090,14 +1090,14 @@ describe("Session 14: Unified Comments Contract — store-level", () => {
     });
 
     it("deletes all threads with surfaceType=browser", async () => {
-      const count = await store.deleteAllByModality("browser");
-      expect(count).toBe(2);
+      const result = await store.deleteAllByModality("browser");
+      expect(result.count).toBe(2);
       expect(store.listThreads({ surfaceType: "browser" }).total).toBe(0);
     });
 
     it("returns the count of deleted threads", async () => {
-      const count = await store.deleteAllByModality("browser");
-      expect(count).toBe(2);
+      const result = await store.deleteAllByModality("browser");
+      expect(result.count).toBe(2);
     });
 
     it("does NOT delete text-anchored threads when deleting browser", async () => {
@@ -1113,15 +1113,15 @@ describe("Session 14: Unified Comments Contract — store-level", () => {
     });
 
     it("deletes only diagram threads when deleting by modality=diagram", async () => {
-      const count = await store.deleteAllByModality("diagram");
-      expect(count).toBe(1);
+      const result = await store.deleteAllByModality("diagram");
+      expect(result.count).toBe(1);
       expect(store.listThreads({ surfaceType: "browser" }).total).toBe(2); // browser untouched
       expect(store.listThreads({ anchorKind: "text" }).total).toBe(1); // text untouched
     });
 
     it("returns 0 when no threads match the modality", async () => {
-      const count = await store.deleteAllByModality("pdf");
-      expect(count).toBe(0);
+      const result = await store.deleteAllByModality("pdf");
+      expect(result.count).toBe(0);
     });
 
     it("persists to disk after bulk delete", async () => {

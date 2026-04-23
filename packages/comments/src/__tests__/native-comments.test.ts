@@ -292,6 +292,38 @@ describe("§2.1 Add / Update / Remove threads", () => {
     const vsThread = controller.getThreads()[0];
     expect(vsThread.dispose).toHaveBeenCalled();
   });
+
+  it("removeThreads disposes multiple VSCode CommentThread widgets", () => {
+    const thread1 = makeThread({ id: "thread-1" });
+    const thread2 = makeThread({ id: "thread-2" });
+    const thread3 = makeThread({ id: "thread-3" });
+    native.addThread(thread1);
+    native.addThread(thread2);
+    native.addThread(thread3);
+
+    native.removeThreads(["thread-1", "thread-3"]);
+
+    const controller = native.getController() as unknown as MockCommentController;
+    const allThreads = controller.getThreads();
+    // thread-1 and thread-3 dispose() should have been called; thread-2 should not
+    const t1 = allThreads.find(t => t.id === "thread-1")!;
+    const t2 = allThreads.find(t => t.id === "thread-2")!;
+    const t3 = allThreads.find(t => t.id === "thread-3")!;
+    expect(t1.dispose).toHaveBeenCalled();
+    expect(t2.dispose).not.toHaveBeenCalled();
+    expect(t3.dispose).toHaveBeenCalled();
+  });
+
+  it("removeThreads with empty array disposes nothing", () => {
+    const thread = makeThread();
+    native.addThread(thread);
+
+    native.removeThreads([]);
+
+    const controller = native.getController() as unknown as MockCommentController;
+    const vsThread = controller.getThreads()[0];
+    expect(vsThread.dispose).not.toHaveBeenCalled();
+  });
 });
 
 // ── §9 Staleness indicator ───────────────────────────────────────────────────

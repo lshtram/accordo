@@ -197,9 +197,9 @@ export class CommentMutationOps extends CommentQueryOps {
   /**
    * Delete all threads whose anchor is a surface with the given surfaceType.
    * Increments _versionCounter when threads are deleted.
-   * Returns { count, affectedUris }.
+   * Returns { count, affectedUris, deletedIds }.
    */
-  deleteAllByModality(surfaceType: string): { count: number; affectedUris: string[] } {
+  deleteAllByModality(surfaceType: string): { count: number; affectedUris: string[]; deletedIds: string[] } {
     const toDelete: Array<{ id: string; uri: string }> = [];
     for (const [id, thread] of this._threads) {
       if (
@@ -210,7 +210,7 @@ export class CommentMutationOps extends CommentQueryOps {
       }
     }
 
-    if (toDelete.length === 0) return { count: 0, affectedUris: [] };
+    if (toDelete.length === 0) return { count: 0, affectedUris: [], deletedIds: [] };
 
     const affectedUrisSet = new Set<string>();
     for (const { id, uri } of toDelete) {
@@ -220,7 +220,11 @@ export class CommentMutationOps extends CommentQueryOps {
     }
 
     this._versionCounter++;
-    return { count: toDelete.length, affectedUris: Array.from(affectedUrisSet) };
+    return {
+      count: toDelete.length,
+      affectedUris: Array.from(affectedUrisSet),
+      deletedIds: toDelete.map(d => d.id),
+    };
   }
 
   // ── Staleness — Document Change Tracking ──────────────────────────────────

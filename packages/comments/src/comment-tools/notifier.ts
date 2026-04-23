@@ -46,6 +46,11 @@ export interface CommentUINotifier {
   addThread(thread: CommentThread): void;
   updateThread(thread: CommentThread): void;
   removeThread(threadId: string): void;
+  /**
+   * Remove multiple VS Code CommentThread widgets at once.
+   * Used by bulk deleteScope to propagate removals for all deleted threads.
+   */
+  removeThreads(threadIds: string[]): void;
 }
 
 /**
@@ -80,5 +85,9 @@ export class CompositeCommentUINotifier implements CommentUINotifier {
 
   removeThread(threadId: string): void {
     for (const n of this._notifiers) n.removeThread(threadId);
+  }
+
+  removeThreads(threadIds: string[]): void {
+    for (const n of this._notifiers) n.removeThreads(threadIds);
   }
 }

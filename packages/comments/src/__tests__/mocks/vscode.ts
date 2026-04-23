@@ -149,6 +149,7 @@ export enum CommentThreadState {
 // ── Mock Comment Thread ──────────────────────────────────────────────────────
 
 export class MockCommentThread {
+  id?: string;
   uri: Uri;
   range: Range | undefined;
   comments: MockComment[];

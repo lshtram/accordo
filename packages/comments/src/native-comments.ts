@@ -48,6 +48,14 @@ export class NativeComments {
     this._sync.removeThread(threadId);
   }
 
+  /**
+   * Remove multiple VS Code CommentThread widgets by their IDs.
+   * Used by bulk deleteScope to dispose all widgets matching the deleted threads.
+   */
+  removeThreads(threadIds: string[]): void {
+    this._sync.removeThreads(threadIds);
+  }
+
   markStale(threadId: string): void {
     this._sync.markStale(threadId);
   }

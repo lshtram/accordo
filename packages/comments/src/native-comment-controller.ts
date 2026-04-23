@@ -336,6 +336,8 @@ export class NativeCommentController {
     const slideTag = this._getSurfaceSlideTag(thread.anchor);
 
     const widget = this._controller.createCommentThread(uri, range, vsComments);
+    // Track thread id on the mock widget so tests can locate it via MockCommentThread.id
+    (widget as unknown as { id?: string }).id = thread.id;
     widget.contextValue = thread.status;
     if (thread.status === "resolved") {
       widget.state = vscode.CommentThreadState.Resolved;

@@ -355,6 +355,76 @@ describe("comment_delete", () => {
       tool.handler({ threadId: "nonexistent" }),
     ).rejects.toThrow();
   });
+
+  it("empty string commentId deletes entire thread (not treated as non-existent comment)", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const deleteTool = getToolByName(tools, "comment_delete");
+
+    // Create a thread with multiple comments
+    const result = (await createTool.handler({
+      uri: "file:///project/src/a.ts",
+      anchor: { kind: "file" },
+      body: "First comment",
+    })) as { threadId: string };
+    const threadId = result.threadId;
+
+    const replyTool = getToolByName(tools, "comment_reply");
+    await replyTool.handler({ threadId, body: "Second comment" });
+
+    // Delete with empty-string commentId should delete the whole thread (not throw "Comment not found")
+    const deleteResult = (await deleteTool.handler({ threadId, commentId: "" })) as Record<string, unknown>;
+    expect(deleteResult.deleted).toBe(true);
+
+    // Thread should be gone
+    const listTool = getToolByName(tools, "comment_list");
+    const { total } = (await listTool.handler({})) as { total: number };
+    expect(total).toBe(0);
+  });
+
+  it("whitespace-only commentId deletes entire thread", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const deleteTool = getToolByName(tools, "comment_delete");
+
+    const result = (await createTool.handler({
+      uri: "file:///project/src/b.ts",
+      anchor: { kind: "file" },
+      body: "Thread to wipe",
+    })) as { threadId: string };
+    const threadId = result.threadId;
+
+    // Whitespace-only commentId should also be treated as undefined
+    const deleteResult = (await deleteTool.handler({ threadId, commentId: "   " })) as Record<string, unknown>;
+    expect(deleteResult.deleted).toBe(true);
+
+    const listTool = getToolByName(tools, "comment_list");
+    const { total } = (await listTool.handler({})) as { total: number };
+    expect(total).toBe(0);
+  });
+
+  it("non-empty commentId still deletes only that single comment", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const deleteTool = getToolByName(tools, "comment_delete");
+
+    const result = (await createTool.handler({
+      uri: "file:///project/src/c.ts",
+      anchor: { kind: "file" },
+      body: "First",
+    })) as { threadId: string; commentId: string };
+    const threadId = result.threadId;
+    const firstCommentId = result.commentId;
+
+    const replyTool = getToolByName(tools, "comment_reply");
+    const replyResult = (await replyTool.handler({ threadId, body: "Second reply" })) as { commentId: string };
+    const secondCommentId = replyResult.commentId;
+
+    // Delete only the first comment — thread should still exist with the reply
+    const deleteResult = (await deleteTool.handler({ threadId, commentId: firstCommentId })) as Record<string, unknown>;
+    expect(deleteResult.deleted).toBe(true);
+
+    const thread = store.getThread(threadId)!;
+    expect(thread.comments).toHaveLength(1);
+    expect(thread.comments[0].id).toBe(secondCommentId);
+  });
 });
 
 // ── §6.1 Rate Limiting ──────────────────────────────────────────────────────
@@ -757,6 +827,79 @@ describe("M38-CT-07: comment_delete deleteScope bulk delete", () => {
     const deleteTool = tools.find(t => t.name === "comment_delete")!;
     const result = (await deleteTool.handler({ deleteScope: { modality: "browser", all: true } })) as { deletedCount: number };
     expect(result.deletedCount).toBe(2);
+  });
+
+  it("M38-CT-07: bulk delete calls ui.removeThreads with deleted thread IDs", async () => {
+    // Use an isolated store so we control exactly how many browser threads exist
+    const isolatedStore = new CommentStore();
+    const createTool = createCommentTools(isolatedStore).find(t => t.name === "comment_create")!;
+    const browser1 = (await createTool.handler({ scope: { modality: "browser", url: "https://example.com/1" }, anchor: { kind: "browser" }, body: "b1" })) as { threadId: string };
+    const browser2 = (await createTool.handler({ scope: { modality: "browser", url: "https://example.com/2" }, anchor: { kind: "browser" }, body: "b2" })) as { threadId: string };
+
+    const mockUi = {
+      addThread: vi.fn(),
+      updateThread: vi.fn(),
+      removeThread: vi.fn(),
+      removeThreads: vi.fn(),
+    };
+    const toolsWithUi = createCommentTools(isolatedStore, mockUi as any);
+    const deleteTool = toolsWithUi.find(t => t.name === "comment_delete")!;
+
+    await deleteTool.handler({ deleteScope: { modality: "browser", all: true } });
+
+    // removeThreads must be called (not removeThread) with IDs of both deleted threads
+    expect(mockUi.removeThreads).toHaveBeenCalledTimes(1);
+    const [deletedIds] = mockUi.removeThreads.mock.calls[0] as [string[]];
+    expect(deletedIds).toContain(browser1.threadId);
+    expect(deletedIds).toContain(browser2.threadId);
+    expect(deletedIds).toHaveLength(2);
+    // removeThread should NOT be called
+    expect(mockUi.removeThread).not.toHaveBeenCalled();
+  });
+
+  it("M38-CT-07: bulk delete with zero matches does NOT call ui.removeThreads", async () => {
+    // Use an isolated store with only a text thread (no browser threads)
+    const isolatedStore = new CommentStore();
+    const createTool = createCommentTools(isolatedStore).find(t => t.name === "comment_create")!;
+    await createTool.handler({ uri: "file:///project/src/a.ts", anchor: { kind: "text", startLine: 1 }, body: "text comment" });
+
+    const mockUi = {
+      addThread: vi.fn(),
+      updateThread: vi.fn(),
+      removeThread: vi.fn(),
+      removeThreads: vi.fn(),
+    };
+    const toolsWithUi = createCommentTools(isolatedStore, mockUi as any);
+    const deleteTool = toolsWithUi.find(t => t.name === "comment_delete")!;
+
+    // No browser threads exist in this isolated store
+    await deleteTool.handler({ deleteScope: { modality: "browser", all: true } });
+
+    // ui.removeThreads must not be called when nothing was deleted
+    expect(mockUi.removeThreads).not.toHaveBeenCalled();
+  });
+
+  it("M38-CT-07: bulk delete calls ui.removeThreads for diagram modality (not just browser)", async () => {
+    // Create diagram threads in an isolated store
+    const isolatedStore = new CommentStore();
+    const createTool = createCommentTools(isolatedStore).find(t => t.name === "comment_create")!;
+    const diag1 = (await createTool.handler({ scope: { modality: "diagram" }, uri: "file:///project/diagram.mmd", anchor: { kind: "surface", surfaceType: "diagram", coordinates: { type: "diagram-node", nodeId: "n1" } }, body: "diagram comment 1" })) as { threadId: string };
+
+    const mockUi = {
+      addThread: vi.fn(),
+      updateThread: vi.fn(),
+      removeThread: vi.fn(),
+      removeThreads: vi.fn(),
+    };
+    const toolsWithUi = createCommentTools(isolatedStore, mockUi as any);
+    const deleteTool = toolsWithUi.find(t => t.name === "comment_delete")!;
+
+    await deleteTool.handler({ deleteScope: { modality: "diagram", all: true } });
+
+    // removeThreads should be called with diagram thread IDs (covers all modalities, not just browser)
+    expect(mockUi.removeThreads).toHaveBeenCalledTimes(1);
+    const [deletedIds] = mockUi.removeThreads.mock.calls[0] as [string[]];
+    expect(deletedIds).toContain(diag1.threadId);
   });
 });
 

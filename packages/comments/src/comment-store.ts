@@ -267,11 +267,11 @@ export class CommentStore {
   /**
    * Delete all threads whose anchor is a surface with the given surfaceType.
    * Used for bulk browser comment cleanup (M38-CT-07 deleteScope).
-   * Returns the number of deleted threads.
+   * Returns the IDs of deleted threads so callers can propagate UI removals.
    *
    * Source: comments-architecture.md §10.5, requirements-comments.md M38-CT-07
    */
-  async deleteAllByModality(surfaceType: string): Promise<number> {
+  async deleteAllByModality(surfaceType: string): Promise<{ count: number; deletedIds: string[] }> {
     const result = this._repo.deleteAllByModality(surfaceType);
     if (result.count > 0) {
       await this._persist();
@@ -279,7 +279,7 @@ export class CommentStore {
         this._emit(uri);
       }
     }
-    return result.count;
+    return { count: result.count, deletedIds: result.deletedIds };
   }
 
   // ── Staleness ──────────────────────────────────────────────────────────────
