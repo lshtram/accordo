@@ -12,7 +12,7 @@
  *   [x] E-6-04: unknown → close uses focus* then close*
  *   [x] E-6-05: open → open and closed → closed are idempotent no-ops
  *   [x] E-6-06: view parameter opens specific view, updates area state
- *   [x] E-6-07: view + action: "close" returns error
+ *   [x] E-6-07: view + action: "close" — view silently ignored, close succeeds
  *   [x] E-6-08: view-area mismatch returns error
  *   [x] E-6-09: Unknown views attempt heuristic, graceful error on failure
  *   [x] E-6-10: rightBar has no views; area-level only
@@ -98,12 +98,14 @@ describe("input validation — E-6-01, E-6-07, E-6-10", () => {
     expect((result as { error: string }).error).toMatch(/action/i);
   });
 
-  // E-6-07: view + action: "close" is an error
-  it("E-6-07-VIEW-CLOSE: view + action: 'close' → { error: ... }", async () => {
+  // E-6-07: view + action: "close" — view is silently ignored, close succeeds
+  it("E-6-07-VIEW-CLOSE: view + action: 'close' → close succeeds (view ignored)", async () => {
+    // First open the sidebar so close is not a no-op
+    await callHandler({ area: "sidebar", action: "open" });
     const { ok, result } = await callHandler({ area: "sidebar", view: "explorer", action: "close" });
     expect(ok).toBe(true);
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toMatch(/view/i);
+    expect(result).not.toHaveProperty("error");
+    expect((result as { action: string }).action).toBe("closed");
   });
 
   // E-6-10: rightBar doesn't support view

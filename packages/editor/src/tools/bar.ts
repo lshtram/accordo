@@ -202,14 +202,11 @@ export async function layoutPanelHandler(
     return { error: "Argument 'action' must be one of: open, close" };
   }
 
-  // ── Step 3: Validate view + action: "close" is an error ───────────────────
-  const view = args["view"] as string | undefined;
-  if (view !== undefined && action === "close") {
-    return {
-      error:
-        "Cannot close a specific view. Omit 'view' to close the area, or use action 'open' to switch to a view.",
-    };
-  }
+  // ── Step 3: Resolve view — ignored on close (agent-friendly: silently drop) ─
+  const rawView = args["view"] as string | undefined;
+  // When action is "close", view is irrelevant — ignore it rather than erroring.
+  // Agents often retain view in their call even when closing; rejecting is unhelpful.
+  const view = action === "close" ? undefined : rawView;
 
   // ── Step 4: rightBar + view is an error ────────────────────────────────────
   if (view !== undefined && areaId === "rightBar") {

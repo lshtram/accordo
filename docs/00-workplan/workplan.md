@@ -66,10 +66,11 @@
 16. Change `accordo_webview_capture` default output destination to a safe temp artifacts location (e.g. workspace `tmp/accordo-artifacts/` or user temp dir) and document the retention behavior.
 17. Fix `accordo_webview_capture` output fidelity so successful captures contain real slide content at expected size/structure, not tiny placeholder/empty SVGs.
 
-**Completed within Priority 0 (2026-04-23):**
+**Completed within Priority 0 (2026-04-23 / 2026-04-24):**
 1. `comment_list` filter/path reliability fixes for URI-equivalent forms and untagged-intent visibility (`bd60d14`).
 2. Markdown comment navigation routing fixed for panel/native flows with preview-aware behavior and focused-editor fallback (`bd60d14`).
 3. Store→VS Code delete synchronization hardened for thread/comment deletion and bulk delete notifications (`93526dc`).
+4. Marp slide comment visibility fixed: `comments:load` now sent only after `webview:ready`, eliminating the race condition that dropped the initial push (`e94efb1`, `f6a9f0b`). Items 14 & 15 resolved.
 
 **Acceptance criteria:**
 1. `accordo_layout_state` no longer includes full comment thread bodies.
