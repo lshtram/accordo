@@ -28,6 +28,7 @@ function makeEnv(): NavigationEnv & {
   showInformationMessage: ReturnType<typeof vi.fn>;
   delay: ReturnType<typeof vi.fn>;
   visibleTextEditorUris: ReturnType<typeof vi.fn>;
+  activeTextEditorUri: ReturnType<typeof vi.fn>;
 } {
   return {
     showTextDocument: vi.fn().mockResolvedValue({ revealRange: vi.fn() }),
@@ -36,6 +37,7 @@ function makeEnv(): NavigationEnv & {
     showInformationMessage: vi.fn().mockResolvedValue(undefined),
     delay: vi.fn().mockResolvedValue(undefined),
     visibleTextEditorUris: vi.fn().mockReturnValue([]),
+    activeTextEditorUri: vi.fn().mockReturnValue(undefined),
   };
 }
 
@@ -111,6 +113,94 @@ describe("M45-NR NavigationRouter", () => {
     env.visibleTextEditorUris.mockReturnValue([]);
     const plan = buildNavigationDispatchPlan(thread);
     expect(plan.target).toBe("text");
+  });
+
+  it("M45-NR-02c2: markdown text anchor prefers active text editor for same file", async () => {
+    const anchor: CommentAnchorText = {
+      kind: "text",
+      uri: "file:///project/README.md",
+      range: { startLine: 5, startChar: 0, endLine: 5, endChar: 0 },
+      docVersion: 0,
+    };
+    const thread = makeThread(anchor);
+
+    env.activeTextEditorUri.mockReturnValue("file:///project/README.md");
+
+    await navigateToThread(thread, env);
+
+    expect(env.showTextDocument).toHaveBeenCalled();
+    expect(env.executeCommand).toHaveBeenCalledWith(
+      "accordo_comments_internal_expandThread",
+      "thread-1",
+    );
+    expect(env.executeCommand).not.toHaveBeenCalledWith(
+      "vscode.openWith",
+      expect.anything(),
+      "accordo.markdownPreview",
+    );
+  });
+
+  it("M45-NR-02d: markdown text anchor navigates via preview focus and does not open text editor", async () => {
+    const anchor: CommentAnchorText = {
+      kind: "text",
+      uri: "file:///project/README.md",
+      range: { startLine: 5, startChar: 0, endLine: 5, endChar: 0 },
+      docVersion: 0,
+    };
+    const thread = makeThread(anchor);
+
+    env.executeCommand
+      .mockResolvedValueOnce(false) // first preview focus probe
+      .mockResolvedValueOnce(undefined) // vscode.openWith
+      .mockResolvedValueOnce(true); // second preview focus
+
+    await navigateToThread(thread, env);
+
+    expect(env.showTextDocument).not.toHaveBeenCalled();
+    expect(env.executeCommand).toHaveBeenCalledWith(
+      CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD,
+      "file:///project/README.md",
+      "thread-1",
+      undefined,
+    );
+    expect(env.executeCommand).toHaveBeenCalledWith(
+      "vscode.openWith",
+      expect.objectContaining({ fsPath: "/project/README.md" }),
+      "accordo.markdownPreview",
+    );
+  });
+
+  it("M45-NR-02e: markdown text anchor retries preview focus even if openWith throws", async () => {
+    const anchor: CommentAnchorText = {
+      kind: "text",
+      uri: "file:///project/README.md",
+      range: { startLine: 5, startChar: 0, endLine: 5, endChar: 0 },
+      docVersion: 0,
+    };
+    const thread = makeThread(anchor);
+
+    env.executeCommand
+      .mockResolvedValueOnce(false)
+      .mockRejectedValueOnce(new Error("openWith failed"))
+      .mockResolvedValueOnce(false);
+
+    await navigateToThread(thread, env);
+
+    expect(env.showTextDocument).not.toHaveBeenCalled();
+    expect(env.executeCommand).toHaveBeenNthCalledWith(
+      1,
+      CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD,
+      "file:///project/README.md",
+      "thread-1",
+      undefined,
+    );
+    expect(env.executeCommand).toHaveBeenNthCalledWith(
+      3,
+      CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD,
+      "file:///project/README.md",
+      "thread-1",
+      undefined,
+    );
   });
 
   // Phase C: surface/markdown-preview → navigateWithPlan calls executeCommand with accordo_preview_internal_focusThread
@@ -231,13 +321,14 @@ describe("M45-NR NavigationRouter", () => {
     expect(typeof e.showInformationMessage).toBe("function");
     expect(typeof e.delay).toBe("function");
     expect(typeof e.visibleTextEditorUris).toBe("function");
+    expect(typeof e.activeTextEditorUri).toBe("function");
   });
 });
 
 // ── Priority Q: Surface Focus Navigation ───────────────────────────────────────
 
 import { SURFACE_FOCUS_COMMANDS, buildNavigationDispatchPlan, buildSlideFocusArgs } from "../../panel/navigation-contract.js";
-import { DEFERRED_COMMANDS } from "@accordo/capabilities";
+import { CAPABILITY_COMMANDS, DEFERRED_COMMANDS } from "@accordo/capabilities";
 import { CommandBackedBrowserRelayHealthReader } from "../../panel/browser-relay-health.js";
 
 describe("Priority Q — Surface Focus Navigation", () => {

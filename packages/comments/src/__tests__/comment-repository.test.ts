@@ -288,6 +288,27 @@ describe("§5 Listing / Querying", () => {
     expect(result.total).toBe(1);
   });
 
+  it("listThreads URI filter matches equivalent file URI and absolute path forms", () => {
+    repo.createThread(makeCreateParams({
+      uri: "/project/src/uri-equivalence.ts",
+      anchor: {
+        kind: "file",
+        uri: "/project/src/uri-equivalence.ts",
+      },
+      body: "path-form thread",
+    }));
+
+    const result = repo.listThreads({ uri: "file:///project/src/uri-equivalence.ts" });
+    expect(result.total).toBe(1);
+    expect(result.threads[0].anchor.uri).toBe("/project/src/uri-equivalence.ts");
+  });
+
+  it("listThreads URI filter also matches when stored as file URI and queried as absolute path", () => {
+    const result = repo.listThreads({ uri: "/project/src/api.ts" });
+    expect(result.total).toBe(1);
+    expect(result.threads[0].anchor.uri).toBe("file:///project/src/api.ts");
+  });
+
   it("listThreads filters by status", () => {
     const threads = repo.getAllThreads();
     repo.resolve({
@@ -304,6 +325,23 @@ describe("§5 Listing / Querying", () => {
   it("listThreads filters by intent", () => {
     const result = repo.listThreads({ intent: "fix" });
     expect(result.threads).toHaveLength(2); // auth + readme
+  });
+
+  it("listThreads intent filter includes threads without an intent tag", () => {
+    repo.createThread(makeCreateParams({
+      uri: "file:///project/src/no-intent.ts",
+      anchor: {
+        kind: "text",
+        uri: "file:///project/src/no-intent.ts",
+        range: { startLine: 1, startChar: 0, endLine: 1, endChar: 0 },
+        docVersion: 0,
+      },
+      body: "untagged thread",
+      intent: undefined,
+    }));
+
+    const result = repo.listThreads({ intent: "fix" });
+    expect(result.threads.some(t => t.anchor.uri === "file:///project/src/no-intent.ts")).toBe(true);
   });
 
   it("listThreads filters by anchorKind", () => {

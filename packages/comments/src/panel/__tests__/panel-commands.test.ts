@@ -109,6 +109,7 @@ function createMockNavEnv(): NavigationEnv {
     showInformationMessage: vi.fn().mockResolvedValue(undefined),
     delay: vi.fn().mockResolvedValue(undefined),
     visibleTextEditorUris: vi.fn().mockReturnValue([]),
+    activeTextEditorUri: vi.fn().mockReturnValue(undefined),
   };
 }
 

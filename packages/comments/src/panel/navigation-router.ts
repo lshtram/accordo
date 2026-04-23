@@ -20,7 +20,7 @@ import {
 import {
   CommandBackedBrowserRelayHealthReader,
 } from "./browser-relay-health.js";
-import { DEFERRED_COMMANDS } from "@accordo/capabilities";
+import { CAPABILITY_COMMANDS, DEFERRED_COMMANDS } from "@accordo/capabilities";
 
 /**
  * Injectable abstraction over vscode.window / vscode.commands / delay.
@@ -35,6 +35,7 @@ export interface NavigationEnv {
   showInformationMessage(message: string): Thenable<string | undefined>;
   delay(ms: number): Promise<void>;
   visibleTextEditorUris(): readonly string[];
+  activeTextEditorUri(): string | undefined;
 }
 
 /**
@@ -52,7 +53,7 @@ const adapterRegistry: NavigationAdapterRegistry = createNavigationAdapterRegist
  * Priority Q entrypoint.
  *
  * Dispatch strategy:
- * - text/file: VS Code editor reveal path
+ * - text/file: VS Code editor reveal path (except markdown text anchors → preview-first)
  * - markdown-preview: accordo_preview_internal_focusThread
  * - slide: accordo.presentation.internal.focusThread(uri, threadId, blockId)
  * - diagram: accordo_diagram_focusThread(threadId, uri)
@@ -70,27 +71,57 @@ export async function navigateToThread(
       const anchor = thread.anchor;
       if (anchor.kind !== "text") break;
       const uri = anchor.uri;
-      const visible = env.visibleTextEditorUris();
       const isMd = uri.endsWith(".md");
-      if (isMd && visible.includes(uri)) {
-        // Already open in text editor — reveal the range
-        await env.showTextDocument(
-          parseUri(uri),
-          { selection: commentRangeToVsCodeRange(anchor.range) },
+      if (isMd) {
+        const activeTextUri = env.activeTextEditorUri();
+        const visible = env.visibleTextEditorUris();
+
+        // Prefer focused/available text editor first for markdown text anchors.
+        if (activeTextUri === uri || visible.includes(uri)) {
+          await env.showTextDocument(
+            parseUri(uri),
+            { selection: commentRangeToVsCodeRange(anchor.range) },
+          );
+          await env.executeCommand(
+            "accordo_comments_internal_expandThread",
+            thread.id,
+          );
+          return;
+        }
+
+        const focusedInPreview = await env.executeCommand(
+          CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD,
+          uri,
+          thread.id,
+          undefined,
         );
-      } else if (isMd) {
-        // .md not open in text editor — open in text editor (not preview)
-        await env.showTextDocument(
-          parseUri(uri),
-          { selection: commentRangeToVsCodeRange(anchor.range) },
+        if (focusedInPreview) return;
+
+        try {
+          await env.executeCommand(
+            "vscode.openWith",
+            parseUri(uri),
+            "accordo.markdownPreview",
+          );
+        } catch {
+          // keep going: retry focus command even if preview was already open
+        }
+
+        await env.delay(300);
+        await env.executeCommand(
+          CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD,
+          uri,
+          thread.id,
+          undefined,
         );
-      } else {
-        // Non-.md file — always use text editor
-        await env.showTextDocument(
-          parseUri(uri),
-          { selection: commentRangeToVsCodeRange(anchor.range) },
-        );
+        return;
       }
+
+      // Non-.md file — always use text editor
+      await env.showTextDocument(
+        parseUri(uri),
+        { selection: commentRangeToVsCodeRange(anchor.range) },
+      );
       // Expand the gutter widget after showing the document
       await env.executeCommand(
         "accordo_comments_internal_expandThread",

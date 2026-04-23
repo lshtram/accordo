@@ -43,6 +43,7 @@ interface MockNavigationEnv extends NavigationEnv {
   showInformationMessage: ReturnType<typeof vi.fn>;
   delay: ReturnType<typeof vi.fn>;
   visibleTextEditorUris: ReturnType<typeof vi.fn>;
+  activeTextEditorUri: ReturnType<typeof vi.fn>;
 }
 
 function makeEnv(): MockNavigationEnv {
@@ -53,6 +54,7 @@ function makeEnv(): MockNavigationEnv {
     showInformationMessage: vi.fn().mockResolvedValue(undefined),
     delay: vi.fn().mockResolvedValue(undefined),
     visibleTextEditorUris: vi.fn().mockReturnValue([]),
+    activeTextEditorUri: vi.fn().mockReturnValue(undefined),
   };
 }
 

@@ -29,6 +29,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   comments,
   commands,
+  workspace,
+  window,
   Uri,
   Range,
   Position,
@@ -37,6 +39,7 @@ import {
   MockCommentController,
   CommentThreadCollapsibleState,
 } from "./mocks/vscode.js";
+import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
 import { NativeComments } from "../native-comments.js";
 import { CommentStore } from "../comment-store.js";
 import type {
@@ -395,5 +398,85 @@ describe("§10.1 Commands", () => {
     const before = mockContext.subscriptions.length;
     native.registerCommands(store, mockContext);
     expect(mockContext.subscriptions.length).toBeGreaterThan(before);
+  });
+
+  it("focusInPreview prefers markdown preview for markdown text anchors", async () => {
+    const store = makeMockStore();
+    native.init(store, mockContext);
+    native.registerCommands(store, mockContext);
+
+    const created = await store.createThread({
+      uri: "file:///project/docs/spec.md",
+      anchor: {
+        kind: "text",
+        uri: "file:///project/docs/spec.md",
+        range: { startLine: 12, startChar: 0, endLine: 12, endChar: 0 },
+        docVersion: 0,
+      },
+      body: "Jump to markdown preview",
+      author: { kind: "user", name: "User" },
+    });
+
+    const previewFocus = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD, previewFocus);
+
+    const focusInPreview = mockState.registeredCommands.get("accordo.comments.focusInPreview")!;
+    await focusInPreview({ threadId: created.threadId });
+
+    expect(previewFocus).toHaveBeenCalledTimes(2);
+    expect(commands.executeCommand).toHaveBeenCalledWith(
+      "vscode.openWith",
+      expect.any(Uri),
+      "accordo.markdownPreview",
+    );
+    expect(workspace.openTextDocument).not.toHaveBeenCalled();
+    expect(window.showTextDocument).not.toHaveBeenCalled();
+  });
+
+  it("focusInPreview keeps text-editor fallback for non-markdown text anchors", async () => {
+    const store = makeMockStore();
+    native.init(store, mockContext);
+    native.registerCommands(store, mockContext);
+
+    const created = await store.createThread({
+      uri: "file:///project/src/auth.ts",
+      anchor: {
+        kind: "text",
+        uri: "file:///project/src/auth.ts",
+        range: { startLine: 8, startChar: 0, endLine: 8, endChar: 0 },
+        docVersion: 0,
+      },
+      body: "Jump to source line",
+      author: { kind: "user", name: "User" },
+    });
+
+    const previewFocus = vi.fn().mockResolvedValue(false);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD, previewFocus);
+
+    const revealRange = vi.fn();
+    (workspace.openTextDocument as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      uri: Uri.parse("file:///project/src/auth.ts"),
+      lineCount: 200,
+      isDirty: false,
+      version: 1,
+      getText: vi.fn(),
+      languageId: "typescript",
+    });
+    (window.showTextDocument as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      revealRange,
+    });
+
+    const focusInPreview = mockState.registeredCommands.get("accordo.comments.focusInPreview")!;
+    await focusInPreview({ threadId: created.threadId });
+
+    expect(workspace.openTextDocument).toHaveBeenCalled();
+    expect(window.showTextDocument).toHaveBeenCalled();
+    expect(commands.executeCommand).not.toHaveBeenCalledWith(
+      "vscode.openWith",
+      expect.any(Uri),
+      "accordo.markdownPreview",
+    );
   });
 });

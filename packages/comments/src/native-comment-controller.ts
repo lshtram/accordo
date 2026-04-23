@@ -248,6 +248,29 @@ export class NativeCommentController {
           if (focused) return;
 
           if (thread.anchor.kind === "text") {
+            if (this._isMarkdownUri(uri)) {
+              try {
+                await vscode.commands.executeCommand(
+                  "vscode.openWith",
+                  vscode.Uri.parse(uri),
+                  "accordo.markdownPreview",
+                );
+              } catch {
+                // File may already be open — proceed to focus anyway
+              }
+              await new Promise<void>((r) => setTimeout(r, 300));
+              const focusedInPreview: boolean = await vscode.commands.executeCommand(
+                CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD,
+                uri,
+                threadId,
+                blockId,
+              );
+              // For markdown comments, never fall back to opening a text editor.
+              // If preview focus is not available, keep the markdown preview open.
+              void focusedInPreview;
+              return;
+            }
+
             const anchor = thread.anchor as CommentAnchorText;
             const lineRange = new vscode.Range(
               anchor.range.startLine, 0,
@@ -391,5 +414,9 @@ export class NativeCommentController {
     const embedded = (arg as Record<string, unknown>).threadId;
     if (typeof embedded === "string") return embedded;
     return undefined;
+  }
+
+  private _isMarkdownUri(uri: string): boolean {
+    return /\.md(?:[#?].*)?$/i.test(uri);
   }
 }

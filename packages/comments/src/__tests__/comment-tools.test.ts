@@ -200,6 +200,55 @@ describe("comment_list", () => {
     // Most recent activity first
     expect(threads[0].lastActivity >= threads[1].lastActivity).toBe(true);
   });
+
+  it("returns threads for URI-equivalent file forms (absolute path vs file URI)", async () => {
+    const listTool = getToolByName(tools, "comment_list");
+
+    await store.createThread({
+      uri: "/project/src/relay-bridge.ts",
+      anchor: {
+        kind: "text",
+        uri: "/project/src/relay-bridge.ts",
+        range: { startLine: 10, startChar: 0, endLine: 10, endChar: 0 },
+        docVersion: 0,
+      },
+      body: "path-form anchor",
+      author: { kind: "user", name: "User" },
+    });
+
+    const result = (await listTool.handler({
+      uri: "file:///project/src/relay-bridge.ts",
+      status: "open",
+      anchorKind: "text",
+    })) as { total: number };
+
+    expect(result.total).toBe(1);
+  });
+
+  it("returns untagged threads even when intent filter is provided", async () => {
+    const listTool = getToolByName(tools, "comment_list");
+
+    await store.createThread({
+      uri: "file:///project/src/untagged.ts",
+      anchor: {
+        kind: "text",
+        uri: "file:///project/src/untagged.ts",
+        range: { startLine: 5, startChar: 0, endLine: 5, endChar: 0 },
+        docVersion: 0,
+      },
+      body: "no intent set",
+      author: { kind: "user", name: "User" },
+    });
+
+    const result = (await listTool.handler({
+      uri: "file:///project/src/untagged.ts",
+      status: "open",
+      intent: "question",
+      anchorKind: "text",
+    })) as { total: number };
+
+    expect(result.total).toBe(1);
+  });
 });
 
 // ── comment_get ─────────────────────────────────────────────────────

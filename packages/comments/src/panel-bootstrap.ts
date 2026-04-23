@@ -51,6 +51,7 @@ export function wirePanelAndCommands(
     showInformationMessage: (msg) => vscode.window.showInformationMessage(msg),
     delay: (ms) => new Promise(resolve => setTimeout(resolve, ms)),
     visibleTextEditorUris: () => vscode.window.visibleTextEditors.map(e => e.document.uri.toString()),
+    activeTextEditorUri: () => vscode.window.activeTextEditor?.document.uri.toString(),
   };
 
   const panelDisposables = registerPanelCommands(

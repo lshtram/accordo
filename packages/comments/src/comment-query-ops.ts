@@ -111,14 +111,18 @@ export class CommentQueryOps {
     let result = threads;
 
     if (options.uri !== undefined) {
-      result = result.filter(t => t.anchor.uri === options.uri);
+      result = result.filter(t => this._urisMatch(t.anchor.uri, options.uri as string));
     }
     if (options.status !== undefined) {
       result = result.filter(t => t.status === options.status);
     }
     if (options.intent !== undefined) {
       result = result.filter(t =>
-        t.comments.length > 0 && t.comments[0].intent === options.intent,
+        t.comments.length > 0 &&
+        (
+          t.comments[0].intent === options.intent ||
+          t.comments[0].intent === undefined
+        ),
       );
     }
     if (options.anchorKind !== undefined) {
@@ -141,6 +145,52 @@ export class CommentQueryOps {
     }
 
     return result;
+  }
+
+  /**
+   * URI match with file-path equivalence fallback.
+   *
+   * Handles live mixed forms observed in comment anchors:
+   * - file:///abs/path/to/file.ts
+   * - /abs/path/to/file.ts
+   * - C:\\abs\\path\\to\\file.ts (Windows)
+   *
+   * For non-file URIs (e.g. https:// browser anchors), match remains exact.
+   */
+  private _urisMatch(left: string, right: string): boolean {
+    if (left === right) return true;
+    const leftFile = this._toComparableFilePath(left);
+    const rightFile = this._toComparableFilePath(right);
+    if (leftFile !== undefined && rightFile !== undefined) {
+      return leftFile === rightFile;
+    }
+    return false;
+  }
+
+  private _toComparableFilePath(uri: string): string | undefined {
+    const trimmed = uri.trim();
+    if (trimmed.length === 0) return undefined;
+
+    const normalizePath = (p: string): string =>
+      p
+        .replace(/\\/g, "/")
+        .replace(/^\/([a-zA-Z]:)/, "$1")
+        .replace(/\/+$/, "");
+
+    if (trimmed.startsWith("file://")) {
+      try {
+        const pathname = decodeURIComponent(new URL(trimmed).pathname);
+        return normalizePath(pathname);
+      } catch {
+        return undefined;
+      }
+    }
+
+    if (trimmed.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(trimmed)) {
+      return normalizePath(trimmed);
+    }
+
+    return undefined;
   }
 
   private _toThreadSummary(t: CommentThread): ThreadSummary {
