@@ -148,14 +148,15 @@ export class PresentationProvider {
   private wirePanelMessageHandling(panel: vscode.WebviewPanel, deckUri: string): void {
     panel.webview.onDidReceiveMessage((msg: unknown) => {
       if (this.commentsBridge && (msg as { type?: string }).type === "webview:ready") {
+        // Load threads only after the webview signals it is ready (JS initialized).
+        // Sending comments:load before webview:ready means the message is dropped
+        // because the webview's window.addEventListener('message', ...) handler
+        // has not yet been registered. The webview:ready signal is the correct
+        // and only reliable trigger for the initial thread push.
         this.commentsBridge.loadThreadsForUri(deckUri);
       }
       this.handleWebviewMessage(msg);
     });
-
-    if (this.commentsBridge) {
-      this.commentsBridge.loadThreadsForUri(deckUri);
-    }
   }
 
   private setupAdapterSubscription(panel: vscode.WebviewPanel, adapter: PresentationRuntimeAdapter): void {

@@ -587,8 +587,21 @@ describe("PresentationProvider — Comment SDK integration", () => {
     );
   });
 
-  it("M50-PVD-13: when commentsBridge is non-null, open() calls commentsBridge.loadThreadsForUri(deckUri)", async () => {
-    // When comments integration is available, loading threads for the deck is part of the open sequence.
+  it("M50-PVD-13: when commentsBridge is non-null, open() wires webview:ready to call loadThreadsForUri(deckUri)", async () => {
+    // Comments are loaded only after the webview signals it is ready (JS initialized).
+    // open() must NOT call loadThreadsForUri eagerly — the webview:ready message is
+    // the correct trigger so the comments:load message is not dropped.
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    let messageHandler: ((msg: Record<string, unknown>) => void) | undefined;
+    panel.webview.onDidReceiveMessage = vi.fn().mockImplementation(
+      (cb: (msg: Record<string, unknown>) => void) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      },
+    );
+
     const commentsBridge = {
       handleWebviewMessage: vi.fn().mockResolvedValue(undefined),
       loadThreadsForUri: vi.fn(),
@@ -600,11 +613,17 @@ describe("PresentationProvider — Comment SDK integration", () => {
     const provider = makeProvider();
     await provider.open("/deck.md", makeAdapter(), makeRenderer(), commentsBridge);
 
+    // Not yet called — webview:ready has not arrived
+    expect(commentsBridge.loadThreadsForUri).not.toHaveBeenCalled();
+
+    // Simulate webview:ready
+    messageHandler!({ type: "webview:ready" });
     expect(commentsBridge.loadThreadsForUri).toHaveBeenCalledWith(expect.stringContaining("deck.md"));
   });
 
-  it("M50-PVD-14: open() posts comments:load message to webview after init (via commentsBridge subscription)", async () => {
+  it("M50-PVD-14: open() posts comments:load message to webview after webview:ready (via commentsBridge subscription)", async () => {
     // loadThreadsForUri pushes comments:load to the webview via sender.postMessage.
+    // This must happen only after webview:ready so the webview JS listener is registered.
     const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
     vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
 
@@ -630,14 +649,27 @@ describe("PresentationProvider — Comment SDK integration", () => {
     const provider = makeProvider();
     await provider.open("/deck.md", makeAdapter(), makeRenderer(), commentsBridge);
 
-    // The bridge should have been asked to load threads for the deck URI.
+    // Not yet called before webview:ready
+    expect(commentsBridge.loadThreadsForUri).not.toHaveBeenCalled();
+
+    // Simulate webview:ready — now the bridge should load threads
+    messageHandler!({ type: "webview:ready" });
     expect(commentsBridge.loadThreadsForUri).toHaveBeenCalled();
   });
 
-  it("M50-PVD-14: open() posts comments:load message to webview after init (via commentsBridge subscription)", async () => {
+  it("M50-PVD-14: open() posts comments:load message to webview after webview:ready (duplicate-title variant)", async () => {
     // loadThreadsForUri pushes comments:load to the webview via sender.postMessage.
+    // Must only happen after webview:ready.
     const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
     vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    let messageHandler: ((msg: Record<string, unknown>) => void) | undefined;
+    panel.webview.onDidReceiveMessage = vi.fn().mockImplementation(
+      (cb: (msg: Record<string, unknown>) => void) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      },
+    );
 
     const commentsBridge = {
       handleWebviewMessage: vi.fn().mockResolvedValue(undefined),
@@ -653,7 +685,11 @@ describe("PresentationProvider — Comment SDK integration", () => {
     const provider = makeProvider();
     await provider.open("/deck.md", makeAdapter(), makeRenderer(), commentsBridge);
 
-    // The bridge should have been asked to load threads for the deck URI.
+    // Not called before webview:ready
+    expect(commentsBridge.loadThreadsForUri).not.toHaveBeenCalled();
+
+    // Simulate webview:ready — bridge should load threads
+    messageHandler!({ type: "webview:ready" });
     expect(commentsBridge.loadThreadsForUri).toHaveBeenCalled();
   });
 
@@ -736,6 +772,14 @@ describe("PresentationProvider — Comment SDK integration", () => {
       .mockReturnValueOnce(panel1)
       .mockReturnValueOnce(panel2);
 
+    let messageHandler2: ((msg: Record<string, unknown>) => void) | undefined;
+    panel2.webview.onDidReceiveMessage = vi.fn().mockImplementation(
+      (cb: (msg: Record<string, unknown>) => void) => {
+        messageHandler2 = cb;
+        return { dispose: vi.fn() };
+      },
+    );
+
     const bridge1Dispose = vi.fn();
     const bridge1 = {
       handleWebviewMessage: vi.fn().mockResolvedValue(undefined),
@@ -764,7 +808,11 @@ describe("PresentationProvider — Comment SDK integration", () => {
 
     // bridge2 must be bound to the new panel's sender
     expect(bridge2.bindToSender).toHaveBeenCalled();
-    // bridge2 must have loadThreadsForUri called for the new session
+    // bridge2 must NOT have loadThreadsForUri called yet — webview:ready has not arrived
+    expect(bridge2.loadThreadsForUri).not.toHaveBeenCalled();
+
+    // Simulate webview:ready on the new panel
+    messageHandler2!({ type: "webview:ready" });
     expect(bridge2.loadThreadsForUri).toHaveBeenCalledWith(expect.stringContaining("deck.md"));
   });
 
@@ -788,5 +836,79 @@ describe("PresentationProvider — Comment SDK integration", () => {
         messageHandler!({ type: "comments:focus", threadId: "t1", blockId: "heading:1:bad" }),
       ).not.toThrow();
     }
+  });
+
+  it("M50-PVD-18: loadThreadsForUri is called ONLY on webview:ready, not eagerly before webview is ready", async () => {
+    // Regression: the provider must NOT call loadThreadsForUri eagerly during open().
+    // Sending comments:load before the webview JS has initialized means the message
+    // is dropped (no listener registered yet). The correct trigger is webview:ready.
+    //
+    // This test verifies that loadThreadsForUri is NOT called during open() itself,
+    // and IS called when webview:ready arrives via onDidReceiveMessage.
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    let messageHandler: ((msg: Record<string, unknown>) => void) | undefined;
+    panel.webview.onDidReceiveMessage = vi.fn().mockImplementation(
+      (cb: (msg: Record<string, unknown>) => void) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      },
+    );
+
+    const commentsBridge = {
+      handleWebviewMessage: vi.fn().mockResolvedValue(undefined),
+      loadThreadsForUri: vi.fn(),
+      buildAnchor: vi.fn(),
+      dispose: vi.fn(),
+      bindToSender: vi.fn().mockReturnThis(),
+    } as unknown as PresentationCommentsBridge;
+
+    const provider = makeProvider();
+    await provider.open("/deck.md", makeAdapter(), makeRenderer(), commentsBridge);
+
+    // After open() completes but BEFORE webview:ready arrives, loadThreadsForUri
+    // must NOT have been called — the webview JS is not yet initialized.
+    expect(commentsBridge.loadThreadsForUri).not.toHaveBeenCalled();
+
+    // Now simulate webview:ready arriving (webview JS has initialized)
+    expect(messageHandler).toBeDefined();
+    messageHandler!({ type: "webview:ready" });
+
+    // Only now should loadThreadsForUri be called
+    expect(commentsBridge.loadThreadsForUri).toHaveBeenCalledTimes(1);
+    expect(commentsBridge.loadThreadsForUri).toHaveBeenCalledWith(expect.stringContaining("deck.md"));
+  });
+
+  it("M50-PVD-18: webview:ready arriving twice calls loadThreadsForUri twice (idempotent subscription)", async () => {
+    // If webview:ready fires more than once (e.g. webview reload), each arrival
+    // must trigger a fresh loadThreadsForUri call. The bridge handles deduplication
+    // of subscriptions internally (M50-CBR-06).
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    let messageHandler: ((msg: Record<string, unknown>) => void) | undefined;
+    panel.webview.onDidReceiveMessage = vi.fn().mockImplementation(
+      (cb: (msg: Record<string, unknown>) => void) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      },
+    );
+
+    const commentsBridge = {
+      handleWebviewMessage: vi.fn().mockResolvedValue(undefined),
+      loadThreadsForUri: vi.fn(),
+      buildAnchor: vi.fn(),
+      dispose: vi.fn(),
+      bindToSender: vi.fn().mockReturnThis(),
+    } as unknown as PresentationCommentsBridge;
+
+    const provider = makeProvider();
+    await provider.open("/deck.md", makeAdapter(), makeRenderer(), commentsBridge);
+
+    messageHandler!({ type: "webview:ready" });
+    messageHandler!({ type: "webview:ready" });
+
+    expect(commentsBridge.loadThreadsForUri).toHaveBeenCalledTimes(2);
   });
 });
