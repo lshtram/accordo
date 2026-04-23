@@ -120,25 +120,49 @@ export class ExternalTtsAdapter implements TtsProvider {
     request: TtsSynthesisRequest,
     _token?: CancellationToken,
   ): Promise<TtsSynthesisResult> {
+    const body: Record<string, unknown> = {
+      model: this._model,
+      input: request.text,
+      text: request.text,
+      response_format: "wav",
+    };
+    // Only include voice when explicitly provided — Kokoro-like endpoints
+    // reject unknown fields, while OpenAI-compatible providers require it.
+    if (request.voice != null) {
+      body.voice = request.voice;
+      if (request.language) body.language = request.language;
+      if (request.speed != null) body.speed = request.speed;
+    }
+
     const response = await fetch(`${this._endpoint}/audio/speech`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: this._authHeader,
       },
-      body: JSON.stringify({
-        model: this._model,
-        input: request.text,
-        text: request.text,
-        voice: request.voice ?? "alloy",
-        language: request.language ?? "en-US",
-        speed: request.speed ?? 1.0,
-        response_format: "wav",
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
-      throw new Error(`ExternalTtsAdapter: HTTP ${response.status} — ${response.statusText}`);
+      // Try to read the response body for more context (e.g. API error message).
+      let detail = "";
+      try {
+        const bodyText = await response.text();
+        if (bodyText) detail = ` — ${bodyText.slice(0, 200)}`;
+      } catch {
+        // ignore body-read failure
+      }
+      const cause =
+        response.status === 401 || response.status === 403
+          ? "auth"
+          : response.status === 404
+            ? "endpoint-not-found"
+            : response.status >= 500
+              ? "server-error"
+              : "client-error";
+      throw new Error(
+        `ExternalTtsAdapter: HTTP ${response.status} (${cause}) — ${response.statusText}${detail}`,
+      );
     }
 
     const arrayBuffer = await response.arrayBuffer();
