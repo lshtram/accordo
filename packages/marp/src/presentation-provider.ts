@@ -5,6 +5,7 @@
  */
 
 import * as vscode from "vscode";
+import { dirname, resolve } from "node:path";
 import type { PresentationRuntimeAdapter } from "./runtime-adapter.js";
 import type { PresentationCommentsBridge } from "./presentation-comments-bridge.js";
 import type { MarpRenderResult, PresentationRenderer } from "./types.js";
@@ -16,10 +17,11 @@ export function buildWebviewHtml(
   cspSource: string,
   sdkJsUri?: string,
   sdkCssUri?: string,
+  mermaidJsUri?: string,
 ): string {
   // Delegates to the dedicated HTML builder — no SDK URIs (comment SDK is
   // injected by the provider when commentsBridge is present).
-  return buildMarpWebviewHtml({ renderResult, nonce, cspSource, sdkJsUri, sdkCssUri });
+  return buildMarpWebviewHtml({ renderResult, nonce, cspSource, mermaidJsUri, sdkJsUri, sdkCssUri });
 }
 
 export class PresentationProvider {
@@ -53,7 +55,54 @@ export class PresentationProvider {
     }
   }
 
-  private createPanel(): vscode.WebviewPanel {
+  private rewriteDeckAssetUris(
+    html: string,
+    deckUri: string,
+    webview: vscode.Webview,
+  ): string {
+    const deckDir = dirname(deckUri);
+
+    const toWebviewAssetUri = (rawSrc: string): string => {
+      if (
+        rawSrc.startsWith("http://") ||
+        rawSrc.startsWith("https://") ||
+        rawSrc.startsWith("data:") ||
+        rawSrc.startsWith("blob:") ||
+        rawSrc.startsWith("vscode-webview:")
+      ) {
+        return rawSrc;
+      }
+
+      const [pathPart, suffix = ""] = String(rawSrc).split(/([?#].*)/, 2);
+      const absolutePath = pathPart.startsWith("/")
+        ? pathPart
+        : resolve(deckDir, pathPart);
+      const rewritten = webview
+        .asWebviewUri(vscode.Uri.file(absolutePath))
+        .toString();
+      return `${rewritten}${suffix}`;
+    };
+
+    return html.replace(/(<img\b[^>]*\bsrc=)(["'])([^"']+)\2/gi, (_m, prefix, quote, src) => {
+      return `${prefix}${quote}${toWebviewAssetUri(src)}${quote}`;
+    }).replace(
+      /(background-image\s*:\s*url\((?:&quot;|"|'))([^"')]+)((?:&quot;|"|')\))/gi,
+      (_m, prefix, src, suffix) => `${prefix}${toWebviewAssetUri(src)}${suffix}`,
+    );
+  }
+
+  private toWebviewRenderResult(
+    renderResult: MarpRenderResult,
+    deckUri: string,
+    webview: vscode.Webview,
+  ): MarpRenderResult {
+    return {
+      ...renderResult,
+      html: this.rewriteDeckAssetUris(renderResult.html, deckUri, webview),
+    };
+  }
+
+  private createPanel(deckUri: string): vscode.WebviewPanel {
     return vscode.window.createWebviewPanel(
       "accordo.marp.presentation",
       "Marp Presentation",
@@ -61,22 +110,28 @@ export class PresentationProvider {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.file(dirname(deckUri)), this.extensionUri],
       },
     );
   }
 
-  private getSdkAssetUris(panel: vscode.WebviewPanel): { sdkJsUri?: string; sdkCssUri?: string } {
-    if (!this.commentsBridge) {
-      return {};
-    }
+  private getWebviewAssetUris(panel: vscode.WebviewPanel): {
+    mermaidJsUri: string;
+    sdkJsUri?: string;
+    sdkCssUri?: string;
+  } {
+    const asWebviewUri = typeof panel.webview.asWebviewUri === "function"
+      ? (uri: vscode.Uri) => panel.webview.asWebviewUri(uri).toString()
+      : (uri: vscode.Uri) => uri.toString();
 
     return {
-      sdkJsUri: panel.webview
-        .asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "sdk.browser.js"))
-        .toString(),
-      sdkCssUri: panel.webview
-        .asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "sdk.css"))
-        .toString(),
+      mermaidJsUri: asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "mermaid.min.js")),
+      sdkJsUri: this.commentsBridge
+        ? asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "sdk.browser.js"))
+        : undefined,
+      sdkCssUri: this.commentsBridge
+        ? asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "sdk.css"))
+        : undefined,
     };
   }
 
@@ -144,17 +199,21 @@ export class PresentationProvider {
 
     const deckContent = await this.readDeckContent(deckUri);
 
-    const renderResult = this.renderer.render(deckContent);
-
     const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
 
-    const panel = this.createPanel();
+    const panel = this.createPanel(deckUri);
     this.panel = panel;
+
+    const renderResult = this.toWebviewRenderResult(
+      this.renderer.render(deckContent),
+      deckUri,
+      panel.webview,
+    );
 
     this.bindCommentsSender(panel);
     const cspSource = panel.webview.cspSource;
-    const { sdkJsUri, sdkCssUri } = this.getSdkAssetUris(panel);
-    panel.webview.html = buildWebviewHtml(renderResult, nonce, cspSource, sdkJsUri, sdkCssUri);
+    const { mermaidJsUri, sdkJsUri, sdkCssUri } = this.getWebviewAssetUris(panel);
+    panel.webview.html = buildWebviewHtml(renderResult, nonce, cspSource, sdkJsUri, sdkCssUri, mermaidJsUri);
 
     this.wirePanelMessageHandling(panel, deckUri);
     this.setupAdapterSubscription(panel, adapter);
@@ -170,7 +229,11 @@ export class PresentationProvider {
     // renderer is always set after open() completes, and close() does not clear it
     try {
       const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(this.deckUri));
-      const result = this.renderer.render(Buffer.from(bytes).toString("utf8"));
+      const result = this.toWebviewRenderResult(
+        this.renderer.render(Buffer.from(bytes).toString("utf8")),
+        this.deckUri,
+        this.panel.webview,
+      );
 
       const clamped = Math.min(this.currentSlide, result.slideCount - 1);
       if (clamped !== this.currentSlide) this.currentSlide = clamped;
@@ -267,7 +330,9 @@ export class PresentationProvider {
     this.panel = null;
     this.deckUri = null;
     this.adapter = null;
+    const bridge = this.commentsBridge;
     this.commentsBridge = null;
+    bridge?.dispose();
     this.slideSubscription?.dispose();
     this.slideSubscription = null;
     this.fileWatcher?.dispose();

@@ -184,6 +184,84 @@ describe("PresentationProvider.open", () => {
     expect(panel.webview.html).toContain("vscode-webview://unit-test-origin");
   });
 
+  it("rewrites deck-local image sources through panel.webview.asWebviewUri", async () => {
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    panel.webview.asWebviewUri = vi
+      .fn()
+      .mockImplementation((uri: { fsPath: string; toString(): string }) => ({
+        toString: () => `vscode-webview://local${uri.fsPath}`,
+      }));
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    const provider = makeProvider();
+    const renderer = makeRenderer(
+      makeRenderResult({
+        html: '<section><img src="./assets/diagram.svg" /></section>',
+      }),
+    );
+
+    await provider.open("/slides/deck.md", makeAdapter(), renderer, null);
+
+    expect(panel.webview.asWebviewUri).toHaveBeenCalledWith(expect.objectContaining({ fsPath: "/slides/assets/diagram.svg" }));
+    expect(panel.webview.html).toContain('src="vscode-webview://local/slides/assets/diagram.svg"');
+  });
+
+  it("rewrites deck-local background-image URLs through panel.webview.asWebviewUri", async () => {
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    panel.webview.asWebviewUri = vi
+      .fn()
+      .mockImplementation((uri: { fsPath: string; toString(): string }) => ({
+        toString: () => `vscode-webview://local${uri.fsPath}`,
+      }));
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    const provider = makeProvider();
+    const renderer = makeRenderer(
+      makeRenderResult({
+        html: '<section><figure style="background-image:url(&quot;./assets/hero.jpg&quot;);"></figure></section>',
+      }),
+    );
+
+    await provider.open("/slides/deck.md", makeAdapter(), renderer, null);
+
+    expect(panel.webview.asWebviewUri).toHaveBeenCalledWith(expect.objectContaining({ fsPath: "/slides/assets/hero.jpg" }));
+    expect(panel.webview.html).toContain("background-image:url(");
+    expect(panel.webview.html).toContain("vscode-webview://local/slides/assets/hero.jpg");
+  });
+
+  it("passes the deck directory as a local resource root", async () => {
+    const provider = makeProvider();
+
+    await provider.open("/slides/deck.md", makeAdapter(), makeRenderer(), null);
+
+    expect(window.createWebviewPanel).toHaveBeenCalledWith(
+      "accordo.marp.presentation",
+      "Marp Presentation",
+      expect.any(Number),
+      expect.objectContaining({
+        localResourceRoots: expect.arrayContaining([
+          expect.objectContaining({ fsPath: "/slides" }),
+        ]),
+      }),
+    );
+  });
+
+  it("includes a Mermaid asset URI in the webview HTML", async () => {
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    panel.webview.asWebviewUri = vi
+      .fn()
+      .mockImplementation((uri: { fsPath: string; toString(): string }) => ({
+        toString: () => `vscode-webview://local${uri.fsPath}`,
+      }));
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    const provider = makeProvider();
+    await provider.open("/slides/deck.md", makeAdapter(), makeRenderer(), null);
+
+    expect(panel.webview.html).toContain("mermaid.min.js");
+    expect(panel.webview.asWebviewUri).toHaveBeenCalledWith(expect.objectContaining({ fsPath: "/fake/ext/dist/mermaid.min.js" }));
+  });
+
   it("M50-PVD-06: re-opening same deck URI reveals existing panel (no re-render)", async () => {
     // If the deck is already open, reveal the panel without creating a new one.
     const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
@@ -624,6 +702,70 @@ describe("PresentationProvider — Comment SDK integration", () => {
       expect.objectContaining({ type: "comment:reply" }),
       expect.any(String),
     );
+  });
+
+  it("M50-PVD-17: close() disposes commentsBridge to prevent stale onChanged listener leak", async () => {
+    // Regression: close() must call commentsBridge.dispose() so the adapter onChanged
+    // subscription is released. Without this, the old listener fires on the disposed webview
+    // after reopen, producing "Webview is disposed".
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    const commentsBridge = {
+      handleWebviewMessage: vi.fn().mockResolvedValue(undefined),
+      loadThreadsForUri: vi.fn(),
+      buildAnchor: vi.fn(),
+      dispose: vi.fn(),
+      bindToSender: vi.fn().mockReturnThis(),
+    } as unknown as PresentationCommentsBridge;
+
+    const provider = makeProvider();
+    await provider.open("/deck.md", makeAdapter(), makeRenderer(), commentsBridge);
+    provider.close();
+
+    // dispose() must have been called on the bridge during close()
+    expect(commentsBridge.dispose).toHaveBeenCalled();
+  });
+
+  it("M50-PVD-17: after close+reopen, only the new bridge receives onChanged events (no stale sender)", async () => {
+    // Regression: after presentation_close + presentation_open, comment operations
+    // must use the new webview's sender, not the old disposed one.
+    const panel1 = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    const panel2 = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    vi.mocked(window.createWebviewPanel)
+      .mockReturnValueOnce(panel1)
+      .mockReturnValueOnce(panel2);
+
+    const bridge1Dispose = vi.fn();
+    const bridge1 = {
+      handleWebviewMessage: vi.fn().mockResolvedValue(undefined),
+      loadThreadsForUri: vi.fn(),
+      buildAnchor: vi.fn(),
+      dispose: bridge1Dispose,
+      bindToSender: vi.fn().mockReturnThis(),
+    } as unknown as PresentationCommentsBridge;
+
+    const bridge2 = {
+      handleWebviewMessage: vi.fn().mockResolvedValue(undefined),
+      loadThreadsForUri: vi.fn(),
+      buildAnchor: vi.fn(),
+      dispose: vi.fn(),
+      bindToSender: vi.fn().mockReturnThis(),
+    } as unknown as PresentationCommentsBridge;
+
+    const provider = makeProvider();
+    await provider.open("/deck.md", makeAdapter(), makeRenderer(), bridge1);
+    provider.close();
+
+    // bridge1 must be disposed before the second open
+    expect(bridge1Dispose).toHaveBeenCalled();
+
+    await provider.open("/deck.md", makeAdapter(), makeRenderer(), bridge2);
+
+    // bridge2 must be bound to the new panel's sender
+    expect(bridge2.bindToSender).toHaveBeenCalled();
+    // bridge2 must have loadThreadsForUri called for the new session
+    expect(bridge2.loadThreadsForUri).toHaveBeenCalledWith(expect.stringContaining("deck.md"));
   });
 
   it("M50-PVD-16: comments:focus with malformed blockId does not throw", async () => {

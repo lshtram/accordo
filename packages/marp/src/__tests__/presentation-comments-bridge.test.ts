@@ -393,6 +393,29 @@ describe("PresentationCommentsBridge.loadThreadsForUri", () => {
     ]);
   });
 
+  it("M50-CBR-06: loadThreadsForUri disposes previous subscription before creating a new one", () => {
+    // Regression: calling loadThreadsForUri twice (e.g. once on open, once on webview:ready)
+    // must not accumulate duplicate onChanged subscriptions. The previous subscription
+    // must be disposed before a new one is registered.
+    const adapter = makeAdapter();
+    const subDispose1 = vi.fn();
+    const subDispose2 = vi.fn();
+    vi.mocked(adapter.onChanged)
+      .mockReturnValueOnce({ dispose: subDispose1 })
+      .mockReturnValueOnce({ dispose: subDispose2 });
+
+    const bridge = new PresentationCommentsBridge(adapter, makeSender());
+    bridge.loadThreadsForUri("file:///deck.md");
+    // First subscription registered — not yet disposed
+    expect(subDispose1).not.toHaveBeenCalled();
+
+    // Second call (simulates webview:ready arriving after initial load)
+    bridge.loadThreadsForUri("file:///deck.md");
+    // First subscription must be disposed before the second is registered
+    expect(subDispose1).toHaveBeenCalled();
+    expect(adapter.onChanged).toHaveBeenCalledTimes(2);
+  });
+
   it("M50-CBR-04: null adapter — loadThreadsForUri is a no-op (does not throw)", () => {
     // When adapter is null (no comments extension), this is silently a no-op.
     const bridge = new PresentationCommentsBridge(null, makeSender());

@@ -117,6 +117,11 @@ export class PresentationCommentsBridge {
 
   loadThreadsForUri(deckUri: string): void {
     if (!this.adapter) return;
+    // Dispose any previous subscription before re-subscribing (prevents duplicate
+    // onChanged listeners when loadThreadsForUri is called more than once, e.g.
+    // once on open and again on the webview:ready message).
+    this.adapterUnsubscribe?.dispose();
+    this.adapterUnsubscribe = null;
     const send = () => {
       if (!this.adapter) return;
       if (typeof this.adapter.getThreadsForUri !== "function") return;
