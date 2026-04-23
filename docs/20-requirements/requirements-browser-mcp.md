@@ -3,7 +3,7 @@
 **Scope:** `accordo_browser_*` MCP tools — the agent-facing page understanding, interaction, and visual capture surface  
 **Type:** Consolidated requirements for the MCP-visible browser tool surface  
 **Version:** 0.2.0  
-**Date:** 2026-04-21 (revised)  
+**Date:** 2026-04-24 (revised)  
 **Evaluation checklist:** [`docs/30-development/mcp-webview-agent-evaluation-checklist.md`](../30-development/mcp-webview-agent-evaluation-checklist.md)  
 **Evaluation results:** [`docs/50-reviews/M110-TC-browser-tools-evaluation.md`](../50-reviews/M110-TC-browser-tools-evaluation.md)  
 **Improvement plan:** [`docs/50-reviews/M110-TC-improvement-plan.md`](../50-reviews/M110-TC-improvement-plan.md)
@@ -93,8 +93,8 @@ When a `RedactionPolicy` is configured (i.e., `redactPatterns` is non-empty), AL
 **Cross-reference:** B2-PS-007 (screenshot redaction deferred), B2-PS-004 (text redaction).
 
 **MCP-VC-006: artifactMode metadata on successful screenshot responses**  
-All successful screenshot responses from `accordo_browser_capture_region` (in any `mode`: region, viewport, or fullPage) MUST include an `artifactMode` field with value `"inline"`. This advertises to agents that screenshots are returned as base64 data URLs embedded in `dataUrl`, not stored to files or remote references. The value `"file-ref"` and `"remote-ref"` are reserved for future storage subsystems and MUST NOT be used until those subsystems are implemented. Error responses MUST NOT include `artifactMode`.  
-**Acceptance:** `capture_region(mode: "viewport")`, `capture_region(mode: "fullPage")`, and region capture all return `artifactMode: "inline"` on success. A failed capture (e.g. `no-target` error) does not include the field.  
+All successful screenshot responses from `accordo_browser_capture_region` (in any `mode`: region, viewport, or fullPage) MUST include an `artifactMode` field. The current implementation supports `"inline"` for base64 `dataUrl` transport and `"file-ref"` when file-backed transport is requested. `"remote-ref"` remains reserved for future storage subsystems. Error responses MUST NOT include `artifactMode`.  
+**Acceptance:** inline capture returns `artifactMode: "inline"`; file-backed capture returns `artifactMode: "file-ref"`; failed capture (e.g. `no-target`) does not include the field.  
 **Cross-reference:** MCP checklist §3.1 (`artifactMode` field in canonical object model).
 
 ### 4.2 Error Handling Enrichment (MCP-ER)
@@ -219,7 +219,7 @@ These requirements are fully specified in other documents and are not duplicated
 | F (Interaction) | B2-FI-002 (interactiveOnly filter) | ⚠️ Bug: depth truncation interaction |
 | G (Deltas) | B2-SV-001..007, B2-DE-001..007, B2-FI-001..008 | ✅ Implemented |
 | H (Robustness) | B2-WA-001..007, B2-ER-001..008 | ✅ Wait done; error codes partial (see MCP-ER-004) |
-| I (Security) | B2-PS-001..007, B2-ER-007..008 | 🟡 Phase A design complete (MCP-SEC-001..005); implementation pending |
+| I (Security) | B2-PS-001..007, B2-ER-007..008 | ✅ Implemented in MCP handlers and security/audit runtime |
 
 ### 5.2 From `requirements-browser-extension.md`
 
@@ -244,7 +244,7 @@ These requirements are fully specified in other documents and are not duplicated
 | F. Interaction Model | 3 | 4 | — (bug fix) | B2-FI-002 | `interactiveOnly` depth bug |
 | G. Deltas/Efficiency | 4 | 4 | — | B2-SV/DE/FI-* | Cross-nav diff deferred (B2-SV-002/005 unchanged) |
 | H. Robustness | 3 | 4 | MCP-ER-001..004 | B2-WA-*, B2-ER-* | Retry hints, structured errors, capture error taxonomy |
-| I. Security/Privacy | 0 | 2–3 | MCP-SEC-001..005 | B2-PS-001..007, B2-ER-007..008 | Phase A designed; implementation pending |
+| I. Security/Privacy | 0 | 2–3 | MCP-SEC-001..005 | B2-PS-001..007, B2-ER-007..008 | Implemented; remaining work is confidence/coverage, not core design |
 
 ---
 

@@ -77,7 +77,7 @@ export function buildHealthTool(
 
   // Register error listener so the ring buffer gets populated when the relay
   // returns error responses (browser-not-connected, timeout, etc.)
-  relay.onError = (error: string) => {
+  relay.onError = (error: string): void => {
     recentErrors.unshift(error);
     if (recentErrors.length > MAX_RECENT_ERRORS) {
       recentErrors.pop();

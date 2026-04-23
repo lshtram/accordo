@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage } from "node:http";
+import type { IncomingMessage, Server as HttpServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { BrowserRelayAction, BrowserRelayResponse } from "./types.js";
 import type { SharedRelayServerOptions, HubClientInfo } from "./shared-relay-types.js";
@@ -10,8 +10,8 @@ import { attachHubConnection } from "./shared-relay-server-hub.js";
 import { createSharedRelayHttpServer } from "./shared-relay-server-http.js";
 import { buildConnectedHubInfo, broadcastChromeStatusToHubs, type HubSocket, pushToChrome, resolvePendingResponses, stopSharedRelayServer } from "./shared-relay-server-state.js";
 
-export class SharedBrowserRelayServer {
-  private httpServer: ReturnType<typeof createServer> | null = null;
+  export class SharedBrowserRelayServer {
+  private httpServer: HttpServer | null = null;
   private wsServer: WebSocketServer | null = null;
   private chromeSocket: WebSocket | null = null;
   private readonly hubs = new Map<string, HubSocket>();

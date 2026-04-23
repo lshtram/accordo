@@ -230,10 +230,11 @@ export async function handleWaitFor(
   // B2-WA-004: Clamp timeout to [0, WAIT_MAX_TIMEOUT_MS], default to WAIT_DEFAULT_TIMEOUT_MS
   const rawTimeout = args.timeout ?? WAIT_DEFAULT_TIMEOUT_MS;
   const timeoutMs = Math.min(rawTimeout, WAIT_MAX_TIMEOUT_MS);
+  const payload: Record<string, unknown> = { ...args, timeout: timeoutMs };
 
   const startMs = Date.now();
   try {
-    const response = await relay.request("wait_for", args as Record<string, unknown>, RELAY_TIMEOUT_MS);
+    const response = await relay.request("wait_for", payload, RELAY_TIMEOUT_MS);
 
     if (response.success && response.data !== undefined) {
       // B2-WA-001/002/003: Condition met — relay returns WaitForResult in data.

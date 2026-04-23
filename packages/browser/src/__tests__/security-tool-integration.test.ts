@@ -962,6 +962,23 @@ describe("MCP-SEC-002 + MCP-SEC-005: redactPII on inspect_element", () => {
     expect(result.redactionApplied).toBe(true);
   });
 
+  it("MCP-SEC-002: inspect_element retained snapshot stays unredacted", async () => {
+    const relay = createMockRelay({
+      response: { success: true, requestId: "test", data: MOCK_INSPECT_WITH_PII },
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tools = buildPageUnderstandingTools(relay, store, security);
+    const inspectTool = tools.find((t) => t.name === "accordo_browser_inspect_element");
+
+    await (inspectTool!.handler as any)({ selector: "#email", redactPII: true });
+
+    const stored = store.getLatest(MOCK_INSPECT_WITH_PII.pageId);
+    expect(stored).toBeDefined();
+    expect((stored as typeof MOCK_INSPECT_WITH_PII).element?.name).toContain("user@example.com");
+    expect((stored as typeof MOCK_INSPECT_WITH_PII).context?.textContent).toContain("(555) 222-3333");
+  });
+
   it("MCP-SEC-005: inspect_element without redactPII includes redactionWarning", async () => {
     const relay = createMockRelay({
       response: { success: true, requestId: "test", data: MOCK_INSPECT_WITH_PII },
@@ -1046,6 +1063,23 @@ describe("MCP-SEC-002 + MCP-SEC-005: redactPII on get_dom_excerpt", () => {
 
     if ("success" in result && !result.success) return;
     expect(result.redactionApplied).toBe(true);
+  });
+
+  it("MCP-SEC-002: get_dom_excerpt retained snapshot stays unredacted", async () => {
+    const relay = createMockRelay({
+      response: { success: true, requestId: "test", data: MOCK_EXCERPT_WITH_PII },
+    });
+    const store = new SnapshotRetentionStore();
+    const security = createTestSecurityConfig();
+    const tools = buildPageUnderstandingTools(relay, store, security);
+    const excerptTool = tools.find((t) => t.name === "accordo_browser_get_dom_excerpt");
+
+    await (excerptTool!.handler as any)({ selector: "#contact", redactPII: true });
+
+    const stored = store.getLatest(MOCK_EXCERPT_WITH_PII.pageId);
+    expect(stored).toBeDefined();
+    expect((stored as typeof MOCK_EXCERPT_WITH_PII).text).toContain("admin@example.com");
+    expect((stored as typeof MOCK_EXCERPT_WITH_PII).text).toContain("(555) 999-8888");
   });
 
   it("MCP-SEC-005: get_dom_excerpt without redactPII includes redactionWarning", async () => {

@@ -1,12 +1,100 @@
 # Accordo IDE — Active Workplan (Open Items Only)
 
-**Date:** 2026-04-21
-**Status:** Live E2E module testing session completed. Four modalities tested (MD viewer ✅, Marp presentation ⚠️, Diagram ✅, Browser tab ❌). Three new technical debt items identified: (1) comment store silo between VS Code and browser extension, (2) comments panel navigation failures across modalities, (3) Marp user-left comment dismisses presentation on click. Voice module simplified to TTS-only (no STT/dictation).  
+**Date:** 2026-04-24
+**Status:** Tool-by-tool live validation is active. Terminal control tools (`open/run/focus/list/close`) are working. Priority 0 is now **partially completed**: `comment_list` reliability and markdown comment navigation fixes landed on 2026-04-23 (`93526dc`, `bd60d14`); remaining Priority 0 items stay open below.  
 **Purpose:** this file tracks only pending work. Completed work moved to `docs/00-workplan/accomplished-tasks.md`.
 
 ---
 
 ## 1) Current Operating Priorities
+
+### Priority 0 — Layout State Payload Slimming + Comment List Reliability (Highest Priority)
+
+**Status:** In progress from live validation (2026-04-23). Partial fixes completed (2026-04-23); remaining items pending.
+
+**Problem:** `accordo_layout_state` currently embeds detailed comment thread payloads. At realistic workspace scale (many open files + dozens of comments), this can consume large token budgets and degrade agent efficiency. In parallel, `comment_list` failed to return expected open threads in live checks even though threads were present (`comment_sync_version`/`layout_state` confirmed data).
+
+**Additional live bug (2026-04-23):** After deleting comments from the store (thread count reached 0), at least one inline comment artifact remained visible in the editor surface. This indicates a UI/store synchronization gap (stale decoration/thread widget not cleared).
+
+**Update (2026-04-23):** Primary store→VS Code teardown sync fix landed in `93526dc` (bulk delete ID propagation + native widget disposal). Keep this item open until revalidated for all surfaces/entry paths.
+
+**Additional live bug (2026-04-23):** ~~Using "travel-to-comment" on Markdown comments opens the `.md` file in plain text editor instead of Markdown preview.~~ **Resolved in `bd60d14`** with panel/router + controller regression coverage.
+
+**Additional live bug (2026-04-23):** ~~Opening Markdown files from comment/navigation flows does not consistently default to Markdown preview (falls back to text editor in some paths).~~ **Resolved for comments navigation paths in `bd60d14`;** non-comments open-path behavior remains tracked separately where applicable.
+
+**Additional UX gap (2026-04-23):** There is no explicit MCP control to switch an already-open Markdown file between preview and text-editor surfaces on demand. Agents need deterministic surface switching for workflows like format/edit (text) vs review/read (preview).
+
+**Additional live bug (2026-04-23):** `accordo_layout_panel` open actions work, but close actions fail due to a schema/runtime contract mismatch. Runtime requires omitting `view` for `action:"close"`, while tool-call path sends/retains `view`, causing close requests to be rejected.
+
+**Additional live bug (2026-04-23):** `accordo_panel_toggle` command invocation succeeds but observed behavior may be open-only/no-op rather than true toggle. Current response payload does not expose resulting state, making verification ambiguous.
+
+**Additional live bug (2026-04-23):** `accordo_voice_readAloud` failed in live MCP call with `ExternalTtsAdapter: HTTP 500 — Internal Server Error` on a minimal payload. Voice/TTS path needs reliability hardening and error-path diagnostics.
+
+**Additional live bug (2026-04-23):** `accordo_presentation_open` returned an empty payload on success (no explicit `{ opened: true, ... }` acknowledgment). Functionality works (verified via `accordo_presentation_getCurrent`), but the open response contract is ambiguous and harder to validate programmatically.
+
+**Additional live bug (2026-04-23):** Slide comments are present in comment store metadata but not visible in Marp view. Replying to those slide threads via `comment_reply` fails with `Webview is disposed` even after reopening the deck, indicating a Marp comment-surface lifecycle/attachment mismatch.
+
+**Additional live bug (2026-04-23):** Marp comment visibility is inconsistent by author/source: user comments (and at least one existing reply) became visible, while agent-created slide comments remained non-visible in Marp despite existing in comment store metadata. Indicates projection/render filtering mismatch rather than pure store persistence issue.
+
+**Additional UX/runtime gap (2026-04-23):** `accordo_webview_capture` default output path writes into the deck directory. For autonomous agents this is risky/noisy (repo pollution) because agents may omit `output_path` and not realize artifacts should be temporary.
+
+**Additional live bug (2026-04-23):** `accordo_webview_capture` returned a very small SVG artifact (~534 bytes) that did not contain usable slide content in live testing. Capture path reports success but output fidelity is incorrect/unreliable.
+
+**Additional live bug (2026-04-23):** Deleting a comment removes it from store and Markdown preview, but stale inline UI remains in the text editor for the same file; the text-editor delete button then no-ops. This is a cross-surface synchronization + command wiring failure.
+
+**Decision:**
+1. Remove detailed comment thread bodies from `accordo_layout_state`.
+2. Keep `layout_state` comment data as summary-only metadata (counts + lightweight previews at most).
+3. Make `comment_list` the authoritative listing API for comments and fix its live filtering/retrieval reliability.
+
+**Planned module scope:**
+1. Redesign `accordo_layout_state` comment payload contract to be lightweight and bounded.
+2. Audit and fix `comment_list` filter/path logic so open threads are consistently returned across modalities/file scopes.
+3. Add regression tests covering mismatch cases: `threadCount > 0` with empty `comment_list` results must fail.
+4. Add payload-budget tests/assertions for `layout_state` response size under large synthetic comment sets.
+5. Update docs and tool guidance: use `layout_state` for orientation summary, `comment_list/get` for details.
+6. Fix comment UI teardown sync so deleting threads/comments from store reliably removes inline/editor artifacts.
+7. Fix comment navigation for Markdown so travel/focus actions open preview surface by default (with correct line focus), not plain text unless explicitly requested.
+8. Fix cross-surface deletion propagation so preview/editor representations stay consistent and editor-side delete actions are wired to live thread IDs.
+9. Add explicit surface-switch control for Markdown (`preview` ↔ `editor`) so agents can deterministically move between read/review and edit/format flows.
+10. Fix `accordo_layout_panel` close contract so area-close works reliably (either make `view` truly optional in schema/runtime or ignore `view` on close).
+11. Verify/fix `accordo_panel_toggle` semantics so repeated calls deterministically toggle state (or deprecate in favor of explicit `accordo_layout_panel` once close is fixed).
+12. Debug/fix `accordo_voice_readAloud` HTTP 500 path; add diagnostics + fallback behavior so tool failure is actionable and non-silent.
+13. Normalize `accordo_presentation_open` success response to include explicit acknowledgement payload for deterministic automation checks.
+14. Fix Marp slide comment rendering + lifecycle wiring so stored slide comments are visible in-view and `comment_reply` does not fail with `Webview is disposed` for active deck sessions.
+15. Normalize Marp comment projection so visibility is consistent across author kinds/sources (user vs agent-created), with deterministic rendering for all stored slide threads.
+16. Change `accordo_webview_capture` default output destination to a safe temp artifacts location (e.g. workspace `tmp/accordo-artifacts/` or user temp dir) and document the retention behavior.
+17. Fix `accordo_webview_capture` output fidelity so successful captures contain real slide content at expected size/structure, not tiny placeholder/empty SVGs.
+
+**Completed within Priority 0 (2026-04-23):**
+1. `comment_list` filter/path reliability fixes for URI-equivalent forms and untagged-intent visibility (`bd60d14`).
+2. Markdown comment navigation routing fixed for panel/native flows with preview-aware behavior and focused-editor fallback (`bd60d14`).
+3. Store→VS Code delete synchronization hardened for thread/comment deletion and bulk delete notifications (`93526dc`).
+
+**Acceptance criteria:**
+1. `accordo_layout_state` no longer includes full comment thread bodies.
+2. `comment_list` reliably returns open threads that exist in store for equivalent scope/filter queries.
+3. Cross-tool consistency holds: when `comment_sync_version.threadCount > 0`, discoverable thread listings are available via `comment_list` for valid scopes.
+4. Token footprint of `layout_state` is significantly reduced and remains bounded as comment volume grows.
+5. All affected package tests pass with new contracts.
+6. Deleting a thread/comment via API/store leaves no stale comment artifact in open editor/preview surfaces.
+7. "Travel-to-comment" for `.md` anchors opens Markdown preview by default and lands on the expected location.
+8. Deleting from any surface (preview, editor, comments panel, API) removes the comment from all open surfaces; editor delete controls never no-op against already-deleted threads.
+9. Agent can explicitly switch a Markdown file from preview to text editor (and back) via MCP without ambiguous fallback behavior.
+10. `accordo_layout_panel` supports both open and close operations for sidebar/panel/rightBar without schema ambiguity or rejected close calls.
+11. `accordo_panel_toggle` either (a) truly toggles and reports resulting state, or (b) is deprecated with documented replacement path.
+12. `accordo_voice_readAloud` succeeds on baseline payloads in normal dev setup, and failure responses include actionable cause classification.
+13. `accordo_presentation_open` success response includes explicit structured confirmation (not empty body) and can be validated without follow-up probe calls.
+14. For active Marp sessions, slide comments are visible on target slides and thread replies succeed consistently via `comment_reply`.
+15. No author/source-based visibility drift in Marp: agent-created and user-created slide comments render consistently when present in the same store/session.
+16. Calling `accordo_webview_capture` without `output_path` never writes into docs/source directories by default; output lands in configured temp artifacts location.
+17. `accordo_webview_capture` success outputs pass content-validity checks (non-trivial SVG structure/size and visually correct slide export).
+
+**Partially met acceptance criteria (2026-04-23):** #2, #6, #7.
+
+**Execution note:** Blocker priority — complete before adding more generic control-surface/tool breadth work.
+
+---
 
 ### ~~Priority 0 — Critical fixes (D2 review gap — found via live E2E)~~ ✅ RESOLVED
 
@@ -25,26 +113,192 @@
 4. ✅ Chrome extension `handleDiffSnapshots` bypasses SW in-memory fast-path when explicit `tabId` is present — routes directly to content-script store, which is authoritative per-tab (`packages/browser-extension/src/relay-capture-handler.ts` — Phase 2 fix, 2026-04-13)
 5. ✅ E2E smoke tests added: B2-CTX-006 tests in `diff-snapshots-tabid.test.ts` and `relay-actions-diff.test.ts`
 
-**All tests green (current rerun):** `browser` 1142/1142, `browser-extension` 1271/1271.
+**All tests green (current rerun):** `browser` 1178/1178, `browser-extension` 1271/1271.
 
 ---
 
 ### Priority J — Browser MCP Closeout
 
 **Implementation status:** Waves 1-8 are implemented and committed.  
-**Conservative live score:** **44/45** based on `docs/40-reviews/browser-mcp-live-eval-wave8-2026-04-07.md`.  
+**Conservative live score:** **44/45** based on `docs/50-reviews/browser-mcp-live-eval-wave8-2026-04-07.md`.  
 **Residual gap:** OCR-assisted screenshot redaction for image-only PII. Current screenshot redaction is bbox/pattern-based and intentionally does not claim OCR coverage.
 
 **Open closeout tasks:**
 1. Decide whether OCR screenshot redaction is in-scope for the browser MCP target, or whether 44/45 is the accepted end state for this release.
 2. If accepted as-is, update planning docs so they no longer claim 45/45 as the current live-evaluated state.
-3. Keep the implementation review trail in `docs/40-reviews/` and historical planning artifacts in `docs/50-reviews/` / `docs/60-archive/`.
+3. Keep the implementation review trail and historical planning artifacts in `docs/50-reviews/` / `docs/60-archive/`.
 
 **Key evidence:**
 - Plan: `docs/50-reviews/M110-TC-45-45-plan.md`
-- Wave 6 review: `docs/40-reviews/browser-mcp-wave6-eval-2026-04-06.md`
-- Wave 7 live eval: `docs/40-reviews/browser-mcp-live-eval-wave7-2026-04-07.md`
-- Wave 8 live eval: `docs/40-reviews/browser-mcp-live-eval-wave8-2026-04-07.md`
+- Wave 6 review: `docs/50-reviews/browser-mcp-wave6-eval-2026-04-06.md`
+- Wave 7 live eval: `docs/50-reviews/browser-mcp-live-eval-wave7-2026-04-07.md`
+- Wave 8 live eval: `docs/50-reviews/browser-mcp-live-eval-wave8-2026-04-07.md`
+
+---
+
+### Priority S — Terminal Output Readback for Agents (`accordo_terminal_read`)
+
+**Status:** Planned from live tool validation (2026-04-22). Not started.
+
+**Problem:** `accordo_terminal_run` confirms dispatch (`sent: true`) but does not return terminal stdout/stderr, so agents cannot verify interactive terminal results without using separate shell tools.
+
+**Intent:** This is part of Accordo's original terminal modality intent — agents should be able to both **act** in terminals and **observe** terminal output through MCP.
+
+**Planned module scope:**
+1. Add MCP tool `accordo_terminal_read` in `packages/editor/src/tools/terminal.ts`.
+2. Introduce bounded terminal output capture buffer (per terminal + active terminal fallback).
+3. Support incremental reads via cursor/since token to avoid duplicate output replay.
+4. Add redaction/safety guardrails for obvious secrets + strict output size caps.
+5. Define retention lifecycle (buffer reset on terminal close/restart; bounded memory footprint).
+
+**Proposed tool contract (draft):**
+- **Input:** `terminalId?`, `since?`, `maxLines?`, `maxChars?`
+- **Output:** `{ terminalId, text, cursor, truncated }`
+- **Danger level:** safe
+- **Timeout class:** fast
+
+**Acceptance criteria:**
+1. Agent can run `accordo_terminal_run` and then read resulting output via `accordo_terminal_read` without leaving MCP.
+2. Read calls are deterministic and bounded (no unbounded memory, no huge payloads).
+3. Works for both tracked terminals (`accordo-terminal-*`) and active untracked terminal fallback.
+4. Unit tests cover buffering, cursor advancement, truncation, and terminal-close lifecycle.
+5. No regression to existing terminal tools (`open/run/focus/list/close`).
+
+**Risk notes:**
+- Potential leakage of secrets from terminal output; must enforce conservative redaction + explicit docs warning.
+- VS Code terminal output event fidelity should be validated against long-running and ANSI-heavy streams.
+
+**Execution note:** Queue this as a dedicated TDD module in a future implementation session.
+
+---
+
+### Priority T — Hub Original Registry Rebinding
+
+**Status:** Planned from live session restart validation (2026-04-22). Not started.
+
+**Problem:** We still have a reliability gap around the Hub's original registry/rebind path after restart/reload. In some restarts the Hub is reachable but comes up with `bridge: disconnected` and `toolCount: 0` until additional recovery steps, indicating registry/session rebinding drift.
+
+**Intent:** Make Hub startup/reconnect deterministic so the original registry state is restored without manual intervention.
+
+**Planned module scope:**
+1. Trace Hub startup path for registry load + Bridge rebind sequencing.
+2. Audit hub registry read/write lifecycle (creation, replacement, stale entry cleanup).
+3. Add explicit diagnostics for "registry loaded / registry empty / registry stale" outcomes.
+4. Add reconnect logic/tests for restart scenarios where Hub is healthy but tool registry is empty.
+5. Document expected operator recovery flow only as fallback (not primary path).
+
+**Acceptance criteria:**
+1. After `scripts/start-session.sh`, Hub reaches connected Bridge state without manual rebind.
+2. Tool registry repopulates deterministically on restart/reload flows.
+3. Live health checks show consistent non-zero `toolCount` after normal boot.
+4. Automated tests cover stale/empty/original registry edge cases.
+
+**Execution note:** Revisit this as a dedicated hardening module after current priority queue.
+
+---
+
+### Priority U — Deprecate/Remove `accordo_editor_scroll`
+
+**Status:** Planned from live tool-by-tool validation (2026-04-22). Not started.
+
+**Problem:** `accordo_editor_scroll` is low-value and inconsistent across surfaces. It works on text editors but fails on markdown preview surfaces with `No active editor`. The preferred navigation pattern is deterministic file open + line targeting via `accordo_editor_open`.
+
+**Decision direction:** Retire `accordo_editor_scroll` entirely rather than broadening surface-specific behavior.
+
+**Open tasks:**
+1. Confirm removal in requirements and architecture docs.
+2. Remove `accordo_editor_scroll` from editor tool registration and schema catalogs.
+3. Update any references/tests expecting the tool in `tools/list`.
+4. Add migration note: use `accordo_editor_open` with `line`/`column` for viewport positioning.
+
+**Acceptance criteria:**
+1. `tools/list` does not include `accordo_editor_scroll` (or clearly marks it deprecated during transition window).
+2. Editor tool tests pass after removal/deprecation updates.
+3. Docs consistently point to `accordo_editor_open` for navigation.
+
+**Execution note:** Schedule as a cleanup module after current high-priority reconnect and terminal-readback work.
+
+---
+
+### Priority W — Generic VS Code Command Gateway (`accordo_vscode_command_*`)
+
+**Status:** Planned from live tool-by-tool validation (2026-04-22). Not started.
+
+**Problem:** Long-tail VS Code functionality is large and changes over time (core + extension-contributed commands). Maintaining one dedicated MCP wrapper per low-value command does not scale.
+
+**Intent:** Keep strongly-typed first-class MCP tools for common/high-signal workflows, and add a guarded generic command gateway for non-essential/long-tail capabilities.
+
+**Planned module scope:**
+1. Add `accordo_vscode_command_list` to discover available command IDs (public + optional internal).
+2. Add `accordo_vscode_command_execute` to run a command ID with arguments through `vscode.commands.executeCommand`.
+3. Add safety policy layer (allow/deny/risk classes + confirmation requirements for destructive commands).
+4. Add structured audit logging for command ID, args shape, caller context, outcome/error.
+5. Add docs for reliability caveats (internal command instability, interactive command limitations).
+
+**Adoption/migration note:**
+- Use this gateway for non-essential capabilities first.
+- `accordo_editor_reveal`, `accordo_editor_split`, `accordo_layout_evenGroups`, `accordo_layout_joinGroups`, `accordo_editor_save`, `accordo_editor_saveAll`, `accordo_editor_format`, `accordo_layout_zen`, `accordo_layout_fullscreen`, `accordo_diagram_list`, `accordo_diagram_get`, and `accordo_diagram_style_guide` are the first candidates for removal/migration and should be treated as the reference examples of "specialized tool replaced by generic command gateway".
+- Provide an agent-facing usage skill/playbook with practical examples mapping common intentions to command IDs + arg shapes ("back door" guidance for long-tail commands).
+- In that skill/playbook, include these migrated commands as highlighted examples (reveal/split/even/join/save/saveAll/format/zen/fullscreen/diagram-list/diagram-get), including expected argument shapes and fallback behaviors.
+- For diagram metadata extraction currently covered by `accordo_diagram_get`, provide a script-based fallback/standard path in the generic workflow (read `.mmd` + parse/inspect via script) and document expected output shape.
+- Do not keep separate "documentation pointer" MCP tools. Guidance/skill references must live in runtime tool documentation (tool descriptions + MCP docs resources + server instructions) instead of dedicated helper tools.
+- Explore and document how to reliably read mode state (e.g., fullscreen/zen on/off) after command execution; if no native signal exists, define an explicit state-probe strategy.
+
+**Acceptance criteria:**
+1. Agent can discover commands and execute approved ones without adding a bespoke MCP tool.
+2. High-risk commands are blocked or require explicit confirmation by policy.
+3. Failures are debuggable via audit trail (command ID + normalized args + error).
+4. Existing essential first-class tools remain supported and are not regressed.
+
+**Execution note:** Schedule after Priority S/T; evaluate retiring `accordo_editor_reveal` + `accordo_editor_split` + `accordo_layout_evenGroups` + `accordo_layout_joinGroups` + `accordo_editor_save` + `accordo_editor_saveAll` + `accordo_editor_format` + `accordo_layout_zen` + `accordo_layout_fullscreen` + `accordo_diagram_list` + `accordo_diagram_get` + `accordo_diagram_style_guide` in the same or immediately following module, alongside the agent usage skill/examples, script fallbacks, mode-state probing guidance, and runtime-doc consolidation.
+
+---
+
+### Priority X — Skill-First Workflow Enforcement for New Agents
+
+**Status:** Planned from live operator feedback (2026-04-23). Not started.
+
+**Problem:** First-time agents may skip project skills (e.g., diagram styling skill) and produce technically valid but non-compliant outputs. Relying on agent intuition is not sufficient.
+
+**Recommendations (adopt as implementation tasks):**
+1. Put mandatory workflow hints directly in runtime tool descriptions (e.g., diagram tools must state style workflow and anti-patterns).
+2. Add server-instruction rule: diagram tasks must follow `skills/diagrams/skill.md` conventions.
+3. Add runtime warning/metadata when diagram creation/patch is done without style-layer application.
+4. Add regression checks so newly created diagrams in docs/demo follow style-guide expectations (nodeStyles/edgeStyles usage path).
+5. Add a canonical MCP-readable “recipes” resource with first-time safe sequences (create/open/patch/render, common recovery flows).
+
+**Acceptance criteria:**
+1. A new agent with no repo context is explicitly guided by runtime docs to the correct diagram workflow.
+2. Diagram outputs from first-pass agent runs conform to style conventions without manual correction in the common path.
+3. Non-compliant flows are detectable (warning or failing check), not silent.
+
+**Execution note:** Implement alongside Priority W runtime-doc consolidation and generic-command skill rollout.
+
+---
+
+### Priority V — Markdown Preview Highlight Support (`accordo_editor_highlight` parity)
+
+**Status:** Planned from live tool-by-tool validation (2026-04-22). Not started.
+
+**Problem:** `accordo_editor_highlight` currently works on text editor surfaces but not on Markdown preview surfaces. During live validation, attempts to highlight `.md` content in preview failed, creating inconsistency between editor and preview workflows.
+
+**Intent:** Enable line-range highlighting for Markdown preview so review/navigation workflows are consistent across text and preview modalities.
+
+**Planned module scope:**
+1. Define highlight rendering path for preview surface (native preview overlay and/or preview-internal command bridge).
+2. Extend `accordo_editor_highlight` routing so `.md` preview tabs receive highlight requests.
+3. Ensure `accordo_editor_clearHighlights` can clear preview highlights by `decorationId` and clear-all semantics.
+4. Preserve existing text-editor highlight behavior without regression.
+5. Document supported surfaces and behavior in requirements and tool docs.
+
+**Acceptance criteria:**
+1. Calling `accordo_editor_highlight` on an open `.md` preview succeeds with `highlighted: true`.
+2. Highlight appears on the requested line range in preview and remains stable during normal scrolling.
+3. `accordo_editor_clearHighlights` removes preview highlights reliably by ID and clear-all.
+4. Existing editor-surface highlight tests remain green.
+5. Tool docs clearly state both editor and markdown-preview support.
+
+**Execution note:** Schedule after terminal-readback + reconnect reliability items; can be batched with preview-navigation refinements.
 
 ---
 
@@ -144,7 +398,7 @@
 - ADR: `docs/10-architecture/adr-reload-reconnect.md`
 - Change plan: `docs/10-architecture/reload-reconnect-change-plan.md`
 - Test scenarios: `docs/10-architecture/reload-reconnect-test-scenarios.md`
-- Reviews: `docs/40-reviews/reload-reconnect-phase-a.md`, `docs/40-reviews/reload-reconnect-phase-b.md`
+- Reviews: `docs/50-reviews/reload-reconnect-phase-a.md`, `docs/50-reviews/reload-reconnect-phase-b.md`
 
 ---
 
@@ -188,7 +442,7 @@
 
 **Test evidence:** `browser` 1142/1142, `browser-extension` 1271/1271, full suite 5016/5016
 **Reviews:** `docs/reviews/priority-p-architecture-review.md`, `priority-p-phase-b-review.md`, `priority-p-phase-d-review.md`, `priority-p-D2.md`
-**Testing guide:** `docs/testing-guide-priority-p.md`
+**Testing guide:** `docs/40-testing/testing-guide-priority-p.md`
 
 ---
 
@@ -212,7 +466,7 @@
 
 **Test evidence:** `packages/comments` 501/501 ✅
 **Reviews:** `docs/reviews/priority-q-phase-a.md`, `priority-q-phase-b-review.md`, `priority-q-phase-d-review.md`
-**Testing guide:** `docs/testing-guide-priority-q.md`
+**Testing guide:** `docs/40-testing/testing-guide-priority-q.md`
 
 ---
 
@@ -240,7 +494,7 @@
 
 **Test evidence:** `accordo-marp` 308/308 ✅, `accordo-comments` 509/509 ✅
 **Reviews:** `docs/reviews/priority-r-phase-a.md`, `priority-r-phase-b-review.md`, `priority-r-phase-d-review.md`
-**Testing guide:** `docs/testing-guide-priority-r.md`
+**Testing guide:** `docs/40-testing/testing-guide-priority-r.md`
 
 ---
 

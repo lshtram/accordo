@@ -11,6 +11,9 @@ import {
 } from "./security/index.js";
 import type { GetSemanticGraphArgs } from "./page-tool-types.js";
 import { classifyRelayError, SEMANTIC_GRAPH_TIMEOUT_MS } from "./page-tool-types.js";
+import type { SemanticGraphResponse } from "./semantic-graph-tool-contracts.js";
+
+type SemanticGraphInlineResult = SemanticGraphResponse;
 
 export async function handleGetSemanticGraphInline(
   relay: BrowserRelayLike,
@@ -64,12 +67,12 @@ export async function handleGetSemanticGraphInline(
       store.save(response.data.pageId, response.data as SnapshotEnvelopeFields);
     }
 
-    const result = response.data as Record<string, unknown>;
+    const result = response.data as SemanticGraphInlineResult;
     result.auditId = auditEntry.auditId;
 
     if (args.redactPII) {
       try {
-        result.redactionApplied = redactSemanticGraphResponse(result as any, security.redactionPolicy);
+        result.redactionApplied = redactSemanticGraphResponse(result, security.redactionPolicy);
       } catch {
         security.auditLog.completeEntry(auditEntry, {
           action: "blocked",
@@ -84,7 +87,7 @@ export async function handleGetSemanticGraphInline(
 
     security.auditLog.completeEntry(auditEntry, {
       action: "allowed",
-      redacted: !!(result as any).redactionApplied,
+      redacted: !!result.redactionApplied,
       durationMs: Date.now() - startTime,
     });
 

@@ -1,6 +1,7 @@
 export {
   findFreePort,
   getSecurityConfig,
+  readRelayPort,
   resolveRelayToken,
   writeRelayPort,
   wireRelayServices,

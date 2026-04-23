@@ -1,3 +1,5 @@
+> Historical review note: this document captured the browser cleanup state on 2026-04-21. The current browser package has since advanced beyond these counts and review conclusions; keep this as history only, not as the current package status.
+
 # Browser Cleanup Review (2026-04-21)
 
 ## Summary
@@ -7,7 +9,7 @@ This cleanup reconciled browser-module docs with the current tool surface and sh
 ## Completed fixes
 
 1. **Module map alignment to current browser architecture**
-   - Updated `docs/module-map-browser.md` to better match active code ownership:
+   - Updated `docs/30-development/module-maps/module-map-browser.md` to better match active code ownership:
      - added shared-relay support modules (`relay-discovery.ts`, `write-lease.ts`)
      - clarified control-tool ownership (`control-tool-types.ts` canonical, `control-tools.ts` barrel)
      - documented deprecated `browser-tools.ts` as legacy/test-only (not active MCP registration)
@@ -21,11 +23,11 @@ This cleanup reconciled browser-module docs with the current tool surface and sh
    - Updated `docs/10-architecture/comments-panel-architecture.md` to use the current browser focus command `accordo_browser.focusThread` (dot-form VS Code command), replacing stale underscore wording.
 
 4. **Testing-guide command/count refresh**
-   - Updated `docs/testing-guide-shared-browser-relay.md`:
+   - Updated `docs/40-testing/testing-guide-shared-browser-relay.md`:
      - replaced stale absolute paths with repo-root `pnpm --filter ...` commands
      - updated shared-relay subset expectation to **116 tests / 6 files**
      - updated full browser suite expectation to **1142 tests / 41 files**
-   - Updated `docs/testing-guide-browser-pagination.md`:
+   - Updated `docs/40-testing/testing-guide-browser-pagination.md`:
      - replaced stale path-based commands with repo-root `pnpm --filter ...` commands
      - updated full-suite expectations to **1142/41** (`accordo-browser`) and **1271/52** (`browser-extension`)
 

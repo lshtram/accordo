@@ -238,17 +238,17 @@ describe("handleWaitFor — B2-WA-004: Configurable timeout", () => {
   it("B2-WA-004: uses default timeout of 10000 when no timeout specified", async () => {
     const relay = makeRelayResolve({ met: true, elapsedMs: 0 });
     await expectHandleWaitFor(relay, { texts: ["something"] }, "B2-WA-004");
-    // The relay-level timeout must be RELAY_TIMEOUT_MS (headroom above MAX), not the payload timeout.
-    // The payload's timeout field stays at the default (10000) inside the args object.
+    const payload = relay.request.mock.calls[0][1] as Record<string, unknown>;
+    expect(payload.timeout).toBe(WAIT_DEFAULT_TIMEOUT_MS);
     const actualTimeout = relay.request.mock.calls[0][2];
     expect(actualTimeout).toBe(RELAY_TIMEOUT_MS);
   });
 
   it("B2-WA-004: clamps timeout to maximum of 30000 when exceeded", async () => {
     const relay = makeRelayResolve({ met: false, error: "timeout", elapsedMs: 30000 });
-    // Pass a timeout exceeding the max — implementation must clamp payload to 30000,
-    // but the relay-level timeout must always be RELAY_TIMEOUT_MS (35000).
     await expectHandleWaitFor(relay, { texts: ["test"], timeout: 60000 }, "B2-WA-004");
+    const payload = relay.request.mock.calls[0][1] as Record<string, unknown>;
+    expect(payload.timeout).toBe(WAIT_MAX_TIMEOUT_MS);
     const actualTimeout = relay.request.mock.calls[0][2];
     expect(actualTimeout).toBe(RELAY_TIMEOUT_MS);
   });

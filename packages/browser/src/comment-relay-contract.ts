@@ -41,7 +41,7 @@ export interface BrowserRelayResponse<TData = unknown> {
  */
 export function normalizeReadResult(data: unknown): BrowserCommentReadEnvelope {
   // null or undefined → safe empty
-  if (data == null) {
+  if (data === null || data === undefined) {
     return { threads: [] };
   }
 

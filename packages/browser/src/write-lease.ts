@@ -94,8 +94,10 @@ export class WriteLeaseManager {
 
     if (this.queue.length > 0) {
       // SBR-F-022: Grant to next Hub immediately (FIFO order)
-      const next = this.queue.shift()!;
-      this.grantTo(next);
+      const next = this.queue.shift();
+      if (next !== undefined) {
+        this.grantTo(next);
+      }
     } else {
       // SBR-F-025: No queued waiters — extend the lease briefly, then release it.
       // This preserves short follow-up mutations from the same hub without letting
@@ -107,8 +109,10 @@ export class WriteLeaseManager {
         }
 
         if (this.queue.length > 0) {
-          const next = this.queue.shift()!;
-          this.grantTo(next);
+          const next = this.queue.shift();
+          if (next !== undefined) {
+            this.grantTo(next);
+          }
           return;
         }
 
@@ -152,8 +156,10 @@ export class WriteLeaseManager {
       this.pendingAcquire.delete(hubId);
       // Grant to next in queue if any
       if (this.queue.length > 0) {
-        const next = this.queue.shift()!;
-        this.grantTo(next);
+        const next = this.queue.shift();
+        if (next !== undefined) {
+          this.grantTo(next);
+        }
       }
     } else {
       // Hub was not the holder — just remove its queued request
@@ -194,8 +200,10 @@ export class WriteLeaseManager {
         this.expiryTimer = null;
         // Grant to next in queue
         if (this.queue.length > 0) {
-          const next = this.queue.shift()!;
-          this.grantTo(next);
+          const next = this.queue.shift();
+          if (next !== undefined) {
+            this.grantTo(next);
+          }
         }
       }
     }, this.leaseDurationMs);

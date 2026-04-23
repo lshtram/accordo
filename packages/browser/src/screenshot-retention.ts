@@ -67,7 +67,7 @@ export class ScreenshotRetentionStore {
    * @param record — Screenshot record to save.
    */
   save(pageId: string, record: ScreenshotRecord): void {
-    let slots = this.pages.get(pageId) ?? [];
+    const slots = this.pages.get(pageId) ?? [];
     slots.push(record);
     // FIFO eviction: remove oldest when over the limit
     while (slots.length > SCREENSHOT_RETENTION_SLOTS) {

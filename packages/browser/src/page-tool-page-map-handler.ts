@@ -13,6 +13,7 @@ import { buildStructuredError } from "./page-tool-types.js";
 import type { GetPageMapArgs, IframeMetadata, PageMapResponse, PageToolError } from "./page-tool-types.js";
 import { classifyRelayError, PAGE_MAP_TIMEOUT_MS } from "./page-tool-types.js";
 import { mapRelayError } from "./page-tool-relay-errors.js";
+import { runPageToolPipeline } from "./page-tool-pipeline.js";
 
 export async function handleGetPageMap(
   relay: BrowserRelayLike,
@@ -20,10 +21,6 @@ export async function handleGetPageMap(
   store: SnapshotRetentionStore,
   security: SecurityConfig = DEFAULT_SECURITY_CONFIG,
 ): Promise<PageMapResponse | PageToolError> {
-  if (!relay.isConnected()) {
-    return buildStructuredError("browser-not-connected") as PageToolError;
-  }
-
   const effectiveCap = Math.min(args.maxNodes ?? 200, 500);
   const clampedOffset = Math.max(0, args.offset ?? 0);
   const clampedLimit = args.limit !== undefined
@@ -42,91 +39,56 @@ export async function handleGetPageMap(
     delete payload.limit;
   }
 
-  const auditEntry = security.auditLog.createEntry("accordo_browser_get_page_map", undefined, undefined);
-  const startTime = Date.now();
-
-  try {
-    const response = await relay.request("get_page_map", payload, PAGE_MAP_TIMEOUT_MS);
-    if (
-      response.success &&
-      response.data &&
-      typeof response.data === "object" &&
-      "pageUrl" in response.data &&
-      hasSnapshotEnvelope(response.data)
-    ) {
-      const relayPageUrl = (response.data as { pageUrl?: string }).pageUrl;
-      if (relayPageUrl) {
-        const origin = extractOrigin(relayPageUrl) ?? relayPageUrl;
-        const policy = mergeOriginPolicy(security.originPolicy, args.allowedOrigins, args.deniedOrigins);
-        if (checkOrigin(origin, policy) === "block") {
-          security.auditLog.completeEntry(auditEntry, {
-            action: "blocked",
-            redacted: false,
-            durationMs: Date.now() - startTime,
-          });
-          return buildStructuredError("origin-blocked") as PageToolError;
+  const policy = mergeOriginPolicy(security.originPolicy, args.allowedOrigins, args.deniedOrigins);
+  const pipeline = await runPageToolPipeline(
+    relay,
+    payload,
+    store,
+    security,
+    {
+      toolName: "accordo_browser_get_page_map",
+      relayAction: "get_page_map",
+      timeoutMs: PAGE_MAP_TIMEOUT_MS,
+      validateResponse: (data) => {
+        if (data && typeof data === "object" && "pageUrl" in data && hasSnapshotEnvelope(data)) {
+          return { ...data } as PageMapResponse;
         }
-      }
-
-      store.save(response.data.pageId, response.data);
-      const result = { ...response.data } as PageMapResponse;
-      result.auditId = auditEntry.auditId;
-
-      if (args.frameFilter && args.frameFilter.length > 0 && result.iframes) {
-        const allowed = new Set<IframeMetadata["classification"]>(args.frameFilter);
-        result.iframes = result.iframes.filter((f) => allowed.has(f.classification ?? "unknown"));
-      }
-
-      if (args.redactPII) {
-        try {
-          result.redactionApplied = redactPageMapResponse(result, security.redactionPolicy);
-        } catch {
-          security.auditLog.completeEntry(auditEntry, {
-            action: "blocked",
-            redacted: false,
-            durationMs: Date.now() - startTime,
-          });
-          return buildStructuredError("redaction-failed") as PageToolError;
+        return null;
+      },
+      mapRelayError,
+      mapThrownError: classifyRelayError,
+      extractOrigin: (response) => {
+        const relayPageUrl = response.pageUrl;
+        return relayPageUrl ? extractOrigin(relayPageUrl) ?? relayPageUrl : undefined;
+      },
+      redact: (response) => {
+        response.redactionApplied = redactPageMapResponse(response, security.redactionPolicy);
+        return response;
+      },
+      postProcess: (response) => {
+        if (args.frameFilter && args.frameFilter.length > 0 && response.iframes) {
+          const allowed = new Set<IframeMetadata["classification"]>(args.frameFilter);
+          response.iframes = response.iframes.filter((f) => allowed.has(f.classification ?? "unknown"));
         }
-      } else {
-        result.redactionWarning = "PII may be present in response";
-      }
-
-      security.auditLog.completeEntry(auditEntry, {
-        action: "allowed",
-        redacted: !!result.redactionApplied,
-        durationMs: Date.now() - startTime,
-      });
-
-      if (paginationArgsProvided) {
-        const effectiveLimit = clampedLimit ?? effectiveCap;
-        const slicedNodes = result.nodes.slice(clampedOffset, clampedOffset + effectiveLimit);
-        result.nodes = slicedNodes;
-
-        const filteredTotal = result.filterSummary?.totalAfterFilter;
-        const preCapTotal = typeof filteredTotal === "number" ? filteredTotal : result.totalElements;
-        const totalAvailable = result.truncated ? Math.min(preCapTotal, effectiveCap) : preCapTotal;
-        result.hasMore = (clampedOffset + slicedNodes.length) < totalAvailable;
-        result.totalAvailable = totalAvailable;
-        if (slicedNodes.length > 0) {
-          result.nextOffset = clampedOffset + slicedNodes.length;
+        if (!args.redactPII) {
+          response.redactionWarning = "PII may be present in response";
         }
-      }
-
-      return { ...result };
-    }
-    security.auditLog.completeEntry(auditEntry, {
-      action: "blocked",
-      redacted: false,
-      durationMs: Date.now() - startTime,
-    });
-    return buildStructuredError(mapRelayError(response.error)) as PageToolError;
-  } catch (err: unknown) {
-    security.auditLog.completeEntry(auditEntry, {
-      action: "blocked",
-      redacted: false,
-      durationMs: Date.now() - startTime,
-    });
-    return buildStructuredError(classifyRelayError(err)) as PageToolError;
-  }
+        if (paginationArgsProvided) {
+          const effectiveLimit = clampedLimit ?? effectiveCap;
+          const slicedNodes = response.nodes.slice(clampedOffset, clampedOffset + effectiveLimit);
+          response.nodes = slicedNodes;
+          const filteredTotal = response.filterSummary?.totalAfterFilter;
+          const preCapTotal = typeof filteredTotal === "number" ? filteredTotal : response.totalElements;
+          const totalAvailable = response.truncated ? Math.min(preCapTotal, effectiveCap) : preCapTotal;
+          response.hasMore = (clampedOffset + slicedNodes.length) < totalAvailable;
+          response.totalAvailable = totalAvailable;
+          if (slicedNodes.length > 0) {
+            response.nextOffset = clampedOffset + slicedNodes.length;
+          }
+        }
+        return response;
+      },
+    },
+  );
+  return pipeline.success ? (pipeline.data as PageMapResponse) : (pipeline.error as PageToolError);
 }

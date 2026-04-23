@@ -18,7 +18,7 @@ const TOKEN_KEY = "browserRelayToken";
 export function findFreePort(startPort: number, host: string, maxTries = 10): Promise<number> {
   return new Promise((resolve, reject) => {
     let attempt = 0;
-    const tryPort = (port: number) => {
+    const tryPort = (port: number): void => {
       if (attempt++ >= maxTries) {
         reject(new Error(`No free port found in range ${startPort}–${startPort + maxTries - 1}`));
         return;
@@ -88,6 +88,16 @@ export function writeRelayPort(port: number): void {
     fs.writeFileSync(path.join(dir, "relay.port"), String(port), "utf8");
   } catch {
     // best-effort — failure must not block activation
+  }
+}
+
+export function readRelayPort(): number | undefined {
+  try {
+    const raw = fs.readFileSync(path.join(os.homedir(), ".accordo", "relay.port"), "utf8").trim();
+    const port = Number.parseInt(raw, 10);
+    return Number.isInteger(port) && port > 0 ? port : undefined;
+  } catch {
+    return undefined;
   }
 }
 

@@ -65,7 +65,7 @@ The Browser Tab Control module requires a **live Chrome browser with CDP debuggi
 2. **No running Chrome extension host** — The extension must be installed in Chrome and connected to the Accordo Hub
 3. **CDP requires real browser** — Debugger commands like `Input.dispatchMouseEvent` and `Page.navigate` can only execute in a real Chrome tab
 
-All 1271 unit tests verify handler logic, permission checks, message routing, CDP command sequencing (double-click 5-event sequence, modifier bitmask application), and error handling at the `sendCommand` mock level. 1142 additional tests in `accordo-browser` (Hub relay side) also pass.
+All 1271 unit tests verify handler logic, permission checks, message routing, CDP command sequencing (double-click 5-event sequence, modifier bitmask application), and error handling at the `sendCommand` mock level. 1178 additional tests in `accordo-browser` (Hub relay side) also pass.
 
 ---
 
@@ -213,7 +213,7 @@ These steps require:
 | Unit tests | `pnpm --filter browser-extension test` | 1271/1271 pass ✅ |
 | Type check | `pnpm --filter browser-extension exec tsc --noEmit` | Clean ✅ |
 | Lint | `pnpm --filter browser-extension lint` | Clean ✅ |
-| Accordo-browser tests | `pnpm --filter accordo-browser test` | 1142/1142 pass ✅ |
+| Accordo-browser tests | `pnpm --filter accordo-browser test` | 1178/1178 pass ✅ |
 | E2E | Manual Chrome testing (see journeys above) | See notes |
 - `BR-F-123`: relay state publishes on wrong port due to port conflict
 

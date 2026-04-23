@@ -37,8 +37,7 @@ interface SemanticGraphLike {
 /** Minimal shape of a PageMapResponse for redaction purposes. */
 interface PageMapLike {
   nodes: unknown[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  children?: any[];
+  children?: unknown[];
 }
 
 /** Minimal shape of an InspectElementResponse for redaction purposes. */

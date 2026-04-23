@@ -18,12 +18,11 @@ export async function activatePerWindowRelay(
     return RELAY_BASE_PORT;
   });
 
-  let relay!: BrowserRelayServer;
-  relay = new BrowserRelayServer({
+  const relay: BrowserRelayServer = new BrowserRelayServer({
     host: RELAY_HOST,
     port: relayPort,
     token,
-    onEvent: (event, details) => {
+    onEvent: (event, details): void => {
       out.appendLine(`[accordo-browser] ${event}${details ? ` ${JSON.stringify(details)}` : ""}`);
       if (event === "relay-client-connected" || event === "relay-client-disconnected") {
         bridge.publishState(EXTENSION_ID, {
@@ -34,7 +33,7 @@ export async function activatePerWindowRelay(
         });
       }
     },
-    onRelayRequest: createRelayRequestHandler({ out, bridge, getRelay: () => relay, logMappingDetails: true, includeInvokeErrorData: true }),
+    onRelayRequest: createRelayRequestHandler({ out, bridge, getRelay: (): BrowserRelayServer => relay, logMappingDetails: true, includeInvokeErrorData: true }),
   });
 
   try {

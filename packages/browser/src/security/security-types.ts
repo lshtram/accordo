@@ -127,7 +127,7 @@ export interface AuditSink {
     outcome: { action: "allowed" | "blocked"; redacted: boolean; durationMs: number },
   ): void;
   /** Flush any pending writes to persistent storage. */
-  flush(): void;
+  flush(): Promise<void>;
 }
 
 // ── Security Configuration ───────────────────────────────────────────────────

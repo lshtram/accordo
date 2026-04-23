@@ -14,7 +14,7 @@ export function buildListPagesTool(relay: BrowserRelayLike): ExtensionToolDefini
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args) => handleListPages(relay, args as ListPagesArgs),
+    handler: (args): Promise<Awaited<ReturnType<typeof handleListPages>>> => handleListPages(relay, args as ListPagesArgs),
   };
 }
 
@@ -34,7 +34,7 @@ export function buildSelectPageTool(
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args) => {
+    handler: (args): Promise<Awaited<ReturnType<typeof handleSelectPage>> | { success: false; error: string; pageUrl: null }> => {
       if (!isSelectPageArgs(args)) return Promise.resolve({ success: false, error: "invalid-request", pageUrl: null });
       return handleSelectPage(relay, args);
     },

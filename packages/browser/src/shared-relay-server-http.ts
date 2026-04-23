@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import type { SharedRelayServerOptions } from "./shared-relay-types.js";
 import { handlePairingHttpRequest } from "./shared-relay-pairing.js";
 
@@ -12,7 +12,7 @@ export function createSharedRelayHttpServer(
   pairingState: PairingState,
   issueCode: () => string,
   emit: (event: string, details?: Record<string, unknown>) => void,
-) {
+): HttpServer {
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     if (handlePairingHttpRequest(req, res, {
       host: options.host,

@@ -206,7 +206,7 @@ export function buildSpatialRelationsTool(
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: async (rawArgs) => {
+    handler: async (rawArgs): Promise<SpatialRelationsResponse | PageToolError> => {
       const args = narrowArgs(rawArgs);
       if (!args) {
         return buildStructuredError(

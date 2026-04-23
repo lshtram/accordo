@@ -25,6 +25,7 @@ import { buildManageSnapshotsTool } from "./manage-snapshots-tool.js";
 import { buildManageScreenshotsTool } from "./manage-screenshots-tool.js";
 import { buildSpatialRelationsTool } from "./spatial-relations-tool.js";
 import { buildControlTools } from "./control-tool-types.js";
+import { readRelayPort } from "./relay-lifecycle-primitives.js";
 import * as http from "node:http";
 
 const RELAY_HOST = "127.0.0.1";
@@ -53,8 +54,9 @@ function buildPairTool(): ExtensionToolDefinition {
     dangerLevel: "safe" as const,
     idempotent: false,
     handler: async (): Promise<unknown> => {
+      const relayPort = readRelayPort() ?? RELAY_BASE_PORT;
       return new Promise((resolve) => {
-        const req = http.get(`http://${RELAY_HOST}:${RELAY_BASE_PORT}/pair/code`, (res) => {
+        const req = http.get(`http://${RELAY_HOST}:${relayPort}/pair/code`, (res) => {
           let body = "";
           res.on("data", (chunk: Buffer) => { body += chunk.toString(); });
           res.on("end", () => {

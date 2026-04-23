@@ -1,4 +1,5 @@
 import type { SnapshotEnvelopeFields } from "./types.js";
+import type { CaptureError } from "./page-tool-capture-types.js";
 
 export interface ListPagesArgs {
   tabId?: number;
@@ -65,7 +66,7 @@ export type BrowserToolErrorCode =
   | SecurityError
   | SpatialError
   | FrameError
-  | import("./page-tool-capture-types.js").CaptureError;
+  | CaptureError;
 
 export const SPATIAL_RELATIONS_TIMEOUT_MS = 10_000;
 export const PAGE_MAP_TIMEOUT_MS = 10_000;

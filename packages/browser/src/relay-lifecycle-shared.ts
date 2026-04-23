@@ -74,18 +74,17 @@ export async function activateSharedRelay(
   if (existingInfo && isRelayAlive(existingInfo)) {
     out.appendLine(`[accordo-browser] shared relay already running on ${RELAY_BASE_PORT} — connecting as Hub`);
     const hubId = randomUUID();
-    let client!: SharedRelayClient;
-    client = new SharedRelayClient({
+    const client: SharedRelayClient = new SharedRelayClient({
       host: RELAY_HOST,
       port: RELAY_BASE_PORT,
       hubId,
       token: existingInfo.token,
       label: "accordo-browser-hub",
-      onEvent: (event, details) => {
+      onEvent: (event, details): void => {
         out.appendLine(`[accordo-browser:hub] ${event}${details ? ` ${JSON.stringify(details)}` : ""}`);
         handleSharedClientEvent(event, details);
       },
-      onRelayRequest: createRelayRequestHandler({ out, bridge, getRelay: () => client, handleBrowserComment }),
+      onRelayRequest: createRelayRequestHandler({ out, bridge, getRelay: (): SharedRelayClient => client, handleBrowserComment }),
     });
     client.start();
     context.subscriptions.push({ dispose: () => client.stop() });

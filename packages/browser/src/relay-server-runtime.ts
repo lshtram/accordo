@@ -45,38 +45,40 @@ export class BrowserRelayServer implements BrowserRelayLike {
       if (this.client && this.client !== socket) this.client.close(1000, "replaced");
       this.client = socket;
       this.emit("relay-client-connected", { remote: req.socket.remoteAddress ?? "unknown" });
-      socket.on("message", async (raw: Buffer) => {
-        if (this.client !== socket) return;
-        let parsed: Record<string, unknown>;
-        try {
-          parsed = JSON.parse(String(raw)) as Record<string, unknown>;
-        } catch {
-          return;
-        }
+      socket.on("message", (raw: Buffer): void => {
+        void (async (): Promise<void> => {
+          if (this.client !== socket) return;
+          let parsed: Record<string, unknown>;
+          try {
+            parsed = JSON.parse(String(raw)) as Record<string, unknown>;
+          } catch {
+            return;
+          }
 
-        if (typeof parsed["success"] !== "undefined") {
-          const requestId = parsed["requestId"] as string | undefined;
-          if (!requestId) return;
-          const resolve = this.pending.get(requestId);
-          if (!resolve) return;
-          this.pending.delete(requestId);
-          resolve({
-            requestId,
-            success: parsed["success"] as boolean,
-            data: parsed["data"],
-            error: parsed["error"] as BrowserRelayResponse["error"],
-          });
-          return;
-        }
+          if (typeof parsed["success"] !== "undefined") {
+            const requestId = parsed["requestId"] as string | undefined;
+            if (!requestId) return;
+            const resolve = this.pending.get(requestId);
+            if (!resolve) return;
+            this.pending.delete(requestId);
+            resolve({
+              requestId,
+              success: parsed["success"] as boolean,
+              data: parsed["data"],
+              error: parsed["error"] as BrowserRelayResponse["error"],
+            });
+            return;
+          }
 
-        if (typeof parsed["action"] === "string" && this.options.onRelayRequest) {
-          const requestId = (parsed["requestId"] as string | undefined) ?? "";
-          const result = await this.options.onRelayRequest(
-            parsed["action"] as Parameters<typeof this.options.onRelayRequest>[0],
-            (parsed["payload"] as Record<string, unknown>) ?? {},
-          );
-          socket.send(JSON.stringify({ ...result, requestId }));
-        }
+          if (typeof parsed["action"] === "string" && this.options.onRelayRequest) {
+            const requestId = (parsed["requestId"] as string | undefined) ?? "";
+            const result = await this.options.onRelayRequest(
+              parsed["action"] as Parameters<typeof this.options.onRelayRequest>[0],
+              (parsed["payload"] as Record<string, unknown>) ?? {},
+            );
+            socket.send(JSON.stringify({ ...result, requestId }));
+          }
+        })().catch(() => {});
       });
       socket.on("close", () => {
         if (this.client === socket) this.client = null;

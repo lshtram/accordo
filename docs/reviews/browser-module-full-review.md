@@ -1,3 +1,5 @@
+> Historical review note: this comprehensive review is preserved as a dated snapshot from 2026-04-16. Its test counts and several findings are no longer current for `packages/browser`.
+
 # Accordo Browser MCP Module — Comprehensive Review
 
 Date: 2026-04-16  

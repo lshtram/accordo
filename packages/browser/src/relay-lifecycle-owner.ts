@@ -25,7 +25,7 @@ export async function startSharedRelayOwner(
     port: RELAY_BASE_PORT,
     host: RELAY_HOST,
     token,
-    onEvent: (event, details) => {
+    onEvent: (event, details): void => {
       out.appendLine(`[accordo-browser:server] ${event}${details ? ` ${JSON.stringify(details)}` : ""}`);
     },
   });
@@ -44,24 +44,23 @@ export async function startSharedRelayOwner(
 
   context.subscriptions.push({
     dispose: () => {
-      server.stop();
+      void server.stop();
       removeSharedRelayInfo();
       releaseRelayLock();
     },
   });
 
-  let ownerClient!: SharedRelayClient;
-  ownerClient = new SharedRelayClient({
+  const ownerClient: SharedRelayClient = new SharedRelayClient({
     host: RELAY_HOST,
     port: RELAY_BASE_PORT,
     hubId: ownerInfo.ownerHubId,
     token,
     label: "accordo-browser-owner",
-    onEvent: (event, details) => {
+    onEvent: (event, details): void => {
       out.appendLine(`[accordo-browser:owner-hub] ${event}${details ? ` ${JSON.stringify(details)}` : ""}`);
       onSharedClientEvent(event, details);
     },
-    onRelayRequest: createRelayRequestHandler({ out, bridge, getRelay: () => ownerClient, logLabel: "owner", handleBrowserComment }),
+    onRelayRequest: createRelayRequestHandler({ out, bridge, getRelay: (): SharedRelayClient => ownerClient, logLabel: "owner", handleBrowserComment }),
   });
   ownerClient.start();
   context.subscriptions.push({ dispose: () => ownerClient.stop() });

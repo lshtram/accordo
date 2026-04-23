@@ -1,6 +1,7 @@
-import { createServer } from "node:http";
+import type { Server as HttpServer } from "node:http";
 import { randomUUID } from "node:crypto";
-import { WebSocketServer, WebSocket } from "ws";
+import { WebSocket } from "ws";
+import type { WebSocketServer } from "ws";
 import type { BrowserRelayAction, BrowserRelayResponse } from "./types.js";
 import type { ChromeStatusEvent, HubClientInfo } from "./shared-relay-types.js";
 
@@ -51,13 +52,13 @@ interface StopSharedRelayServerOptions {
   hubs: Map<string, HubSocket>;
   pendingByHub: Map<string, Map<string, (value: BrowserRelayResponse) => void>>;
   wsServer: WebSocketServer | null;
-  httpServer: ReturnType<typeof createServer> | null;
+  httpServer: HttpServer | null;
   onResolvedPending: () => void;
 }
 
 export async function stopSharedRelayServer(
   options: StopSharedRelayServerOptions,
-): Promise<{ chromeSocket: WebSocket | null; wsServer: WebSocketServer | null; httpServer: ReturnType<typeof createServer> | null }> {
+): Promise<{ chromeSocket: WebSocket | null; wsServer: WebSocketServer | null; httpServer: HttpServer | null }> {
   options.onResolvedPending();
 
   if (options.chromeSocket) {

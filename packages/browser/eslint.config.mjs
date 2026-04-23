@@ -2,19 +2,16 @@
 /**
  * ESLint flat config for accordo-browser (ESLint 10 + typescript-eslint 8).
  *
- * Scoped to production source only: src/eval-*.ts and src/semantic-graph-tool.ts.
- * Test files are intentionally excluded from this config — they have different
- * linting needs (e.g. @ts-expect-error, vitest globals) that would require
- * a separate override block.
- *
- * M113-SEM D2: extended to cover semantic-graph-tool.ts (lint gate requirement).
+ * Production source is linted package-wide. Tests stay excluded here because
+ * they need separate Vitest-specific overrides.
  */
 import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 
 export default [
   {
-    files: ["src/eval-*.ts", "src/semantic-graph-tool.ts"],
+    files: ["src/**/*.ts"],
+    ignores: ["src/__tests__/**/*.ts"],
     languageOptions: {
       parser: tsParser,
       parserOptions: {

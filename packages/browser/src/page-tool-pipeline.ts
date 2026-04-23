@@ -38,9 +38,10 @@
 import type * as vscode from "vscode";
 import type { BrowserRelayAction, BrowserRelayLike, BrowserRelayResponse, SnapshotEnvelopeFields } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
-import type { SecurityConfig } from "./security/index.js";
+import type { OriginPolicy, SecurityConfig } from "./security/index.js";
 import type { PageToolError } from "./page-tool-types.js";
 import { checkOrigin } from "./security/index.js";
+import { buildStructuredError } from "./page-tool-types.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,11 +70,24 @@ export interface PageToolPipelineOpts<TArgs, TResponse> {
     data: unknown,
   ) => TResponse | null;
 
+  /** Optional: map relay error codes into tool-specific structured errors. */
+  readonly mapRelayError?: (error: BrowserRelayResponse["error"]) => string;
+
+  /** Optional: map thrown request errors into tool-specific structured errors. */
+  readonly mapThrownError?: (error: unknown) => string;
+
   /**
    * Optional: extract the origin URL from the response for origin policy
    * checking. Return `undefined` to skip origin checking.
    */
   readonly extractOrigin?: (response: TResponse) => string | undefined;
+
+  /** Optional: use a request-specific origin policy instead of the global one. */
+  readonly resolveOriginPolicy?: (
+    response: TResponse,
+    args: TArgs,
+    security: SecurityConfig,
+  ) => OriginPolicy;
 
   /**
    * Optional: apply redaction to the validated response.
@@ -95,6 +109,13 @@ export interface PageToolPipelineOpts<TArgs, TResponse> {
    * Defaults to `true`.
    */
   readonly saveSnapshot?: boolean;
+
+  /** Optional: custom snapshot persistence when handlers need special storage semantics. */
+  readonly persistSnapshot?: (
+    response: TResponse,
+    rawData: unknown,
+    store: SnapshotRetentionStore,
+  ) => void;
 }
 
 /**
@@ -116,13 +137,18 @@ export interface PipelineResult<TResponse> {
 
 /** Create a structured error result (pipeline never throws). */
 function errorResult(error: string, details?: string): PageToolError {
-  return {
-    success: false,
-    error,
-    ...(details !== undefined ? { details } : {}),
-    pageUrl: null,
-    found: false,
-  };
+  return buildStructuredError(error, details);
+}
+
+function withAuditId<TResponse>(response: TResponse, auditId: string | undefined): TResponse {
+  if (auditId === undefined || response === null || typeof response !== "object") {
+    return response;
+  }
+  return { ...(response as Record<string, unknown>), auditId } as TResponse;
+}
+
+function detachValue<T>(value: T): T {
+  return structuredClone(value);
 }
 
 // ── Pipeline Runner ──────────────────────────────────────────────────────────
@@ -150,6 +176,7 @@ export async function runPageToolPipeline<TArgs, TResponse>(
   security: SecurityConfig,
   opts: PageToolPipelineOpts<TArgs, TResponse>,
 ): Promise<PipelineResult<TResponse>> {
+  const startTime = Date.now();
   // ── Stage 1: Connection check ───────────────────────────────────────────────
   if (!relay.isConnected()) {
     return { success: false, error: errorResult("browser-not-connected", "relay disconnected before request") };
@@ -175,15 +202,14 @@ export async function runPageToolPipeline<TArgs, TResponse>(
     relayResponse = await relay.request(opts.relayAction as BrowserRelayAction, args as Record<string, unknown>, opts.timeoutMs);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    finalError = errorResult("timeout", msg);
-    // ── Stage 9: Audit complete (error path) ────────────────────────────────
-    void completeAudit(security.auditLog, auditEntry, "complete", "blocked", false, undefined);
+    finalError = errorResult(opts.mapThrownError?.(err) ?? "timeout", msg);
+    void completeAudit(security.auditLog, auditEntry, "complete", "blocked", false, Date.now() - startTime);
     return { success: false, error: finalError };
   }
 
   if (!relayResponse.success) {
-    finalError = errorResult("action-failed", relayResponse.error);
-    void completeAudit(security.auditLog, auditEntry, "complete", "blocked", false, undefined);
+    finalError = errorResult(opts.mapRelayError?.(relayResponse.error) ?? "action-failed", relayResponse.error);
+    void completeAudit(security.auditLog, auditEntry, "complete", "blocked", false, Date.now() - startTime);
     return { success: false, error: finalError };
   }
 
@@ -191,7 +217,7 @@ export async function runPageToolPipeline<TArgs, TResponse>(
   const validated = opts.validateResponse(relayResponse.data);
   if (validated === null) {
     finalError = errorResult("action-failed", "validateResponse returned null — response shape mismatch");
-    void completeAudit(security.auditLog, auditEntry, "complete", "blocked", false, undefined);
+    void completeAudit(security.auditLog, auditEntry, "complete", "blocked", false, Date.now() - startTime);
     return { success: false, error: finalError };
   }
 
@@ -199,33 +225,35 @@ export async function runPageToolPipeline<TArgs, TResponse>(
   if (opts.extractOrigin) {
     const origin = opts.extractOrigin(validated);
     if (origin) {
-      const originResult = checkOrigin(origin, security.originPolicy);
+      const policy = opts.resolveOriginPolicy?.(validated, args, security) ?? security.originPolicy;
+      const originResult = checkOrigin(origin, policy);
       if (originResult === "block") {
         finalError = errorResult("origin-blocked", `origin "${origin}" is denied by security policy`);
-        void completeAudit(security.auditLog, auditEntry, "complete", "blocked", false, undefined);
+        void completeAudit(security.auditLog, auditEntry, "complete", "blocked", false, Date.now() - startTime);
         return { success: false, error: finalError };
       }
     }
   }
 
   // ── Stage 6: Snapshot save ─────────────────────────────────────────────────
-  const saveSnapshot = opts.saveSnapshot ?? true;
-  if (saveSnapshot && relayResponse.data && typeof relayResponse.data === "object") {
-    const envelope = relayResponse.data as Record<string, unknown>;
-    if (envelope.pageId && envelope.snapshotId) {
-      try {
-        store.add(envelope as unknown as SnapshotEnvelopeFields);
-      } catch {
-        // snapshot save failure is non-fatal — do not block response
+  try {
+    if (opts.persistSnapshot) {
+      opts.persistSnapshot(detachValue(validated), detachValue(relayResponse.data), store);
+    } else {
+      const saveSnapshot = opts.saveSnapshot ?? true;
+      if (saveSnapshot && relayResponse.data && typeof relayResponse.data === "object") {
+        const envelope = detachValue(relayResponse.data) as Record<string, unknown>;
+        if (envelope.pageId && envelope.snapshotId) {
+          store.add(envelope as unknown as SnapshotEnvelopeFields);
+        }
       }
     }
+  } catch {
+    // snapshot save failure is non-fatal — do not block response
   }
 
   // Work on a detached copy from this point forward
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  let processed: TResponse = validated !== undefined
-    ? (Array.isArray(validated) ? [...validated] as unknown as TResponse : { ...validated } as TResponse)
-    : validated;
+  let processed: TResponse = detachValue(validated);
 
   // ── Stage 7: Redaction ─────────────────────────────────────────────────────
   if (opts.redact) {
@@ -234,7 +262,7 @@ export async function runPageToolPipeline<TArgs, TResponse>(
     } catch (err) {
       // Fail-closed: redaction errors must propagate as error results, never as partial data
       finalError = errorResult("redaction-failed", err instanceof Error ? err.message : String(err));
-      void completeAudit(security.auditLog, auditEntry, "complete", "blocked", true, undefined);
+      void completeAudit(security.auditLog, auditEntry, "complete", "blocked", false, Date.now() - startTime);
       return { success: false, error: finalError };
     }
   }
@@ -243,11 +271,27 @@ export async function runPageToolPipeline<TArgs, TResponse>(
   if (opts.postProcess) {
     processed = opts.postProcess(processed);
   }
+  processed = withAuditId(processed, auditEntry?.auditId);
 
   // ── Stage 9: Audit complete ─────────────────────────────────────────────────
-  void completeAudit(security.auditLog, auditEntry, "complete", "allowed", false, undefined);
+  void completeAudit(
+    security.auditLog,
+    auditEntry,
+    "complete",
+    "allowed",
+    responseWasRedacted(processed),
+    Date.now() - startTime,
+  );
 
   return { success: true, data: processed };
+}
+
+function responseWasRedacted<TResponse>(response: TResponse): boolean {
+  if (response === null || typeof response !== "object") {
+    return false;
+  }
+  const record = response as Record<string, unknown>;
+  return record["redactionApplied"] === true || record["screenshotRedactionApplied"] === true;
 }
 
 // ── Audit helper ─────────────────────────────────────────────────────────────
@@ -256,7 +300,7 @@ function completeAudit(
   auditLog: {
     createEntry(toolName: string, pageUrl?: string, origin?: string): { auditId: string; timestamp: string; toolName: string; pageId?: string; origin?: string; action: "allowed" | "blocked"; redacted: boolean; durationMs?: number };
     completeEntry(entry: { auditId: string; timestamp: string; toolName: string; pageId?: string; origin?: string; action: "allowed" | "blocked"; redacted: boolean; durationMs?: number }, outcome: { action: "allowed" | "blocked"; redacted: boolean; durationMs: number }): void;
-    flush(): void;
+    flush(): Promise<void>;
     log?: (event: string) => void;
   } | undefined,
   entry: { auditId: string; timestamp: string; toolName: string; pageId?: string; origin?: string; action: "allowed" | "blocked"; redacted: boolean; durationMs?: number } | null,
@@ -276,7 +320,7 @@ function completeAudit(
       entry.redacted = redacted;
       if (durationMs !== undefined) entry.durationMs = durationMs;
       finishEntry(entry, { action, redacted, durationMs: durationMs ?? 0 });
-      auditLog.flush?.();
+      void auditLog.flush?.();
     } else if (typeof auditLog.log === "function") {
       // Test mock path — log callback accepts string event name
       auditLog.log(event);

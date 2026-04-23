@@ -12,6 +12,11 @@ import {
 import type { GetTextMapArgs } from "./page-tool-types.js";
 import { TEXT_MAP_TIMEOUT_MS } from "./page-tool-types.js";
 import { classifyRelayError } from "./page-tool-types.js";
+import type { TextMapResponse, TextSegment } from "./text-map-tool-contracts.js";
+
+interface TextMapInlineResult extends TextMapResponse {
+  auditId?: string;
+}
 
 export async function handleGetTextMapInline(
   relay: BrowserRelayLike,
@@ -73,12 +78,12 @@ export async function handleGetTextMapInline(
       store.save(response.data.pageId, response.data);
     }
 
-    const result = { ...response.data } as Record<string, unknown>;
+    const result = { ...(response.data as TextMapResponse) } as TextMapInlineResult;
     result.auditId = auditEntry.auditId;
 
     if (args.redactPII) {
       try {
-        result.redactionApplied = redactTextMapResponse(result as any, security.redactionPolicy);
+        result.redactionApplied = redactTextMapResponse(result, security.redactionPolicy);
       } catch {
         security.auditLog.completeEntry(auditEntry, {
           action: "blocked",
@@ -93,18 +98,18 @@ export async function handleGetTextMapInline(
 
     security.auditLog.completeEntry(auditEntry, {
       action: "allowed",
-      redacted: !!(result as any).redactionApplied,
+      redacted: !!result.redactionApplied,
       durationMs: Date.now() - startTime,
     });
 
     if (paginationArgsProvided) {
       const effectiveLimit = clampedLimit ?? effectiveCap;
-      const allSegments = result.segments as unknown[];
+      const allSegments: TextSegment[] = result.segments;
       const slicedSegments = allSegments.slice(clampedOffset, clampedOffset + effectiveLimit);
       result.segments = slicedSegments;
 
-      const totalSegments = (result.totalSegments as number) ?? 0;
-      const totalAvailable = (result.truncated as boolean)
+      const totalSegments = result.totalSegments ?? 0;
+      const totalAvailable = result.truncated
         ? Math.min(totalSegments, effectiveCap)
         : totalSegments;
       result.hasMore = (clampedOffset + slicedSegments.length) < totalAvailable;

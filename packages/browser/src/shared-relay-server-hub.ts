@@ -3,7 +3,7 @@ import { WebSocket } from "ws";
 import type { BrowserRelayAction, BrowserRelayRequest, BrowserRelayResponse } from "./types.js";
 import type { HubSocket } from "./shared-relay-server-state.js";
 import { MUTATING_ACTIONS } from "./shared-relay-types.js";
-import { WriteLeaseManager } from "./write-lease.js";
+import type { WriteLeaseManager } from "./write-lease.js";
 
 interface HubConnectionOptions {
   socket: WebSocket;
@@ -17,6 +17,15 @@ interface HubConnectionOptions {
   emit: (event: string, details?: Record<string, unknown>) => void;
 }
 
+function nextConnectedAt(prior?: HubSocket): string {
+  const currentTime = Date.now();
+  const priorTime = prior ? Date.parse(prior.connectedAt) : Number.NaN;
+  const nextTime = Number.isNaN(priorTime) || currentTime > priorTime
+    ? currentTime
+    : priorTime + 1;
+  return new Date(nextTime).toISOString();
+}
+
 export function attachHubConnection(options: HubConnectionOptions): void {
   const prior = options.hubs.get(options.hubId);
   if (prior) prior.socket.close(1000, "replaced");
@@ -25,7 +34,7 @@ export function attachHubConnection(options: HubConnectionOptions): void {
     socket: options.socket,
     hubId: options.hubId,
     label: options.label,
-    connectedAt: new Date().toISOString(),
+    connectedAt: nextConnectedAt(prior),
   };
   options.hubs.set(options.hubId, hubSocket);
   options.pendingByHub.set(options.hubId, new Map());
@@ -80,7 +89,7 @@ export function attachHubConnection(options: HubConnectionOptions): void {
       return;
     }
 
-    void (async () => {
+    void (async (): Promise<void> => {
       try {
         await options.writeLease.acquire(options.hubId);
       } catch {
