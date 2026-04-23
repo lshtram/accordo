@@ -61,39 +61,40 @@ function getToolByName(tools: ReturnType<typeof createPresentationTools>, name: 
 // ── Tool count and names ──────────────────────────────────────────────────────
 
 describe("createPresentationTools — tool count and names", () => {
-  it("M50-TL-01 through M50-TL-10: returns exactly 10 tools", () => {
-    // 9 original tools + accordo_webview_capture (M50-TL-10)
+  it("M50-TL-01 through M50-TL-10: returns exactly 6 tools (4 removed)", () => {
+    // 6 remaining tools: open, close, getCurrent, goto, generateNarration, webview_capture
+    // 4 removed: discover, listSlides, next, prev
     const tools = createPresentationTools(makeDeps());
-    expect(tools).toHaveLength(10);
+    expect(tools).toHaveLength(6);
   });
 
   it("M50-TL-01 through M50-TL-09: all expected tool names are present", () => {
-    // Every one of the 9 tool names must appear in the returned array.
+    // Every one of the 6 tool names must appear in the returned array.
+    // Note: discover, listSlides, next, prev are removed from public MCP surface.
     const tools = createPresentationTools(makeDeps());
     const names = tools.map((t) => t.name);
-    expect(names).toContain("accordo_presentation_discover");
     expect(names).toContain("accordo_presentation_open");
     expect(names).toContain("accordo_presentation_close");
-    expect(names).toContain("accordo_presentation_listSlides");
     expect(names).toContain("accordo_presentation_getCurrent");
     expect(names).toContain("accordo_presentation_goto");
-    expect(names).toContain("accordo_presentation_next");
-    expect(names).toContain("accordo_presentation_prev");
     expect(names).toContain("accordo_presentation_generateNarration");
+    expect(names).toContain("accordo_webview_capture");
+  });
+
+  it("removed tools are not in the returned array", () => {
+    // discover, listSlides, next, prev were removed from public MCP surface.
+    const tools = createPresentationTools(makeDeps());
+    const names = tools.map((t) => t.name);
+    expect(names).not.toContain("accordo_presentation_discover");
+    expect(names).not.toContain("accordo_presentation_listSlides");
+    expect(names).not.toContain("accordo_presentation_next");
+    expect(names).not.toContain("accordo_presentation_prev");
   });
 });
 
 // ── Grouping and danger levels ────────────────────────────────────────────────
 
 describe("createPresentationTools — grouping and danger levels", () => {
-  it("M50-TL-01: discover is ungrouped (no group property) and dangerLevel safe", () => {
-    // discover must be prompt-visible (ungrouped) and never require confirmation.
-    const tools = createPresentationTools(makeDeps());
-    const discover = getToolByName(tools, "accordo_presentation_discover");
-    expect(discover.group).toBeUndefined();
-    expect(discover.dangerLevel).toBe("safe");
-  });
-
   it("M50-TL-02: open is in group 'presentation'", () => {
     // Session management tools belong to the presentation group.
     const tools = createPresentationTools(makeDeps());
@@ -123,13 +124,11 @@ describe("createPresentationTools — grouping and danger levels", () => {
 
   it("M50-TL-04 through M50-TL-09: navigation/read tools are in group 'presentation' and 'safe'", () => {
     // All read/navigation tools: presentation group, safe danger level.
+    // Note: listSlides, next, prev removed from public MCP surface.
     const tools = createPresentationTools(makeDeps());
     const readToolNames = [
-      "accordo_presentation_listSlides",
       "accordo_presentation_getCurrent",
       "accordo_presentation_goto",
-      "accordo_presentation_next",
-      "accordo_presentation_prev",
       "accordo_presentation_generateNarration",
     ];
     for (const name of readToolNames) {
@@ -137,29 +136,6 @@ describe("createPresentationTools — grouping and danger levels", () => {
       expect(tool.group).toBe("presentation");
       expect(tool.dangerLevel).toBe("safe");
     }
-  });
-});
-
-// ── Handler: discover ─────────────────────────────────────────────────────────
-
-describe("accordo_presentation_discover handler", () => {
-  it("M50-TL-01: calls discoverDeckFiles and returns { decks } array", async () => {
-    // discover must return all found deck file paths.
-    const deps = makeDeps({
-      discoverDeckFiles: vi.fn().mockResolvedValue(["slides.md", "demo/deck.md"]),
-    });
-    const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo_presentation_discover").handler({});
-    expect(deps.discoverDeckFiles).toHaveBeenCalled();
-    expect(result).toMatchObject({ decks: ["slides.md", "demo/deck.md"] });
-  });
-
-  it("M50-TL-01: returns empty decks array when none found", async () => {
-    // Empty workspace — no decks found — must return { decks: [] }.
-    const deps = makeDeps({ discoverDeckFiles: vi.fn().mockResolvedValue([]) });
-    const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo_presentation_discover").handler({});
-    expect(result).toMatchObject({ decks: [] });
   });
 });
 
@@ -172,6 +148,14 @@ describe("accordo_presentation_open handler", () => {
     const tools = createPresentationTools(deps);
     await getToolByName(tools, "accordo_presentation_open").handler({ deckUri: "/slides.md" });
     expect(deps.openSession).toHaveBeenCalledWith("/slides.md");
+  });
+
+  it("M50-TL-02: success response includes opened:true and deckUri (not empty)", async () => {
+    // On success, handler must return { opened: true, deckUri } for deterministic automation checks.
+    const deps = makeDeps();
+    const tools = createPresentationTools(deps);
+    const result = await getToolByName(tools, "accordo_presentation_open").handler({ deckUri: "/slides.md" });
+    expect(result).toMatchObject({ opened: true, deckUri: "/slides.md" });
   });
 
   it("M50-TL-02 / M50-NFR-04: propagates structured error from openSession", async () => {
@@ -200,27 +184,6 @@ describe("accordo_presentation_close handler", () => {
     const tools = createPresentationTools(deps);
     await getToolByName(tools, "accordo_presentation_close").handler({});
     expect(deps.closeSession).toHaveBeenCalled();
-  });
-});
-
-// ── Handler: listSlides ───────────────────────────────────────────────────────
-
-describe("accordo_presentation_listSlides handler", () => {
-  it("M50-TL-04: calls listSlides and returns result wrapped in { slides }", async () => {
-    // listSlides handler must wrap the array in { slides: [...] }.
-    const deps = makeDeps();
-    const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo_presentation_listSlides").handler({});
-    expect(deps.listSlides).toHaveBeenCalled();
-    expect(result).toMatchObject({ slides: expect.any(Array) });
-  });
-
-  it("M50-NFR-04: propagates structured error when no session is open", async () => {
-    // If listSlides returns error, handler must propagate it.
-    const deps = makeDeps({ listSlides: vi.fn().mockResolvedValue({ error: "No session open" }) });
-    const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo_presentation_listSlides").handler({});
-    expect(result).toMatchObject({ error: expect.any(String) });
   });
 });
 
@@ -254,28 +217,6 @@ describe("accordo_presentation_goto handler", () => {
     const tools = createPresentationTools(deps);
     const result = await getToolByName(tools, "accordo_presentation_goto").handler({});
     expect(result).toMatchObject({ error: expect.any(String) });
-  });
-});
-
-// ── Handler: next / prev ──────────────────────────────────────────────────────
-
-describe("accordo_presentation_next handler", () => {
-  it("M50-TL-07: calls next()", async () => {
-    // next handler must delegate to deps.next.
-    const deps = makeDeps();
-    const tools = createPresentationTools(deps);
-    await getToolByName(tools, "accordo_presentation_next").handler({});
-    expect(deps.next).toHaveBeenCalled();
-  });
-});
-
-describe("accordo_presentation_prev handler", () => {
-  it("M50-TL-08: calls prev()", async () => {
-    // prev handler must delegate to deps.prev.
-    const deps = makeDeps();
-    const tools = createPresentationTools(deps);
-    await getToolByName(tools, "accordo_presentation_prev").handler({});
-    expect(deps.prev).toHaveBeenCalled();
   });
 });
 

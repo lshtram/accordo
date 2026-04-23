@@ -31,18 +31,6 @@ export function createPresentationTools(
 ): ExtensionToolDefinition[] {
   return [
     {
-      name: "accordo_presentation_discover",
-      description:
-        "List all Marp deck files (.md with Marp frontmatter or deck naming conventions) found in the workspace. Use this before opening a presentation to find available deck paths.",
-      dangerLevel: "safe",
-      inputSchema: { type: "object", properties: {}, required: [] },
-      handler: async (_args) => {
-        const decks = await deps.discoverDeckFiles();
-        return { decks };
-      },
-    },
-
-    {
       name: "accordo_presentation_open",
       description: "Open a Marp deck and start a presentation session.",
       dangerLevel: "moderate",
@@ -59,7 +47,9 @@ export function createPresentationTools(
         if (typeof deckUri !== "string" || !deckUri) {
           return { error: "deckUri is required and must be a string." };
         }
-        return deps.openSession(deckUri);
+        const result = await deps.openSession(deckUri);
+        if (result.error) return result;
+        return { opened: true, deckUri };
       },
     },
 
@@ -72,20 +62,6 @@ export function createPresentationTools(
       handler: async (_args) => {
         deps.closeSession();
         return {};
-      },
-    },
-
-    {
-      name: "accordo_presentation_listSlides",
-      description: "List all slides in the current deck with metadata. Slide numbers are 1-based (first slide is 1).",
-      dangerLevel: "safe",
-      group: "presentation",
-      inputSchema: { type: "object", properties: {}, required: [] },
-      handler: async (_args) => {
-        const result = await deps.listSlides();
-        if ("error" in result) return result;
-        // Expose 1-based slide numbers to the agent
-        return { slides: result.map((s) => ({ ...s, index: s.index + 1 })) };
       },
     },
 
@@ -123,24 +99,6 @@ export function createPresentationTools(
         // Convert 1-based input to 0-based internal index
         return deps.goto(index - 1);
       },
-    },
-
-    {
-      name: "accordo_presentation_next",
-      description: "Advance to the next slide.",
-      dangerLevel: "safe",
-      group: "presentation",
-      inputSchema: { type: "object", properties: {}, required: [] },
-      handler: async (_args) => deps.next(),
-    },
-
-    {
-      name: "accordo_presentation_prev",
-      description: "Go back to the previous slide.",
-      dangerLevel: "safe",
-      group: "presentation",
-      inputSchema: { type: "object", properties: {}, required: [] },
-      handler: async (_args) => deps.prev(),
     },
 
     {
@@ -198,7 +156,7 @@ export function createPresentationTools(
         if (typeof args["output_path"] === "string" && args["output_path"]) {
           outputPath = resolve(args["output_path"] as string);
         } else {
-          // Derive default path from the open deck's location: <deck-dir>/<stem>-slide<N>.svg
+          // Derive default path from the open deck's location: <deck-dir>/<stem-slide<N>.svg
           // Fall back to CWD only if no session is active (capture() will error anyway).
           const deckUri = deps.getSessionDeckUri();
           if (deckUri) {
