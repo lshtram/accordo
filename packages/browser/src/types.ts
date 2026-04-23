@@ -120,8 +120,8 @@ export interface BrowserRelayLike {
   request(action: BrowserRelayAction, payload: Record<string, unknown>, timeoutMs?: number): Promise<BrowserRelayResponse>;
   push(action: BrowserRelayAction, payload: Record<string, unknown>): void;
   isConnected(): boolean;
-  /** Returns the CDP debugger WebSocket URL if connected. Undefined when disconnected. */
-  getDebuggerUrl?(): string;
+  /** Returns the CDP debugger WebSocket URL when known. */
+  getDebuggerUrl?(): string | undefined;
   /**
    * Optional error listener: the relay calls this whenever it returns an error
    * response (e.g. browser-not-connected, timeout). The subscriber can use this

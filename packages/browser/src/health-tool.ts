@@ -86,9 +86,7 @@ export function buildHealthTool(
 
   const handler = async (): Promise<HealthResponse> => {
     const connected = relay.isConnected();
-    const debuggerUrl = connected
-      ? (relay.getDebuggerUrl?.() ?? "ws://localhost:9222")
-      : undefined;
+    const debuggerUrl = connected ? relay.getDebuggerUrl?.() : undefined;
     const uptimeSeconds = Math.max(1, Math.floor((Date.now() - startTime) / 1000));
 
     return {

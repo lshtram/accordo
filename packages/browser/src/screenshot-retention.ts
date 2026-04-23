@@ -1,3 +1,5 @@
+import { unlinkSync } from "node:fs";
+
 /**
  * M100-SCREEN — Screenshot Retention Store (browser package)
  *
@@ -168,9 +170,7 @@ export class ScreenshotRetentionStore {
    */
   private deleteFile(filePath: string): void {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const fs = require("fs") as typeof import("fs");
-      fs.unlinkSync(filePath);
+      unlinkSync(filePath);
     } catch {
       // File already gone or permission error — nothing to do
     }

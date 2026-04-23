@@ -15,7 +15,6 @@
 import type {
   CategoryScore,
   CategoryScoreResult,
-  CategoryScoringFn,
   EvalCategory,
   EvidenceItem,
   GateResult,
@@ -33,6 +32,18 @@ import {
   PASSING_MIN_CATEGORY,
   PASSING_TOTAL,
 } from "./eval-types.js";
+export {
+  SCORING_FUNCTIONS,
+  scoreDeltasEfficiency,
+  scoreInteractionModel,
+  scoreLayoutGeometry,
+  scoreRobustness,
+  scoreSecurityPrivacy,
+  scoreSemanticStructure,
+  scoreSessionContext,
+  scoreTextExtraction,
+  scoreVisualCapture,
+} from "./eval-harness-scoring.js";
 
 // ── Scorecard Helpers ────────────────────────────────────────────────────────
 
@@ -201,225 +212,3 @@ export function buildEvidenceTable(
     return aNum - bNum;
   });
 }
-
-// ── Category Scoring Helpers ─────────────────────────────────────────────────
-
-/**
- * Compute a deterministic score from evidence items for a given category.
- *
- * Scoring algorithm (B2-EV-010: pure, deterministic):
- * - Count pass / partial / fail / skip items for the category
- * - If no items: score 0
- * - If all pass: score 5
- * - If passRate ≥ 0.8: score 4
- * - If passRate ≥ 0.6: score 3
- * - If passRate ≥ 0.4: score 2
- * - If passRate > 0: score 1
- * - If all fail: score 0
- *
- * "partial" counts as 0.5 pass.
- */
-function scoreCategory(
-  items: readonly EvidenceItem[],
-  category: EvalCategory,
-  categoryLabel: string,
-): CategoryScoreResult {
-  // Filter to items relevant to this category, plus items with no category
-  // filter (scoring functions receive all evidence and select their own items).
-  // Per the API contract, each scoring function receives ALL evidence items
-  // and scores its own category based on those items matching the category.
-  const relevant = items.filter((item) => item.category === category);
-
-  if (relevant.length === 0) {
-    return {
-      score: 0 as CategoryScore,
-      rationale: `No evidence items found for category ${categoryLabel}.`,
-    };
-  }
-
-  // Compute weighted pass count (partial = 0.5)
-  let weightedPasses = 0;
-  let fails = 0;
-  for (const item of relevant) {
-    if (item.status === "pass") {
-      weightedPasses += 1;
-    } else if (item.status === "partial") {
-      weightedPasses += 0.5;
-    } else if (item.status === "fail") {
-      fails += 1;
-    }
-    // "skip" contributes neither passes nor failures to the rate
-  }
-
-  const total = relevant.length;
-  const passRate = weightedPasses / total;
-
-  let score: CategoryScore;
-  if (passRate >= 1.0) {
-    score = 5;
-  } else if (passRate >= 0.8) {
-    score = 4;
-  } else if (passRate >= 0.6) {
-    score = 3;
-  } else if (passRate >= 0.4) {
-    score = 2;
-  } else if (weightedPasses > 0) {
-    score = 1;
-  } else {
-    score = 0;
-  }
-
-  const passCount = relevant.filter((i) => i.status === "pass").length;
-  const partialCount = relevant.filter((i) => i.status === "partial").length;
-  const failCount = relevant.filter((i) => i.status === "fail").length;
-  const rationale =
-    `Category ${categoryLabel}: ${passCount} pass, ${partialCount} partial, ` +
-    `${failCount} fail out of ${total} items (weighted pass rate: ${(passRate * 100).toFixed(0)}%).`;
-
-  return { score, rationale };
-}
-
-// ── Category Scoring Functions ───────────────────────────────────────────────
-
-/**
- * B2-EV-003: Category scoring function for A — Session & Context.
- *
- * Evaluates evidence items for page metadata, load state, tab context,
- * and iframe awareness.
- *
- * B2-EV-010: Pure function — deterministic scoring from evidence.
- */
-export const scoreSessionContext: CategoryScoringFn = (
-  items: readonly EvidenceItem[],
-): CategoryScoreResult => {
-  return scoreCategory(items, "session-context", "A (Session & Context)");
-};
-
-/**
- * B2-EV-003: Category scoring function for B — Text Extraction.
- *
- * Evaluates evidence items for visible text accuracy, source mapping,
- * and visibility flags.
- *
- * B2-EV-010: Pure function — deterministic scoring from evidence.
- */
-export const scoreTextExtraction: CategoryScoringFn = (
-  items: readonly EvidenceItem[],
-): CategoryScoreResult => {
-  return scoreCategory(items, "text-extraction", "B (Text Extraction)");
-};
-
-/**
- * B2-EV-003: Category scoring function for C — Semantic Structure.
- *
- * Evaluates evidence items for DOM snapshot quality, a11y tree,
- * landmarks, and form structure.
- *
- * B2-EV-010: Pure function — deterministic scoring from evidence.
- */
-export const scoreSemanticStructure: CategoryScoringFn = (
-  items: readonly EvidenceItem[],
-): CategoryScoreResult => {
-  return scoreCategory(items, "semantic-structure", "C (Semantic Structure)");
-};
-
-/**
- * B2-EV-003: Category scoring function for D — Layout & Geometry.
- *
- * Evaluates evidence items for bounding boxes, z-order,
- * and viewport intersection data.
- *
- * B2-EV-010: Pure function — deterministic scoring from evidence.
- */
-export const scoreLayoutGeometry: CategoryScoringFn = (
-  items: readonly EvidenceItem[],
-): CategoryScoreResult => {
-  return scoreCategory(items, "layout-geometry", "D (Layout & Geometry)");
-};
-
-/**
- * B2-EV-003: Category scoring function for E — Visual Capture.
- *
- * Evaluates evidence items for screenshot quality, region capture,
- * and format support.
- *
- * B2-EV-010: Pure function — deterministic scoring from evidence.
- */
-export const scoreVisualCapture: CategoryScoringFn = (
-  items: readonly EvidenceItem[],
-): CategoryScoreResult => {
-  return scoreCategory(items, "visual-capture", "E (Visual Capture)");
-};
-
-/**
- * B2-EV-003: Category scoring function for F — Interaction Model.
- *
- * Evaluates evidence items for interactive element discovery
- * and actionability inventory.
- *
- * B2-EV-010: Pure function — deterministic scoring from evidence.
- */
-export const scoreInteractionModel: CategoryScoringFn = (
-  items: readonly EvidenceItem[],
-): CategoryScoreResult => {
-  return scoreCategory(items, "interaction-model", "F (Interaction Model)");
-};
-
-/**
- * B2-EV-003: Category scoring function for G — Deltas & Efficiency.
- *
- * Evaluates evidence items for snapshot versioning, delta quality,
- * and filtering capabilities.
- *
- * B2-EV-010: Pure function — deterministic scoring from evidence.
- */
-export const scoreDeltasEfficiency: CategoryScoringFn = (
-  items: readonly EvidenceItem[],
-): CategoryScoreResult => {
-  return scoreCategory(items, "deltas-efficiency", "G (Deltas & Efficiency)");
-};
-
-/**
- * B2-EV-003: Category scoring function for H — Robustness.
- *
- * Evaluates evidence items for wait primitives, timeout handling,
- * and error taxonomy quality.
- *
- * B2-EV-010: Pure function — deterministic scoring from evidence.
- */
-export const scoreRobustness: CategoryScoringFn = (
-  items: readonly EvidenceItem[],
-): CategoryScoreResult => {
-  return scoreCategory(items, "robustness", "H (Robustness)");
-};
-
-/**
- * B2-EV-003: Category scoring function for I — Security & Privacy.
- *
- * Evaluates evidence items for redaction, origin policies,
- * and audit trail quality.
- *
- * B2-EV-010: Pure function — deterministic scoring from evidence.
- */
-export const scoreSecurityPrivacy: CategoryScoringFn = (
-  items: readonly EvidenceItem[],
-): CategoryScoreResult => {
-  return scoreCategory(items, "security-privacy", "I (Security & Privacy)");
-};
-
-/**
- * B2-EV-003: Lookup map from category to its scoring function.
- *
- * Used by the harness to score each category dynamically.
- */
-export const SCORING_FUNCTIONS: Readonly<Record<EvalCategory, CategoryScoringFn>> = {
-  "session-context": scoreSessionContext,
-  "text-extraction": scoreTextExtraction,
-  "semantic-structure": scoreSemanticStructure,
-  "layout-geometry": scoreLayoutGeometry,
-  "visual-capture": scoreVisualCapture,
-  "interaction-model": scoreInteractionModel,
-  "deltas-efficiency": scoreDeltasEfficiency,
-  "robustness": scoreRobustness,
-  "security-privacy": scoreSecurityPrivacy,
-};
