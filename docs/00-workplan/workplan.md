@@ -71,6 +71,9 @@
 2. Markdown comment navigation routing fixed for panel/native flows with preview-aware behavior and focused-editor fallback (`bd60d14`).
 3. Store→VS Code delete synchronization hardened for thread/comment deletion and bulk delete notifications (`93526dc`).
 4. Marp slide comment visibility fixed: `comments:load` now sent only after `webview:ready`, eliminating the race condition that dropped the initial push (`e94efb1`, `f6a9f0b`). Items 14 & 15 resolved.
+5. `accordo_layout_panel` close with `view` param now silently ignores `view` instead of erroring — agents can pass `view` on close without rejection (`13026b3`). Item 10 resolved.
+6. `accordo_presentation_open` success response now returns `{ opened: true, deckUri }` for deterministic automation checks (`1f28f52`). Item 13 resolved.
+7. `ExternalTtsAdapter` HTTP error messages now include cause classification (auth/endpoint-not-found/server-error/client-error) and response body excerpt for actionable diagnostics (`d2d7726`). Item 12 partially resolved (diagnostics improved; root cause of HTTP 500 in live setup is external endpoint configuration).
 
 **Acceptance criteria:**
 1. `accordo_layout_state` no longer includes full comment thread bodies.
