@@ -81,7 +81,7 @@ export class HubManager {
     const rp = this.regPath();
     return spawnAndWaitHub(
       (s, t, p) => this.hubProcess.spawn(s, t, p, { projectId: this.config.projectId, registryPath: rp }),
-      () => this.checkHealth(),
+      () => this.pollHealth(),
       { projectId: this.config.projectId, configRegistryPath: rp,
         events: this.events, processState: this.processState, healthState: this.healthState },
       secret, token, this.port,

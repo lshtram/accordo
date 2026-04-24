@@ -251,6 +251,7 @@ describe("HubManager", () => {
         secrets: { "accordo.test-project.bridgeSecret": "s", "accordo.test-project.hubToken": "t" },
       });
       vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      vi.spyOn(manager, "pollHealth").mockResolvedValue(false);
       await manager.activate().catch(() => {});
       expect(secrets.get).toHaveBeenCalledWith("accordo.test-project.bridgeSecret");
     });
@@ -260,6 +261,7 @@ describe("HubManager", () => {
         secrets: { "accordo.test-project.bridgeSecret": "s", "accordo.test-project.hubToken": "t" },
       });
       vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      vi.spyOn(manager, "pollHealth").mockResolvedValue(false);
       await manager.activate().catch(() => {});
       expect(secrets.get).toHaveBeenCalledWith("accordo.test-project.hubToken");
     });
@@ -267,6 +269,7 @@ describe("HubManager", () => {
     it("LCM-01: activate() generates a non-empty secret when absent from SecretStorage", async () => {
       const { manager } = makeManager({ secrets: {} });
       vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      vi.spyOn(manager, "pollHealth").mockResolvedValue(false);
       await manager.activate().catch(() => {});
       expect(manager.getSecret()).toBeTruthy();
     });
@@ -274,6 +277,7 @@ describe("HubManager", () => {
     it("LCM-01: activate() generates a non-empty token when absent from SecretStorage", async () => {
       const { manager } = makeManager({ secrets: {} });
       vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      vi.spyOn(manager, "pollHealth").mockResolvedValue(false);
       await manager.activate().catch(() => {});
       expect(manager.getToken()).toBeTruthy();
     });
@@ -281,6 +285,7 @@ describe("HubManager", () => {
     it("LCM-01: activate() stores the generated secret to SecretStorage", async () => {
       const { manager, secrets } = makeManager({ secrets: {} });
       vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      vi.spyOn(manager, "pollHealth").mockResolvedValue(false);
       await manager.activate().catch(() => {});
       expect(secrets.store).toHaveBeenCalledWith("accordo.test-project.bridgeSecret", expect.any(String));
     });
@@ -288,6 +293,7 @@ describe("HubManager", () => {
     it("LCM-01: activate() stores the generated token to SecretStorage", async () => {
       const { manager, secrets } = makeManager({ secrets: {} });
       vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      vi.spyOn(manager, "pollHealth").mockResolvedValue(false);
       await manager.activate().catch(() => {});
       expect(secrets.store).toHaveBeenCalledWith("accordo.test-project.hubToken", expect.any(String));
     });
@@ -297,6 +303,7 @@ describe("HubManager", () => {
         secrets: { "accordo.test-project.bridgeSecret": "existing-secret", "accordo.test-project.hubToken": "existing-token" },
       });
       vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      vi.spyOn(manager, "pollHealth").mockResolvedValue(false);
       await manager.activate().catch(() => {});
       expect(secrets.store).not.toHaveBeenCalled();
       expect(manager.getSecret()).toBe("existing-secret");
@@ -537,6 +544,7 @@ describe("HubManager", () => {
     it("LCM-11: deactivate() returns a Promise that resolves", async () => {
       const { manager } = makeManager();
       vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      vi.spyOn(manager, "pollHealth").mockResolvedValue(false);
       await manager.activate().catch(() => {});
       await expect(manager.deactivate()).resolves.toBeUndefined();
     });
@@ -544,6 +552,7 @@ describe("HubManager", () => {
     it("LCM-11: deactivate() calls killHub to prevent orphan processes", async () => {
       const { manager } = makeManager();
       vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      vi.spyOn(manager, "pollHealth").mockResolvedValue(false);
       await manager.activate().catch(() => {});
       const killSpy = vi.spyOn(manager, "killHub").mockResolvedValue(undefined);
       await manager.deactivate().catch(() => {});
