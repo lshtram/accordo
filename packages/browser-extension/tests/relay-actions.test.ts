@@ -1,11 +1,13 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { resetChromeMocks, setMockTabUrl } from "./setup/chrome-mock.js";
 import { createThread } from "../src/store.js";
 import { handleRelayAction } from "../src/relay-actions.js";
+import { defaultStore } from "../src/relay-definitions.js";
 
 describe("M82-RELAY — browser-extension relay actions", () => {
   beforeEach(() => {
     resetChromeMocks();
+    defaultStore.clear();
   });
 
   it("BR-F-119: get_comments returns active thread data envelope", async () => {
@@ -176,6 +178,7 @@ describe("B2-CTX-001: multi-tab support", () => {
 
   describe('"list_pages" action', () => {
     it("B2-CTX-001: returns { pages: [{ tabId, url, title, active }] } on success", async () => {
+      chrome.storage.local.get = vi.fn().mockResolvedValue({ controlGrantedTabs: [2] });
       // Override tabs.query to return full tab objects with title/active
       globalThis.chrome.tabs.query = vi.fn().mockResolvedValue([
         { id: 1, url: "https://example.com/page1", title: "Example Page 1", active: true, windowId: 1, index: 0, highlighted: false, pinned: false, incognito: false },
@@ -193,14 +196,77 @@ describe("B2-CTX-001: multi-tab support", () => {
       expect(result).toHaveProperty("data");
       expect(Array.isArray((result as { data: { pages: unknown[] } }).data.pages)).toBe(true);
 
-      const pages = (result as { data: { pages: { tabId: number; url: string; title: string; active: boolean }[] } }).data.pages;
+      const pages = (result as { data: { pages: { tabId: number; url: string; title: string; active: boolean; controlGranted: boolean }[] } }).data.pages;
       expect(pages).toHaveLength(3);
       expect(pages[0]).toHaveProperty("tabId", 1);
       expect(pages[0]).toHaveProperty("url", "https://example.com/page1");
       expect(pages[0]).toHaveProperty("title", "Example Page 1");
       expect(pages[0]).toHaveProperty("active", true);
+      expect(pages[0]).toHaveProperty("controlGranted", false);
       expect(pages[1]).toHaveProperty("tabId", 2);
       expect(pages[1]).toHaveProperty("active", false);
+      expect(pages[1]).toHaveProperty("controlGranted", true);
+    });
+
+    it("GAP-G1: manage_snapshots list returns extension snapshot metadata from the authoritative store", async () => {
+      await defaultStore.save("page-a", {
+        pageId: "page-a",
+        frameId: "main",
+        snapshotId: "page-a:1",
+        capturedAt: "2025-01-01T00:00:00.000Z",
+        viewport: { width: 1280, height: 720, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+        source: "dom",
+        nodes: [],
+        totalElements: 0,
+      });
+
+      const result = await handleRelayAction({
+        requestId: "req-manage-list",
+        action: "manage_snapshots",
+        payload: { action: "list" },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({
+        pages: [
+          {
+            pageId: "page-a",
+            snapshotCount: 1,
+            snapshots: [{ snapshotId: "page-a:1", capturedAt: "2025-01-01T00:00:00.000Z", source: "dom" }],
+          },
+        ],
+      });
+    });
+
+    it("GAP-G1: manage_snapshots clear removes extension snapshots used by diff_snapshots", async () => {
+      await defaultStore.save("page-clear", {
+        pageId: "page-clear",
+        frameId: "main",
+        snapshotId: "page-clear:1",
+        capturedAt: "2025-01-01T00:00:00.000Z",
+        viewport: { width: 1280, height: 720, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+        source: "dom",
+        nodes: [],
+        totalElements: 0,
+      });
+
+      const cleared = await handleRelayAction({
+        requestId: "req-manage-clear",
+        action: "manage_snapshots",
+        payload: { action: "clear", pageId: "page-clear" },
+      });
+
+      expect(cleared.success).toBe(true);
+      expect(cleared.data).toEqual({ success: true, clearedPageId: "page-clear", clearedCount: 1 });
+
+      const listed = await handleRelayAction({
+        requestId: "req-manage-list-after-clear",
+        action: "manage_snapshots",
+        payload: { action: "list" },
+      });
+      expect(listed.success).toBe(true);
+      const pages = (listed.data as { pages: Array<{ pageId: string }> }).pages;
+      expect(pages.find((page) => page.pageId === "page-clear")).toBeUndefined();
     });
 
     it("B2-CTX-001: chrome.tabs.query is called with empty object (all tabs)", async () => {

@@ -137,6 +137,7 @@ describe("M109-WAIT — wait_for routing in service worker context", () => {
     ]);
     (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
       .mockRejectedValueOnce(new Error("Could not establish connection. Receiving end does not exist."))
+      .mockRejectedValueOnce(new Error("Could not establish connection. Receiving end does not exist."))
       .mockResolvedValueOnce(waitResult);
 
     const response = await handleRelayAction({
@@ -149,7 +150,7 @@ describe("M109-WAIT — wait_for routing in service worker context", () => {
       target: { tabId: 3, allFrames: true },
       files: ["content-script.js"],
     });
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(2);
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(3);
     expect(response.success).toBe(true);
   });
 

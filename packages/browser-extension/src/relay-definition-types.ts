@@ -15,6 +15,7 @@ export type RelayAction =
   | "capture_region"
   | "capture_full_page_screenshot"
   | "diff_snapshots"
+  | "manage_snapshots"
   | "wait_for"
   | "get_text_map"
   | "get_semantic_graph"

@@ -11,5 +11,6 @@ export {
   forwardToFrame,
   forwardToMainFrame,
   NO_CONTENT_SCRIPT,
+  reinjectAndForwardToFrame,
   requestContentScriptEnvelope,
 } from "./relay-forwarder-messaging.js";

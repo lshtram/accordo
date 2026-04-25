@@ -1,6 +1,6 @@
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
 import { actionFailed, defaultStore, isVersionedSnapshot } from "./relay-definitions.js";
-import { forwardToFrame, NO_CONTENT_SCRIPT } from "./relay-forwarder.js";
+import { forwardToFrame, NO_CONTENT_SCRIPT, reinjectAndForwardToFrame } from "./relay-forwarder.js";
 
 async function buildFramePathIndex(tabId: number): Promise<Map<string, number>> {
   const pathIndex = new Map<string, number>([["main", 0]]);
@@ -90,14 +90,26 @@ export async function handleFrameIdRequest(
   frameId: string,
   saveToStore: boolean,
 ): Promise<RelayActionResponse> {
-  const pageMapData = await forwardToFrame(tabId, 0, "get_page_map", {
+  let pageMapData = await forwardToFrame(tabId, 0, "get_page_map", {
     traverseFrames: true,
     allowedOrigins: (request.payload as Record<string, unknown>).allowedOrigins,
     deniedOrigins: (request.payload as Record<string, unknown>).deniedOrigins,
     redactPII: (request.payload as Record<string, unknown>).redactPII,
   });
   if (pageMapData === NO_CONTENT_SCRIPT) {
-    return actionFailed(request, "no-content-script");
+    try {
+      pageMapData = await reinjectAndForwardToFrame(tabId, 0, "get_page_map", {
+        traverseFrames: true,
+        allowedOrigins: (request.payload as Record<string, unknown>).allowedOrigins,
+        deniedOrigins: (request.payload as Record<string, unknown>).deniedOrigins,
+        redactPII: (request.payload as Record<string, unknown>).redactPII,
+      });
+    } catch {
+      return actionFailed(request, "no-content-script");
+    }
+    if (pageMapData === NO_CONTENT_SCRIPT) {
+      return actionFailed(request, "no-content-script");
+    }
   }
   if (pageMapData === null) {
     return actionFailed(request);
@@ -124,12 +136,22 @@ export async function handleFrameIdRequest(
   }
 
   const { frameId: _frameId, ...forwardPayload } = request.payload as Record<string, unknown>;
-  const data = await forwardToFrame(tabId, numericFrameId, request.action, {
+  let data = await forwardToFrame(tabId, numericFrameId, request.action, {
     ...forwardPayload,
     logicalFrameId: frameId,
   });
   if (data === NO_CONTENT_SCRIPT) {
-    return actionFailed(request, "no-content-script");
+    try {
+      data = await reinjectAndForwardToFrame(tabId, numericFrameId, request.action, {
+        ...forwardPayload,
+        logicalFrameId: frameId,
+      });
+    } catch {
+      return actionFailed(request, "no-content-script");
+    }
+    if (data === NO_CONTENT_SCRIPT) {
+      return actionFailed(request, "no-content-script");
+    }
   }
   if (data === null) {
     return actionFailed(request);

@@ -17,6 +17,7 @@ export type BrowserRelayAction =
   | "get_dom_excerpt"
   | "capture_region"
   | "diff_snapshots"
+  | "manage_snapshots"
   | "wait_for"
   | "get_text_map"
   | "get_semantic_graph"

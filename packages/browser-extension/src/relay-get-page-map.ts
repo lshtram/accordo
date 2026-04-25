@@ -1,6 +1,6 @@
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
 import { defaultStore, isVersionedSnapshot, actionFailed } from "./relay-definitions.js";
-import { resolveRequestedUrl, resolveTargetTabId, forwardToMainFrame, ensureContentScriptInjected, NO_CONTENT_SCRIPT } from "./relay-forwarder.js";
+import { resolveRequestedUrl, resolveTargetTabId, forwardToMainFrame, reinjectAndForwardToFrame, NO_CONTENT_SCRIPT } from "./relay-forwarder.js";
 import { readBoundsLiteral } from "./relay-type-guards.js";
 import { isOriginBlockedByPolicy, mintAuditId, applyRedaction, attachRedactionWarning, enrichWithAuditLog, parseOriginPolicy } from "./relay-privacy.js";
 import { appendPaginationMetadata, clampOffsetLimit } from "./relay-page-runtime.js";
@@ -93,8 +93,7 @@ export async function handleGetPageMap(request: RelayActionRequest): Promise<Rel
   let data = await forwardToMainFrame(tabId, request.action, request.payload);
   if (data === NO_CONTENT_SCRIPT) {
     try {
-      await ensureContentScriptInjected(tabId);
-      data = await forwardToMainFrame(tabId, request.action, request.payload);
+      data = await reinjectAndForwardToFrame(tabId, 0, request.action, request.payload);
     } catch {
       return actionFailed(request, "no-content-script");
     }

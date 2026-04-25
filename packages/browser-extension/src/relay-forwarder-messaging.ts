@@ -3,6 +3,12 @@ import { hasDataField, hasErrorField, isSnapshotEnvelope } from "./relay-type-gu
 
 export const NO_CONTENT_SCRIPT = Symbol("no-content-script");
 
+const CONTENT_SCRIPT_RETRY_DELAYS_MS = [0, 50, 150] as const;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function isNoReceiverError(err: unknown): boolean {
   const msg = (err as Error | undefined)?.message ?? String(err);
   return msg.includes("Receiving end does not exist") || msg.includes("Could not establish connection") || msg.includes("No tab with id");
@@ -76,4 +82,21 @@ export async function ensureContentScriptInjected(tabId: number): Promise<void> 
   } catch {
     // CSS is secondary
   }
+}
+
+export async function reinjectAndForwardToFrame(
+  tabId: number,
+  frameId: number,
+  action: string,
+  payload: Record<string, unknown>,
+): Promise<unknown | null | typeof NO_CONTENT_SCRIPT> {
+  await ensureContentScriptInjected(tabId);
+  for (const waitMs of CONTENT_SCRIPT_RETRY_DELAYS_MS) {
+    if (waitMs > 0) await delay(waitMs);
+    const result = await forwardToFrame(tabId, frameId, action, payload);
+    if (result !== NO_CONTENT_SCRIPT) {
+      return result;
+    }
+  }
+  return NO_CONTENT_SCRIPT;
 }

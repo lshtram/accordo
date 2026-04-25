@@ -1,6 +1,6 @@
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
 import { actionFailed } from "./relay-definitions.js";
-import { ensureContentScriptInjected, resolveTargetTabId } from "./relay-forwarder.js";
+import { NO_CONTENT_SCRIPT, reinjectAndForwardToFrame, resolveTargetTabId } from "./relay-forwarder.js";
 import { hasDataField, hasErrorField } from "./relay-type-guards.js";
 
 export async function handleWaitFor(request: RelayActionRequest): Promise<RelayActionResponse> {
@@ -27,13 +27,11 @@ export async function handleWaitFor(request: RelayActionRequest): Promise<RelayA
       return actionFailed(request);
     }
     try {
-      await ensureContentScriptInjected(tabId);
-      waitResponse = await chrome.tabs.sendMessage(tabId, {
-        type: "PAGE_UNDERSTANDING_ACTION",
-        action: request.action,
-        payload: request.payload,
-      }, { frameId: 0 });
+      waitResponse = await reinjectAndForwardToFrame(tabId, 0, request.action, request.payload);
     } catch {
+      return actionFailed(request, "no-content-script");
+    }
+    if (waitResponse === NO_CONTENT_SCRIPT) {
       return actionFailed(request, "no-content-script");
     }
   }

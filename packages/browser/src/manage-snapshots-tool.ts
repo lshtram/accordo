@@ -48,6 +48,11 @@ export interface ManageSnapshotsClearResponse {
  */
 export type ManageSnapshotsResponse = ManageSnapshotsListResponse | ManageSnapshotsClearResponse;
 
+export interface ManageSnapshotsErrorResponse {
+  success: false;
+  error: string;
+}
+
 // ── Tool Definition ────────────────────────────────────────────────────────
 
 /**
@@ -61,10 +66,25 @@ export type ManageSnapshotsResponse = ManageSnapshotsListResponse | ManageSnapsh
  * @returns A single tool definition for `browser_manage_snapshots`
  */
 export function buildManageSnapshotsTool(
-  _relay: BrowserRelayLike,
+  relay: BrowserRelayLike,
   store: SnapshotRetentionStore,
 ): ExtensionToolDefinition {
-  const handler = async (args: ManageSnapshotsArgs): Promise<ManageSnapshotsResponse> => {
+  const handler = async (args: ManageSnapshotsArgs): Promise<ManageSnapshotsResponse | ManageSnapshotsErrorResponse> => {
+    if (relay.isConnected()) {
+      const response = await relay.request("manage_snapshots", args as unknown as Record<string, unknown>);
+      if (response.success && response.data && typeof response.data === "object") {
+        if (args.action === "clear") {
+          if (args.pageId !== undefined) {
+            store.clear(args.pageId);
+          } else {
+            store.clear();
+          }
+        }
+        return response.data as ManageSnapshotsResponse;
+      }
+      return { success: false, error: response.error ?? "action-failed" };
+    }
+
     if (args.action === "list") {
       const allPages = store.listAll();
       const pages: ManageSnapshotsListResponse["pages"] = [];

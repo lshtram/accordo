@@ -42,6 +42,7 @@ export {
 
 export {
   handleListPages,
+  handleManageSnapshots,
   handleSelectPage,
 } from "./relay-tab-handlers.js";
 

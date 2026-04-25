@@ -47,16 +47,12 @@ export async function handleDiffSnapshots(
 
   const explicitTabId = typeof request.payload.tabId === "number" ? request.payload.tabId : undefined;
 
-  let fromResult: Awaited<ReturnType<typeof defaultStore.get>> | undefined;
-  let toResult: Awaited<ReturnType<typeof defaultStore.get>> | undefined;
+  const fromResult = await defaultStore.get(fromSnapshotId);
+  const toResult = await defaultStore.get(toSnapshotId);
 
-  if (explicitTabId === undefined) {
-    fromResult = await defaultStore.get(fromSnapshotId);
-    toResult = await defaultStore.get(toSnapshotId);
-    if (!("error" in fromResult) && !("error" in toResult)) {
-      const diffResult = computeDiff(fromResult, toResult);
-      return { requestId: request.requestId, success: true, data: diffResult };
-    }
+  if (!("error" in fromResult) && !("error" in toResult)) {
+    const diffResult = computeDiff(fromResult, toResult);
+    return { requestId: request.requestId, success: true, data: diffResult };
   }
 
   const activeTabResult = explicitTabId === undefined
@@ -69,11 +65,11 @@ export async function handleDiffSnapshots(
     if (csResult !== null) return csResult;
   }
 
-  if (fromResult !== undefined && "error" in fromResult) {
+  if ("error" in fromResult) {
     const errorCode = defaultStore.isStale(fromSnapshotId) ? "snapshot-stale" : "snapshot-not-found";
     return { requestId: request.requestId, success: false, error: errorCode, ...getErrorMeta(errorCode) };
   }
-  if (toResult !== undefined && "error" in toResult) {
+  if ("error" in toResult) {
     const errorCode = defaultStore.isStale(toSnapshotId) ? "snapshot-stale" : "snapshot-not-found";
     return { requestId: request.requestId, success: false, error: errorCode, ...getErrorMeta(errorCode) };
   }

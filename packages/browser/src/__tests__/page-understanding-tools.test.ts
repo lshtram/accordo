@@ -45,6 +45,7 @@ import {
   handleInspectElement,
   handleGetDomExcerpt,
   handleCaptureRegion,
+  handleListPages,
   GetPageMapArgs,
   InspectElementArgs,
   GetDomExcerptArgs,
@@ -1771,6 +1772,13 @@ describe("B2-CTX-001: browser_list_pages tool registration", () => {
     expect(listPagesTool?.inputSchema.required || []).not.toContain("tabId");
   });
 
+  it("B2-CTX-001: browser_list_pages description mentions controlGranted permission state", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const listPagesTool = tools.find((t) => t.name === "accordo_browser_list_pages");
+    expect(listPagesTool?.description).toMatch(/controlGranted|control permission|granted/i);
+  });
+
   /**
    * B2-CTX-001: browser_list_pages is marked dangerLevel: "safe"
    */
@@ -1927,6 +1935,28 @@ describe("B2-CTX-001: all existing tool handlers forward tabId in relay payload 
       expect.objectContaining({ tabId: 42 }),
       expect.any(Number),
     );
+  });
+});
+
+describe("B2-CTX-001: browser_list_pages response shape", () => {
+  it("B2-CTX-001: handleListPages preserves controlGranted state from relay", async () => {
+    const relay = createMockRelay();
+    relay.request = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        pages: [
+          { tabId: 1, url: "https://example.com", title: "Example", active: true, controlGranted: true },
+          { tabId: 2, url: "https://example.com/2", title: "Example 2", active: false, controlGranted: false },
+        ],
+      },
+    });
+
+    const result = await handleListPages(relay, {});
+    if (!("pages" in result)) {
+      expect.fail("Expected successful list_pages response");
+    }
+    expect(result.pages[0]?.controlGranted).toBe(true);
+    expect(result.pages[1]?.controlGranted).toBe(false);
   });
 });
 

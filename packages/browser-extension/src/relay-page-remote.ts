@@ -1,6 +1,6 @@
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
 import { actionFailed, defaultStore, isVersionedSnapshot } from "./relay-definitions.js";
-import { ensureContentScriptInjected, forwardToMainFrame, NO_CONTENT_SCRIPT, resolveRequestedUrl, resolveTargetTabId } from "./relay-forwarder.js";
+import { forwardToMainFrame, NO_CONTENT_SCRIPT, reinjectAndForwardToFrame, resolveRequestedUrl, resolveTargetTabId } from "./relay-forwarder.js";
 import { attachRedactionWarning, enrichWithAuditLog, isOriginBlockedByPolicy, mintAuditId, parseOriginPolicy, applyRedaction } from "./relay-privacy.js";
 
 export async function handleRemotePageUnderstandingAction(
@@ -49,8 +49,7 @@ export async function handleRemotePageUnderstandingAction(
   let data = await forwardToMainFrame(tabId, request.action, request.payload);
   if (data === NO_CONTENT_SCRIPT) {
     try {
-      await ensureContentScriptInjected(tabId);
-      data = await forwardToMainFrame(tabId, request.action, request.payload);
+      data = await reinjectAndForwardToFrame(tabId, 0, request.action, request.payload);
     } catch {
       return actionFailed(request, "no-content-script");
     }

@@ -167,6 +167,7 @@ describe("buildNavigateTool", () => {
     const relay = makeRelayResolve<NavigateResponse>({ success: true });
     const tool = buildNavigateTool(relay);
     expect(tool.description).toMatch(/navigate|URL|url/i);
+    expect(tool.description).toMatch(/grant browser control|extension popup|control permission/i);
   });
 
   it("REQ-TC-001..004: tool schema includes tabId, type, url, timeout properties", () => {
@@ -200,6 +201,7 @@ describe("buildClickTool", () => {
     const relay = makeRelayResolve<ClickResponse>({ success: true });
     const tool = buildClickTool(relay);
     expect(tool.description).toMatch(/uid|selector|coordinates|click/i);
+    expect(tool.description).toMatch(/grant browser control|extension popup|control permission/i);
   });
 
   it("REQ-TC-005..008: tool schema includes tabId, uid, selector, coordinates, dblClick", () => {
@@ -241,6 +243,7 @@ describe("buildTypeTool", () => {
     const relay = makeRelayResolve<TypeResponse>({ success: true });
     const tool = buildTypeTool(relay);
     expect(tool.description).toMatch(/type|text|input/i);
+    expect(tool.description).toMatch(/grant browser control|extension popup|control permission/i);
   });
 
   it("REQ-TC-009..012: tool schema includes tabId, text, uid, selector, clearFirst, submitKey", () => {
@@ -284,6 +287,7 @@ describe("buildPressKeyTool", () => {
     const relay = makeRelayResolve<PressKeyResponse>({ success: true });
     const tool = buildPressKeyTool(relay);
     expect(tool.description).toMatch(/key|modifier|Control|Shift|Alt|Meta/i);
+    expect(tool.description).toMatch(/grant browser control|extension popup|control permission/i);
   });
 
   it("REQ-TC-013..015: tool schema includes tabId and key (required)", () => {
@@ -356,6 +360,9 @@ describe("handleNavigate — REQ-TC-001..004", () => {
     ) as NavigateResponse;
     expect(result.success).toBe(false);
     expect(result.error).toBe("control-not-granted");
+    expect(result.message).toMatch(/not been granted browser control/i);
+    expect(result.agentAction).toMatch(/ask the user/i);
+    expect(result.userAction).toMatch(/extension popup/i);
   });
 
   it("REQ-TC-004: sends 'navigate' relay action to extension", async () => {
@@ -593,6 +600,9 @@ describe("handleClick — REQ-TC-005..008", () => {
     ) as ClickResponse;
     expect(result.success).toBe(false);
     expect(result.error).toBe("control-not-granted");
+    expect(result.message).toMatch(/not been granted browser control/i);
+    expect(result.agentAction).toMatch(/ask the user/i);
+    expect(result.userAction).toMatch(/extension popup/i);
   });
 
   it("REQ-TC-008: supports dblClick: true option", async () => {
@@ -729,6 +739,9 @@ describe("handleType — REQ-TC-009..012", () => {
     ) as TypeResponse;
     expect(result.success).toBe(false);
     expect(result.error).toBe("control-not-granted");
+    expect(result.message).toMatch(/not been granted browser control/i);
+    expect(result.agentAction).toMatch(/ask the user/i);
+    expect(result.userAction).toMatch(/extension popup/i);
   });
 
   it("REQ-TC-012: supports submitKey: 'Enter'", async () => {
@@ -808,6 +821,9 @@ describe("handleType — permission error handling", () => {
     ) as TypeResponse;
     expect(result.success).toBe(false);
     expect(result.error).toBe("control-not-granted");
+    expect(result.message).toMatch(/not been granted browser control/i);
+    expect(result.agentAction).toMatch(/ask the user/i);
+    expect(result.userAction).toMatch(/extension popup/i);
   });
 
   it("REQ-TC-017: returns tab-not-found when tabId is invalid", async () => {

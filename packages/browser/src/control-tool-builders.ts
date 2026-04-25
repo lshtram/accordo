@@ -14,7 +14,9 @@ import { handleClick, handleNavigate, handlePressKey, handleType } from "./contr
 export function buildNavigateTool(relay: BrowserRelayLike): ExtensionToolDefinition {
   return {
     name: "accordo_browser_navigate",
-    description: "Navigate to a URL or perform back/forward/reload in the browser tab",
+    description:
+      "Navigate to a URL or perform back/forward/reload in the browser tab. " +
+      "Requires user-granted control permission for the target tab. If permission has not been granted yet, ask the user to grant browser control for that tab in the Accordo browser extension popup, then retry. Read-only browser tools may still work without this permission.",
     inputSchema: {
       type: "object",
       properties: {
@@ -34,7 +36,9 @@ export function buildNavigateTool(relay: BrowserRelayLike): ExtensionToolDefinit
 export function buildClickTool(relay: BrowserRelayLike): ExtensionToolDefinition {
   return {
     name: "accordo_browser_click",
-    description: "Click an element in the browser page by uid, selector, or coordinates",
+    description:
+      "Click an element in the browser page by uid, selector, or coordinates. " +
+      "Requires user-granted control permission for the target tab. If permission has not been granted yet, ask the user to grant browser control for that tab in the Accordo browser extension popup, then retry. Read-only browser tools may still work without this permission.",
     inputSchema: {
       type: "object",
       properties: {
@@ -59,7 +63,9 @@ export function buildClickTool(relay: BrowserRelayLike): ExtensionToolDefinition
 export function buildTypeTool(relay: BrowserRelayLike): ExtensionToolDefinition {
   return {
     name: "accordo_browser_type",
-    description: "Type text into an element or the page",
+    description:
+      "Type text into an element or the page. " +
+      "Requires user-granted control permission for the target tab. If permission has not been granted yet, ask the user to grant browser control for that tab in the Accordo browser extension popup, then retry. Read-only browser tools may still work without this permission.",
     inputSchema: {
       type: "object",
       required: ["text"],
@@ -81,7 +87,9 @@ export function buildTypeTool(relay: BrowserRelayLike): ExtensionToolDefinition 
 export function buildPressKeyTool(relay: BrowserRelayLike): ExtensionToolDefinition {
   return {
     name: "accordo_browser_press_key",
-    description: "Press a keyboard key or key combination in the browser",
+    description:
+      "Press a keyboard key or key combination in the browser. " +
+      "Requires user-granted control permission for the target tab. If permission has not been granted yet, ask the user to grant browser control for that tab in the Accordo browser extension popup, then retry. Read-only browser tools may still work without this permission.",
     inputSchema: {
       type: "object",
       required: ["key"],

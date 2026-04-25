@@ -36,6 +36,7 @@ import {
   handleGetSemanticGraph,
   handleGetSpatialRelations,
   handleListPages,
+  handleManageSnapshots,
   handleSelectPage,
 } from "./relay-handlers.js";
 
@@ -135,6 +136,8 @@ export async function handleRelayAction(request: RelayActionRequest): Promise<Re
         return await handleWaitFor(request);
 
       // ── Multi-tab ──
+      case "manage_snapshots":
+        return await handleManageSnapshots(request);
       case "list_pages":
         return await handleListPages(request);
       case "select_page":

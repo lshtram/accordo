@@ -526,6 +526,84 @@ describe("Feature 12: iframe-cross-origin contract for frameId-targeted requests
     expect(response.data).toHaveProperty("found", true);
   });
 
+  it("F12: inspect_element with same-origin frameId retries after reinjection when the main-frame probe has no receiver", async () => {
+    const request = {
+      requestId: "f12-2b",
+      action: "inspect_element" as const,
+      payload: { tabId: 1, ref: "btn", frameId: "child-frame" },
+    };
+
+    (chrome.webNavigation.getAllFrames as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com/parent" },
+      { frameId: 7, parentFrameId: 0, url: "https://example.com/child" },
+    ]);
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error("Could not establish connection. Receiving end does not exist."))
+      .mockRejectedValueOnce(new Error("Could not establish connection. Receiving end does not exist."))
+      .mockImplementation(async (_tabId, message, options) => {
+        if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+          if (message.action === "get_page_map") {
+            return {
+              data: {
+                pageId: "p1",
+                frameId: "main",
+                snapshotId: "p1:1",
+                capturedAt: "2025-01-01T00:00:00Z",
+                viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+                source: "dom",
+                pageUrl: "https://example.com/parent",
+                title: "Parent",
+                nodes: [],
+                totalElements: 1,
+                truncated: false,
+                iframes: [
+                  {
+                    frameId: "child-frame",
+                    src: "https://example.com/child",
+                    bounds: { x: 0, y: 0, width: 300, height: 200 },
+                    sameOrigin: true,
+                  },
+                ],
+              },
+            };
+          }
+        }
+        if (options?.frameId === 7 && (message as { action?: string }).action === "get_frame_path") {
+          return { data: { frameId: "child-frame" } };
+        }
+
+        if (options?.frameId === 7 && (message as { action?: string }).action === "inspect_element") {
+          return {
+            data: {
+              found: true,
+              anchorKey: "btn:50%x50%",
+              anchorStrategy: "ref",
+              anchorConfidence: "high",
+            },
+          };
+        }
+        throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+      });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleInspectElement } = await import("../src/relay-page-handlers.js");
+      response = await handleInspectElement(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(chrome.scripting.executeScript).toHaveBeenCalledWith({
+      target: { tabId: 1, allFrames: true },
+      files: ["content-script.js"],
+    });
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("found", true);
+  });
+
   /**
    * F12: When frameId is not found in iframe metadata, returns action-failed.
    */

@@ -232,7 +232,7 @@ describe("GAP-G1: buildManageSnapshotsTool", () => {
     store.save("page-a", makeEnvelope("page-a", 2));
     store.save("page-b", makeEnvelope("page-b", 1));
 
-    const relay = { request: vi.fn(), isConnected: vi.fn(() => true) };
+    const relay = { request: vi.fn(), isConnected: vi.fn(() => false) };
     const tool = buildManageSnapshotsTool(relay as never, store);
     const handler = tool.handler as (args: unknown) => Promise<unknown>;
 
@@ -251,7 +251,7 @@ describe("GAP-G1: buildManageSnapshotsTool", () => {
     store.save("page-a", makeEnvelope("page-a", 1));
     store.save("page-b", makeEnvelope("page-b", 1));
 
-    const relay = { request: vi.fn(), isConnected: vi.fn(() => true) };
+    const relay = { request: vi.fn(), isConnected: vi.fn(() => false) };
     const tool = buildManageSnapshotsTool(relay as never, store);
     const handler = tool.handler as (args: unknown) => Promise<unknown>;
 
@@ -269,7 +269,7 @@ describe("GAP-G1: buildManageSnapshotsTool", () => {
     store.save("page-a", makeEnvelope("page-a", 1));
     store.save("page-b", makeEnvelope("page-b", 1));
 
-    const relay = { request: vi.fn(), isConnected: vi.fn(() => true) };
+    const relay = { request: vi.fn(), isConnected: vi.fn(() => false) };
     const tool = buildManageSnapshotsTool(relay as never, store);
     const handler = tool.handler as (args: unknown) => Promise<unknown>;
 
@@ -289,6 +289,71 @@ describe("GAP-G1: buildManageSnapshotsTool", () => {
     const tool = buildManageSnapshotsTool(relay as never, store);
     expect(tool.dangerLevel).toBe("safe");
     expect(tool.idempotent).toBe(false);
+  });
+
+  it("GAP-G1: list action prefers relay-managed snapshots when relay is connected", async () => {
+    const { buildManageSnapshotsTool } = await import("../manage-snapshots-tool.js");
+    const store = new SnapshotRetentionStore();
+    store.save("page-local", makeEnvelope("page-local", 1));
+
+    const relay = {
+      request: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          pages: [
+            {
+              pageId: "page-remote",
+              snapshotCount: 1,
+              snapshots: [{ snapshotId: "page-remote:1", capturedAt: "2025-01-01T00:00:00.000Z", source: "dom" }],
+            },
+          ],
+        },
+      }),
+      isConnected: vi.fn(() => true),
+    };
+    const tool = buildManageSnapshotsTool(relay as never, store);
+    const handler = tool.handler as (args: unknown) => Promise<unknown>;
+
+    const result = await handler({ action: "list" });
+    const r = result as { pages: { pageId: string }[] };
+    expect(relay.request).toHaveBeenCalledWith("manage_snapshots", { action: "list" });
+    expect(r.pages).toEqual([{ pageId: "page-remote", snapshotCount: 1, snapshots: [{ snapshotId: "page-remote:1", capturedAt: "2025-01-01T00:00:00.000Z", source: "dom" }] }]);
+  });
+
+  it("GAP-G1: clear action mirrors relay-managed clear into the local fallback store", async () => {
+    const { buildManageSnapshotsTool } = await import("../manage-snapshots-tool.js");
+    const store = new SnapshotRetentionStore();
+    store.save("page-local", makeEnvelope("page-local", 1));
+
+    const relay = {
+      request: vi.fn().mockResolvedValue({
+        success: true,
+        data: { success: true, clearedCount: 1 },
+      }),
+      isConnected: vi.fn(() => true),
+    };
+    const tool = buildManageSnapshotsTool(relay as never, store);
+    const handler = tool.handler as (args: unknown) => Promise<unknown>;
+
+    const result = await handler({ action: "clear" });
+    expect(result).toEqual({ success: true, clearedCount: 1 });
+    expect(store.list("page-local")).toEqual([]);
+  });
+
+  it("GAP-G1: connected relay failure does not silently fall back to the local store", async () => {
+    const { buildManageSnapshotsTool } = await import("../manage-snapshots-tool.js");
+    const store = new SnapshotRetentionStore();
+    store.save("page-local", makeEnvelope("page-local", 1));
+
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: false, error: "action-failed" }),
+      isConnected: vi.fn(() => true),
+    };
+    const tool = buildManageSnapshotsTool(relay as never, store);
+    const handler = tool.handler as (args: unknown) => Promise<unknown>;
+
+    const result = await handler({ action: "list" });
+    expect(result).toEqual({ success: false, error: "action-failed" });
   });
 });
 

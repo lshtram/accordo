@@ -65,6 +65,40 @@ export class SnapshotStore {
     return list.slice().reverse();
   }
 
+  listAll(): Map<string, VersionedSnapshot[]> {
+    if (this.maxAgeMs > 0) {
+      for (const [pageId, list] of this.pageSnapshots.entries()) {
+        const pruned = this.evictExpired(list);
+        if (pruned.length === 0) {
+          this.pageSnapshots.delete(pageId);
+        } else {
+          this.pageSnapshots.set(pageId, pruned);
+        }
+      }
+    }
+    return new Map(Array.from(this.pageSnapshots.entries(), ([pageId, list]) => [pageId, list.slice()]));
+  }
+
+  clear(): void;
+  clear(pageId: string): void;
+  clear(pageId?: string): void {
+    if (pageId !== undefined) {
+      const list = this.pageSnapshots.get(pageId) ?? [];
+      for (const snapshot of list) {
+        this.bySnapshotId.delete(snapshot.snapshotId);
+        this.capturedAt.delete(snapshot.snapshotId);
+        this.staleSnapshotIds.delete(snapshot.snapshotId);
+      }
+      this.pageSnapshots.delete(pageId);
+      return;
+    }
+
+    this.pageSnapshots.clear();
+    this.bySnapshotId.clear();
+    this.capturedAt.clear();
+    this.staleSnapshotIds.clear();
+  }
+
   resetOnNavigation(): void {
     this.staleSnapshotIds = new Set(this.bySnapshotId.keys());
     this.pageSnapshots = new Map();

@@ -339,6 +339,41 @@ describe("MCP-VC-005: capture_region redactionWarning for screenshots", () => {
     // Without a redaction policy, no warning needed
     expect(result.redactionWarning).toBeUndefined();
   });
+
+  it("MCP-VC-005: capture_region with screenshot redaction applied has NO redactionWarning", async () => {
+    const mockRelay = createMockRelay({
+      response: {
+        success: true,
+        requestId: "test",
+        data: {
+          ...MOCK_ENVELOPE,
+          pageUrl: "https://example.com",
+          success: true,
+          dataUrl: "data:image/png;base64,abc",
+          width: 100,
+          height: 100,
+          sizeBytes: 50,
+          screenshotRedactionApplied: true,
+          redactedSegmentCount: 1,
+        },
+      },
+    });
+
+    const security = createTestSecurityConfig();
+    security.redactionPolicy.redactPatterns = [
+      { name: "email", pattern: "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}" },
+    ];
+
+    const store = new SnapshotRetentionStore();
+    const tools = buildPageUnderstandingTools(mockRelay, store, security);
+    const captureTool = tools.find((t) => t.name === "accordo_browser_capture_region");
+
+    const result = await (captureTool!.handler as any)({ mode: "viewport" });
+
+    if ("success" in result && !result.success) return;
+    expect(result.screenshotRedactionApplied).toBe(true);
+    expect(result.redactionWarning).toBeUndefined();
+  });
 });
 
 // ── F4: auditId in response ──────────────────────────────────────────────────

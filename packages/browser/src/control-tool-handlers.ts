@@ -14,6 +14,16 @@ import {
 } from "./control-tool-contracts.js";
 import { mapClickError, mapNavigateError, mapPressKeyError, mapTypeError } from "./control-tool-error-mapping.js";
 
+function buildPermissionGuidance<T extends { success: false; error?: string }>(response: T): T {
+  if (response.error !== "control-not-granted") return response;
+  return {
+    ...response,
+    message: "This tab has not been granted browser control yet.",
+    agentAction: "Ask the user to grant browser control for this tab in the Accordo browser extension popup, then retry the action.",
+    userAction: "Open the Accordo browser extension popup for the target tab and grant control access.",
+  };
+}
+
 export async function handleNavigate(
   relay: BrowserRelayLike,
   args: NavigateArgs,
@@ -39,9 +49,9 @@ export async function handleNavigate(
         readyState: d.readyState as NavigateResponse["readyState"],
       };
     }
-    return { success: false, error: mapNavigateError(response.error) };
+    return buildPermissionGuidance({ success: false, error: mapNavigateError(response.error) });
   } catch (err: unknown) {
-    return { success: false, error: mapNavigateError(classifyRelayError(err)) };
+    return buildPermissionGuidance({ success: false, error: mapNavigateError(classifyRelayError(err)) });
   }
 }
 
@@ -66,9 +76,9 @@ export async function handleClick(
     if (response.success) {
       return { success: true, target: args.uid ?? args.selector ?? (args.coordinates ? `${args.coordinates.x},${args.coordinates.y}` : undefined) };
     }
-    return { success: false, error: mapClickError(response.error) };
+    return buildPermissionGuidance({ success: false, error: mapClickError(response.error) });
   } catch (err: unknown) {
-    return { success: false, error: mapClickError(classifyRelayError(err)) };
+    return buildPermissionGuidance({ success: false, error: mapClickError(classifyRelayError(err)) });
   }
 }
 
@@ -91,9 +101,9 @@ export async function handleType(
     if (response.success) {
       return { success: true };
     }
-    return { success: false, error: mapTypeError(response.error) };
+    return buildPermissionGuidance({ success: false, error: mapTypeError(response.error) });
   } catch (err: unknown) {
-    return { success: false, error: mapTypeError(classifyRelayError(err)) };
+    return buildPermissionGuidance({ success: false, error: mapTypeError(classifyRelayError(err)) });
   }
 }
 
@@ -112,8 +122,8 @@ export async function handlePressKey(
     if (response.success) {
       return { success: true, key: args.key };
     }
-    return { success: false, error: mapPressKeyError(response.error) };
+    return buildPermissionGuidance({ success: false, error: mapPressKeyError(response.error) });
   } catch (err: unknown) {
-    return { success: false, error: mapPressKeyError(classifyRelayError(err)) };
+    return buildPermissionGuidance({ success: false, error: mapPressKeyError(classifyRelayError(err)) });
   }
 }

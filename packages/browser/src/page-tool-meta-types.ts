@@ -11,7 +11,7 @@ export interface SelectPageArgs {
 }
 
 export interface ListPagesResponse {
-  pages: { tabId: number; url: string; title: string; active: boolean }[];
+  pages: { tabId: number; url: string; title: string; active: boolean; controlGranted?: boolean }[];
 }
 
 export interface SelectPageResponse {

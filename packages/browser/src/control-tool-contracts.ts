@@ -27,6 +27,9 @@ export interface NavigateResponse {
   title?: string;
   readyState?: "loading" | "interactive" | "complete";
   error?: "control-not-granted" | "tab-not-found" | "unsupported-page" | "invalid-request" | "invalid-url" | "navigation-failed" | "timeout" | "browser-not-connected" | "action-failed";
+  message?: string;
+  agentAction?: string;
+  userAction?: string;
 }
 
 export interface ClickArgs {
@@ -41,6 +44,9 @@ export interface ClickResponse {
   success: boolean;
   target?: string;
   error?: "control-not-granted" | "tab-not-found" | "element-not-found" | "element-off-screen" | "no-target" | "browser-not-connected" | "timeout" | "action-failed";
+  message?: string;
+  agentAction?: string;
+  userAction?: string;
 }
 
 export interface TypeArgs {
@@ -55,6 +61,9 @@ export interface TypeArgs {
 export interface TypeResponse {
   success: boolean;
   error?: "control-not-granted" | "tab-not-found" | "element-not-found" | "element-not-focusable" | "no-target" | "browser-not-connected" | "timeout" | "action-failed" | "invalid-request";
+  message?: string;
+  agentAction?: string;
+  userAction?: string;
 }
 
 export interface PressKeyArgs {
@@ -66,6 +75,9 @@ export interface PressKeyResponse {
   success: boolean;
   key?: string;
   error?: "control-not-granted" | "tab-not-found" | "invalid-key" | "browser-not-connected" | "timeout" | "action-failed" | "invalid-request";
+  message?: string;
+  agentAction?: string;
+  userAction?: string;
 }
 
 export type ControlToolBuilder<TArgs> = (relay: BrowserRelayLike) => ExtensionToolDefinition & {

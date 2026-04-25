@@ -5,7 +5,7 @@ import { handleListPages, handleSelectPage, type ListPagesArgs, type SelectPageA
 export function buildListPagesTool(relay: BrowserRelayLike): ExtensionToolDefinition {
   return {
     name: "accordo_browser_list_pages",
-    description: "List all open browser tabs/pages with their tabId, url, title, and active state.",
+    description: "List all open browser tabs/pages with their tabId, url, title, active state, and whether browser control permission has already been granted for each tab.",
     inputSchema: {
       type: "object",
       properties: {

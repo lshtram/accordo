@@ -68,7 +68,7 @@ export async function handleCaptureRegion(
         if (relatedSnapshotId !== undefined) {
           result.relatedSnapshotId = relatedSnapshotId;
         }
-        if (hasRedactPatterns) {
+        if (hasRedactPatterns && !result.screenshotRedactionApplied) {
           result.redactionWarning = "screenshots-not-subject-to-redaction-policy";
         }
         result.artifactMode = "inline";

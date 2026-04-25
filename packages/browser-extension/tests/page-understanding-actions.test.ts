@@ -710,6 +710,7 @@ describe("SW→CS forwarding via tabs.sendMessage (service worker context)", () 
     ]);
     (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
       .mockRejectedValueOnce(new Error("Could not establish connection. Receiving end does not exist."))
+      .mockRejectedValueOnce(new Error("Could not establish connection. Receiving end does not exist."))
       .mockResolvedValueOnce({ data: fakePageMap });
 
     const response = await handleRelayAction({
@@ -726,7 +727,7 @@ describe("SW→CS forwarding via tabs.sendMessage (service worker context)", () 
       target: { tabId: 1, allFrames: true },
       files: ["content-styles.css"],
     });
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(2);
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(3);
     expect(response.success).toBe(true);
     expect(response.data).toEqual(fakePageMap);
   });
