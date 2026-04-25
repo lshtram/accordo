@@ -11,43 +11,28 @@
 
 import * as vscode from "vscode";
 import type { ExtensionToolDefinition, IDEState } from "@accordo/bridge-types";
+import type * as EditorHandlers from "./tools/editor-handlers.js";
+import type * as TerminalHandlers from "./tools/terminal.js";
+import type * as LayoutHandlers from "./tools/layout.js";
+import type * as BarHandlers from "./tools/bar.js";
 import { editorTools } from "./tools/editor.js";
 import {
   terminalTools,
   registerTerminalLifecycle,
-  terminalOpenHandler,
-  terminalRunHandler,
-  terminalFocusHandler,
-  terminalListHandler,
-  terminalCloseHandler,
 } from "./tools/terminal.js";
+import { createLayoutTools } from "./tools/layout.js";
 import {
-  createLayoutTools,
-  panelToggleHandler,
-  layoutZenHandler,
-  layoutFullscreenHandler,
-  layoutJoinGroupsHandler,
-  layoutEvenGroupsHandler,
-  layoutStateHandler,
-} from "./tools/layout.js";
-import { layoutPanelHandler } from "./tools/bar.js";
-import {
-  openHandler,
-  closeHandler,
-  scrollHandler,
-  splitHandler,
-  focusGroupHandler,
-  revealHandler,
-  highlightHandler,
-  clearHighlightsHandler,
-  saveHandler,
-  saveAllHandler,
-  formatHandler,
-} from "./tools/editor-handlers.js";
+  registerEditorCommandShims,
+  registerTerminalCommandShims,
+  registerLayoutCommandShims,
+  registerVscodeCommandShims,
+} from "./tools/command-shims.js";
+import { vscodeCommandTools } from "./tools/vscode-command-tools.js";
+import { initVscodeCommandGateway } from "./tools/vscode-command-stubs.js";
+import { createVsCodeCommandGatewayDeps } from "./tools/vscode-command-vscode-deps.js";
 
-// ── BridgeAPI (minimal interface — full type lives in accordo-bridge) ─────────
+// ── BridgeAPI ─────────────────────────────────────────────────────────────
 
-/** Subset of accordo-bridge BridgeAPI used by this extension. */
 interface BridgeAPI {
   registerTools(
     extensionId: string,
@@ -56,86 +41,87 @@ interface BridgeAPI {
   getState(): IDEState;
 }
 
-// ── All tools ────────────────────────────────────────────────────────────
+async function getBridgeApi(): Promise<BridgeAPI | undefined> {
+  return vscode.extensions.getExtension<BridgeAPI>("accordo.accordo-bridge")?.exports;
+}
 
-// Static tools (no Bridge state dependency)
-const staticTools: ExtensionToolDefinition[] = [
-  ...editorTools,
-  ...terminalTools,
-];
+function buildToolList(getState: () => IDEState): ExtensionToolDefinition[] {
+  return [...editorTools, ...terminalTools, ...vscodeCommandTools, ...createLayoutTools(getState)];
+}
 
-// ── activate ──────────────────────────────────────────────────────────────────
-
-/**
- * Called by VS Code when the extension activates (onStartupFinished).
- *
- * REQ §3: If Bridge is absent, return silently — do not throw.
- */
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  // Register terminal lifecycle listener regardless of Bridge presence (§5.3)
-  registerTerminalLifecycle(context);
-
-  const bridge = vscode.extensions.getExtension<BridgeAPI>(
-    "accordo.accordo-bridge",
-  )?.exports;
-
-  if (!bridge) {
-    // Bridge not installed or not yet exported — extension is inert.
-    return;
-  }
-
-  const allTools: ExtensionToolDefinition[] = [
-    ...staticTools,
-    ...createLayoutTools(() => bridge.getState()),
-  ];
-
-  const disposable = bridge.registerTools("accordo.accordo-editor", allTools);
-  context.subscriptions.push(disposable);
-
-  // Register all editor/terminal/layout tools as VS Code commands so they can
-  // be invoked via vscode.commands.executeCommand, even when the MCP Hub is not
-  // connected. Each command passes its args directly to the tool handler.
-  const cmd = (id: string, fn: (args: Record<string, unknown>) => unknown): vscode.Disposable =>
-    vscode.commands.registerCommand(id, (args: unknown) =>
-      fn((args as Record<string, unknown> | undefined) ?? {}),
-    );
-
-  const getState = (): IDEState => bridge.getState();
-
-  context.subscriptions.push(
-    // ── Editor tools ──
-    cmd("accordo_editor_open",           openHandler),
-    cmd("accordo_editor_close",          closeHandler),
-    cmd("accordo_editor_scroll",         scrollHandler),
-    cmd("accordo_editor_split",          splitHandler),
-    cmd("accordo_editor_focus",          focusGroupHandler),
-    cmd("accordo_editor_reveal",         revealHandler),
-    cmd("accordo_editor_highlight",      highlightHandler),
-    cmd("accordo_editor_clearHighlights", clearHighlightsHandler),
-    cmd("accordo_editor_save",           saveHandler),
-    cmd("accordo_editor_saveAll",        saveAllHandler),
-    cmd("accordo_editor_format",         formatHandler),
-    // ── Terminal tools ──
-    cmd("accordo_terminal_open",         terminalOpenHandler),
-    cmd("accordo_terminal_run",          terminalRunHandler),
-    cmd("accordo_terminal_focus",        terminalFocusHandler),
-    cmd("accordo_terminal_list",         terminalListHandler),
-    cmd("accordo_terminal_close",        terminalCloseHandler),
-    // ── Layout tools ──
-    cmd("accordo_panel_toggle",          panelToggleHandler),
-    cmd("accordo_layout_zen",            layoutZenHandler),
-    cmd("accordo_layout_fullscreen",     layoutFullscreenHandler),
-    cmd("accordo_layout_joinGroups",     layoutJoinGroupsHandler),
-    cmd("accordo_layout_evenGroups",     layoutEvenGroupsHandler),
-    cmd("accordo_layout_state",          (args) => layoutStateHandler(args, getState)),
-    cmd("accordo_layout_panel",          layoutPanelHandler),
+async function registerAllCommandShims(
+  context: vscode.ExtensionContext,
+  getState: () => IDEState,
+): Promise<void> {
+  const editorHandlers = await import("./tools/editor-handlers.js");
+  const terminalHandlers = await import("./tools/terminal.js");
+  const layoutHandlers = await import("./tools/layout.js");
+  const barHandlers = await import("./tools/bar.js");
+  const gatewayHandlers = await import("./tools/vscode-command-stubs.js");
+  registerEditorShims(context, editorHandlers);
+  registerTerminalShims(context, terminalHandlers);
+  registerLayoutShims(context, getState, layoutHandlers, barHandlers);
+  registerVscodeCommandShims(
+    context,
+    gatewayHandlers.vscodeCommandListHandler,
+    gatewayHandlers.vscodeCommandExecuteHandler,
   );
 }
 
-// ── deactivate ────────────────────────────────────────────────────────────────
-
-/** Called by VS Code when the extension host is being shut down. */
-export function deactivate(): void {
-  // Subscriptions added to context.subscriptions are disposed automatically.
-  // Nothing extra needed here.
+function registerEditorShims(
+  context: vscode.ExtensionContext,
+  handlers: typeof EditorHandlers,
+): void {
+  registerEditorCommandShims(context, {
+    openHandler: handlers.openHandler,
+    closeHandler: handlers.closeHandler,
+    scrollHandler: handlers.scrollHandler,
+    focusGroupHandler: handlers.focusGroupHandler,
+    highlightHandler: handlers.highlightHandler,
+    clearHighlightsHandler: handlers.clearHighlightsHandler,
+  });
 }
+
+function registerTerminalShims(
+  context: vscode.ExtensionContext,
+  handlers: typeof TerminalHandlers,
+): void {
+  registerTerminalCommandShims(context, {
+    terminalOpenHandler: handlers.terminalOpenHandler,
+    terminalRunHandler: handlers.terminalRunHandler,
+    terminalFocusHandler: handlers.terminalFocusHandler,
+    terminalListHandler: handlers.terminalListHandler,
+    terminalCloseHandler: handlers.terminalCloseHandler,
+  });
+}
+
+function registerLayoutShims(
+  context: vscode.ExtensionContext,
+  getState: () => IDEState,
+  layoutHandlers: typeof LayoutHandlers,
+  barHandlers: typeof BarHandlers,
+): void {
+  registerLayoutCommandShims(context, {
+    panelToggleHandler: layoutHandlers.panelToggleHandler,
+    layoutStateHandler: layoutHandlers.layoutStateHandler,
+    layoutPanelHandler: barHandlers.layoutPanelHandler,
+  }, getState);
+}
+
+// ── activate ──────────────────────────────────────────────────────────────
+
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  registerTerminalLifecycle(context);
+  const bridge = await getBridgeApi();
+  if (!bridge) return;
+
+  const getState = (): IDEState => bridge.getState();
+  initVscodeCommandGateway(createVsCodeCommandGatewayDeps());
+  const allTools = buildToolList(getState);
+  context.subscriptions.push(bridge.registerTools("accordo.accordo-editor", allTools));
+  await registerAllCommandShims(context, getState);
+}
+
+// ── deactivate ────────────────────────────────────────────────────────────
+
+export function deactivate(): void { /* subscriptions auto-disposed */ }

@@ -1,26 +1,30 @@
 /**
- * A14 — diagram-tools tests  (Phase B — all RED, all turn GREEN in Phase C)
+ * A14 — diagram-tools tests  (Phase B — M76-DGM removal cycle)
+ *
+ * M76-DGM removal: accordo_diagram_list, accordo_diagram_get,
+ *   accordo_diagram_style_guide removed from MCP registration.
+ *   Remaining: accordo_diagram_create, accordo_diagram_patch, accordo_diagram_render.
  *
  * Tests cover the full public contract of diagram-tools.ts:
  *   – ToolResult envelope shape         DT-01..DT-03
  *   – resolveGuarded path guard         DT-04..DT-06
- *   – listHandler                       DT-07..DT-11
- *   – getHandler                        DT-12..DT-17
+ *   – listHandler (internal helper, unregistered)  DT-07..DT-11
+ *   – getHandler (internal helper, unregistered)    DT-12..DT-17
  *   – createHandler                     DT-18..DT-24
  *   – patchHandler                      DT-25..DT-35
  *   – renderHandler                     DT-36..DT-41
- *   – styleGuideHandler                 DT-42..DT-46
- *   – createDiagramTools array          DT-47..DT-48
+ *   – styleGuideHandler (internal helper, unregistered) DT-42..DT-44
+ *   – createDiagramTools array          DT-47..DT-48  (M76-DGM-01: 3 tools, not 6)
  *   – patchHandler nodeStyles A14-v2    DT-49..DT-52
  *   – patchHandler placeNodes() fix      DT-53..DT-58
- *   – patchHandler edgeStyles T-01       DT-59..DT-66
+ *   – patchHandler edgeStyles T-01       DT-59..DT-67
  *
  * BACKFILL NOTE (A14-v2): DT-49..DT-52 were written after the width/height
  * segregation and new style fields were implemented (implementation-before-test
  * exception agreed by reviewer). The implementation already exists; these tests
  * verify its contract.
  *
- * Source: diag_workplan.md §4.14
+ * Source: diag_workplan.md §4.14, M76-DGM requirements
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -32,14 +36,17 @@ import { join, extname, basename, dirname } from "node:path";
 import {
   DiagToolError,
   resolveGuarded,
-  listHandler,
-  getHandler,
   createHandler,
   patchHandler,
   renderHandler,
-  styleGuideHandler,
   createDiagramTools,
 } from "../tools/diagram-tools.js";
+
+import {
+  listHandler,
+  getHandler,
+  styleGuideHandler,
+} from "../tools/diagram-tool-ops.js";
 import { layoutPathFor } from "../layout/layout-store.js";
 import type {
   DiagramToolContext,
@@ -778,12 +785,12 @@ describe("createDiagramTools", () => {
     tools = createDiagramTools(ctx);
   });
 
-  // DT-47: returns exactly 6 tools
-  it("DT-47: returns an array with exactly 6 tool definitions", () => {
-    expect(tools).toHaveLength(6);
+  // DT-47: M76-DGM-01 — returns exactly 3 tools (was 6; list/get/style-guide removed)
+  it("DT-47: returns an array with exactly 3 tool definitions", () => {
+    expect(tools).toHaveLength(3);
   });
 
-  // DT-48: each tool has required fields + callable handler
+  // DT-48: M76-DGM-01 — only create/patch/render present; list/get/style-guide absent
   it("DT-48: every tool definition has name, description, inputSchema, and a callable handler", () => {
     for (const tool of tools) {
       expect(typeof tool.name).toBe("string");
@@ -793,6 +800,16 @@ describe("createDiagramTools", () => {
       expect(tool.inputSchema.type).toBe("object");
       expect(typeof tool.handler).toBe("function");
     }
+  });
+
+  it("DT-48b: only accordo_diagram_create/patch/render are present (M76-DGM-01)", () => {
+    const names = tools.map((t) => t.name);
+    expect(names).toContain("accordo_diagram_create");
+    expect(names).toContain("accordo_diagram_patch");
+    expect(names).toContain("accordo_diagram_render");
+    expect(names).not.toContain("accordo_diagram_list");
+    expect(names).not.toContain("accordo_diagram_get");
+    expect(names).not.toContain("accordo_diagram_style_guide");
   });
 });
 

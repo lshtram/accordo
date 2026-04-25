@@ -1,8 +1,7 @@
 /**
  * Tests for src/tools/editor-handlers.ts — extracted handler functions
  *
- * Phase B — all tests fail RED against "not implemented" stubs.
- * This file tests the handler functions that will be exported from editor-handlers.ts.
+ * Tests the remaining handler functions exported from editor-handlers.ts.
  *
  * Exported API checklist (Phase B requirement):
  *   [ ] argString           — required string arg extractor
@@ -14,13 +13,12 @@
  *   [ ] scrollHandler      — §4.3 (up/down, line/page)
  *   [ ] highlightHandler   — §4.4 (decoration create + store)
  *   [ ] clearHighlightsHandler — §4.5 (by id or all)
- *   [ ] splitHandler       — §4.6 (right/down)
  *   [ ] focusGroupHandler  — §4.7 (groups 1–9)
- *   [ ] revealHandler      — §4.8 (explorer reveal)
- *   [ ] saveHandler       — §4.17 (active or by path)
- *   [ ] saveAllHandler    — §4.18 (count dirty docs)
- *   [ ] formatHandler      — §4.19 (focus then format)
  *   [ ] _clearDecorationStore — test utility (internal)
+ *
+ * Removed exports (migrated to generic gateway):
+ *   splitHandler (§4.6), revealHandler (§4.8)
+ *   saveHandler (§4.17), saveAllHandler (§4.18), formatHandler (§4.19)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -35,12 +33,7 @@ import {
   scrollHandler,
   highlightHandler,
   clearHighlightsHandler,
-  splitHandler,
   focusGroupHandler,
-  revealHandler,
-  saveHandler,
-  saveAllHandler,
-  formatHandler,
   _clearDecorationStore,
 } from "../tools/editor-handlers.js";
 
@@ -413,18 +406,6 @@ describe("clearHighlightsHandler — §4.5", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.6 accordo_editor_split
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("splitHandler — §4.6", () => {
-  it("SPLIT-01: returns { groups: number } on success", async () => {
-    mockState.tabGroups.all = [{ tabs: [] }, { tabs: [] }];
-    const result = await splitHandler({ direction: "right" });
-    expect(result).toEqual({ groups: 2 });
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
 // §4.7 accordo_editor_focus
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -442,106 +423,6 @@ describe("focusGroupHandler — §4.7", () => {
     const result = await focusGroupHandler({ group: 10 });
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toBe("Editor group 10 does not exist (max: 3)");
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// §4.8 accordo_editor_reveal
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("revealHandler — §4.8", () => {
-  it("REVEAL-01: returns { revealed: true, path } on success", async () => {
-    makeWorkspace();
-    vi.mocked(workspace.fs.stat).mockResolvedValueOnce({
-      type: vscodeMock.FileType.File,
-      size: 100,
-      mtime: 0,
-      ctime: 0,
-    });
-    const result = await revealHandler({ path: "/workspace/src/foo.ts" });
-    expect(result).toEqual({ revealed: true, path: "/workspace/src/foo.ts" });
-  });
-
-  it("REVEAL-02: returns { error: string } when file not found", async () => {
-    makeWorkspace();
-    vi.mocked(workspace.fs.stat).mockRejectedValueOnce(
-      new Error("ENOENT: file not found"),
-    );
-    const result = await revealHandler({ path: "/workspace/missing.ts" });
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toBe("File not found: /workspace/missing.ts");
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// §4.17 accordo_editor_save
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("saveHandler — §4.17", () => {
-  it("SAVE-01: returns { saved: true, path } on success (active editor)", async () => {
-    const editor = makeVisibleEditor("/workspace/foo.ts");
-    mockState.activeTextEditor = editor;
-    const result = await saveHandler({});
-    expect(result).toEqual({ saved: true, path: "/workspace/foo.ts" });
-  });
-
-  it("SAVE-02: returns { saved: true, path } on success (specific file)", async () => {
-    makeWorkspace();
-    const doc = makeOpenDocument("/workspace/bar.ts");
-    mockState.textDocuments = [doc];
-    const result = await saveHandler({ path: "/workspace/bar.ts" });
-    expect(result).toEqual({ saved: true, path: "/workspace/bar.ts" });
-  });
-
-  it("SAVE-03: returns { error: string } when no active editor and no path", async () => {
-    mockState.activeTextEditor = null;
-    const result = await saveHandler({});
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toBe("No active editor to save");
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// §4.18 accordo_editor_saveAll
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("saveAllHandler — §4.18", () => {
-  it("SAVEALL-01: returns { saved: true, count: number } on success", async () => {
-    mockState.textDocuments = [
-      makeOpenDocument("/workspace/a.ts", true),
-      makeOpenDocument("/workspace/b.ts", true),
-      makeOpenDocument("/workspace/c.ts", false),
-    ];
-    const result = await saveAllHandler({});
-    expect(result).toEqual({ saved: true, count: 2 });
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// §4.19 accordo_editor_format
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("formatHandler — §4.19", () => {
-  it("FMT-01: returns { formatted: true, path } on success (active editor)", async () => {
-    const editor = makeVisibleEditor("/workspace/foo.ts");
-    mockState.activeTextEditor = editor;
-    const result = await formatHandler({});
-    expect(result).toEqual({ formatted: true, path: "/workspace/foo.ts" });
-  });
-
-  it("FMT-02: returns { formatted: true, path } on success (specific file)", async () => {
-    makeWorkspace();
-    const editor = makeVisibleEditor("/workspace/bar.ts");
-    mockState.visibleTextEditors = [editor];
-    const result = await formatHandler({ path: "/workspace/bar.ts" });
-    expect(result).toEqual({ formatted: true, path: "/workspace/bar.ts" });
-  });
-
-  it("FMT-03: returns { error: string } when no active editor and no path", async () => {
-    mockState.activeTextEditor = null;
-    const result = await formatHandler({});
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toBe("No active editor to format");
   });
 });
 

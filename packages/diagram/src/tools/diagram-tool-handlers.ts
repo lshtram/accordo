@@ -16,7 +16,10 @@
  * Public exports (from diagram-tool-ops.ts)
  * ──────────────
  *   resolveGuarded(root, inputPath) — throws DiagToolError on escape
- *   listHandler / getHandler / createHandler / patchHandler / renderHandler / styleGuideHandler
+ *   createHandler / patchHandler / renderHandler
+ *
+ * Internal helpers (not re-exported from diagram-tools.ts):
+ *   listHandler / getHandler / styleGuideHandler
  *
  * Source: diag_workplan.md §4.14, diag_arch_v4.2.md §6
  */
@@ -38,13 +41,10 @@ export type {
 export { DiagToolError } from "./diagram-tool-types.js";
 export type { DiagramPanelLike, DiagramToolContext } from "./diagram-tool-types.js";
 
-// Re-export all operations from diagram-tool-ops
+// Re-export operations from diagram-tool-ops
 export {
   resolveGuarded,
-  listHandler,
-  getHandler,
   createHandler,
   patchHandler,
   renderHandler,
-  styleGuideHandler,
 } from "./diagram-tool-ops.js";

@@ -10,14 +10,9 @@ import {
   openHandler,
   closeHandler,
   scrollHandler,
-  splitHandler,
   focusGroupHandler,
-  revealHandler,
   highlightHandler,
   clearHighlightsHandler,
-  saveHandler,
-  saveAllHandler,
-  formatHandler,
 } from "./editor-handlers.js";
 import { wrapHandler } from "../util.js";
 
@@ -72,21 +67,6 @@ export const editorTools: ExtensionToolDefinition[] = [
     handler: wrapHandler("accordo_editor_scroll", scrollHandler),
   },
   {
-    name: "accordo_editor_split",
-    group: "editor",
-    description: "Split the editor pane right or down.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        direction: { type: "string", enum: ["right", "down"], description: "Direction to split" },
-      },
-      required: ["direction"],
-    },
-    dangerLevel: "safe",
-    idempotent: false,
-    handler: wrapHandler("accordo_editor_split", splitHandler),
-  },
-  {
     name: "accordo_editor_focus",
     group: "editor",
     description: "Focus a specific editor group by 1-based group number.",
@@ -100,21 +80,6 @@ export const editorTools: ExtensionToolDefinition[] = [
     dangerLevel: "safe",
     idempotent: true,
     handler: wrapHandler("accordo_editor_focus", focusGroupHandler),
-  },
-  {
-    name: "accordo_editor_reveal",
-    group: "editor",
-    description: "Reveal a file in the Explorer sidebar without opening it.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "File path to reveal in Explorer" },
-      },
-      required: ["path"],
-    },
-    dangerLevel: "safe",
-    idempotent: true,
-    handler: wrapHandler("accordo_editor_reveal", revealHandler),
   },
   {
     name: "accordo_editor_highlight",
@@ -148,48 +113,5 @@ export const editorTools: ExtensionToolDefinition[] = [
     dangerLevel: "safe",
     idempotent: true,
     handler: wrapHandler("accordo_editor_clearHighlights", clearHighlightsHandler),
-  },
-  {
-    name: "accordo_editor_save",
-    group: "editor",
-    description: "Save a specific file, or the active editor if no path given.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "File path to save. If omitted, saves the active editor." },
-      },
-      required: [],
-    },
-    dangerLevel: "safe",
-    idempotent: true,
-    handler: wrapHandler("accordo_editor_save", saveHandler),
-  },
-  {
-    name: "accordo_editor_saveAll",
-    group: "editor",
-    description: "Save all modified (unsaved) editors.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-      required: [],
-    },
-    dangerLevel: "safe",
-    idempotent: true,
-    handler: wrapHandler("accordo_editor_saveAll", saveAllHandler),
-  },
-  {
-    name: "accordo_editor_format",
-    group: "editor",
-    description: "Format the active document or a specific file using the configured formatter.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "File path to format. If omitted, formats the active editor." },
-      },
-      required: [],
-    },
-    dangerLevel: "safe",
-    idempotent: true,
-    handler: wrapHandler("accordo_editor_format", formatHandler),
   },
 ];

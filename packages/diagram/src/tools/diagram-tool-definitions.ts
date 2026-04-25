@@ -15,54 +15,24 @@
 
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import {
-  listHandler,
-  getHandler,
   createHandler,
   patchHandler,
   renderHandler,
-  styleGuideHandler,
 } from "./diagram-tool-handlers.js";
 import type { DiagramToolContext } from "./diagram-tool-handlers.js";
 
 // ── Tool definitions factory ──────────────────────────────────────────────────
 
 /**
- * Build the six accordo_diagram_* ExtensionToolDefinition objects bound to `ctx`.
+ * Build the three accordo_diagram_* ExtensionToolDefinition objects bound to `ctx`.
  * Called once during extension activation.
+ *
+ * M76-DGM: accordo_diagram_list, accordo_diagram_get, accordo_diagram_style_guide
+ * are NOT registered — they are internal helpers only (listHandler, getHandler,
+ * styleGuideHandler are still exported from diagram-tools.ts for internal use).
  */
 export function createDiagramTools(ctx: DiagramToolContext): ExtensionToolDefinition[] {
   return [
-    {
-      name: "accordo_diagram_list",
-      group: "diagram",
-      description: "List all .mmd diagram files in the workspace with type and node count.",
-      inputSchema: {
-        type: "object",
-        properties: {},
-        required: [],
-      },
-      dangerLevel: "safe",
-      idempotent: true,
-      handler: (args) => listHandler(args, ctx),
-    },
-    {
-      name: "accordo_diagram_get",
-      group: "diagram",
-      description: "Parse and return the semantic graph and layout of a .mmd diagram file.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "Path to the .mmd file, relative to workspace root",
-          },
-        },
-        required: ["path"],
-      },
-      dangerLevel: "safe",
-      idempotent: true,
-      handler: (args) => getHandler(args, ctx),
-    },
     {
       name: "accordo_diagram_create",
       group: "diagram",
@@ -213,20 +183,6 @@ export function createDiagramTools(ctx: DiagramToolContext): ExtensionToolDefini
       dangerLevel: "moderate",
       idempotent: true,
       handler: (args) => renderHandler(args, ctx),
-    },
-    {
-      name: "accordo_diagram_style_guide",
-      group: "diagram",
-      description:
-        "Return the diagram style guide: colour palette, starter template, and conventions list.",
-      inputSchema: {
-        type: "object",
-        properties: {},
-        required: [],
-      },
-      dangerLevel: "safe",
-      idempotent: true,
-      handler: (args) => Promise.resolve(styleGuideHandler(args)),
     },
   ];
 }

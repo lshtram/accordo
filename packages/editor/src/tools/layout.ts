@@ -1,9 +1,8 @@
 /**
  * Layout tool handlers for accordo-editor.
  *
- * Implements the following tools from requirements-editor.md §4:
- *   Module 20: §4.14 panel.toggle, §4.15 layout.zen, §4.16 layout.fullscreen,
- *              §4.23 layout.joinGroups, §4.24 layout.evenGroups
+ * Implements the remaining layout tool from requirements-editor.md §4:
+ *   Module 20: §4.14 panel.toggle
  */
 
 import * as vscode from "vscode";
@@ -67,58 +66,6 @@ export async function panelToggleHandler(
   }
 }
 
-// ── §4.15 accordo_layout_zen ─────────────────────────────────────────────────
-
-export async function layoutZenHandler(
-  _args: Record<string, unknown>,
-): Promise<{ active: true } | { error: string }> {
-  try {
-    await vscode.commands.executeCommand("workbench.action.toggleZenMode");
-    return { active: true };
-  } catch (err) {
-    return { error: errorMessage(err) };
-  }
-}
-
-// ── §4.16 accordo_layout_fullscreen ──────────────────────────────────────────
-
-export async function layoutFullscreenHandler(
-  _args: Record<string, unknown>,
-): Promise<{ active: true } | { error: string }> {
-  try {
-    await vscode.commands.executeCommand("workbench.action.toggleFullScreen");
-    return { active: true };
-  } catch (err) {
-    return { error: errorMessage(err) };
-  }
-}
-
-// ── §4.23 accordo_layout_joinGroups ──────────────────────────────────────────
-
-export async function layoutJoinGroupsHandler(
-  _args: Record<string, unknown>,
-): Promise<{ groups: number } | { error: string }> {
-  try {
-    await vscode.commands.executeCommand("workbench.action.joinAllGroups");
-    return { groups: 1 };
-  } catch (err) {
-    return { error: errorMessage(err) };
-  }
-}
-
-// ── §4.24 accordo_layout_evenGroups ──────────────────────────────────────────
-
-export async function layoutEvenGroupsHandler(
-  _args: Record<string, unknown>,
-): Promise<{ equalized: true } | { error: string }> {
-  try {
-    await vscode.commands.executeCommand("workbench.action.evenEditorWidths");
-    return { equalized: true };
-  } catch (err) {
-    return { error: errorMessage(err) };
-  }
-}
-
 // ── Tool definitions (Module 20) ─────────────────────────────────────────────
 
 /** All layout tool definitions for module 20. */
@@ -145,58 +92,6 @@ export const layoutTools: ExtensionToolDefinition[] = [
     dangerLevel: "safe",
     idempotent: false,
     handler: wrapHandler("accordo_panel_toggle", panelToggleHandler),
-  },
-  {
-    name: "accordo_layout_zen",
-    group: "layout",
-    description: "Toggle Zen Mode (distraction-free fullscreen editing).",
-    inputSchema: {
-      type: "object",
-      properties: {},
-      required: [],
-    },
-    dangerLevel: "safe",
-    idempotent: false,
-    handler: wrapHandler("accordo_layout_zen", layoutZenHandler),
-  },
-  {
-    name: "accordo_layout_fullscreen",
-    group: "layout",
-    description: "Toggle fullscreen mode.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-      required: [],
-    },
-    dangerLevel: "safe",
-    idempotent: false,
-    handler: wrapHandler("accordo_layout_fullscreen", layoutFullscreenHandler),
-  },
-  {
-    name: "accordo_layout_joinGroups",
-    group: "layout",
-    description: "Collapse all editor splits — merge all groups into one.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-      required: [],
-    },
-    dangerLevel: "safe",
-    idempotent: true,
-    handler: wrapHandler("accordo_layout_joinGroups", layoutJoinGroupsHandler),
-  },
-  {
-    name: "accordo_layout_evenGroups",
-    group: "layout",
-    description: "Equalise the width and height of all editor groups.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-      required: [],
-    },
-    dangerLevel: "safe",
-    idempotent: true,
-    handler: wrapHandler("accordo_layout_evenGroups", layoutEvenGroupsHandler),
   },
 ];
 

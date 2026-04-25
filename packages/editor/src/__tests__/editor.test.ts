@@ -1,28 +1,24 @@
 /**
  * Tests for src/tools/editor.ts — Modules 16 + 17
  *
- * Module 16 (§4.1–§4.3, §4.6–§4.8):
- *   accordo_editor_open, close, scroll, split, focus, reveal
+ * Remaining tools:
+ *   Module 16 (§4.1–§4.3, §4.7):
+ *     accordo_editor_open, close, scroll, focus
+ *   Module 17 (§4.4–§4.5):
+ *     accordo_editor_highlight, clearHighlights
  *
- * Module 17 (§4.4–§4.5, §4.17–§4.19):
- *   accordo_editor_highlight, clearHighlights, save, saveAll, format
+ * Removed exports (migrated to generic gateway):
+ *   split (§4.6), reveal (§4.8), save (§4.17), saveAll (§4.18), format (§4.19)
  *
- * Phase B — all tests fail RED against "not implemented" stubs.
- *
- * Exported API checklist (Phase B requirement, dev-process.md §Phase B):
+ * Exported API checklist:
  *   [x] openHandler           — §4.1 (open + scroll to position)
  *   [x] closeHandler          — §4.2 (active or by path)
  *   [x] scrollHandler         — §4.3 (up/down, line/page)
  *   [x] highlightHandler      — §4.4 (decoration create + store)
  *   [x] clearHighlightsHandler — §4.5 (by id or all)
- *   [x] splitHandler          — §4.6 (right/down)
  *   [x] focusGroupHandler     — §4.7 (groups 1–9)
- *   [x] revealHandler         — §4.8 (explorer reveal)
- *   [x] saveHandler           — §4.17 (active or by path)
- *   [x] saveAllHandler        — §4.18 (count dirty docs)
- *   [x] formatHandler         — §4.19 (focus then format)
  *   [x] _clearDecorationStore — test helper (internal)
- *   [x] editorTools[]         — all 11 tool definitions exported
+ *   [x] editorTools[]         — 6 tool definitions (5 removed)
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -34,12 +30,7 @@ import {
   scrollHandler,
   highlightHandler,
   clearHighlightsHandler,
-  splitHandler,
   focusGroupHandler,
-  revealHandler,
-  saveHandler,
-  saveAllHandler,
-  formatHandler,
   _clearDecorationStore,
   editorTools,
 } from "../tools/editor.js";
@@ -296,38 +287,6 @@ describe("scrollHandler rejection — §4.3", () => {
   });
 });
 
-// ── §4.6 accordo_editor_split ────────────────────────────────────────────────
-
-describe("splitHandler — §4.6", () => {
-  it("§4.6-SPLIT-01: splits right and returns group count", async () => {
-    mockState.tabGroups.all = [{ tabs: [] }, { tabs: [] }];
-    await expect(splitHandler({ direction: "right" })).resolves.toEqual({
-      groups: 2,
-    });
-    expect(commands.executeCommand).toHaveBeenCalledWith(
-      "workbench.action.splitEditorRight",
-    );
-  });
-
-  it("§4.6-SPLIT-02: splits down", async () => {
-    mockState.tabGroups.all = [{ tabs: [] }, { tabs: [] }];
-    await splitHandler({ direction: "down" });
-    expect(commands.executeCommand).toHaveBeenCalledWith(
-      "workbench.action.splitEditorDown",
-    );
-  });
-
-  it("§4.6-SPLIT-R01: wraps command rejection as error object", async () => {
-    mockState.tabGroups.all = [{ tabs: [] }];
-    vi.mocked(commands.executeCommand).mockRejectedValueOnce(
-      new Error("split failed"),
-    );
-    const result = await splitHandler({ direction: "right" });
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toBe("split failed");
-  });
-});
-
 describe("focusGroupHandler rejection — §4.7", () => {
   it("§4.7-FOCUS-R01: wraps executeCommand rejection as error", async () => {
     mockState.tabGroups.all = [{ tabs: [] }, { tabs: [] }];
@@ -426,40 +385,8 @@ describe("focusGroupHandler — §4.7", () => {
   });
 });
 
-// ── §4.8 accordo_editor_reveal ───────────────────────────────────────────────
-
-describe("revealHandler — §4.8", () => {
-  it("§4.8-REVEAL-01: reveals file in Explorer and returns absolute path", async () => {
-    makeWorkspace();
-    vi.mocked(workspace.fs.stat).mockResolvedValueOnce({
-      type: vscodeMock.FileType.File,
-      size: 100,
-      mtime: 0,
-      ctime: 0,
-    });
-    await expect(
-      revealHandler({ path: "/workspace/src/foo.ts" }),
-    ).resolves.toEqual({ revealed: true, path: "/workspace/src/foo.ts" });
-    expect(commands.executeCommand).toHaveBeenCalledWith(
-      "revealInExplorer",
-      expect.objectContaining({ fsPath: "/workspace/src/foo.ts" }),
-    );
-  });
-
-  it("§4.8-REVEAL-02: returns error when file does not exist", async () => {
-    makeWorkspace();
-    vi.mocked(workspace.fs.stat).mockRejectedValueOnce(
-      new Error("ENOENT: file not found"),
-    );
-    const result = await revealHandler({ path: "/workspace/missing.ts" });
-    expect(result).toHaveProperty("error");
-    // §4.8 exact requirement string: "File not found: <resolved path>"
-    expect((result as { error: string }).error).toBe("File not found: /workspace/missing.ts");
-  });
-});
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Module 17 — Editor decoration + save tools
+// Module 17 — Editor decoration tools
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── §4.4 accordo_editor_highlight ────────────────────────────────────────────
@@ -635,214 +562,35 @@ describe("clearHighlightsHandler — §4.5", () => {
   });
 });
 
-// ── §4.17 accordo_editor_save ────────────────────────────────────────────────
-
-describe("saveHandler — §4.17", () => {
-  it("§4.17-SAVE-01: saves active editor when no path given", async () => {
-    const editor = makeVisibleEditor("/workspace/foo.ts");
-    mockState.activeTextEditor = editor;
-    await expect(saveHandler({})).resolves.toEqual({
-      saved: true,
-      path: "/workspace/foo.ts",
-    });
-    expect(commands.executeCommand).toHaveBeenCalledWith(
-      "workbench.action.files.save",
-    );
-  });
-
-  it("§4.17-SAVE-02: saves specific document by path", async () => {
-    makeWorkspace();
-    const doc = makeOpenDocument("/workspace/bar.ts");
-    mockState.textDocuments = [doc];
-    await expect(saveHandler({ path: "/workspace/bar.ts" })).resolves.toEqual({
-      saved: true,
-      path: "/workspace/bar.ts",
-    });
-    expect(doc.save).toHaveBeenCalled();
-  });
-
-  it("§4.17-SAVE-03: resolves relative path for document save", async () => {
-    makeWorkspace("/workspace");
-    // Resolve the path that the handler will compute so we can set up the mock document with the correct path
-    const resolvedPath = path.resolve("/workspace", "src/index.ts");
-    const normalizedPath = normaliseSlashes(resolvedPath);
-    const doc = makeOpenDocument(normalizedPath);
-    mockState.textDocuments = [doc];
-    const result = await saveHandler({ path: "src/index.ts" });
-    expect(result).toHaveProperty("saved", true);
-    expect(normalizePathForComparison((result as Record<string, unknown>).path as string)).toBe("/workspace/src/index.ts");
-  });
-
-  it("§4.17-SAVE-04: returns error when no active editor and no path given", async () => {
-    mockState.activeTextEditor = null;
-    const result = await saveHandler({});
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toBe("No active editor to save");
-  });
-
-  it("§4.17-SAVE-05: returns error when specified file is not open", async () => {
-    makeWorkspace();
-    mockState.textDocuments = [];
-    const result = await saveHandler({ path: "/workspace/notopen.ts" });
-    expect(result).toHaveProperty("error");
-    // §4.17 exact requirement string: "File is not open: <path>"
-    expect((result as { error: string }).error).toBe("File is not open: /workspace/notopen.ts");
-  });
-});
-
-// ── §4.18 accordo_editor_saveAll ─────────────────────────────────────────────
-
-describe("saveAllHandler — §4.18", () => {
-  it("§4.18-SAVEALL-01: saves all dirty documents and returns the count", async () => {
-    mockState.textDocuments = [
-      makeOpenDocument("/workspace/a.ts", true),
-      makeOpenDocument("/workspace/b.ts", true),
-      makeOpenDocument("/workspace/c.ts", false),
-    ];
-    await expect(saveAllHandler({})).resolves.toEqual({ saved: true, count: 2 });
-    expect(commands.executeCommand).toHaveBeenCalledWith(
-      "workbench.action.files.saveAll",
-    );
-  });
-
-  it("§4.18-SAVEALL-02: returns count 0 when no documents are dirty", async () => {
-    mockState.textDocuments = [
-      makeOpenDocument("/workspace/clean.ts", false),
-    ];
-    await expect(saveAllHandler({})).resolves.toEqual({ saved: true, count: 0 });
-  });
-
-  it("§4.18-SAVEALL-03: returns count 0 when no documents are open", async () => {
-    mockState.textDocuments = [];
-    await expect(saveAllHandler({})).resolves.toEqual({ saved: true, count: 0 });
-  });
-});
-
-describe("saveHandler rejection — §4.17", () => {
-  it("§4.17-SAVE-R01: wraps executeCommand rejection as error (no-path case)", async () => {
-    const editor = makeVisibleEditor("/workspace/foo.ts");
-    mockState.activeTextEditor = editor;
-    vi.mocked(commands.executeCommand).mockRejectedValueOnce(
-      new Error("save failed"),
-    );
-    const result = await saveHandler({});
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toBe("save failed");
-  });
-
-  it("§4.17-SAVE-R02: wraps document.save() rejection as error (path case)", async () => {
-    makeWorkspace();
-    const doc = makeOpenDocument("/workspace/bar.ts");
-    vi.mocked(doc.save).mockRejectedValueOnce(new Error("disk full"));
-    mockState.textDocuments = [doc];
-    const result = await saveHandler({ path: "/workspace/bar.ts" });
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toBe("disk full");
-  });
-});
-
-describe("saveAllHandler rejection — §4.18", () => {
-  it("§4.18-SAVEALL-R01: wraps executeCommand rejection as error", async () => {
-    vi.mocked(commands.executeCommand).mockRejectedValueOnce(
-      new Error("saveAll failed"),
-    );
-    const result = await saveAllHandler({});
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toBe("saveAll failed");
-  });
-});
-
-// ── §4.19 accordo_editor_format ──────────────────────────────────────────────
-
-describe("formatHandler — §4.19", () => {
-  it("§4.19-FMT-01: formats active editor when no path given", async () => {
-    const editor = makeVisibleEditor("/workspace/foo.ts");
-    mockState.activeTextEditor = editor;
-    await expect(formatHandler({})).resolves.toEqual({
-      formatted: true,
-      path: "/workspace/foo.ts",
-    });
-    expect(commands.executeCommand).toHaveBeenCalledWith(
-      "editor.action.formatDocument",
-    );
-  });
-
-  it("§4.19-FMT-02: formats specific file when already open in a visible editor", async () => {
-    makeWorkspace();
-    const editor = makeVisibleEditor("/workspace/bar.ts");
-    mockState.visibleTextEditors = [editor];
-    await expect(formatHandler({ path: "/workspace/bar.ts" })).resolves.toEqual({
-      formatted: true,
-      path: "/workspace/bar.ts",
-    });
-    // §4.19 requirement: "Focus it, then executeCommand('editor.action.formatDocument')"
-    expect(window.showTextDocument).toHaveBeenCalledWith(
-      expect.objectContaining({ fsPath: "/workspace/bar.ts" }),
-    );
-    // showTextDocument (focus) must be called before format
-    const focusOrder = vi.mocked(window.showTextDocument).mock.invocationCallOrder[0];
-    const formatOrder = vi.mocked(commands.executeCommand).mock.calls.findIndex(
-      (c) => c[0] === "editor.action.formatDocument",
-    );
-    expect(focusOrder).toBeDefined();
-    expect(formatOrder).toBeGreaterThanOrEqual(0);
-    expect(commands.executeCommand).toHaveBeenCalledWith("editor.action.formatDocument");
-  });
-
-  it("§4.19-FMT-03: returns error when no active editor and no path given", async () => {
-    mockState.activeTextEditor = null;
-    const result = await formatHandler({});
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toBe("No active editor to format");
-  });
-
-  it("§4.19-FMT-04: returns error when specified file is not open in any visible editor", async () => {
-    makeWorkspace();
-    mockState.visibleTextEditors = [];
-    const result = await formatHandler({ path: "/workspace/notopen.ts" });
-    expect(result).toHaveProperty("error");
-    // §4.19 exact requirement string: "File is not open: <path>. Open it first."
-    expect((result as { error: string }).error).toBe("File is not open: /workspace/notopen.ts. Open it first.");
-  });
-});
-
-describe("formatHandler rejection — §4.19", () => {
-  it("§4.19-FMT-R01: wraps executeCommand rejection as error", async () => {
-    const editor = makeVisibleEditor("/workspace/foo.ts");
-    mockState.activeTextEditor = editor;
-    vi.mocked(commands.executeCommand).mockRejectedValueOnce(
-      new Error("format failed"),
-    );
-    const result = await formatHandler({});
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toBe("format failed");
-  });
-});
-
 // ── Tool definitions registration ─────────────────────────────────────────────
 
 describe("editorTools registration", () => {
   const toolNames = editorTools.map((t) => t.name);
 
-  it("REG-01: exports exactly 11 tool definitions for modules 16+17", () => {
-    expect(editorTools).toHaveLength(11);
+  // M76-VCGM-01: exactly 6 tools remain (was 11; split, reveal, save, saveAll, format removed)
+  it("REG-01: exports exactly 6 tool definitions for modules 16+17", () => {
+    expect(editorTools).toHaveLength(6);
   });
 
-  it("REG-02: all module 16 tools are present", () => {
+  it("REG-02: all remaining module 16 tools are present", () => {
     expect(toolNames).toContain("accordo_editor_open");
     expect(toolNames).toContain("accordo_editor_close");
     expect(toolNames).toContain("accordo_editor_scroll");
-    expect(toolNames).toContain("accordo_editor_split");
     expect(toolNames).toContain("accordo_editor_focus");
-    expect(toolNames).toContain("accordo_editor_reveal");
   });
 
-  it("REG-03: all module 17 tools are present", () => {
+  it("REG-03: all remaining module 17 tools are present", () => {
     expect(toolNames).toContain("accordo_editor_highlight");
     expect(toolNames).toContain("accordo_editor_clearHighlights");
-    expect(toolNames).toContain("accordo_editor_save");
-    expect(toolNames).toContain("accordo_editor_saveAll");
-    expect(toolNames).toContain("accordo_editor_format");
+  });
+
+  // M76-VCGM-01: removed tools are absent
+  it("REG-03b: removed tools (split, reveal, save, saveAll, format) are absent", () => {
+    expect(toolNames).not.toContain("accordo_editor_split");
+    expect(toolNames).not.toContain("accordo_editor_reveal");
+    expect(toolNames).not.toContain("accordo_editor_save");
+    expect(toolNames).not.toContain("accordo_editor_saveAll");
+    expect(toolNames).not.toContain("accordo_editor_format");
   });
 
   it("REG-04: all tool inputSchemas have type: 'object'", () => {
@@ -859,15 +607,11 @@ describe("editorTools registration", () => {
     }
   });
 
-  it("REG-06: reveal, open, highlight, save, saveAll, format, clearHighlights are idempotent", () => {
+  it("REG-06: open, highlight, clearHighlights, focus are idempotent", () => {
     const idempotentNames = [
       "accordo_editor_open",
-      "accordo_editor_reveal",
       "accordo_editor_highlight",
       "accordo_editor_clearHighlights",
-      "accordo_editor_save",
-      "accordo_editor_saveAll",
-      "accordo_editor_format",
       "accordo_editor_focus",
     ];
     for (const name of idempotentNames) {
@@ -876,12 +620,9 @@ describe("editorTools registration", () => {
     }
   });
 
-  it("REG-07: scroll and split are NOT idempotent", () => {
-    const notIdempotent = ["accordo_editor_scroll", "accordo_editor_split"];
-    for (const name of notIdempotent) {
-      const tool = editorTools.find((t) => t.name === name);
-      expect(tool?.idempotent ?? false, `${name} should not be idempotent`).toBe(false);
-    }
+  it("REG-07: scroll is NOT idempotent", () => {
+    const tool = editorTools.find((t) => t.name === "accordo_editor_scroll");
+    expect(tool?.idempotent ?? false).toBe(false);
   });
 
   it("REG-08: all handlers are functions", () => {
@@ -919,29 +660,12 @@ describe("editorTools registration", () => {
     );
   });
 
-  it("REG-14: split requires [direction]", () => {
-    expect(tool("accordo_editor_split").inputSchema.required).toContain("direction");
-  });
-
-  it("REG-15: split.direction enum is ['right','down']", () => {
-    const props = tool("accordo_editor_split").inputSchema.properties as Record<string, { enum?: string[] }>;
-    expect(props["direction"].enum).toEqual(["right", "down"]);
-  });
-
-  it("REG-16: focus requires [group]", () => {
+  it("REG-14: focus requires [group]", () => {
     expect(tool("accordo_editor_focus").inputSchema.required).toContain("group");
   });
 
-  it("REG-17: reveal requires [path]", () => {
-    expect(tool("accordo_editor_reveal").inputSchema.required).toEqual(["path"]);
-  });
-
-  it("REG-18: clearHighlights has empty required array", () => {
+  it("REG-15: clearHighlights has empty required array", () => {
     expect(tool("accordo_editor_clearHighlights").inputSchema.required).toEqual([]);
-  });
-
-  it("REG-19: saveAll has empty required array", () => {
-    expect(tool("accordo_editor_saveAll").inputSchema.required).toEqual([]);
   });
 });
 

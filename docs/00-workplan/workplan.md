@@ -178,7 +178,7 @@
 
 ### Priority T — Hub Original Registry Rebinding
 
-**Status:** Planned from live session restart validation (2026-04-22). Not started.
+**Status:** In progress from live session restart validation (2026-04-22). Core startup race fix landed (2026-04-24, `37fa74d`); continue validation/hardening.
 
 **Problem:** We still have a reliability gap around the Hub's original registry/rebind path after restart/reload. In some restarts the Hub is reachable but comes up with `bridge: disconnected` and `toolCount: 0` until additional recovery steps, indicating registry/session rebinding drift.
 
@@ -198,6 +198,8 @@
 4. Automated tests cover stale/empty/original registry edge cases.
 
 **Execution note:** Revisit this as a dedicated hardening module after current priority queue.
+
+**Update (2026-04-24):** Bridge startup race remediated in `37fa74d` by switching initial spawn path from one-shot health probe to `pollHealth` retry loop. This prevents missing `onHubReady` when Hub bind is slightly delayed and removes the common `bridge: disconnected` + `toolCount: 0` first-boot failure.
 
 ---
 
@@ -226,7 +228,13 @@
 
 ### Priority W — Generic VS Code Command Gateway (`accordo_vscode_command_*`)
 
-**Status:** Planned from live tool-by-tool validation (2026-04-22). Not started.
+**Status:** Completed (2026-04-25) — gateway implemented, first migration wave removed, skill/playbook added.
+
+**Phase A design notes (2026-04-25):**
+1. The first removal wave is confirmed for `accordo_editor_reveal`, `accordo_editor_split`, `accordo_layout_evenGroups`, `accordo_layout_joinGroups`, `accordo_editor_save`, `accordo_editor_saveAll`, `accordo_editor_format`, `accordo_layout_zen`, `accordo_layout_fullscreen`, `accordo_diagram_list`, `accordo_diagram_get`, and `accordo_diagram_style_guide`.
+2. Only command-backed scenarios move to `accordo_vscode_command_execute`. Diagram list/get/style-guide are explicitly **not** command-backed and migrate to file/skill/script workflows instead.
+3. `revealInExplorer` needs a narrow path→`vscode.Uri` hydration layer inside the gateway runtime; save/format with a target path require an explicit `accordo_editor_open` focus step before command execution.
+4. Runtime-visible docs remain canonical: playbook content must be mirrored into tool descriptions / MCP docs resources / server instructions, not left only in repo-local skills.
 
 **Problem:** Long-tail VS Code functionality is large and changes over time (core + extension-contributed commands). Maintaining one dedicated MCP wrapper per low-value command does not scale.
 
@@ -241,9 +249,12 @@
 
 **Adoption/migration note:**
 - Use this gateway for non-essential capabilities first.
-- `accordo_editor_reveal`, `accordo_editor_split`, `accordo_layout_evenGroups`, `accordo_layout_joinGroups`, `accordo_editor_save`, `accordo_editor_saveAll`, `accordo_editor_format`, `accordo_layout_zen`, `accordo_layout_fullscreen`, `accordo_diagram_list`, `accordo_diagram_get`, and `accordo_diagram_style_guide` are the first candidates for removal/migration and should be treated as the reference examples of "specialized tool replaced by generic command gateway".
+- The first migration wave has **two categories**:
+  1. **Command-backed wrappers replaced by the gateway:** `accordo_editor_reveal`, `accordo_editor_split`, `accordo_layout_evenGroups`, `accordo_layout_joinGroups`, `accordo_editor_save`, `accordo_editor_saveAll`, `accordo_editor_format`, `accordo_layout_zen`, `accordo_layout_fullscreen`.
+  2. **Diagram helper removals replaced by non-command fallbacks:** `accordo_diagram_list`, `accordo_diagram_get`, `accordo_diagram_style_guide`.
 - Provide an agent-facing usage skill/playbook with practical examples mapping common intentions to command IDs + arg shapes ("back door" guidance for long-tail commands).
-- In that skill/playbook, include these migrated commands as highlighted examples (reveal/split/even/join/save/saveAll/format/zen/fullscreen/diagram-list/diagram-get), including expected argument shapes and fallback behaviors.
+- In that skill/playbook, highlight the command-backed migrated examples (reveal/split/even/join/save/saveAll/format/zen/fullscreen) with expected argument shapes, sequencing, and fallback behaviors.
+- Document the diagram helper removals separately as file/script/skill/runtime-doc workflows, not as gateway command examples.
 - For diagram metadata extraction currently covered by `accordo_diagram_get`, provide a script-based fallback/standard path in the generic workflow (read `.mmd` + parse/inspect via script) and document expected output shape.
 - Do not keep separate "documentation pointer" MCP tools. Guidance/skill references must live in runtime tool documentation (tool descriptions + MCP docs resources + server instructions) instead of dedicated helper tools.
 - Explore and document how to reliably read mode state (e.g., fullscreen/zen on/off) after command execution; if no native signal exists, define an explicit state-probe strategy.
@@ -254,7 +265,16 @@
 3. Failures are debuggable via audit trail (command ID + normalized args + error).
 4. Existing essential first-class tools remain supported and are not regressed.
 
-**Execution note:** Schedule after Priority S/T; evaluate retiring `accordo_editor_reveal` + `accordo_editor_split` + `accordo_layout_evenGroups` + `accordo_layout_joinGroups` + `accordo_editor_save` + `accordo_editor_saveAll` + `accordo_editor_format` + `accordo_layout_zen` + `accordo_layout_fullscreen` + `accordo_diagram_list` + `accordo_diagram_get` + `accordo_diagram_style_guide` in the same or immediately following module, alongside the agent usage skill/examples, script fallbacks, mode-state probing guidance, and runtime-doc consolidation.
+**Execution note:** Schedule after Priority S/T; evaluate retiring the command-backed wrappers (`accordo_editor_reveal`, `accordo_editor_split`, `accordo_layout_evenGroups`, `accordo_layout_joinGroups`, `accordo_editor_save`, `accordo_editor_saveAll`, `accordo_editor_format`, `accordo_layout_zen`, `accordo_layout_fullscreen`) alongside the non-command diagram helper removals (`accordo_diagram_list`, `accordo_diagram_get`, `accordo_diagram_style_guide`), with separate gateway examples vs file/script/skill/runtime-doc fallback guidance, plus mode-state probing and runtime-doc consolidation.
+
+**Completion notes (2026-04-25):**
+1. Added and validated `accordo_vscode_command_list` + `accordo_vscode_command_execute` with policy and confirmation handling.
+2. Removed first migration wave tools from active MCP surface:
+   - Command-backed wrappers: `accordo_editor_reveal`, `accordo_editor_split`, `accordo_layout_evenGroups`, `accordo_layout_joinGroups`, `accordo_editor_save`, `accordo_editor_saveAll`, `accordo_editor_format`, `accordo_layout_zen`, `accordo_layout_fullscreen`.
+   - Diagram helper removals: `accordo_diagram_list`, `accordo_diagram_get`, `accordo_diagram_style_guide`.
+3. Added/updated `skills/vscode-command-gateway/skill.md` with exact replacement mappings, confirmation examples, lookup/pagination guidance, and non-gateway diagram fallback workflow.
+4. Updated tests and runtime wiring so removed tools are no longer registered/listed.
+5. Added temporary `packages/diagram/src/jsdom-shim.d.ts` to restore full workspace build health.
 
 ---
 
@@ -277,6 +297,35 @@
 3. Non-compliant flows are detectable (warning or failing check), not silent.
 
 **Execution note:** Implement alongside Priority W runtime-doc consolidation and generic-command skill rollout.
+
+---
+
+### Priority Y — MCP Runtime Directives Source-of-Truth (Mandatory Guidance Hardening)
+
+**Status:** Planned from operator feedback (2026-04-24). Not started.
+
+**Problem:** Agent behavior still diverges because mandatory usage directives are split across repo docs/skills and are not consistently visible to every MCP client at runtime.
+
+**Goal:** Make mandatory Accordo directives unambiguous and consistently available in the runtime channel used by MCP clients.
+
+**Working notes (to validate in implementation):**
+1. Primary runtime channel appears to be Hub `initialize.instructions` + `GET /instructions` prompt payload.
+2. Tool descriptions are secondary runtime guidance and should reinforce (not contradict) the primary directives.
+3. References like `accordo://docs/tool-reference/*` and `accordo://docs/troubleshooting/*` must map to a clearly implemented runtime mechanism (or be replaced with one that is implemented and testable).
+4. Repo-only docs (`AGENTS.md`, `skills/*`) remain maintainer guidance and are insufficient as the sole source for external MCP clients.
+
+**Planned module scope:**
+1. Define a canonical "runtime directives contract" document and ownership.
+2. Ensure the same directives are emitted via runtime prompt/instructions in a stable section.
+3. Add parity checks/tests so runtime instructions, tool descriptions, and requirements cannot drift.
+4. Add a diagnostic/verification path so operators can prove what directives a connected MCP client received.
+
+**Acceptance criteria:**
+1. New MCP clients receive mandatory skill-routing directives without requiring repo file access.
+2. Runtime directives are discoverable, testable, and versioned.
+3. Contradictions across prompt/tool-description/requirements are caught by automated checks.
+
+**Execution note:** Prioritize before large gateway migration/removal work, so behavior guidance is stable for all agents.
 
 ---
 

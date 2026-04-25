@@ -43,14 +43,15 @@ import type { IDEState, ToolRegistration } from "@accordo/bridge-types";
 const TOKEN = "e2e-bearer-token";
 const SECRET = "e2e-bridge-secret";
 
-// ── All 24 real tool registrations (mirrors packages/editor/src/tools/*.ts) ──
+// ── All 15 real tool registrations (mirrors packages/editor/src/tools/*.ts) ──
+/// M76-VCGM + M76-DGM: 9 tools removed (split, reveal, save, saveAll, format, zen, fullscreen, joinGroups, evenGroups)
 //
 // These MUST stay in sync with the actual tool definitions in the editor
 // package. If a tool is added or renamed there, this list must be updated here.
 // The E2E-02 test will catch any drift automatically.
 
 const ALL_TOOLS: ToolRegistration[] = [
-  // ── Module 16: editor open/close/scroll/split/focus/reveal ─────────────
+  // ── Module 16: editor open/close/scroll/focus/highlight/clearHighlights ─────
   {
     name: "accordo_editor_open",
     description: "Open a file in the editor, optionally scrolling to a line/column.",
@@ -97,20 +98,6 @@ const ALL_TOOLS: ToolRegistration[] = [
     idempotent: false,
   },
   {
-    name: "accordo_editor_split",
-    description: "Split the editor pane right or down.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        direction: { type: "string", enum: ["right", "down"], description: "Direction to split" },
-      },
-      required: ["direction"],
-    },
-    dangerLevel: "safe",
-    requiresConfirmation: false,
-    idempotent: false,
-  },
-  {
     name: "accordo_editor_focus",
     description: "Focus a specific editor group by 1-based group number.",
     inputSchema: {
@@ -124,22 +111,8 @@ const ALL_TOOLS: ToolRegistration[] = [
     requiresConfirmation: false,
     idempotent: true,
   },
-  {
-    name: "accordo_editor_reveal",
-    description: "Reveal a file in the Explorer sidebar without opening it.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "File path to reveal in Explorer" },
-      },
-      required: ["path"],
-    },
-    dangerLevel: "safe",
-    requiresConfirmation: false,
-    idempotent: true,
-  },
 
-  // ── Module 17: editor highlight/clearHighlights/save/saveAll/format ─────
+  // ── Module 17: editor highlight/clearHighlights ────────────────────────────
   {
     name: "accordo_editor_highlight",
     description: "Apply a colored background highlight to a range of lines.",
@@ -164,46 +137,6 @@ const ALL_TOOLS: ToolRegistration[] = [
       type: "object",
       properties: {
         decorationId: { type: "string", description: "Clear only this decoration. Omit to clear all." },
-      },
-      required: [],
-    },
-    dangerLevel: "safe",
-    requiresConfirmation: false,
-    idempotent: true,
-  },
-  {
-    name: "accordo_editor_save",
-    description: "Save a specific file, or the active editor if no path given.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "File path to save. If omitted, saves the active editor." },
-      },
-      required: [],
-    },
-    dangerLevel: "safe",
-    requiresConfirmation: false,
-    idempotent: true,
-  },
-  {
-    name: "accordo_editor_saveAll",
-    description: "Save all modified (unsaved) editors.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-      required: [],
-    },
-    dangerLevel: "safe",
-    requiresConfirmation: false,
-    idempotent: true,
-  },
-  {
-    name: "accordo_editor_format",
-    description: "Format the active document or a specific file using the configured formatter.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "File path to format. If omitted, formats the active editor." },
       },
       required: [],
     },
@@ -341,38 +274,6 @@ const ALL_TOOLS: ToolRegistration[] = [
       },
       required: ["panel"],
     },
-    dangerLevel: "safe",
-    requiresConfirmation: false,
-    idempotent: true,
-  },
-  {
-    name: "accordo_layout_zen",
-    description: "Toggle Zen Mode (distraction-free fullscreen editing).",
-    inputSchema: { type: "object", properties: {}, required: [] },
-    dangerLevel: "safe",
-    requiresConfirmation: false,
-    idempotent: false,
-  },
-  {
-    name: "accordo_layout_fullscreen",
-    description: "Toggle fullscreen mode.",
-    inputSchema: { type: "object", properties: {}, required: [] },
-    dangerLevel: "safe",
-    requiresConfirmation: false,
-    idempotent: false,
-  },
-  {
-    name: "accordo_layout_joinGroups",
-    description: "Collapse all editor splits — merge all groups into one.",
-    inputSchema: { type: "object", properties: {}, required: [] },
-    dangerLevel: "safe",
-    requiresConfirmation: false,
-    idempotent: true,
-  },
-  {
-    name: "accordo_layout_evenGroups",
-    description: "Equalise the width and height of all editor groups.",
-    inputSchema: { type: "object", properties: {}, required: [] },
     dangerLevel: "safe",
     requiresConfirmation: false,
     idempotent: true,
@@ -810,13 +711,14 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
     const session = new McpSession(baseUrl, TOKEN);
     await session.initialize();
 
-    const invoked = bridge.expectInvoke("accordo_editor_save", (id, _args) => {
-      bridge.sendError(id, "No active editor — nothing to save");
+    // Use accordo_editor_open (remaining tool) to test error propagation
+    const invoked = bridge.expectInvoke("accordo_editor_open", (id, _args) => {
+      bridge.sendError(id, "File not found");
     });
 
     const callPromise = session.call("tools/call", {
-      name: "accordo_editor_save",
-      arguments: {},
+      name: "accordo_editor_open",
+      arguments: { path: "/nonexistent/file.txt" },
     });
 
     const [, { body }] = await Promise.all([invoked, callPromise]);
@@ -826,7 +728,7 @@ describe("E2E: Hub + Bridge + MCP pipeline", () => {
     expect(body["error"]).toBeUndefined();
     const result = body["result"] as { content: Array<{ type: string; text: string }>; isError: boolean };
     expect(result?.isError).toBe(true);
-    expect(result?.content[0]?.text).toContain("No active editor");
+    expect(result?.content[0]?.text).toContain("File not found");
   });
 
   // ── E2E-06: Unknown tool ─────────────────────────────────────────────────

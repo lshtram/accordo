@@ -3,19 +3,22 @@
  *
  * Thin re-export facade maintaining the original public API surface.
  * Split into:
- *   diagram-tool-definitions.ts  — 6 ExtensionToolDefinition schema objects
- *   diagram-tool-handlers.ts     — all handler functions and types
+ *   diagram-tool-definitions.ts  — 3 ExtensionToolDefinition schema objects
+ *   diagram-tool-handlers.ts     — handler functions and types
  *
- * Public API (unchanged — all re-exported for API parity)
+ * Public API
  * ──────────
  *   createDiagramTools(ctx) → ExtensionToolDefinition[]   (used by extension entry)
  *   resolveGuarded(root, inputPath) → string               (throws DiagToolError)
- *   listHandler / getHandler / createHandler / patchHandler / renderHandler / styleGuideHandler
+ *   createHandler / patchHandler / renderHandler
  *   DiagToolError
  *   DiagramToolContext / DiagramPanelLike
  *   ToolOk<T> / ToolErr / ToolResult<T>
  *   DiagramListEntry / DiagramGetResult / DiagramCreateResult / DiagramPatchResult / DiagramRenderResult / DiagramStyleGuideResult
  *   ErrorCode
+ *
+ * Internal helpers (not part of public MCP API — imported directly from diagram-tool-ops.ts):
+ *   listHandler / getHandler / styleGuideHandler
  *
  * Source: diag_workplan.md §4.14, diag_arch_v4.2.md §6
  */
@@ -34,11 +37,8 @@ export type {
 } from "./diagram-tool-handlers.js";
 export { DiagToolError, resolveGuarded } from "./diagram-tool-handlers.js";
 export {
-  listHandler,
-  getHandler,
   createHandler,
   patchHandler,
   renderHandler,
-  styleGuideHandler,
 } from "./diagram-tool-handlers.js";
 export { createDiagramTools } from "./diagram-tool-definitions.js";

@@ -1,11 +1,18 @@
 /**
  * Tests for src/tools/editor-definitions.ts — tool definition array
  *
- * Phase B — all tests fail RED against "not implemented" stubs.
+ * Phase B — M76-VCGM removal cycle.
  * This file tests the editorTools array exported from editor-definitions.ts.
  *
+ * Removed tools (M76-VCGM-01):
+ *   accordo_editor_split, accordo_editor_reveal,
+ *   accordo_editor_save, accordo_editor_saveAll, accordo_editor_format
+ *
+ * Remaining tools: open, close, scroll, focus, highlight, clearHighlights
+ *
  * Exported API checklist (Phase B requirement):
- *   [ ] editorTools[] — all 11 tool definitions for modules 16+17
+ *   [x] editorTools[] — 6 tool definitions (was 11, 5 removed)
+ *   [x] removed tools are NOT present in the array
  */
 
 import { describe, it, expect } from "vitest";
@@ -17,8 +24,9 @@ import { editorTools } from "../tools/editor-definitions.js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("editorTools — structural", () => {
-  it("DEF-01: editorTools has exactly 11 entries", () => {
-    expect(editorTools).toHaveLength(11);
+  // M76-VCGM-01: exactly 6 tools remain (5 removed: split, reveal, save, saveAll, format)
+  it("DEF-01: editorTools has exactly 6 entries", () => {
+    expect(editorTools).toHaveLength(6);
   });
 
   it("DEF-02: includes tool named 'accordo_editor_open'", () => {
@@ -36,44 +44,45 @@ describe("editorTools — structural", () => {
     expect(names).toContain("accordo_editor_scroll");
   });
 
-  it("DEF-05: includes tool named 'accordo_editor_split'", () => {
-    const names = editorTools.map((t) => t.name);
-    expect(names).toContain("accordo_editor_split");
-  });
-
-  it("DEF-06: includes tool named 'accordo_editor_focus'", () => {
+  it("DEF-05: includes tool named 'accordo_editor_focus'", () => {
     const names = editorTools.map((t) => t.name);
     expect(names).toContain("accordo_editor_focus");
   });
 
-  it("DEF-07: includes tool named 'accordo_editor_reveal'", () => {
-    const names = editorTools.map((t) => t.name);
-    expect(names).toContain("accordo_editor_reveal");
-  });
-
-  it("DEF-08: includes tool named 'accordo_editor_highlight'", () => {
+  it("DEF-06: includes tool named 'accordo_editor_highlight'", () => {
     const names = editorTools.map((t) => t.name);
     expect(names).toContain("accordo_editor_highlight");
   });
 
-  it("DEF-09: includes tool named 'accordo_editor_clearHighlights'", () => {
+  it("DEF-07: includes tool named 'accordo_editor_clearHighlights'", () => {
     const names = editorTools.map((t) => t.name);
     expect(names).toContain("accordo_editor_clearHighlights");
   });
 
-  it("DEF-10: includes tool named 'accordo_editor_save'", () => {
+  // M76-VCGM-01: removed tools are absent
+  it("DEF-08: accordo_editor_split is ABSENT (migrated to generic gateway)", () => {
     const names = editorTools.map((t) => t.name);
-    expect(names).toContain("accordo_editor_save");
+    expect(names).not.toContain("accordo_editor_split");
   });
 
-  it("DEF-11: includes tool named 'accordo_editor_saveAll'", () => {
+  it("DEF-09: accordo_editor_reveal is ABSENT (migrated to generic gateway)", () => {
     const names = editorTools.map((t) => t.name);
-    expect(names).toContain("accordo_editor_saveAll");
+    expect(names).not.toContain("accordo_editor_reveal");
   });
 
-  it("DEF-12: includes tool named 'accordo_editor_format'", () => {
+  it("DEF-10: accordo_editor_save is ABSENT (migrated to generic gateway)", () => {
     const names = editorTools.map((t) => t.name);
-    expect(names).toContain("accordo_editor_format");
+    expect(names).not.toContain("accordo_editor_save");
+  });
+
+  it("DEF-11: accordo_editor_saveAll is ABSENT (migrated to generic gateway)", () => {
+    const names = editorTools.map((t) => t.name);
+    expect(names).not.toContain("accordo_editor_saveAll");
+  });
+
+  it("DEF-12: accordo_editor_format is ABSENT (migrated to generic gateway)", () => {
+    const names = editorTools.map((t) => t.name);
+    expect(names).not.toContain("accordo_editor_format");
   });
 });
 
@@ -214,21 +223,9 @@ describe("accordo_editor_highlight — inputSchema", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// accordo_editor_split schema
+// accordo_editor_split schema — REMOVED (M76-VCGM-01)
+// Split migrated to generic gateway via accordo_vscode_command_execute
 // ─────────────────────────────────────────────────────────────────────────────
-
-describe("accordo_editor_split — inputSchema", () => {
-  const tool = editorTools.find((t) => t.name === "accordo_editor_split")!;
-
-  it("DEF-33: inputSchema requires 'direction' property", () => {
-    expect(tool.inputSchema.required).toContain("direction");
-  });
-
-  it("DEF-34: direction enum is ['right', 'down']", () => {
-    const props = tool.inputSchema.properties as Record<string, { enum?: string[] }>;
-    expect(props["direction"].enum).toEqual(["right", "down"]);
-  });
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // accordo_editor_focus schema
@@ -248,21 +245,9 @@ describe("accordo_editor_focus — inputSchema", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// accordo_editor_reveal schema
+// accordo_editor_reveal schema — REMOVED (M76-VCGM-01)
+// Reveal migrated to generic gateway via accordo_vscode_command_execute
 // ─────────────────────────────────────────────────────────────────────────────
-
-describe("accordo_editor_reveal — inputSchema", () => {
-  const tool = editorTools.find((t) => t.name === "accordo_editor_reveal")!;
-
-  it("DEF-37: inputSchema requires 'path' property", () => {
-    expect(tool.inputSchema.required).toEqual(["path"]);
-  });
-
-  it("DEF-38: path property is type string", () => {
-    const props = tool.inputSchema.properties as Record<string, { type?: string }>;
-    expect(props["path"].type).toBe("string");
-  });
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // accordo_editor_clearHighlights schema
@@ -282,54 +267,19 @@ describe("accordo_editor_clearHighlights — inputSchema", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// accordo_editor_save schema
+// accordo_editor_save schema — REMOVED (M76-VCGM-01)
+// Save migrated to generic gateway via accordo_vscode_command_execute
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("accordo_editor_save — inputSchema", () => {
-  const tool = editorTools.find((t) => t.name === "accordo_editor_save")!;
-
-  it("DEF-41: path is optional (not in required array)", () => {
-    expect(tool.inputSchema.required ?? []).not.toContain("path");
-  });
-
-  it("DEF-42: path property is type string", () => {
-    const props = tool.inputSchema.properties as Record<string, { type?: string }>;
-    expect(props["path"].type).toBe("string");
-  });
-});
-
 // ─────────────────────────────────────────────────────────────────────────────
-// accordo_editor_saveAll schema
+// accordo_editor_saveAll schema — REMOVED (M76-VCGM-01)
+// SaveAll migrated to generic gateway via accordo_vscode_command_execute
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("accordo_editor_saveAll — inputSchema", () => {
-  const tool = editorTools.find((t) => t.name === "accordo_editor_saveAll")!;
-
-  it("DEF-43: inputSchema has empty required array", () => {
-    expect(tool.inputSchema.required ?? []).toEqual([]);
-  });
-
-  it("DEF-44: inputSchema has empty properties object", () => {
-    expect(Object.keys(tool.inputSchema.properties)).toHaveLength(0);
-  });
-});
-
 // ─────────────────────────────────────────────────────────────────────────────
-// accordo_editor_format schema
+// accordo_editor_format schema — REMOVED (M76-VCGM-01)
+// Format migrated to generic gateway via accordo_vscode_command_execute
 // ─────────────────────────────────────────────────────────────────────────────
-
-describe("accordo_editor_format — inputSchema", () => {
-  const tool = editorTools.find((t) => t.name === "accordo_editor_format")!;
-
-  it("DEF-45: path is optional (not in required array)", () => {
-    expect(tool.inputSchema.required ?? []).not.toContain("path");
-  });
-
-  it("DEF-46: path property is type string", () => {
-    const props = tool.inputSchema.properties as Record<string, { type?: string }>;
-    expect(props["path"].type).toBe("string");
-  });
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // accordo_editor_close schema

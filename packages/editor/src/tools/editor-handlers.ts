@@ -1,13 +1,12 @@
 /**
- * Editor tool handlers — Module 16 (open, close, scroll, split, focus, reveal).
+ * Editor tool handlers — Module 16 (open, close, scroll, focus).
  *
- * Implements tools from requirements-editor.md §4:
- *   Module 16: §4.1 open, §4.2 close, §4.3 scroll, §4.6 split,
- *              §4.7 focus (group), §4.8 reveal
+ * Remaining tools from requirements-editor.md §4:
+ *   Module 16: §4.1 open, §4.2 close, §4.3 scroll, §4.7 focus (group)
  *
- * Module 17 handlers (highlight, clearHighlights, save, saveAll, format) live
- * in editor-handlers-m17.ts and are re-exported here so consumers only need
- * one import path.
+ * Module 17 tools (highlight, clearHighlights) live in editor-handlers-m17.ts.
+ * The M17 tools (save, saveAll, format) have been migrated to the generic
+ * gateway and are no longer re-exported from this file.
  */
 
 import * as vscode from "vscode";
@@ -30,13 +29,10 @@ export {
   _clearDecorationStore,
 };
 
-// Re-export Module 17 handlers — consumers import all handlers from this one file.
+// Re-export highlight/clearHighlights from m17 — still part of public API
 export {
   highlightHandler,
   clearHighlightsHandler,
-  saveHandler,
-  saveAllHandler,
-  formatHandler,
 } from "./editor-handlers-m17.js";
 
 // ── §4.1 accordo_editor_open ─────────────────────────────────────────────────
@@ -176,29 +172,6 @@ export async function scrollHandler(
   }
 }
 
-// ── §4.6 accordo_editor_split ────────────────────────────────────────────────
-
-/**
- * Split the editor in a given direction.
- *
- * @param args.direction - Required. "right" | "down".
- */
-export async function splitHandler(
-  args: Record<string, unknown>,
-): Promise<{ groups: number } | { error: string }> {
-  try {
-    const direction = argString(args, "direction");
-    const command =
-      direction === "right"
-        ? "workbench.action.splitEditorRight"
-        : "workbench.action.splitEditorDown";
-    await vscode.commands.executeCommand(command);
-    return { groups: vscode.window.tabGroups.all.length };
-  } catch (err) {
-    return { error: errorMessage(err) };
-  }
-}
-
 // ── §4.7 accordo_editor_focus ────────────────────────────────────────────────
 
 /**
@@ -222,28 +195,4 @@ export async function focusGroupHandler(
   }
 }
 
-// ── §4.8 accordo_editor_reveal ───────────────────────────────────────────────
 
-/**
- * Reveal a file in the Explorer sidebar without opening it in the editor.
- *
- * @param args.path - Required. File path to reveal.
- */
-export async function revealHandler(
-  args: Record<string, unknown>,
-): Promise<{ revealed: true; path: string } | { error: string }> {
-  try {
-    const p = argString(args, "path");
-    const resolved = resolvePath(p);
-    const uri = vscode.Uri.file(resolved);
-    try {
-      await vscode.workspace.fs.stat(uri);
-    } catch {
-      return { error: `File not found: ${resolved}` };
-    }
-    await vscode.commands.executeCommand("revealInExplorer", uri);
-    return { revealed: true, path: resolved };
-  } catch (err) {
-    return { error: errorMessage(err) };
-  }
-}

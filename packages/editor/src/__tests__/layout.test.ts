@@ -1,36 +1,28 @@
 /**
  * Tests for src/tools/layout.ts — Module 20 + M74-LS
  *
- * Phase B — all tests MUST fail RED against "not implemented" stubs.
+ * Phase B — M76-VCGM removal cycle.
+ * Layout tools accordo_layout_zen, accordo_layout_fullscreen,
+ * accordo_layout_joinGroups, accordo_layout_evenGroups removed (M76-VCGM-02).
+ * Remaining tools: panelToggle, layoutState (via factory).
  *
  * Requirement coverage:
  *   [x] §4.14 panel.toggle      — 5 panel→command mappings, invalid panel error
- *   [x] §4.15 layout.zen        — toggleZenMode command
- *   [x] §4.16 layout.fullscreen — toggleFullScreen command
- *   [x] §4.23 layout.joinGroups — joinAllGroups command, returns { groups: 1 }
- *   [x] §4.24 layout.evenGroups — evenEditorWidths command, returns { equalized: true }
  *   [x] §4.25 layout.state      — M74-LS: createLayoutTools factory, returns IDEState
- *   [x] Registration            — 5+1 tools, schemas, danger levels
+ *   [x] Registration            — 2+1 tools (panelToggle + bar + state), schemas, danger levels
  *
  * Exported API checklist (dev-process.md §5 Phase B Coverage Audit):
  *   ✓ panelToggleHandler        — 9 tests (§4.14-PANEL-* × 5 happy + ERR + MISSING + R01 + existing)
- *   ✓ layoutZenHandler          — 2 tests (§4.15-ZEN-01, R01)
- *   ✓ layoutFullscreenHandler   — 2 tests (§4.16-FS-01, R01)
- *   ✓ layoutJoinGroupsHandler   — 2 tests (§4.23-JOIN-01, R01)
- *   ✓ layoutEvenGroupsHandler   — 2 tests (§4.24-EVEN-01, R01)
  *   ✓ layoutStateHandler        — 4 tests (M74-LS-02, M74-LS-05, M74-LS-06, M74-LS-03)
- *   ✓ createLayoutTools()       — 5 tests (M74-LS-01, M74-LS-07, REG count, schemas, handlers)
- *   ✓ layoutTools[]             — 7 registration tests (M20-REG-01..07, now counts 5+1)
+ *   ✓ createLayoutTools()       — 4 tests (M74-LS-01, M74-LS-07, REG count, schemas, handlers)
+ *   ✓ layoutTools[]             — 3 registration tests (M20-REG-01..03)
+ *   ✓ removed tools absent      — M76-VCGM-02: zen/fullscreen/join/even NOT in layoutTools
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { IDEState } from "@accordo/bridge-types";
 import {
   panelToggleHandler,
-  layoutZenHandler,
-  layoutFullscreenHandler,
-  layoutJoinGroupsHandler,
-  layoutEvenGroupsHandler,
   layoutTools,
   createLayoutTools,
   layoutStateHandler,
@@ -86,108 +78,38 @@ describe("panelToggleHandler — §4.14", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.15 accordo_layout_zen
+// Layout state — M76-VCGM-02: zen/fullscreen/join/even REMOVED from layout.ts
+// These migrated to generic gateway via accordo_vscode_command_execute
+// (Tests removed; coverage via policy/gateway tests in vscode-command-execute-policy.test.ts)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("layoutZenHandler — §4.15", () => {
-  it("§4.15-ZEN-01: executes toggleZenMode and returns { active: true }", async () => {
-    await expect(layoutZenHandler({})).resolves.toEqual({ active: true });
-    expect(commands.executeCommand).toHaveBeenCalledWith(
-      "workbench.action.toggleZenMode",
-    );
-  });
-
-  it("§4.15-ZEN-R01: wraps command rejection as { error: string }", async () => {
-    vi.mocked(commands.executeCommand).mockRejectedValueOnce(new Error("zen fail"));
-    const result = await layoutZenHandler({});
-    expect(result).toMatchObject({ error: "zen fail" });
-  });
-});
-
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.16 accordo_layout_fullscreen
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("layoutFullscreenHandler — §4.16", () => {
-  it("§4.16-FS-01: executes toggleFullScreen and returns { active: true }", async () => {
-    await expect(layoutFullscreenHandler({})).resolves.toEqual({ active: true });
-    expect(commands.executeCommand).toHaveBeenCalledWith(
-      "workbench.action.toggleFullScreen",
-    );
-  });
-
-  it("§4.16-FS-R01: wraps command rejection as { error: string }", async () => {
-    vi.mocked(commands.executeCommand).mockRejectedValueOnce(new Error("fs fail"));
-    const result = await layoutFullscreenHandler({});
-    expect(result).toMatchObject({ error: "fs fail" });
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// §4.23 accordo_layout_joinGroups
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("layoutJoinGroupsHandler — §4.23", () => {
-  it("§4.23-JOIN-01: executes joinAllGroups and returns { groups: 1 }", async () => {
-    await expect(layoutJoinGroupsHandler({})).resolves.toEqual({ groups: 1 });
-    expect(commands.executeCommand).toHaveBeenCalledWith(
-      "workbench.action.joinAllGroups",
-    );
-  });
-
-  it("§4.23-JOIN-R01: wraps command rejection as { error: string }", async () => {
-    vi.mocked(commands.executeCommand).mockRejectedValueOnce(new Error("join fail"));
-    const result = await layoutJoinGroupsHandler({});
-    expect(result).toMatchObject({ error: "join fail" });
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// §4.24 accordo_layout_evenGroups
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("layoutEvenGroupsHandler — §4.24", () => {
-  it("§4.24-EVEN-01: executes evenEditorWidths and returns { equalized: true }", async () => {
-    await expect(layoutEvenGroupsHandler({})).resolves.toEqual({ equalized: true });
-    expect(commands.executeCommand).toHaveBeenCalledWith(
-      "workbench.action.evenEditorWidths",
-    );
-  });
-
-  it("§4.24-EVEN-R01: wraps command rejection as { error: string }", async () => {
-    vi.mocked(commands.executeCommand).mockRejectedValueOnce(new Error("even fail"));
-    const result = await layoutEvenGroupsHandler({});
-    expect(result).toMatchObject({ error: "even fail" });
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Registration — Module 20
+// Registration — Module 20 (M76-VCGM-02: only panel_toggle remains)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("layoutTools registration — Module 20", () => {
   const byName = (name: string) => layoutTools.find((t) => t.name === name)!;
 
-  it("M20-REG-01: exports exactly 5 tool definitions", () => {
-    expect(layoutTools).toHaveLength(5);
+  // M76-VCGM-02: exactly 1 tool in layoutTools (panelToggle)
+  it("M20-REG-01: layoutTools exports exactly 1 tool definition (panel_toggle only)", () => {
+    expect(layoutTools).toHaveLength(1);
   });
 
-  it("M20-REG-02: all tool names are present", () => {
+  it("M20-REG-02: panel_toggle is present; zen/fullscreen/join/even are ABSENT", () => {
     const names = layoutTools.map((t) => t.name);
     expect(names).toContain("accordo_panel_toggle");
-    expect(names).toContain("accordo_layout_zen");
-    expect(names).toContain("accordo_layout_fullscreen");
-    expect(names).toContain("accordo_layout_joinGroups");
-    expect(names).toContain("accordo_layout_evenGroups");
+    // M76-VCGM-02: removed tools
+    expect(names).not.toContain("accordo_layout_zen");
+    expect(names).not.toContain("accordo_layout_fullscreen");
+    expect(names).not.toContain("accordo_layout_joinGroups");
+    expect(names).not.toContain("accordo_layout_evenGroups");
   });
 
-  it("M20-REG-03: all tools are safe", () => {
-    for (const t of layoutTools) {
-      expect(t.dangerLevel).toBe("safe");
-    }
+  it("M20-REG-03: panel_toggle is safe", () => {
+    expect(byName("accordo_panel_toggle").dangerLevel).toBe("safe");
   });
 
-  it("M20-REG-04: panel.toggle requires [panel]", () => {
+  it("M20-REG-04: panelToggle requires [panel]", () => {
     expect(byName("accordo_panel_toggle").inputSchema.required).toContain("panel");
   });
 
@@ -204,25 +126,11 @@ describe("layoutTools registration — Module 20", () => {
     );
   });
 
-  it("M20-REG-06: zen, fullscreen, joinGroups, evenGroups have empty required", () => {
-    const noArgTools = [
-      "accordo_layout_zen",
-      "accordo_layout_fullscreen",
-      "accordo_layout_joinGroups",
-      "accordo_layout_evenGroups",
-    ];
-    for (const name of noArgTools) {
-      expect(byName(name).inputSchema.required).toEqual([]);
-    }
+  it("M20-REG-06: handler is a function", () => {
+    expect(typeof byName("accordo_panel_toggle").handler).toBe("function");
   });
 
-  it("M20-REG-07: all handlers are functions", () => {
-    for (const tool of layoutTools) {
-      expect(typeof tool.handler).toBe("function");
-    }
-  });
-
-  it("M20-REG-08: accordo_panel_toggle is non-idempotent (true toggle semantics)", () => {
+  it("M20-REG-07: accordo_panel_toggle is non-idempotent (true toggle semantics)", () => {
     expect(byName("accordo_panel_toggle").idempotent).toBe(false);
   });
 });
@@ -334,15 +242,16 @@ describe("createLayoutTools() factory — M74-LS", () => {
     expect(names).toContain("accordo_layout_state");
   });
 
-  it("M74-LS-01: createLayoutTools returns all 5 existing layout tools plus 1 bar tool plus layoutState (7 total)", () => {
+  it("M74-LS-01: createLayoutTools returns 1 layout tool + 1 bar tool + layoutState (3 total)", () => {
     const tools = createLayoutTools(getState);
-    expect(tools).toHaveLength(7);
+    expect(tools).toHaveLength(3);
     const names = tools.map((t) => t.name);
     expect(names).toContain("accordo_panel_toggle");
-    expect(names).toContain("accordo_layout_zen");
-    expect(names).toContain("accordo_layout_fullscreen");
-    expect(names).toContain("accordo_layout_joinGroups");
-    expect(names).toContain("accordo_layout_evenGroups");
+    // M76-VCGM-02: zen/fullscreen/joinGroups/evenGroups removed (migrated to generic gateway)
+    expect(names).not.toContain("accordo_layout_zen");
+    expect(names).not.toContain("accordo_layout_fullscreen");
+    expect(names).not.toContain("accordo_layout_joinGroups");
+    expect(names).not.toContain("accordo_layout_evenGroups");
     expect(names).toContain("accordo_layout_panel"); // E-6 consolidated bar tools into 1
     expect(names).toContain("accordo_layout_state");
   });

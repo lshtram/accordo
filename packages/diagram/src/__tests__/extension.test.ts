@@ -4,8 +4,12 @@
  * All VS Code APIs and DiagramPanel are mocked — these tests run in Node.js
  * via vitest with no VS Code extension host.
  *
+ * M76-DGM removal cycle (Phase B):
+ *   Removed: accordo_diagram_list, accordo_diagram_get, accordo_diagram_style_guide
+ *   Remaining: accordo_diagram_create, accordo_diagram_patch, accordo_diagram_render (3 tools)
+ *
  * Requirements tested:
- *   EX-01  activate() registers all 6 diagram tools with BridgeAPI
+ *   EX-01  activate() registers all 3 remaining diagram tools with BridgeAPI
  *   EX-02  activate() registers the accordo-diagram.open command
  *   EX-03  activate() is a no-op (+ output channel warning) when Bridge is absent
  *   EX-04  accordo-diagram.open with a .mmd path opens DiagramPanel and registers it
@@ -18,6 +22,7 @@
  *   EX-11  activate() calls publishState with empty openPanels on startup
  *   EX-12  publishState is called with the open panel path when a panel is opened
  *   EX-13  publishState is called with empty openPanels when the last panel is closed
+ *   M76-DGM-01: removed tools (list/get/style_guide) are absent from registration
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -95,14 +100,12 @@ vi.mock("../webview/panel.js", () => ({
 }));
 
 // ── createDiagramTools mock ───────────────────────────────────────────────────
+// M76-DGM: only 3 tools remain (create, patch, render); list/get/style-guide removed
 
 const mockTools = [
-  { name: "accordo_diagram_list" },
-  { name: "accordo_diagram_get" },
   { name: "accordo_diagram_create" },
   { name: "accordo_diagram_patch" },
   { name: "accordo_diagram_render" },
-  { name: "accordo_diagram_style_guide" },
 ];
 
 vi.mock("../tools/diagram-tools.js", () => ({
@@ -147,7 +150,7 @@ describe("activate / deactivate", () => {
     mockWindow.activeTextEditor = undefined;
   });
 
-  it("EX-01: activate() registers all 6 diagram tools with BridgeAPI", async () => {
+  it("EX-01: activate() registers all 3 remaining diagram tools with BridgeAPI", async () => {
     const bridge = makeBridge();
     _bridgeExports = bridge;
     const ctx = makeContext();
@@ -158,8 +161,16 @@ describe("activate / deactivate", () => {
     expect(bridge.registerTools).toHaveBeenCalledOnce();
     const [extensionId, tools] = bridge.registerTools.mock.calls[0] as unknown as [string, typeof mockTools];
     expect(extensionId).toBe("accordo.accordo-diagram");
-    expect(tools).toHaveLength(6);
-    expect(tools.map((t) => t.name)).toEqual(mockTools.map((t) => t.name));
+    // M76-DGM-01: only 3 tools remain (create, patch, render)
+    expect(tools).toHaveLength(3);
+    const toolNames = tools.map((t) => t.name);
+    expect(toolNames).toContain("accordo_diagram_create");
+    expect(toolNames).toContain("accordo_diagram_patch");
+    expect(toolNames).toContain("accordo_diagram_render");
+    // M76-DGM-01: removed tools are NOT present
+    expect(toolNames).not.toContain("accordo_diagram_list");
+    expect(toolNames).not.toContain("accordo_diagram_get");
+    expect(toolNames).not.toContain("accordo_diagram_style_guide");
   });
 
   it("EX-02: activate() registers the accordo-diagram.open command", async () => {
