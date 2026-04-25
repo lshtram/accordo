@@ -12,10 +12,16 @@ export function remoteThreadToCreateArgs(thread: RemoteBrowserThread): Record<st
       ? {
           surfaceMetadata: {
             anchorKey: thread.anchorKey,
-            tagName: thread.anchorContext.tagName,
+            ...(thread.anchorContext.tagName ? { tagName: thread.anchorContext.tagName } : {}),
+            frameId: thread.anchorContext.frameId,
             textSnippet: thread.anchorContext.textSnippet,
             ariaLabel: thread.anchorContext.ariaLabel,
             pageTitle: thread.anchorContext.pageTitle,
+            snapshotId: thread.anchorContext.snapshotId,
+            confidence: thread.anchorContext.confidence,
+            resolvedTier: thread.anchorContext.resolvedTier !== undefined ? String(thread.anchorContext.resolvedTier) : undefined,
+            snapshotDrift:
+              thread.anchorContext.snapshotDrift !== undefined ? String(thread.anchorContext.snapshotDrift) : undefined,
           },
         }
       : { surfaceMetadata: { anchorKey: thread.anchorKey } },

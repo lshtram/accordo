@@ -781,6 +781,20 @@ describe("browser_inspect_element — input contract (PU-F-10)", () => {
     expect(inspectTool?.inputSchema.properties).toHaveProperty("selector");
   });
 
+  it("PU-F-10: tool accepts anchorKey parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const inspectTool = tools.find((t) => t.name === "accordo_browser_inspect_element");
+    expect(inspectTool?.inputSchema.properties).toHaveProperty("anchorKey");
+  });
+
+  it("B2-CA-003: tool accepts creationSnapshotId parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const inspectTool = tools.find((t) => t.name === "accordo_browser_inspect_element");
+    expect(inspectTool?.inputSchema.properties).toHaveProperty("creationSnapshotId");
+  });
+
   it("F12: tool accepts frameId parameter in inputSchema", () => {
     const relay = createMockRelay();
     const tools = buildPageUnderstandingTools(relay, noopStore);
@@ -798,7 +812,21 @@ describe("browser_get_dom_excerpt — input contract (PU-F-30)", () => {
     const tools = buildPageUnderstandingTools(relay, noopStore);
     const excerptTool = tools.find((t) => t.name === "accordo_browser_get_dom_excerpt");
     expect(excerptTool?.inputSchema.properties).toHaveProperty("selector");
-    expect(excerptTool?.inputSchema.required).toContain("selector");
+    expect(excerptTool?.inputSchema.required ?? []).not.toContain("selector");
+  });
+
+  it("PU-F-30: tool accepts anchorKey parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const excerptTool = tools.find((t) => t.name === "accordo_browser_get_dom_excerpt");
+    expect(excerptTool?.inputSchema.properties).toHaveProperty("anchorKey");
+  });
+
+  it("B2-CA-003: tool accepts creationSnapshotId parameter in inputSchema", () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const excerptTool = tools.find((t) => t.name === "accordo_browser_get_dom_excerpt");
+    expect(excerptTool?.inputSchema.properties).toHaveProperty("creationSnapshotId");
   });
 
   /**
@@ -994,6 +1022,30 @@ describe("PU-F-53: handler forwards to relay and returns structured result", () 
     expect(result).toHaveProperty("anchorStrategy");
   });
 
+  it("PU-F-53: handleInspectElement forwards anchorKey to relay", async () => {
+    const relay = createMockRelay();
+
+    await handleInspectElement(relay, { anchorKey: "id:comment-target" }, noopStore);
+
+    expect(relay.request).toHaveBeenCalledWith(
+      "inspect_element",
+      expect.objectContaining({ anchorKey: "id:comment-target" }),
+      expect.any(Number),
+    );
+  });
+
+  it("B2-CA-003: handleInspectElement forwards creationSnapshotId to relay", async () => {
+    const relay = createMockRelay();
+
+    await handleInspectElement(relay, { anchorKey: "id:comment-target", creationSnapshotId: "pg-1:5" }, noopStore);
+
+    expect(relay.request).toHaveBeenCalledWith(
+      "inspect_element",
+      expect.objectContaining({ anchorKey: "id:comment-target", creationSnapshotId: "pg-1:5" }),
+      expect.any(Number),
+    );
+  });
+
   /**
    * PU-F-53: handleGetDomExcerpt forwards "get_dom_excerpt" action to relay
    */
@@ -1012,6 +1064,30 @@ describe("PU-F-53: handler forwards to relay and returns structured result", () 
     expect(result).toHaveProperty("html");
     expect(result).toHaveProperty("text");
     expect(result).toHaveProperty("nodeCount");
+  });
+
+  it("PU-F-53: handleGetDomExcerpt forwards anchorKey to relay", async () => {
+    const relay = createMockRelay();
+
+    await handleGetDomExcerpt(relay, { anchorKey: "id:comment-target" }, noopStore);
+
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_dom_excerpt",
+      expect.objectContaining({ anchorKey: "id:comment-target" }),
+      expect.any(Number),
+    );
+  });
+
+  it("B2-CA-003: handleGetDomExcerpt forwards creationSnapshotId to relay", async () => {
+    const relay = createMockRelay();
+
+    await handleGetDomExcerpt(relay, { anchorKey: "id:comment-target", creationSnapshotId: "pg-1:5" }, noopStore);
+
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_dom_excerpt",
+      expect.objectContaining({ anchorKey: "id:comment-target", creationSnapshotId: "pg-1:5" }),
+      expect.any(Number),
+    );
   });
 
   /**
@@ -1822,7 +1898,7 @@ describe("B2-CTX-001: all existing tool handlers forward tabId in relay payload 
     const relay = createMockRelay();
     relay.request = vi.fn().mockResolvedValue({
       success: true,
-      data: { found: true, pageId: "p1", frameId: "main", snapshotId: "p1:1", capturedAt: "2025-01-01T00:00:00Z", viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 }, source: "dom", anchorKey: "id:btn", anchorStrategy: "id", anchorConfidence: "high" },
+      data: { found: true, pageId: "p1", frameId: "main", snapshotId: "p1:1", capturedAt: "2025-01-01T00:00:00Z", viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 }, source: "dom", anchorKey: "id:btn", anchorStrategy: "id", anchorConfidence: "high", resolvedTier: 1, snapshotDrift: false },
     });
 
     await handleInspectElement(relay, { tabId: 42, ref: "btn" }, noopStore);
@@ -1841,7 +1917,7 @@ describe("B2-CTX-001: all existing tool handlers forward tabId in relay payload 
     const relay = createMockRelay();
     relay.request = vi.fn().mockResolvedValue({
       success: true,
-      data: { found: true, pageId: "p1", frameId: "main", snapshotId: "p1:1", capturedAt: "2025-01-01T00:00:00Z", viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 }, source: "dom", html: "<div>", text: "div", nodeCount: 1 },
+      data: { found: true, pageId: "p1", frameId: "main", snapshotId: "p1:1", capturedAt: "2025-01-01T00:00:00Z", viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 }, source: "dom", anchorKey: "id:btn", anchorStrategy: "id", anchorConfidence: "high", resolvedTier: 1, snapshotDrift: false, html: "<div>", text: "div", nodeCount: 1 },
     });
 
     await handleGetDomExcerpt(relay, { tabId: 42, selector: "body" }, noopStore);

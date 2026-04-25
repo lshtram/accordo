@@ -1,8 +1,13 @@
 import type { SnapshotEnvelopeFields } from "./types.js";
+export type { WaitForArgs } from "./wait-tool-contracts.js";
+export type { GetTextMapArgs } from "./text-map-tool-contracts.js";
+export type { GetSemanticGraphArgs } from "./semantic-graph-tool-contracts.js";
 
 export interface GetDomExcerptArgs {
   tabId?: number;
-  selector: string;
+  anchorKey?: string;
+  creationSnapshotId?: string;
+  selector?: string;
   maxDepth?: number;
   maxLength?: number;
   frameId?: string;
@@ -13,6 +18,15 @@ export interface GetDomExcerptArgs {
 
 export interface DomExcerptResponse extends SnapshotEnvelopeFields {
   found: boolean;
+  anchorKey?: string;
+  anchorStrategy?: string;
+  anchorConfidence?: string;
+  resolvedTier?: number;
+  snapshotDrift?: boolean;
+  canonicalAnchorKey?: string;
+  canonicalAnchorStrategy?: string;
+  canonicalAnchorConfidence?: string;
+  canonicalResolvedTier?: number;
   html?: string;
   text?: string;
   nodeCount?: number;
@@ -20,34 +34,4 @@ export interface DomExcerptResponse extends SnapshotEnvelopeFields {
   auditId?: string;
   redactionApplied?: boolean;
   redactionWarning?: string;
-}
-
-export interface WaitForArgs {
-  tabId?: number;
-  texts?: string[];
-  selector?: string;
-  stableLayoutMs?: number;
-  timeout?: number;
-}
-
-export interface GetTextMapArgs {
-  tabId?: number;
-  maxSegments?: number;
-  frameId?: string;
-  redactPII?: boolean;
-  allowedOrigins?: string[];
-  deniedOrigins?: string[];
-  offset?: number;
-  limit?: number;
-}
-
-export interface GetSemanticGraphArgs {
-  tabId?: number;
-  maxDepth?: number;
-  visibleOnly?: boolean;
-  piercesShadow?: boolean;
-  frameId?: string;
-  redactPII?: boolean;
-  allowedOrigins?: string[];
-  deniedOrigins?: string[];
 }

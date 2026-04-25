@@ -2,6 +2,8 @@ import type { SnapshotEnvelopeFields } from "./types.js";
 
 export interface InspectElementArgs {
   tabId?: number;
+  anchorKey?: string;
+  creationSnapshotId?: string;
   uid?: string;
   ref?: string;
   selector?: string;
@@ -29,6 +31,12 @@ export interface InspectElementResponse extends SnapshotEnvelopeFields {
   anchorKey?: string;
   anchorStrategy?: string;
   anchorConfidence?: string;
+  resolvedTier?: number;
+  snapshotDrift?: boolean;
+  canonicalAnchorKey?: string;
+  canonicalAnchorStrategy?: string;
+  canonicalAnchorConfidence?: string;
+  canonicalResolvedTier?: number;
   element?: Record<string, unknown> & Partial<ElementStates>;
   context?: Record<string, unknown>;
   visibilityConfidence?: string;

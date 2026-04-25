@@ -274,6 +274,143 @@ describe("M80-SW — Background Service Worker", () => {
       }
     });
 
+    it("B2-CA-001..004: GET_THREADS reconstructs browser anchor metadata from hub surfaceMetadata", async () => {
+      const url = "https://example.com";
+      const normalizedUrl = "https://example.com/";
+
+      const sendSpy = vi.spyOn(RelayBridgeClient.prototype, "send").mockImplementation(async (action) => {
+        if (action === "get_comments") {
+          return {
+            success: true,
+            data: {
+              threads: [
+                {
+                  id: "tid-meta",
+                  anchor: {
+                    kind: "surface",
+                    uri: normalizedUrl,
+                    surfaceType: "browser",
+                    coordinates: { type: "block", blockId: "id:hero-title", blockType: "paragraph" },
+                  },
+                  status: "open",
+                  comments: [
+                    {
+                      id: "hub-cmt-meta",
+                      threadId: "tid-meta",
+                      author: { kind: "assistant", name: "Agent" },
+                      body: "hub copy",
+                      createdAt: "2026-01-01T10:10:00.000Z",
+                      status: "open",
+                      context: {
+                        surfaceMetadata: {
+                          anchorKey: "id:hero-title",
+                          tagName: "h1",
+                          snapshotId: "pg-1:5",
+                          confidence: "high",
+                          resolvedTier: "1",
+                          snapshotDrift: "true",
+                        },
+                      },
+                    },
+                  ],
+                  createdAt: "2026-01-01T10:00:00.000Z",
+                  lastActivity: "2026-01-01T10:10:00.000Z",
+                },
+              ],
+            },
+          };
+        }
+        return { success: false, error: "browser-not-connected" };
+      });
+
+      try {
+        const response = await handleMessage(
+          {
+            type: MESSAGE_TYPES.GET_THREADS,
+            payload: { url },
+          },
+          {} as chrome.runtime.MessageSender
+        );
+
+        expect(response.success).toBe(true);
+        const thread = (response.data as BrowserCommentThread[])[0];
+        expect(thread.anchorContext?.snapshotId).toBe("pg-1:5");
+        expect(thread.anchorContext?.confidence).toBe("high");
+        expect(thread.anchorContext?.resolvedTier).toBe(1);
+        expect(thread.anchorContext?.snapshotDrift).toBe(true);
+      } finally {
+        sendSpy.mockRestore();
+      }
+    });
+
+    it("B2-CA-MERGE-02: GET_THREADS preserves trust metadata even when hub surfaceMetadata lacks anchorKey", async () => {
+      const url = "https://example.com";
+      const normalizedUrl = "https://example.com/";
+
+      const sendSpy = vi.spyOn(RelayBridgeClient.prototype, "send").mockImplementation(async (action) => {
+        if (action === "get_comments") {
+          return {
+            success: true,
+            data: {
+              threads: [
+                {
+                  id: "tid-meta-no-anchor",
+                  anchor: {
+                    kind: "surface",
+                    uri: normalizedUrl,
+                    surfaceType: "browser",
+                    coordinates: { type: "block", blockId: "id:hero-title", blockType: "paragraph" },
+                  },
+                  status: "open",
+                  comments: [
+                    {
+                      id: "hub-cmt-meta-no-anchor",
+                      threadId: "tid-meta-no-anchor",
+                      author: { kind: "assistant", name: "Agent" },
+                      body: "hub copy",
+                      createdAt: "2026-01-01T10:10:00.000Z",
+                      status: "open",
+                      context: {
+                        surfaceMetadata: {
+                          tagName: "h1",
+                          snapshotId: "pg-1:5",
+                          confidence: "high",
+                          resolvedTier: "1",
+                          snapshotDrift: "true",
+                        },
+                      },
+                    },
+                  ],
+                  createdAt: "2026-01-01T10:00:00.000Z",
+                  lastActivity: "2026-01-01T10:10:00.000Z",
+                },
+              ],
+            },
+          };
+        }
+        return { success: false, error: "browser-not-connected" };
+      });
+
+      try {
+        const response = await handleMessage(
+          {
+            type: MESSAGE_TYPES.GET_THREADS,
+            payload: { url },
+          },
+          {} as chrome.runtime.MessageSender
+        );
+
+        expect(response.success).toBe(true);
+        const thread = (response.data as BrowserCommentThread[])[0];
+        expect(thread.anchorContext?.snapshotId).toBe("pg-1:5");
+        expect(thread.anchorContext?.confidence).toBe("high");
+        expect(thread.anchorContext?.resolvedTier).toBe(1);
+        expect(thread.anchorContext?.snapshotDrift).toBe(true);
+      } finally {
+        sendSpy.mockRestore();
+      }
+    });
+
     it("PIN-FIX-06: GET_THREADS keeps hub browser thread when both request URL and hub URI include hash fragment", async () => {
       const urlWithHash = "https://example.com/page#";
       const threadId = "tid-hub-hash-uri";
@@ -349,6 +486,34 @@ describe("M80-SW — Background Service Worker", () => {
       expect(response).toHaveProperty("success", true);
       expect(response).toHaveProperty("data");
       expect(typeof (response.data as { id?: string })?.id).toBe("string");
+    });
+
+    it("B2-CA-001..004: CREATE_THREAD stores browser anchor trust metadata on the thread", async () => {
+      const response = await handleMessage(
+        {
+          type: MESSAGE_TYPES.CREATE_THREAD,
+          payload: {
+            url: "https://example.com",
+            anchorKey: "id:hero-title",
+            body: "First comment",
+            author: { kind: "user", name: "Alice" },
+            anchorContext: {
+              tagName: "h1",
+              snapshotId: "pg-1:5",
+              confidence: "high",
+              resolvedTier: 1,
+              snapshotDrift: false,
+            },
+          },
+        },
+        {} as chrome.runtime.MessageSender
+      );
+
+      expect(response.success).toBe(true);
+      expect((response.data as BrowserCommentThread).anchorContext?.snapshotId).toBe("pg-1:5");
+      expect((response.data as BrowserCommentThread).anchorContext?.confidence).toBe("high");
+      expect((response.data as BrowserCommentThread).anchorContext?.resolvedTier).toBe(1);
+      expect((response.data as BrowserCommentThread).anchorContext?.snapshotDrift).toBe(false);
     });
   });
 
@@ -888,6 +1053,28 @@ describe("M80-SW — Background Service Worker", () => {
       const merged = mergeLocalAndHubThread(local, hub);
 
       expect(merged.anchorContext).toEqual(anchorContext);
+    });
+
+    it("B2-CA-MERGE-01: merged thread fills missing local trust metadata from hub anchorContext", () => {
+      const local = makeThread({ anchorContext: { tagName: "P", textSnippet: "Some text" } });
+      const hub = makeThread({
+        anchorContext: {
+          tagName: "P",
+          textSnippet: "Some text",
+          snapshotId: "pg-1:5",
+          confidence: "high",
+          resolvedTier: 1,
+          snapshotDrift: true,
+        },
+      });
+
+      const merged = mergeLocalAndHubThread(local, hub);
+
+      expect(merged.anchorContext?.textSnippet).toBe("Some text");
+      expect(merged.anchorContext?.snapshotId).toBe("pg-1:5");
+      expect(merged.anchorContext?.confidence).toBe("high");
+      expect(merged.anchorContext?.resolvedTier).toBe(1);
+      expect(merged.anchorContext?.snapshotDrift).toBe(true);
     });
 
     it("BR-F-MERGE-06: local soft-delete markers are preserved when hub has none", () => {

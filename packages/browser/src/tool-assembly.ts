@@ -11,10 +11,11 @@
  */
 
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
-import type { BrowserRelayLike } from "./types.js";
+import type { BrowserBridgeAPI, BrowserRelayLike } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import { ScreenshotRetentionStore } from "./screenshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
+import { buildCommentContextTool } from "./comment-context-tool.js";
 import { buildPageUnderstandingTools } from "./page-understanding-tools.js";
 import { buildWaitForTool } from "./wait-tool.js";
 import { buildTextMapTool } from "./text-map-tool.js";
@@ -26,10 +27,9 @@ import { buildManageScreenshotsTool } from "./manage-screenshots-tool.js";
 import { buildSpatialRelationsTool } from "./spatial-relations-tool.js";
 import { buildControlTools } from "./control-tool-types.js";
 import { readRelayPort } from "./relay-lifecycle-primitives.js";
+import { PAIR_CODE_TTL_MS } from "./shared-relay-pairing.js";
+import { PAIRING_CODE_ENDPOINT_PATH, RELAY_BASE_PORT, RELAY_HOST } from "./relay-transport-constants.js";
 import * as http from "node:http";
-
-const RELAY_HOST = "127.0.0.1";
-const RELAY_BASE_PORT = 40111;
 
 /**
  * Build the accordo_browser_pair tool.
@@ -56,7 +56,7 @@ function buildPairTool(): ExtensionToolDefinition {
     handler: async (): Promise<unknown> => {
       const relayPort = readRelayPort() ?? RELAY_BASE_PORT;
       return new Promise((resolve) => {
-        const req = http.get(`http://${RELAY_HOST}:${relayPort}/pair/code`, (res) => {
+        const req = http.get(`http://${RELAY_HOST}:${relayPort}${PAIRING_CODE_ENDPOINT_PATH}`, (res) => {
           let body = "";
           res.on("data", (chunk: Buffer) => { body += chunk.toString(); });
           res.on("end", () => {
@@ -67,7 +67,7 @@ function buildPairTool(): ExtensionToolDefinition {
                   content: [
                     {
                       type: "text",
-                      text: `Pairing code: **${parsed.code}**\n\nAsk the user to open the Accordo browser extension popup, enter this code in the "VS Code code:" field, and click Connect. The code expires in ${Math.round((parsed.expiresIn ?? 300000) / 1000)} seconds.`,
+                      text: `Pairing code: **${parsed.code}**\n\nAsk the user to open the Accordo browser extension popup, enter this code in the "VS Code code:" field, and click Connect. The code expires in ${Math.round((parsed.expiresIn ?? PAIR_CODE_TTL_MS) / 1000)} seconds.`,
                     },
                   ],
                 });
@@ -102,6 +102,7 @@ function buildPairTool(): ExtensionToolDefinition {
  * @returns Array of all browser tool definitions
  */
 export function buildBrowserTools(
+  bridge: BrowserBridgeAPI,
   relay: BrowserRelayLike,
   snapshotStore: SnapshotRetentionStore,
   securityConfig: SecurityConfig,
@@ -118,6 +119,7 @@ export function buildBrowserTools(
     buildManageScreenshotsTool(relay, screenshotStore ?? new ScreenshotRetentionStore()),
     buildSpatialRelationsTool(relay, snapshotStore, securityConfig),
     ...buildControlTools(relay),
+    buildCommentContextTool(bridge, relay, snapshotStore, securityConfig),
     buildPairTool(),
   ];
 }

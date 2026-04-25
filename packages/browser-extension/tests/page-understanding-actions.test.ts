@@ -122,6 +122,18 @@ describe("M90-ACT handleRelayAction routing for page-understanding actions", () 
     expect(response.data).toHaveProperty("found");
   });
 
+  it("PU-F-31: handleRelayAction routes inspect_element action with anchorKey", async () => {
+    const response = await handleRelayAction({
+      requestId: "test-inspect-anchor",
+      action: "inspect_element",
+      payload: { anchorKey: "id:main" },
+    });
+
+    expect(response).toHaveProperty("success", true);
+    expect(response.data).toHaveProperty("found", true);
+    expect(response.data).toHaveProperty("anchorKey");
+  });
+
   /**
    * PU-F-32: get_dom_excerpt route returns structured data
    */
@@ -136,6 +148,18 @@ describe("M90-ACT handleRelayAction routing for page-understanding actions", () 
     expect(response).toHaveProperty("requestId", "test-excerpt");
     expect(response).toHaveProperty("data");
     expect(response.data).toHaveProperty("found");
+  });
+
+  it("PU-F-32: handleRelayAction routes get_dom_excerpt action with anchorKey", async () => {
+    const response = await handleRelayAction({
+      requestId: "test-excerpt-anchor",
+      action: "get_dom_excerpt",
+      payload: { anchorKey: "id:main", maxDepth: 3, maxLength: 2000 },
+    });
+
+    expect(response).toHaveProperty("success", true);
+    expect(response.data).toHaveProperty("found", true);
+    expect(response.data).toHaveProperty("html");
   });
 
   /**
@@ -422,6 +446,50 @@ describe("PU-F-53: relay forwarding + structured result path (behavioral)", () =
     expect(response.data).toHaveProperty("anchorStrategy");
   });
 
+  it("PU-F-53: inspect_element accepts anchorKey-only payloads", async () => {
+    const response = await handleRelayAction({
+      requestId: "test-fwd-inspect-anchor",
+      action: "inspect_element",
+      payload: { anchorKey: "id:main" },
+    });
+
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("found", true);
+    expect(response.data).toHaveProperty("anchorKey");
+  });
+
+  it("B2-CTX-UID-01: inspect_element derives frame routing from uid when frameId is omitted", async () => {
+    const response = await handleRelayAction({
+      requestId: "test-fwd-inspect-uid-frame",
+      action: "inspect_element",
+      payload: { uid: "comments-frame:5" },
+    });
+
+    expect(response.success).toBe(true);
+  });
+
+  it("B2-CA-003: inspect_element preserves creationSnapshotId for selector payloads", async () => {
+    const response = await handleRelayAction({
+      requestId: "test-fwd-inspect-selector-drift",
+      action: "inspect_element",
+      payload: { selector: "#main", creationSnapshotId: "pg_test:1" },
+    });
+
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("snapshotDrift", true);
+  });
+
+  it("B2-CA-003: inspect_element preserves creationSnapshotId for nodeId payloads", async () => {
+    const response = await handleRelayAction({
+      requestId: "test-fwd-inspect-nodeid-drift",
+      action: "inspect_element",
+      payload: { nodeId: 1, creationSnapshotId: "pg_test:1" },
+    });
+
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("snapshotDrift", true);
+  });
+
   /**
    * PU-F-53: get_dom_excerpt forwards action and returns ExcerptResult
    */
@@ -436,6 +504,18 @@ describe("PU-F-53: relay forwarding + structured result path (behavioral)", () =
     expect(response.data).toHaveProperty("found");
     expect(response.data).toHaveProperty("html");
     expect(response.data).toHaveProperty("text");
+  });
+
+  it("PU-F-53: get_dom_excerpt accepts anchorKey-only payloads", async () => {
+    const response = await handleRelayAction({
+      requestId: "test-fwd-excerpt-anchor",
+      action: "get_dom_excerpt",
+      payload: { anchorKey: "id:main", maxDepth: 3, maxLength: 2000 },
+    });
+
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("found", true);
+    expect(response.data).toHaveProperty("html");
   });
 
   /**

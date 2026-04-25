@@ -4,9 +4,14 @@ export interface RemoteBrowserThread {
   anchorKey: string;
   anchorContext?: {
     tagName?: string;
+    frameId?: string;
     textSnippet?: string;
     ariaLabel?: string;
     pageTitle?: string;
+    snapshotId?: string;
+    confidence?: "high" | "medium" | "low" | "none";
+    resolvedTier?: 1 | 2 | 3 | 4 | 5 | 6;
+    snapshotDrift?: boolean;
   };
   pageUrl: string;
   status: "open" | "resolved";

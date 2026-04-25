@@ -32,6 +32,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { normalizeAnchorFingerprint } from "../src/content-anchor.js";
 import {
   inspectElement,
   getDomExcerpt,
@@ -181,6 +182,40 @@ describe("M90-INS inspectElement behavioral output", () => {
     const result = inspectElement({ selector: ".dup-target" });
     expect(result.found).toBe(true);
     expect(result.element?.textContent).toBe("Visible");
+  });
+
+  it("B2-CA-RESOLVE-03: exact anchor lookups preserve the hidden anchored element instead of swapping to a visible sibling", () => {
+    const hidden = document.createElement("button");
+    hidden.id = "hidden-anchor";
+    hidden.textContent = "Hidden";
+    hidden.style.display = "none";
+    const visibleSibling = document.createElement("button");
+    visibleSibling.textContent = "Visible sibling";
+    const parent = document.createElement("div");
+    parent.append(hidden, visibleSibling);
+    document.body.appendChild(parent);
+
+    const result = inspectElement({ anchorKey: "id:hidden-anchor" });
+    expect(result.found).toBe(true);
+    expect(result.element?.id).toBe("hidden-anchor");
+    expect(result.element?.visible).toBe(false);
+  });
+
+  it("B2-CA-A11Y-01: accessibleName uses associated label text for inputs", () => {
+    const label = document.createElement("label");
+    label.htmlFor = "email-field";
+    label.textContent = "Email Address";
+    const input = document.createElement("input");
+    input.id = "email-field";
+    document.body.append(label, input);
+
+    const result = inspectElement({ selector: "#email-field" });
+    expect(result.element?.accessibleName).toBe("Email Address");
+  });
+
+  it("B2-CA-003: inspectElement treats snapshot session changes as drift", () => {
+    const result = inspectElement({ selector: "#submit-btn", creationSnapshotId: "other-page:999" });
+    expect(result.snapshotDrift).toBe(true);
   });
 
   /**
@@ -337,6 +372,20 @@ describe("M90-INS getDomExcerpt behavioral output", () => {
       expect(result.html).not.toMatch(/<script/i);
     }
   });
+
+  it("B2-CA-DOM-01: getDomExcerpt preserves word boundaries across mixed text and inline nodes", () => {
+    const host = document.createElement("div");
+    host.id = "mixed-text-host";
+    host.append("Hello ");
+    const strong = document.createElement("strong");
+    strong.textContent = "world";
+    host.append(strong, " again");
+    document.body.appendChild(host);
+
+    const result = getDomExcerpt("#mixed-text-host");
+    expect(result.html).toContain("Hello ");
+    expect(result.html).toContain(" again");
+  });
 });
 
 describe("M90-INS anchor strategy confidence levels", () => {
@@ -351,6 +400,36 @@ describe("M90-INS anchor strategy confidence levels", () => {
     expect(highResult.anchorConfidence).toBe("high");
     expect(medResult.anchorConfidence).toBe("medium");
     expect(lowResult.anchorConfidence).toBe("low");
+  });
+
+  it("B2-CA-004: inspectElement returns resolvedTier for the selected anchor strategy", () => {
+    const result = inspectElement({ selector: "#submit-btn" });
+    expect(result.resolvedTier).toBe(1);
+  });
+
+  it("B2-CA-RESOLVE-01: inspectElement reports actual re-resolution path separately from current canonical anchor", () => {
+    const result = inspectElement({ anchorKey: "css:button#submit-btn" });
+    expect(result.anchorStrategy).toBe("css-path");
+    expect(result.anchorConfidence).toBe("medium");
+    expect(result.resolvedTier).toBe(4);
+    expect(result.canonicalAnchorStrategy).toBe("id");
+    expect(result.canonicalAnchorConfidence).toBe("high");
+    expect(result.canonicalResolvedTier).toBe(1);
+  });
+
+  it("B2-CA-003: inspectElement marks snapshotDrift=true when creation snapshot is more than 10 versions behind", () => {
+    const result = inspectElement({ selector: "#submit-btn", creationSnapshotId: "pg_test:1" });
+    expect(result.snapshotDrift).toBe(true);
+  });
+
+  it("B2-CA-003: inspectElement marks snapshotDrift=false when creation snapshot is within 10 versions", () => {
+    const current = inspectElement({ selector: "#submit-btn" });
+    const snapshotId = current.snapshotId;
+    const prefix = snapshotId.slice(0, snapshotId.lastIndexOf(":"));
+    const currentVersion = Number.parseInt(snapshotId.slice(snapshotId.lastIndexOf(":") + 1), 10);
+    const nearbyVersion = Math.max(1, currentVersion - 1);
+    const result = inspectElement({ selector: "#submit-btn", creationSnapshotId: `${prefix}:${nearbyVersion}` });
+    expect(result.snapshotDrift).toBe(false);
   });
 });
 
@@ -441,6 +520,53 @@ describe("PU-F-33: getDomExcerpt runtime { found: false } for missing selector",
     expect(result).toHaveProperty("html");
     expect(result).toHaveProperty("text");
     expect(result).toHaveProperty("nodeCount");
+  });
+
+  it("B2-CA-004: getDomExcerpt returns resolvedTier for the selected anchor strategy", () => {
+    const result = getDomExcerpt({ anchorKey: "id:submit-btn" });
+    expect(result.resolvedTier).toBe(1);
+  });
+
+  it("B2-CA-RESOLVE-02: getDomExcerpt reports actual re-resolution path separately from current canonical anchor", () => {
+    const result = getDomExcerpt({ anchorKey: "css:button#submit-btn" });
+    expect(result.anchorStrategy).toBe("css-path");
+    expect(result.anchorConfidence).toBe("medium");
+    expect(result.resolvedTier).toBe(4);
+    expect(result.canonicalAnchorStrategy).toBe("id");
+    expect(result.canonicalAnchorConfidence).toBe("high");
+    expect(result.canonicalResolvedTier).toBe(1);
+  });
+
+  it("B2-CA-LEGACY-01: inspectElement reports rerun trust metadata for legacy unprefixed anchors", () => {
+    const legacy = document.createElement("div");
+    legacy.textContent = "Legacy anchor target";
+    document.body.appendChild(legacy);
+    const anchorKey = `div:0:${normalizeAnchorFingerprint(legacy.textContent ?? "")}`;
+
+    const result = inspectElement({ anchorKey });
+    expect(result.anchorStrategy).toBe("tag-sibling");
+    expect(result.anchorConfidence).toBe("low");
+    expect(result.resolvedTier).toBe(5);
+  });
+
+  it("B2-CA-003: getDomExcerpt marks snapshotDrift=true when creation snapshot is more than 10 versions behind", () => {
+    const result = getDomExcerpt({ anchorKey: "id:submit-btn", creationSnapshotId: "pg_test:1" });
+    expect(result.snapshotDrift).toBe(true);
+  });
+
+  it("B2-CA-003: getDomExcerpt marks snapshotDrift=false when creation snapshot is within 10 versions", () => {
+    const current = getDomExcerpt({ anchorKey: "id:submit-btn" });
+    const snapshotId = current.snapshotId;
+    const prefix = snapshotId.slice(0, snapshotId.lastIndexOf(":"));
+    const currentVersion = Number.parseInt(snapshotId.slice(snapshotId.lastIndexOf(":") + 1), 10);
+    const nearbyVersion = Math.max(1, currentVersion - 1);
+    const result = getDomExcerpt({ anchorKey: "id:submit-btn", creationSnapshotId: `${prefix}:${nearbyVersion}` });
+    expect(result.snapshotDrift).toBe(false);
+  });
+
+  it("B2-CA-003: getDomExcerpt treats snapshot session changes as drift", () => {
+    const result = getDomExcerpt({ anchorKey: "id:submit-btn", creationSnapshotId: "other-page:999" });
+    expect(result.snapshotDrift).toBe(true);
   });
 
   /**

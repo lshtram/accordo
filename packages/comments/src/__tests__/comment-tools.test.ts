@@ -783,6 +783,31 @@ describe("M38-CT-03: comment_create browser modality retention", () => {
     expect(surfaceAnchor.coordinates.type).toBe("block");
     expect(surfaceAnchor.coordinates.blockId).toBe("div:2:hero_title@120,45");
   });
+
+  it("B2-CA-001..004: browser comment_create preserves snapshot and anchor trust metadata in surfaceMetadata", async () => {
+    const createTool = tools.find(t => t.name === "comment_create")!;
+    const result = (await createTool.handler({
+      scope: { modality: "browser", url: "https://example.com/page1" },
+      anchor: { kind: "browser", anchorKey: "id:hero-title" },
+      context: {
+        surfaceMetadata: {
+          anchorKey: "id:hero-title",
+          snapshotId: "page-1:5",
+          confidence: "high",
+          resolvedTier: "1",
+          snapshotDrift: "false",
+        },
+      },
+      body: "Browser comment with anchor metadata",
+    })) as { threadId: string };
+
+    const thread = store.getThread(result.threadId)!;
+    const metadata = thread.comments[0]?.context?.surfaceMetadata;
+    expect(metadata?.snapshotId).toBe("page-1:5");
+    expect(metadata?.confidence).toBe("high");
+    expect(metadata?.resolvedTier).toBe("1");
+    expect(metadata?.snapshotDrift).toBe("false");
+  });
 });
 
 // ── M38-CT-06: comment_reopen ─────────────────────────────────────────
