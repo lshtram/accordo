@@ -252,7 +252,7 @@ The extension is **invisible by default**. A keyboard shortcut or toolbar button
 
 | ID | Requirement | Acceptance Criteria |
 |---|---|---|
-| BR-F-132 | Browser comment actions are exposed through unified `accordo_comment_*` tools with `scope.modality = "browser"` instead of a browser-only public tool namespace | Agent can perform list/get/create/reply/resolve/reopen/delete for browser comments via `accordo-comments` tool set |
+| BR-F-132 | Browser comment actions are exposed through unified `comment_*` tools with `scope.modality = "browser"` instead of a browser-only public tool namespace; backward-compatible alias `accordo_comment_*` is callable via tools/call but not returned by tools/list | Agent can perform list/get/create/reply/resolve/reopen/delete for browser comments via the canonical `comment_*` tool set |
 | BR-F-133 | Browser comments are mirrored into the shared comments store/panel projection path so they appear in the Accordo Comments Panel alongside text/diagram/slide comments | Browser-origin threads are visible in panel grouping/filtering with surfaceType `browser` |
 | BR-F-134 | Browser-origin threads are marked as volatile retention class for cleanup UX | Panel indicates volatile browser threads and can filter them quickly |
 | BR-F-135 | Comments Panel adds a bulk browser cleanup action (`Delete All Browser Comments`) with explicit confirmation | Trigger removes all browser threads and reports deleted count |

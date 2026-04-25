@@ -4,6 +4,7 @@ import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import { RETENTION_SLOTS } from "./snapshot-retention.js";
 import type { DiffSnapshotsArgs, DiffSnapshotsResponse, DiffToolError } from "./diff-tool-contracts.js";
 import { DIFF_TIMEOUT_MS } from "./diff-tool-contracts.js";
+import { classifyThrownRelayError, getRelayRetryAfterMs } from "./relay-error-policy.js";
 import {
   analyzeEviction,
   extractRelayErrorCode,
@@ -12,7 +13,6 @@ import {
 } from "./diff-tool-analysis.js";
 import {
   buildTransientRelayError,
-  classifyRelayError,
   normalizeSnapshotId,
   parseSnapshotId,
   resolveFreshSnapshot,
@@ -25,7 +25,12 @@ export async function handleDiffSnapshots(
   store: SnapshotRetentionStore,
 ): Promise<DiffSnapshotsResponse | DiffToolError> {
   if (!relay.isConnected()) {
-    return { success: false, error: "browser-not-connected", retryable: true, retryAfterMs: 2000 };
+    return {
+      success: false,
+      error: "browser-not-connected",
+      retryable: true,
+      retryAfterMs: getRelayRetryAfterMs("browser-not-connected"),
+    };
   }
 
   let resolvedToSnapshotId = normalizeSnapshotId(args.toSnapshotId);
@@ -119,7 +124,7 @@ export async function handleDiffSnapshots(
 
     return { success: false, error: "action-failed", retryable: false };
   } catch (err: unknown) {
-    const error = classifyRelayError(err);
-    return { success: false, error, retryable: true, retryAfterMs: error === "browser-not-connected" ? 2000 : 1000 };
+    const error = classifyThrownRelayError(err);
+    return { success: false, error, retryable: true, retryAfterMs: getRelayRetryAfterMs(error) };
   }
 }

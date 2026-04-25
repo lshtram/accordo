@@ -7,22 +7,13 @@ import {
   finalizeSemanticGraphResult,
   mapSemanticGraphResponseError,
 } from "./semantic-graph-tool-runtime.js";
+import { classifyThrownRelayError } from "./relay-error-policy.js";
 import {
   SEMANTIC_GRAPH_TOOL_TIMEOUT_MS,
   type GetSemanticGraphArgs,
   type SemanticGraphResponse,
   type SemanticGraphToolError,
 } from "./semantic-graph-tool-contracts.js";
-
-function classifySemanticGraphRelayError(err: unknown): "timeout" | "browser-not-connected" {
-  if (err instanceof Error) {
-    if (err.message.includes("not-connected") || err.message.includes("disconnected")) {
-      return "browser-not-connected";
-    }
-    return "timeout";
-  }
-  return "timeout";
-}
 
 export async function handleGetSemanticGraph(
   relay: BrowserRelayLike,
@@ -58,7 +49,7 @@ export async function handleGetSemanticGraph(
       auditEntry,
       startTime,
       security,
-      buildStructuredError(classifySemanticGraphRelayError(err)) as SemanticGraphToolError,
+      buildStructuredError(classifyThrownRelayError(err)) as SemanticGraphToolError,
     );
   }
 }

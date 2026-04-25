@@ -16,102 +16,24 @@
 
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { BrowserRelayLike } from "./types.js";
+import {
+  RELAY_TIMEOUT_MS,
+  WAIT_DEFAULT_TIMEOUT_MS,
+  WAIT_MAX_TIMEOUT_MS,
+  type WaitForArgs,
+  type WaitForResult,
+  type WaitToolError,
+} from "./wait-tool-contracts.js";
+import { classifyThrownRelayError, getRelayRecoveryHint, getRelayRetryAfterMs } from "./relay-error-policy.js";
 
-// ── Constants ────────────────────────────────────────────────────────────────
-
-/** Default timeout for wait operations (ms). B2-WA-004. */
-export const WAIT_DEFAULT_TIMEOUT_MS = 10_000;
-
-/** Maximum allowed timeout for wait operations (ms). B2-WA-004. */
-export const WAIT_MAX_TIMEOUT_MS = 30_000;
-
-/**
- * Relay-level timeout for the wait_for action.
- *
- * This MUST be larger than WAIT_MAX_TIMEOUT_MS to ensure the relay
- * does not time out before the content script's polling loop completes.
- * The extra headroom accounts for relay serialization and transport latency.
- */
-export const RELAY_TIMEOUT_MS = WAIT_MAX_TIMEOUT_MS + 5_000;
-
-// ── Tool Input Type ──────────────────────────────────────────────────────────
-
-/**
- * Input for `browser_wait_for`.
- *
- * At least one condition parameter (`texts`, `selector`, or `stableLayoutMs`)
- * MUST be provided. If multiple are provided, the first one met wins.
- *
- * B2-WA-001: `texts` — wait for any text string to appear.
- * B2-WA-002: `selector` — wait for CSS selector to match.
- * B2-WA-003: `stableLayoutMs` — wait for layout stability.
- * B2-WA-004: `timeout` — configurable, default 10000, max 30000.
- */
-export interface WaitForArgs {
-  /** B2-CTX-001: Optional tab ID to target; omit for active tab */
-  tabId?: number;
-  /** B2-WA-001: Wait for any of these text strings to appear on the page. */
-  texts?: string[];
-  /** B2-WA-002: Wait for a CSS selector to match at least one element. */
-  selector?: string;
-  /** B2-WA-003: Wait until no layout changes occur for this many ms. */
-  stableLayoutMs?: number;
-  /** B2-WA-004: Maximum wait time in ms (default: 10000, max: 30000). */
-  timeout?: number;
-}
-
-// ── Tool Result Types ────────────────────────────────────────────────────────
-
-/**
- * Error codes for wait operations.
- *
- * B2-WA-005: `"timeout"` — condition not met within timeout.
- * B2-WA-006: `"navigation-interrupted"` — page navigated during wait.
- * B2-WA-007: `"page-closed"` — tab closed during wait.
- */
-export type WaitError = "timeout" | "navigation-interrupted" | "page-closed";
-
-/**
- * Successful or timed-out result from `browser_wait_for`.
- *
- * Token budget: 30–50 tokens (minimal response).
- */
-export interface WaitForResult {
-  /** Whether the condition was met before timeout. */
-  met: boolean;
-  /** Which condition was met (for texts: the matched text; for selector: the selector; for stableLayout: "stable-layout"). */
-  matchedCondition?: string;
-  /** How long the wait took in ms. B2-WA-005: equals timeout value on timeout. */
-  elapsedMs: number;
-  /** Error code if condition was not met. */
-  error?: WaitError;
-  /**
-   * MCP-ER-002: Whether the failure is transient and a retry is likely to succeed.
-   * Present only when met is false and error is a transient code.
-   */
-  retryable?: boolean;
-  /**
-   * MCP-ER-002: Suggested wait before retrying in milliseconds.
-   * Present when retryable is true.
-   */
-  retryAfterMs?: number;
-}
-
-/**
- * Error response from the wait tool (relay-level failures).
- *
- * MCP-ER-002: All relay-level errors include retryable + optional retryAfterMs.
- */
-export interface WaitToolError {
-  success: false;
-  error: "browser-not-connected" | "timeout" | "action-failed" | "invalid-request";
-  /** MCP-ER-002: Whether this error is transient and a retry is likely to succeed. */
-  retryable: boolean;
-  /** MCP-ER-002: Suggested wait before retrying, in milliseconds. Present when retryable. */
-  retryAfterMs?: number;
-  /** Human-readable recovery guidance for the caller. */
-  recoveryHints?: string;
-}
+export {
+  RELAY_TIMEOUT_MS,
+  WAIT_DEFAULT_TIMEOUT_MS,
+  WAIT_MAX_TIMEOUT_MS,
+  type WaitForArgs,
+  type WaitForResult,
+  type WaitToolError,
+} from "./wait-tool-contracts.js";
 
 // ── Tool Definition ──────────────────────────────────────────────────────────
 
@@ -154,7 +76,7 @@ export function buildWaitForTool(
         },
         timeout: {
           type: "number",
-          description: "Maximum wait time in ms (default: 10000, max: 30000).",
+          description: `Maximum wait time in ms (default: ${WAIT_DEFAULT_TIMEOUT_MS}, max: ${WAIT_MAX_TIMEOUT_MS}).`,
         },
       },
     },
@@ -162,19 +84,6 @@ export function buildWaitForTool(
     idempotent: true,
     handler: (args) => handleWaitFor(relay, args as WaitForArgs),
   };
-}
-
-// ── Helper ───────────────────────────────────────────────────────────────────
-
-/** Classify relay error messages into structured error codes. */
-function classifyRelayError(err: unknown): "timeout" | "browser-not-connected" {
-  if (err instanceof Error) {
-    if (err.message.includes("not-connected") || err.message.includes("disconnected")) {
-      return "browser-not-connected";
-    }
-    return "timeout";
-  }
-  return "timeout";
 }
 
 // ── Tool Handler ─────────────────────────────────────────────────────────────
@@ -245,7 +154,7 @@ export async function handleWaitFor(
         return {
           ...result,
           retryable: true,
-          retryAfterMs: 1000,
+          retryAfterMs: getRelayRetryAfterMs("timeout"),
           recoveryHints:
             "The condition was not met within the timeout. Increase the timeout value or " +
             "retry after the page has had more time to load. Use wait_for with a larger " +
@@ -279,25 +188,31 @@ export async function handleWaitFor(
     }
 
     // Timeout or other relay-level failure — pass through as WaitForResult
-    return response.data as WaitForResult ?? { met: false, error: "timeout", elapsedMs: Date.now() - startMs, retryable: true, retryAfterMs: 1000 };
+    return response.data as WaitForResult ?? {
+      met: false,
+      error: "timeout",
+      elapsedMs: Date.now() - startMs,
+      retryable: true,
+      retryAfterMs: getRelayRetryAfterMs("timeout"),
+    };
   } catch (err: unknown) {
     // Relay threw (e.g. browser not connected)
-    const code = classifyRelayError(err);
+    const code = classifyThrownRelayError(err);
     if (code === "browser-not-connected") {
       return {
         success: false,
         error: code,
         retryable: true,
-        retryAfterMs: 2000,
-        recoveryHints: "Check that the browser relay is running and the extension is connected.",
+        retryAfterMs: getRelayRetryAfterMs(code),
+        recoveryHints: getRelayRecoveryHint(code),
       };
     }
     return {
       success: false,
       error: code,
       retryable: true,
-      retryAfterMs: 1000,
-      recoveryHints: "The wait operation timed out at the relay level. Retry after a short delay.",
+      retryAfterMs: getRelayRetryAfterMs(code),
+      recoveryHints: getRelayRecoveryHint(code),
     };
   }
 }

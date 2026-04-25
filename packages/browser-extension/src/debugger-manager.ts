@@ -9,64 +9,14 @@
  * @module
  */
 
-const CDP_PROTOCOL_VERSION = "1.3";
-
-/**
- * Internal set of attached tab IDs.
- */
-const attachedTabs = new Set<number>();
-
-/**
- * Registry of onDetach listeners per tabId.
- */
-const detachListeners = new Map<number, Array<(source: chrome.debugger.Debuggee, reason: string) => void>>();
-
-/**
- * Tracks tabs currently being detached to prevent re-entrant calls.
- */
-const detachingTabs = new Set<number>();
-
-function removeDetachListeners(tabId: number): void {
-  const listeners = detachListeners.get(tabId);
-  if (!listeners) return;
-
-  listeners.forEach((listener) => {
-    try {
-      chrome.debugger.onDetach.removeListener(listener);
-    } catch {
-      // Ignore removal errors
-    }
-  });
-
-  detachListeners.delete(tabId);
-}
-
-async function canUseDebuggerSession(tabId: number): Promise<boolean> {
-  try {
-    await chrome.debugger.sendCommand(
-      { tabId },
-      "Runtime.evaluate",
-      { expression: "1", returnByValue: true }
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function registerDetachListener(tabId: number): void {
-  removeDetachListeners(tabId);
-
-  const listener = (source: chrome.debugger.Debuggee, _reason: string): void => {
-    if (source.tabId === tabId) {
-      attachedTabs.delete(tabId);
-      removeDetachListeners(tabId);
-    }
-  };
-
-  chrome.debugger.onDetach.addListener(listener);
-  detachListeners.set(tabId, [listener]);
-}
+import {
+  attachedTabs,
+  canUseDebuggerSession,
+  detachingTabs,
+  getDebuggerProtocolVersion,
+  registerDetachListener,
+  removeDetachListeners,
+} from "./debugger-manager-state.js";
 
 /**
  * Ensure the debugger is attached to the given tab. No-op if already attached.
@@ -90,7 +40,7 @@ export async function ensureAttached(tabId: number): Promise<void> {
   }
 
   try {
-    await chrome.debugger.attach({ tabId }, CDP_PROTOCOL_VERSION);
+    await chrome.debugger.attach({ tabId }, getDebuggerProtocolVersion());
     attachedTabs.add(tabId);
     registerDetachListener(tabId);
   } catch (e) {

@@ -16,29 +16,32 @@
 
 import type { SharedRelayInfo } from "./shared-relay-types.js";
 import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
+import {
+  ACCORDO_HOME_DIR,
+  SHARED_RELAY_FILE_NAME,
+  SHARED_RELAY_INFO_PATH,
+  SHARED_RELAY_LOCK_FILE_NAME,
+  SHARED_RELAY_LOCK_PATH,
+} from "./browser-paths.js";
 
 /** Default path for the shared relay discovery file. */
-export const SHARED_RELAY_FILE = "shared-relay.json";
+export const SHARED_RELAY_FILE = SHARED_RELAY_FILE_NAME;
 
 /** Default path for the lock file used during ownership transfer. */
-export const SHARED_RELAY_LOCK_FILE = "shared-relay.json.lock";
-
-const ACCORDO_DIR = path.join(os.homedir(), ".accordo");
+export const SHARED_RELAY_LOCK_FILE = SHARED_RELAY_LOCK_FILE_NAME;
 
 function ensureAccordoDir(): void {
-  if (!fs.existsSync(ACCORDO_DIR)) {
-    fs.mkdirSync(ACCORDO_DIR, { mode: 0o700 });
+  if (!fs.existsSync(ACCORDO_HOME_DIR)) {
+    fs.mkdirSync(ACCORDO_HOME_DIR, { mode: 0o700 });
   }
 }
 
 function relayFilePath(): string {
-  return path.join(ACCORDO_DIR, SHARED_RELAY_FILE);
+  return SHARED_RELAY_INFO_PATH;
 }
 
 function lockFilePath(): string {
-  return path.join(ACCORDO_DIR, SHARED_RELAY_LOCK_FILE);
+  return SHARED_RELAY_LOCK_PATH;
 }
 
 /**

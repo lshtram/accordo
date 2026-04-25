@@ -1,215 +1,143 @@
-/**
- * M113-SEM — Semantic Graph shared types.
- *
- * All public interfaces and option types for the semantic graph collector.
- * Kept separate so helper modules can import without circular deps.
- *
- * @module
- */
+export const DEFAULT_MAX_DEPTH = 8;
+export const MAX_DEPTH_LIMIT = 16;
+export const SEMANTIC_GRAPH_TIMEOUT_MS = 15_000;
 
-import type { SnapshotEnvelope } from "../snapshot-versioning.js";
+export const EXCLUDED_TAGS: ReadonlySet<string> = new Set([
+  "script", "style", "noscript", "template", "link", "meta",
+]);
 
-// ── Types ────────────────────────────────────────────────────────────────────
+export const LANDMARK_ROLES: ReadonlySet<string> = new Set([
+  "navigation",
+  "main",
+  "banner",
+  "contentinfo",
+  "complementary",
+  "search",
+  "form",
+  "region",
+]);
 
-/**
- * A node in the accessibility tree snapshot.
- *
- * B2-SG-002: Each node represents an element with an accessible role.
- * B2-SG-006: nodeId is per-call scoped, shared across all four sub-trees.
- */
+export const LANDMARK_TAG_ROLES: Readonly<Record<string, string>> = {
+  header: "banner",
+  nav: "navigation",
+  main: "main",
+  aside: "complementary",
+  footer: "contentinfo",
+  form: "form",
+  search: "search",
+};
+
+export const TAG_ROLES: Readonly<Record<string, string>> = {
+  ...LANDMARK_TAG_ROLES,
+  h1: "heading",
+  h2: "heading",
+  h3: "heading",
+  h4: "heading",
+  h5: "heading",
+  h6: "heading",
+  button: "button",
+  a: "link",
+  img: "img",
+  table: "table",
+  input: "textbox",
+  textarea: "textbox",
+  select: "listbox",
+  ul: "list",
+  ol: "list",
+  li: "listitem",
+  article: "article",
+  div: "generic",
+  span: "generic",
+};
+
 export interface SemanticA11yNode {
-  /** ARIA role (explicit via attribute or implicit via HTML element). */
   role: string;
-  /** Computed accessible name (aria-label, alt, title, or derived). */
   name?: string;
-  /** Heading level 1–6 (only present when role is "heading"). */
   level?: number;
-  /** Per-call scoped node ID, shared across all four sub-trees. B2-SG-006. */
   nodeId: number;
-  /**
-   * B2-UID-001: Canonical node identity across frames.
-   * Shaped as "{frameId}:{nodeId}" — e.g. "main:3" or "iframe-1:0".
-   */
   uid?: string;
-  /** Child nodes in document order. */
   children: SemanticA11yNode[];
-  /**
-   * Accessibility/actionability states (disabled, checked, expanded, etc.).
-   * Only present when non-empty. MCP-A11Y-002.
-   */
   states?: string[];
-  /**
-   * B2-VD-001: True when this node lives inside an open shadow DOM tree.
-   * Present only when piercesShadow traversal is active.
-   */
   inShadowRoot?: true;
-  /**
-   * B2-VD-002: The nodeId of the shadow host element that contains this node.
-   * Present only when inShadowRoot is true.
-   */
   shadowHostId?: number;
 }
 
-/**
- * A landmark region on the page.
- *
- * B2-SG-003: Represents an ARIA landmark (explicit or implicit).
- */
 export interface Landmark {
-  /** Landmark role (navigation, main, banner, etc.). */
   role: string;
-  /** Label from aria-label or aria-labelledby, if present. */
   label?: string;
-  /** Per-call scoped node ID. B2-SG-006. */
   nodeId: number;
-  /** HTML tag name (lowercase). */
   tag: string;
 }
 
-/**
- * A heading in the document outline.
- *
- * B2-SG-004: Represents an H1–H6 element in document order.
- */
 export interface OutlineHeading {
-  /** Heading level (1–6). */
   level: number;
-  /** Trimmed text content of the heading. */
   text: string;
-  /** Per-call scoped node ID. B2-SG-006. */
   nodeId: number;
-  /** Element id attribute, if present. */
   id?: string;
 }
 
-/**
- * A single form field within a form model.
- *
- * B2-SG-005: Represents an input, select, textarea, or button element.
- */
 export interface FormField {
-  /** HTML tag name (input, select, textarea, button). */
   tag: string;
-  /** The type attribute (text, email, submit, etc.). */
   type?: string;
-  /** The name attribute. */
   name?: string;
-  /** Associated label text or aria-label. */
   label?: string;
-  /** Whether the field is required. */
   required: boolean;
-  /** Current value (B2-SG-013: redacted for password fields). */
   value?: string;
-  /** Per-call scoped node ID. B2-SG-006. */
   nodeId: number;
-  /**
-   * B2-UID-001: Canonical node identity across frames.
-   * Shaped as "{frameId}:{nodeId}" — e.g. "main:3" or "iframe-1:0".
-   */
   uid?: string;
-  /** B2-FORM-EXT: HTML5 validation state — "valid", "invalid", or undefined if no constraint. */
-  validationState?: "valid" | "invalid";
-  /** B2-FORM-EXT: Validation message from the browser (constraint validator.message). */
-  validationMessage?: string;
-  /** B2-FORM-EXT: Whether the field is disabled. */
   disabled?: boolean;
-  /** B2-FORM-EXT: Whether the field is read-only. */
   readonly?: boolean;
-  /**
-   * B2-FORM-EXT: Constraint information for the field.
-   * Present for input/textarea/select elements with constraint validation attributes.
-   */
   constraints?: {
-    /** Minimum length (minlength attribute). */
     minLength?: number;
-    /** Maximum length (maxlength attribute). */
     maxLength?: number;
-    /** Minimum value (min attribute, for date/number types). */
-    min?: string | number;
-    /** Maximum value (max attribute, for date/number types). */
-    max?: string | number;
-    /** Pattern regex for pattern attribute. */
+    min?: number | string;
+    max?: number | string;
+    step?: number | string;
     pattern?: string;
-    /** Step attribute for numeric fields. */
-    step?: string | number;
   };
+  validationState?: "valid" | "invalid";
+  validationMessage?: string;
 }
 
-/**
- * A form model extracted from a <form> element.
- *
- * B2-SG-005: Includes the form's metadata and all contained fields.
- */
 export interface FormModel {
-  /** The form's id attribute, if present. */
   formId?: string;
-  /** The form's name attribute, if present. */
   name?: string;
-  /** The form action URL. */
   action?: string;
-  /** The form method (GET or POST). */
   method: string;
-  /** Per-call scoped node ID. B2-SG-006. */
   nodeId: number;
-  /**
-   * B2-UID-001: Canonical node identity across frames.
-   * Shaped as "{frameId}:{nodeId}" — e.g. "main:5".
-   */
   uid?: string;
-  /** Fields within this form. */
   fields: FormField[];
-  /**
-   * B2-FORM-EXT: Summary counts for the form's fields.
-   */
   summary?: {
-    /** Total number of fields. */
     total: number;
-    /** Number of optional (not-required) fields. */
     optional: number;
-    /** Number of disabled fields. */
     disabled: number;
   };
 }
 
-/**
- * Options for semantic graph collection.
- *
- * B2-SG-008: maxDepth limits the a11y tree nesting depth.
- * B2-SG-009: visibleOnly filters hidden elements.
- */
 export interface SemanticGraphOptions {
-  /** Maximum depth for a11y tree (default: 8, max: 16). B2-SG-008. */
   maxDepth?: number;
-  /** Exclude hidden elements from all sub-trees (default: true). B2-SG-009. */
   visibleOnly?: boolean;
-  /**
-   * B2-VD-001..004: Traverse open shadow DOM trees and annotate shadow nodes.
-   * Shadow children are marked with `inShadowRoot: true` and `shadowHostId`
-   * referencing the host element's nodeId. Default: false.
-   */
   piercesShadow?: boolean;
-  /** Internal SW-provided logical frame path used for stable uid identity. */
   logicalFrameId?: string;
 }
 
-/**
- * Result of semantic graph collection — includes full SnapshotEnvelope.
- *
- * B2-SG-001: Contains all four sub-trees.
- * B2-SG-007: Extends SnapshotEnvelope.
- * B2-SG-015: All sub-tree arrays are always present (empty if none found).
- */
-export interface SemanticGraphResult extends SnapshotEnvelope {
-  /** Page URL (normalized: origin + pathname). */
+export interface SemanticGraphResult {
+  pageId: string;
+  frameId: string;
+  snapshotId: string;
+  capturedAt: string;
+  viewport: {
+    width: number;
+    height: number;
+    scrollX: number;
+    scrollY: number;
+    devicePixelRatio: number;
+  };
+  source: "dom" | "a11y" | "visual" | "layout" | "network";
   pageUrl: string;
-  /** Page title. */
   title: string;
-  /** B2-SG-002: Accessibility tree snapshot. */
   a11yTree: SemanticA11yNode[];
-  /** B2-SG-003: Landmark regions. */
   landmarks: Landmark[];
-  /** B2-SG-004: Document heading outline (H1–H6). */
   outline: OutlineHeading[];
-  /** B2-SG-005: Form models. */
   forms: FormModel[];
 }

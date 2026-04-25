@@ -1216,7 +1216,6 @@ describe("M100-SNAP — Snapshot Versioning", () => {
      * return an error result rather than throwing.
      */
     it("B2-SV-001 invariant: inspectElement returns error for empty args", () => {
-      // @ts-expect-error — intentionally passing empty object to test validation
       const result = inspectElement({});
       // Should either return found: false or have an error field
       expect(result.found === false || "error" in result).toBe(true);

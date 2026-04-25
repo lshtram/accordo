@@ -145,6 +145,15 @@ export function browserActionToUnifiedTool(
                 context: {
                   surfaceMetadata: {
                     anchorKey: payload["anchorKey"] as string,
+                    ...(payload["anchorContext"] && typeof payload["anchorContext"] === "object"
+                      ? Object.fromEntries(
+                          Object.entries(payload["anchorContext"] as Record<string, unknown>).flatMap(([key, value]) =>
+                            typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+                              ? [[key, String(value)]]
+                              : [],
+                          ),
+                        )
+                      : {}),
                   },
                 },
               }

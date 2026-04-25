@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { PAIRING_CODE_ENDPOINT_PATH, PAIRING_CONFIRM_ENDPOINT_PATH } from "./relay-transport-constants.js";
 
 /** Duration (ms) a pairing code is valid before it expires. */
 export const PAIR_CODE_TTL_MS = 5 * 60 * 1000;
@@ -38,7 +39,7 @@ export function handlePairingHttpRequest(
     res.end(JSON.stringify(body));
   };
 
-  if (url.pathname === "/pair/code" && req.method === "GET") {
+  if (url.pathname === PAIRING_CODE_ENDPOINT_PATH && req.method === "GET") {
     if (!isAllowedOrigin) {
       json(403, { error: "forbidden" });
       return true;
@@ -48,7 +49,7 @@ export function handlePairingHttpRequest(
     return true;
   }
 
-  if (url.pathname === "/pair/confirm" && req.method === "POST") {
+  if (url.pathname === PAIRING_CONFIRM_ENDPOINT_PATH && req.method === "POST") {
     if (!isAllowedOrigin) {
       json(403, { error: "forbidden" });
       return true;

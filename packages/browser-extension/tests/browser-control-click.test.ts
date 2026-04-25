@@ -348,6 +348,7 @@ describe("handleClick — explicit coordinates", () => {
           iframes: [{ frameId: "comments-frame", src: "https://example.com/frame", sameOrigin: true, bounds: { x: 400, y: 300, width: 300, height: 200 } }],
         },
       })
+      .mockResolvedValueOnce({ data: { frameId: "comments-frame" } })
       .mockResolvedValueOnce({
         x: 150,
         y: 250,
@@ -359,7 +360,7 @@ describe("handleClick — explicit coordinates", () => {
     await handleClick(request);
 
     expect(globalThis.chrome.tabs.sendMessage).toHaveBeenNthCalledWith(
-      2,
+      3,
       1,
       expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", uid: "comments-frame:5" }),
       { frameId: 7 }
@@ -368,5 +369,71 @@ describe("handleClick — explicit coordinates", () => {
     const mousePressedCall = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls
       .find(([, method, params]) => method === "Input.dispatchMouseEvent" && params?.type === "mousePressed");
     expect(mousePressedCall?.[2]).toMatchObject({ x: 550, y: 550 });
+  });
+
+  it("routes nested iframe-scoped uid clicks using the full frame path", async () => {
+    (globalThis.chrome.webNavigation.getAllFrames as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com" },
+      { frameId: 7, parentFrameId: 0, url: "https://example.com/frame" },
+      { frameId: 11, parentFrameId: 7, url: "https://example.com/frame/nested" },
+    ]);
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: {
+          iframes: [{ frameId: "comments-frame", src: "https://example.com/frame", sameOrigin: true, bounds: { x: 400, y: 300, width: 300, height: 200 }, iframes: [{ frameId: "comments-frame/nested-frame", src: "https://example.com/frame/nested", sameOrigin: true, bounds: { x: 40, y: 50, width: 150, height: 100 } }] }],
+        },
+      })
+      .mockResolvedValueOnce({ data: { frameId: "comments-frame" } })
+      .mockResolvedValueOnce({ data: { frameId: "comments-frame/nested-frame" } })
+      .mockResolvedValueOnce({
+        x: 20,
+        y: 30,
+        bounds: { x: 10, y: 20, width: 20, height: 20 },
+        inViewport: true,
+      });
+
+    const request = makeRequest({ tabId: 1, uid: "comments-frame/nested-frame:5" });
+    await handleClick(request);
+
+    expect(globalThis.chrome.tabs.sendMessage).toHaveBeenNthCalledWith(
+      4,
+      1,
+      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", uid: "comments-frame/nested-frame:5" }),
+      { frameId: 11 }
+    );
+
+    const mousePressedCall = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls
+      .find(([, method, params]) => method === "Input.dispatchMouseEvent" && params?.type === "mousePressed");
+    expect(mousePressedCall?.[2]).toMatchObject({ x: 460, y: 380 });
+  });
+
+  it("routes srcdoc iframe clicks when page map marks the frame same-origin", async () => {
+    (globalThis.chrome.webNavigation.getAllFrames as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com" },
+      { frameId: 12, parentFrameId: 0, url: "about:srcdoc" },
+    ]);
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: {
+          iframes: [{ frameId: "srcdoc-frame", src: "about:srcdoc", sameOrigin: true, bounds: { x: 200, y: 100, width: 300, height: 200 } }],
+        },
+      })
+      .mockResolvedValueOnce({ data: { frameId: "srcdoc-frame" } })
+      .mockResolvedValueOnce({
+        x: 15,
+        y: 25,
+        bounds: { x: 10, y: 20, width: 10, height: 10 },
+        inViewport: true,
+      });
+
+    const request = makeRequest({ tabId: 1, uid: "srcdoc-frame:3" });
+    await handleClick(request);
+
+    expect(globalThis.chrome.tabs.sendMessage).toHaveBeenNthCalledWith(
+      3,
+      1,
+      expect.objectContaining({ type: "RESOLVE_ELEMENT_COORDS", uid: "srcdoc-frame:3" }),
+      { frameId: 12 }
+    );
   });
 });

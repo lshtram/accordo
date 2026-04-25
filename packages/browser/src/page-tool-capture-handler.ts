@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { hasSnapshotEnvelope } from "./types.js";
@@ -11,6 +10,7 @@ import { checkOrigin, DEFAULT_SECURITY_CONFIG, extractOrigin, mergeOriginPolicy 
 import { buildStructuredError } from "./page-tool-types.js";
 import type { CaptureRegionArgs, CaptureRegionResponse, PageToolError } from "./page-tool-types.js";
 import { CAPTURE_REGION_TIMEOUT_MS, classifyRelayError } from "./page-tool-types.js";
+import { DEFAULT_SCREENSHOTS_DIR } from "./browser-paths.js";
 
 export async function handleCaptureRegion(
   relay: BrowserRelayLike,
@@ -74,8 +74,7 @@ export async function handleCaptureRegion(
         result.artifactMode = "inline";
         if (args.transport !== "inline" && typeof result.dataUrl === "string") {
           try {
-            const screenshotsDir = process.env["ACCORDO_SCREENSHOTS_DIR"]
-              ?? path.join(os.homedir(), ".accordo", "screenshots");
+            const screenshotsDir = process.env["ACCORDO_SCREENSHOTS_DIR"] ?? DEFAULT_SCREENSHOTS_DIR;
             fs.mkdirSync(screenshotsDir, { recursive: true });
             const ext = args.format ?? "jpeg";
             const filename = `${result.auditId ?? crypto.randomUUID()}.${ext}`;

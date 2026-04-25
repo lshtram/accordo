@@ -5,6 +5,8 @@ import { deleteMissingReplies, getActiveLocalCommentIds } from "./comment-sync-r
 import type { GetCommentsResponse, RemoteBrowserThread } from "./comment-sync-types.js";
 import { remoteCommentToReplyArgs, remoteThreadToCreateArgs } from "./comment-sync-mappers.js";
 
+export const COMMENT_SYNC_RELAY_TIMEOUT_MS = 5000;
+
 export async function syncBrowserComments(
   relay: BrowserRelayLike,
   bridge: BrowserBridgeAPI,
@@ -12,7 +14,7 @@ export async function syncBrowserComments(
 ): Promise<"success" | "partial"> {
   let pagesResult: BrowserRelayResponse;
   try {
-    pagesResult = await relay.request("get_all_comments", {}, 5000);
+    pagesResult = await relay.request("get_all_comments", {}, COMMENT_SYNC_RELAY_TIMEOUT_MS);
   } catch {
     out.appendLine("[accordo-browser:comment-sync] get_all_comments failed — skipping sync");
     return "partial";
@@ -32,7 +34,7 @@ export async function syncBrowserComments(
   let anyPageFailed = false;
 
   for (const page of pages) {
-    const pageResult = await relay.request("get_comments", { url: page.url }, 5000);
+    const pageResult = await relay.request("get_comments", { url: page.url }, COMMENT_SYNC_RELAY_TIMEOUT_MS);
     if (!pageResult.success) {
       out.appendLine(`[accordo-browser:comment-sync] get_comments failed for ${page.url} — continuing`);
       anyPageFailed = true;

@@ -2,6 +2,8 @@ import type { SnapshotEnvelopeFields } from "./types.js";
 
 /** Relay timeout for text map collection (ms). */
 export const TEXT_MAP_TIMEOUT_MS = 10_000;
+export const TEXT_MAP_DEFAULT_MAX_SEGMENTS = 500;
+export const TEXT_MAP_MAX_SEGMENTS = 2000;
 
 export interface GetTextMapArgs {
   tabId?: number;

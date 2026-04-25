@@ -3,6 +3,7 @@ import type { SharedRelayClientOptions } from "./shared-relay-types.js";
 import { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import { pushViaSharedRelay, requestViaSharedRelay } from "./shared-relay-client-requests.js";
+import { DEFAULT_RELAY_REQUEST_TIMEOUT_MS } from "./relay-transport-constants.js";
 
 export class SharedRelayClient implements BrowserRelayLike {
   onError?: (error: string) => void;
@@ -129,7 +130,7 @@ export class SharedRelayClient implements BrowserRelayLike {
     this.pending.clear();
   }
 
-  async request(action: BrowserRelayAction, payload: Record<string, unknown>, timeoutMs: number = 3000): Promise<BrowserRelayResponse> {
+  async request(action: BrowserRelayAction, payload: Record<string, unknown>, timeoutMs: number = DEFAULT_RELAY_REQUEST_TIMEOUT_MS): Promise<BrowserRelayResponse> {
     return await requestViaSharedRelay(this.ws, this.options.hubId, action, payload, this.pending, this.onError, timeoutMs);
   }
 

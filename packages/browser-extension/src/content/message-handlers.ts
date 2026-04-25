@@ -8,43 +8,18 @@ import {
   dbg, dbgErr, assertMessageSuccess,
   getSdk, wireSdkCallbacks, loadAndRenderPins,
 } from "./comment-ui.js";
+import {
+  handleCaptureSnapshotEnvelopeMessage,
+  handleFocusElementMessage,
+  handlePageUnderstandingActionMessage,
+  handleResolveAnchorBoundsMessage,
+  handleResolveElementCoordsMessage,
+  handleScrollElementIntoViewMessage,
+  handleTypeInElementMessage,
+} from "./message-page-actions.js";
 import { openSdkComposerAtAnchor } from "./sdk-convergence.js";
 
 const STORAGE_KEY = "commentsMode";
-
-type InspectPayload =
-  | { uid: string; ref?: string; selector?: string }
-  | { nodeId: number }
-  | { ref: string; selector?: string }
-  | { selector: string };
-
-function toInspectPayload(raw: Record<string, unknown>): InspectPayload {
-  const uid = typeof raw.uid === "string" && raw.uid.length > 0
-    ? raw.uid
-    : undefined;
-  const ref = typeof raw.ref === "string" && raw.ref.length > 0
-    ? raw.ref
-    : undefined;
-  const selector = typeof raw.selector === "string" && raw.selector.length > 0
-    ? raw.selector
-    : undefined;
-
-  if (uid !== undefined) {
-    return { uid, ref, selector };
-  }
-  if (ref !== undefined) {
-    return { ref, selector };
-  }
-  if (selector !== undefined) {
-    return { selector };
-  }
-  if (typeof raw.nodeId === "number") {
-    return { nodeId: raw.nodeId };
-  }
-  return { selector: "" };
-}
-
-// ── Message wrappers ──────────────────────────────────────────────────────────────
 
 async function submitNewComment(anchorKey: string, body: string, anchorContext?: BrowserCommentThread["anchorContext"]): Promise<void> {
   try {
@@ -86,280 +61,58 @@ async function deleteCommentOrThread(threadId: string, commentId?: string): Prom
   } catch (err) { dbgErr(`deleteCommentOrThread: ${(err as Error)?.message ?? err}`); }
 }
 
-// ── SDK callback wiring ───────────────────────────────────────────────────────────
-
 wireSdkCallbacks({ onCreate: submitNewComment, onReply: addReply, onResolve: resolveThread, onReopen: reopenThread, onDelete: deleteCommentOrThread });
-
-// ── State sync ───────────────────────────────────────────────────────────────────
 
 async function syncFromStorage(): Promise<void> {
   try {
     const response = await chrome.runtime.sendMessage({ type: "GET_TAB_COMMENTS_MODE" });
     const isOn = (response?.isOn as boolean | undefined) ?? false;
-    if (isOn) { await activateCommentsModeFromHandlers(); } else { deactivateCommentsModeFromHandlers(); }
+    if (isOn) { await activateCommentsModeFromHandlers(); } else { await deactivateCommentsModeFromHandlers(); }
   } catch (err) { dbgErr(`syncFromStorage: ${(err as Error)?.message ?? err}`); }
 }
 
 async function activateCommentsModeFromHandlers(): Promise<void> { const { activateCommentsMode } = await import("./comment-ui.js"); await activateCommentsMode(); }
-function deactivateCommentsModeFromHandlers(): void { const { deactivateCommentsMode } = require("./comment-ui.js"); deactivateCommentsMode(); }
+async function deactivateCommentsModeFromHandlers(): Promise<void> { const { deactivateCommentsMode } = await import("./comment-ui.js"); deactivateCommentsMode(); }
 
-async function resolveElementTarget(uid?: string, selector?: string): Promise<Element | null> {
-  let element: Element | null = null;
-
-  if (uid) {
-    const { getElementByRef } = await import("./page-map-traversal.js");
-    element = getElementByRef(uid) ?? null;
-    if (!element) {
-      const colonIdx = uid.indexOf(":");
-      if (colonIdx >= 0) {
-        const nodeId = Number.parseInt(uid.slice(colonIdx + 1), 10);
-        if (!Number.isNaN(nodeId)) {
-          element = getElementByRef(`ref-${nodeId}`) ?? null;
-        }
-      }
-    }
-    if (!element) {
-      const { resolveAnchorKey } = await import("./enhanced-anchor.js");
-      element = resolveAnchorKey(uid);
-    }
-  }
-
-  if (!element && selector) {
-    element = document.querySelector(selector);
-  }
-
-  return element;
-}
-
-function typeIntoResolvedElement(element: Element, text: string, clearFirst: boolean): { typed: true } | { error: string } {
-  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-    element.focus();
-
-    const start = clearFirst ? 0 : (element.selectionStart ?? element.value.length);
-    const end = clearFirst ? element.value.length : (element.selectionEnd ?? element.value.length);
-    const nextValue = `${element.value.slice(0, start)}${text}${element.value.slice(end)}`;
-
-    element.value = nextValue;
-    const caret = start + text.length;
-    element.setSelectionRange(caret, caret);
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
-    return { typed: true };
-  }
-
-  if (element instanceof HTMLElement && element.isContentEditable) {
-    element.focus();
-    element.textContent = clearFirst ? text : `${element.textContent ?? ""}${text}`;
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
-    return { typed: true };
-  }
-
-  return { error: "not-focusable" };
-}
-
-function scrollResolvedElementIntoView(element: Element): { scrolled: true } {
-  element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
-  return { scrolled: true };
-}
-
-function getLocalIframeKey(iframe: HTMLIFrameElement, index: number): string {
-  if (iframe.name && iframe.name.trim() !== "") {
-    return iframe.name;
-  }
-  if (iframe.id && iframe.id.trim() !== "") {
-    return iframe.id;
-  }
-  return `iframe-${index}`;
-}
-
-function getLogicalFrameId(): string {
-  try {
-    if (window.top === window) {
-      return "main";
-    }
-
-    const parts: string[] = [];
-    let currentWindow: Window = window;
-
-    while (currentWindow.top !== currentWindow) {
-      const frameElement = currentWindow.frameElement;
-      if (!(frameElement instanceof HTMLIFrameElement)) {
-        return "main";
-      }
-
-      const parentDoc = currentWindow.parent.document;
-      const parentFrames = Array.from(parentDoc.querySelectorAll("iframe"));
-      const index = parentFrames.indexOf(frameElement);
-      parts.unshift(getLocalIframeKey(frameElement, index >= 0 ? index : 0));
-      currentWindow = currentWindow.parent;
-    }
-
-    return parts.join("/") || "main";
-  } catch {
-    return "main";
-  }
-}
-
-// ── Message listener ──────────────────────────────────────────────────────────────
-
-chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown }, _sender, _sendResponse: (response: unknown) => void) => {
+chrome.runtime.onMessage.addListener((message: { type: string; payload?: unknown }, _sender, sendResponse: (response: unknown) => void) => {
   switch (message.type) {
     case "PAGE_UNDERSTANDING_ACTION": {
       const { action, payload } = message as { type: string; action: string; payload: Record<string, unknown> };
-      void (async (): Promise<void> => {
-        try {
-          let data: unknown;
-          if (action === "get_page_map") {
-            const { collectPageMap } = await import("./page-map-collector.js");
-            data = collectPageMap(payload as Parameters<typeof collectPageMap>[0]);
-            // Save to CS-local store so diff_snapshots fallback can access snapshots
-            // even after a service worker restart wipes the SW's in-memory store.
-            const { defaultStore, isVersionedSnapshot } = await import("../relay-definitions.js");
-            if (isVersionedSnapshot(data)) { await defaultStore.save((data as { pageId: string }).pageId, data as Parameters<typeof defaultStore.save>[1]); }
-          }
-          else if (action === "inspect_element") {
-            const { inspectElement } = await import("./element-inspector.js");
-            data = inspectElement(toInspectPayload(payload));
-          }
-          else if (action === "get_dom_excerpt") { const { getDomExcerpt } = await import("./element-inspector.js"); const { selector = "body", maxDepth, maxLength } = payload as { selector?: string; maxDepth?: number; maxLength?: number }; data = getDomExcerpt(selector, maxDepth, maxLength); }
-          else if (action === "wait_for") { const { handleWaitForAction } = await import("./wait-provider.js"); data = await handleWaitForAction(payload); }
-          else if (action === "get_text_map") { const { collectTextMap } = await import("./text-map-collector.js"); data = collectTextMap(payload as Parameters<typeof collectTextMap>[0]); }
-          else if (action === "get_semantic_graph") { const { collectSemanticGraph } = await import("./semantic-graph-collector.js"); data = collectSemanticGraph(payload as Parameters<typeof collectSemanticGraph>[0]); }
-          else if (action === "get_frame_path") { data = { frameId: getLogicalFrameId() }; }
-          else if (action === "get_spatial_relations") { const { handleGetSpatialRelationsAction } = await import("./spatial-relations-handler.js"); const result = handleGetSpatialRelationsAction(payload); if ("error" in result) { _sendResponse({ error: result["error"] }); return; } data = result["data"]; }
-          else if (action === "diff_snapshots") {
-            const { defaultStore } = await import("../relay-definitions.js");
-            const { computeDiff } = await import("../diff-engine.js");
-            const fromId = typeof payload.fromSnapshotId === "string" ? payload.fromSnapshotId : undefined;
-            const toId = typeof payload.toSnapshotId === "string" ? payload.toSnapshotId : undefined;
-            if (!fromId || !toId) { _sendResponse({ error: "invalid-request" }); return; }
-            const fromResult = await defaultStore.get(fromId);
-            if ("error" in fromResult) {
-              const errCode = defaultStore.isStale(fromId) ? "snapshot-stale" : "snapshot-not-found";
-              _sendResponse({ error: errCode }); return;
-            }
-            const toResult = await defaultStore.get(toId);
-            if ("error" in toResult) {
-              const errCode = defaultStore.isStale(toId) ? "snapshot-stale" : "snapshot-not-found";
-              _sendResponse({ error: errCode }); return;
-            }
-            data = computeDiff(fromResult, toResult);
-          }
-          else { _sendResponse({ error: "unsupported-action" }); return; }
-          _sendResponse({ data });
-        } catch { _sendResponse({ error: "action-failed" }); }
-      })();
+      void handlePageUnderstandingActionMessage(action, payload, sendResponse);
       return true;
     }
     case "CAPTURE_SNAPSHOT_ENVELOPE": {
       const { source } = (message as { type: string; source?: "dom" | "visual" });
-      void (async (): Promise<void> => { try { const { captureSnapshotEnvelope } = await import("../snapshot-versioning.js"); _sendResponse(captureSnapshotEnvelope(source ?? "dom")); } catch { _sendResponse({ error: "envelope-failed" }); } })();
+      void handleCaptureSnapshotEnvelopeMessage(source, sendResponse);
       return true;
     }
     case "RESOLVE_ANCHOR_BOUNDS": {
       const { anchorKey, nodeRef, padding = 8 } = (message as { anchorKey?: string; nodeRef?: string; padding?: number });
-      void (async (): Promise<void> => {
-        try {
-          const { resolveAnchorKey } = await import("./enhanced-anchor.js");
-          const { getElementByRef } = await import("./page-map-traversal.js");
-          if (!anchorKey && !nodeRef) { _sendResponse({ error: "no-ref" }); return; }
-          const element = nodeRef
-            ? getElementByRef(nodeRef)
-            : anchorKey
-              ? resolveAnchorKey(anchorKey)
-              : null;
-          if (!element) { _sendResponse({ error: "not-found" }); return; }
-          const rect = element.getBoundingClientRect();
-          // CR-F-12: Detect element-off-screen — bounding box is entirely outside viewport
-          if (rect.right < 0 || rect.bottom < 0 || rect.left > window.innerWidth || rect.top > window.innerHeight) {
-            _sendResponse({ error: "element-off-screen" }); return;
-          }
-          const pad = typeof padding === "number" ? padding : 8;
-          _sendResponse({ bounds: { x: Math.max(0, rect.left - pad), y: Math.max(0, rect.top + window.scrollY - pad), width: rect.width + pad * 2, height: rect.height + pad * 2 } });
-        } catch { _sendResponse({ error: "action-failed" }); }
-      })();
+      void handleResolveAnchorBoundsMessage(anchorKey, nodeRef, padding, sendResponse);
       return true;
     }
     case "RESOLVE_ELEMENT_COORDS": {
-      void (async (): Promise<void> => {
-        const { uid, selector } = (message as { uid?: string; selector?: string });
-        if (!uid && !selector) {
-          _sendResponse({ error: "no-identifier" }); return;
-        }
-        const element = await resolveElementTarget(uid, selector);
-        if (!element) {
-          _sendResponse({ error: "not-found" }); return;
-        }
-        const rect = element.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) {
-          _sendResponse({ error: "zero-size" }); return;
-        }
-        const x = rect.left + rect.width / 2;
-        const y = rect.top + rect.height / 2;
-        const inViewport = x >= 0 && y >= 0 && x <= window.innerWidth && y <= window.innerHeight;
-        _sendResponse({ x, y, bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height }, inViewport });
-      })();
+      const { uid, selector } = (message as { uid?: string; selector?: string });
+      void handleResolveElementCoordsMessage(uid, selector, sendResponse);
       return true;
     }
     case "FOCUS_ELEMENT": {
-      void (async (): Promise<void> => {
-        const { uid, selector, clearFirst } = (message as { uid?: string; selector?: string; clearFirst?: boolean });
-        if (!uid && !selector) {
-          _sendResponse({ error: "no-identifier" }); return;
-        }
-        const element = await resolveElementTarget(uid, selector);
-        if (!element) {
-          _sendResponse({ error: "not-found" }); return;
-        }
-
-        const focusable = element as HTMLElement & { focus?: () => void; select?: () => void };
-        if (typeof focusable.focus !== "function") {
-          _sendResponse({ error: "not-focusable" }); return;
-        }
-
-        focusable.focus();
-        if (clearFirst === true && (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) && typeof focusable.select === "function") {
-          focusable.select();
-        }
-
-        _sendResponse({ focused: document.activeElement === element });
-      })();
+      const { uid, selector, clearFirst } = (message as { uid?: string; selector?: string; clearFirst?: boolean });
+      void handleFocusElementMessage(uid, selector, clearFirst, sendResponse);
       return true;
     }
     case "TYPE_IN_ELEMENT": {
-      void (async (): Promise<void> => {
-        const { uid, selector, text, clearFirst } = (message as { uid?: string; selector?: string; text?: string; clearFirst?: boolean });
-        if ((!uid && !selector) || typeof text !== "string") {
-          _sendResponse({ error: "no-identifier" }); return;
-        }
-        const element = await resolveElementTarget(uid, selector);
-        if (!element) {
-          _sendResponse({ error: "not-found" }); return;
-        }
-
-        const result = typeIntoResolvedElement(element, text, clearFirst === true);
-        _sendResponse(result);
-      })();
+      const { uid, selector, text, clearFirst } = (message as { uid?: string; selector?: string; text?: string; clearFirst?: boolean });
+      void handleTypeInElementMessage(uid, selector, text, clearFirst, sendResponse);
       return true;
     }
     case "SCROLL_ELEMENT_INTO_VIEW": {
-      void (async (): Promise<void> => {
-        const { uid, selector } = (message as { uid?: string; selector?: string });
-        if (!uid && !selector) {
-          _sendResponse({ error: "no-identifier" }); return;
-        }
-        const element = await resolveElementTarget(uid, selector);
-        if (!element) {
-          _sendResponse({ error: "not-found" }); return;
-        }
-
-        _sendResponse(scrollResolvedElementIntoView(element));
-      })();
+      const { uid, selector } = (message as { uid?: string; selector?: string });
+      void handleScrollElementIntoViewMessage(uid, selector, sendResponse);
       return true;
     }
     case "comments-mode-on": void activateCommentsModeFromHandlers(); break;
-    case "comments-mode-off": deactivateCommentsModeFromHandlers(); break;
+    case "comments-mode-off": void deactivateCommentsModeFromHandlers(); break;
     case "COMMENTS_UPDATED": void loadAndRenderPins(); break;
     case "show-comment-form-at-cursor": openSdkComposerAtAnchor(document.body, "body:0:center", window.innerWidth / 2, 60); break;
     case "scroll-to-thread": { const { threadId } = (message.payload as { threadId: string }) ?? {}; if (threadId) { const sdk = getSdk(); if (sdk) sdk.openPopover(threadId); } break; }

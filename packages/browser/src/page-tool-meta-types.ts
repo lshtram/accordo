@@ -1,5 +1,6 @@
 import type { SnapshotEnvelopeFields } from "./types.js";
 import type { CaptureError } from "./page-tool-capture-types.js";
+import { RELAY_RECOVERY_HINTS, RELAY_RETRY_AFTER_MS, classifyThrownRelayError } from "./relay-error-policy.js";
 
 export interface ListPagesArgs {
   tabId?: number;
@@ -79,43 +80,17 @@ export const SEMANTIC_GRAPH_TIMEOUT_MS = 15_000;
 export const TAB_MGMT_TIMEOUT_MS = 5_000;
 
 export function classifyRelayError(err: unknown): "timeout" | "browser-not-connected" {
-  if (err instanceof Error) {
-    if (err.message.includes("not-connected") || err.message.includes("disconnected")) {
-      return "browser-not-connected";
-    }
-    return "timeout";
-  }
-  return "timeout";
+  return classifyThrownRelayError(err);
 }
-
-const TRANSIENT_ERRORS: Record<string, number> = {
-  "browser-not-connected": 2000,
-  timeout: 1000,
-  "action-failed": 1000,
-  "detached-node": 1000,
-  "capture-failed": 2000,
-  "element-off-screen": 1000,
-};
-
-const RECOVERY_HINTS: Record<string, string> = {
-  "browser-not-connected": "Check that the browser relay is running and the Chrome extension is connected.",
-  timeout: "The operation timed out. Retry with a longer timeout or verify the page has loaded.",
-  "action-failed": "The browser action failed. The element may have changed — take a fresh snapshot and retry.",
-  "detached-node": "The target element was removed from the DOM. Take a new snapshot to find the updated element.",
-  "capture-failed": "Screenshot capture failed. The tab may still be loading — wait briefly and retry.",
-  "element-off-screen": "The element is outside the visible viewport. Scroll it into view before retrying.",
-  "origin-blocked": "This origin is blocked by the security policy. Check allowedOrigins/deniedOrigins.",
-  "invalid-request": "The request parameters are invalid. Check required fields and value constraints.",
-};
 
 export function buildStructuredError(
   errorCode: string,
   details?: string,
   extra?: { pageUrl?: null; found?: false },
 ): PageToolError {
-  const retryable = errorCode in TRANSIENT_ERRORS;
-  const retryAfterMs = retryable ? TRANSIENT_ERRORS[errorCode] : undefined;
-  const recoveryHints = RECOVERY_HINTS[errorCode];
+  const retryAfterMs = RELAY_RETRY_AFTER_MS[errorCode as keyof typeof RELAY_RETRY_AFTER_MS];
+  const retryable = retryAfterMs !== undefined;
+  const recoveryHints = RELAY_RECOVERY_HINTS[errorCode as keyof typeof RELAY_RECOVERY_HINTS];
 
   return {
     success: false,

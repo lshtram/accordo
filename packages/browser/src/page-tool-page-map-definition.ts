@@ -3,6 +3,7 @@ import type { BrowserRelayLike } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
 import { handleGetPageMap, type GetPageMapArgs } from "./page-tool-handlers.js";
+import { PAGE_MAP_DEFAULT_MAX_NODES, PAGE_MAP_MAX_NODES } from "./page-tool-page-map-types.js";
 
 export function buildGetPageMapTool(
   relay: BrowserRelayLike,
@@ -24,7 +25,7 @@ export function buildGetPageMapTool(
       properties: {
         tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
         maxDepth: { type: "number", description: "Maximum DOM tree depth (default 4, max 8)" },
-        maxNodes: { type: "number", description: "Maximum number of nodes (default 200, max 500)", maximum: 500 },
+        maxNodes: { type: "number", description: `Maximum number of nodes (default ${PAGE_MAP_DEFAULT_MAX_NODES}, max ${PAGE_MAP_MAX_NODES})`, maximum: PAGE_MAP_MAX_NODES },
         includeBounds: { type: "boolean", description: "Include bounding box coordinates" },
         viewportOnly: { type: "boolean", description: "Only visible elements in viewport" },
         visibleOnly: { type: "boolean", description: "B2-FI-001: Only elements visible in current viewport" },
@@ -40,7 +41,7 @@ export function buildGetPageMapTool(
         deniedOrigins: { type: "array", items: { type: "string" }, description: "Block data from these origins. Takes precedence over allowedOrigins." },
         redactPII: { type: "boolean", description: "I1-text: When true, scan text content for PII and replace with [REDACTED]." },
         offset: { type: "number", description: "Pagination offset — 0-based index of first node to return (default: 0)." },
-        limit: { type: "number", description: "Pagination limit — max nodes to return (default: effective cap = min(maxNodes ?? 200, 500))." },
+        limit: { type: "number", description: `Pagination limit — max nodes to return (default: effective cap = min(maxNodes ?? ${PAGE_MAP_DEFAULT_MAX_NODES}, ${PAGE_MAP_MAX_NODES})).` },
       },
     },
     dangerLevel: "safe",

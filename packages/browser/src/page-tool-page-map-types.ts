@@ -1,5 +1,8 @@
 import type { SnapshotEnvelopeFields } from "./types.js";
 
+export const PAGE_MAP_DEFAULT_MAX_NODES = 200;
+export const PAGE_MAP_MAX_NODES = 500;
+
 export interface GetPageMapArgs {
   tabId?: number;
   maxDepth?: number;

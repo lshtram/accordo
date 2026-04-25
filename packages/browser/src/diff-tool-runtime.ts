@@ -2,6 +2,7 @@ import { hasSnapshotEnvelope } from "./types.js";
 import type { BrowserRelayLike } from "./types.js";
 import { RETENTION_SLOTS, type SnapshotRetentionStore } from "./snapshot-retention.js";
 import { DIFF_TIMEOUT_MS, type DiffToolError, type EvictionHint } from "./diff-tool-contracts.js";
+import { classifyThrownRelayError, getRelayRetryAfterMs } from "./relay-error-policy.js";
 
 export function normalizeSnapshotId(id: string | undefined): string | undefined {
   if (id === undefined) return undefined;
@@ -16,16 +17,6 @@ export function parseSnapshotId(id: string): { pageId: string; version: number }
   const version = parseInt(id.slice(lastColon + 1), 10);
   if (isNaN(version)) return null;
   return { pageId, version };
-}
-
-export function classifyRelayError(err: unknown): "timeout" | "browser-not-connected" {
-  if (err instanceof Error) {
-    if (err.message.includes("not-connected") || err.message.includes("disconnected")) {
-      return "browser-not-connected";
-    }
-    return "timeout";
-  }
-  return "timeout";
 }
 
 export function extractRelayErrorCode(
@@ -49,10 +40,10 @@ export function extractRelayErrorCode(
 
 export function buildTransientRelayError(topLevelError?: unknown): DiffToolError | undefined {
   if (topLevelError === "browser-not-connected") {
-    return { success: false, error: "browser-not-connected", retryable: true, retryAfterMs: 2000 };
+    return { success: false, error: "browser-not-connected", retryable: true, retryAfterMs: getRelayRetryAfterMs("browser-not-connected") };
   }
   if (topLevelError === "timeout") {
-    return { success: false, error: "timeout", retryable: true, retryAfterMs: 1000 };
+    return { success: false, error: "timeout", retryable: true, retryAfterMs: getRelayRetryAfterMs("timeout") };
   }
   return undefined;
 }
@@ -67,8 +58,8 @@ export async function resolveFreshSnapshot(
   try {
     freshResponse = await relay.request("get_page_map", payload, DIFF_TIMEOUT_MS);
   } catch (err: unknown) {
-    const error = classifyRelayError(err);
-    return { success: false, error, retryable: true, retryAfterMs: error === "browser-not-connected" ? 2000 : 1000 };
+    const error = classifyThrownRelayError(err);
+    return { success: false, error, retryable: true, retryAfterMs: getRelayRetryAfterMs(error) };
   }
 
   if (!freshResponse.success) {
@@ -103,8 +94,8 @@ export async function resolveFromSnapshot(
       return { success: false, error: "action-failed", retryable: false };
     }
   } catch (err: unknown) {
-    const error = classifyRelayError(err);
-    return { success: false, error, retryable: true, retryAfterMs: error === "browser-not-connected" ? 2000 : 1000 };
+    const error = classifyThrownRelayError(err);
+    return { success: false, error, retryable: true, retryAfterMs: getRelayRetryAfterMs(error) };
   }
 
   const lastColon = toSnapshotId.lastIndexOf(":");

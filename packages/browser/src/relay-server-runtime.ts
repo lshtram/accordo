@@ -3,6 +3,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { BrowserRelayAction, BrowserRelayLike, BrowserRelayResponse } from "./types.js";
 import { isAuthorizedToken } from "./relay-auth.js";
 import { pushToBrowserClient, requestFromBrowserClient } from "./relay-server-requests.js";
+import { DEFAULT_RELAY_REQUEST_TIMEOUT_MS } from "./relay-transport-constants.js";
 
 interface RelayServerOptions {
   port: number;
@@ -134,7 +135,7 @@ export class BrowserRelayServer implements BrowserRelayLike {
     pushToBrowserClient(this.client, action, payload);
   }
 
-  async request(action: BrowserRelayAction, payload: Record<string, unknown>, timeoutMs = 3000): Promise<BrowserRelayResponse> {
+  async request(action: BrowserRelayAction, payload: Record<string, unknown>, timeoutMs = DEFAULT_RELAY_REQUEST_TIMEOUT_MS): Promise<BrowserRelayResponse> {
     return await requestFromBrowserClient(
       this.client,
       action,

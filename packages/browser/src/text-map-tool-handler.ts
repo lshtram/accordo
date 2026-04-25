@@ -4,21 +4,12 @@ import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
 import { extractOrigin, mergeOriginPolicy, redactTextMapResponse } from "./security/index.js";
 import { buildStructuredError } from "./page-tool-types.js";
-import { TEXT_MAP_TIMEOUT_MS, type GetTextMapArgs, type TextMapResponse, type TextMapToolError } from "./text-map-tool-contracts.js";
+import { TEXT_MAP_DEFAULT_MAX_SEGMENTS, TEXT_MAP_MAX_SEGMENTS, TEXT_MAP_TIMEOUT_MS, type GetTextMapArgs, type TextMapResponse, type TextMapToolError } from "./text-map-tool-contracts.js";
 import { runPageToolPipeline } from "./page-tool-pipeline.js";
+import { classifyThrownRelayError } from "./relay-error-policy.js";
 
 interface AuditedTextMapResponse extends TextMapResponse {
   auditId?: string;
-}
-
-function classifyTextMapRelayError(err: unknown): "timeout" | "browser-not-connected" {
-  if (err instanceof Error) {
-    if (err.message.includes("not-connected") || err.message.includes("disconnected")) {
-      return "browser-not-connected";
-    }
-    return "timeout";
-  }
-  return "timeout";
 }
 
 export async function handleGetTextMap(
@@ -27,7 +18,7 @@ export async function handleGetTextMap(
   store: SnapshotRetentionStore,
   security: SecurityConfig,
 ): Promise<TextMapResponse | TextMapToolError> {
-  const effectiveCap = Math.min(args.maxSegments ?? 500, 2000);
+  const effectiveCap = Math.min(args.maxSegments ?? TEXT_MAP_DEFAULT_MAX_SEGMENTS, TEXT_MAP_MAX_SEGMENTS);
   const clampedOffset = Math.max(0, args.offset ?? 0);
   const clampedLimit = args.limit !== undefined
     ? Math.min(Math.max(1, args.limit), effectiveCap)
@@ -70,7 +61,7 @@ export async function handleGetTextMap(
           : errCode === "no-content-script" ? "no-content-script"
           : "action-failed";
       },
-      mapThrownError: classifyTextMapRelayError,
+      mapThrownError: classifyThrownRelayError,
       extractOrigin: (response) => {
         const relayPageUrl = response.pageUrl;
         return relayPageUrl ? extractOrigin(relayPageUrl) ?? relayPageUrl : undefined;

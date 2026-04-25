@@ -519,7 +519,7 @@ No changes to comment storage, content script, or service worker.
 ## 8. Module List (current runtime)
 
 > Historical v1 module naming (for example `src/background/*`, `src/mcp/*`, `pin-renderer.ts`) has been superseded.
-> The canonical live module inventory is tracked in `docs/module-map-browser-extension.md`.
+> The canonical live module inventory is tracked in `docs/30-development/module-maps/module-map-browser-extension.md`.
 
 | Area | Current files | Responsibility |
 |---|---|---|
@@ -736,7 +736,7 @@ Agent (MCP) -> accordo-hub -> accordo-bridge -> accordo-browser (new VS Code ext
 Session 14 migrates browser comments from a browser-specific public tool family to the shared comments modality contract.
 
 1. **Unified public MCP tools**
-   - Browser operations are invoked via `accordo_comment_*` with `scope.modality = "browser"`.
+   - Browser operations are invoked via canonical `comment_*` tools with `scope.modality = "browser"`.
    - Browser-specific comment CRUD aliases are no longer the canonical public path.
 
 2. **Panel unification**

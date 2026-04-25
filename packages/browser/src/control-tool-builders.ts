@@ -1,8 +1,11 @@
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { BrowserRelayLike } from "./types.js";
 import {
+  CONTROL_ACTION_TIMEOUT_MS,
   type ClickArgs,
   type NavigateArgs,
+  NAVIGATE_DEFAULT_TIMEOUT_MS,
+  NAVIGATE_MAX_TIMEOUT_MS,
   type PressKeyArgs,
   type TypeArgs,
 } from "./control-tool-contracts.js";
@@ -18,7 +21,7 @@ export function buildNavigateTool(relay: BrowserRelayLike): ExtensionToolDefinit
         tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
         type: { type: "string", enum: ["url", "back", "forward", "reload"], description: "Navigation type. Default: 'url'" },
         url: { type: "string", description: "Target URL (required when type is 'url')" },
-        timeout: { type: "number", description: "Maximum wait time for navigation in ms (default: 15000, max: 30000)" },
+        timeout: { type: "number", description: `Maximum wait time for navigation in ms (default: ${NAVIGATE_DEFAULT_TIMEOUT_MS}, max: ${NAVIGATE_MAX_TIMEOUT_MS})` },
         waitUntil: { type: "string", enum: ["load", "domcontentloaded", "networkidle"], description: "GAP-A1: Wait for document readyState before returning. Default: 'domcontentloaded'" },
       },
     },
@@ -44,7 +47,7 @@ export function buildClickTool(relay: BrowserRelayLike): ExtensionToolDefinition
           properties: { x: { type: "number" }, y: { type: "number" } },
           required: ["x", "y"],
         },
-        dblClick: { type: "boolean", description: "Whether to double-click. Default: false" },
+        dblClick: { type: "boolean", description: `Whether to double-click. Default: false` },
       },
     },
     dangerLevel: "moderate",

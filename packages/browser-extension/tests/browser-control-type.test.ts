@@ -337,16 +337,69 @@ describe("handleType — element focus", () => {
           iframes: [{ frameId: "comments-frame", src: "https://example.com/frame", sameOrigin: true }],
         },
       })
+      .mockResolvedValueOnce({ data: { frameId: "comments-frame" } })
       .mockResolvedValueOnce({ typed: true });
 
     const request = makeRequest({ tabId: 1, text: "hello", uid: "comments-frame:5" });
     await handleType(request);
 
     expect(globalThis.chrome.tabs.sendMessage).toHaveBeenNthCalledWith(
-      2,
+      3,
       1,
       expect.objectContaining({ type: "TYPE_IN_ELEMENT", uid: "comments-frame:5", text: "hello" }),
       { frameId: 7 }
+    );
+  });
+
+  it("REQ-TC-009: routes nested iframe uid typing to the resolved descendant frame", async () => {
+    (globalThis.chrome.webNavigation.getAllFrames as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com" },
+      { frameId: 7, parentFrameId: 0, url: "https://example.com/frame" },
+      { frameId: 11, parentFrameId: 7, url: "https://example.com/frame/nested" },
+    ]);
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: {
+          iframes: [{ frameId: "comments-frame", src: "https://example.com/frame", sameOrigin: true, bounds: { x: 400, y: 300, width: 300, height: 200 }, iframes: [{ frameId: "comments-frame/nested-frame", src: "https://example.com/frame/nested", sameOrigin: true, bounds: { x: 40, y: 50, width: 150, height: 100 } }] }],
+        },
+      })
+      .mockResolvedValueOnce({ data: { frameId: "comments-frame" } })
+      .mockResolvedValueOnce({ data: { frameId: "comments-frame/nested-frame" } })
+      .mockResolvedValueOnce({ typed: true });
+
+    const request = makeRequest({ tabId: 1, text: "hello", uid: "comments-frame/nested-frame:5" });
+    await handleType(request);
+
+    expect(globalThis.chrome.tabs.sendMessage).toHaveBeenNthCalledWith(
+      4,
+      1,
+      expect.objectContaining({ type: "TYPE_IN_ELEMENT", uid: "comments-frame/nested-frame:5", text: "hello" }),
+      { frameId: 11 }
+    );
+  });
+
+  it("REQ-TC-009: routes srcdoc iframe typing when page map marks the frame same-origin", async () => {
+    (globalThis.chrome.webNavigation.getAllFrames as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com" },
+      { frameId: 12, parentFrameId: 0, url: "about:srcdoc" },
+    ]);
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: {
+          iframes: [{ frameId: "srcdoc-frame", src: "about:srcdoc", sameOrigin: true, bounds: { x: 200, y: 100, width: 300, height: 200 } }],
+        },
+      })
+      .mockResolvedValueOnce({ data: { frameId: "srcdoc-frame" } })
+      .mockResolvedValueOnce({ typed: true });
+
+    const request = makeRequest({ tabId: 1, text: "hello", uid: "srcdoc-frame:3" });
+    await handleType(request);
+
+    expect(globalThis.chrome.tabs.sendMessage).toHaveBeenNthCalledWith(
+      3,
+      1,
+      expect.objectContaining({ type: "TYPE_IN_ELEMENT", uid: "srcdoc-frame:3", text: "hello" }),
+      { frameId: 12 }
     );
   });
 });

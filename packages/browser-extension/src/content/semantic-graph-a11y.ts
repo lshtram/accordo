@@ -18,141 +18,8 @@ import {
   getRole,
   isHidden,
 } from "./semantic-graph-helpers.js";
-
-// ── Internal helpers ──────────────────────────────────────────────────────────
-
-/**
- * Build child SemanticA11yNode array for an element's direct children.
- * Flattens generic container children (those that return null from buildA11yNode)
- * by recursing through them.
- */
-function buildA11yChildren(
-  el: HTMLElement,
-  registry: NodeIdRegistry,
-  depth: number,
-  maxDepth: number,
-  visibleOnly: boolean,
-  piercesShadow: boolean,
-  shadowHostId?: number,
-): SemanticA11yNode[] {
-  const children: SemanticA11yNode[] = [];
-
-  for (const child of Array.from(el.children)) {
-    if (!(child instanceof HTMLElement)) continue;
-
-    const childTag = child.tagName.toLowerCase();
-    if (EXCLUDED_TAGS.has(childTag)) continue;
-    if (visibleOnly && isHidden(child)) continue;
-
-    const childRole = getRole(child);
-    if (childRole !== undefined) {
-      const childNode = buildA11yNode(child, registry, depth + 1, maxDepth, visibleOnly, piercesShadow, shadowHostId);
-      if (childNode !== null) {
-        children.push(childNode);
-      }
-    } else {
-      // Child has no role — flatten its children up into the current node
-      if (depth < maxDepth) {
-        const grandchildren = buildA11yChildren(child, registry, depth, maxDepth, visibleOnly, piercesShadow, shadowHostId);
-        children.push(...grandchildren);
-      }
-    }
-
-    // B2-VD-001: If piercesShadow and child has an open shadow root, traverse it
-    if (piercesShadow && child.shadowRoot) {
-      const hostNodeId = registry.idFor(child);
-      const shadowChildren = buildA11yChildrenInShadow(child.shadowRoot, registry, depth, maxDepth, visibleOnly, hostNodeId);
-      children.push(...shadowChildren);
-    }
-  }
-
-  return children;
-}
-
-/**
- * Build SemanticA11yNode array from an element collection that lives inside a shadow tree.
- * B2-VD-001: Annotates all shadow nodes with inShadowRoot + shadowHostId.
- * B2-VD-002: Handles nested shadow roots by updating shadowHostId at each host boundary.
- */
-function buildA11yChildrenInShadow(
-  parentEl: HTMLElement | ShadowRoot,
-  registry: NodeIdRegistry,
-  depth: number,
-  maxDepth: number,
-  visibleOnly: boolean,
-  shadowHostId: number,
-): SemanticA11yNode[] {
-  const children: SemanticA11yNode[] = [];
-
-  for (const child of Array.from(parentEl.children)) {
-    if (!(child instanceof HTMLElement)) continue;
-
-    const childTag = child.tagName.toLowerCase();
-    if (EXCLUDED_TAGS.has(childTag)) continue;
-    if (visibleOnly && isHidden(child)) continue;
-
-    const childRole = getRole(child);
-    if (childRole !== undefined) {
-      const nodeId = registry.idFor(child);
-      const name = getAccessibleName(child);
-      const uid = registry.uidFor(child);
-
-      const node: SemanticA11yNode = {
-        role: childRole,
-        nodeId,
-        ...(uid !== undefined ? { uid } : {}),
-        children: [],
-        inShadowRoot: true,
-        shadowHostId,
-      };
-
-      if (name !== undefined) node.name = name;
-
-      // Heading level
-      const childTagLower = child.tagName.toLowerCase();
-      if (childRole === "heading") {
-        const levelMatch = childTagLower.match(/^h([1-6])$/);
-        if (levelMatch !== null) {
-          node.level = parseInt(levelMatch[1] ?? "1", 10);
-        }
-      }
-
-      // MCP-A11Y-002: Collect states
-      const states = collectElementStates(child);
-      if (states.length > 0) node.states = states;
-
-      if (depth < maxDepth) {
-        // Recurse into this shadow child's regular children
-        node.children = buildA11yChildrenInShadow(child, registry, depth + 1, maxDepth, visibleOnly, shadowHostId);
-
-        // B2-VD-002: If this child itself is a shadow host, traverse its shadow root
-        // The new shadow host ID is this child's nodeId
-        if (child.shadowRoot) {
-          const nestedHostId = nodeId;
-          const nestedShadowChildren = buildA11yChildrenInShadow(child.shadowRoot, registry, depth + 1, maxDepth, visibleOnly, nestedHostId);
-          node.children.push(...nestedShadowChildren);
-        }
-      }
-
-      children.push(node);
-    } else {
-      // No role — flatten: recurse into children
-      if (depth < maxDepth) {
-        const grandchildren = buildA11yChildrenInShadow(child, registry, depth, maxDepth, visibleOnly, shadowHostId);
-        children.push(...grandchildren);
-      }
-
-      // B2-VD-002: Even a role-less element may be a shadow host — traverse it
-      if (child.shadowRoot) {
-        const nestedHostId = registry.idFor(child);
-        const nestedShadowChildren = buildA11yChildrenInShadow(child.shadowRoot, registry, depth, maxDepth, visibleOnly, nestedHostId);
-        children.push(...nestedShadowChildren);
-      }
-    }
-  }
-
-  return children;
-}
+import { buildA11yChildren } from "./semantic-graph-a11y-children.js";
+import { buildA11yChildrenInShadow } from "./semantic-graph-a11y-shadow.js";
 
 /**
  * Recursively build a SemanticA11yNode from a DOM element.
@@ -216,7 +83,7 @@ function buildA11yNode(
   }
 
   if (depth < maxDepth) {
-    node.children = buildA11yChildren(el, registry, depth, maxDepth, visibleOnly, piercesShadow, shadowHostId);
+    node.children = buildA11yChildren(el, registry, depth, maxDepth, visibleOnly, piercesShadow, buildA11yNode, shadowHostId);
   }
 
   return node;
@@ -251,7 +118,7 @@ export function buildA11yTree(
       const node = buildA11yNode(child, registry, 1, maxDepth, visibleOnly, piercesShadow);
       if (node !== null) roots.push(node);
     } else {
-      const flattened = buildA11yChildren(child, registry, 0, maxDepth, visibleOnly, piercesShadow);
+      const flattened = buildA11yChildren(child, registry, 0, maxDepth, visibleOnly, piercesShadow, buildA11yNode);
       roots.push(...flattened);
     }
 

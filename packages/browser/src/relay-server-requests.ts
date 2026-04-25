@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { BrowserRelayAction, BrowserRelayRequest, BrowserRelayResponse } from "./types.js";
 import { WebSocket } from "ws";
+import { DEFAULT_RELAY_REQUEST_TIMEOUT_MS } from "./relay-transport-constants.js";
 
 export function pushToBrowserClient(client: WebSocket | null, action: BrowserRelayAction, payload: Record<string, unknown>): void {
   if (!client || client.readyState !== WebSocket.OPEN) return;
@@ -14,7 +15,7 @@ export async function requestFromBrowserClient(
   pending: Map<string, (value: BrowserRelayResponse) => void>,
   onDisconnected: () => void,
   onTimeout: () => void,
-  timeoutMs = 3000,
+  timeoutMs = DEFAULT_RELAY_REQUEST_TIMEOUT_MS,
 ): Promise<BrowserRelayResponse> {
   if (!client || client.readyState !== WebSocket.OPEN) {
     onDisconnected();

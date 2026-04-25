@@ -14,6 +14,7 @@ import type { GetPageMapArgs, IframeMetadata, PageMapResponse, PageToolError } f
 import { classifyRelayError, PAGE_MAP_TIMEOUT_MS } from "./page-tool-types.js";
 import { mapRelayError } from "./page-tool-relay-errors.js";
 import { runPageToolPipeline } from "./page-tool-pipeline.js";
+import { PAGE_MAP_DEFAULT_MAX_NODES, PAGE_MAP_MAX_NODES } from "./page-tool-page-map-types.js";
 
 export async function handleGetPageMap(
   relay: BrowserRelayLike,
@@ -21,7 +22,7 @@ export async function handleGetPageMap(
   store: SnapshotRetentionStore,
   security: SecurityConfig = DEFAULT_SECURITY_CONFIG,
 ): Promise<PageMapResponse | PageToolError> {
-  const effectiveCap = Math.min(args.maxNodes ?? 200, 500);
+  const effectiveCap = Math.min(args.maxNodes ?? PAGE_MAP_DEFAULT_MAX_NODES, PAGE_MAP_MAX_NODES);
   const clampedOffset = Math.max(0, args.offset ?? 0);
   const clampedLimit = args.limit !== undefined
     ? Math.min(Math.max(1, args.limit), effectiveCap)

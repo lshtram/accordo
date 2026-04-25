@@ -266,6 +266,43 @@ describe("comment-sync", () => {
       expect((args as Record<string, unknown>).threadId).toBe("t-1");
       expect((args as Record<string, unknown>).body).toBe("Test comment");
     });
+
+    it("B2-CA-001..004: maps remote anchor metadata into comment_create surfaceMetadata", async () => {
+      const { remoteThreadToCreateArgs } = await import("../comment-sync.js");
+      const thread = {
+        id: "t-1",
+        anchorKey: "id:hero-title",
+        anchorContext: {
+          tagName: "h1",
+          snapshotId: "page-1:5",
+          confidence: "high" as const,
+          resolvedTier: 1 as const,
+          snapshotDrift: false,
+        },
+        pageUrl: "https://example.com/page",
+        status: "open" as const,
+        comments: [{
+          id: "c-1",
+          threadId: "t-1",
+          createdAt: "2024-01-01T00:00:00.000Z",
+          author: { kind: "user" as const, name: "Browser User" },
+          body: "Test comment",
+          anchorKey: "id:hero-title",
+          pageUrl: "https://example.com/page",
+          status: "open" as const,
+        }],
+        createdAt: "2024-01-01T00:00:00.000Z",
+        lastActivity: "2024-01-01T00:00:00.000Z",
+      };
+
+      const args = remoteThreadToCreateArgs(thread);
+      const context = (args as { context?: { surfaceMetadata?: Record<string, string | undefined> } }).context;
+
+      expect(context?.surfaceMetadata?.snapshotId).toBe("page-1:5");
+      expect(context?.surfaceMetadata?.confidence).toBe("high");
+      expect(context?.surfaceMetadata?.resolvedTier).toBe("1");
+      expect(context?.surfaceMetadata?.snapshotDrift).toBe("false");
+    });
   });
 
   describe("remoteCommentToReplyArgs", () => {

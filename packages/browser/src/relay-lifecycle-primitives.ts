@@ -1,17 +1,17 @@
 import type * as vscode from "vscode";
 import * as net from "net";
 import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
 import type { SecurityConfig } from "./security/index.js";
 import type { BrowserBridgeAPI } from "./types.js";
 import { DEFAULT_REDACTION_PATTERNS } from "./security/index.js";
 import { BrowserAuditLog } from "./security/audit-log.js";
 import { generateRelayToken } from "./relay-auth.js";
+import { ACCORDO_HOME_DIR, BROWSER_AUDIT_LOG_PATH, RELAY_PORT_FILE_PATH } from "./browser-paths.js";
+import { RELAY_BASE_PORT, RELAY_HOST } from "./relay-transport-constants.js";
+
+export { RELAY_BASE_PORT, RELAY_HOST } from "./relay-transport-constants.js";
 
 export const EXTENSION_ID = "accordo.accordo-browser";
-export const RELAY_BASE_PORT = 40111;
-export const RELAY_HOST = "127.0.0.1";
 
 const TOKEN_KEY = "browserRelayToken";
 
@@ -83,9 +83,8 @@ export async function resolveRelayToken(context: vscode.ExtensionContext): Promi
 
 export function writeRelayPort(port: number): void {
   try {
-    const dir = path.join(os.homedir(), ".accordo");
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "relay.port"), String(port), "utf8");
+    fs.mkdirSync(ACCORDO_HOME_DIR, { recursive: true });
+    fs.writeFileSync(RELAY_PORT_FILE_PATH, String(port), "utf8");
   } catch {
     // best-effort — failure must not block activation
   }
@@ -93,7 +92,7 @@ export function writeRelayPort(port: number): void {
 
 export function readRelayPort(): number | undefined {
   try {
-    const raw = fs.readFileSync(path.join(os.homedir(), ".accordo", "relay.port"), "utf8").trim();
+    const raw = fs.readFileSync(RELAY_PORT_FILE_PATH, "utf8").trim();
     const port = Number.parseInt(raw, 10);
     return Number.isInteger(port) && port > 0 ? port : undefined;
   } catch {
@@ -105,7 +104,7 @@ export function getSecurityConfig(): SecurityConfig {
   return {
     originPolicy: { allowedOrigins: [], deniedOrigins: [], defaultAction: "allow" },
     redactionPolicy: { redactPatterns: DEFAULT_REDACTION_PATTERNS, replacement: "[REDACTED]" },
-    auditLog: new BrowserAuditLog({ filePath: path.join(os.homedir(), ".accordo", "browser-audit.jsonl") }),
+    auditLog: new BrowserAuditLog({ filePath: BROWSER_AUDIT_LOG_PATH }),
     snapshotRetention: { maxAgeMs: 0 },
   };
 }

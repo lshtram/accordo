@@ -4,7 +4,7 @@ import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
 import { DEFAULT_SECURITY_CONFIG } from "./security/index.js";
 import { handleGetTextMap } from "./text-map-tool-handler.js";
-import type { GetTextMapArgs } from "./text-map-tool-contracts.js";
+import { TEXT_MAP_DEFAULT_MAX_SEGMENTS, TEXT_MAP_MAX_SEGMENTS, type GetTextMapArgs } from "./text-map-tool-contracts.js";
 
 export function buildTextMapTool(
   relay: BrowserRelayLike,
@@ -31,9 +31,9 @@ export function buildTextMapTool(
         maxSegments: {
           type: "integer",
           description:
-            "Maximum number of text segments to return (default: 500, max: 2000).",
+            `Maximum number of text segments to return (default: ${TEXT_MAP_DEFAULT_MAX_SEGMENTS}, max: ${TEXT_MAP_MAX_SEGMENTS}).`,
           minimum: 1,
-          maximum: 2000,
+          maximum: TEXT_MAP_MAX_SEGMENTS,
         },
         frameId: {
           type: "string",
@@ -61,7 +61,7 @@ export function buildTextMapTool(
         },
         limit: {
           type: "number",
-          description: "Pagination limit — max segments to return (default: effective cap = min(maxSegments ?? 500, 2000)).",
+          description: `Pagination limit — max segments to return (default: effective cap = min(maxSegments ?? ${TEXT_MAP_DEFAULT_MAX_SEGMENTS}, ${TEXT_MAP_MAX_SEGMENTS})).`,
         },
       },
     },

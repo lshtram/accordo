@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { BrowserRelayAction, BrowserRelayResponse } from "./types.js";
 import type { SharedRelayRequest } from "./shared-relay-types.js";
 import { WebSocket } from "ws";
+import { DEFAULT_RELAY_REQUEST_TIMEOUT_MS } from "./relay-transport-constants.js";
 
 export async function requestViaSharedRelay(
   ws: WebSocket | null,
@@ -10,7 +11,7 @@ export async function requestViaSharedRelay(
   payload: Record<string, unknown>,
   pending: Map<string, (value: BrowserRelayResponse) => void>,
   onError: ((error: string) => void) | undefined,
-  timeoutMs = 3000,
+  timeoutMs = DEFAULT_RELAY_REQUEST_TIMEOUT_MS,
 ): Promise<BrowserRelayResponse> {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     onError?.("browser-not-connected");

@@ -1,6 +1,7 @@
 import type { BrowserRelayLike } from "./types.js";
 import type { ListPagesArgs, ListPagesResponse, PageToolError, SelectPageArgs, SelectPageResponse, WaitForArgs } from "./page-tool-types.js";
 import { classifyRelayError, TAB_MGMT_TIMEOUT_MS, WAIT_FOR_RELAY_TIMEOUT_MS } from "./page-tool-types.js";
+import { getRelayRecoveryHint, getRelayRetryAfterMs } from "./relay-error-policy.js";
 
 export async function handleWaitForInline(
   relay: BrowserRelayLike,
@@ -11,8 +12,8 @@ export async function handleWaitForInline(
       success: false,
       error: "browser-not-connected",
       retryable: true,
-      retryAfterMs: 2000,
-      recoveryHints: "Check that the browser relay is running and the extension is connected.",
+      retryAfterMs: getRelayRetryAfterMs("browser-not-connected"),
+      recoveryHints: getRelayRecoveryHint("browser-not-connected"),
     };
   }
   try {
@@ -26,7 +27,13 @@ export async function handleWaitForInline(
     if (errCode === "navigation-interrupted" || errCode === "page-closed") {
       return { met: false, error: errCode, elapsedMs };
     }
-    return response.data ?? { met: false, error: "timeout", elapsedMs, retryable: true, retryAfterMs: 1000 };
+    return response.data ?? {
+      met: false,
+      error: "timeout",
+      elapsedMs,
+      retryable: true,
+      retryAfterMs: getRelayRetryAfterMs("timeout"),
+    };
   } catch (err: unknown) {
     const code = classifyRelayError(err);
     if (code === "browser-not-connected") {
@@ -34,16 +41,16 @@ export async function handleWaitForInline(
         success: false,
         error: code,
         retryable: true,
-        retryAfterMs: 2000,
-        recoveryHints: "Check that the browser relay is running and the extension is connected.",
+        retryAfterMs: getRelayRetryAfterMs(code),
+        recoveryHints: getRelayRecoveryHint(code),
       };
     }
     return {
       success: false,
       error: code,
       retryable: true,
-      retryAfterMs: 1000,
-      recoveryHints: "The wait operation timed out at the relay level. Retry after a short delay.",
+      retryAfterMs: getRelayRetryAfterMs(code),
+      recoveryHints: getRelayRecoveryHint(code),
     };
   }
 }

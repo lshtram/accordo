@@ -96,7 +96,7 @@ export function registerRelayRuntime(options: RegisterRelayRuntimeOptions): void
   const securityConfig = getSecurityConfig();
   const snapshotStore = new SnapshotRetentionStore(securityConfig.snapshotRetention?.maxAgeMs ?? 0);
   const screenshotStore = new ScreenshotRetentionStore();
-  const allBrowserTools = buildBrowserTools(options.relay, snapshotStore, securityConfig, screenshotStore);
+  const allBrowserTools = buildBrowserTools(options.bridge, options.relay, snapshotStore, securityConfig, screenshotStore);
 
   const toolsDisposable = options.bridge.registerTools(EXTENSION_ID, allBrowserTools);
   options.context.subscriptions.push(toolsDisposable);
