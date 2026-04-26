@@ -4,11 +4,12 @@
  * Tests for B2-CTX-002/B2-CTX-003 — tabId routing in diff_snapshots tool.
  *
  * Tests the Hub handler (handleDiffSnapshots in diff-tool.ts) forwards tabId
- * to relay.request("get_page_map", ...) for implicit snapshot resolution.
+ * only for implicit fresh capture. Resolving an omitted `fromSnapshotId`
+ * must use the retained snapshot history without making a hidden capture.
  *
  * API checklist (handleDiffSnapshots):
  * - handleDiffSnapshots → B2-CTX-002 (tabId in resolveFreshSnapshot)
- * - handleDiffSnapshots → B2-CTX-003 (tabId in resolveFromSnapshot)
+ * - handleDiffSnapshots → B2-CTX-003 (implicit `from` is local and side-effect free)
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * BUGS BEING TESTED:
@@ -17,9 +18,10 @@
  *   → tabId is NEVER forwarded for fresh snapshot capture.
  *   → If agent wants to diff snapshots from tab 42, the fresh capture goes to active tab.
  *
- * Bug 2 — resolveFromSnapshot passes {} to relay.request("get_page_map", {}, ...)
- *   → tabId is NEVER forwarded for "from" snapshot preflight.
- *   → Preflight capture goes to active tab instead of target tab.
+ * Bug 2 — resolveFromSnapshot used to call relay.request("get_page_map", ...)
+ *   as a hidden preflight and derive the predecessor synthetically.
+ *   → That added side effects and made omitted `from` resolution depend on
+ *     the active tab instead of the retained snapshot history.
  *
  * These tests use a recording relay to capture the exact payload sent to
  * relay.request() and assert tabId is present when expected.
@@ -155,7 +157,20 @@ describe("B2-CTX-002: diff_snapshots — tabId in resolveFreshSnapshot (implicit
   });
 });
 
-describe("B2-CTX-003: diff_snapshots — tabId in resolveFromSnapshot (implicit `from`)", () => {
+function seedSnapshots(store: SnapshotRetentionStore, pageId: string, versions: number[]): void {
+  for (const version of versions) {
+    store.save(pageId, {
+      pageId,
+      frameId: "main",
+      snapshotId: `${pageId}:${version}`,
+      capturedAt: `2025-01-01T00:00:0${version}.000Z`,
+      viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+      source: "dom",
+    });
+  }
+}
+
+describe("B2-CTX-003: diff_snapshots — omitted `from` uses retained snapshots without hidden capture", () => {
   let relay: ReturnType<typeof createRecordingRelay>;
   let store: SnapshotRetentionStore;
 
@@ -165,45 +180,36 @@ describe("B2-CTX-003: diff_snapshots — tabId in resolveFromSnapshot (implicit 
     store = new SnapshotRetentionStore();
   });
 
-  /**
-   * B2-CTX-003 RED: When fromSnapshotId is omitted AND tabId is provided,
-   * resolveFromSnapshot MUST call relay.request("get_page_map", { tabId }, ...)
-   * for the preflight check, so the page context is verified on the correct tab.
-   *
-   * Current behavior FAILS: resolveFromSnapshot calls relay.request("get_page_map", {}, ...)
-   * — no tabId in payload. The preflight capture goes to the active tab.
-   */
-  it("B2-CTX-003 RED: resolveFromSnapshot includes tabId in get_page_map relay call when tabId is provided", async () => {
+  it("B2-CTX-003: with tabId provided, resolveFromSnapshot does not perform a hidden get_page_map capture", async () => {
     const args: DiffSnapshotsArgs = { tabId: 77, toSnapshotId: "page:5" };
+    seedSnapshots(store, "page", [4, 5]);
 
     await handleDiffSnapshots(relay, args, store);
 
-    // With toSnapshotId provided, ONLY resolveFromSnapshot runs (no resolveFreshSnapshot).
-    // There is exactly ONE get_page_map call — the resolveFromSnapshot preflight.
     const getPageMapCalls = relay.getRecordedCalls().filter(c => c.action === "get_page_map");
-    expect(getPageMapCalls.length).toBe(1);
+    expect(getPageMapCalls).toHaveLength(0);
 
-    const fromPreflightCall = getPageMapCalls[0];
-    expect(fromPreflightCall).toBeDefined();
-    expect(fromPreflightCall!.payload).toHaveProperty("tabId");
-    expect(fromPreflightCall!.payload.tabId).toBe(77);
+    const diffCalls = relay.getRecordedCalls().filter(c => c.action === "diff_snapshots");
+    expect(diffCalls).toHaveLength(1);
+    expect(diffCalls[0]!.payload.fromSnapshotId).toBe("page:4");
+    expect(diffCalls[0]!.payload.toSnapshotId).toBe("page:5");
+    expect(diffCalls[0]!.payload.tabId).toBe(77);
   });
 
-  /**
-   * B2-CTX-003: When tabId is absent, active tab is used — no tabId in payload.
-   */
-  it("B2-CTX-003: resolveFromSnapshot omits tabId when tabId is absent (active tab fallback)", async () => {
+  it("B2-CTX-003: without tabId, omitted `from` still avoids hidden get_page_map capture", async () => {
     const args: DiffSnapshotsArgs = { toSnapshotId: "page:5" };
+    seedSnapshots(store, "page", [4, 5]);
 
     await handleDiffSnapshots(relay, args, store);
 
     const getPageMapCalls = relay.getRecordedCalls().filter(c => c.action === "get_page_map");
-    expect(getPageMapCalls.length).toBeGreaterThan(0);
+    expect(getPageMapCalls).toHaveLength(0);
 
-    // All get_page_map calls should omit tabId when not provided
-    for (const call of getPageMapCalls) {
-      expect(call.payload).not.toHaveProperty("tabId");
-    }
+    const diffCalls = relay.getRecordedCalls().filter(c => c.action === "diff_snapshots");
+    expect(diffCalls).toHaveLength(1);
+    expect(diffCalls[0]!.payload.fromSnapshotId).toBe("page:4");
+    expect(diffCalls[0]!.payload.toSnapshotId).toBe("page:5");
+    expect(diffCalls[0]!.payload).not.toHaveProperty("tabId");
   });
 });
 

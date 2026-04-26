@@ -63,6 +63,12 @@ function makeEnvelope(pageId: string, version: number) {
   };
 }
 
+function seedSnapshots(store: SnapshotRetentionStore, pageId: string, versions: number[]): void {
+  for (const version of versions) {
+    store.save(pageId, makeEnvelope(pageId, version));
+  }
+}
+
 function makeDiffResponse(
   fromSnapshotId: string,
   toSnapshotId: string,
@@ -420,6 +426,7 @@ describe("B2-DE-004: implicit `from` snapshot — RED test: handler must resolve
   it("B2-DE-004 RED: handler calls relay with resolved fromSnapshotId (not undefined) when omitted", async () => {
     const relay = createRecordingRelay();
     const store = new SnapshotRetentionStore();
+    seedSnapshots(store, "page-003", [4, 5]);
 
     // Call with only toSnapshotId — fromSnapshotId is undefined
     await handleDiffSnapshots(relay, { toSnapshotId: "page-003:5" }, store);
@@ -439,6 +446,7 @@ describe("B2-DE-004: implicit `from` snapshot — RED test: handler must resolve
   it("B2-DE-004 RED: resolved fromSnapshotId must be older than toSnapshotId", async () => {
     const relay = createRecordingRelay();
     const store = new SnapshotRetentionStore();
+    seedSnapshots(store, "page-004", [2, 3]);
 
     await handleDiffSnapshots(relay, { toSnapshotId: "page-004:3" }, store);
 
@@ -462,6 +470,7 @@ describe("B2-DE-004: implicit `from` snapshot — RED test: handler must resolve
   it("B2-DE-004 strict mock: succeeds after resolving implicit fromSnapshotId", async () => {
     const strictRelay = createStrictRelay();
     const store = new SnapshotRetentionStore();
+    seedSnapshots(store, "page-strict", [4, 5]);
 
     const result = await handleDiffSnapshots(strictRelay, { toSnapshotId: "page-strict:5" }, store);
 
@@ -475,11 +484,64 @@ describe("B2-DE-004: implicit `from` snapshot — RED test: handler must resolve
   it("treats blank fromSnapshotId as omitted and resolves the previous snapshot", async () => {
     const relay = createRecordingRelay();
     const store = new SnapshotRetentionStore();
+    seedSnapshots(store, "page-blank", [2, 3]);
 
     await handleDiffSnapshots(relay, { fromSnapshotId: "", toSnapshotId: "page-blank:3" }, store);
 
     const payload = (relay as ReturnType<typeof createRecordingRelay>).getRecordedPayload();
     expect(payload.fromSnapshotId).toBe("page-blank:2");
+  });
+
+  it("returns snapshot-not-found against the provided toSnapshotId when it is not retained", async () => {
+    const relay = createRecordingRelay();
+    const store = new SnapshotRetentionStore();
+
+    const result = await handleDiffSnapshots(relay, { toSnapshotId: "page-missing:5" }, store);
+
+    expect(result).toMatchObject({ success: false, error: "snapshot-not-found", retryable: false });
+    const error = result as DiffToolError;
+    expect(error.details?.reason).toContain("page-missing:5");
+    expect(relay.getRecordedPayload()).toEqual({});
+  });
+
+  it("returns snapshot-not-found when the provided toSnapshotId has no retained predecessor", async () => {
+    const relay = createRecordingRelay();
+    const store = new SnapshotRetentionStore();
+    seedSnapshots(store, "page-first", [0]);
+
+    const result = await handleDiffSnapshots(relay, { toSnapshotId: "page-first:0" }, store);
+
+    expect(result).toMatchObject({ success: false, error: "snapshot-not-found", retryable: false });
+    const error = result as DiffToolError;
+    expect(error.details?.reason).toContain("page-first:0");
+    expect(relay.getRecordedPayload()).toEqual({});
+  });
+
+  it("returns a retained-history error instead of assuming version 0 when the earliest retained snapshot is nonzero", async () => {
+    const relay = createRecordingRelay();
+    const store = new SnapshotRetentionStore();
+    seedSnapshots(store, "page-retained", [5, 6]);
+
+    const result = await handleDiffSnapshots(relay, { toSnapshotId: "page-retained:5" }, store);
+
+    expect(result).toMatchObject({ success: false, error: "snapshot-not-found", retryable: false });
+    const error = result as DiffToolError;
+    expect(error.details?.reason).toContain("earliest retained snapshot");
+    expect(error.details?.reason).not.toContain("version 0");
+    expect(error.recoveryHints).toContain("No prior retained snapshot exists");
+    expect(relay.getRecordedPayload()).toEqual({});
+  });
+
+  it("resolves the previous retained snapshot even when retained versions are non-contiguous", async () => {
+    const relay = createRecordingRelay();
+    const store = new SnapshotRetentionStore();
+    seedSnapshots(store, "page-gap", [3, 5]);
+
+    await handleDiffSnapshots(relay, { toSnapshotId: "page-gap:5" }, store);
+
+    const payload = (relay as ReturnType<typeof createRecordingRelay>).getRecordedPayload();
+    expect(payload.fromSnapshotId).toBe("page-gap:3");
+    expect(payload.toSnapshotId).toBe("page-gap:5");
   });
 });
 

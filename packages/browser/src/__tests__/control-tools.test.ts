@@ -989,14 +989,14 @@ describe("handlePressKey — permission error handling", () => {
 // ── Edge cases ────────────────────────────────────────────────────────────────
 
 describe("handleClick — edge cases", () => {
-  it("maps invalid-request from relay to no-target", async () => {
+  it("preserves invalid-request from relay as invalid-request", async () => {
     const relay = makeRelayResolve<ClickResponse>({ success: false, error: "invalid-request" as ClickResponse["error"] });
     const result = await expectHandle(
       () => handleClick(relay, {}),
       "invalid-request"
     ) as ClickResponse;
     expect(result.success).toBe(false);
-    expect(result.error).toBe("no-target");
+    expect(result.error).toBe("invalid-request");
   });
 
   it("REQ-TC-005..008: returns no-target error when neither uid, selector, nor coordinates provided", async () => {

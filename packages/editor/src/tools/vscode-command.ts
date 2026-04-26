@@ -1,0 +1,31 @@
+export {
+  createVscodeCommandGateway,
+  initVscodeCommandGateway,
+  vscodeCommandExecuteHandler,
+  vscodeCommandListHandler,
+} from "./vscode-command-stubs.js";
+export { vscodeCommandTools } from "./vscode-command-tools.js";
+export type {
+  VscodeCommandArgumentShape,
+  VscodeCommandAuditEntry,
+  VscodeCommandAuditSink,
+  VscodeCommandCatalog,
+  VscodeCommandConfirmation,
+  VscodeCommandDescriptor,
+  VscodeCommandErrorCode,
+  VscodeCommandErrorResponse,
+  VscodeCommandExecuteRequest,
+  VscodeCommandExecuteResponse,
+  VscodeCommandExecutor,
+  VscodeCommandGatewayDeps,
+  VscodeCommandListRequest,
+  VscodeCommandListResponse,
+  VscodeCommandPolicy,
+  VscodeCommandPolicyAction,
+  VscodeCommandPolicyDecision,
+  VscodeCommandResultEnvelope,
+  VscodeCommandRiskClass,
+  VscodeCommandSource,
+  VscodeCommandToolError,
+  VscodeCommandToolName,
+} from "./vscode-command-contracts.js";

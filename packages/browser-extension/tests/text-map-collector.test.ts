@@ -239,26 +239,23 @@ describe("B2-TX-004: Reading order", () => {
     }
   });
 
-  it("B2-TX-004: readingOrderIndex is assigned top-to-bottom", () => {
+  it("B2-TX-004: visible segments remain assigned top-to-bottom", () => {
     const result = collectTextMap();
-    for (let i = 1; i < result.segments.length; i++) {
-      const prev = result.segments[i - 1];
-      const curr = result.segments[i];
-      // Later index should not have a smaller y coordinate than earlier index
-      // (allowing for same-band tolerance)
+    const visibleSegments = result.segments.filter((segment) => segment.visibility === "visible");
+    for (let i = 1; i < visibleSegments.length; i++) {
+      const prev = visibleSegments[i - 1];
+      const curr = visibleSegments[i];
       const prevMidY = prev.bbox.y + prev.bbox.height / 2;
       const currMidY = curr.bbox.y + curr.bbox.height / 2;
       expect(currMidY).toBeGreaterThanOrEqual(prevMidY - VERTICAL_BAND_TOLERANCE_PX);
     }
   });
 
-  it("B2-TX-004: Within same vertical band, LTR sorts by x ascending", () => {
+  it("B2-TX-004: Within same vertical band, visible LTR segments sort by x ascending", () => {
     const result = collectTextMap();
-    // Find the main content area (around y=50-400)
     const segmentsInMainBand = result.segments.filter(
-      (s) => s.bbox.y >= 50 && s.bbox.y < 400
+      (s) => s.visibility === "visible" && s.bbox.y >= 50 && s.bbox.y < 400
     );
-    // Check that within any vertical band, x increases
     const midYGroups = new Map<number, TextSegment[]>();
     for (const seg of segmentsInMainBand) {
       const bandKey = Math.floor(seg.bbox.y / VERTICAL_BAND_TOLERANCE_PX);

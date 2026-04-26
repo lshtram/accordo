@@ -1,0 +1,57 @@
+{
+  "project": "auto",
+  "label": "VS Code Gateway — First 3 Slides",
+  "errPolicy": "abort",
+  "steps": [
+    {
+      "type": "layout",
+      "area": "sidebar",
+      "action": "close",
+      "after_ms": 250
+    },
+    {
+      "type": "layout",
+      "area": "panel",
+      "action": "close",
+      "after_ms": 250
+    },
+    {
+      "type": "slide_open",
+      "deckUri": "/home/liorshtram/projects/accordo/demo/vscode-command-gateway.deck.md",
+      "after_ms": 500
+    },
+    {
+      "type": "slide_goto",
+      "index": 1,
+      "after_ms": 500
+    },
+    {
+      "type": "speak",
+      "voice": "af_sarah",
+      "block": true,
+      "text": "Slide one. Generic VS Code Command Gateway. This is the Phase A review briefing for product and technical leads."
+    },
+    {
+      "type": "slide_goto",
+      "index": 2,
+      "after_ms": 500
+    },
+    {
+      "type": "speak",
+      "voice": "af_sarah",
+      "block": true,
+      "text": "Slide two. Phase A passed review. We completed the modular split, aligned architecture and requirements, and linked runtime tool documentation."
+    },
+    {
+      "type": "slide_goto",
+      "index": 3,
+      "after_ms": 500
+    },
+    {
+      "type": "speak",
+      "voice": "af_sarah",
+      "block": true,
+      "text": "Slide three. Why this matters: a guarded command gateway prevents endless one-off wrapper work, improves delivery speed, and keeps maintenance under control."
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+flowchart LR
+  Agent["AI Agent"] --> Hub["accordo-hub\nMCP /mcp"]
+  Hub --> Bridge["accordo-bridge\nVS Code Extension"]
+  Bridge --> BrowserTools["accordo-browser\nVS Code Tools"]
+  BrowserTools --> Relay["Shared Relay\nlocalhost"]
+  Relay --> BrowserExt["Browser Extension\nService Worker"]
+  BrowserExt --> Tab["Active Browser Tab"]
+  Tab --> Content["Content Script\nDOM Access"]
+
+  BrowserTools -. exposes .-> Nav["Navigation\nlist_pages/select_page/navigate"]
+  BrowserTools -. exposes .-> Interact["Interaction\nclick/type/press_key"]
+  BrowserTools -. exposes .-> Inspect["Inspection\nget_page_map/get_text_map/get_semantic_graph"]
+  BrowserTools -. exposes .-> Visual["Visual & Diff\ncapture_region/diff_snapshots"]

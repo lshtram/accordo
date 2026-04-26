@@ -580,15 +580,15 @@ describe("B2-SV-004: shared store — all 4 paths use coherent per-page retentio
 
     // Call 11 times across the 4 paths — version 1 must be evicted (FIFO with 10 slots)
     await handleGetPageMap(makeVersionRelay(1, { pageUrl: "https://x.com", title: "X", nodes: [], totalElements: 0, depth: 0, truncated: false }), {}, store);
-    await handleInspectElement(makeVersionRelay(2, { found: true, anchorKey: "id:x", anchorStrategy: "id", anchorConfidence: "high" }), {}, store);
+    await handleInspectElement(makeVersionRelay(2, { found: true, anchorKey: "id:x", anchorStrategy: "id", anchorConfidence: "high" }), { selector: "#x" }, store);
     await handleGetDomExcerpt(makeVersionRelay(3, { found: true, html: "<div/>", text: "", nodeCount: 1, truncated: false }), { selector: "div" }, store);
     await handleCaptureRegion(makeVersionRelay(4, { source: "visual" as const, success: true, dataUrl: "data:image/jpeg;base64,A==", width: 10, height: 10, sizeBytes: 100 }), {}, store);
     await handleGetPageMap(makeVersionRelay(5, { pageUrl: "https://x.com", title: "X", nodes: [], totalElements: 0, depth: 0, truncated: false }), {}, store);
-    await handleInspectElement(makeVersionRelay(6, { found: true, anchorKey: "id:x", anchorStrategy: "id", anchorConfidence: "high" }), {}, store);
+    await handleInspectElement(makeVersionRelay(6, { found: true, anchorKey: "id:x", anchorStrategy: "id", anchorConfidence: "high" }), { selector: "#x" }, store);
     await handleGetDomExcerpt(makeVersionRelay(7, { found: true, html: "<div/>", text: "", nodeCount: 1, truncated: false }), { selector: "div" }, store);
     await handleCaptureRegion(makeVersionRelay(8, { source: "visual" as const, success: true, dataUrl: "data:image/jpeg;base64,A==", width: 10, height: 10, sizeBytes: 100 }), {}, store);
     await handleGetPageMap(makeVersionRelay(9, { pageUrl: "https://x.com", title: "X", nodes: [], totalElements: 0, depth: 0, truncated: false }), {}, store);
-    await handleInspectElement(makeVersionRelay(10, { found: true, anchorKey: "id:x", anchorStrategy: "id", anchorConfidence: "high" }), {}, store);
+    await handleInspectElement(makeVersionRelay(10, { found: true, anchorKey: "id:x", anchorStrategy: "id", anchorConfidence: "high" }), { selector: "#x" }, store);
     await handleGetPageMap(makeVersionRelay(11, { pageUrl: "https://x.com", title: "X", nodes: [], totalElements: 0, depth: 0, truncated: false }), {}, store);
 
     const retained = store.list(pageId);

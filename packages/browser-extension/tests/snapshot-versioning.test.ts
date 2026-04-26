@@ -459,16 +459,15 @@ describe("M100-SNAP — Snapshot Versioning", () => {
   });
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // B2-SV-004: Snapshot storage — 5-slot retention with eviction
+  // B2-SV-004: Snapshot storage — default retention with eviction
   // ══════════════════════════════════════════════════════════════════════════════
 
-  describe("B2-SV-004: SnapshotStore 5-slot retention", () => {
-    it("B2-SV-004: store retains exactly 5 snapshots after 7 saves (eviction)", async () => {
+  describe("B2-SV-004: SnapshotStore default retention", () => {
+    it("B2-SV-004: store retains exactly the default number of snapshots after overflow", async () => {
       const store = new SnapshotStore(DEFAULT_RETENTION_SIZE);
       const pageId = "page-11";
 
-      // Save 7 snapshots
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < DEFAULT_RETENTION_SIZE + 2; i++) {
         const snapshot: VersionedSnapshot = {
           pageId,
           frameId: "main",
@@ -483,15 +482,14 @@ describe("M100-SNAP — Snapshot Versioning", () => {
       }
 
       const list = await store.list(pageId);
-      expect(list).toHaveLength(5);
+      expect(list).toHaveLength(DEFAULT_RETENTION_SIZE);
     });
 
-    it("B2-SV-004: store keeps the 5 most recent snapshots (newest first)", async () => {
+    it("B2-SV-004: store keeps the most recent snapshots up to the default retention size", async () => {
       const store = new SnapshotStore(DEFAULT_RETENTION_SIZE);
       const pageId = "page-12";
 
-      // Save 6 snapshots
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < DEFAULT_RETENTION_SIZE + 1; i++) {
         const snapshot: VersionedSnapshot = {
           pageId,
           frameId: "main",
@@ -506,12 +504,9 @@ describe("M100-SNAP — Snapshot Versioning", () => {
       }
 
       const list = await store.list(pageId);
-      // FIX A: Must assert list is non-empty BEFORE accessing list elements to avoid
-      // TypeError: Cannot read properties of undefined. Fails because scaffold returns [].
       expect(list.length).toBeGreaterThan(0);
-      // Should have snapshots with IDs: page-12:1 through page-12:5 (oldest :0 evicted)
-      expect(list[0]!.snapshotId).toBe(`${pageId}:5`);
-      expect(list[4]!.snapshotId).toBe(`${pageId}:1`);
+      expect(list[0]!.snapshotId).toBe(`${pageId}:${DEFAULT_RETENTION_SIZE}`);
+      expect(list[DEFAULT_RETENTION_SIZE - 1]!.snapshotId).toBe(`${pageId}:1`);
       expect(list.some((s) => s.snapshotId === `${pageId}:0`)).toBe(false);
     });
 
@@ -1257,8 +1252,8 @@ describe("M100-SNAP — Snapshot Versioning", () => {
   // ══════════════════════════════════════════════════════════════════════════════
 
   describe("DEFAULT_RETENTION_SIZE constant", () => {
-    it("DEFAULT_RETENTION_SIZE equals 5", () => {
-      expect(DEFAULT_RETENTION_SIZE).toBe(5);
+    it("DEFAULT_RETENTION_SIZE equals 10", () => {
+      expect(DEFAULT_RETENTION_SIZE).toBe(10);
     });
   });
 

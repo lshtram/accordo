@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-label="Abstract technology atmosphere">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#07122b"/>
+      <stop offset="45%" stop-color="#0a2b4d"/>
+      <stop offset="100%" stop-color="#16385e"/>
+    </linearGradient>
+    <radialGradient id="glowCyan" cx="72%" cy="30%" r="45%">
+      <stop offset="0%" stop-color="#34d3ff" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#34d3ff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowAmber" cx="68%" cy="74%" r="42%">
+      <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#fbbf24" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.05"/>
+      <stop offset="50%" stop-color="#67e8f9" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.08"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <rect width="1600" height="900" fill="url(#glowCyan)"/>
+  <rect width="1600" height="900" fill="url(#glowAmber)"/>
+
+  <g opacity="0.35">
+    <circle cx="1090" cy="230" r="150" fill="#22d3ee" filter="url(#soft)"/>
+    <circle cx="1260" cy="600" r="170" fill="#2563eb" filter="url(#soft)"/>
+    <circle cx="980" cy="730" r="120" fill="#f59e0b" filter="url(#soft)"/>
+  </g>
+
+  <g fill="none" stroke="url(#line)" stroke-width="3">
+    <path d="M820 130 C980 80, 1160 120, 1410 220"/>
+    <path d="M760 260 C970 200, 1180 250, 1450 350"/>
+    <path d="M700 395 C980 320, 1220 370, 1510 485"/>
+    <path d="M690 545 C940 460, 1180 530, 1510 640"/>
+    <path d="M740 700 C930 620, 1160 680, 1440 790"/>
+  </g>
+
+  <g>
+    <rect x="840" y="170" width="250" height="88" rx="18" fill="#0ea5e9" fill-opacity="0.2" stroke="#67e8f9" stroke-width="2"/>
+    <rect x="1130" y="295" width="290" height="95" rx="18" fill="#1d4ed8" fill-opacity="0.22" stroke="#93c5fd" stroke-width="2"/>
+    <rect x="930" y="490" width="325" height="100" rx="18" fill="#0f766e" fill-opacity="0.24" stroke="#5eead4" stroke-width="2"/>
+    <rect x="1250" y="610" width="250" height="88" rx="18" fill="#c2410c" fill-opacity="0.22" stroke="#fdba74" stroke-width="2"/>
+  </g>
+</svg>

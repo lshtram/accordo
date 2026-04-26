@@ -1,0 +1,269 @@
+{
+  "version": "1.0",
+  "diagram_type": "flowchart",
+  "nodes": {
+    "Agent": {
+      "x": 0,
+      "y": 240,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D4E8F5",
+        "strokeColor": "#4A90D9",
+        "strokeWidth": 2,
+        "fillStyle": "solid",
+        "fontColor": "#1A5276",
+        "fontWeight": "bold"
+      }
+    },
+    "Hub": {
+      "x": 260,
+      "y": 240,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#E8E0F0",
+        "strokeColor": "#7B68EE",
+        "strokeWidth": 2,
+        "fillStyle": "solid",
+        "fontColor": "#4A3080",
+        "fontWeight": "bold"
+      }
+    },
+    "Bridge": {
+      "x": 520,
+      "y": 240,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D4E8F5",
+        "strokeColor": "#4A90D9",
+        "strokeWidth": 2,
+        "fillStyle": "solid",
+        "fontColor": "#1A5276"
+      }
+    },
+    "BrowserTools": {
+      "x": 780,
+      "y": 240,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D5F5E3",
+        "strokeColor": "#27AE60",
+        "strokeWidth": 2,
+        "fillStyle": "solid",
+        "fontColor": "#1E8449",
+        "fontWeight": "bold"
+      }
+    },
+    "Relay": {
+      "x": 1040,
+      "y": 0,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#FEF9E7",
+        "strokeColor": "#F39C12",
+        "strokeWidth": 2,
+        "fillStyle": "solid",
+        "fontColor": "#B7950B"
+      }
+    },
+    "BrowserExt": {
+      "x": 1300,
+      "y": 0,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#FDEDEC",
+        "strokeColor": "#E74C3C",
+        "strokeWidth": 2,
+        "fillStyle": "solid",
+        "fontColor": "#922B21"
+      }
+    },
+    "Tab": {
+      "x": 1560,
+      "y": 0,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#EAECEE",
+        "strokeColor": "#95A5A6",
+        "strokeWidth": 2,
+        "fillStyle": "solid",
+        "fontColor": "#566573"
+      }
+    },
+    "Content": {
+      "x": 1820,
+      "y": 0,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#EAECEE",
+        "strokeColor": "#95A5A6",
+        "strokeWidth": 2,
+        "fillStyle": "solid",
+        "fontColor": "#566573"
+      }
+    },
+    "Nav": {
+      "x": 1040,
+      "y": 120,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D5F5E3",
+        "strokeColor": "#27AE60",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#1E8449"
+      }
+    },
+    "Interact": {
+      "x": 1040,
+      "y": 240,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D5F5E3",
+        "strokeColor": "#27AE60",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#1E8449"
+      }
+    },
+    "Inspect": {
+      "x": 1040,
+      "y": 360,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D5F5E3",
+        "strokeColor": "#27AE60",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#1E8449"
+      }
+    },
+    "Visual": {
+      "x": 1040,
+      "y": 480,
+      "w": 180,
+      "h": 60,
+      "style": {
+        "backgroundColor": "#D5F5E3",
+        "strokeColor": "#27AE60",
+        "strokeWidth": 2,
+        "fillStyle": "hachure",
+        "fontColor": "#1E8449"
+      }
+    }
+  },
+  "edges": {
+    "Agent->Hub:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#4A90D9",
+        "strokeWidth": 2
+      }
+    },
+    "Hub->Bridge:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#7B68EE",
+        "strokeWidth": 2
+      }
+    },
+    "Bridge->BrowserTools:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#4A90D9",
+        "strokeWidth": 2
+      }
+    },
+    "BrowserTools->Relay:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#27AE60",
+        "strokeWidth": 2
+      }
+    },
+    "Relay->BrowserExt:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#F39C12",
+        "strokeWidth": 2
+      }
+    },
+    "BrowserExt->Tab:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#E74C3C",
+        "strokeWidth": 2
+      }
+    },
+    "Tab->Content:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#95A5A6",
+        "strokeWidth": 2
+      }
+    },
+    "BrowserTools->Nav:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#27AE60",
+        "strokeWidth": 2,
+        "strokeStyle": "dashed"
+      }
+    },
+    "BrowserTools->Interact:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#27AE60",
+        "strokeWidth": 2,
+        "strokeStyle": "dashed"
+      }
+    },
+    "BrowserTools->Inspect:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#27AE60",
+        "strokeWidth": 2,
+        "strokeStyle": "dashed"
+      }
+    },
+    "BrowserTools->Visual:0": {
+      "routing": "auto",
+      "waypoints": [],
+      "style": {
+        "strokeColor": "#27AE60",
+        "strokeWidth": 2,
+        "strokeStyle": "dashed"
+      }
+    }
+  },
+  "clusters": {},
+  "unplaced": [],
+  "aesthetics": {
+    "roughness": 1,
+    "animationMode": "static",
+    "theme": "hand-drawn"
+  },
+  "metadata": {
+    "engine": "upstream-direct"
+  }
+}

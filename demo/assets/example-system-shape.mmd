@@ -1,0 +1,6 @@
+graph LR
+  A[Agent] -->|MCP| H[Accordo Hub]
+  H -->|WebSocket| B[Bridge Extension]
+  B --> E[Editor + Terminal]
+  B --> R[Browser Tools]
+  B --> P[Presentations + Diagrams]
