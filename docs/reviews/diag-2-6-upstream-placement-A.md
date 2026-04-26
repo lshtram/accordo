@@ -9,7 +9,7 @@ Phase A artifacts are **not yet coherent enough** to pass the checkpoint.
 1. **Cross-doc architecture coherence is missing for this batch**
    - `requirements-diagram.md` adds SUP-S01..SUP-S07 (`docs/20-requirements/requirements-diagram.md:217-230`), but corresponding design updates are not present in:
      - `docs/10-architecture/diagram-architecture.md` (no SUP-S/diag.2.6 section)
-     - `docs/module-map-diagram.md` (no `layout-debug.ts` / `state-identity.ts` module ownership or boundary updates)
+     - `docs/30-development/module-maps/module-map-diagram.md` (no `layout-debug.ts` / `state-identity.ts` module ownership or boundary updates)
      - `docs/30-development/diagram-update-plan.md` (no explicit diag.2.6 Phase A plan/stub contract)
    - **Why this blocks A:** requirements exist without architecture-level placement and ownership updates, violating Phase A coherence expectations.
    - **Required change:** add explicit diag.2.6 design sections in those docs, including call graph and ownership boundaries (where state-specific matching hooks into existing mapper/engine pipeline).

@@ -30,7 +30,7 @@ The second pass is **not yet acceptable as done** for the intended simplificatio
 
 #### High
 
-- **`packages/voice/src/voice-adapters.ts:4, 13` + `docs/module-map-voice.md:17` — architecture/docs contradiction**
+- **`packages/voice/src/voice-adapters.ts:4, 13` + `docs/30-development/module-maps/module-map-voice.md:17` — architecture/docs contradiction**
   - File comment says “No `vscode` imports”, but `voice-adapters.ts` imports `vscode`.
   - Module map repeats the same now-false claim.
   - Fix: either remove `vscode` dependency from adapter factory (preferred for clean boundaries), or update docs and comments to reflect actual boundary.
@@ -74,7 +74,7 @@ The second pass is **not yet acceptable as done** for the intended simplificatio
 
 1. `/data/projects/accordo/.opencode/plugins/narration.ts`
 2. `/data/projects/accordo/packages/voice/src/voice-adapters.ts`
-3. `/data/projects/accordo/docs/module-map-voice.md`
+3. `/data/projects/accordo/docs/30-development/module-maps/module-map-voice.md`
 4. `/data/projects/accordo/packages/voice/package.json`
 5. `/data/projects/accordo/docs/10-architecture/voice-architecture.md`
 6. `/data/projects/accordo/docs/20-requirements/requirements-voice.md`

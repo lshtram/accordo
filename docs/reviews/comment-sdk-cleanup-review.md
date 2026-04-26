@@ -28,7 +28,7 @@ This cleanup aligned Comment SDK requirements/architecture/docs with the actual 
    - Added `packages/comment-sdk/README.md` documenting API, lifecycle, integration boundary, CSS usage, and optional browser-wrapper build path.
 
 5. **Testing guide added**
-   - Added `docs/testing-guide-comment-sdk.md` with current automated commands and user-journey checks.
+   - Added `docs/40-testing/testing-guide-comment-sdk.md` with current automated commands and user-journey checks.
 
 6. **Packaging helper decision implemented**
    - Kept `scripts/bundle-browser.mjs` as an optional helper.

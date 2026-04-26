@@ -23,7 +23,7 @@ This cleanup reconciled `@accordo/capabilities` contract docs/comments/tests wit
    - Updated status wording from proposed-only to implemented-baseline reference.
    - Reconciled deferred-interface policy: deferred contracts must live in `deferred.ts`; root type re-export is allowed but remains non-stable.
 
-5. **Testing guide alignment (`docs/testing-guide-capabilities-foundation.md`)**
+5. **Testing guide alignment (`docs/40-testing/testing-guide-capabilities-foundation.md`)**
    - Updated assertions to describe actual current policy and runtime-scope guarantees.
 
 6. **Test wording cleanup (`packages/capabilities/src/__tests__/*`)**

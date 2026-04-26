@@ -4,11 +4,11 @@
 
 - `docs/20-requirements/requirements-comments.md`
 - `docs/20-requirements/requirements-comments-panel.md`
-- `docs/module-map-comments.md`
+- `docs/30-development/module-maps/module-map-comments.md`
 - `docs/10-architecture/comments-panel-architecture.md`
 - `docs/10-architecture/architecture.md` (comments-navigation sections)
 - `packages/comments/src/panel/__tests__/navigation-registry-integration.test.ts`
-- `docs/testing-guide-comments.md` (new canonical testing guide)
+- `docs/40-testing/testing-guide-comments.md` (new canonical testing guide)
 
 ## Findings addressed
 
@@ -28,7 +28,7 @@
    - `navigation-registry-integration.test.ts` comments now describe current guarantees instead of old “Phase A/B failing tests” framing.
 
 5. **Canonical testing guide created**
-   - Added `docs/testing-guide-comments.md` with:
+   - Added `docs/40-testing/testing-guide-comments.md` with:
      - automated checks and exact commands,
      - explicit verification from outside repo root (`/tmp`),
      - user-journey scenarios for panel and cross-surface navigation.

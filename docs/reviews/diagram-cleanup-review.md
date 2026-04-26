@@ -2,13 +2,13 @@
 
 ## Scope reviewed
 
-- `docs/module-map-diagram.md`
+- `docs/30-development/module-maps/module-map-diagram.md`
 - `docs/20-requirements/requirements-diagram.md`
 - `docs/10-architecture/diagram-architecture.md`
 - `docs/10-architecture/architecture.md` (diagram/comments navigation contract section)
 - `packages/diagram/src/layout/layout-store.ts`
 - `packages/diagram/src/extension.ts`
-- `docs/testing-guide-diagram.md` (new canonical testing guide)
+- `docs/40-testing/testing-guide-diagram.md` (new canonical testing guide)
 
 ## Findings addressed
 
@@ -37,7 +37,7 @@
    - Clarified `extension.ts` 2-second focus wait as conservative synchronization strategy, with event-driven migration intent.
 
 6. **Canonical testing guide added**
-   - Added `docs/testing-guide-diagram.md` with validated automated commands and user-journey checks.
+   - Added `docs/40-testing/testing-guide-diagram.md` with validated automated commands and user-journey checks.
 
 ## Deferred / intentionally unchanged
 

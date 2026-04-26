@@ -12,7 +12,7 @@ This cleanup aligned bridge lifecycle/docs/contracts with the current reconnect-
 
 2. **Architecture/module-map/README drift removed**
    - Updated `docs/10-architecture/architecture.md` bridge registration/file-layout sections.
-   - Updated `docs/module-map-bridge.md` to current module responsibilities.
+   - Updated `docs/30-development/module-maps/module-map-bridge.md` to current module responsibilities.
    - Updated `packages/bridge/README.md` for current lifecycle semantics, BridgeAPI import guidance, and settings table coverage.
 
 3. **Dead bridge composition surface removed**
@@ -31,7 +31,7 @@ This cleanup aligned bridge lifecycle/docs/contracts with the current reconnect-
    - Also removed stale RED/stub wording in `extension-composition.test.ts`.
 
 6. **Bridge testing guide refreshed**
-   - Added `docs/testing-guide-bridge.md` with:
+   - Added `docs/40-testing/testing-guide-bridge.md` with:
      - automated test commands and coverage scope
      - user-journey checks for startup/status/restart/reload behavior
 

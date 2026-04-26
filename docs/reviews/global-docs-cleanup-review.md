@@ -31,4 +31,4 @@
 ## Deferred / intentionally not changed in this batch
 
 - Historical files were not physically moved between archive lanes; this batch establishes canonical roots and indexing first.
-- Root-level legacy `docs/testing-guide-*.md` files remain and are documented as transitional.
+- Root-level legacy `docs/40-testing/testing-guide-*.md` files remain and are documented as transitional.
