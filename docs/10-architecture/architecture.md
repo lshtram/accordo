@@ -1,7 +1,7 @@
 # Accordo IDE — Architecture
 
-**Status:** ACTIVE — incorporates browser MCP waves 1-8 and DEC-024 reload-reconnect lifecycle  
-**Date:** 2026-04-08  
+**Status:** ACTIVE — incorporates browser MCP waves 1-8, DEC-024 reload-reconnect lifecycle, Phase A VS Code command gateway design, and the selected-tool migration boundary for Priority W  
+**Date:** 2026-04-25  
 **Scope:** Current Accordo control plane and active modality architecture  
 **Supersedes:** VSCODE-OPENSPACE-ARCHITECTURE.md §§1–5, 11, 13 (for Phase 1 scope)
 
@@ -35,7 +35,7 @@ The project is built as a **layer on top of VSCode**. The human keeps their exis
 │                                                                          │
 │  ┌──────────────────────────────────────────────────────────────────────┐│
 │  │  accordo-editor   (extensionKind: ["workspace"])                     ││
-│  │  • 23 editor/terminal/layout MCP tools                               ││
+│  │  • 25 editor/terminal/layout/command-gateway MCP tools               ││
 │  │  • Registers tools via BridgeAPI.registerTools()                     ││
 │  └──────────────────────┬───────────────────────────────────────────────┘│
 │                         │ BridgeAPI (same extension host, direct import)  │
@@ -114,6 +114,8 @@ The Hub is the **central control plane**. It has zero VSCode dependency.
 | `/mcp` | POST | MCP Streamable HTTP JSON-RPC endpoint. Request body is JSON-RPC. Response is JSON-RPC. |
 | `/mcp` | GET | Authenticated SSE notification stream for MCP clients (server-initiated notifications). |
 | `/instructions` | GET | Returns rendered system prompt (markdown). |
+| `/runtime-directives` | GET | Returns canonical runtime-directives bundle as authenticated JSON (version, digest, clauses, ownership metadata). |
+| `/runtime-directives/diagnostics` | GET | Returns active bundle metadata plus per-session delivery receipts proving what directives connected MCP clients received. |
 | `/health` | GET | Returns `{ ok: true, uptime: <seconds>, bridge: "connected"\|"disconnected", toolCount: <number>, protocolVersion: <string>, inflight: <number>, queued: <number> }` |
 | `/bridge` | WebSocket | Bridge connection point. Authenticated via `x-accordo-secret` header. |
 | `/bridge/reauth` | POST | Credential rotation without Hub respawn. Auth: `x-accordo-secret: <current-secret>`. Body: `{ "newToken": "<new-token>", "newSecret": "<new-secret>" }`. Hub atomically replaces `ACCORDO_BRIDGE_SECRET` and `ACCORDO_TOKEN` in memory, then returns 200. Rotated token is persisted when `tokenFilePath` is configured (default `~/.accordo/token`). Allows Bridge to rotate credentials without terminating active agent sessions (e.g. on `accordo.hub.restart`). Returns 401 if the current secret is wrong. |
@@ -170,6 +172,20 @@ When a tool call arrives via MCP:
 4. Extension handler runs in the VSCode extension host
 5. Result returns via WebSocket → Hub → MCP response
 
+### 3.7.1 Runtime Tool Documentation Contract
+
+Accordo is consumed by both repo-local and external MCP agents. Therefore, tool-usage guidance cannot rely on repository requirements/test documents.
+
+**Contract:**
+1. Critical usage constraints must be present in each tool's runtime description (`tools/list`).
+2. Extended operational guidance must be available through MCP-readable resources. The canonical resource paths are `accordo://docs/tool-reference` and `accordo://docs/troubleshooting`, with feature-specific sections such as `vscode-command-gateway`.
+3. Server instructions provide concise workflow guidance that points agents back to those MCP-visible docs for deeper operational details.
+4. Repo-local skills may mirror or expand examples for maintainers, but they are supplemental and never the only safe-usage source.
+
+This keeps the delivered MCP self-describing for any client and prevents reliance on private project docs for basic safe operation.
+
+See: `docs/30-development/mcp-tool-documentation-contract.md`.
+
 ### 3.8 State Cache
 
 ```typescript
@@ -195,6 +211,21 @@ Updated via `stateUpdate` WebSocket messages from Bridge. Merges patches (partia
 - Current `IDEState`
 - Registered tool names and descriptions (NOT full input schemas — those are served via MCP `tools/list`)
 - Behaviour guidelines
+- A versioned `## Runtime Directives` section rendered from the canonical runtime-directives bundle
+
+### 3.9.1 Runtime Directives Contract (Priority Y)
+
+Accordo now treats mandatory runtime guidance as a first-class contract rather than
+free-form prompt prose.
+
+**Design:**
+1. A single canonical bundle in Hub code owns directive clause IDs, wording, version, and digest.
+2. `initialize.instructions` and `GET /instructions` are rendered from that same bundle.
+3. Tool descriptions may reinforce those directives but do not redefine them.
+4. The Hub records delivery receipts per MCP session so operators can prove which bundle/version a client received.
+5. Parity checks compare the canonical bundle against initialize output, `/instructions`, and declared tool-description reinforcement targets.
+
+This preserves existing tool behavior while making runtime guidance auditable and stable for external MCP clients.
 
 **Token budget:** Hard cap of **1,500 tokens** for the dynamic section (state + tool list). Core instructions are a fixed ~300 token prefix. If state + tools exceeds budget:
 1. Compact state by omitting empty/null fields
@@ -217,6 +248,7 @@ accordo-hub/
 │   ├── tool-registry.ts     — Tool registration, lookup, validation
 │   ├── state-cache.ts       — IDEState storage, patch merging, snapshot
 │   ├── prompt-engine.ts     — Template rendering, token budget enforcement
+│   ├── runtime-directives.ts— Canonical bundle types + rendering/parity abstractions
 │   ├── security.ts          — Origin validation, bearer token, secret management
 │   ├── disconnect-handler.ts— Grace-timer lifecycle for /bridge/disconnect
 │   ├── bridge-connection.ts — WS lifecycle (auth, eviction, heartbeat, rate-limit, grace timer)
@@ -532,7 +564,12 @@ export async function activate(context: vscode.ExtensionContext) {
     ?.exports as BridgeAPI;
   if (!bridge) return; // Bridge not installed — extension is inert
 
-  const allTools = [...editorTools, ...terminalTools, ...createLayoutTools(() => bridge.getState())];
+  const allTools = [
+    ...editorTools,
+    ...terminalTools,
+    ...vscodeCommandTools,
+    ...createLayoutTools(() => bridge.getState()),
+  ];
   const disposable = bridge.registerTools('accordo.accordo-editor', allTools);
   context.subscriptions.push(disposable);
 }
@@ -544,8 +581,9 @@ export async function activate(context: vscode.ExtensionContext) {
 |---|---:|---|
 | Editor tools (`accordo_editor_*`) | 11 | open/close/scroll/split/focus/reveal/highlight/save/format |
 | Terminal tools (`accordo_terminal_*`) | 5 | open/run/focus/list/close with stable terminal IDs |
+| VS Code command gateway (`accordo_vscode_command_*`) | 2 | guarded command discovery + execution for long-tail VS Code capabilities |
 | Layout tools (`accordo_panel_toggle`, `accordo_layout_*`) | 7 | panel toggle + explicit area control + layout state snapshot |
-| **Total** | **23** | Registered under `accordo.accordo-editor` |
+| **Total** | **25** | Registered under `accordo.accordo-editor` |
 
 ### 5.5 Implementation Notes
 
@@ -553,6 +591,26 @@ export async function activate(context: vscode.ExtensionContext) {
 - `accordo_editor_open` has surface-aware behavior: `.md` uses markdown preview (`accordo.markdownPreview`) with optional line reveal command; `.mmd` uses `accordo-diagram.open`; other files open as text editors.
 - `accordo_editor_highlight` uses `vscode.window.createTextEditorDecorationType`.
 - `accordo_terminal_run` uses `terminal.sendText(command, true)`.
+
+### 5.5.1 Priority W migration boundary (selected wrapper removals)
+
+**Current state:** the 25-tool editor surface above is still the live registered surface until the migration wave lands.
+
+**Approved removal boundary for Phase B/C:**
+
+| Category | Retire from first-class MCP surface | Replacement |
+|---|---|---|
+| Editor wrappers | `accordo_editor_split`, `accordo_editor_reveal`, `accordo_editor_save`, `accordo_editor_saveAll`, `accordo_editor_format` | `accordo_vscode_command_execute` + playbook-defined sequencing |
+| Layout wrappers | `accordo_layout_zen`, `accordo_layout_fullscreen`, `accordo_layout_joinGroups`, `accordo_layout_evenGroups` | `accordo_vscode_command_execute` |
+| Diagram helper tools | `accordo_diagram_list`, `accordo_diagram_get`, `accordo_diagram_style_guide` | file/tooling workflow + diagram skill/runtime docs (not the command gateway) |
+
+**Compatibility decisions:**
+
+1. No compatibility alias layer is planned for these removed wrappers once the migration wave lands; they disappear from MCP `tools/list` in the same wave that the playbook/runtime guidance ships.
+2. The command gateway is the canonical replacement only for scenarios backed by real VS Code commands. File-backed diagram discovery/inspection/style guidance stays outside the gateway.
+3. `revealInExplorer` is the only approved migration in this wave that requires argument hydration (`path` → `vscode.Uri`) inside the editor-local gateway runtime.
+4. `save` and `format` are command-backed only for the active editor; the migration path therefore keeps `accordo_editor_open` as the focus/select primitive before gateway execution.
+5. Zen/fullscreen remain toggle-only operations with no deterministic native readback signal in the current MCP surface; the playbook must document that limitation explicitly.
 
 ### 5.6 Internal File Structure
 
@@ -564,12 +622,18 @@ accordo-editor/
 │   │   ├── editor.ts / editor-handlers.ts / editor-definitions.ts
 │   │   ├── terminal.ts
 │   │   ├── layout.ts
-│   │   └── bar.ts             — accordo_layout_panel explicit open/close area control
+│   │   ├── bar.ts             — accordo_layout_panel explicit open/close area control
+│   │   ├── vscode-command.ts  — public gateway barrel exports
+│   │   ├── vscode-command-contracts.ts
+│   │   ├── vscode-command-stubs.ts
+│   │   └── vscode-command-tools.ts
 │   └── util.ts                — path resolution, error wrapping
 ├── package.json
 ├── tsconfig.json
 └── README.md
 ```
+
+**Gateway module split (Phase A remediation):** `vscode-command.ts` is a barrel only. Contracts, stub handlers/dependencies, and MCP tool definitions live in separate focused files so each module stays within the Phase A file-size limit and keeps a single responsibility.
 
 ---
 
@@ -638,7 +702,7 @@ Same topology as SSH. The Codespace VM runs the workspace extension host + Hub. 
 |---|---|
 | **Loopback binding** | `127.0.0.1` by default. Explicit `--host` flag required for any other interface. |
 | **Origin validation** | All HTTP requests must have either no `Origin` header (non-browser) or an `Origin` of `localhost`/`127.0.0.1`. Reject all other origins. Prevents DNS rebinding. |
-| **Bearer token** | `Authorization: Bearer <token>` required on `/mcp`, `/instructions`, `/state`, and `/browser/status`. Token originates from Bridge: generated on Hub spawn, stored in VSCode `SecretStorage` (key: `accordo.<projectId>.hubToken`), passed to Hub as `ACCORDO_TOKEN` env var. Hub keeps the active token in memory; rotated tokens are persisted when `tokenFilePath` is configured (default `~/.accordo/token`). |
+| **Bearer token** | `Authorization: Bearer <token>` required on `/mcp`, `/instructions`, `/runtime-directives`, `/runtime-directives/diagnostics`, `/state`, and `/browser/status`. Token originates from Bridge: generated on Hub spawn, stored in VSCode `SecretStorage` (key: `accordo.<projectId>.hubToken`), passed to Hub as `ACCORDO_TOKEN` env var. Hub keeps the active token in memory; rotated tokens are persisted when `tokenFilePath` is configured (default `~/.accordo/token`). |
 | **CORS** | No CORS headers served by default. Agents use same-origin or non-browser requests. |
 
 ### 7.2 WebSocket Security
@@ -762,7 +826,7 @@ Messages exceeding this limit cause `ws` to close the connection with a protocol
 13. Bridge registers Hub as native MCP server (Copilot — via settings or lm API)
 14. Bridge writes opencode.json / .claude/mcp.json if configured (token from SecretStorage)
 15. Agent starts, connects MCP, fetches /instructions
-16. Agent sees IDE state + 23 editor tools. Session is live.
+16. Agent sees IDE state + 25 editor tools. Session is live.
 ```
 
 ---
@@ -902,9 +966,9 @@ Nineteen page-understanding, interaction, and control MCP tools are registered b
 - `accordo_browser_inspect_element` — deep single-element inspection with anchor generation
 - `accordo_browser_get_dom_excerpt` — raw HTML fragment for a CSS selector subtree
 - `accordo_browser_capture_region` — cropped viewport screenshot of a specific element or rect
-- `accordo_browser_list_pages` — enumerate open tabs
-- `accordo_browser_select_page` — activate a tab by tabId
-- `accordo_browser_wait_for` — wait for a condition on the active page (text appearance, CSS selector match, or layout stability) with configurable timeout and clear error semantics (B2-WA-001..007)
+- `accordo_browser_list_pages` — enumerate open tabs with per-window `active` state and one `isImplicitTarget` marker
+- `accordo_browser_select_page` — activate a tab by tabId and focus its window so it becomes the implicit target
+- `accordo_browser_wait_for` — wait for a condition on the implicit target page (the active tab in the last focused window) when `tabId` is omitted, with configurable timeout and clear error semantics (B2-WA-001..007)
 - `accordo_browser_get_text_map` — visible text with reading order
 - `accordo_browser_get_semantic_graph` — a11y tree + landmarks + outline + forms
 - `accordo_browser_diff_snapshots` — DOM change tracking between snapshots

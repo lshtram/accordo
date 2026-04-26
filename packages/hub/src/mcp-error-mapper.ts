@@ -152,3 +152,11 @@ export function buildUnknownToolResponse(
     error: { code: -32601, message: `Unknown tool: ${toolName}` },
   };
 }
+
+/**
+ * Returns true when `e` is a PolicyDeniedError thrown by a tool handler
+ * to signal that the MCP policy layer denied execution before bridge routing.
+ */
+export function isPolicyDenied(e: unknown): boolean {
+  return e instanceof Error && e.name === "PolicyDeniedError";
+}

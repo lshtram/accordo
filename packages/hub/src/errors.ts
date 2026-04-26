@@ -21,3 +21,18 @@ export class JsonRpcError extends Error {
     this.name = "JsonRpcError";
   }
 }
+
+/**
+ * Thrown by a tool handler when the MCP policy layer denies execution.
+ * The McpCallExecutor catches this before routing through bridgeServer.invoke()
+ * so that denied commands produce zero bridge invocations (E2E-VCG-09).
+ */
+export class PolicyDeniedError extends Error {
+  constructor(
+    message: string,
+    public readonly toolName: string,
+  ) {
+    super(message);
+    this.name = "PolicyDeniedError";
+  }
+}

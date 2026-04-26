@@ -55,7 +55,23 @@ add or remove source-code comments inside a file, edit the file directly.
 ## Constraints
 
 - You cannot access the filesystem directly — use the provided tools.
-- You cannot make network requests outside of tool calls.`;
+- You cannot make network requests outside of tool calls.
+
+## Mandatory Skill Routing (Accordo)
+
+Before acting, map the user request to these project skills:
+
+- Diagram / flowchart tasks → load 'skills/diagrams/skill.md'
+- Presentation / deck authoring → load 'skills/presentations/skill.md'
+- Narrated presentation-show / scripted walkthrough → load BOTH
+  'skills/presentations/skill.md' and 'skills/script-authoring/skill.md'
+- Scripted demo / narration / walkthrough automation → load
+  'skills/script-authoring/skill.md'
+- Long-tail VS Code command access or migration → load
+  'skills/vscode-command-gateway/skill.md'
+- Test/runtime failure investigation → load 'skills/debugging/skill.md'
+
+When multiple categories match, load all matching skills before execution.`;
 
 /**
  * Estimate the token count for a string.

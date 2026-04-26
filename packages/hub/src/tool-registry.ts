@@ -91,7 +91,10 @@ export class ToolRegistry {
    * Look up a single tool by its fully qualified name.
    * Hub-native tools take precedence over Bridge tools.
    *
-   * @param name - Tool name, e.g. "accordo_editor_open"
+   * Supports both canonical names (e.g. "comment_list") and the
+   * legacy alias form (e.g. "accordo_comment_list").
+   *
+   * @param name - Tool name, e.g. "comment_list" or "accordo_comment_list"
    * @returns The tool registration, or undefined if not found
    */
   get(name: string): ToolRegistration | undefined {
@@ -109,24 +112,25 @@ export class ToolRegistry {
   }
 
   /**
-   * Return all registered tools (Hub-native + Bridge).
+   * Return all registered tools (Hub-native + Bridge), using canonical names.
+   *
+   * Aliases (e.g. "accordo_comment_*") are NOT included in the returned list —
+   * they exist only for backward-compatible tools/call resolution via get().
+   * list() and toMcpTools() expose only the canonical names.
    *
    * Merge semantics:
    * - Bridge tools are loaded first.
    * - Hub-native tools overwrite same-name Bridge tools on collision.
-   * - Iteration order remains insertion-order based; this method does not
-   *   guarantee Hub-native tools appear first.
    */
   list(): ToolRegistration[] {
     const merged = new Map<string, ToolRegistration>();
-    // Bridge tools first, then Hub tools overwrite on collision
     for (const [name, tool] of this.bridgeTools) {
       merged.set(name, tool);
     }
     for (const [name, tool] of this.hubTools) {
       merged.set(name, tool);
     }
-    return this.withAliases(Array.from(merged.values()));
+    return Array.from(merged.values());
   }
 
   /**

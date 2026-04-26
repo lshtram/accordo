@@ -9,6 +9,7 @@
  * server-routing.ts — the exact middleware order from the original is preserved.
  *
  * Requirements: requirements-hub.md §2.1–§2.6, §3.3, §5.6, §8
+ * Requirements: requirements-runtime-directives.md Y-02, Y-03, Y-07, Y-08
  */
 
 import http from "node:http";
@@ -26,8 +27,8 @@ import { createRouter } from "./server-routing.js";
 import { createSseManager } from "./server-sse.js";
 import { createMcpRequestHandler, extractAgentHint } from "./server-mcp.js";
 import { createReauthHandler } from "./server-reauth.js";
+import { RuntimeDirectiveCatalogImpl } from "./runtime-directives/catalog.js";
 import type { Router } from "./server-routing.js";
-
 
 export interface HubServerOptions {
   /** Port to listen on. Default: 3000 */
@@ -75,69 +76,118 @@ export class HubServer {
   private debugLogger: McpDebugLogger | undefined;
   private router: Router;
   private disconnectHandler: DisconnectHandler;
+  /** Runtime directive catalog — single source of truth for Priority Y */
+  private runtimeDirectiveCatalog: RuntimeDirectiveCatalogImpl;
   /**
    * Fingerprint of the last tool registry snapshot that triggered a
    * notifications/tools/list_changed push. Prevents duplicate notifications.
    */
   private lastNotifiedToolHash = "";
 
+  /** SSE manager — stored for closeAll() on stop() */
+  private sseManager: ReturnType<typeof createSseManager>;
+
   constructor(private options: HubServerOptions) {
     this.token = options.token;
 
-    // Initialise debug logger unless explicitly disabled (empty string)
-    if (options.debugLogFile !== "") {
-      this.debugLogger = new McpDebugLogger(options.debugLogFile);
-      console.error(`[hub] MCP debug log → ${this.debugLogger.getLogFile()}`);
-    }
+    // ── Step 1: Debug logger ──────────────────────────────────────────────
+    this.debugLogger = this._initDebugLogger();
 
-    // Create DisconnectHandler first so it can be referenced in BridgeServer callbacks.
-    this.disconnectHandler = new DisconnectHandler({
+    // ── Step 2: Core infrastructure ──────────────────────────────────────
+    this.disconnectHandler = this._initDisconnectHandler();
+    this.bridgeServer = this._initBridgeServer();
+    this.toolRegistry = new ToolRegistry();
+    this.stateCache = new StateCache();
+    this.runtimeDirectiveCatalog = new RuntimeDirectiveCatalogImpl();
+
+    // ── Step 3: MCP handler ──────────────────────────────────────────────
+    this.mcpHandler = this._initMcpHandler();
+
+    // ── Step 4: Bridge event wiring ──────────────────────────────────────
+    this._wireBridgeEvents();
+
+    // ── Step 5: Sub-module instances ────────────────────────────────────
+    this.sseManager = this._initSseManager();
+    const mcpRequestHandler = this._initMcpRequestHandler();
+    const reauthHandler = this._initReauthHandler();
+
+    // ── Step 6: Tool registry update callback ────────────────────────────
+    this._wireToolRegistryUpdates();
+
+    // ── Step 7: Router ────────────────────────────────────────────────────
+    this.router = this._initRouter(mcpRequestHandler, reauthHandler);
+  }
+
+  // ── Constructor helper methods ──────────────────────────────────────────────
+
+  private _initDebugLogger(): McpDebugLogger | undefined {
+    if (this.options.debugLogFile !== "") {
+      const logger = new McpDebugLogger(this.options.debugLogFile);
+      console.error(`[hub] MCP debug log → ${logger.getLogFile()}`);
+      return logger;
+    }
+    return undefined;
+  }
+
+  private _initDisconnectHandler(): DisconnectHandler {
+    return new DisconnectHandler({
       graceWindowMs: DISCONNECT_GRACE_WINDOW_MS,
       onGraceExpired: (): void => { process.exit(0); },
       log: (msg): void => { console.error(`[hub:disconnect] ${msg}`); },
     });
+  }
 
-    this.bridgeServer = new BridgeServer({
-      secret: options.bridgeSecret,
-      maxConcurrent: options.maxConcurrent,
-      maxQueueDepth: options.maxQueueDepth,
+  private _initBridgeServer(): BridgeServer {
+    return new BridgeServer({
+      secret: this.options.bridgeSecret,
+      maxConcurrent: this.options.maxConcurrent,
+      maxQueueDepth: this.options.maxQueueDepth,
       onGraceExpired: (): void => { this.stateCache.clearModalities(); },
       onBridgeConnect: (): void => { this.disconnectHandler.cancelGraceTimer(); },
     });
-    this.toolRegistry = new ToolRegistry();
-    this.stateCache = new StateCache();
+  }
 
-    this.mcpHandler = new McpHandler({
+  private _initMcpHandler(): McpHandler {
+    return new McpHandler({
       toolRegistry: this.toolRegistry,
       bridgeServer: this.bridgeServer,
       getState: (): IDEState => this.stateCache.getState(),
-      toolCallTimeout: options.toolCallTimeout,
-      auditFile: options.auditFile,
+      toolCallTimeout: this.options.toolCallTimeout,
+      auditFile: this.options.auditFile,
       debugLogger: this.debugLogger,
+      runtimeDirectiveCatalog: this.runtimeDirectiveCatalog,
     });
+  }
 
-    // Wire Bridge callbacks to state cache and tool registry
+  private _wireBridgeEvents(): void {
     this.bridgeServer.onStateUpdate((patch) => {
       this.stateCache.applyPatch(patch);
     });
+  }
 
-    // Create sub-module instances
-    const sseManager = createSseManager({
+  private _initSseManager(): ReturnType<typeof createSseManager> {
+    return createSseManager({
       debugLogger: this.debugLogger,
       extractAgentHint,
     });
+  }
 
-    const mcpRequestHandler = createMcpRequestHandler({
+  private _initMcpRequestHandler(): ReturnType<typeof createMcpRequestHandler> {
+    return createMcpRequestHandler({
       mcpHandler: this.mcpHandler,
       debugLogger: this.debugLogger,
     });
+  }
 
-    const reauthHandler = createReauthHandler({
+  private _initReauthHandler(): ReturnType<typeof createReauthHandler> {
+    return createReauthHandler({
       updateToken: (newToken) => { this.updateToken(newToken); },
       updateBridgeSecret: (newSecret) => { this.bridgeServer.updateSecret(newSecret); },
       updateOptionsBridgeSecret: (newSecret) => { this.options.bridgeSecret = newSecret; },
     });
+  }
 
+  private _wireToolRegistryUpdates(): void {
     this.bridgeServer.onRegistryUpdate((tools) => {
       this.toolRegistry.register(tools);
       // Only notify SSE clients if the effective tool set actually changed.
@@ -145,18 +195,23 @@ export class HubServer {
       if (newHash === this.lastNotifiedToolHash) return;
       this.lastNotifiedToolHash = newHash;
       // MCP spec: notifications/tools/list_changed
-      sseManager.pushSseNotification({
+      this.sseManager.pushSseNotification({
         jsonrpc: "2.0" as const,
         method: "notifications/tools/list_changed",
         params: {},
       });
     });
+  }
 
-    this.router = createRouter({
+  private _initRouter(
+    mcpRequestHandler: ReturnType<typeof createMcpRequestHandler>,
+    reauthHandler: ReturnType<typeof createReauthHandler>,
+  ): Router {
+    return createRouter({
       getToken: () => this.token,
       getBridgeSecret: () => this.options.bridgeSecret,
       handleMcp: (req, res) => mcpRequestHandler.handleMcp(req, res),
-      handleMcpSse: (req, res) => sseManager.handleMcpSse(req, res),
+      handleMcpSse: (req, res) => this.sseManager.handleMcpSse(req, res),
       handleReauth: (req, res) => reauthHandler.handleReauth(req, res),
       handleDisconnect: (_req, res) => {
         this.disconnectHandler.startGraceTimer();
@@ -178,14 +233,11 @@ export class HubServer {
           controlGranted: browserState?.controlGranted ?? false,
         };
       },
+      runtimeDirectiveCatalog: this.runtimeDirectiveCatalog,
     });
-
-    // Store sseManager for shutdown cleanup
-    this.sseManager = sseManager;
   }
 
-  /** SSE manager — stored for closeAll() on stop() */
-  private sseManager: ReturnType<typeof createSseManager>;
+  // ── Server lifecycle ────────────────────────────────────────────────────────
 
   /**
    * Start the HTTP server and WebSocket bridge server.

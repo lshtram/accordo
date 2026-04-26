@@ -5,16 +5,19 @@
  * Extracted from mcp-handler.ts to keep each module focused.
  *
  * Requirements: requirements-hub.md §2.1, §5.5, §6
+ * Requirements: requirements-runtime-directives.md Y-02, Y-07, Y-08
  */
 
 import { MCP_PROTOCOL_VERSION } from "@accordo/bridge-types";
-import type { IDEState } from "@accordo/bridge-types";
+import type { IDEState, RuntimeDirectiveCatalog } from "@accordo/bridge-types";
 import type { ToolRegistry } from "./tool-registry.js";
 import type { BridgeServer } from "./bridge-server.js";
 import type { McpDebugLogger } from "./debug-log.js";
 import { renderPrompt } from "./prompt-engine.js";
 import type { Session, McpSessionRegistry } from "./mcp-session.js";
 import { McpCallExecutor } from "./mcp-call-executor.js";
+
+// ─── JSON-RPC types ─────────────────────────────────────────────────────────
 
 /** JSON-RPC 2.0 request */
 export interface JsonRpcRequest {
@@ -35,6 +38,8 @@ export interface JsonRpcResponse {
     data?: unknown;
   };
 }
+
+// ─── Dependency interface ─────────────────────────────────────────────────────
 
 /** Dependencies injected into McpDispatch */
 export interface McpDispatchDeps {
@@ -66,7 +71,89 @@ export interface McpDispatchDeps {
    * instructions text injected into the agent's context by initialize.
    */
   debugLogger?: McpDebugLogger;
+  /**
+   * Optional runtime directive catalog. When provided, initialize responses
+   * include runtime directives and initialize receipts are recorded.
+   * Requirements: requirements-runtime-directives.md Y-02, Y-07, Y-08
+   */
+  runtimeDirectiveCatalog?: RuntimeDirectiveCatalog;
 }
+
+// ─── Default IDE state fallback ─────────────────────────────────────────────
+
+const EMPTY_IDE_STATE: IDEState = {
+  activeFile: null,
+  activeFileLine: 1,
+  activeFileColumn: 1,
+  openEditors: [],
+  openTabs: [],
+  visibleEditors: [],
+  workspaceFolders: [],
+  activeTerminal: null,
+  workspaceName: null,
+  remoteAuthority: null,
+  modalities: {},
+};
+
+// ─── Initialize response builder ─────────────────────────────────────────────
+
+/**
+ * Build the instructions string for an initialize response.
+ *
+ * Y-03 parity: when a runtime directive catalog is present, the same
+ * ## Runtime Directives section rendered from the catalog is prepended
+ * to the base system prompt (same wording, same clause order, same
+ * version/digest metadata as /instructions).
+ */
+function buildInitializeInstructions(
+  catalog: RuntimeDirectiveCatalog | undefined,
+  state: IDEState | undefined,
+  toolRegistry: ToolRegistry,
+): string {
+  const allTools = toolRegistry.list();
+  const resolvedState = state ?? EMPTY_IDE_STATE;
+
+  // Base instructions from prompt engine (or minimal fallback)
+  const baseInstructions = state
+    ? renderPrompt(resolvedState, allTools)
+    : [
+        "Accordo IDE — real-time pair-programming co-pilot.",
+        "You have access to ALL of the following tools — use them directly without activation:",
+        ...toolRegistry.toMcpTools().map((t) => `  - ${t.name}`),
+        "",
+        "If your client shows activate_* or similar grouped tool placeholders,",
+        "expand/activate ALL of them immediately so you can use every tool.",
+      ].join("\n");
+
+  // Prepend runtime directives when catalog is available (Y-02, Y-03)
+  if (!catalog) return baseInstructions;
+
+  return (
+    catalog.renderInstructions(resolvedState, allTools) + "\n\n" + baseInstructions
+  );
+}
+
+/**
+ * Record an initialize delivery receipt for the given session.
+ */
+function recordInitializeReceipt(
+  catalog: RuntimeDirectiveCatalog,
+  session: Session,
+  agentHint: string | undefined,
+): void {
+  const bundle = catalog.getBundle();
+  const resolvedAgentHint = agentHint ?? session.agentHint ?? null;
+  catalog.recordReceipt({
+    sessionId: session.id,
+    agent: resolvedAgentHint,
+    channel: "initialize",
+    bundleVersion: bundle.version,
+    bundleDigest: bundle.digest,
+    deliveredAt: new Date().toISOString(),
+  });
+}
+
+// ─── Dispatch ────────────────────────────────────────────────────────────────
 
 /**
  * Dispatches JSON-RPC requests from MCP clients (agents).
@@ -78,6 +165,7 @@ export class McpDispatch {
   private readonly toolCallTimeout: number;
   private readonly debugLogger: McpDebugLogger | undefined;
   private readonly getState: (() => IDEState) | undefined;
+  private readonly runtimeDirectiveCatalog: RuntimeDirectiveCatalog | undefined;
   private readonly executor: McpCallExecutor;
 
   constructor(deps: McpDispatchDeps) {
@@ -86,6 +174,7 @@ export class McpDispatch {
     this.getState = deps.getState;
     this.toolCallTimeout = deps.toolCallTimeout ?? 30_000;
     this.debugLogger = deps.debugLogger;
+    this.runtimeDirectiveCatalog = deps.runtimeDirectiveCatalog;
     this.executor = new McpCallExecutor({
       toolRegistry: deps.toolRegistry,
       bridgeServer: deps.bridgeServer,
@@ -99,10 +188,6 @@ export class McpDispatch {
    *
    * Supports: initialize, initialized, tools/list, tools/call, ping.
    * Returns null for notifications (no id).
-   *
-   * @param request - Parsed JSON-RPC 2.0 request
-   * @param session - The session associated with this request
-   * @returns JSON-RPC response, or null for notifications
    */
   async handleRequest(
     request: JsonRpcRequest,
@@ -126,96 +211,132 @@ export class McpDispatch {
 
     // Empty method string → Invalid request
     if (!request.method) {
-      const errResp: JsonRpcResponse = {
-        jsonrpc: "2.0",
-        id,
-        error: { code: -32600, message: "Invalid request" },
-      };
-      this.debugLogger?.logRpcResponded({
-        sessionId: session.id,
-        rpcMethod: "(empty)",
-        error: errResp.error,
-        durationMs: Date.now() - rpcStart,
-      });
-      return errResp;
+      return this._invalidRequest(id, "(empty)", rpcStart, session.id);
     }
 
     switch (request.method) {
-      case "initialize": {
-        // MCP spec: the `instructions` field is included in the agent's system
-        // context. Render the full system prompt so agents that only read
-        // initialize (e.g. VS Code Copilot) receive the same directives —
-        // ## Voice narration directive, ## Open Comment Threads, live IDE state
-        // — as agents that separately load /instructions (e.g. OpenCode).
-        const toolNames = this.toolRegistry.list();
-        const instructions = this.getState
-          ? renderPrompt(this.getState(), toolNames)
-          : [
-              "Accordo IDE — real-time pair-programming co-pilot.",
-              "You have access to ALL of the following tools — use them directly without activation:",
-              ...this.toolRegistry.toMcpTools().map((t) => `  - ${t.name}`),
-              "",
-              "If your client shows activate_* or similar grouped tool placeholders,",
-              "expand/activate ALL of them immediately so you can use every tool.",
-            ].join("\n");
+      case "initialize":
+        return this._handleInitialize(id, request, session, agentHint, rpcStart);
 
-        const initResult = {
-          protocolVersion: MCP_PROTOCOL_VERSION,
-          serverInfo: { name: "accordo", version: "0.1.0" },
-          capabilities: { tools: { listChanged: true } },
-          instructions,
-        };
-        this.debugLogger?.logInitializeSent({
-          sessionId: session.id,
-          protocolVersion: MCP_PROTOCOL_VERSION,
-          instructions,
-          capabilities: initResult.capabilities,
-        });
-        const initResp: JsonRpcResponse = { jsonrpc: "2.0", id, result: initResult };
-        this.debugLogger?.logRpcResponded({
-          sessionId: session.id,
-          rpcMethod: "initialize",
-          result: initResult,
-          durationMs: Date.now() - rpcStart,
-        });
-        return initResp;
-      }
+      case "initialized":
+        return this._handleInitialized(session, rpcStart);
 
-      case "initialized": {
-        // Notification — mark session initialized, no response
-        this.sessionRegistry.markInitialized(session.id);
-        // Notifications have no id and return null — just note it was received
-        this.debugLogger?.logRpcResponded({
-          sessionId: session.id,
-          rpcMethod: "initialized",
-          result: null,
-          durationMs: Date.now() - rpcStart,
-        });
-        return null;
-      }
+      case "tools/list":
+        return this._handleToolsList(id, session, rpcStart);
 
-      case "tools/list": {
-        const mcpTools = this.toolRegistry.toMcpTools();
-        this.debugLogger?.logToolsListSent({ sessionId: session.id, tools: mcpTools });
-        const listResp: JsonRpcResponse = {
-          jsonrpc: "2.0",
-          id,
-          result: { tools: mcpTools },
-        };
-        this.debugLogger?.logRpcResponded({
-          sessionId: session.id,
-          rpcMethod: "tools/list",
-          result: { toolCount: mcpTools.length },
-          durationMs: Date.now() - rpcStart,
-        });
-        return listResp;
-      }
+      case "tools/call":
+        return this._handleToolsCall(id, request, session, rpcStart);
 
-      case "tools/call": {
-        const params = request.params ?? {};
-        const toolName = params["name"] as string | undefined;
-        const toolArgs = (params["arguments"] ?? {}) as Record<string, unknown>;
-        const callResp = await this.executor.executeToolCall(toolName, toolArgs, session, id);
+      case "ping":
+        return this._handlePing(id, session, rpcStart);
+
+      default:
+        return this._methodNotFound(id, request.method, rpcStart, session.id);
+    }
+  }
+
+  // ── Method handlers ─────────────────────────────────────────────────────────
+
+  private _handleInitialize(
+    id: string | number | null,
+    _request: JsonRpcRequest,
+    session: Session,
+    agentHint: string | undefined,
+    rpcStart: number,
+  ): JsonRpcResponse {
+    const state = this.getState ? this.getState() : undefined;
+    const instructions = buildInitializeInstructions(
+      this.runtimeDirectiveCatalog,
+      state,
+      this.toolRegistry,
+    );
+
+    // Record initialize delivery receipt (Y-07, Y-08)
+    if (this.runtimeDirectiveCatalog) {
+      recordInitializeReceipt(this.runtimeDirectiveCatalog, session, agentHint);
+    }
+
+    const initResult = {
+      protocolVersion: MCP_PROTOCOL_VERSION,
+      serverInfo: { name: "accordo", version: "0.1.0" },
+      capabilities: { tools: { listChanged: true } },
+      instructions,
+    };
+
+    this._logInitializeResponse(session.id, initResult, rpcStart);
+
+    return { jsonrpc: "2.0", id, result: initResult };
+  }
+
+  private _logInitializeResponse(
+    sessionId: string,
+    initResult: {
+      protocolVersion: string;
+      serverInfo: { name: string; version: string };
+      capabilities: { tools: { listChanged: boolean } };
+      instructions: string;
+    },
+    rpcStart: number,
+  ): void {
+    this.debugLogger?.logInitializeSent({
+      sessionId,
+      protocolVersion: initResult.protocolVersion,
+      instructions: initResult.instructions,
+      capabilities: initResult.capabilities,
+    });
+    this.debugLogger?.logRpcResponded({
+      sessionId,
+      rpcMethod: "initialize",
+      result: initResult,
+      durationMs: Date.now() - rpcStart,
+    });
+  }
+
+  private _handleInitialized(session: Session, rpcStart: number): null {
+    // Notification — mark session initialized, no response
+    this.sessionRegistry.markInitialized(session.id);
+    this.debugLogger?.logRpcResponded({
+      sessionId: session.id,
+      rpcMethod: "initialized",
+      result: null,
+      durationMs: Date.now() - rpcStart,
+    });
+    return null;
+  }
+
+  private _handleToolsList(
+    id: string | number | null,
+    session: Session,
+    rpcStart: number,
+  ): JsonRpcResponse {
+    const mcpTools = this.toolRegistry.toMcpTools();
+    this.debugLogger?.logToolsListSent({ sessionId: session.id, tools: mcpTools });
+    const listResp: JsonRpcResponse = {
+      jsonrpc: "2.0",
+      id,
+      result: { tools: mcpTools },
+    };
+    this.debugLogger?.logRpcResponded({
+      sessionId: session.id,
+      rpcMethod: "tools/list",
+      result: { toolCount: mcpTools.length },
+      durationMs: Date.now() - rpcStart,
+    });
+    return listResp;
+  }
+
+  private _handleToolsCall(
+    id: string | number | null,
+    request: JsonRpcRequest,
+    session: Session,
+    rpcStart: number,
+  ): Promise<JsonRpcResponse> {
+    const params = request.params ?? {};
+    const toolName = params["name"] as string | undefined;
+    const toolArgs = (params["arguments"] ?? {}) as Record<string, unknown>;
+    return this.executor
+      .executeToolCall(toolName, toolArgs, session, id)
+      .then((callResp) => {
         this.debugLogger?.logRpcResponded({
           sessionId: session.id,
           rpcMethod: "tools/call",
@@ -224,33 +345,61 @@ export class McpDispatch {
           durationMs: Date.now() - rpcStart,
         });
         return callResp;
-      }
+      });
+  }
 
-      case "ping": {
-        const pingResp: JsonRpcResponse = { jsonrpc: "2.0", id, result: {} };
-        this.debugLogger?.logRpcResponded({
-          sessionId: session.id,
-          rpcMethod: "ping",
-          result: {},
-          durationMs: Date.now() - rpcStart,
-        });
-        return pingResp;
-      }
+  private _handlePing(
+    id: string | number | null,
+    session: Session,
+    rpcStart: number,
+  ): JsonRpcResponse {
+    const pingResp: JsonRpcResponse = { jsonrpc: "2.0", id, result: {} };
+    this.debugLogger?.logRpcResponded({
+      sessionId: session.id,
+      rpcMethod: "ping",
+      result: {},
+      durationMs: Date.now() - rpcStart,
+    });
+    return pingResp;
+  }
 
-      default: {
-        const unknownResp: JsonRpcResponse = {
-          jsonrpc: "2.0",
-          id,
-          error: { code: -32601, message: "Method not found" },
-        };
-        this.debugLogger?.logRpcResponded({
-          sessionId: session.id,
-          rpcMethod: request.method,
-          error: unknownResp.error,
-          durationMs: Date.now() - rpcStart,
-        });
-        return unknownResp;
-      }
-    }
+  private _invalidRequest(
+    id: string | number | null,
+    method: string,
+    rpcStart: number,
+    sessionId: string,
+  ): JsonRpcResponse {
+    const errResp: JsonRpcResponse = {
+      jsonrpc: "2.0",
+      id,
+      error: { code: -32600, message: "Invalid request" },
+    };
+    this.debugLogger?.logRpcResponded({
+      sessionId,
+      rpcMethod: method,
+      error: errResp.error,
+      durationMs: Date.now() - rpcStart,
+    });
+    return errResp;
+  }
+
+  private _methodNotFound(
+    id: string | number | null,
+    method: string,
+    rpcStart: number,
+    sessionId: string,
+  ): JsonRpcResponse {
+    const unknownResp: JsonRpcResponse = {
+      jsonrpc: "2.0",
+      id,
+      error: { code: -32601, message: "Method not found" },
+    };
+    this.debugLogger?.logRpcResponded({
+      sessionId,
+      rpcMethod: method,
+      error: unknownResp.error,
+      durationMs: Date.now() - rpcStart,
+    });
+    return unknownResp;
   }
 }

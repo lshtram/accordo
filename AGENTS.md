@@ -130,7 +130,9 @@ These apply regardless of which mode you are in:
    Read only the YAML front matter to see what is documented — load the full section
    only if a relevant pattern ID applies. When you hit new friction, add an entry to
    the appropriate file (generic tool issue → `patterns.md`, project-specific → `accordo-patterns.md`).
-6. **Commit every time a task or phase is done; push only when the user explicitly says "push".**
+7. **Runtime MCP docs are mandatory for tool behavior.** For tool usage/preconditions/failure modes, prioritize runtime-facing guidance (tool descriptions + MCP resources + server instructions) per [`docs/30-development/mcp-tool-documentation-contract.md`](docs/30-development/mcp-tool-documentation-contract.md). Do not assume external agents can read repo requirements/testing docs.
+8. **Commit every time a task or phase is done; push only when the user explicitly says "push".**
+9. **Skill routing is mandatory on matching tasks.** Before acting, map the request to the project skill matrix in §5.2 and load every required skill for that flow (including companion skills).
 
 ---
 
@@ -155,6 +157,7 @@ These are project-level decisions that override or extend [`docs/30-development/
 | [`docs/20-requirements/requirements-hub.md`](docs/20-requirements/requirements-hub.md) | Hub functional requirements |
 | [`docs/20-requirements/requirements-bridge.md`](docs/20-requirements/requirements-bridge.md) | Bridge functional requirements |
 | [`docs/20-requirements/requirements-editor.md`](docs/20-requirements/requirements-editor.md) | Editor tools requirements |
+| [`docs/30-development/mcp-tool-documentation-contract.md`](docs/30-development/mcp-tool-documentation-contract.md) | Where runtime tool guidance must live (for all MCP clients) |
 | [`docs/30-development/patterns.md`](docs/30-development/patterns.md) | Generic agent tool patterns (shared across projects) |
 | [`docs/30-development/accordo-patterns.md`](docs/30-development/accordo-patterns.md) | Accordo-specific patterns (VS Code, Hub, Bridge) |
 | [`.copilot/compound.md`](.copilot/compound.md) | Compound mode — instructions for session retrospective |
@@ -167,8 +170,24 @@ These are project-level decisions that override or extend [`docs/30-development/
 |---|---|
 | [`skills/diagrams/skill.md`](skills/diagrams/skill.md) | User says "diagram", "flowchart", or needs to visualize architecture/processes. **Critical: Mermaid classDef is IGNORED — use `accordo_diagram_patch` with `nodeStyles` for all styling.** |
 | [`skills/presentations/skill.md`](skills/presentations/skill.md) | User says "present", "deck", "slides", or needs to create a Marp presentation. |
+| [`skills/vscode-command-gateway/skill.md`](skills/vscode-command-gateway/skill.md) | User needs long-tail VS Code functionality through the generic command gateway instead of a dedicated MCP tool. |
 | [`skills/debugging/skill.md`](skills/debugging/skill.md) | Fails, test failures, unexpected runtime behavior — load before debugging. |
 | [`skills/README.md`](skills/README.md) | Skills index — lists all project skills and how to create new ones. |
+
+## 5.2 Mandatory Skill Routing Directives
+
+Use this matrix as a hard routing rule (not optional guidance):
+
+| User intent / task shape | Required skill(s) | Required workflow note |
+|---|---|---|
+| "diagram", "flowchart", Mermaid editing/styling | `skills/diagrams/skill.md` | Never use Mermaid `classDef`; style only through `accordo_diagram_patch` styles payloads |
+| "present", "deck", "slides", Marp authoring | `skills/presentations/skill.md` | Use Marp workflow + fit check (`node scripts/check-marp-slide-fit.mjs`) |
+| Narrated walkthrough / "presentation-show" / scripted demo | `skills/presentations/skill.md` + `skills/script-authoring/skill.md` | Generate narration in one call for the deck, then run a NarrationScript via `python skills/script-authoring/accordo-run.py` |
+| "script this", "narrate", "walk through", demo automation | `skills/script-authoring/skill.md` | Follow reveal → wait → narrate sequencing and panel hygiene |
+| Long-tail VS Code command access, command migration | `skills/vscode-command-gateway/skill.md` | Prefer first-class `accordo_*` tools first, then guarded gateway |
+| Failures, flaky tests, unexplained runtime errors | `skills/debugging/skill.md` | Follow full 5-phase debugging process before code changes |
+
+If the request matches multiple rows, load **all** matching skills before execution.
 
 ---
 

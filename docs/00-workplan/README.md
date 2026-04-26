@@ -15,3 +15,5 @@
 ## Other files in this folder
 
 Session handoffs and older planning artifacts remain temporarily for traceability and will be migrated to archive lanes over time.
+
+## User changes

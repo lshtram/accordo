@@ -32,6 +32,25 @@ export type {
   McpTool,
 } from "./tool-types.js";
 
+// ─── Runtime Directives ─────────────────────────────────────────────────────
+
+export type {
+  RuntimeDirectiveParityTarget,
+  RuntimeDirectiveDeliveryChannel,
+  RuntimeDirectiveClause,
+  RuntimeDirectiveBundle,
+  RuntimeDirectiveDeliveryReceipt,
+  RuntimeDirectiveOwnership,
+  RuntimeDirectivePublication,
+  RuntimeDirectiveDiagnostics,
+  RuntimeDirectiveReceiptRecorder,
+  RuntimeDirectiveParityCheck,
+  RuntimeDirectiveParityIssue,
+  RuntimeDirectiveParityReport,
+  RuntimeDirectiveParityValidator,
+  RuntimeDirectiveCatalog,
+} from "./runtime-directives-types.js";
+
 // ─── WebSocket Messages ─────────────────────────────────────────────────────
 
 export type {

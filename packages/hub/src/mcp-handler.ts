@@ -8,7 +8,7 @@
  * Requirements: requirements-hub.md §2.1, §5.5, §6
  */
 
-import type { IDEState } from "@accordo/bridge-types";
+import type { IDEState, RuntimeDirectiveCatalog } from "@accordo/bridge-types";
 import type { ToolRegistry } from "./tool-registry.js";
 import type { BridgeServer } from "./bridge-server.js";
 import type { McpDebugLogger } from "./debug-log.js";
@@ -53,6 +53,12 @@ export interface McpHandlerDeps {
    * instructions text injected into the agent's context by initialize.
    */
   debugLogger?: McpDebugLogger;
+  /**
+   * Optional runtime directive catalog. When provided, initialize responses
+   * include runtime directives and initialize receipts are recorded.
+   * Requirements: requirements-runtime-directives.md Y-02, Y-07, Y-08
+   */
+  runtimeDirectiveCatalog?: RuntimeDirectiveCatalog;
 }
 
 export class McpHandler {
@@ -71,6 +77,7 @@ export class McpHandler {
       toolCallTimeout: deps.toolCallTimeout,
       auditFile: deps.auditFile,
       debugLogger: deps.debugLogger,
+      runtimeDirectiveCatalog: deps.runtimeDirectiveCatalog,
     });
   }
 
