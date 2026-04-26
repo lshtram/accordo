@@ -171,7 +171,7 @@ const VALID_ACTIONS: ReadonlySet<string> = new Set(["open", "close"]);
  * - open → open:     no-op (idempotent)
  * - open → close:    close* → state = closed
  * - closed → open:   focus* → state = open
- * - closed → close:  no-op (idempotent)
+ * - closed → close:  close* → state = closed (drift-safe enforcement)
  *
  * Panel view toggle safety (e-6-bar-tools.md §2.3.2):
  * - When opening a panel view, call focusPanel first to prevent toggle
@@ -322,9 +322,17 @@ export async function layoutPanelHandler(
     return { area: areaId, action: "opened", previousState: currentState, wasNoOp: false };
   }
 
-  // Transition: closed → close (idempotent no-op)
+  // Transition: closed → close
+  // Drift-safe behavior: always issue close command so final state is enforced
+  // even if local barState is stale relative to actual VS Code UI state.
   if (currentState === "closed" && action === "close") {
-    return { area: areaId, action: "closed", previousState: currentState, wasNoOp: true };
+    try {
+      await vscode.commands.executeCommand(closeCmd);
+    } catch (err) {
+      return { error: `Command failed: ${err instanceof Error ? err.message : String(err)}` };
+    }
+    barState[areaId] = "closed";
+    return { area: areaId, action: "closed", previousState: currentState, wasNoOp: false };
   }
 
   // Should never reach here, but TypeScript needs this

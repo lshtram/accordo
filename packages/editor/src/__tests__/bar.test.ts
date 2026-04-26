@@ -10,7 +10,7 @@
  *   [x] E-6-02: BarState tracker with sidebar, panel, rightBar
  *   [x] E-6-03: State starts as "unknown", resets to "unknown"
  *   [x] E-6-04: unknown → close uses focus* then close*
- *   [x] E-6-05: open → open and closed → closed are idempotent no-ops
+ *   [x] E-6-05: open → open is idempotent no-op
  *   [x] E-6-06: view parameter opens specific view, updates area state
  *   [x] E-6-07: view + action: "close" — view silently ignored, close succeeds
  *   [x] E-6-08: view-area mismatch returns error
@@ -140,7 +140,7 @@ describe("area-level state transitions — E-6-02, E-6-03, E-6-04, E-6-05", () =
     ["open",     "open",  [],                    "open",   true ],
     ["open",     "close", ["close"],             "closed", false],
     ["closed",   "open",  ["focus"],             "open",   false],
-    ["closed",   "close", [],                    "closed", true ],
+    ["closed",   "close", ["close"],             "closed", false],
   ];
 
   for (const [area, focusCmd, closeCmd] of areas) {
