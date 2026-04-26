@@ -90,7 +90,6 @@ export function registerTerminalCommandShims(
 
 // Re-export layout handlers so command-shims can import them directly
 export {
-  panelToggleHandler,
   layoutStateHandler,
 } from "./layout.js";
 export { layoutPanelHandler } from "./bar.js";
@@ -98,14 +97,12 @@ export { layoutPanelHandler } from "./bar.js";
 export function registerLayoutCommandShims(
   context: vscode.ExtensionContext,
   handlers: {
-    panelToggleHandler: (args: Record<string, unknown>) => unknown;
     layoutStateHandler: (args: Record<string, unknown>, getState: () => IDEState) => unknown;
     layoutPanelHandler: (args: Record<string, unknown>) => unknown;
   },
   getState: () => IDEState,
 ): void {
   context.subscriptions.push(
-    makeCommandShim("accordo_panel_toggle",        handlers.panelToggleHandler),
     makeCommandShim("accordo_layout_state",          (args) => handlers.layoutStateHandler(args, getState)),
     makeCommandShim("accordo_layout_panel",         handlers.layoutPanelHandler),
   );

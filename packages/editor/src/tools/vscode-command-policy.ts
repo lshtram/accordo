@@ -23,7 +23,6 @@ const ACCORDO_INTERNAL_COMMANDS = new Set([
   "accordo_terminal_focus",
   "accordo_terminal_list",
   "accordo_terminal_close",
-  "accordo_panel_toggle",
   "accordo_layout_state",
   "accordo_layout_panel",
   "accordo_vscode_command_list",

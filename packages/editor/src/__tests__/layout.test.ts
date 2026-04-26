@@ -4,25 +4,22 @@
  * Phase B — M76-VCGM removal cycle.
  * Layout tools accordo_layout_zen, accordo_layout_fullscreen,
  * accordo_layout_joinGroups, accordo_layout_evenGroups removed (M76-VCGM-02).
- * Remaining tools: panelToggle, layoutState (via factory).
+ * Remaining tools: layoutState (via factory) + bar tool from bar.ts.
  *
  * Requirement coverage:
- *   [x] §4.14 panel.toggle      — 5 panel→command mappings, invalid panel error
  *   [x] §4.25 layout.state      — M74-LS: createLayoutTools factory, returns IDEState
- *   [x] Registration            — 2+1 tools (panelToggle + bar + state), schemas, danger levels
+ *   [x] Registration            — 0+1+1 tools (layoutTools[] empty + bar + state)
  *
  * Exported API checklist (dev-process.md §5 Phase B Coverage Audit):
- *   ✓ panelToggleHandler        — 9 tests (§4.14-PANEL-* × 5 happy + ERR + MISSING + R01 + existing)
  *   ✓ layoutStateHandler        — 4 tests (M74-LS-02, M74-LS-05, M74-LS-06, M74-LS-03)
  *   ✓ createLayoutTools()       — 4 tests (M74-LS-01, M74-LS-07, REG count, schemas, handlers)
- *   ✓ layoutTools[]             — 3 registration tests (M20-REG-01..03)
+ *   ✓ layoutTools[]             — registration test (toggle removed)
  *   ✓ removed tools absent      — M76-VCGM-02: zen/fullscreen/join/even NOT in layoutTools
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { IDEState } from "@accordo/bridge-types";
 import {
-  panelToggleHandler,
   layoutTools,
   createLayoutTools,
   layoutStateHandler,
@@ -36,102 +33,25 @@ beforeEach(() => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4.14 accordo_panel_toggle
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("panelToggleHandler — §4.14", () => {
-  const panelCases: Array<[string, string]> = [
-    ["explorer",   "workbench.view.explorer"],
-    ["search",     "workbench.view.search"],
-    ["git",        "workbench.view.scm"],
-    ["debug",      "workbench.view.debug"],
-    ["extensions", "workbench.view.extensions"],
-  ];
-
-  for (const [panel, vsCommand] of panelCases) {
-    it(`§4.14-PANEL-${panel.toUpperCase()}: '${panel}' executes '${vsCommand}'`, async () => {
-      const result = await panelToggleHandler({ panel });
-      expect(result).toEqual({ panel, area: "sidebar" });
-      expect(commands.executeCommand).toHaveBeenCalledWith(vsCommand);
-    });
-  }
-
-  it("§4.14-PANEL-ERR: returns error with message for unknown panel name", async () => {
-    const result = await panelToggleHandler({ panel: "unknownpanel" });
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toMatch(/panel/i);
-  });
-
-  it("§4.14-PANEL-MISSING: returns error with message when panel argument is missing", async () => {
-    const result = await panelToggleHandler({});
-    expect(result).toHaveProperty("error");
-    expect((result as { error: string }).error).toMatch(/panel/i);
-  });
-
-  it("§4.14-PANEL-R01: wraps command rejection as { error } (via wrapHandler)", async () => {
-    vi.mocked(commands.executeCommand).mockRejectedValueOnce(new Error("panel failed"));
-    const result = await panelToggleHandler({ panel: "explorer" });
-    // wrapHandler catches and returns error — or handler may rethrow
-    // Either way, result.error should exist
-    expect(result).toHaveProperty("error");
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Layout state — M76-VCGM-02: zen/fullscreen/join/even REMOVED from layout.ts
 // These migrated to generic gateway via accordo_vscode_command_execute
 // (Tests removed; coverage via policy/gateway tests in vscode-command-execute-policy.test.ts)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Registration — Module 20 (M76-VCGM-02: only panel_toggle remains)
+// Registration — Module 20 (panel_toggle removed; layoutTools empty)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("layoutTools registration — Module 20", () => {
-  const byName = (name: string) => layoutTools.find((t) => t.name === name)!;
-
-  // M76-VCGM-02: exactly 1 tool in layoutTools (panelToggle)
-  it("M20-REG-01: layoutTools exports exactly 1 tool definition (panel_toggle only)", () => {
-    expect(layoutTools).toHaveLength(1);
-  });
-
-  it("M20-REG-02: panel_toggle is present; zen/fullscreen/join/even are ABSENT", () => {
+  it("M20-REG-01: layoutTools exports no standalone tool definitions", () => {
     const names = layoutTools.map((t) => t.name);
-    expect(names).toContain("accordo_panel_toggle");
+    expect(names).toHaveLength(0);
     // M76-VCGM-02: removed tools
     expect(names).not.toContain("accordo_layout_zen");
     expect(names).not.toContain("accordo_layout_fullscreen");
     expect(names).not.toContain("accordo_layout_joinGroups");
     expect(names).not.toContain("accordo_layout_evenGroups");
-  });
-
-  it("M20-REG-03: panel_toggle is safe", () => {
-    expect(byName("accordo_panel_toggle").dangerLevel).toBe("safe");
-  });
-
-  it("M20-REG-04: panelToggle requires [panel]", () => {
-    expect(byName("accordo_panel_toggle").inputSchema.required).toContain("panel");
-  });
-
-  it("M20-REG-05: panel enum contains all 9 panels", () => {
-    const props = byName("accordo_panel_toggle").inputSchema.properties as Record<
-      string,
-      { enum?: string[] }
-    >;
-    expect(props["panel"].enum).toEqual(
-      expect.arrayContaining([
-        "explorer", "search", "git", "debug", "extensions",
-        "terminal", "output", "problems", "debug-console",
-      ]),
-    );
-  });
-
-  it("M20-REG-06: handler is a function", () => {
-    expect(typeof byName("accordo_panel_toggle").handler).toBe("function");
-  });
-
-  it("M20-REG-07: accordo_panel_toggle is non-idempotent (true toggle semantics)", () => {
-    expect(byName("accordo_panel_toggle").idempotent).toBe(false);
+    expect(names).not.toContain("accordo_panel_toggle");
   });
 });
 
@@ -294,11 +214,11 @@ describe("createLayoutTools() factory — M74-LS", () => {
     expect(names).toContain("accordo_layout_state");
   });
 
-  it("M74-LS-01: createLayoutTools returns 1 layout tool + 1 bar tool + layoutState (3 total)", () => {
+  it("M74-LS-01: createLayoutTools returns bar tool + layoutState (2 total)", () => {
     const tools = createLayoutTools(getState);
-    expect(tools).toHaveLength(3);
+    expect(tools).toHaveLength(2);
     const names = tools.map((t) => t.name);
-    expect(names).toContain("accordo_panel_toggle");
+    expect(names).not.toContain("accordo_panel_toggle");
     // M76-VCGM-02: zen/fullscreen/joinGroups/evenGroups removed (migrated to generic gateway)
     expect(names).not.toContain("accordo_layout_zen");
     expect(names).not.toContain("accordo_layout_fullscreen");

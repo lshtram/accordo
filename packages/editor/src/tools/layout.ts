@@ -1,13 +1,11 @@
 /**
  * Layout tool handlers for accordo-editor.
  *
- * Implements the remaining layout tool from requirements-editor.md §4:
- *   Module 20: §4.14 panel.toggle
+ * Implements layout tools from requirements-editor.md §4.
  */
 
-import * as vscode from "vscode";
 import type { ExtensionToolDefinition, IDEState } from "@accordo/bridge-types";
-import { errorMessage, wrapHandler } from "../util.js";
+import { wrapHandler } from "../util.js";
 import { barTools } from "./bar.js";
 
 const LAYOUT_STATE_COMMENT_SUMMARY_LIMIT = 20;
@@ -60,90 +58,10 @@ function sanitizeLayoutState(state: IDEState): IDEState {
   };
 }
 
-// ── Panel command map (§4.14) ─────────────────────────────────────────────────
-
-/** Area indicates whether the panel lives in the left sidebar or the bottom panel. */
-type PanelArea = "sidebar" | "panel";
-
-/** Command entry for a panel: the VS Code command ID and which area it belongs to. */
-interface PanelEntry {
-  readonly command: string;
-  readonly area: PanelArea;
-}
-
-/**
- * Panel command mapping.
- *
- * Sidebar views use show/focus commands (idempotent — always opens).
- * Bottom panel views use toggle commands where available (flip visibility).
- * See docs/20-requirements/requirements-editor.md §4.14 for command rationale.
- */
-const PANEL_COMMANDS: Readonly<Record<string, PanelEntry>> = {
-  // ── Primary sidebar views (show/focus) ──
-  explorer:        { command: "workbench.view.explorer",                   area: "sidebar" },
-  search:          { command: "workbench.view.search",                     area: "sidebar" },
-  git:             { command: "workbench.view.scm",                        area: "sidebar" },
-  debug:           { command: "workbench.view.debug",                      area: "sidebar" },
-  extensions:      { command: "workbench.view.extensions",                 area: "sidebar" },
-
-  // ── Bottom panel views (toggle or show/focus) ──
-  terminal:        { command: "workbench.action.terminal.toggleTerminal",  area: "panel" },
-  output:          { command: "workbench.action.output.toggleOutput",      area: "panel" },
-  problems:        { command: "workbench.actions.view.problems",           area: "panel" },
-  "debug-console": { command: "workbench.debug.action.toggleRepl",         area: "panel" },
-};
-
-// ── §4.14 accordo_panel_toggle ────────────────────────────────────────────────
-
-export async function panelToggleHandler(
-  args: Record<string, unknown>,
-): Promise<{ panel: string; area: PanelArea } | { error: string }> {
-  try {
-    const panel = args["panel"];
-    if (typeof panel !== "string" || !panel) {
-      return { error: "Argument 'panel' must be a non-empty string" };
-    }
-
-    const entry = PANEL_COMMANDS[panel];
-    if (!entry) {
-      return { error: `Unknown panel '${panel}'. Valid panels: ${Object.keys(PANEL_COMMANDS).join(", ")}` };
-    }
-
-    await vscode.commands.executeCommand(entry.command);
-    return { panel, area: entry.area };
-  } catch (err) {
-    return { error: errorMessage(err) };
-  }
-}
-
 // ── Tool definitions (Module 20) ─────────────────────────────────────────────
 
-/** All layout tool definitions for module 20. */
-export const layoutTools: ExtensionToolDefinition[] = [
-  {
-    name: "accordo_panel_toggle",
-    group: "layout",
-    description:
-      "Toggle visibility of a VSCode sidebar panel (explorer, search, git, debug, extensions) or bottom panel (terminal, output, problems, debug-console).",
-    inputSchema: {
-      type: "object",
-      properties: {
-        panel: {
-          type: "string",
-          enum: [
-            "explorer", "search", "git", "debug", "extensions",
-            "terminal", "output", "problems", "debug-console",
-          ],
-          description: "Panel to toggle",
-        },
-      },
-      required: ["panel"],
-    },
-    dangerLevel: "safe",
-    idempotent: false,
-    handler: wrapHandler("accordo_panel_toggle", panelToggleHandler),
-  },
-];
+/** All layout tool definitions for module 20 (toggle tool retired). */
+export const layoutTools: ExtensionToolDefinition[] = [];
 
 // ── §4.25 accordo_layout_state ─────────────────────────────────────────────────────
 

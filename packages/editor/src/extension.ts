@@ -102,7 +102,6 @@ function registerLayoutShims(
   barHandlers: typeof BarHandlers,
 ): void {
   registerLayoutCommandShims(context, {
-    panelToggleHandler: layoutHandlers.panelToggleHandler,
     layoutStateHandler: layoutHandlers.layoutStateHandler,
     layoutPanelHandler: barHandlers.layoutPanelHandler,
   }, getState);
