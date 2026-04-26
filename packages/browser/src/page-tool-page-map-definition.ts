@@ -15,9 +15,13 @@ export function buildGetPageMapTool(
     name: "accordo_browser_get_page_map",
     description:
       "Collect a structured page map from the current document. " +
-      "Returns an array of nodes, each with: uid (snapshot/frame-scoped reference for click/type), " +
-      "role (ARIA role), accessibleName, textContent, bounds (x/y/width/height when includeBounds:true), " +
-      "readingOrderIndex, visibility flags, states (disabled/checked/expanded), and containerId. " +
+      "Returns an array of nodes, each with: uid (frame-scoped reference for click/type, format \"{frameId}:{nodeId}\"), " +
+      "tag (HTML tag name), nodeId (snapshot-scoped index), persistentId (content-derived stable ID), " +
+      "id (element id attribute), role (explicit role=\"\" attribute if set), name (computed accessible name), " +
+      "text (direct child text content), attrs (selected element attributes), " +
+      "bounds (viewport bounding box, present when includeBounds=true), " +
+      "viewportRatio, containerId, zIndex, isStacked, occluded, inShadowRoot, shadowRoot, shadowHostId, " +
+      "and children (recursive, present when depth < maxDepth). " +
       "Use this as your primary tool to understand page structure and find interactive elements. " +
       "Use get_text_map instead when you need reading-order text with per-segment accessible names. " +
       "Use get_semantic_graph instead when you need the full a11y tree, landmark regions, or form models.",
