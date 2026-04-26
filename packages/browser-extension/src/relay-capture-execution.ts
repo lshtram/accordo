@@ -20,6 +20,20 @@ import { getResolveBoundsErrorCode, resolvePaddedBounds } from "./relay-capture-
 import { executeCaptureFullPage, executeCaptureViewport } from "./relay-capture-cdp-modes.js";
 import { prepareCaptureTab, restoreCaptureTab } from "./relay-capture-tab-target.js";
 
+function normalizeCaptureResolveError(code?: string): string {
+  switch (code) {
+    case "no-ref":
+      return "no-target";
+    case "not-found":
+    case "element-not-found":
+      return "element-not-found";
+    case "element-off-screen":
+      return "element-off-screen";
+    default:
+      return "action-failed";
+  }
+}
+
 export async function executeCaptureRegion(
   payload: CapturePayload,
 ): Promise<Record<string, unknown>> {
@@ -49,7 +63,8 @@ export async function executeCaptureRegion(
   if (resolveError !== undefined) {
     await restoreCaptureTab(context);
     const envelope = await requestContentScriptEnvelope("visual", targetTabId);
-    return { success: false, error: resolveError, ...getErrorMeta(resolveError), ...envelope };
+    const publicError = normalizeCaptureResolveError(resolveError);
+    return { success: false, error: publicError, ...getErrorMeta(publicError), ...envelope };
   }
 
   if (!paddedBounds || paddedBounds.width < MIN_CAPTURE_DIMENSION || paddedBounds.height < MIN_CAPTURE_DIMENSION) {

@@ -29,12 +29,12 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
     const uid = payload.uid as string | undefined;
     const selector = payload.selector as string | undefined;
     const frameTarget = await resolveControlFrameTarget(tabId, uid);
-    if (frameTarget === null) {
-      return actionFailed(request, "action-failed");
+    if (!frameTarget.ok) {
+      return actionFailed(request, frameTarget.error);
     }
 
     if (uid || selector) {
-      const coords = await resolveElementCoords(tabId, frameTarget.frameId, uid, selector);
+      const coords = await resolveElementCoords(tabId, frameTarget.target.frameId, uid, selector);
 
       if ("error" in coords) {
         if (coords.error === "not-found" || coords.error === "zero-size") {
@@ -43,11 +43,11 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
         return actionFailed(request, "action-failed");
       }
 
-      x = coords.x + frameTarget.offsetX;
-      y = coords.y + frameTarget.offsetY;
+      x = coords.x + frameTarget.target.offsetX;
+      y = coords.y + frameTarget.target.offsetY;
 
       if (!coords.inViewport) {
-        const scrollResult = await scrollElementIntoView(tabId, frameTarget.frameId, uid, selector);
+          const scrollResult = await scrollElementIntoView(tabId, frameTarget.target.frameId, uid, selector);
         if ("error" in scrollResult) {
           if (scrollResult.error === "not-found" || scrollResult.error === "zero-size") {
             return actionFailed(request, "element-not-found");
@@ -55,7 +55,7 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
           return actionFailed(request, "action-failed");
         }
 
-        const updatedCoords = await resolveElementCoords(tabId, frameTarget.frameId, uid, selector);
+        const updatedCoords = await resolveElementCoords(tabId, frameTarget.target.frameId, uid, selector);
         if ("error" in updatedCoords) {
           if (updatedCoords.error === "not-found" || updatedCoords.error === "zero-size") {
             return actionFailed(request, "element-not-found");
@@ -63,8 +63,8 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
           return actionFailed(request, "action-failed");
         }
 
-        x = updatedCoords.x + frameTarget.offsetX;
-        y = updatedCoords.y + frameTarget.offsetY;
+        x = updatedCoords.x + frameTarget.target.offsetX;
+        y = updatedCoords.y + frameTarget.target.offsetY;
       }
     } else if (payload.coordinates && typeof payload.coordinates === "object") {
       const coords = payload.coordinates as { x: number; y: number };

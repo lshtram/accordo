@@ -32,13 +32,13 @@ export async function handleType(request: RelayActionRequest): Promise<RelayActi
     const uid = payload.uid as string | undefined;
     const selector = payload.selector as string | undefined;
     const frameTarget = await resolveControlFrameTarget(tabId, uid);
-    if (frameTarget === null) {
-      return actionFailed(request, "action-failed");
+    if (!frameTarget.ok) {
+      return actionFailed(request, frameTarget.error);
     }
 
     const clearFirst = payload.clearFirst === true;
     if (uid || selector) {
-      const typeResult = await typeInElement(tabId, frameTarget.frameId, text, uid, selector, clearFirst);
+      const typeResult = await typeInElement(tabId, frameTarget.target.frameId, text, uid, selector, clearFirst);
       if ("error" in typeResult) {
         if (typeResult.error === "not-found" || typeResult.error === "zero-size") {
           return actionFailed(request, "element-not-found");

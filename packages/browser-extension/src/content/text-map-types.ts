@@ -17,6 +17,7 @@ export interface TextSegment {
 export interface TextMapOptions {
   maxSegments?: number;
   logicalFrameId?: string;
+  visibleOnly?: boolean;
 }
 
 export interface TextMapResult extends SnapshotEnvelope {

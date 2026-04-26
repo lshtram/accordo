@@ -163,12 +163,40 @@ Marp doesn't have columnar layouts natively, but you can use HTML:
 </div>
 ```
 
+Important: Marp does not have a smart auto-layout engine for general content. Your content still has to fit inside the theme's fixed `section` box after padding, heading sizes, and line-height are applied.
+
 ### Custom Styling Per Slide — Inline Style
 ```markdown
 <style scoped>
 section { font-size: 22px; }
 h1 { color: #ff6600; }
 </style>
+```
+
+### How Marp Actually Manages Space
+
+Marp slides are rendered into a fixed-size `section` defined by the theme CSS.
+
+In this repo's themes, fit is controlled by:
+
+- `section` width / height
+- `section` padding
+- base `font-size`
+- `line-height`
+- heading sizes and margins
+- table and code block sizing
+
+Marp does **not** generally auto-fit arbitrary content. The reliable workflow is:
+
+1. draft the slide
+2. render it
+3. run the fit checker
+4. simplify or redesign any overflowing slide
+
+Use:
+
+```bash
+node scripts/check-marp-slide-fit.mjs <deck.md>
 ```
 
 ---
@@ -212,6 +240,44 @@ Standard fenced code blocks with syntax highlighting:
 const fn = (x: number): string => x.toString();
 ```
 ````
+
+### Diagrams And Charts In Accordo Marp
+
+For this project, treat Marp as **image-first** for diagrams and charts.
+
+- Preferred: generate the diagram/chart as an image asset and reference it with standard Marp image syntax
+- Allowed only as fallback: raw Mermaid fences
+- Do not rely on Mermaid for final visual quality in important decks; fallback support exists only so a misbehaving agent does not leave literal code blocks on screen
+
+Recommended pattern:
+
+```markdown
+![width:1000px](./assets/system-shape.svg)
+```
+
+Asset guidance:
+
+- Keep generated assets next to the deck in a stable `./assets/` directory
+- Use deterministic names like `system-shape.svg`, `build-times.png`, `rollout-sequence.svg`
+- Prefer SVG for line diagrams and PNG/WebP for screenshots
+
+Standard Mermaid helper:
+
+```bash
+node scripts/render-mermaid-asset.mjs [--style vivid|calm|neutral] <input.mmd> <output.svg>
+```
+
+Recommended directive to the agent:
+
+1. Write Mermaid source to `./assets/<name>.mmd`
+2. Render it with the helper script
+3. Reference the resulting `./assets/<name>.svg` in the deck
+
+Example:
+
+```bash
+node scripts/render-mermaid-asset.mjs --style calm demo/assets/example-system-shape.mmd demo/assets/example-system-shape.svg
+```
 
 ---
 

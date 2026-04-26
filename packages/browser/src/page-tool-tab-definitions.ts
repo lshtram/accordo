@@ -1,11 +1,12 @@
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { BrowserRelayLike } from "./types.js";
 import { handleListPages, handleSelectPage, type ListPagesArgs, type SelectPageArgs } from "./page-tool-handlers.js";
+import { ACTIVE_PAGE_STATE_DESCRIPTION } from "./tab-target-contract.js";
 
 export function buildListPagesTool(relay: BrowserRelayLike): ExtensionToolDefinition {
   return {
     name: "accordo_browser_list_pages",
-    description: "List all open browser tabs/pages with their tabId, url, title, active state, and whether browser control permission has already been granted for each tab.",
+    description: `List all open browser tabs/pages with their tabId, windowId, url, title, per-window active state, a single isImplicitTarget marker, and whether browser control permission has already been granted for each tab. ${ACTIVE_PAGE_STATE_DESCRIPTION}`,
     inputSchema: {
       type: "object",
       properties: {
@@ -24,7 +25,7 @@ export function buildSelectPageTool(
 ): ExtensionToolDefinition {
   return {
     name: "accordo_browser_select_page",
-    description: "Select (activate) a browser tab by its tabId.",
+    description: "Select (activate) a browser tab by its tabId and make it the implicit target by focusing its window.",
     inputSchema: {
       type: "object",
       required: ["tabId"],

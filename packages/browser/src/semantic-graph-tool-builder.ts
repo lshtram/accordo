@@ -5,6 +5,7 @@ import type { SecurityConfig } from "./security/index.js";
 import { DEFAULT_SECURITY_CONFIG } from "./security/index.js";
 import { handleGetSemanticGraph } from "./semantic-graph-tool-handler.js";
 import { narrowSemanticGraphArgs } from "./semantic-graph-tool-narrowing.js";
+import { IMPLICIT_TARGET_TAB_DESCRIPTION } from "./tab-target-contract.js";
 
 export function buildSemanticGraphTool(
   relay: BrowserRelayLike,
@@ -27,7 +28,7 @@ export function buildSemanticGraphTool(
       properties: {
         tabId: {
           type: "number",
-          description: "B2-CTX-001: Optional tab ID to target; omit for active tab",
+          description: IMPLICIT_TARGET_TAB_DESCRIPTION,
         },
         maxDepth: {
           type: "integer",

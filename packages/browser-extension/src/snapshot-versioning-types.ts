@@ -1,4 +1,4 @@
-export const DEFAULT_RETENTION_SIZE = 5;
+export const DEFAULT_RETENTION_SIZE = 10;
 
 export type SnapshotSource = "dom" | "a11y" | "visual" | "layout" | "network";
 

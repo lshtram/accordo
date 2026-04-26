@@ -120,6 +120,8 @@ export class ExternalTtsAdapter implements TtsProvider {
     request: TtsSynthesisRequest,
     _token?: CancellationToken,
   ): Promise<TtsSynthesisResult> {
+    const hasVoice = request.voice != null;
+
     const body: Record<string, unknown> = {
       model: this._model,
       input: request.text,
@@ -128,51 +130,95 @@ export class ExternalTtsAdapter implements TtsProvider {
     };
     // Only include voice when explicitly provided — Kokoro-like endpoints
     // reject unknown fields, while OpenAI-compatible providers require it.
-    if (request.voice != null) {
+    if (hasVoice) {
       body.voice = request.voice;
       if (request.language) body.language = request.language;
       if (request.speed != null) body.speed = request.speed;
     }
 
-    const response = await fetch(`${this._endpoint}/audio/speech`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: this._authHeader,
-      },
-      body: JSON.stringify(body),
-    });
+    const performRequest = async (reqBody: Record<string, unknown>): Promise<{ audio: Uint8Array; sampleRate: number }> => {
+      const response = await fetch(`${this._endpoint}/audio/speech`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: this._authHeader,
+        },
+        body: JSON.stringify(reqBody),
+      });
 
-    if (!response.ok) {
-      // Try to read the response body for more context (e.g. API error message).
-      let detail = "";
-      try {
-        const bodyText = await response.text();
-        if (bodyText) detail = ` — ${bodyText.slice(0, 200)}`;
-      } catch {
-        // ignore body-read failure
+      if (!response.ok) {
+        // Try to read the response body for more context (e.g. API error message).
+        let detail = "";
+        try {
+          const bodyText = await response.text();
+          if (bodyText) detail = ` — ${bodyText.slice(0, 200)}`;
+        } catch {
+          // ignore body-read failure
+        }
+        const cause =
+          response.status === 401 || response.status === 403
+            ? "auth"
+            : response.status === 404
+              ? "endpoint-not-found"
+              : response.status >= 500
+                ? "server-error"
+                : "client-error";
+        throw new Error(
+          `ExternalTtsAdapter: HTTP ${response.status} (${cause}) — ${response.statusText}${detail}`,
+        );
       }
-      const cause =
-        response.status === 401 || response.status === 403
-          ? "auth"
-          : response.status === 404
-            ? "endpoint-not-found"
-            : response.status >= 500
-              ? "server-error"
-              : "client-error";
-      throw new Error(
-        `ExternalTtsAdapter: HTTP ${response.status} (${cause}) — ${response.statusText}${detail}`,
-      );
+
+      const arrayBuffer = await response.arrayBuffer();
+      const audio = new Uint8Array(arrayBuffer);
+      const wav = decodePcmWav(audio);
+      if (wav) {
+        return { audio: wav.pcm, sampleRate: wav.sampleRate };
+      }
+
+      return { audio, sampleRate: 24000 };
+    };
+
+    // First attempt with full payload (may include voice/language/speed).
+    let firstError: Error | undefined;
+    let result: { audio: Uint8Array; sampleRate: number };
+    try {
+      result = await performRequest(body);
+    } catch (err) {
+      firstError = err as Error;
+      result = { audio: new Uint8Array(), sampleRate: 24000 };
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const audio = new Uint8Array(arrayBuffer);
-    const wav = decodePcmWav(audio);
-    if (wav) {
-      return { audio: wav.pcm, sampleRate: wav.sampleRate };
+    // Kokoro-compatible fallback: if the first attempt failed with a server/client error
+    // and the payload included voice, retry once without voice/language/speed to work
+    // around endpoints that reject those fields.
+    // We intentionally retry only when voice was provided — providers that support
+    // voice will succeed on the first attempt, and providers that don't need no-voice
+    // requests will succeed without needing the fallback.
+    if (hasVoice && firstError) {
+      const fallbackBody: Record<string, unknown> = {
+        model: this._model,
+        input: request.text,
+        text: request.text,
+        response_format: "wav",
+      };
+
+      try {
+        result = await performRequest(fallbackBody);
+      } catch {
+        // Retry failed — throw a combined diagnostic message so the caller
+        // knows both the voice-aware and voice-stripped attempts failed.
+        throw new Error(
+          `ExternalTtsAdapter: both the voice-aware request and the voice-stripped fallback failed. ` +
+          `Voice-aware error: ${firstError.message} ` +
+          `Consider verifying that the TTS endpoint supports the voice/language/speed fields or disabling the external adapter.`,
+        );
+      }
+    } else if (firstError) {
+      // No voice was sent and the request failed — throw original error.
+      throw firstError;
     }
 
-    return { audio, sampleRate: 24000 };
+    return result;
   }
 
   async dispose(): Promise<void> {

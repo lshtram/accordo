@@ -389,6 +389,22 @@ function createContextMenusMock() {
   };
 }
 
+function createWindowsMock() {
+  return {
+    update: vi.fn(
+      (
+        windowId: number,
+        updateInfo: chrome.windows.UpdateInfo,
+        callback?: (window: chrome.windows.Window) => void,
+      ): Promise<chrome.windows.Window> => {
+        const win = { id: windowId, focused: updateInfo.focused ?? false } as chrome.windows.Window;
+        if (callback) callback(win);
+        return Promise.resolve(win);
+      },
+    ),
+  };
+}
+
 // ── Action mock ──────────────────────────────────────────────────────────────
 
 /** Creates a fresh action mock with new vi.fn() implementations. */
@@ -631,6 +647,7 @@ function createChromeMocks() {
     commands: createCommandsMock(),
     webNavigation: createWebNavigationMock(),
     debugger: createDebuggerMock(),
+    windows: createWindowsMock(),
   };
 }
 

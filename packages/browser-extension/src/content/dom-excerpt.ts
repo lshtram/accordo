@@ -2,6 +2,7 @@ import { captureSnapshotEnvelope } from "../snapshot-versioning.js";
 import { resolveReportedAnchorMetadata } from "./anchor-resolution-metadata.js";
 import { resolveElement } from "./element-inspector-resolver.js";
 import type { DomExcerptResult } from "./element-inspector-types.js";
+import { boundExcerpt, escapeHtmlText, normalizeNodeText, normalizeTarget, normalizeText, type SerializeResult } from "./dom-excerpt-helpers.js";
 
 const SAFE_ATTRS = new Set([
   "id", "class", "role", "aria-label", "aria-labelledby", "aria-describedby",
@@ -17,53 +18,54 @@ function isSafeUrl(value: string): boolean {
   return !DANGEROUS_URL_PREFIXES.some((prefix) => lower.startsWith(prefix));
 }
 
-function escapeHtmlText(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
 function serializeElement(
   element: Element,
   currentDepth: number,
   maxDepth: number,
   counter: { count: number },
-): string {
+): SerializeResult {
   const tag = element.tagName.toLowerCase();
-  if (FORBIDDEN_TAGS.has(tag)) return "";
-
-  const attrParts: string[] = [];
-  for (const attr of Array.from(element.attributes)) {
-    if (attr.name.startsWith("on")) continue;
-    if (!SAFE_ATTRS.has(attr.name)) continue;
-    if (URL_ATTRS.has(attr.name) && !isSafeUrl(attr.value)) continue;
-    attrParts.push(`${attr.name}="${escapeHtmlText(attr.value).replace(/"/g, "&quot;")}"`);
-  }
-
-  const attrStr = attrParts.length > 0 ? ` ${attrParts.join(" ")}` : "";
-  const openTag = `<${tag}${attrStr}>`;
-  const closeTag = `</${tag}>`;
+  if (FORBIDDEN_TAGS.has(tag)) return { html: "", text: "" };
+  const { openTag, closeTag } = buildTags(element, tag);
   counter.count++;
 
   if (currentDepth >= maxDepth || element.childNodes.length === 0) {
-    const text = (element.textContent ?? "").trim();
-    const inner = text ? escapeHtmlText(text) : "";
-    return `${openTag}${inner}${closeTag}`;
+    return serializeCutoffElement(element, openTag, closeTag);
   }
 
-  let inner = "";
+  const inner = serializeChildren(element, currentDepth, maxDepth, counter);
+  return {
+    html: `${openTag}${inner.html}${closeTag}`,
+    text: normalizeText(inner.text.join(" ")),
+  };
+}
+
+function serializeChildren(
+  element: Element,
+  currentDepth: number,
+  maxDepth: number,
+  counter: { count: number },
+): { html: string; text: string[] } {
+  let html = "";
+  const innerText: string[] = [];
   for (const child of Array.from(element.childNodes)) {
     if (child.nodeType === Node.TEXT_NODE) {
-      const text = (child.textContent ?? "").replace(/\s+/g, " ");
-      if (text.trim().length > 0) inner += escapeHtmlText(text);
+      const text = normalizeNodeText(child.textContent ?? "");
+      if (text.length > 0) {
+        html += escapeHtmlText(text);
+        innerText.push(normalizeText(text));
+      }
       continue;
     }
     if (child.nodeType === Node.ELEMENT_NODE) {
-      inner += serializeElement(child as Element, currentDepth + 1, maxDepth, counter);
+      const childResult = serializeElement(child as Element, currentDepth + 1, maxDepth, counter);
+      html += childResult.html;
+      if (childResult.text.length > 0) {
+        innerText.push(childResult.text);
+      }
     }
   }
-  return `${openTag}${inner}${closeTag}`;
+  return { html, text: innerText };
 }
 
 export function getDomExcerpt(
@@ -72,29 +74,46 @@ export function getDomExcerpt(
   maxLength = 2000,
 ): DomExcerptResult {
   const envelope = captureSnapshotEnvelope("dom");
-  const selector = typeof target === "string" ? target : target.selector;
-  const anchorKey = typeof target === "string" ? undefined : target.anchorKey;
-  const creationSnapshotId = typeof target === "string" ? undefined : target.creationSnapshotId;
+  const { selector, anchorKey, creationSnapshotId } = normalizeTarget(target);
   const element = resolveElement({ selector, anchorKey });
   if (!element) return { ...envelope, found: false };
 
   const counter = { count: 0 };
-  let html = serializeElement(element, 0, maxDepth, counter);
-  const text = (element.textContent ?? "").trim();
-  const nodeCount = counter.count;
-  let truncated = false;
-  if (html.length > maxLength) {
-    html = html.slice(0, maxLength);
-    truncated = true;
-  }
+  const excerpt = serializeElement(element, 0, maxDepth, counter);
+  const bounded = boundExcerpt(excerpt, maxLength);
 
   return {
     ...envelope,
     found: true,
     ...resolveReportedAnchorMetadata(anchorKey, element, envelope.snapshotId, creationSnapshotId),
-    html,
-    text,
-    nodeCount,
-    truncated,
+    html: bounded.html,
+    text: bounded.text,
+    nodeCount: counter.count,
+    truncated: bounded.truncated,
   };
+}
+
+function buildTags(element: Element, tag: string): { openTag: string; closeTag: string } {
+  const attrParts = Array.from(element.attributes)
+    .filter((attr) => !attr.name.startsWith("on"))
+    .filter((attr) => SAFE_ATTRS.has(attr.name))
+    .filter((attr) => !URL_ATTRS.has(attr.name) || isSafeUrl(attr.value))
+    .map((attr) => `${attr.name}="${escapeHtmlText(attr.value).replace(/"/g, "&quot;")}"`);
+  const attrStr = attrParts.length > 0 ? ` ${attrParts.join(" ")}` : "";
+  return { openTag: `<${tag}${attrStr}>`, closeTag: `</${tag}>` };
+}
+
+function serializeCutoffElement(element: Element, openTag: string, closeTag: string): SerializeResult {
+  const directText = collectDirectText(element);
+  const inner = directText ? escapeHtmlText(directText) : "";
+  return { html: `${openTag}${inner}${closeTag}`, text: directText };
+}
+
+function collectDirectText(element: Element): string {
+  return normalizeText(
+    Array.from(element.childNodes)
+      .filter((child) => child.nodeType === Node.TEXT_NODE)
+      .map((child) => child.textContent ?? "")
+      .join(" "),
+  );
 }

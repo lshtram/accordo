@@ -3,6 +3,7 @@ import type { BrowserRelayLike } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
 import { handleInspectElement, type InspectElementArgs } from "./page-tool-handlers.js";
+import { IMPLICIT_TARGET_TAB_DESCRIPTION } from "./tab-target-contract.js";
 
 export function buildInspectElementTool(
   relay: BrowserRelayLike,
@@ -22,10 +23,10 @@ export function buildInspectElementTool(
     inputSchema: {
       type: "object",
       properties: {
-        tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
+        tabId: { type: "number", description: IMPLICIT_TARGET_TAB_DESCRIPTION },
         anchorKey: { type: "string", description: "Browser comment or capture anchor key identifying the target element" },
         creationSnapshotId: { type: "string", description: "Original snapshotId recorded when the browser comment anchor was created; used to detect drift on re-resolution" },
-        uid: { type: "string", description: "B2-UID-001: Canonical node identity \"{frameId}:{nodeId}\" from get_page_map. Takes precedence over ref/selector/nodeId." },
+        uid: { type: "string", description: "B2-UID-001: Snapshot/frame-scoped node identity \"{frameId}:{nodeId}\" from get_page_map. Takes precedence over ref/selector/nodeId." },
         ref: { type: "string", description: "Element reference from page map" },
         selector: { type: "string", description: "CSS selector to find element" },
         nodeId: { type: "number", description: "B2-SV-006: Stable node ID from a page map snapshot" },

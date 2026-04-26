@@ -9,6 +9,7 @@ This directory contains project-specific skills for the Accordo IDE agent.
 | `accordo-diagrams` | Create and edit Mermaid diagrams with Accordo styling | Diagram-related tasks |
 | `accordo-presentations` | Create Marp presentations with narration | Presentation/slide tasks |
 | `accordo-script-authoring` | Author demo scripts via external Python runner (NarrationScript format, `accordo-run.py`) | Script/narration tasks |
+| `accordo-vscode-command-gateway` | Use the generic VS Code command catalog/execute escape hatch safely | Long-tail VS Code command workflows |
 | `debugging` | Systematic 5-phase debugging process | Bug investigation, test failures |
 
 ## How to Use Skills
@@ -19,8 +20,15 @@ When working on a relevant task, load the skill using:
 skill: accordo-diagrams
 skill: accordo-presentations
 skill: accordo-script-authoring
+skill: accordo-vscode-command-gateway
 skill: debugging
 ```
+
+### Mandatory pairing rules
+
+- For **presentation authoring only**: load `accordo-presentations`.
+- For **narrated presentation-show / scripted walkthrough**: load **both** `accordo-presentations` and `accordo-script-authoring`.
+- For any scripted demo/narration request, use NarrationScript + `python skills/script-authoring/accordo-run.py`.
 
 ## Skill Structure
 

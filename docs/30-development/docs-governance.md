@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE  
 **Owner:** Accordo maintainers  
-**Last reviewed:** 2026-04-21  
+**Last reviewed:** 2026-04-22  
 **Canonical for:** documentation status/lane rules and placement conventions
 
 ---
@@ -18,7 +18,6 @@
 - `docs/reviews/`
 
 ### Historical / archive lanes (non-canonical)
-- `docs/40-reviews/`
 - `docs/50-reviews/`
 - `docs/60-archive/`
 - `docs/90-archive/`
@@ -30,6 +29,7 @@ Historical docs may be cited as evidence, but active docs must not treat them as
 - **Architecture docs:** `docs/10-architecture/`
 - **Requirements docs:** `docs/20-requirements/`
 - **Development standards/plans/patterns:** `docs/30-development/`
+- **Module maps:** `docs/30-development/module-maps/`
 - **Active testing guides + index:** `docs/40-testing/`
 - **Active reviews:** `docs/reviews/`
 - **Archive reviews/evidence:** archive lanes only
@@ -60,4 +60,4 @@ Active docs should include at least:
 - **Active reviews root:** `docs/reviews/`
 - **Active testing-guide root:** `docs/40-testing/`
 
-Root-level legacy `docs/testing-guide-*.md` files are transitional and should be indexed/migrated under `docs/40-testing/` over time.
+Testing guides are centralized under `docs/40-testing/`. Do not add new active `testing-guide-*.md` files at docs root.

@@ -918,15 +918,17 @@ Browser uses the same comment store contract through a host adapter path (relay 
 
 ### 10.4 Unified comment tool contract (all modalities)
 
-Public MCP tools are unified under one namespace:
+Public MCP tools are unified under one canonical namespace:
 
-- `accordo_comment_list`
-- `accordo_comment_get`
-- `accordo_comment_create`
-- `accordo_comment_reply`
-- `accordo_comment_resolve`
-- `accordo_comment_reopen`
-- `accordo_comment_delete`
+- `comment_list`
+- `comment_get`
+- `comment_create`
+- `comment_reply`
+- `comment_resolve`
+- `comment_reopen`
+- `comment_delete`
+
+Backward-compatible aliases (`accordo_comment_*`) remain callable for `tools/call` during migration, but are not returned by `tools/list`.
 
 Each tool accepts modality scoping in input (for example `scope.modality = "browser"`), instead of exposing modality-specific public tool families.
 
@@ -936,7 +938,7 @@ To manage volatile browser anchors, the custom Accordo Comments Panel adds an ex
 
 - Command: `accordo.commentsPanel.deleteAllBrowserComments`
 - Behavior: prompt for confirmation, then delete all threads where `anchor.kind = "surface"` and `surfaceType = "browser"`
-- Backing path: unified `accordo_comment_delete` with `deleteScope: { modality: "browser", all: true }`
+- Backing path: unified `comment_delete` with `deleteScope: { modality: "browser", all: true }`
 
 ---
 
@@ -1076,7 +1078,7 @@ packages/comments/
 - Text adapter: native VSCode Comments API (create, reply, resolve, delete, reopen)
 - Context capture: viewport snap, diagnostics, git info
 - Diff-aware staleness with line-shift adjustment
-- 7 MCP tools: `accordo_comment_list`, `accordo_comment_get`, `accordo_comment_create`, `accordo_comment_reply`, `accordo_comment_resolve`, `accordo_comment_reopen`, `accordo_comment_delete`
+- 7 MCP tools: `comment_list`, `comment_get`, `comment_create`, `comment_reply`, `comment_resolve`, `comment_reopen`, `comment_delete`
 - Modality state published to Hub (open thread summary in system prompt)
 - Restore persisted threads on activation
 - Menu contributions (resolve, delete, reopen actions)

@@ -153,13 +153,28 @@ export async function bootstrapExtension(
   }
 
   // Step 5: Build HubManagerConfig with single registry path
-  const hubEntryPoint = path.join(
+  const packagedHubEntryPoint = path.join(
     context.extensionUri.fsPath,
     "node_modules",
     "accordo-hub",
     "dist",
     "index.js",
   );
+  const monorepoHubEntryPoint = path.join(
+    context.extensionUri.fsPath,
+    "..",
+    "hub",
+    "dist",
+    "index.js",
+  );
+  const hubEntryPoint = fs.existsSync(packagedHubEntryPoint)
+    ? packagedHubEntryPoint
+    : monorepoHubEntryPoint;
+  if (!fs.existsSync(hubEntryPoint)) {
+    outputChannel.appendLine(
+      `[accordo-bridge] Hub entrypoint not found. checked packaged=${packagedHubEntryPoint} monorepo=${monorepoHubEntryPoint}`,
+    );
+  }
   const registryPath = DEFAULT_REGISTRY_PATH;
   const hubManagerConfig: HubManagerConfig = {
     port: config.port,

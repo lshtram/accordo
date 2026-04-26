@@ -11,11 +11,22 @@ export interface SelectPageArgs {
 }
 
 export interface ListPagesResponse {
-  pages: { tabId: number; url: string; title: string; active: boolean; controlGranted?: boolean }[];
+  pages: {
+    tabId: number;
+    url: string;
+    title: string;
+    active: boolean;
+    windowId?: number;
+    controlGranted?: boolean;
+    isImplicitTarget?: boolean;
+  }[];
 }
 
 export interface SelectPageResponse {
   success: boolean;
+  tabId?: number;
+  windowId?: number;
+  isImplicitTarget?: boolean;
   error?: string;
 }
 

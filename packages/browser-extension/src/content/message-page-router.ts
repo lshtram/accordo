@@ -1,4 +1,5 @@
 import { getLogicalFrameId, toInspectPayload } from "./message-action-helpers.js";
+import { routeDiffSnapshots, routeDomExcerpt, routeInspectElement, routeSpatialRelations } from "./message-page-routing-helpers.js";
 
 export async function handlePageUnderstandingActionMessage(
   action: string,
@@ -6,74 +7,49 @@ export async function handlePageUnderstandingActionMessage(
   sendResponse: (response: unknown) => void,
 ): Promise<void> {
   try {
-    let data: unknown;
-    if (action === "get_page_map") {
-      const { collectPageMap } = await import("./page-map-collector.js");
-      data = collectPageMap(payload as Parameters<typeof collectPageMap>[0]);
-      const { defaultStore, isVersionedSnapshot } = await import("../relay-definitions.js");
-      if (isVersionedSnapshot(data)) {
-        await defaultStore.save((data as { pageId: string }).pageId, data as Parameters<typeof defaultStore.save>[1]);
-      }
-    } else if (action === "inspect_element") {
-      const { inspectElement } = await import("./element-inspector.js");
-      data = inspectElement(toInspectPayload(payload));
-    } else if (action === "get_dom_excerpt") {
-      const { getDomExcerpt } = await import("./element-inspector.js");
-      const { selector, anchorKey, creationSnapshotId, maxDepth, maxLength } = payload as {
-        selector?: string;
-        anchorKey?: string;
-        creationSnapshotId?: string;
-        maxDepth?: number;
-        maxLength?: number;
-      };
-      data = getDomExcerpt({ selector, anchorKey, creationSnapshotId }, maxDepth, maxLength);
-    } else if (action === "wait_for") {
-      const { handleWaitForAction } = await import("./wait-provider.js");
-      data = await handleWaitForAction(payload);
-    } else if (action === "get_text_map") {
-      const { collectTextMap } = await import("./text-map-collector.js");
-      data = collectTextMap(payload as Parameters<typeof collectTextMap>[0]);
-    } else if (action === "get_semantic_graph") {
-      const { collectSemanticGraph } = await import("./semantic-graph-collector.js");
-      data = collectSemanticGraph(payload as Parameters<typeof collectSemanticGraph>[0]);
-    } else if (action === "get_frame_path") {
-      data = { frameId: getLogicalFrameId() };
-    } else if (action === "get_spatial_relations") {
-      const { handleGetSpatialRelationsAction } = await import("./spatial-relations-handler.js");
-      const result = handleGetSpatialRelationsAction(payload);
-      if ("error" in result) {
-        sendResponse({ error: result.error });
-        return;
-      }
-      data = result.data;
-    } else if (action === "diff_snapshots") {
-      const { defaultStore } = await import("../relay-definitions.js");
-      const { computeDiff } = await import("../diff-engine.js");
-      const fromId = typeof payload.fromSnapshotId === "string" ? payload.fromSnapshotId : undefined;
-      const toId = typeof payload.toSnapshotId === "string" ? payload.toSnapshotId : undefined;
-      if (!fromId || !toId) {
-        sendResponse({ error: "invalid-request" });
-        return;
-      }
-      const fromResult = await defaultStore.get(fromId);
-      if ("error" in fromResult) {
-        sendResponse({ error: defaultStore.isStale(fromId) ? "snapshot-stale" : "snapshot-not-found" });
-        return;
-      }
-      const toResult = await defaultStore.get(toId);
-      if ("error" in toResult) {
-        sendResponse({ error: defaultStore.isStale(toId) ? "snapshot-stale" : "snapshot-not-found" });
-        return;
-      }
-      data = computeDiff(fromResult, toResult);
-    } else {
-      sendResponse({ error: "unsupported-action" });
-      return;
-    }
-    sendResponse({ data });
+    const result = await routePageAction(action, payload);
+    sendResponse(result.error ? { error: result.error } : { data: result.data });
   } catch {
     sendResponse({ error: "action-failed" });
   }
+}
+
+async function routePageAction(action: string, payload: Record<string, unknown>): Promise<{ data?: unknown; error?: string }> {
+  if (action === "get_page_map") return routePageMap(payload);
+  if (action === "inspect_element") return routeInspectElement(payload);
+  if (action === "get_dom_excerpt") return routeDomExcerpt(payload);
+  if (action === "wait_for") return routeWaitFor(payload);
+  if (action === "get_text_map") return routeTextMap(payload);
+  if (action === "get_semantic_graph") return routeSemanticGraph(payload);
+  if (action === "get_frame_path") return { data: { frameId: getLogicalFrameId() } };
+  if (action === "get_spatial_relations") return routeSpatialRelations(payload);
+  if (action === "diff_snapshots") return routeDiffSnapshots(payload);
+  return { error: "unsupported-action" };
+}
+
+async function routePageMap(payload: Record<string, unknown>): Promise<{ data: unknown }> {
+  const { collectPageMap } = await import("./page-map-collector.js");
+  const data = collectPageMap(payload as Parameters<typeof collectPageMap>[0]);
+  const { defaultStore, isVersionedSnapshot } = await import("../relay-definitions.js");
+  if (isVersionedSnapshot(data)) {
+    await defaultStore.save((data as { pageId: string }).pageId, data as Parameters<typeof defaultStore.save>[1]);
+  }
+  return { data };
+}
+
+async function routeWaitFor(payload: Record<string, unknown>): Promise<{ data: unknown }> {
+  const { handleWaitForAction } = await import("./wait-provider.js");
+  return { data: await handleWaitForAction(payload) };
+}
+
+async function routeTextMap(payload: Record<string, unknown>): Promise<{ data: unknown }> {
+  const { collectTextMap } = await import("./text-map-collector.js");
+  return { data: collectTextMap(payload as Parameters<typeof collectTextMap>[0]) };
+}
+
+async function routeSemanticGraph(payload: Record<string, unknown>): Promise<{ data: unknown }> {
+  const { collectSemanticGraph } = await import("./semantic-graph-collector.js");
+  return { data: collectSemanticGraph(payload as Parameters<typeof collectSemanticGraph>[0]) };
 }
 
 export async function handleCaptureSnapshotEnvelopeMessage(

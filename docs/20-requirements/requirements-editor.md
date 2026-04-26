@@ -4,7 +4,7 @@
 **Type:** VSCode extension  
 **Publisher:** `accordo`  
 **Version:** 0.1.0  
-**Date:** 2026-04-21
+**Date:** 2026-04-24
 
 ---
 
@@ -45,6 +45,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const allTools: ExtensionToolDefinition[] = [
     ...editorTools,        // 11 editor tools
     ...terminalTools,      // 5 terminal tools
+    ...vscodeCommandTools, // 2 generic VS Code command gateway tools
     ...createLayoutTools(() => bridge.getState()),  // 7 layout tools
   ];
   const disposable = bridge.registerTools('accordo.accordo-editor', allTools);
@@ -337,6 +338,8 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 ### 4.6 `accordo_editor_split`
 
+**Retirement note (M76-VCGM):** Approved for removal from the MCP surface in the selected-tool migration wave. The replacement path is `accordo_vscode_command_execute` with `command: "workbench.action.splitEditorRight"` or `"workbench.action.splitEditorDown"`.
+
 **Purpose:** Split the editor pane in a given direction.
 
 | Property | Value |
@@ -419,6 +422,8 @@ Each tool below is defined with its full interface contract: input schema, respo
 ---
 
 ### 4.8 `accordo_editor_reveal`
+
+**Retirement note (M76-VCGM):** Approved for removal from the MCP surface in the selected-tool migration wave. The replacement path is `accordo_vscode_command_execute` with `command: "revealInExplorer"` plus a JSON-safe path→`vscode.Uri` hydration adapter in the gateway runtime.
 
 **Purpose:** Reveal a file in the Explorer sidebar without opening it in the editor.
 
@@ -671,6 +676,8 @@ This tool was part of an older workspace-surface proposal and is currently out o
 
 ### 4.15 `accordo_layout_zen`
 
+**Retirement note (M76-VCGM):** Approved for removal from the MCP surface in the selected-tool migration wave. The replacement path is `accordo_vscode_command_execute` with `command: "workbench.action.toggleZenMode"`.
+
 **Purpose:** Toggle Zen Mode (distraction-free fullscreen editing).
 
 | Property | Value |
@@ -702,6 +709,8 @@ This tool was part of an older workspace-surface proposal and is currently out o
 ---
 
 ### 4.16 `accordo_layout_fullscreen`
+
+**Retirement note (M76-VCGM):** Approved for removal from the MCP surface in the selected-tool migration wave. The replacement path is `accordo_vscode_command_execute` with `command: "workbench.action.toggleFullScreen"`.
 
 **Purpose:** Toggle fullscreen mode.
 
@@ -735,6 +744,8 @@ This tool was part of an older workspace-surface proposal and is currently out o
 
 ### 4.23 `accordo_layout_joinGroups`
 
+**Retirement note (M76-VCGM):** Approved for removal from the MCP surface in the selected-tool migration wave. The replacement path is `accordo_vscode_command_execute` with `command: "workbench.action.joinAllGroups"`.
+
 **Purpose:** Collapse all editor splits — merge all groups into one.
 
 | Property | Value |
@@ -762,6 +773,8 @@ This tool was part of an older workspace-surface proposal and is currently out o
 ---
 
 ### 4.24 `accordo_layout_evenGroups`
+
+**Retirement note (M76-VCGM):** Approved for removal from the MCP surface in the selected-tool migration wave. The replacement path is `accordo_vscode_command_execute` with `command: "workbench.action.evenEditorWidths"`.
 
 **Purpose:** Equalise the width and height of all editor groups so each pane takes the same space.
 
@@ -842,6 +855,261 @@ This tool was part of an older workspace-surface proposal and is currently out o
 - Add `layoutStateHandler` + tool definition inside the factory
 - Update `extension.ts` to call `createLayoutTools(() => bridge.getState())`
 - Add `accordo_layout_state` entry to `accordo_script_discover` catalog in `packages/script/src/tools/script-discover.ts` (⚠️ **Superseded** — script module removed 2026-04-16; the discover mechanism is no longer available)
+
+---
+
+### 4.26 `accordo_vscode_command_list`
+
+**Module ID:** M75-VCG  
+**Purpose:** Discover VS Code command IDs through a bounded MCP surface so agents can use long-tail editor functionality without adding a bespoke MCP wrapper for every command.
+
+| Property | Value |
+|---|---|
+| Danger level | safe |
+| Idempotent | yes |
+| Requires confirmation | no |
+| Timeout class | fast (5s) |
+
+**Input Schema:**
+
+```typescript
+{
+  type: "object",
+  properties: {
+    query: {
+      type: "string",
+      description: "Optional case-insensitive substring filter against command IDs"
+    },
+    includeInternal: {
+      type: "boolean",
+      description: "When true, include internal/underscore-prefixed commands. Default: false"
+    },
+    offset: {
+      type: "number",
+      description: "0-based pagination offset. Default: 0"
+    },
+    limit: {
+      type: "number",
+      description: "Maximum results to return. Default: 100; capped by implementation"
+    }
+  },
+  required: []
+}
+```
+
+**Response (success):**
+
+```typescript
+{
+  ok: true;
+  auditId: string;
+  commands: Array<{
+    command: string;
+    title?: string;
+    source: "core" | "extension";
+    internal: boolean;
+    policy: {
+      action: "allow" | "confirm" | "deny";
+      riskClass: "low" | "moderate" | "high";
+      requiresConfirmation: boolean;
+      reason: string;
+      matchedRuleId?: string;
+      preferredTool?: string;
+    };
+  }>;
+  totalCount: number;
+  nextOffset?: number;
+  truncated: boolean;
+}
+```
+
+**Response (error):**
+
+```typescript
+{
+  ok: false;
+  auditId?: string;
+  error: {
+    code: "INVALID_ARGUMENT" | "AUDIT_WRITE_FAILED" | "NOT_IMPLEMENTED";
+    message: string;
+    retriable: boolean;
+    details?: Record<string, unknown>;
+  };
+}
+```
+
+**Requirements:**
+
+| ID | Requirement |
+|---|---|
+| M75-VCG-01 | Registers `accordo_vscode_command_list` as an MCP tool via `BridgeAPI.registerTools()` |
+| M75-VCG-02 | Returns a bounded, paginated command list; the tool must never return the full catalog unbounded |
+| M75-VCG-03 | `includeInternal: false` excludes internal/underscore-prefixed commands by default |
+| M75-VCG-04 | Each listed command includes policy metadata (`allow` / `confirm` / `deny`) and risk classification |
+| M75-VCG-05 | Commands that already have first-class Accordo MCP tools may expose `preferredTool` guidance |
+| M75-VCG-06 | Listing is auditable and returns an `auditId` |
+| M75-VCG-07 | Runtime description instructs agents to prefer existing first-class tools and treat internal commands as unstable |
+| M75-VCG-07a | Extended gateway guidance is published through MCP-visible docs resources under `accordo://docs/tool-reference` and `accordo://docs/troubleshooting` (with a `vscode-command-gateway` section), not only repo-local docs |
+
+**Implementation notes:**
+- Command discovery source is `vscode.commands.getCommands(includeInternal)`
+- Catalog output must be filtered/paged before returning over MCP
+- Policy metadata is computed locally in the editor extension, not inferred by the agent
+
+---
+
+### 4.28 `accordo_vscode_command_execute`
+
+**Module ID:** M75-VCG  
+**Purpose:** Execute a guarded VS Code command with positional arguments through `vscode.commands.executeCommand`, while preserving safety policy, auditability, and compatibility with existing first-class Accordo tools.
+
+| Property | Value |
+|---|---|
+| Danger level | moderate |
+| Idempotent | no |
+| Requires confirmation | no (tool-level); confirmation is command-policy-driven |
+| Timeout class | fast (5s) unless extended by command implementation |
+
+**Input Schema:**
+
+```typescript
+{
+  type: "object",
+  properties: {
+    command: {
+      type: "string",
+      description: "VS Code command ID to execute"
+    },
+    args: {
+      type: "array",
+      description: "Positional arguments passed to vscode.commands.executeCommand(command, ...args)"
+    },
+    confirmation: {
+      type: "object",
+      description: "Required only when policy action is 'confirm'",
+      properties: {
+        confirmed: { type: "boolean" },
+        command: { type: "string" },
+        reason: { type: "string" }
+      },
+      required: ["confirmed", "command"]
+    }
+  },
+  required: ["command"]
+}
+```
+
+**Response (success):**
+
+```typescript
+{
+  ok: true;
+  auditId: string;
+  command: string;
+  policy: {
+    action: "allow" | "confirm" | "deny";
+    riskClass: "low" | "moderate" | "high";
+    requiresConfirmation: boolean;
+    reason: string;
+    matchedRuleId?: string;
+    preferredTool?: string;
+  };
+  result:
+    | { kind: "void" }
+    | { kind: "json"; value: unknown }
+    | { kind: "unsupported"; summary: string };
+}
+```
+
+**Response (error):**
+
+```typescript
+{
+  ok: false;
+  auditId?: string;
+  command?: string;
+  policy?: {
+    action: "allow" | "confirm" | "deny";
+    riskClass: "low" | "moderate" | "high";
+    requiresConfirmation: boolean;
+    reason: string;
+    matchedRuleId?: string;
+    preferredTool?: string;
+  };
+  error: {
+    code:
+      | "INVALID_ARGUMENT"
+      | "COMMAND_NOT_FOUND"
+      | "POLICY_DENIED"
+      | "POLICY_CONFIRMATION_REQUIRED"
+      | "COMMAND_EXECUTION_FAILED"
+      | "COMMAND_RESULT_NOT_SERIALIZABLE"
+      | "AUDIT_WRITE_FAILED"
+      | "NOT_IMPLEMENTED";
+    message: string;
+    retriable: boolean;
+    details?: Record<string, unknown>;
+  };
+}
+```
+
+**Requirements:**
+
+| ID | Requirement |
+|---|---|
+| M75-VCG-08 | Registers `accordo_vscode_command_execute` as an MCP tool via `BridgeAPI.registerTools()` |
+| M75-VCG-09 | Executes commands by calling `vscode.commands.executeCommand(command, ...args)` |
+| M75-VCG-10 | Evaluates a local safety policy before execution and classifies each command as `allow`, `confirm`, or `deny` |
+| M75-VCG-11 | Commands in the `deny` class never execute and return structured `POLICY_DENIED` errors |
+| M75-VCG-12 | Commands in the `confirm` class require explicit confirmation payload matching the command ID |
+| M75-VCG-13 | Commands that duplicate first-class Accordo MCP tools (including `accordo_*` command IDs) are denied with `preferredTool` guidance |
+| M75-VCG-14 | Raw command return values are normalized to JSON-safe envelopes before returning over MCP |
+| M75-VCG-15 | Every execution attempt is audit-logged with command ID, normalized argument shape, policy decision, and outcome |
+| M75-VCG-16 | Interactive/unstable command failures return structured error codes rather than opaque string-only failures |
+| M75-VCG-17 | Gateway introduction alone does not imply blanket tool replacement; any wrapper retirement must be specified by a later migration module |
+| M75-VCG-18 | Server instructions may summarize common gateway workflows, but they must point back to MCP-visible runtime docs rather than rely on repo-local skills alone |
+
+**Implementation notes:**
+- Define local abstractions for the command catalog, executor, safety policy, and audit sink inside the editor package
+- Dynamic confirmation is enforced by policy/result contract, not by the Bridge's static per-tool confirmation flag
+- Audit stores normalized argument shape/summary, not raw argument values
+- Runtime docs must include migration examples and caveats for internal and interactive commands through tool descriptions plus MCP resources; repo-local skills are supplemental maintainer guidance only
+
+---
+
+### 4.29 Selected first-class tool migration/removal (`M76-VCGM`)
+
+**Module ID:** M76-VCGM  
+**Purpose:** Retire low-value first-class wrappers once the generic command gateway and runtime playbook provide a safe, documented replacement path.
+
+**Scope of removal:**
+
+| Removed MCP tool | Replacement path | Command policy expectation | Notes |
+|---|---|---|---|
+| `accordo_editor_split` | `accordo_vscode_command_execute("workbench.action.splitEditorRight")` / `("workbench.action.splitEditorDown")` | allow | direct command replacement |
+| `accordo_editor_reveal` | `accordo_vscode_command_execute("revealInExplorer", [<hydrated-uri>])` | allow | requires JSON-safe path→URI hydration in gateway runtime |
+| `accordo_editor_save` | `accordo_editor_open(path?)` → `accordo_vscode_command_execute("workbench.action.files.save")` | confirm | command acts on active editor only |
+| `accordo_editor_saveAll` | `accordo_vscode_command_execute("workbench.action.files.saveAll")` | confirm | no pre-open step |
+| `accordo_editor_format` | `accordo_editor_open(path?)` → `accordo_vscode_command_execute("editor.action.formatDocument")` | confirm | command acts on active editor only |
+| `accordo_layout_zen` | `accordo_vscode_command_execute("workbench.action.toggleZenMode")` | allow | toggle; no deterministic read-after-write signal today |
+| `accordo_layout_fullscreen` | `accordo_vscode_command_execute("workbench.action.toggleFullScreen")` | allow | toggle; no deterministic read-after-write signal today |
+| `accordo_layout_joinGroups` | `accordo_vscode_command_execute("workbench.action.joinAllGroups")` | allow | idempotent effect remains expected |
+| `accordo_layout_evenGroups` | `accordo_vscode_command_execute("workbench.action.evenEditorWidths")` | allow | no structured post-state available |
+
+**Requirements:**
+
+| ID | Requirement |
+|---|---|
+| M76-VCGM-01 | `accordo_editor_split`, `accordo_editor_reveal`, `accordo_editor_save`, `accordo_editor_saveAll`, and `accordo_editor_format` are removed from the registered MCP editor tool surface in the migration wave |
+| M76-VCGM-02 | `accordo_layout_zen`, `accordo_layout_fullscreen`, `accordo_layout_joinGroups`, and `accordo_layout_evenGroups` are removed from the registered MCP layout tool surface in the migration wave |
+| M76-VCGM-03 | The gateway playbook maps each removed editor/layout scenario to an exact VS Code command ID and required call sequence |
+| M76-VCGM-04 | The gateway runtime supports a local JSON-safe argument hydration path for URI-bearing commands required by migrated scenarios (at minimum `revealInExplorer`) |
+| M76-VCGM-05 | Migrated save/format flows document that path-targeted operations require an explicit focus/open step before command execution because the backing VS Code commands act on the active editor |
+| M76-VCGM-06 | Gateway policy remains explicit for migrated commands: save/saveAll/format are confirm-class; split/reveal/zen/fullscreen/join/even remain allow-class unless policy is intentionally revised |
+| M76-VCGM-07 | Runtime-visible guidance for migrated commands lives in MCP-visible layers first (tool descriptions, MCP docs resources, server instructions); repo-local skills are supplemental only |
+| M76-VCGM-08 | After removal, gateway catalog metadata and docs no longer point the retired wrapper names as preferred first-class tools for those migrated command IDs |
+| M76-VCGM-09 | Extension activation, registration, and shim wiring no longer count or register the retired wrappers |
+| M76-VCGM-10 | The migration playbook explicitly documents that Zen/fullscreen remain write-only toggles with no deterministic native state probe in the current MCP surface |
 
 ---
 
@@ -933,6 +1201,8 @@ This tool was part of an older workspace-surface proposal and is currently out o
 
 ### 4.17 `accordo_editor_save`
 
+**Retirement note (M76-VCGM):** Approved for removal from the MCP surface in the selected-tool migration wave. Replacement is `accordo_vscode_command_execute` with `command: "workbench.action.files.save"`; if a specific path is requested, the caller must first focus that file via `accordo_editor_open`.
+
 **Purpose:** Save a specific file, or the active editor if no path given.
 
 | Property | Value |
@@ -978,6 +1248,8 @@ This tool was part of an older workspace-surface proposal and is currently out o
 
 ### 4.18 `accordo_editor_saveAll`
 
+**Retirement note (M76-VCGM):** Approved for removal from the MCP surface in the selected-tool migration wave. The replacement path is `accordo_vscode_command_execute` with `command: "workbench.action.files.saveAll"`.
+
 **Purpose:** Save all modified (unsaved) editors.
 
 | Property | Value |
@@ -1011,6 +1283,8 @@ This tool was part of an older workspace-surface proposal and is currently out o
 ---
 
 ### 4.19 `accordo_editor_format`
+
+**Retirement note (M76-VCGM):** Approved for removal from the MCP surface in the selected-tool migration wave. Replacement is `accordo_vscode_command_execute` with `command: "editor.action.formatDocument"`; if a specific path is requested, the caller must first focus that file via `accordo_editor_open`.
 
 **Purpose:** Run the configured formatter on the active document (or a specific file's editor).
 
@@ -1240,7 +1514,7 @@ function getTerminalId(terminal: vscode.Terminal): string | undefined {
 | Unit: wrapHandler | success, throw, non-serializable return |
 | Unit: each tool handler | Happy path with mock VSCode API |
 | Unit: input validation | Missing required fields, wrong types, out-of-range values |
-| Integration: tool registration | activate → registerTools called → Bridge receives 23 tools |
+| Integration: tool registration | activate → registerTools called → Bridge receives 25 tools |
 | Integration: tool invocation | Bridge sends invoke → handler runs → result returned |
 | Unit: terminal.list | Tracked IDs, untracked terminals, isActive flag |
 | Unit: terminal.close | Happy path, already-closed terminal (stale map entry) |

@@ -7,7 +7,9 @@ export async function handleInspectElement(request: RelayActionRequest): Promise
   const localHandler = typeof document !== "undefined"
     ? async (): Promise<unknown> => {
         const { inspectElement } = await import("./content/element-inspector.js");
-        return inspectElement(toInspectPayload(request.payload));
+        const parsed = toInspectPayload(request.payload);
+        if ("error" in parsed) return parsed;
+        return inspectElement(parsed.payload);
       }
     : null;
   return handlePageUnderstandingAction(request, localHandler, false, handleFrameIdRequest);
@@ -36,6 +38,7 @@ export async function handleGetTextMap(request: RelayActionRequest): Promise<Rel
         const result = collectTextMap({
           maxSegments: typeof p.maxSegments === "number" ? p.maxSegments : undefined,
           logicalFrameId: typeof p.logicalFrameId === "string" ? p.logicalFrameId : undefined,
+          visibleOnly: typeof p.visibleOnly === "boolean" ? p.visibleOnly : undefined,
         });
 
         const pagination = clampOffsetLimit(p as Record<string, unknown>, 500, 2000, "maxSegments");

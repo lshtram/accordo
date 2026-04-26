@@ -56,7 +56,8 @@
   },
   "dependencies": {
     "@accordo/capabilities": "workspace:*",
-    "@marp-team/marp-core": "^4.1.0"
+    "@marp-team/marp-core": "^4.1.0",
+    "mermaid": "^11.12.3"
   },
   "devDependencies": {
     "@accordo/bridge-types": "workspace:*",

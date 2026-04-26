@@ -4,6 +4,7 @@ import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { ScreenshotRetentionStore } from "./screenshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
 import { handleCaptureRegion, type CaptureRegionArgs } from "./page-tool-handlers.js";
+import { IMPLICIT_TARGET_TAB_DESCRIPTION } from "./tab-target-contract.js";
 
 export function buildCaptureRegionTool(
   relay: BrowserRelayLike,
@@ -17,7 +18,7 @@ export function buildCaptureRegionTool(
     inputSchema: {
       type: "object",
       properties: {
-        tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
+        tabId: { type: "number", description: IMPLICIT_TARGET_TAB_DESCRIPTION },
         anchorKey: { type: "string", description: "Anchor key identifying target element" },
         nodeRef: { type: "string", description: "Node ref from page map" },
         rect: { type: "object", description: "Explicit viewport-relative rectangle", properties: { x: { type: "number" }, y: { type: "number" }, width: { type: "number" }, height: { type: "number" } } },

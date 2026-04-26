@@ -1,9 +1,9 @@
 import { normalizeUrl } from "./store.js";
 import { readOptionalNumber, readOptionalString } from "./relay-type-guards.js";
+import { resolveImplicitTargetTab, resolveImplicitTargetTabId } from "./relay-implicit-target.js";
 
 export async function getActiveTabUrl(): Promise<string | null> {
-  const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const url = tabs[0]?.url;
+  const url = (await resolveImplicitTargetTab())?.url;
   if (!url || (!url.startsWith("http://") && !url.startsWith("https://"))) return null;
   return normalizeUrl(url);
 }
@@ -32,6 +32,5 @@ export async function resolveTargetTabId(payload: Record<string, unknown>): Prom
   if (explicitTabId !== undefined) {
     return explicitTabId;
   }
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  return tab?.id;
+  return resolveImplicitTargetTabId();
 }

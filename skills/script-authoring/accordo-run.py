@@ -19,6 +19,7 @@ import os
 import sys
 import time
 import argparse
+from dataclasses import dataclass
 
 try:
     import requests
@@ -30,15 +31,31 @@ except ImportError:
 # ── Hub connection ────────────────────────────────────────────────────────────
 
 
-def get_hub(project_fragment: str) -> tuple[str, str]:
-    """Return (base_url, token) for the hub serving a project."""
+@dataclass
+class HubCandidate:
+    key: str
+    pid: int
+    port: int
+    token: str
+    cwd: str
+    vscode_cwd: str
+    pwd: str
+    started_at: str
+
+
+def _load_live_hubs() -> list[HubCandidate]:
+    """Load only live hub entries with readable env + token."""
     hubs_path = os.path.expanduser("~/.accordo/hubs.json")
     with open(hubs_path) as f:
         hubs = json.load(f)
+
+    live: list[HubCandidate] = []
     for key, entry in hubs.items():
-        if project_fragment in key:
-            port = entry["port"]
-            pid = entry["pid"]
+        pid = int(entry.get("pid", 0))
+        if pid <= 0 or not os.path.isdir(f"/proc/{pid}"):
+            continue
+
+        try:
             with open(f"/proc/{pid}/environ", "rb") as ef:
                 env = dict(
                     item.split(b"=", 1)
@@ -47,14 +64,81 @@ def get_hub(project_fragment: str) -> tuple[str, str]:
                 )
             token = env.get(b"ACCORDO_TOKEN", b"").decode()
             if not token:
-                raise RuntimeError(
-                    f"ACCORDO_TOKEN not found in environment of PID {pid}"
+                continue
+
+            port_env = env.get(b"ACCORDO_HUB_PORT", b"").decode()
+            port = int(port_env) if port_env.isdigit() else int(entry.get("port", 0))
+            if port <= 0:
+                continue
+
+            live.append(
+                HubCandidate(
+                    key=key,
+                    pid=pid,
+                    port=port,
+                    token=token,
+                    cwd=os.path.realpath(f"/proc/{pid}/cwd"),
+                    vscode_cwd=env.get(b"VSCODE_CWD", b"").decode(),
+                    pwd=env.get(b"PWD", b"").decode(),
+                    started_at=str(entry.get("startedAt", "")),
                 )
-            return f"http://localhost:{port}", token
-    raise RuntimeError(
-        f"No hub found for project fragment '{project_fragment}'.\n"
-        f"Available keys: {list(hubs.keys())}"
+            )
+        except (OSError, ValueError):
+            continue
+
+    return live
+
+
+def _score_candidate(candidate: HubCandidate, selector: str, current_cwd: str) -> int:
+    """Rank candidate relevance for the requested selector/current cwd."""
+    score = 0
+    sel = selector.strip()
+
+    if sel:
+        if sel in candidate.key:
+            score += 6
+        if sel in candidate.cwd:
+            score += 6
+        if sel in candidate.vscode_cwd:
+            score += 5
+        if sel in candidate.pwd:
+            score += 4
+
+    if current_cwd and current_cwd == candidate.cwd:
+        score += 10
+    if current_cwd and current_cwd == candidate.vscode_cwd:
+        score += 8
+    if current_cwd and current_cwd == candidate.pwd:
+        score += 7
+
+    return score
+
+
+def get_hub(project_selector: str) -> tuple[str, str, str]:
+    """Return (base_url, token, key) for the best live hub match."""
+    candidates = _load_live_hubs()
+    if not candidates:
+        raise RuntimeError("No live hubs found in ~/.accordo/hubs.json")
+
+    current_cwd = os.getcwd()
+    selector = "" if project_selector in ("", "auto") else project_selector
+
+    ranked = sorted(
+        candidates,
+        key=lambda c: (_score_candidate(c, selector, current_cwd), c.started_at),
+        reverse=True,
     )
+
+    best = ranked[0]
+    best_score = _score_candidate(best, selector, current_cwd)
+    if selector and best_score == 0:
+        live_keys = [c.key for c in candidates]
+        raise RuntimeError(
+            f"No live hub matched selector '{project_selector}'.\n"
+            f"Live hub keys: {live_keys}"
+        )
+
+    return f"http://localhost:{best.port}", best.token, best.key
 
 
 def call_tool(base_url: str, token: str, tool: str, args: dict) -> dict:
@@ -222,7 +306,7 @@ def main() -> None:
         label = args.steps_file
     else:
         steps = doc.get("steps", [])
-        project_fragment = doc.get("project", "accordo")
+        project_fragment = doc.get("project", "auto")
         label = doc.get("label", args.steps_file)
 
     print(f"\n{'DRY RUN — ' if args.dry_run else ''}Script: {label}")
@@ -238,8 +322,10 @@ def main() -> None:
 
     # Connect to hub
     try:
-        base_url, token = get_hub(project_fragment)
-        print(f"Hub: {base_url}  (project fragment: '{project_fragment}')\n")
+        base_url, token, matched_key = get_hub(project_fragment)
+        print(
+            f"Hub: {base_url}  (selector: '{project_fragment}', matched: '{matched_key}')\n"
+        )
     except Exception as e:
         print(f"ERROR connecting to hub: {e}")
         sys.exit(1)

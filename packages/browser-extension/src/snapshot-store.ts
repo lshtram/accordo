@@ -1,8 +1,9 @@
 /**
- * SnapshotStore — in-memory FIFO store with 5-slot retention per page.
+ * SnapshotStore — in-memory FIFO store with configurable per-page retention.
  */
 
 import type { SnapshotNotFound, VersionedSnapshot } from "./snapshot-store-types.js";
+import { DEFAULT_RETENTION_SIZE } from "./snapshot-versioning-types.js";
 
 export type { SnapshotNotFound, VersionedSnapshot } from "./snapshot-store-types.js";
 
@@ -14,7 +15,7 @@ export class SnapshotStore {
   private capturedAt: Map<string, number> = new Map();
   private maxAgeMs: number = 0;
 
-  constructor(retentionSize: number = 5) {
+  constructor(retentionSize: number = DEFAULT_RETENTION_SIZE) {
     this.retentionSize = retentionSize;
     this.pageSnapshots = new Map();
     this.bySnapshotId = new Map();

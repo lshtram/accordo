@@ -63,7 +63,9 @@ export async function handleGetPageMap(
         return relayPageUrl ? extractOrigin(relayPageUrl) ?? relayPageUrl : undefined;
       },
       redact: (response) => {
-        response.redactionApplied = redactPageMapResponse(response, security.redactionPolicy);
+        if (args.redactPII === true) {
+          response.redactionApplied = redactPageMapResponse(response, security.redactionPolicy);
+        }
         return response;
       },
       postProcess: (response) => {

@@ -81,22 +81,23 @@ The tool names are **identical** to Slidev — the MCP surface is engine-agnosti
 
 | Requirement ID | Requirement |
 |---|---|
-| M50-TL-01 | `accordo_presentation_discover` exists and is ungrouped (prompt-visible) |
+| M50-TL-01 | `accordo_presentation_internal_discover` is a VS Code command (not MCP); workspace deck discovery is available via internal routing — not exposed as public MCP tool |
 | M50-TL-02 | `accordo_presentation_open` opens a deck URI; renders it to HTML via Marp; displays in WebviewPanel; returns error if file does not exist or is not a valid Marp deck |
 | M50-TL-03 | `accordo_presentation_close` ends the active session, disposes the webview, and resets state |
-| M50-TL-04 | `accordo_presentation_listSlides` returns ordered slide metadata |
+| M50-TL-04 | `accordo_presentation_internal_listSlides` is a VS Code command (not MCP); slide enumeration is internal only — not exposed as public MCP tool |
 | M50-TL-05 | `accordo_presentation_getCurrent` returns current slide index and title |
 | M50-TL-06 | `accordo_presentation_goto` moves to exact slide index |
-| M50-TL-07 | `accordo_presentation_next` advances one slide |
-| M50-TL-08 | `accordo_presentation_prev` goes back one slide |
+| M50-TL-07 | `accordo_presentation_next` advances one slide — internal VS Code command registered for script runner; not a public MCP tool |
+| M50-TL-08 | `accordo_presentation_prev` goes back one slide — internal VS Code command registered for script runner; not a public MCP tool |
 | M50-TL-09 | `accordo_presentation_generateNarration` returns narration text for a given slide (or all slides) |
 | M50-TL-10 | `accordo_webview_capture` captures the currently visible slide as a UTF-8-encoded SVG file; writes to a caller-specified output path; requires an open presentation session; returns `{ captured, output_path, slide, bytes }`; dangerLevel: `safe` |
 
 ### Tool danger levels
 
-- Navigation/read tools (`discover`, `listSlides`, `getCurrent`, `goto`, `next`, `prev`, `generateNarration`): `safe`, `requiresConfirmation: false`
+- Navigation/read tools (`getCurrent`, `goto`, `generateNarration`): `safe`, `requiresConfirmation: false`
 - Session management (`open`, `close`): `moderate`, `requiresConfirmation: false`
 - Capture (`accordo_webview_capture`): `safe`, `requiresConfirmation: false` (writes to caller-specified path)
+- Internal only (not MCP): `discover`, `listSlides`, `next`, `prev` — VS Code commands for script runner/internal use
 
 ### MCP tool naming vs internal command naming
 
@@ -122,7 +123,7 @@ MCP tools exposed to agents use underscores (`accordo_presentation_*`) matching 
 |---|---|
 | M50-EXT-01 | Reads `accordo.presentation.engine` setting; if value is `"slidev"`, does NOT register tools (yields to `accordo-slidev`) |
 | M50-EXT-02 | Activates Bridge dependency and acquires BridgeAPI exports |
-| M50-EXT-03 | Registers all 10 presentation tools when engine is `"marp"` (default): 9 navigation/session tools + `accordo_webview_capture` |
+| M50-EXT-03 | Registers 6 public presentation MCP tools when engine is `"marp"` (default): `accordo_presentation_open`, `accordo_presentation_close`, `accordo_presentation_getCurrent`, `accordo_presentation_goto`, `accordo_presentation_generateNarration`, `accordo_webview_capture` |
 | M50-EXT-04 | Creates WebviewPanel on demand (via `presentation.open` tool) |
 | M50-EXT-05 | Acquires comments surface adapter via `accordo.comments.internal.getSurfaceAdapter` when available |
 | M50-EXT-06 | Publishes initial modality state via `bridge.publishState` |

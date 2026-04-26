@@ -3,6 +3,7 @@ import type { BrowserRelayLike } from "./types.js";
 import { DIFF_TIMEOUT_MS, type DiffToolError } from "./diff-tool-contracts.js";
 import { extractRelayErrorCode } from "./diff-tool-analysis.js";
 import { classifyThrownRelayError, getRelayRetryAfterMs } from "./relay-error-policy.js";
+import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 
 export function normalizeSnapshotId(id: string | undefined): string | undefined {
   if (id === undefined) return undefined;
@@ -58,49 +59,48 @@ export async function resolveFreshSnapshot(
   return { success: false, error: "action-failed", retryable: false };
 }
 
-export async function resolveFromSnapshot(
-  relay: BrowserRelayLike,
+export function resolveFromSnapshot(
+  store: SnapshotRetentionStore,
   toSnapshotId: string,
-  tabId?: number,
-): Promise<string | DiffToolError> {
-  const preflightPayload: Record<string, unknown> = {};
-  if (tabId !== undefined) preflightPayload.tabId = tabId;
-  try {
-    const preflightResponse = await relay.request("get_page_map", preflightPayload, DIFF_TIMEOUT_MS);
-    if (!preflightResponse.success) {
-      const code = extractRelayErrorCode(preflightResponse.data, preflightResponse.error);
-      if (code !== undefined) return { success: false, error: code, retryable: false };
-      const transient = buildTransientRelayError(preflightResponse.error);
-      if (transient !== undefined) return transient;
-      return { success: false, error: "action-failed", retryable: false };
-    }
-  } catch (err: unknown) {
-    const error = classifyThrownRelayError(err);
-    return { success: false, error, retryable: true, retryAfterMs: getRelayRetryAfterMs(error) };
-  }
+): string | DiffToolError {
+  const parsed = parseSnapshotId(toSnapshotId);
+  if (parsed === null) return { success: false, error: "action-failed", retryable: false };
 
-  const lastColon = toSnapshotId.lastIndexOf(":");
-  if (lastColon === -1) return { success: false, error: "action-failed", retryable: false };
-  const pageId = toSnapshotId.slice(0, lastColon);
-  const version = parseInt(toSnapshotId.slice(lastColon + 1), 10);
-  if (isNaN(version)) return { success: false, error: "action-failed", retryable: false };
-  if (version <= 0) {
+  const retainedSnapshots = store.list(parsed.pageId);
+  const targetIndex = retainedSnapshots.findIndex((snapshot) => snapshot.snapshotId === toSnapshotId);
+  if (targetIndex === -1) {
     return {
       success: false,
       error: "snapshot-not-found",
       retryable: false,
       recoveryHints:
-        "No prior snapshot exists for this page (the current snapshot is the first one). " +
-        "To capture a diff, first call get_page_map to record a baseline, then perform the action " +
-        "you want to observe, then call diff_snapshots again — the second call will have a prior snapshot to compare against.",
+        `Snapshot '${toSnapshotId}' is not retained in the local snapshot store. ` +
+        "Call get_page_map (or another read tool) to capture a fresh snapshot, then use that returned snapshotId in diff_snapshots.",
       details: {
-        reason: `Snapshot '${toSnapshotId}' is the first snapshot on this page (version 0). There is no prior snapshot to use as a baseline.`,
+        reason: `Snapshot '${toSnapshotId}' was not found in the local retention store, so its previous snapshot could not be resolved.`,
         recoveryHints:
-          "No prior snapshot exists for this page (the current snapshot is the first one). " +
-          "To capture a diff, first call get_page_map to record a baseline, then perform the action " +
-          "you want to observe, then call diff_snapshots again — the second call will have a prior snapshot to compare against.",
+          `Snapshot '${toSnapshotId}' is not retained in the local snapshot store. ` +
+          "Call get_page_map (or another read tool) to capture a fresh snapshot, then use that returned snapshotId in diff_snapshots.",
       },
     };
   }
-  return `${pageId}:${version - 1}`;
+
+  if (targetIndex === 0) {
+    return {
+      success: false,
+      error: "snapshot-not-found",
+      retryable: false,
+      recoveryHints:
+        `No prior retained snapshot exists before '${toSnapshotId}' in local history. ` +
+        "Capture a fresh baseline with get_page_map (or another read tool), then perform the action you want to observe and diff against that newer snapshot.",
+      details: {
+        reason: `Snapshot '${toSnapshotId}' is the earliest retained snapshot for this page in local history. There is no prior retained snapshot to use as a baseline.`,
+        recoveryHints:
+          `No prior retained snapshot exists before '${toSnapshotId}' in local history. ` +
+          "Capture a fresh baseline with get_page_map (or another read tool), then perform the action you want to observe and diff against that newer snapshot.",
+      },
+    };
+  }
+
+  return retainedSnapshots[targetIndex - 1]!.snapshotId;
 }

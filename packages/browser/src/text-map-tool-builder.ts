@@ -5,6 +5,7 @@ import type { SecurityConfig } from "./security/index.js";
 import { DEFAULT_SECURITY_CONFIG } from "./security/index.js";
 import { handleGetTextMap } from "./text-map-tool-handler.js";
 import { TEXT_MAP_DEFAULT_MAX_SEGMENTS, TEXT_MAP_MAX_SEGMENTS, type GetTextMapArgs } from "./text-map-tool-contracts.js";
+import { IMPLICIT_TARGET_TAB_DESCRIPTION } from "./tab-target-contract.js";
 
 export function buildTextMapTool(
   relay: BrowserRelayLike,
@@ -15,9 +16,11 @@ export function buildTextMapTool(
     name: "accordo_browser_get_text_map",
     description:
       "Extract the text content of the current page as structured segments with raw/normalized text, " +
-      "bounding boxes, visibility flags, semantic context (role, accessible name), and reading-order indices. " +
-      "Each segment includes: textRaw, textNormalized, readingOrderIndex, role, accessibleName, " +
-      "bounds (x/y/width/height), isVisible, and isInViewport. " +
+      "bounding box (`bbox`) coordinates, visibility flags, semantic context (role, accessible name), and reading-order indices. " +
+      "Default output is ordered as visible text first, then offscreen text, then hidden text, " +
+      "while preserving geometric reading order within each visibility class. " +
+      "Each segment includes: textRaw, textNormalized, readingOrderIndex, role, accessibleName, bbox, and visibility. " +
+      "Set visibleOnly=true to return only visible segments. " +
       "Use when you need to read page content in natural reading order, verify text presence, " +
       "or extract link labels and button names with their a11y context. " +
       "Use get_page_map instead when you need interactive element references (uid) for clicking or typing.",
@@ -26,7 +29,7 @@ export function buildTextMapTool(
       properties: {
         tabId: {
           type: "number",
-          description: "B2-CTX-001: Optional tab ID to target; omit for active tab",
+          description: IMPLICIT_TARGET_TAB_DESCRIPTION,
         },
         maxSegments: {
           type: "integer",
@@ -34,6 +37,10 @@ export function buildTextMapTool(
             `Maximum number of text segments to return (default: ${TEXT_MAP_DEFAULT_MAX_SEGMENTS}, max: ${TEXT_MAP_MAX_SEGMENTS}).`,
           minimum: 1,
           maximum: TEXT_MAP_MAX_SEGMENTS,
+        },
+        visibleOnly: {
+          type: "boolean",
+          description: "When true, return only segments with visibility='visible'.",
         },
         frameId: {
           type: "string",

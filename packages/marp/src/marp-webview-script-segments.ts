@@ -20,6 +20,7 @@ export { buildGoTo } from "./marp-webview-script-runtime.js";
 export { buildNavigationListeners } from "./marp-webview-script-runtime.js";
 export { buildKeyboardNavigation } from "./marp-webview-script-runtime.js";
 export { buildWebviewReady } from "./marp-webview-script-runtime.js";
+export { buildMermaidSupport } from "./marp-webview-script-runtime.js";
 
 export { buildSdkInitScript } from "./marp-webview-script-sdk-init.js";
 export { buildSdkMessageHandlers } from "./marp-webview-script-sdk.js";
@@ -35,6 +36,7 @@ import {
   buildNavigationListeners,
   buildKeyboardNavigation,
   buildWebviewReady,
+  buildMermaidSupport,
 } from "./marp-webview-script-runtime.js";
 import { buildHostMessageHandler } from "./marp-webview-script-host.js";
 
@@ -53,9 +55,10 @@ export function buildRuntimeScript(
     buildBaseVariables() +
     buildSlideActivation() +
     buildGoTo() +
-    buildNavigationListeners() +
-    buildHostMessageHandler() +
-    buildKeyboardNavigation() +
+     buildNavigationListeners() +
+     buildMermaidSupport() +
+     buildHostMessageHandler() +
+     buildKeyboardNavigation() +
     altClickHandler +
     sdkInitScript +
     sdkMessageHandlers +

@@ -50,7 +50,7 @@ export async function handleDiffSnapshots(
       resolvedToSnapshotId = resolved;
     }
     if (resolvedFromSnapshotId === undefined) {
-      const resolved = await resolveFromSnapshot(relay, resolvedToSnapshotId, args.tabId);
+      const resolved = resolveFromSnapshot(store, resolvedToSnapshotId);
       if (typeof resolved !== "string") return resolved;
       resolvedFromSnapshotId = resolved;
     }

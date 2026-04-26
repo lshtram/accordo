@@ -26,13 +26,16 @@ Load this skill when:
 
 | Tool | Purpose |
 |------|---------|
-| `accordo_diagram_list` | List all `.mmd` diagram files in workspace |
-| `accordo_diagram_get` | Get parsed diagram structure (nodes, edges, layout) |
 | `accordo_diagram_create` | Create new `.mmd` diagram file |
 | `accordo_diagram_patch` | Update existing diagram (content, styles, positions) |
 | `accordo_diagram_render` | Export diagram to SVG or PNG |
 | `accordo_editor_open` | Open a diagram file (renders in diagram panel) |
-| `accordo_diagram_style_guide` | Returns this guide (light MCP tool) |
+
+**Priority W migration note:** `accordo_diagram_list`, `accordo_diagram_get`, and
+`accordo_diagram_style_guide` are approved for retirement. Do not build new workflows that depend
+on them. Preferred long-term workflow: discover `.mmd` files via file tools, read the Mermaid
+source directly, use this skill for styling rules, and keep `accordo_diagram_create` /
+`accordo_diagram_patch` / `accordo_diagram_render` as the executable diagram surface.
 
 ---
 
@@ -171,7 +174,10 @@ accordo_diagram_patch({
 ### Step 5 — Verify
 
 ```javascript
-accordo_diagram_get({ path: "my-diagram.mmd" })
+// Preferred migration-safe verification path:
+// 1. Read the .mmd file directly
+// 2. If needed, use the standard parser/script fallback described in the
+//    vscode-command-gateway migration playbook to inspect nodes/edges/layout
 ```
 
 ---

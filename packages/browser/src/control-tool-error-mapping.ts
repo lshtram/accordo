@@ -22,12 +22,13 @@ export function mapClickError(error: unknown): ClickResponse["error"] {
     case "element-not-found":
     case "element-off-screen":
     case "no-target":
+    case "iframe-cross-origin":
+    case "no-content-script":
     case "browser-not-connected":
     case "timeout":
     case "action-failed":
-      return error;
     case "invalid-request":
-      return "no-target";
+      return error;
     default:
       return "action-failed";
   }
@@ -40,6 +41,8 @@ export function mapTypeError(error: unknown): TypeResponse["error"] {
     case "element-not-found":
     case "element-not-focusable":
     case "no-target":
+    case "iframe-cross-origin":
+    case "no-content-script":
     case "browser-not-connected":
     case "timeout":
     case "action-failed":

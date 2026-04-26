@@ -72,6 +72,17 @@
 - Group imports: 1) Node built-ins (`node:http`, `node:crypto`), 2) External (`ws`), 3) Internal (`@accordo/bridge-types`), 4) Relative.
 - Use `node:` prefix for all built-in modules: `import { createHash } from "node:crypto"` not `"crypto"`.
 
+### 1.6 Single Source Of Truth
+
+- **Never hardcode meaningful values.** Any value with protocol, operational, persistence, or behavioral meaning must come from one named source of truth.
+- **One meaning, one source.** The same meaning must never be defined in two places, even if the literal value matches.
+- **Runtime values must be runtime constants.** A TypeScript union alone is not enough when runtime code also needs the same value.
+- **Centralize protocol and transport values.** Timeouts, retry delays, limits, caps, endpoint paths, file paths, retention windows, and transport defaults must be declared once and imported everywhere else.
+- **Centralize filesystem locations.** Paths under shared locations such as `~/.accordo` must come from a single path module.
+- **Schema/docs must reference constants.** If a tool description or schema mentions a default or limit, build that text from the canonical constant instead of copying the literal.
+- **Avoid duplicate contract shapes.** If two modules describe the same request/response payload, one must re-export the canonical definition instead of redefining it.
+- **Allowed exception:** one-off prose and single-use local syntax tokens that do not represent shared meaning may remain inline.
+
 ---
 
 ## 2. Testing Guidelines (Vitest)
@@ -149,6 +160,8 @@ Run through every item. An unchecked item blocks the review.
 - [ ] No function exceeds ~40 lines (excluding comments and blank lines)
 - [ ] No file exceeds ~200 lines of implementation code (stubs + docs don't count)
 - [ ] No duplication — logic that appears twice should be extracted into a shared function
+- [ ] No meaningful literal is hardcoded when a named source-of-truth constant/config already exists or should exist
+- [ ] No two constants/config locations represent the same meaning
 - [ ] Error messages are human-readable and include context (not just "error occurred")
 - [ ] Async functions do not have unhandled rejection paths
 

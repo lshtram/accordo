@@ -32,6 +32,7 @@ import {
   type SpatialRelationsResponse,
   type PageToolError,
 } from "./page-tool-types.js";
+import { IMPLICIT_TARGET_TAB_DESCRIPTION } from "./tab-target-contract.js";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -169,7 +170,7 @@ export function buildSpatialRelationsTool(
       properties: {
         tabId: {
           type: "number",
-          description: "B2-CTX-001: Optional tab ID to target; omit for active tab",
+          description: IMPLICIT_TARGET_TAB_DESCRIPTION,
         },
         nodeIds: {
           type: "array",

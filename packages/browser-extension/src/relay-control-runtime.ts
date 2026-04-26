@@ -1,12 +1,12 @@
 export { createFrameNavigatedWaiter, createLifecycleWaiter, getNavigateTimeoutMs, toLifecycleEventName, type WaitUntil } from "./relay-control-waiters.js";
 export { resolveControlFrameTarget, type ControlFrameTarget } from "./relay-control-frame-target.js";
+import { resolveImplicitTargetTabId } from "./relay-implicit-target.js";
 
 export async function resolveTargetTabId(payload: Record<string, unknown>): Promise<number | undefined> {
   if (typeof payload.tabId === "number") {
     return payload.tabId;
   }
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tabs[0]?.id;
+  return resolveImplicitTargetTabId();
 }
 
 export async function tabExists(tabId: number): Promise<boolean> {

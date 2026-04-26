@@ -9,6 +9,7 @@
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
 import { defaultStore, getErrorMeta } from "./relay-definitions.js";
 import { getGrantedTabs } from "./control-permission.js";
+import { resolveImplicitTargetTabId } from "./relay-implicit-target.js";
 
 // ── Multi-Tab Handlers ───────────────────────────────────────────────────────
 
@@ -17,12 +18,15 @@ export async function handleListPages(
 ): Promise<RelayActionResponse> {
   const allTabs = await chrome.tabs.query({});
   const grantedTabs = new Set(await getGrantedTabs());
+  const implicitTargetTabId = await resolveImplicitTargetTabId();
   const pages = allTabs.map((tab) => ({
     tabId: tab.id,
     url: tab.url ?? "",
     title: tab.title ?? "",
     active: tab.active,
+    windowId: tab.windowId,
     controlGranted: typeof tab.id === "number" ? grantedTabs.has(tab.id) : false,
+    isImplicitTarget: typeof tab.id === "number" && tab.id === implicitTargetTabId,
   }));
   return { requestId: request.requestId, success: true, data: { pages } };
 }
@@ -34,8 +38,23 @@ export async function handleSelectPage(
   if (typeof selectTabId !== "number" || !Number.isInteger(selectTabId)) {
     return { requestId: request.requestId, success: false, error: "invalid-request", ...getErrorMeta("invalid-request") };
   }
-  await chrome.tabs.update(selectTabId, { active: true });
-  return { requestId: request.requestId, success: true };
+  const updatedTab = await chrome.tabs.update(selectTabId, { active: true });
+  if (!updatedTab || typeof updatedTab.id !== "number") {
+    return { requestId: request.requestId, success: false, error: "action-failed", ...getErrorMeta("action-failed") };
+  }
+  if (typeof updatedTab.windowId === "number") {
+    await chrome.windows.update(updatedTab.windowId, { focused: true });
+  }
+  return {
+    requestId: request.requestId,
+    success: true,
+    data: {
+      success: true,
+      tabId: updatedTab.id,
+      windowId: updatedTab.windowId,
+      isImplicitTarget: true,
+    },
+  };
 }
 
 export async function handleManageSnapshots(

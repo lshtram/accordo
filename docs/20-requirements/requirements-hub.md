@@ -176,6 +176,28 @@ Group 1:
 | Cache | `Cache-Control: no-cache` |
 | Response body | `{ "connected": <boolean>, "controlGranted": <boolean> }` sourced from `state.modalities["accordo-browser"]` defaults. |
 
+### 2.10 Runtime Directives Publication — `GET /runtime-directives`
+
+| Aspect | Requirement |
+|---|---|
+| Method | `GET` |
+| Authentication | `Authorization: Bearer <ACCORDO_TOKEN>` required. 401 if missing/invalid. |
+| Response Content-Type | `application/json` |
+| Cache | `Cache-Control: no-cache` |
+| Response body | Canonical runtime-directives publication payload `{ bundle, ownership }`, where `bundle` includes `version`, `digest`, and ordered clauses, and `ownership` identifies `accordo-hub` / `runtime-directives` as the owning runtime source. |
+| Parity contract | Payload `bundle.version` and `bundle.digest` MUST match the runtime-directives section emitted through MCP `initialize.instructions` and `GET /instructions`. |
+
+### 2.11 Runtime Directives Diagnostics — `GET /runtime-directives/diagnostics`
+
+| Aspect | Requirement |
+|---|---|
+| Method | `GET` |
+| Authentication | `Authorization: Bearer <ACCORDO_TOKEN>` required. 401 if missing/invalid. |
+| Response Content-Type | `application/json` |
+| Cache | `Cache-Control: no-cache` |
+| Response body | `{ publication, receipts }`, where `publication` is the same `{ bundle, ownership }` payload served by `GET /runtime-directives`, and `receipts` proves which sessions/channels received which bundle version/digest. |
+| Receipt minimum fields | Each receipt includes MCP session ID, agent hint, delivery channel, bundle version, bundle digest, and timestamp. |
+
 ---
 
 ## 3. WebSocket Message Types (Hub ↔ Bridge)

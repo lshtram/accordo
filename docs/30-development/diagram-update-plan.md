@@ -373,7 +373,7 @@ export async function computeInitialLayoutAsync(
 
 ## 11. Required Documentation Updates
 
-- [x] `docs/module-map-diagram.md` — add `excalidraw-engine.ts` and `element-mapper.ts`; document `computeInitialLayoutAsync()` in the auto-layout entry
+- [x] `docs/30-development/module-maps/module-map-diagram.md` — add `excalidraw-engine.ts` and `element-mapper.ts`; document `computeInitialLayoutAsync()` in the auto-layout entry
 - [x] `docs/10-architecture/diagram-architecture.md` — document dual-engine layout strategy and sync/async boundary rule
 - [ ] Keep this plan updated as PRs land and decisions change
 
@@ -547,7 +547,7 @@ Rule:
 | `packages/diagram/src/webview/panel-core.ts` | Replace `canvas:edge-routed` stub with `patchEdge()` wiring |
 | `packages/diagram/src/canvas/edge-router.ts` | Add curved-waypoint consumption and pass waypoints through from `routeEdge()` |
 | `docs/10-architecture/diagram-architecture.md` | Document groupIds and edge-routed persistence flow |
-| `docs/module-map-diagram.md` | Update module map to reflect the changed interaction flow |
+| `docs/30-development/module-maps/module-map-diagram.md` | Update module map to reflect the changed interaction flow |
 
 ### 12.5 Phase A interface targets
 
@@ -711,7 +711,7 @@ function resolveEdgeRoundness(
 - [x] P-C: reassess broader mermaid-to-excalidraw expansion — decision: upstream likely supports class/state/ER/sequence structured output; keep Accordo implementation flowchart-only for now, expand later by batch
 - [ ] Decide whether sequence diagrams should enter Accordo’s editable-surface scope
 - [ ] Revalidate upstream support for mindmap/block-beta before planning those engines around mermaid-to-excalidraw
-- [x] Update `docs/module-map-diagram.md` for the new engine modules
+- [x] Update `docs/30-development/module-maps/module-map-diagram.md` for the new engine modules
 - [x] Update `docs/10-architecture/diagram-architecture.md` for dual-engine layout flow
 
 ### diag.2.6 — State Diagram Upstream Placement (SUP-S) — Phase A
@@ -726,4 +726,4 @@ function resolveEdgeRoundness(
 
 **Architecture docs updated:**
 - `docs/10-architecture/diagram-architecture.md` §17.1 — call graph, ownership boundaries
-- `docs/module-map-diagram.md` — Key Modules table + Internal Boundaries entries
+- `docs/30-development/module-maps/module-map-diagram.md` — Key Modules table + Internal Boundaries entries

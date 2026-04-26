@@ -25,12 +25,71 @@ export interface GetPageMapArgs {
   redactPII?: boolean;
 }
 
+/**
+ * Public contract for a single node in a page-map response.
+ *
+ * Matches the actual runtime payload produced by the browser-extension
+ * content script (page-map-passed-node.ts + page-map-types.ts).
+ *
+ * Fields NOT in this type are NOT returned by runtime and must not be
+ * claimed in tool descriptions or tests:
+ *   - readingOrderIndex  (text-map only)
+ *   - per-node visibility / states  (not emitted by page-map builder)
+ *   - accessibleName / textContent  (use `name` / `text` instead)
+ *   - bbox  (use `bounds` instead)
+ */
+export interface PageMapNode {
+  /** Frame-scoped stable reference for click/type operations (format: "{frameId}:{nodeId}"). */
+  uid?: string;
+  /** HTML tag name in lowercase. */
+  tag: string;
+  /** Monotonically increasing node index within the snapshot. */
+  nodeId: number;
+  /** Persistent content-derived identifier (stable across snapshots of same DOM). */
+  persistentId?: string;
+  /** Element id attribute, if present. */
+  id?: string;
+  /** Explicit role attribute value, if set (role="" is not emitted). */
+  role?: string;
+  /** Computed accessible name, if non-empty. */
+  name?: string;
+  /** Direct text content of the element's child text nodes, trimmed. */
+  text?: string;
+  /** Subset of element attributes relevant for UI identification. */
+  attrs?: Record<string, string>;
+  /** Bounding box in viewport coordinates. Present only when includeBounds=true. */
+  bounds?: { x: number; y: number; width: number; height: number };
+  /**
+   * Intersection ratio of the node's bounds with the viewport.
+   * Present only when includeBounds=true.
+   */
+  viewportRatio?: number;
+  /**
+   * nodeId of the nearest containing positioned/stacked ancestor.
+   * Present only when includeBounds=true and a container is found.
+   */
+  containerId?: number;
+  /** Computed zIndex, if the element establishes a stacking context. */
+  zIndex?: number;
+  /** True when the element establishes a stacking context. */
+  isStacked?: boolean;
+  /** True when the node is occluded by another element at its centre point. */
+  occluded?: boolean;
+  /** True when the element is inside a shadow root. */
+  inShadowRoot?: true;
+  /** The shadowRoot.state value when the node is a shadow host with a closed root. */
+  shadowRoot?: "closed";
+  /** nodeId of the shadow host that contains this node. */
+  shadowHostId?: number;
+  /** Recursive child nodes, present only when depth < maxDepth and children exist. */
+  children?: PageMapNode[];
+}
+
 export interface PageMapResponse extends SnapshotEnvelopeFields {
   pageUrl: string;
   title: string;
-  nodes: unknown[];
+  nodes: PageMapNode[];
   totalElements: number;
-  depth: number;
   truncated: boolean;
   filterSummary?: {
     activeFilters: string[];

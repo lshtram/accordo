@@ -5,6 +5,7 @@ import { handleGetPageMap, type PageMapResponse, type PageToolError } from "./pa
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
 import { handleGetDomExcerpt, handleInspectElement } from "./page-tool-handlers.js";
+import { IMPLICIT_TARGET_TAB_DESCRIPTION } from "./tab-target-contract.js";
 
 function isPageToolError(result: unknown): result is PageToolError {
   return typeof result === "object" && result !== null && typeof (result as { error?: unknown }).error === "string";
@@ -137,7 +138,7 @@ export function buildCommentContextTool(
       properties: {
         threadId: { type: "string", description: "Comment thread ID to resolve" },
         commentId: { type: "string", description: "Optional specific comment ID within the thread" },
-        tabId: { type: "number", description: "Optional browser tab ID to target" },
+        tabId: { type: "number", description: IMPLICIT_TARGET_TAB_DESCRIPTION },
         maxDepth: { type: "number", description: "Maximum DOM excerpt depth (default 3)" },
         maxLength: { type: "number", description: "Maximum DOM excerpt length (default 2000)" },
         allowedOrigins: { type: "array", items: { type: "string" }, description: "Only allow data from these origins. Empty = use global policy." },

@@ -25,6 +25,7 @@ import {
   type WaitToolError,
 } from "./wait-tool-contracts.js";
 import { classifyThrownRelayError, getRelayRecoveryHint, getRelayRetryAfterMs } from "./relay-error-policy.js";
+import { IMPLICIT_TARGET_TAB_DESCRIPTION } from "./tab-target-contract.js";
 
 export {
   RELAY_TIMEOUT_MS,
@@ -59,7 +60,7 @@ export function buildWaitForTool(
       properties: {
         tabId: {
           type: "number",
-          description: "B2-CTX-001: Optional tab ID to target; omit for active tab",
+          description: IMPLICIT_TARGET_TAB_DESCRIPTION,
         },
         texts: {
           type: "array",

@@ -3,7 +3,7 @@ import type { VersionedSnapshot } from "./snapshot-versioning.js";
 
 /**
  * B2-SV-004: Module-level SnapshotStore singleton for runtime snapshot retention.
- * Persists capture_region results (5-slot FIFO per page).
+ * Persists capture_region results with the default per-page FIFO retention.
  * B2-SV-005: Cleared on navigation via handleNavigationReset().
  * GAP-I1: Default TTL of 1 hour — setMaxAgeMs() can be called to adjust.
  *

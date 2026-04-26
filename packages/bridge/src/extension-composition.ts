@@ -18,13 +18,12 @@
 import { WsClient } from "./ws-client.js";
 import type { WsClientEvents } from "./ws-client.js";
 import type { HubManagerEvents } from "./hub-manager.js";
-import { syncMcpSettings } from "./extension-bootstrap.js";
 import type { BridgeConfig, BootstrapResult, SecretStorageAdapter } from "./extension-bootstrap.js";
 import type { Services } from "./extension-service-factory.js";
-import { writeAgentConfigs } from "./agent-config.js";
 import type { IDEState } from "@accordo/bridge-types";
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import { scopedSecretKey, BRIDGE_SECRET_KEY } from "./project-identity.js";
+import { requestConfigSyncs } from "./extension-config-sync-seams.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -129,19 +128,9 @@ export function buildHubManagerEvents(
       deps.state.currentHubPort = port;
       deps.state.currentHubToken = token ?? "";
 
-      // Skip writing agent config files on reconnect — tokens are unchanged,
-      // so MCP clients already have the correct config.
-      if (!isReconnect) {
-        writeAgentConfigs({
-          workspaceRoot: deps.bootstrap.config.workspaceRoot ?? "",
-          port,
-          token,
-          configureOpencode: deps.bootstrap.config.wantOpencode,
-          configureClaude: deps.bootstrap.config.wantClaude,
-          configureCopilot: deps.bootstrap.config.wantCopilot,
-          outputChannel: deps.bootstrap.outputChannel,
-        });
-      }
+      // Always request config sync on ready (including reconnect).
+      // The sync paths are idempotent and only rewrite when data differs.
+      requestConfigSyncs(deps, port, token);
 
       // Get bridge secret asynchronously then create WsClient.
       // Use project-scoped key so different workspaces use distinct credentials.
@@ -170,30 +159,6 @@ export function buildHubManagerEvents(
 
         // Start state publisher
         deps.services.statePublisher.start();
-
-        // Write agent configs if workspace root is available
-        const wantAny =
-          deps.bootstrap.config.wantCopilot ||
-          deps.bootstrap.config.wantOpencode ||
-          deps.bootstrap.config.wantClaude;
-        if (wantAny) {
-          // We skip writeAgentConfigs when no workspace root is available
-          // The status-bar tests mock this out so this is a no-op in tests
-        }
-
-        // Sync MCP settings (fire and forget)
-        if (deps.bootstrap.config.wantCopilot) {
-          syncMcpSettings(
-            deps.bootstrap.outputChannel,
-            deps.bootstrap.mcpConfigPath,
-            port,
-            deps.state.currentHubToken,
-          ).catch((err: unknown) => {
-            deps.bootstrap.outputChannel.appendLine(
-              `[accordo-bridge] syncMcpSettings error: ${err instanceof Error ? err.message : String(err)}`,
-            );
-          });
-        }
 
         // Connect WsClient
         wsClient
@@ -226,6 +191,9 @@ export function buildHubManagerEvents(
         if (typeof ws.updateSecret === "function") {
           ws.updateSecret(secret);
         }
+      }
+      if (deps.state.currentHubPort > 0) {
+        requestConfigSyncs(deps, deps.state.currentHubPort, token);
       }
     },
   };
@@ -361,17 +329,22 @@ export function registerCommands(
           headers: { authorization: `Bearer ${token}`, origin: "vscode://accordo" },
         })
           .then((r) => r.json())
-          .then((body: { connected: boolean; controlGranted: boolean }) => {
+          .then((body: unknown) => {
+            const parsed = (typeof body === "object" && body !== null)
+              ? body as Partial<{ connected: boolean; controlGranted: boolean }>
+              : {};
+            const connected = parsed.connected === true;
+            const controlGranted = parsed.controlGranted === true;
             const items: Array<{ label: string }> = [];
             if (detectedModules.has("Browser")) {
               items.push({
-                label: body.connected
+                label: connected
                   ? "$(check) Browser — Relay Connected"
                   : "$(error) Browser — Relay Disconnected",
               });
-              if (body.connected) {
+              if (connected) {
                 items.push({
-                  label: body.controlGranted
+                  label: controlGranted
                     ? "$(check) Browser — User Granted Control"
                     : "$(warning) Browser — No User Control",
                 });
@@ -385,8 +358,11 @@ export function registerCommands(
           headers: { authorization: `Bearer ${token}`, origin: "vscode://accordo" },
         })
           .then((r) => r.json())
-          .then((ideState: IDEState) => {
-            const voiceState = ideState.modalities["accordo-voice"] as
+          .then((ideStateRaw: unknown) => {
+            const ideState = (typeof ideStateRaw === "object" && ideStateRaw !== null)
+              ? ideStateRaw as IDEState
+              : null;
+            const voiceState = ideState?.modalities["accordo-voice"] as
               | { ttsAvailable?: boolean }
               | undefined;
             if (voiceState?.ttsAvailable === false) {

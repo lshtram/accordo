@@ -75,8 +75,8 @@
 | AR-02 | Existing Hub dead → fallback to spawn | `spawn` called; normal activation path |
 | AR-03 | Existing Hub alive but unhealthy → fallback to spawn | `spawn` called (probe fails at health step) |
 | AR-04 | Reconnect uses stored token from SecretStorage | Token passed to `onHubReady` matches SecretStorage value |
-| AR-05 | Reconnect does NOT rewrite agent configs | `writeAgentConfigs` NOT called on reconnect (verified at composition level) |
-| AR-06 | Reconnect does NOT rewrite MCP settings | `syncMcpSettings` NOT called on reconnect |
+| AR-05 | Reconnect requests config sync | Composition requests config sync on reconnect-ready to keep workspace files aligned with effective Hub port/token. |
+| AR-06 | Fresh-ready path also requests config sync | Composition requests config sync on fresh-ready; downstream writers are idempotent when values already match. |
 | AR-07 | `autoStart = false` → no probe, no spawn | Neither `probeExistingHub` nor `spawn` called |
 
 ---

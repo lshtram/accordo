@@ -33,6 +33,9 @@ content into visual slides, and narrate the live presentation.
 - Summarising architecture, proposals, sprint reviews, or walkthroughs visually
 - User mentions "marp", "presentation", "deck", or "slides"
 
+**Companion skill for live walkthroughs:** `skills/script-authoring/skill.md`.
+Use it when the user asks for a narrated "presentation-show" (automatic slide advance + voice).
+
 ---
 
 ## Available MCP Tools
@@ -175,13 +178,82 @@ Content on the left half.
 
 - Identify 3–7 key points → one per content slide
 - Note numbers/metrics → become stats grid slides
-- Identify relationships → become Mermaid diagrams
+- Identify relationships → become diagram or chart images committed alongside the deck
 - Note any images → use as `![bg right:42%]` or `![bg]`
+
+### Step 2a — Generate visual assets with the standard helper
+
+For Mermaid-based diagrams, do **not** improvise a rendering workflow. Use the repo helper:
+
+```bash
+node scripts/render-mermaid-asset.mjs [--style vivid|calm|neutral] <input.mmd> <output.svg>
+```
+
+Standard asset workflow:
+
+1. Write Mermaid source to `./assets/<name>.mmd`
+2. Render it to `./assets/<name>.svg` with an explicit chart style (`calm` is a good default for most decks)
+3. Reference the SVG from the deck with normal Marp image syntax
+
+Example:
+
+```bash
+node scripts/render-mermaid-asset.mjs --style calm demo/assets/example-system-shape.mmd demo/assets/example-system-shape.svg
+```
+
+Then in the deck:
+
+```markdown
+![width:1000px](./assets/example-system-shape.svg)
+```
+
+### Step 2b — Add generated imagery when a slide needs atmosphere
+
+For concept, product, or storytelling slides, include one high-quality generated image (hero background or right-side visual) instead of relying only on bullets.
+
+Image generation prompt template:
+
+```text
+Create a clean editorial illustration for a software presentation slide.
+Subject: <topic>
+Style: modern vector + soft gradients, high contrast, no text, no logos, no watermarks.
+Composition: clear focal point, negative space on left for slide text.
+Palette: deep navy, cyan, teal, warm amber accents.
+Aspect ratio: 16:9.
+```
+
+Use image assets intentionally:
+
+1. Save generated image to `./assets/<topic>-hero.png`.
+2. Place as `![bg right:42%](./assets/<topic>-hero.png)` or a normal image block.
+3. Keep visible text minimal when image carries the message.
 
 ### Step 3 — Apply visual transformations
 
 Consult `knowledge/visual-transformation-guide.md` Pattern Recognition Table (§2).
 Apply the correct Marp visual treatment for each content type.
+
+### Step 3a — Enforce fit before polish
+
+Before styling a slide, check whether it can fit cleanly.
+
+Marp fit is determined by the rendered slide box, not just by item count. In this repo the effective content area is controlled by theme CSS: fixed slide size, fixed padding, fixed heading sizes, fixed body font size and line height.
+
+Use the repo preflight checker after drafting:
+
+```bash
+node scripts/check-marp-slide-fit.mjs <deck.md>
+```
+
+Treat any reported overflow as a design failure that must be fixed before presenting.
+
+Hard rules:
+
+1. If a slide needs more than one sentence plus three bullets, split it.
+2. Never rely on shrinking text to rescue an overloaded slide.
+3. Prefer 2- or 3-part layouts. Avoid 4-column grids unless each cell is only a short metric and label.
+4. If a diagram needs explanation, keep the explanation to 2-3 short bullets max.
+5. If you are unsure whether a slide fits, assume it does not and simplify it.
 
 ### Step 4 — Write the deck file
 
@@ -204,6 +276,10 @@ size: 16:9
    `<v-clicks>`, `<v-click>`, Tailwind CSS classes, `theme: seriph/apple-basic/bricks`
 7. **For columns**: use `<div style="display:grid...">` with inline CSS
 8. **For emphasis**: use `<!-- _class: invert -->` not dark colour classes
+9. **For diagrams/charts**: prefer pre-rendered images in agreed asset paths. Marp Mermaid support is fallback-only and should not be your primary authoring path.
+10. **For Mermaid assets**: use `node scripts/render-mermaid-asset.mjs <input.mmd> <output.svg>` instead of inventing an ad hoc renderer.
+11. **For slide fit**: if content feels even slightly dense, split the slide before styling it.
+12. **For fit validation**: run `node scripts/check-marp-slide-fit.mjs <deck.md>` and resolve any overflowing slides.
 
 ### Step 5 — Quality checklist
 
@@ -215,7 +291,13 @@ Before presenting:
 - [ ] Cover slide has `<!-- _class: lead -->` or `![bg right:42%]`
 - [ ] Every slide has `<!-- notes -->` with speaker notes
 - [ ] No slide has more than 6 visible content items
-- [ ] At least one visual element (diagram, image, or stats grid)
+- [ ] No slide uses 4 columns unless each cell is only a short metric/label pair
+- [ ] Standard content slides stay within: 1 title + 3-5 bullets OR 1 short paragraph + 3 bullets
+- [ ] Split-image slides stay within: 1 title + 2-3 bullets + 1 short supporting line
+- [ ] Diagram slides stay within: 1 image + 2-3 takeaway bullets
+- [ ] If any slide feels crowded, it has been split or simplified rather than downscaled
+- [ ] At least one visual element (diagram image, chart image, photo, or stats grid)
+- [ ] Diagram/chart slides use committed image assets rather than raw Mermaid whenever possible
 - [ ] Slide count is in the 5–10 range
 
 ### Step 6 — Open and present
@@ -228,6 +310,32 @@ Before presenting:
 5. accordo_presentation_generateNarration — generate talking points
 ```
 
+### Step 7 — Presentation-show mode (required for narrated live walkthroughs)
+
+When the user asks to **present** the deck end-to-end with narration, do not manually issue dozens of per-slide MCP calls.
+
+Use this efficient flow:
+
+1. Generate narration for all slides in **one call**:
+   - `accordo_presentation_generateNarration` with no `slideIndex`
+2. Build a NarrationScript (Type 3) from those outputs
+3. Execute with the Python runner:
+
+```bash
+python skills/script-authoring/accordo-run.py --script <path-to-script.json>
+```
+
+4. Script pattern must be: open deck → goto first slide → speak (blocking) → next slide → speak ...
+
+Efficiency rule:
+- ✅ Preferred: one narration-generation call for all slides
+- ❌ Avoid: one narration-generation call per slide, unless only one specific slide changed and needs refresh
+
+Narration style rule:
+- By default, do **not** speak slide numbers (e.g., "Slide 3").
+- Lead with the slide topic/message directly.
+- Only include slide numbers if the user explicitly asks for numbered narration.
+
 ---
 
 ## Procedure: Convert Existing Document to Slides
@@ -238,7 +346,7 @@ Identify:
 - **Thesis / main message** → cover slide subtitle
 - **Major sections** → individual content slides
 - **Key data** → stats grid or table slides
-- **Relationships** → Mermaid diagram slides
+- **Relationships** → diagram/chart image slides
 
 ### Step 2 — Outline first
 

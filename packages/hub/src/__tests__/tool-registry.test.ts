@@ -104,6 +104,21 @@ describe("ToolRegistry", () => {
 
       expect(registry.get("accordo_comment_list")).toEqual(commentList);
     });
+
+    it("returns canonical name directly when queried by canonical name", () => {
+      const commentList = makeTool("comment_list");
+      registry.register([commentList]);
+
+      expect(registry.get("comment_list")).toEqual(commentList);
+    });
+
+    it("returns undefined for non-comment aliases (no false positives)", () => {
+      const tool = makeTool("accordo_editor_open");
+      registry.register([tool]);
+
+      // "accordo_" prefix does not make something an alias unless it matches accordo_comment_* pattern
+      expect(registry.get("accordo_editor_open")).toEqual(tool);
+    });
   });
 
   // ── list ──────────────────────────────────────────────────────────────────
@@ -135,7 +150,8 @@ describe("ToolRegistry", () => {
 
       const names = registry.list().map((tool) => tool.name);
       expect(names).toContain("comment_list");
-      expect(names).toContain("accordo_comment_list");
+      // aliases are NOT returned by list() — only backward-compatible get() resolves them
+      expect(names).not.toContain("accordo_comment_list");
     });
   });
 
@@ -198,7 +214,8 @@ describe("ToolRegistry", () => {
 
       const mcpNames = registry.toMcpTools().map((tool) => tool.name);
       expect(mcpNames).toContain("comment_create");
-      expect(mcpNames).toContain("accordo_comment_create");
+      // aliases are NOT in MCP tools/list output — only canonical names appear
+      expect(mcpNames).not.toContain("accordo_comment_create");
     });
   });
 

@@ -4,7 +4,7 @@
  * Reconnect scenarios: docs/10-architecture/reload-reconnect-test-scenarios.md §7–8
  *
  * Test design:
- * - Uses mocks for vscode API, node:fs, node:ws, WsClient, HubManager, agent-config, etc.
+ * - Uses mocks for vscode API, node:fs, node:ws, WsClient, HubManager, config-sync seams, etc.
  * - Verifies composition wiring and callback behavior without a real VSCode host.
  *
  * API checklist:
@@ -195,12 +195,12 @@ vi.mock("../state-publisher.js", () => ({
   StatePublisher: vi.fn().mockImplementation(() => mockStatePublisherInstance),
 }));
 
-// ── Mock agent-config (writeAgentConfigs) ─────────────────────────────────────
+// ── Mock config sync seam (requestConfigSyncs) ───────────────────────────────
 
-const mockWriteAgentConfigs = vi.hoisted(() => vi.fn());
+const mockRequestConfigSyncs = vi.hoisted(() => vi.fn());
 
-vi.mock("../agent-config.js", () => ({
-  writeAgentConfigs: mockWriteAgentConfigs,
+vi.mock("../extension-config-sync-seams.js", () => ({
+  requestConfigSyncs: mockRequestConfigSyncs,
 }));
 
 // ── Imports after mock registration ───────────────────────────────────────────
@@ -399,13 +399,18 @@ describe("buildHubManagerEvents", () => {
     events.onHubReady(3000, "test-token");
   });
 
-  // CE-06: onCredentialsRotated callback is callable without throwing
-  it("CE-06: onCredentialsRotated is callable without throwing", () => {
-    const deps = makeCompositionDeps();
+  // CE-06: onCredentialsRotated triggers config sync when port is known
+  it("CE-06: onCredentialsRotated requests config sync when currentHubPort is set", () => {
+    const deps = makeCompositionDeps({
+      state: makeMockExtensionState({ currentHubPort: 3001 }),
+    });
 
     const events = buildHubManagerEvents(deps);
 
     events.onCredentialsRotated("new-token", "new-secret");
+
+    expect(mockRequestConfigSyncs).toHaveBeenCalledOnce();
+    expect(mockRequestConfigSyncs).toHaveBeenCalledWith(deps, 3001, "new-token");
   });
 });
 
@@ -830,11 +835,11 @@ describe("cleanupExtension() — reconnect scenarios (RCE-01 to RCE-03)", () => 
   });
 });
 
-// ── buildHubManagerEvents — reconnect: isReconnect flag (AR-05 to AR-06) ──────
+// ── buildHubManagerEvents — reconnect: config sync behavior (AR-05 to AR-06) ──
 // Scenarios from: docs/10-architecture/reload-reconnect-test-scenarios.md §5
-// Verifies that the onHubReady callback skips writeAgentConfigs when isReconnect=true.
+// Verifies onHubReady requests config sync on both reconnect and fresh-ready paths.
 
-describe("buildHubManagerEvents() — reconnect: isReconnect flag (AR-05 to AR-06)", () => {
+describe("buildHubManagerEvents() — reconnect: config sync behavior (AR-05 to AR-06)", () => {
   beforeEach(() => {
     mockFsState.files = {};
     mockFsState.writtenFiles = [];
@@ -846,27 +851,26 @@ describe("buildHubManagerEvents() — reconnect: isReconnect flag (AR-05 to AR-0
     ).mockResolvedValue(undefined);
   });
 
-  // AR-05: onHubReady(port, token, true) — reconnect path — does NOT call writeAgentConfigs
-  it("AR-05: onHubReady(port, token, isReconnect=true) skips writeAgentConfigs()", () => {
+  // AR-05: onHubReady(port, token, true) — reconnect path — DOES request config sync
+  it("AR-05: onHubReady(port, token, isReconnect=true) requests config sync", () => {
     const deps = makeCompositionDeps();
     const events = buildHubManagerEvents(deps);
 
     events.onHubReady(3000, "test-token", true);
 
-    expect(mockWriteAgentConfigs).not.toHaveBeenCalled();
+    expect(mockRequestConfigSyncs).toHaveBeenCalledOnce();
+    expect(mockRequestConfigSyncs).toHaveBeenCalledWith(deps, 3000, "test-token");
   });
 
-  // AR-06: onHubReady(port, token) — fresh-spawn path — DOES call writeAgentConfigs
-  it("AR-06: onHubReady(port, token) without isReconnect flag calls writeAgentConfigs()", () => {
+  // AR-06: onHubReady(port, token) — fresh-ready path — DOES request config sync
+  it("AR-06: onHubReady(port, token) without isReconnect flag requests config sync", () => {
     const deps = makeCompositionDeps();
     const events = buildHubManagerEvents(deps);
 
     // Call without isReconnect (fresh spawn path)
     events.onHubReady(3000, "test-token");
 
-    expect(mockWriteAgentConfigs).toHaveBeenCalledOnce();
-    expect(mockWriteAgentConfigs).toHaveBeenCalledWith(
-      expect.objectContaining({ port: 3000, token: "test-token" }),
-    );
+    expect(mockRequestConfigSyncs).toHaveBeenCalledOnce();
+    expect(mockRequestConfigSyncs).toHaveBeenCalledWith(deps, 3000, "test-token");
   });
 });

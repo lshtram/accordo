@@ -127,11 +127,8 @@ Route new traffic to new services; old path still works
 ### Phase 2 — Dual Write (Weeks 5–8)
 Both systems receive writes; validate parity continuously
 
-### Phase 3 — Cutover (Week 9)
-Blue-green switch; old system in standby for 2 weeks
-
-### Phase 4 — Decommission (Week 12)
-Old system retired; infra savings realized
+### Phase 3 — Cutover + Decommission
+Blue-green switch, then retire the old system after the standby window
 
 <!-- notes
 This has been done before successfully at GitHub, Netflix, Shopify. We're not reinventing the wheel.

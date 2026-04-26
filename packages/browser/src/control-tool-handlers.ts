@@ -13,16 +13,8 @@ import {
   type TypeResponse,
 } from "./control-tool-contracts.js";
 import { mapClickError, mapNavigateError, mapPressKeyError, mapTypeError } from "./control-tool-error-mapping.js";
-
-function buildPermissionGuidance<T extends { success: false; error?: string }>(response: T): T {
-  if (response.error !== "control-not-granted") return response;
-  return {
-    ...response,
-    message: "This tab has not been granted browser control yet.",
-    agentAction: "Ask the user to grant browser control for this tab in the Accordo browser extension popup, then retry the action.",
-    userAction: "Open the Accordo browser extension popup for the target tab and grant control access.",
-  };
-}
+import { isMalformedFrameScopedUid, isMalformedSelector } from "./target-validation.js";
+import { buildPermissionGuidance, withControlGuidance } from "./control-tool-guidance.js";
 
 export async function handleNavigate(
   relay: BrowserRelayLike,
@@ -62,23 +54,20 @@ export async function handleClick(
   if (!relay.isConnected()) {
     return { success: false, error: "browser-not-connected" };
   }
+  if (isMalformedFrameScopedUid(args.uid)) {
+    return { success: false, error: "invalid-request", message: 'framed uid must use the format "{frameId}:{nodeId}".' };
+  }
+  if (args.uid === undefined && args.coordinates === undefined && isMalformedSelector(args.selector)) {
+    return { success: false, error: "invalid-request", message: "selector must be a valid CSS selector." };
+  }
   try {
-    const payload: Record<string, unknown> = {};
-    if (args.tabId !== undefined) payload["tabId"] = args.tabId;
-    if (args.uid !== undefined) payload["uid"] = args.uid;
-    if (args.selector !== undefined) payload["selector"] = args.selector;
-    if (args.coordinates !== undefined && args.uid === undefined && args.selector === undefined) {
-      payload["coordinates"] = args.coordinates;
-    }
-    if (args.dblClick !== undefined) payload["dblClick"] = args.dblClick;
-
-    const response = await relay.request("click", payload, CONTROL_ACTION_TIMEOUT_MS);
+    const response = await relay.request("click", buildClickPayload(args), CONTROL_ACTION_TIMEOUT_MS);
     if (response.success) {
-      return { success: true, target: args.uid ?? args.selector ?? (args.coordinates ? `${args.coordinates.x},${args.coordinates.y}` : undefined) };
+      return { success: true, target: clickTargetLabel(args) };
     }
-    return buildPermissionGuidance({ success: false, error: mapClickError(response.error) });
+    return withControlGuidance({ success: false, error: mapClickError(response.error) });
   } catch (err: unknown) {
-    return buildPermissionGuidance({ success: false, error: mapClickError(classifyRelayError(err)) });
+    return withControlGuidance({ success: false, error: mapClickError(classifyRelayError(err)) });
   }
 }
 
@@ -89,21 +78,20 @@ export async function handleType(
   if (!relay.isConnected()) {
     return { success: false, error: "browser-not-connected" };
   }
+  if (isMalformedFrameScopedUid(args.uid)) {
+    return { success: false, error: "invalid-request", message: 'framed uid must use the format "{frameId}:{nodeId}".' };
+  }
+  if (args.uid === undefined && isMalformedSelector(args.selector)) {
+    return { success: false, error: "invalid-request", message: "selector must be a valid CSS selector." };
+  }
   try {
-    const payload: Record<string, unknown> = { text: args.text };
-    if (args.tabId !== undefined) payload["tabId"] = args.tabId;
-    if (args.uid !== undefined) payload["uid"] = args.uid;
-    if (args.selector !== undefined) payload["selector"] = args.selector;
-    if (args.clearFirst !== undefined) payload["clearFirst"] = args.clearFirst;
-    if (args.submitKey !== undefined) payload["submitKey"] = args.submitKey;
-
-    const response = await relay.request("type", payload, CONTROL_ACTION_TIMEOUT_MS);
+    const response = await relay.request("type", buildTypePayload(args), CONTROL_ACTION_TIMEOUT_MS);
     if (response.success) {
       return { success: true };
     }
-    return buildPermissionGuidance({ success: false, error: mapTypeError(response.error) });
+    return withControlGuidance({ success: false, error: mapTypeError(response.error) });
   } catch (err: unknown) {
-    return buildPermissionGuidance({ success: false, error: mapTypeError(classifyRelayError(err)) });
+    return withControlGuidance({ success: false, error: mapTypeError(classifyRelayError(err)) });
   }
 }
 
@@ -126,4 +114,30 @@ export async function handlePressKey(
   } catch (err: unknown) {
     return buildPermissionGuidance({ success: false, error: mapPressKeyError(classifyRelayError(err)) });
   }
+}
+
+function buildClickPayload(args: ClickArgs): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  if (args.tabId !== undefined) payload["tabId"] = args.tabId;
+  if (args.uid !== undefined) payload["uid"] = args.uid;
+  else if (args.coordinates !== undefined) payload["coordinates"] = args.coordinates;
+  else if (args.selector !== undefined) payload["selector"] = args.selector;
+  if (args.dblClick !== undefined) payload["dblClick"] = args.dblClick;
+  return payload;
+}
+
+function clickTargetLabel(args: ClickArgs): string | undefined {
+  if (args.uid !== undefined) return args.uid;
+  if (args.coordinates !== undefined) return `${args.coordinates.x},${args.coordinates.y}`;
+  return args.selector;
+}
+
+function buildTypePayload(args: TypeArgs): Record<string, unknown> {
+  const payload: Record<string, unknown> = { text: args.text };
+  if (args.tabId !== undefined) payload["tabId"] = args.tabId;
+  if (args.uid !== undefined) payload["uid"] = args.uid;
+  if (args.selector !== undefined) payload["selector"] = args.selector;
+  if (args.clearFirst !== undefined) payload["clearFirst"] = args.clearFirst;
+  if (args.submitKey !== undefined) payload["submitKey"] = args.submitKey;
+  return payload;
 }

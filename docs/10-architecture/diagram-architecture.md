@@ -58,8 +58,8 @@ Each spatial diagram is exactly two files:
 
 ```
 /diagrams/
-  arch.mmd          ← Mermaid source (topology + semantic styles)
-  arch.layout.json  ← Layout and visual overrides (positions, colors, routing)
+  arch.mmd          ← Mermaid source (topology, labels, comments, structure)
+  arch.layout.json  ← Layout + rendered styling contract (positions, colors, routing)
 ```
 
 Nothing else is stored. No UGM. No map file. No cached Excalidraw scene. No rendered SVG on disk.
@@ -255,15 +255,15 @@ This handles the common cases: labeled edges survive reorder, duplicate unlabele
 - Edge keys use the `"{from_id}->{to_id}:{ordinal}"` format defined in §4.4.
 - `clusters` correspond to Mermaid `subgraph` blocks (flowchart), `namespace` blocks (class), etc. They store their own position and label, independent of the member nodes.
 
-### 5.1 Style inheritance priority
+### 5.1 Rendered styling source of truth
 
-```
-1. Mermaid classDef / style statements  (semantic defaults, lowest priority)
-2. layout.json default styles           (diagram-level visual theme)
-3. layout.json node-level style         (per-node overrides, highest priority)
-```
+> **Single source of truth:** Accordo rendered styling comes only from the persisted layout data and from `accordo_diagram_patch` style payloads that update that layout data. Mermaid `classDef`, inline `style`, and other Mermaid-native styling directives are unsupported for the Accordo rendering contract and are ignored by the renderer.
 
-Mermaid-native styles are kept in the `.mmd` file and represent *semantic* styling ("all service nodes are blue"). Canvas-applied styles are kept in `layout.json` and represent *per-node visual decisions* ("I made this specific node red to flag it as critical"). Both survive independently across all edits.
+Rendered styling therefore follows this contract:
+
+1. `*.layout.json` holds the persisted rendered style state.
+2. `accordo_diagram_patch` `nodeStyles` / `edgeStyles` are the supported mutation path for that rendered style state.
+3. Mermaid-native styling directives do not participate in rendered style resolution and must not be relied on for Accordo output.
 
 ---
 
@@ -292,7 +292,7 @@ interface ParsedNode {
   id: string;
   label: string;
   shape: NodeShape;
-  classes: string[];            // Mermaid classDef references
+  classes: string[];            // Preserved Mermaid class references for parse fidelity/inspection; renderer styling still ignores them
   cluster?: string;             // parent subgraph/namespace ID
 }
 
@@ -714,35 +714,40 @@ Full scene regeneration is O(n) in diagram size. For diagrams with 50+ nodes, th
 
 The diagram extension registers these tools via `BridgeAPI.registerTools()`.
 
-### Tool table
+### Tool table (active MCP surface)
 
 | Tool | Danger | Idempotent | Timeout |
 |---|---|---|---|
-| `accordo_diagram_list` | safe | yes | fast |
-| `accordo_diagram_get` | safe | yes | fast |
 | `accordo_diagram_create` | moderate | no | fast |
 | `accordo_diagram_patch` | moderate | no | interactive |
 | `accordo_diagram_render` | moderate | yes | interactive |
-| `accordo_diagram_style_guide` | safe | yes | fast |
 
-### `accordo_diagram_list`
+### Retired helper tools (Priority W migration)
+
+| Retired tool | Replacement path | Notes |
+|---|---|---|
+| `accordo_diagram_list` | Workspace glob/search for `**/*.mmd`, then optional file reads | File-backed discovery flow; no direct `accordo_vscode_command_execute` mapping |
+| `accordo_diagram_get` | Read `.mmd` source + standard parser/script fallback emitting `{ source, type, nodes, edges, clusters, layout }` | File-backed inspection flow; no direct `accordo_vscode_command_execute` mapping |
+| `accordo_diagram_style_guide` | `skills/diagrams/skill.md` + MCP-visible runtime docs/instructions | Documentation/playbook flow; no direct `accordo_vscode_command_execute` mapping |
+
+**Priority W migration note (Phase A design):** `accordo_diagram_list`, `accordo_diagram_get`, and
+`accordo_diagram_style_guide` are treated as retired helper contracts. They are intentionally
+**not** replaced by `accordo_vscode_command_execute` because they are file/script/documentation
+workflows rather than VS Code command invocations. `accordo_diagram_create`,
+`accordo_diagram_patch`, and `accordo_diagram_render` remain first-class.
+
+### Legacy helper fallback: `accordo_diagram_list`
+
+Use workspace file discovery (`glob` / file search for `**/*.mmd`) as the standard replacement.
+When callers need parity with the retired helper, the documented fallback output shape is:
 
 ```typescript
-input: {
-  workspace_path?: string;     // defaults to workspace root
-}
-
-output: {
-  diagrams: Array<{
-    path: string;
-    type: DiagramType;
-    node_count: number;
-    last_modified: string;       // ISO 8601
-  }>;
-}
+type DiagramDiscoveryEntry = {
+  path: string;
+  type: DiagramType;
+  nodeCount: number;
+};
 ```
-
-Globs for `**/*.mmd` in the workspace. Returns metadata for each diagram found. This is how the agent discovers existing diagrams.
 
 ### `accordo_diagram_create`
 
@@ -763,40 +768,23 @@ output: {
 
 Writes the `.mmd` file. Parses it. Runs initial auto-layout via dagre and writes `layout.json` with all nodes placed.
 
-### `accordo_diagram_get`
+### Legacy helper fallback: `accordo_diagram_get`
+
+Use direct `.mmd` reads plus the standard parser/script fallback as the replacement path. When
+callers need parity with the retired helper, the documented fallback output shape is:
 
 ```typescript
-input: {
-  path: string;
-}
-
-output: {
-  path: string;
+type DiagramInspectionFallback = {
+  source: string;
   type: DiagramType;
-  mermaid_source: string;        // raw .mmd content (agent can read the DSL)
-  nodes: Array<{
-    id: string;
-    label: string;
-    cluster?: string;
-    edges_to: Array<{ to: string; label: string }>;
-    has_layout: boolean;
-  }>;
-  clusters: Array<{
-    id: string;
-    label: string;
-    members: string[];
-  }>;
-  stats: {
-    node_count: number;
-    edge_count: number;
-    cluster_count: number;
-    unplaced_count: number;
-    layout_coverage: string;  // "12/12 nodes"
-  };
-}
+  nodes: unknown[];
+  edges: unknown[];
+  clusters: unknown[];
+  layout: unknown;
+};
 ```
 
-Returns the semantic graph. The agent can reason about this without parsing Mermaid or reading canvas JSON.
+This keeps semantic inspection available without treating it as an active MCP tool contract.
 
 ### `accordo_diagram_patch`
 
@@ -1010,26 +998,22 @@ accordo_diagram_create(path, mermaid_content)
 ```
 Writes the `.mmd` file, parses it, runs placement, writes `layout.json`.
 
-**Read a diagram:**
+**Read a diagram (migration-safe path):**
 ```
-accordo_diagram_get(path)
-→ {
-    type: "flowchart",
-    mermaid_source: "flowchart TD\n    auth[\"Auth Service\"]\n    ...",
-    nodes: [ { id: "auth", label: "Auth Service", edges_to: ["api"] } ],
-    clusters: [ { id: "security_zone", members: ["auth"] } ],
-    stats: { layout_coverage: "12/12 nodes", ... },
-    unplaced: []
-  }
+1. Read the `.mmd` source directly
+2. If semantic inspection is needed, run the standard parser/script fallback
+   → { source, type, nodes, edges, clusters, layout }
 ```
-The agent sees both the semantic graph and the raw Mermaid source.
+The agent still sees both the Mermaid source and a semantic summary, but this is now treated as a
+file/script workflow rather than an active MCP helper contract.
 
-**List diagrams:**
+**List diagrams (migration-safe path):**
 ```
-accordo_diagram_list(workspace_path?)
-→ [ { path: "diagrams/arch.mmd", type: "flowchart", node_count: 12, ... } ]
+1. Search/glob for `**/*.mmd`
+2. Optionally inspect matching files to derive
+   → [ { path: "diagrams/arch.mmd", type: "flowchart", nodeCount: 12 } ]
 ```
-The agent discovers existing diagrams without globbing.
+The agent discovers existing diagrams through the filesystem workflow instead of a dedicated MCP helper.
 
 **Edit topology:**
 ```
@@ -1210,9 +1194,9 @@ Standard Mermaid with an optional metadata header:
 %% @authors: agent, human
 
 flowchart TD
-    auth["Auth Service"]:::service
-    api["API Gateway"]:::service
-    db[(Main DB)]:::database
+    auth["Auth Service"]
+    api["API Gateway"]
+    db[(Main DB)]
 
     auth -->|JWT validation| api
     api -->|query| db
@@ -1221,11 +1205,11 @@ flowchart TD
         auth
     end
 
-    classDef service fill:#ddf4ff,stroke:#0969da
-    classDef database fill:#fff8c5,stroke:#9a6700
 ```
 
-Metadata comments are optional and informational only. They do not affect reconciliation.
+Metadata comments are optional and informational only. They do not affect reconciliation. Visual
+styling must come from layout data plus `accordo_diagram_patch` style payloads. Mermaid
+`classDef` / inline `style` directives are unsupported for Accordo rendering and are ignored.
 
 ### `*.layout.json` — Layout store
 
@@ -1354,9 +1338,9 @@ layout-debug.ts::layoutDebug()   ◄── cross-cutting, called at each stage w
 - Canvas generator: (Mermaid + layout.json) → Excalidraw elements, flowchart shapes (§9)
 - **Roughness and Excalifont defaults applied to all generated elements (§22)**
 - Auto-layout for new diagrams and unplaced nodes (dagre)
-- MCP tools: `accordo_diagram_list`, `accordo_diagram_create`, `accordo_diagram_get`, `accordo_diagram_patch`, `accordo_diagram_render`
-- **`accordo_diagram_style_guide` MCP tool — returns diagram-type-specific aesthetic guidance (§23)**
-- `accordo_diagram_create` injects standard classDef palette into generated Mermaid (§23)
+- MCP tools: `accordo_diagram_create`, `accordo_diagram_patch`, `accordo_diagram_render`
+- Retired helper replacements documented for diagram discovery/inspection/style guidance (`accordo_diagram_list`, `accordo_diagram_get`, `accordo_diagram_style_guide`) (§10, §23)
+- Styling guidance lives in the diagram skill + MCP-visible runtime docs; rendered styling is applied through `accordo_diagram_patch` style payloads (§23)
 - VSCode webview: Excalidraw canvas (canvas-only, no in-panel text editor)
 - Canvas → layout.json sync (drag/drop, resize)
 - Canvas export via Excalidraw API (SVG/PNG, what-you-see-is-what-you-get)
@@ -1405,7 +1389,7 @@ layout-debug.ts::layoutDebug()   ◄── cross-cutting, called at each stage w
 |---|---|---|
 | No hand-drawn aesthetic specification | Roughness=1 + Excalifont applied as defaults to all canvas elements (§22) | Diagrams were visually bland; quality should be excellent on first agent pass |
 | No animation system | Draw-on animation via progressive element loading; user-toggleable roughness/animation (§22) | excalidraw-mcp proves animated draw-on is high-value UX; must be on by default |
-| No aesthetic cheat sheet for agent | `accordo_diagram_style_guide` tool + automatic classDef injection on `accordo_diagram_create` (§23) | Agent produces plain monochrome diagrams without explicit color/style guidance |
+| No aesthetic cheat sheet for agent | Diagram skill + MCP-visible runtime docs, with styling applied only through `accordo_diagram_patch` payloads (§23) | Agent produces plain monochrome diagrams without explicit color/style guidance |
 | No per-diagram-type conventions | Diagram Type Style Guides: per-type color palettes, node role mappings, subgraph patterns (§24) | Each diagram type has distinct conventions the agent must follow; generic guidance is insufficient |
 | `aesthetics` absent from layout.json schema | `aesthetics: { roughness, animationMode, theme }` added to layout store (§5) | Settings must persist per-diagram, not be a global preference |
 | Animation was not scoped | Progressive element loading at render time; seed-jitter during streaming; viewport interpolation (§22) | Concrete implementation prevents misunderstanding of how the animation integrates |
@@ -1576,46 +1560,23 @@ accordo_diagram_create / accordo_diagram_patch
 Without guidance, agents produce monochrome diagrams with no color differentiation, undersized nodes (text gets clipped), and no semantic visual hierarchy. This is the same problem excalidraw-mcp solves with its `RECALL_CHEAT_SHEET`.
 
 In Accordo, the aesthetic specification is delivered through two channels:
-1. **The `accordo_diagram_style_guide` MCP tool** — the agent calls this before creating or significantly editing a diagram (mirrors excalidraw-mcp's `read_me`)
-2. **Automatic classDef injection** — `accordo_diagram_create` writes a standard palette into the Mermaid source so the diagram has visual defaults even if the agent never calls `style_guide`
+1. **Diagram skill + MCP-visible runtime docs/instructions** — these hold the teaching guidance and replacement for the retired `accordo_diagram_style_guide` helper
+2. **Layout-backed style application via `accordo_diagram_patch`** — all rendered styling is persisted in layout state and applied through `nodeStyles` and `edgeStyles`
 
-**Key difference from excalidraw-mcp:** excalidraw-mcp's cheat sheet must teach absolute coordinate positioning because the agent specifies pixel positions. Accordo's guide does not cover coordinates at all — dagre handles placement. Instead the guide teaches *semantic role assignment* (which classDef to use, what subgraph pattern to apply) and *Mermaid conventions* (which node shape to use for each semantic role). This is a narrower, more actionable specification.
+**Key difference from excalidraw-mcp:** excalidraw-mcp's cheat sheet must teach absolute coordinate positioning because the agent specifies pixel positions. Accordo's guide does not cover coordinates at all — dagre handles placement. Instead the guide teaches *semantic role assignment* and *Mermaid conventions*, while the actual rendered style is carried only in `accordo_diagram_patch` payloads.
 
-### 23.2 The `accordo_diagram_style_guide` tool
+### 23.2 Runtime guidance contract
 
-```typescript
-// Tool 15 — new in v4.2
-accordo_diagram_style_guide
+The retired `accordo_diagram_style_guide` helper is replaced by runtime-visible documentation and the
+diagram skill. Agents should learn the palette/conventions there, then express styling through
+`accordo_diagram_patch({ nodeStyles, edgeStyles })`.
 
-input: {
-  diagram_type: DiagramType;  // "flowchart" | "classDiagram" | etc.
-}
+The canonical flow is:
 
-output: {
-  palette: Array<{
-    role: string;            // "service" | "database" | etc.
-    classdef: string;        // ready-to-paste Mermaid classDef line
-    backgroundColor: string;
-    strokeColor: string;
-    use_for: string;         // human-readable description
-  }>;
-  node_sizing: {
-    default_w: number;
-    default_h: number;
-    min_spacing: number;     // min gap between nodes in dagre
-  };
-  diagram_conventions: string;  // type-specific layout guide (§24)
-  mermaid_template: string;     // minimal starter Mermaid with classDefs included
-}
-```
-
-The `diagram_conventions` field is the per-type guide from §24. The agent receives the full relevant guide in one call.
-
-**Tool placement in tool table (§10):**
-
-| Tool | Danger | Idempotent | Timeout |
-|---|---|---|---|
-| `accordo_diagram_style_guide` | safe | yes | fast |
+1. Create or update Mermaid structure with `accordo_diagram_create` / `accordo_diagram_patch`
+2. Consult skill/runtime guidance for palette and semantic conventions
+3. Apply visual styling through `accordo_diagram_patch` style payloads
+4. Render/export only after the diagram panel is open when needed
 
 ### 23.3 Universal color palette
 
@@ -1635,25 +1596,27 @@ The same palette applies across all diagram types. Role names are the link betwe
 | `data-zone` | `#d3f9d8` | `#22c55e` | yes | Subgraph/cluster — data layer |
 | `logic-zone` | `#e5dbff` | `#8b5cf6` | yes | Subgraph/cluster — logic/processing layer |
 
-### 23.4 Automatic classDef injection
+### 23.4 Styling application path
 
-When `accordo_diagram_create` writes the `.mmd` file, the handler checks whether the source already contains `classDef` statements. If not, it appends the standard block:
+Mermaid `classDef` and inline `style` directives are not the supported styling contract for Accordo
+rendering. The supported path is layout-backed styling via `accordo_diagram_patch` payloads such as:
 
-```mermaid
-%% --- Accordo standard palette ---
-classDef service    fill:#a5d8ff,stroke:#4a9eed,stroke-width:2px
-classDef database   fill:#c3fae8,stroke:#22c55e,stroke-width:2px
-classDef client     fill:#b2f2bb,stroke:#22c55e,stroke-width:2px
-classDef queue      fill:#fff3bf,stroke:#f59e0b,stroke-width:2px
-classDef external   fill:#ffd8a8,stroke:#f59e0b,stroke-width:2px,stroke-dasharray:5
-classDef critical   fill:#ffc9c9,stroke:#ef4444,stroke-width:2px
-classDef decision   fill:#d0bfff,stroke:#8b5cf6,stroke-width:2px
-classDef infra      fill:#e5e5e5,stroke:#888,stroke-width:1px
+```typescript
+accordo_diagram_patch({
+  path: "diagram.mmd",
+  content: "flowchart LR\n  client[Browser]\n  api[API Gateway]\n  client --> api",
+  nodeStyles: {
+    client: { backgroundColor: "#b2f2bb", strokeColor: "#22c55e", fontColor: "#1E8449" },
+    api: { backgroundColor: "#a5d8ff", strokeColor: "#4a9eed", fontColor: "#1A5276" }
+  },
+  edgeStyles: {
+    "client->api:0": { strokeColor: "#4a9eed", strokeWidth: 2, routing: "orthogonal" }
+  }
+})
 ```
 
-The injected block is marked with the `%% --- Accordo standard palette ---` comment so it can be identified and replaced (not duplicated) on subsequent `accordo_diagram_patch` calls. If the agent provides its own `classDef` block, the automatic block is omitted.
-
-**Consequence:** Every diagram created through Accordo has a visual palette available from the first render. Nodes that use `:::service` in the Mermaid source immediately render in the correct color without any additional configuration.
+**Consequence:** Styling guidance stays visible to agents through skills/runtime docs, while the
+rendered diagram state stays in the supported patch contract instead of Mermaid-specific style injection.
 
 ### 23.5 Node sizing defaults
 
@@ -1675,9 +1638,11 @@ These are passed to dagre as `nodesep` and `ranksep` values, ensuring nodes neve
 
 ## 24. Diagram Type Style Guides
 
-This section defines the per-type conventions that the `accordo_diagram_style_guide` tool returns in its `diagram_conventions` field. These are the "teaching" instructions that tell the agent how to structure each diagram type.
+This section defines the per-type conventions carried by the diagram skill and mirrored into
+runtime-visible docs. These are the teaching instructions that tell the agent how to structure each
+diagram type before applying visual styling through `accordo_diagram_patch`.
 
-**Important distinction from excalidraw-mcp:** excalidraw-mcp's cheat sheet teaches absolute pixel positioning because the agent must specify coordinates. Accordo's guides focus entirely on *semantic structure* — which Mermaid constructs to use, what classDef roles to assign, and what subgraph patterns convey meaning. Dagre handles coordinates automatically. This makes the guides shorter and more reliably actionable.
+**Important distinction from excalidraw-mcp:** excalidraw-mcp's cheat sheet teaches absolute pixel positioning because the agent must specify coordinates. Accordo's guides focus entirely on *semantic structure* — which Mermaid constructs to use, what style role to apply through `nodeStyles` / `edgeStyles`, and what subgraph patterns convey meaning. Dagre handles coordinates automatically. This makes the guides shorter and more reliably actionable.
 
 ---
 
@@ -1689,7 +1654,7 @@ This section defines the per-type conventions that the `accordo_diagram_style_gu
 
 **Node shape → semantic role mapping:**
 
-| Mermaid syntax | Shape | Semantic role | classDef |
+| Mermaid syntax | Shape | Semantic role | Recommended style role |
 |---|---|---|---|
 | `id[label]` | Rectangle | Generic service or process | `service`, `external`, `infra` |
 | `id(label)` | Rounded rect | User-facing step or UI component | `client` |
@@ -1703,19 +1668,19 @@ This section defines the per-type conventions that the `accordo_diagram_style_gu
 *Layer pattern* (for LR architecture diagrams — one subgraph per layer):
 ```mermaid
 subgraph frontend["Frontend Layer"]
-    browser:::client
-    cdn:::infra
+    browser
+    cdn
 end
 subgraph backend["Backend Layer"]
-    api:::service
-    auth:::service
+    api
+    auth
 end
 subgraph data["Data Layer"]
-    db:::database
-    cache:::database
+    db
+    cache
 end
 ```
-Apply `zone`, `data-zone`, or `logic-zone` styles to cluster backgrounds via `accordo_diagram_set_cluster_style`.
+Apply `zone`, `data-zone`, or `logic-zone` visual treatment through `accordo_diagram_patch` style payloads.
 
 *Stage pattern* (for TD pipeline diagrams — one subgraph per pipeline stage).
 
@@ -1724,10 +1689,10 @@ Apply `zone`, `data-zone`, or `logic-zone` styles to cluster backgrounds via `ac
 **Minimum viable skeleton:**
 ```mermaid
 flowchart LR
-    client["Browser"]:::client
-    api["API Gateway"]:::service
-    auth["Auth Service"]:::service
-    db[(User DB)]:::database
+    client["Browser"]
+    api["API Gateway"]
+    auth["Auth Service"]
+    db[(User DB)]
 
     client -->|HTTPS| api
     api -->|validate| auth
@@ -1739,7 +1704,7 @@ flowchart LR
         db
     end
 ```
-(Standard palette classDefs are injected automatically by `accordo_diagram_create`.)
+(Apply the recommended palette through `accordo_diagram_patch` after creation.)
 
 ---
 
@@ -1747,9 +1712,9 @@ flowchart LR
 
 **Namespace convention:** One `namespace` per logical module, package, or domain boundary.
 
-**Class role → classDef mapping:**
+**Class role → recommended style role mapping:**
 
-| Class type | Mermaid annotation | classDef |
+| Class type | Mermaid annotation | Recommended style role |
 |---|---|---|
 | Concrete class | (none) | `service` (or domain-specific) |
 | Interface | `<<interface>>` | `external` (dashed stroke signals contract) |
@@ -1758,7 +1723,7 @@ flowchart LR
 | Repository | `<<repository>>` | `database` |
 | Utility/helper | `<<utility>>` | `infra` (gray) |
 
-**Relationship colors** (applied via `accordo_diagram_set_edge_routing` style field):
+**Relationship colors** (applied via `accordo_diagram_patch` `edgeStyles`):
 
 | Relationship | Edge style |
 |---|---|
@@ -1800,7 +1765,7 @@ classDiagram
 
 **Direction:** Always TD (Mermaid's only supported direction for `stateDiagram-v2`).
 
-**State role → layout.json style mapping** (applied per-node, not via classDef — `stateDiagram-v2` doesn't support classDef):
+**State role → layout.json style mapping** (applied per-node through the layout/patch contract; `stateDiagram-v2` also does not support `classDef`):
 
 | State type | backgroundColor | strokeColor |
 |---|---|---|
@@ -1810,7 +1775,7 @@ classDiagram
 | Warning / degraded | `#fff3bf` | `#f59e0b` |
 | Idle / waiting | `#e5e5e5` | `#888888` |
 
-Apply these via `accordo_diagram_set_node_style` after creation. The `accordo_diagram_style_guide` response includes a ready-to-use call sequence for the standard states.
+Apply these via `accordo_diagram_patch` `nodeStyles` after creation. The semantic guidance lives in the diagram skill and mirrored runtime docs.
 
 **Built-in pseudo-states:** Use `[*]` for initial and terminal — do not create explicit nodes for these.
 
@@ -1834,7 +1799,7 @@ stateDiagram-v2
 
 **What to include:** Entities and relationships. Maximum 3–6 attributes per entity (PK, FK, key enumerations only). ER diagrams that list all columns are unreadable — they are not schema documentation tools.
 
-**Entity role → layout.json style mapping** (erDiagram has no classDef):
+**Entity role → layout.json style mapping** (applied through the layout/patch contract; `erDiagram` also has no `classDef`):
 
 | Entity type | backgroundColor | strokeColor |
 |---|---|---|
@@ -1843,7 +1808,7 @@ stateDiagram-v2
 | Junction / associative | `#fff3bf` | `#f59e0b` |
 | Event / audit | `#ffd8a8` | `#f59e0b` |
 
-Apply via `accordo_diagram_set_node_style` after creation.
+Apply via `accordo_diagram_patch` `nodeStyles` after creation.
 
 **Cardinality notation:**
 - `||--||` one-to-one
@@ -1881,7 +1846,7 @@ erDiagram
 | Level 2 | `#dbe4ff` | `#4a9eed` |
 | Level 3+ | `#f0f4ff` | `#cccccc` |
 
-The canvas generator computes depth from the path-based node ID (count of `.` separators in `root.A.B.C`) and applies the corresponding style. The agent does not assign classDef or call `set_node_style` for mindmaps — depth styling is automatic.
+The canvas generator computes depth from the path-based node ID (count of `.` separators in `root.A.B.C`) and seeds the corresponding layout-backed default style. If a caller needs overrides, they still go through `accordo_diagram_patch` style payloads. Mermaid style directives are not used.
 
 **Shape convention:** Root always uses `((label))` (circle). Level 1 may use `[label]` (rectangle) for emphasis. Deeper nodes use plain indented text.
 

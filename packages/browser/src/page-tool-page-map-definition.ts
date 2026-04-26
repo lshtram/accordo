@@ -4,6 +4,7 @@ import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
 import { handleGetPageMap, type GetPageMapArgs } from "./page-tool-handlers.js";
 import { PAGE_MAP_DEFAULT_MAX_NODES, PAGE_MAP_MAX_NODES } from "./page-tool-page-map-types.js";
+import { IMPLICIT_TARGET_TAB_DESCRIPTION } from "./tab-target-contract.js";
 
 export function buildGetPageMapTool(
   relay: BrowserRelayLike,
@@ -14,7 +15,7 @@ export function buildGetPageMapTool(
     name: "accordo_browser_get_page_map",
     description:
       "Collect a structured page map from the current document. " +
-      "Returns an array of nodes, each with: uid (stable reference for click/type), " +
+      "Returns an array of nodes, each with: uid (snapshot/frame-scoped reference for click/type), " +
       "role (ARIA role), accessibleName, textContent, bounds (x/y/width/height when includeBounds:true), " +
       "readingOrderIndex, visibility flags, states (disabled/checked/expanded), and containerId. " +
       "Use this as your primary tool to understand page structure and find interactive elements. " +
@@ -23,7 +24,7 @@ export function buildGetPageMapTool(
     inputSchema: {
       type: "object",
       properties: {
-        tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
+        tabId: { type: "number", description: IMPLICIT_TARGET_TAB_DESCRIPTION },
         maxDepth: { type: "number", description: "Maximum DOM tree depth (default 4, max 8)" },
         maxNodes: { type: "number", description: `Maximum number of nodes (default ${PAGE_MAP_DEFAULT_MAX_NODES}, max ${PAGE_MAP_MAX_NODES})`, maximum: PAGE_MAP_MAX_NODES },
         includeBounds: { type: "boolean", description: "Include bounding box coordinates" },

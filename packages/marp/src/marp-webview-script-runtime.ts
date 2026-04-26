@@ -13,7 +13,8 @@ export function buildBaseVariables(): string {
     var slides = Array.from(document.querySelectorAll('svg[data-marpit-svg]'));
     var current = 0;
     var lastReceivedRevision = -1;
-    var refreshPins = function() {};`;
+    var refreshPins = function() {};
+    var renderMermaidDiagrams = function() {};`;
 }
 
 /** Mark the first slide active and initialise nav button disabled states. */
@@ -64,4 +65,37 @@ export function buildKeyboardNavigation(): string {
 export function buildWebviewReady(): string {
   return `
     if (vscode) { vscode.postMessage({ type: 'webview:ready' }); }`;
+}
+
+/** Lightweight Mermaid fallback: convert Mermaid code blocks into .mermaid divs and run mermaid.js. */
+export function buildMermaidSupport(): string {
+  return `
+    if (window.mermaid) {
+      try {
+        window.mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+      } catch (e) {
+        console.warn('[accordo-marp] mermaid.initialize failed', e);
+      }
+
+      renderMermaidDiagrams = function() {
+        try {
+          Array.from(document.querySelectorAll('pre code.language-mermaid')).forEach(function(code) {
+            var pre = code.closest('pre');
+            if (!pre) return;
+            var host = document.createElement('div');
+            host.className = 'mermaid';
+            host.textContent = code.textContent || '';
+            pre.replaceWith(host);
+          });
+          return window.mermaid.run().catch(function(e) {
+            console.warn('[accordo-marp] mermaid.run() error', e);
+          });
+        } catch (e) {
+          console.warn('[accordo-marp] renderMermaidDiagrams failed', e);
+          return Promise.resolve();
+        }
+      };
+
+      renderMermaidDiagrams();
+    }`;
 }

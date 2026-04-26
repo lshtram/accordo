@@ -191,7 +191,7 @@ Low priority — most agent files are already close to this structure after the 
   - `dependency-auditor` for developer: changed from `default` → `conditional` (matching `developer.md`).
   - `code-reviewer` for developer: removed (developer does not do deep reviews — that's D2's job).
   - `observability-designer` for developer: removed (not referenced in `developer.md`).
-  - `incident-commander` and `observability-designer` for debugger/debugger-hard: changed from `default` → `conditional` (matching symptom-triggered approach in agent files).
+  - `-commander` and `observability-designer` for debugger/debugger-hard: changed from `default` → `conditional` (matching symptom-triggered approach in agent files).
   - `skill-tester` for test-builder: kept as `default` (matches `test-builder.md` proactive usage).
 - Added conditional trigger descriptions for every conditional skill.
 - Added maintenance rules section linking to threshold enforcement policy.

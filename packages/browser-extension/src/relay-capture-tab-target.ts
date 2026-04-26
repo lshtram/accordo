@@ -1,3 +1,5 @@
+import { resolveImplicitTargetTabId } from "./relay-implicit-target.js";
+
 export interface CaptureTabContext {
   originalTabId: number | undefined;
   targetTabId: number | undefined;
@@ -5,8 +7,7 @@ export interface CaptureTabContext {
 }
 
 export async function prepareCaptureTab(targetTabId?: number): Promise<CaptureTabContext> {
-  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const originalTabId = activeTab?.id;
+  const originalTabId = await resolveImplicitTargetTabId();
   const resolvedTargetTabId = targetTabId ?? originalTabId;
   let swapped = false;
   if (resolvedTargetTabId !== undefined && originalTabId !== resolvedTargetTabId) {

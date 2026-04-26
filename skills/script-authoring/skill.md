@@ -100,6 +100,11 @@ See full Type 0 template and rules in the **Golden Rules** section below.
 **Format:** NarrationScript JSON, executed via Python runner  
 **Template:** Slide → Key Point → Slide → Key Point
 
+**Narration sourcing rule (efficiency):**
+- First, call `accordo_presentation_generateNarration` **once** without `slideIndex` to get narration for the whole deck.
+- Then map those narration texts into `speak` steps in the script.
+- Do not call narration generation once per slide unless you are selectively refreshing a changed slide.
+
 ### Type 4: Code Review — Findings Report
 
 **Audience:** Technical team  
@@ -229,6 +234,7 @@ Run these first in every script:
     { "type": "command", "command": "accordo_layout_panel", "args": { "area": "panel",   "action": "close" }},
     { "type": "delay",   "ms": 300 },
     { "type": "command", "command": "accordo_presentation_open", "args": { "deckUri": "/path/to/deck.md" }},
+    { "type": "command", "command": "accordo_presentation_goto", "args": { "index": 1 }},
     { "type": "delay",   "ms": 400 },
     { "type": "speak",  "text": "Three main components: the Hub, the Bridge, and the Editor tools.", "voice": "bf_emma", "block": true },
     { "type": "command", "command": "accordo_presentation_next" },
@@ -237,6 +243,12 @@ Run these first in every script:
   ]
 }
 ```
+
+### Narration Style for Presentation Scripts
+
+- Default style: do **not** announce slide numbers in spoken text.
+- Prefer: concise topic-first narration (what the audience sees + key takeaway).
+- Use numbered narration only when the user explicitly requests it.
 
 ---
 

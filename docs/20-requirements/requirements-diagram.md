@@ -139,6 +139,30 @@ StrokeStyle on edges was silently dropped by `detectNodeMutations` (edge mermaid
 
 ## 3. Open Items
 
+### Priority W — Selected diagram-tool migration/removal (`M76-DGM`)
+
+**Purpose:** Retire the low-value file-inspection/style-pointer MCP tools that are not backed by VS Code commands, while keeping creation, patching, and rendering as first-class diagram operations.
+
+**Scope of removal:**
+
+| Removed MCP tool | Replacement path | Why it is not a gateway command |
+|---|---|---|
+| `accordo_diagram_list` | Workspace glob/search for `**/*.mmd`, then optional file reads | diagram discovery is file-system introspection, not a VS Code command |
+| `accordo_diagram_get` | Read `.mmd` source + standard parser/script fallback that emits the prior semantic payload shape | semantic parsing/layout inspection is file-backed logic, not a VS Code command |
+| `accordo_diagram_style_guide` | `skills/diagrams/skill.md` plus runtime-visible guidance mirrored into MCP docs/instructions | style guidance is documentation/playbook content, not a VS Code command |
+
+**Requirements:**
+
+| ID | Requirement |
+|---|---|
+| M76-DGM-01 | `accordo_diagram_list`, `accordo_diagram_get`, and `accordo_diagram_style_guide` are removed from the registered diagram MCP surface in the migration wave |
+| M76-DGM-02 | `accordo_diagram_create`, `accordo_diagram_patch`, and `accordo_diagram_render` remain first-class MCP tools because they provide high-signal behavior not replaced by the generic command gateway |
+| M76-DGM-03 | The gateway migration playbook explicitly states that the three retired diagram tools have no direct `accordo_vscode_command_execute` equivalent because they are not VS Code-command-backed |
+| M76-DGM-04 | The standard fallback for the retired `accordo_diagram_get` scenario emits a stable JSON shape compatible with the current semantic-inspection contract: `{ source, type, nodes, edges, clusters, layout }` |
+| M76-DGM-05 | The standard fallback for the retired `accordo_diagram_list` scenario emits entries compatible with the current discovery contract: `{ path, type, nodeCount }[]` |
+| M76-DGM-06 | Style-guide guidance is kept in the diagram skill and mirrored into MCP-visible runtime docs/instructions; no dedicated style-pointer MCP tool remains |
+| M76-DGM-07 | Removal docs preserve the existing render precondition: export still requires the target diagram panel to be open |
+
 ### Remaining roadmap modules (partially shipped)
 
 The modules below are still open backlog items (see `diagram-architecture.md §18`):

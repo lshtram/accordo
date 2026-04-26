@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE  
 **Owner:** Accordo maintainers  
-**Last reviewed:** 2026-04-21  
+**Last reviewed:** 2026-04-22  
 **Canonical for:** top-level documentation entry and folder routing
 
 ---
@@ -35,8 +35,7 @@
 
 ## Historical lanes (non-canonical)
 
-- `docs/40-reviews/`, `docs/50-reviews/`, `docs/60-archive/`, `docs/90-archive/`
-- Root-level legacy `docs/testing-guide-*.md` files (being re-indexed under `docs/40-testing/`)
-- Root-level `docs/module-map-*.md` files are currently maintained snapshots but governed by `docs/30-development/docs-governance.md`
+- `docs/50-reviews/`, `docs/60-archive/`, `docs/90-archive/`
+- Module maps are centralized under `docs/30-development/module-maps/` and governed by `docs/30-development/docs-governance.md`
 
 Use historical lanes for evidence/reference only, not as the primary current-state source.

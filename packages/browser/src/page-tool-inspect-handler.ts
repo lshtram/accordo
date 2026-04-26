@@ -14,6 +14,7 @@ import type { InspectElementArgs, InspectElementResponse, PageToolError } from "
 import { classifyRelayError, INSPECT_TIMEOUT_MS } from "./page-tool-types.js";
 import { mapRelayError } from "./page-tool-relay-errors.js";
 import { runPageToolPipeline } from "./page-tool-pipeline.js";
+import { hasQueryTarget, inspectTargetKind, isMalformedSelector, isMalformedUid } from "./target-validation.js";
 
 export async function handleInspectElement(
   relay: BrowserRelayLike,
@@ -21,6 +22,16 @@ export async function handleInspectElement(
   store: SnapshotRetentionStore,
   security: SecurityConfig = DEFAULT_SECURITY_CONFIG,
 ): Promise<InspectElementResponse | PageToolError> {
+  if (!hasQueryTarget(args)) {
+    return buildStructuredError("no-target", "Provide uid, anchorKey, ref, selector, or nodeId.");
+  }
+  const targetKind = inspectTargetKind(args);
+  if (targetKind === "uid" && isMalformedUid(args.uid)) {
+    return buildStructuredError("invalid-request", 'uid must use the format "{frameId}:{nodeId}".');
+  }
+  if (targetKind === "selector" && isMalformedSelector(args.selector)) {
+    return buildStructuredError("invalid-request", "selector must be a valid CSS selector.");
+  }
   const pipeline = await runPageToolPipeline(
     relay,
     args as Record<string, unknown>,
@@ -45,7 +56,9 @@ export async function handleInspectElement(
       resolveOriginPolicy: () => mergeOriginPolicy(security.originPolicy, args.allowedOrigins, args.deniedOrigins),
       persistSnapshot: (response) => store.save(response.pageId, response),
       redact: (response) => {
-        response.redactionApplied = redactInspectElementResponse(response, security.redactionPolicy);
+        if (args.redactPII === true) {
+          response.redactionApplied = redactInspectElementResponse(response, security.redactionPolicy);
+        }
         return response;
       },
       postProcess: (response) => {

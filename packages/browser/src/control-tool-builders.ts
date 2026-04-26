@@ -10,6 +10,7 @@ import {
   type TypeArgs,
 } from "./control-tool-contracts.js";
 import { handleClick, handleNavigate, handlePressKey, handleType } from "./control-tool-handlers.js";
+import { IMPLICIT_TARGET_TAB_DESCRIPTION } from "./tab-target-contract.js";
 
 export function buildNavigateTool(relay: BrowserRelayLike): ExtensionToolDefinition {
   return {
@@ -20,7 +21,7 @@ export function buildNavigateTool(relay: BrowserRelayLike): ExtensionToolDefinit
     inputSchema: {
       type: "object",
       properties: {
-        tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
+        tabId: { type: "number", description: IMPLICIT_TARGET_TAB_DESCRIPTION },
         type: { type: "string", enum: ["url", "back", "forward", "reload"], description: "Navigation type. Default: 'url'" },
         url: { type: "string", description: "Target URL (required when type is 'url')" },
         timeout: { type: "number", description: `Maximum wait time for navigation in ms (default: ${NAVIGATE_DEFAULT_TIMEOUT_MS}, max: ${NAVIGATE_MAX_TIMEOUT_MS})` },
@@ -42,8 +43,8 @@ export function buildClickTool(relay: BrowserRelayLike): ExtensionToolDefinition
     inputSchema: {
       type: "object",
       properties: {
-        tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
-        uid: { type: "string", description: "Element UID from a page snapshot (primary identifier)" },
+        tabId: { type: "number", description: IMPLICIT_TARGET_TAB_DESCRIPTION },
+        uid: { type: "string", description: "Element UID from a page snapshot (snapshot/frame-scoped identifier)" },
         selector: { type: "string", description: "CSS selector to find the element (alternative to uid)" },
         coordinates: {
           type: "object",
@@ -70,9 +71,9 @@ export function buildTypeTool(relay: BrowserRelayLike): ExtensionToolDefinition 
       type: "object",
       required: ["text"],
       properties: {
-        tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
+        tabId: { type: "number", description: IMPLICIT_TARGET_TAB_DESCRIPTION },
         text: { type: "string", description: "Text to type into the element" },
-        uid: { type: "string", description: "Element UID to focus before typing (from snapshot)" },
+        uid: { type: "string", description: "Element UID to focus before typing (snapshot/frame-scoped, from a page snapshot)" },
         selector: { type: "string", description: "CSS selector to focus before typing (alternative to uid)" },
         clearFirst: { type: "boolean", description: "Whether to clear existing content before typing. Default: false" },
         submitKey: { type: "string", description: "Optional key to press after typing (e.g., 'Enter', 'Tab', 'Escape')" },
@@ -94,7 +95,7 @@ export function buildPressKeyTool(relay: BrowserRelayLike): ExtensionToolDefinit
       type: "object",
       required: ["key"],
       properties: {
-        tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
+        tabId: { type: "number", description: IMPLICIT_TARGET_TAB_DESCRIPTION },
         key: { type: "string", description: "Key or key combination (e.g., 'Enter', 'Control+A', 'Control+Shift+R')" },
       },
     },

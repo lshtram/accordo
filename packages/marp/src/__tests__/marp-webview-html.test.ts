@@ -63,6 +63,17 @@ describe("M50-PVD-12: buildMarpWebviewHtml exported", () => {
 // ── M50-PVD-13: SDK asset injection ───────────────────────────────────────────
 
 describe("M50-PVD-13: Comment SDK asset injection", () => {
+  it("when mermaidJsUri provided — HTML includes Mermaid script tag", async () => {
+    const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
+    const html = buildMarpWebviewHtml({
+      renderResult: RENDER_RESULT,
+      nonce: NONCE,
+      cspSource: CSP_SOURCE,
+      mermaidJsUri: "vscode-resource://mermaid/mermaid.min.js",
+    });
+    expect(html).toContain("vscode-resource://mermaid/mermaid.min.js");
+  });
+
   it("when sdkJsUri provided — HTML includes <script> tag pointing to sdkJsUri with nonce", async () => {
     const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
     const html = buildMarpWebviewHtml({
@@ -120,6 +131,18 @@ describe("M50-PVD-13: Comment SDK asset injection", () => {
 // ── M50-PVD-14: sdk.init() with coordinateToScreen ───────────────────────────
 
 describe("M50-PVD-14: sdk.init() and coordinateToScreen", () => {
+  it("HTML includes lightweight Mermaid fallback script when Mermaid asset is provided", async () => {
+    const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
+    const html = buildMarpWebviewHtml({
+      renderResult: RENDER_RESULT,
+      nonce: NONCE,
+      cspSource: CSP_SOURCE,
+      mermaidJsUri: "vscode-resource://mermaid/mermaid.min.js",
+    });
+    expect(html).toContain("renderMermaidDiagrams");
+    expect(html).toContain("language-mermaid");
+  });
+
   it("HTML includes sdk.init() call when SDK URIs are provided", async () => {
     const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
     const html = buildMarpWebviewHtml({

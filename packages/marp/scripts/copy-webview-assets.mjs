@@ -43,4 +43,11 @@ copyFileSync(
 );
 console.log("  ✓ sdk.css");
 
+// ── 3. Mermaid ───────────────────────────────────────────────────────────────
+copyFileSync(
+  join(nm, "mermaid/dist/mermaid.min.js"),
+  join(dist, "mermaid.min.js"),
+);
+console.log("  ✓ mermaid.min.js");
+
 console.log("copy-webview-assets: done.");

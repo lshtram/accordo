@@ -1,5 +1,6 @@
 import type { CapturePayload } from "./relay-definitions.js";
 import { resolveBoundsFromMessage } from "./relay-type-guards.js";
+import { resolveImplicitTargetTabId } from "./relay-implicit-target.js";
 
 class ResolveBoundsError extends Error {
   constructor(public readonly code: string) {
@@ -21,7 +22,7 @@ export async function resolvePaddedBounds(
     if (!rect) return null;
     bounds = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
   } else if (payload.anchorKey !== undefined || payload.nodeRef !== undefined) {
-    const tabId = targetTabId ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+    const tabId = targetTabId ?? await resolveImplicitTargetTabId();
     if (tabId !== undefined) {
       try {
         const resolved = await chrome.tabs.sendMessage(tabId, {

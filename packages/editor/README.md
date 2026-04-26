@@ -1,6 +1,6 @@
 # accordo-editor
 
-VSCode extension providing 23 MCP tools that expose editor, terminal, and layout capabilities to AI agents via the Accordo Bridge.
+VSCode extension providing 25 MCP tools that expose editor, terminal, layout, and guarded VS Code command-gateway capabilities to AI agents via the Accordo Bridge.
 
 ## Installation
 

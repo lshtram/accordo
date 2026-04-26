@@ -6,11 +6,7 @@ settings:
 
 importers:
 
-  .:
-    dependencies:
-      '@types/jsdom':
-        specifier: ^28.0.1
-        version: 28.0.1
+  .: {}
 
   packages/bridge:
     dependencies:
@@ -308,6 +304,9 @@ importers:
       '@marp-team/marp-core':
         specifier: ^4.1.0
         version: 4.3.0
+      mermaid:
+        specifier: ^11.12.3
+        version: 11.12.3
     devDependencies:
       '@accordo/bridge-types':
         specifier: workspace:*
@@ -416,33 +415,11 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(@types/debug@4.1.13)(@types/node@20.19.35)(happy-dom@20.9.0)(jsdom@26.1.0)(tsx@4.21.0)
 
-  packages/script:
-    dependencies:
-      '@accordo/bridge-types':
-        specifier: workspace:*
-        version: link:../bridge-types
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.35
-      '@types/vscode':
-        specifier: ^1.100.0
-        version: 1.109.0
-      typescript:
-        specifier: ^5.8.0
-        version: 5.9.3
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.4(@types/debug@4.1.13)(@types/node@20.19.35)(happy-dom@20.9.0)(jsdom@26.1.0)(tsx@4.21.0)
-
   packages/voice:
     dependencies:
       kokoro-js:
         specifier: 1.2.1
         version: 1.2.1
-      sherpa-onnx-node:
-        specifier: 1.12.28
-        version: 1.12.28
     devDependencies:
       '@accordo/bridge-types':
         specifier: workspace:*
@@ -1826,9 +1803,6 @@ packages:
   '@types/hast@3.0.4':
     resolution: {integrity: sha512-WPs+bbQw5aCj+x6laNGWLH3wviHtoCv/P3+otBhbOhJgG8qtpdAMlTCxLtsTWA7LH1Oh/bFCHsBn0TPS5m30EQ==}
 
-  '@types/jsdom@28.0.1':
-    resolution: {integrity: sha512-GJq2QE4TAZ5ajSoCasn5DOFm8u1mI3tIFvM5tIq3W5U/RTB6gsHwc6Yhpl91X9VSDOUVblgXmG+2+sSvFQrdlw==}
-
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
@@ -1890,9 +1864,6 @@ packages:
 
   '@types/sarif@2.1.7':
     resolution: {integrity: sha512-kRz0VEkJqWLf1LLVN4pT1cg1Z9wAuvI6L97V3m2f5B76Tg8d413ddvLBPTEHAZJlnn4XSvu0FkZtViCQGVyrXQ==}
-
-  '@types/tough-cookie@4.0.5':
-    resolution: {integrity: sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==}
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
@@ -2069,6 +2040,7 @@ packages:
   '@xmldom/xmldom@0.9.8':
     resolution: {integrity: sha512-p96FSY54r+WJ50FIOsCOjyj/wavs8921hG5+kVMmZgKcvIKxMXHTrjNJvRgWa/zuX3B6t2lijLNFaOyuxUH+2A==}
     engines: {node: '>=14.6'}
+    deprecated: this version has critical issues, please update to the latest version
 
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
@@ -3850,39 +3822,6 @@ packages:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
 
-  sherpa-onnx-darwin-arm64@1.12.28:
-    resolution: {integrity: sha512-QzKrJwZR9aOmz/X6i37e0p0XDCEAGS9AuLXD5SejQxyrwOc+8db+Qi7Y+IOKk7DUebpe1mTS4gAFEXk2JnSAAg==}
-    cpu: [arm64]
-    os: [darwin]
-
-  sherpa-onnx-darwin-x64@1.12.28:
-    resolution: {integrity: sha512-YG5WNS/19zNS25TbG5HttsBaHWo97Mdoz4OLspyQ3EkM/XEZILz6M+Kt1/2NjZEuDKMlpgdjIyfANnBY2GYRZA==}
-    cpu: [x64]
-    os: [darwin]
-
-  sherpa-onnx-linux-arm64@1.12.28:
-    resolution: {integrity: sha512-NeDVuNcSUmqye/fUlqogIDX/O8NVkD9423KTQt4E/EftwoiReHLQP4CbtGoL9wHhRAy+opCzw+ssMb/coB+TqA==}
-    cpu: [arm64]
-    os: [linux]
-
-  sherpa-onnx-linux-x64@1.12.28:
-    resolution: {integrity: sha512-+7ZwpAqQYz5fjNQ13F9+sR11zKo6+HhOa1OvT+F4g4PjmoCS1o3YYQqT4JZuLeNRWAY6kKn4IXGWLx93K+OV7A==}
-    cpu: [x64]
-    os: [linux]
-
-  sherpa-onnx-node@1.12.28:
-    resolution: {integrity: sha512-EHSB3EG6hKyXaTNh6GU/bwh6i3dncCH6ZCU2mScNzkxRbVStZ7QmNj0Oo4E9XrGGo9jX9pKg9MPHEPyjdK+ApA==}
-
-  sherpa-onnx-win-ia32@1.12.28:
-    resolution: {integrity: sha512-C9bvyg3SuVGVVRCjPH3sKk9C1rYiihTO7C9EF1T9n1V7ABdr6VE2O/7HzzMeTx9B4kUaAIDQNUq52XFE5x8oWQ==}
-    cpu: [ia32]
-    os: [win32]
-
-  sherpa-onnx-win-x64@1.12.28:
-    resolution: {integrity: sha512-p8vpdVUtPRuI9ksm2EnuabK9+r285m5ARYzZkCfvg9ia/TQAq8pVoOCOuUTbMteBSQRPOl9lamfOcg3Sy085yQ==}
-    cpu: [x64]
-    os: [win32]
-
   shiki@3.23.0:
     resolution: {integrity: sha512-55Dj73uq9ZXL5zyeRPzHQsK7Nbyt6Y10k5s7OjuFZGMhpp4r/rsLBH0o/0fstIzX1Lep9VxefWljK/SKCzygIA==}
 
@@ -4184,9 +4123,6 @@ packages:
 
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
-
-  undici-types@7.25.0:
-    resolution: {integrity: sha512-AXNgS1Byr27fTI+2bsPEkV9CxkT8H6xNyRI68b3TatlZo3RkzlqQBLL+w7SmGPVpokjHbcuNVQUWE7FRTg+LRA==}
 
   undici@7.24.5:
     resolution: {integrity: sha512-3IWdCpjgxp15CbJnsi/Y9TCDE7HWVN19j1hmzVhoAkY/+CJx449tVxT5wZc1Gwg8J+P0LWvzlBzxYRnHJ+1i7Q==}
@@ -5596,13 +5532,6 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
 
-  '@types/jsdom@28.0.1':
-    dependencies:
-      '@types/node': 20.19.35
-      '@types/tough-cookie': 4.0.5
-      parse5: 7.3.0
-      undici-types: 7.25.0
-
   '@types/json-schema@7.0.15': {}
 
   '@types/katex@0.16.8': {}
@@ -5664,8 +5593,6 @@ snapshots:
       csstype: 3.2.3
 
   '@types/sarif@2.1.7': {}
-
-  '@types/tough-cookie@4.0.5': {}
 
   '@types/trusted-types@2.0.7':
     optional: true
@@ -7983,33 +7910,6 @@ snapshots:
 
   shebang-regex@3.0.0: {}
 
-  sherpa-onnx-darwin-arm64@1.12.28:
-    optional: true
-
-  sherpa-onnx-darwin-x64@1.12.28:
-    optional: true
-
-  sherpa-onnx-linux-arm64@1.12.28:
-    optional: true
-
-  sherpa-onnx-linux-x64@1.12.28:
-    optional: true
-
-  sherpa-onnx-node@1.12.28:
-    optionalDependencies:
-      sherpa-onnx-darwin-arm64: 1.12.28
-      sherpa-onnx-darwin-x64: 1.12.28
-      sherpa-onnx-linux-arm64: 1.12.28
-      sherpa-onnx-linux-x64: 1.12.28
-      sherpa-onnx-win-ia32: 1.12.28
-      sherpa-onnx-win-x64: 1.12.28
-
-  sherpa-onnx-win-ia32@1.12.28:
-    optional: true
-
-  sherpa-onnx-win-x64@1.12.28:
-    optional: true
-
   shiki@3.23.0:
     dependencies:
       '@shikijs/core': 3.23.0
@@ -8333,8 +8233,6 @@ snapshots:
   underscore@1.13.8: {}
 
   undici-types@6.21.0: {}
-
-  undici-types@7.25.0: {}
 
   undici@7.24.5: {}
 

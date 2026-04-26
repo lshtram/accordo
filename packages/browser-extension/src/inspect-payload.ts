@@ -5,17 +5,32 @@ export type InspectPayload =
   | { ref: string; creationSnapshotId?: string; anchorKey?: string; selector?: string }
   | { selector: string; creationSnapshotId?: string };
 
-export function toInspectPayload(raw: Record<string, unknown>): InspectPayload {
-  const uid = typeof raw.uid === "string" && raw.uid.length > 0 ? raw.uid : undefined;
-  const anchorKey = typeof raw.anchorKey === "string" && raw.anchorKey.length > 0 ? raw.anchorKey : undefined;
-  const creationSnapshotId = typeof raw.creationSnapshotId === "string" && raw.creationSnapshotId.length > 0 ? raw.creationSnapshotId : undefined;
-  const ref = typeof raw.ref === "string" && raw.ref.length > 0 ? raw.ref : undefined;
-  const selector = typeof raw.selector === "string" && raw.selector.length > 0 ? raw.selector : undefined;
+export type InspectPayloadReadResult =
+  | { payload: InspectPayload }
+  | { error: "no-target" | "invalid-request" };
 
-  if (uid !== undefined) return { uid, creationSnapshotId, anchorKey, ref, selector };
-  if (anchorKey !== undefined) return { anchorKey, creationSnapshotId, ref, selector };
-  if (ref !== undefined) return { ref, creationSnapshotId, anchorKey, selector };
-  if (selector !== undefined) return { selector, creationSnapshotId };
-  if (typeof raw.nodeId === "number") return { nodeId: raw.nodeId, creationSnapshotId };
-  return { selector: "" };
+export function toInspectPayload(raw: Record<string, unknown>): InspectPayloadReadResult {
+  const uid = readNonEmptyString(raw.uid);
+  const anchorKey = readNonEmptyString(raw.anchorKey);
+  const creationSnapshotId = readNonEmptyString(raw.creationSnapshotId);
+  const ref = readNonEmptyString(raw.ref);
+  const selector = readNonEmptyString(raw.selector);
+
+  if (uid !== undefined && isMalformedUid(uid)) {
+    return { error: "invalid-request" };
+  }
+  if (uid !== undefined) return { payload: { uid, creationSnapshotId, anchorKey, ref, selector } };
+  if (anchorKey !== undefined) return { payload: { anchorKey, creationSnapshotId, ref, selector } };
+  if (ref !== undefined) return { payload: { ref, creationSnapshotId, anchorKey, selector } };
+  if (selector !== undefined) return { payload: { selector, creationSnapshotId } };
+  if (typeof raw.nodeId === "number") return { payload: { nodeId: raw.nodeId, creationSnapshotId } };
+  return { error: "no-target" };
+}
+
+function isMalformedUid(uid: string): boolean {
+  return !/^[^:]+:\d+$/.test(uid);
+}
+
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }

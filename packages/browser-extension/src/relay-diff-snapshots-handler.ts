@@ -1,6 +1,7 @@
 import { computeDiff } from "./diff-engine.js";
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
 import { defaultStore, getErrorMeta } from "./relay-definitions.js";
+import { resolveImplicitTargetTabId } from "./relay-implicit-target.js";
 import { readOptionalString } from "./relay-type-guards.js";
 
 async function diffViaContentScript(
@@ -55,10 +56,7 @@ export async function handleDiffSnapshots(
     return { requestId: request.requestId, success: true, data: diffResult };
   }
 
-  const activeTabResult = explicitTabId === undefined
-    ? await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => [] as chrome.tabs.Tab[])
-    : [];
-  const tabId = explicitTabId ?? activeTabResult[0]?.id;
+  const tabId = explicitTabId ?? await resolveImplicitTargetTabId();
 
   if (tabId !== undefined) {
     const csResult = await diffViaContentScript(tabId, fromSnapshotId, toSnapshotId, request.requestId);

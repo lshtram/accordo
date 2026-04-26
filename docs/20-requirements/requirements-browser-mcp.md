@@ -88,8 +88,8 @@ When `mode` is omitted, `accordo_browser_capture_region` MUST behave exactly as 
 **Acceptance:** `capture_region(format: "png")` returns a `data:image/png;base64,...` data URL.
 
 **MCP-VC-005: Redaction warning on screenshot responses**  
-When a `RedactionPolicy` is configured (i.e., `redactPatterns` is non-empty), ALL screenshot responses from `accordo_browser_capture_region` (in any `mode`: region, viewport, or fullPage) MUST include a `redactionWarning` field with value `"screenshots-not-subject-to-redaction-policy"`. This makes explicit that screenshot content has not been redacted, even though text-producing tools apply redaction. When no `RedactionPolicy` is configured, the field is omitted.  
-**Acceptance:** With a `RedactionPolicy` containing at least one pattern, `capture_region(mode: "viewport")` response includes `redactionWarning: "screenshots-not-subject-to-redaction-policy"`. Without a policy, the field is absent.  
+When a `RedactionPolicy` is configured (i.e., `redactPatterns` is non-empty), screenshot responses from `accordo_browser_capture_region` (in any `mode`: region, viewport, or fullPage) MUST include `redactionWarning: "screenshots-not-subject-to-redaction-policy"` when screenshot redaction was relevant but not applied. This makes explicit that screenshot content has not been redacted, even though text-producing tools apply redaction. When no `RedactionPolicy` is configured, the field is omitted. When `redactPII:false` is explicitly passed, screenshot redaction is suppressed and this warning is omitted.  
+**Acceptance:** With a `RedactionPolicy` containing at least one pattern, `capture_region(mode: "viewport")` response includes `redactionWarning: "screenshots-not-subject-to-redaction-policy"` unless screenshot redaction was applied or `redactPII:false` explicitly suppressed it. Without a policy, the field is absent.  
 **Cross-reference:** B2-PS-007 (screenshot redaction deferred), B2-PS-004 (text redaction).
 
 **MCP-VC-006: artifactMode metadata on successful screenshot responses**  
@@ -198,8 +198,8 @@ Every data-producing `accordo_browser_*` tool response MUST include an optional 
 **Cross-reference:** B2-PS-006, I3-001.
 
 **MCP-SEC-005: Redaction warning on unredacted responses**  
-When `redactPII` is `false` or not set on text-producing tools (`get_text_map`, `get_semantic_graph`, `get_page_map`, `inspect_element`, `get_dom_excerpt`), the response MUST include `redactionWarning: "PII may be present in response"`. For `capture_region` responses when a `RedactionPolicy` is configured, the warning is `"screenshots-not-subject-to-redaction-policy"` (per MCP-VC-005). When `redactPII: true` and redaction succeeds, no warning field is present.  
-**Acceptance:** Calling `get_text_map()` without `redactPII` returns `redactionWarning: "PII may be present in response"`. Calling with `redactPII: true` and successful redaction has no warning.  
+When `redactPII` is `false` or not set on text-producing tools (`get_text_map`, `get_semantic_graph`, `get_page_map`, `inspect_element`, `get_dom_excerpt`), the response MUST include `redactionWarning: "PII may be present in response"`. For `capture_region`, omitted `redactPII` and `redactPII:true` may honor the global screenshot redaction policy; if a `RedactionPolicy` is configured and screenshot redaction was relevant but not applied, the warning is `"screenshots-not-subject-to-redaction-policy"` (per MCP-VC-005). When `redactPII:false` is explicitly passed to `capture_region`, screenshot redaction is suppressed and that warning is not emitted. When `redactPII: true` and redaction succeeds, no warning field is present.  
+**Acceptance:** Calling `get_text_map()` without `redactPII` returns `redactionWarning: "PII may be present in response"`. Calling with `redactPII: true` and successful redaction has no warning. Calling `capture_region({ redactPII: false })` suppresses screenshot redaction attempts and does not return `"screenshots-not-subject-to-redaction-policy"`.  
 **Cross-reference:** MCP-VC-005.
 
 ---

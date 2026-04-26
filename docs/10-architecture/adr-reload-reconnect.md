@@ -51,7 +51,7 @@ Modify `HubManager.activate()` to attempt reconnection before spawning:
 5. If health responds `200`, emit `onHubReady(port, token)` — **skip spawn entirely**.
 6. If probe fails → fall through to normal spawn path.
 
-**Token/secret handling:** Tokens are preserved in `SecretStorage` across VS Code reloads — they are stable UUIDs generated once and reused. No rotation on reconnect. `opencode.json` and other agent config files are **not rewritten** during a reconnect (only on fresh spawn).
+**Token/secret handling:** Tokens are preserved in `SecretStorage` across VS Code reloads — they are stable UUIDs generated once and reused. No rotation on reconnect. On `onHubReady` (including reconnect-ready), Bridge requests config sync so workspace agent files and user-level MCP config stay aligned with the effective Hub `port` + `token`; downstream writers remain idempotent and may no-op when unchanged.
 
 ### D3 — SIGKILL fallback for killHub (Problem 3)
 
@@ -66,7 +66,7 @@ Add a 2-second timeout to `HubProcess.killHub()`. If the process hasn't exited a
 - (+) Hub survives VS Code reloads — no agent session disruption
 - (+) Reload completes in ~100ms (health probe) instead of ~3s (spawn + poll)
 - (+) No orphan Hub processes on normal close (explicit disconnect + grace timer)
-- (+) `opencode.json` stays stable during reload cycles (no config churn)
+- (+) Reconnect keeps agent configs aligned with effective runtime port/token; unchanged entries can still no-op via idempotent writers
 - (+) SIGKILL fallback prevents `killHub()` from blocking forever
 
 ### Negative / Risks

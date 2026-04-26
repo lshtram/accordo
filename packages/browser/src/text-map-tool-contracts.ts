@@ -8,6 +8,7 @@ export const TEXT_MAP_MAX_SEGMENTS = 2000;
 export interface GetTextMapArgs {
   tabId?: number;
   maxSegments?: number;
+  visibleOnly?: boolean;
   frameId?: string;
   redactPII?: boolean;
   allowedOrigins?: string[];

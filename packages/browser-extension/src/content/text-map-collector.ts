@@ -7,6 +7,7 @@
 import { captureSnapshotEnvelope } from "../snapshot-versioning.js";
 import type { SnapshotEnvelope } from "../snapshot-versioning.js";
 import { assignReadingOrder, collectRawSegments } from "./text-map-runtime.js";
+import { orderSegmentsForResponse } from "./text-map-priority.js";
 import {
   DEFAULT_MAX_SEGMENTS,
   MAX_SEGMENTS_LIMIT,
@@ -37,14 +38,16 @@ export {
 export function collectTextMap(options?: TextMapOptions): TextMapResult {
   const envelope: SnapshotEnvelope = captureSnapshotEnvelope("dom");
   const frameId = options?.logicalFrameId ?? envelope.frameId ?? "main";
+  const visibleOnly = options?.visibleOnly ?? false;
   const requestedMax = options?.maxSegments ?? DEFAULT_MAX_SEGMENTS;
   const effectiveMax = Math.min(requestedMax, MAX_SEGMENTS_LIMIT);
-  const allSegments = collectRawSegments(document, frameId);
-  assignReadingOrder(allSegments, document);
+  const collectedSegments = collectRawSegments(document, frameId);
+  assignReadingOrder(collectedSegments, document);
+  const orderedSegments = orderSegmentsForResponse(collectedSegments, visibleOnly);
 
-  const totalSegments = allSegments.length;
+  const totalSegments = orderedSegments.length;
   const truncated = totalSegments > effectiveMax;
-  const segments = truncated ? allSegments.slice(0, effectiveMax) : allSegments;
+  const segments = truncated ? orderedSegments.slice(0, effectiveMax) : orderedSegments;
 
   return {
     ...envelope,

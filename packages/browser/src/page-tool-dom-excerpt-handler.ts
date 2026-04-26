@@ -14,6 +14,7 @@ import type { DomExcerptResponse, GetDomExcerptArgs, PageToolError } from "./pag
 import { classifyRelayError, EXCERPT_TIMEOUT_MS } from "./page-tool-types.js";
 import { mapRelayError } from "./page-tool-relay-errors.js";
 import { runPageToolPipeline } from "./page-tool-pipeline.js";
+import { domExcerptTargetKind, hasDomExcerptTarget, isMalformedSelector } from "./target-validation.js";
 
 export async function handleGetDomExcerpt(
   relay: BrowserRelayLike,
@@ -21,6 +22,12 @@ export async function handleGetDomExcerpt(
   store: SnapshotRetentionStore,
   security: SecurityConfig = DEFAULT_SECURITY_CONFIG,
 ): Promise<DomExcerptResponse | PageToolError> {
+  if (!hasDomExcerptTarget(args)) {
+    return buildStructuredError("no-target", "Provide anchorKey or selector.");
+  }
+  if (domExcerptTargetKind(args) === "selector" && isMalformedSelector(args.selector)) {
+    return buildStructuredError("invalid-request", "selector must be a valid CSS selector.");
+  }
   const pipeline = await runPageToolPipeline(
     relay,
     args as unknown as Record<string, unknown>,
@@ -45,7 +52,9 @@ export async function handleGetDomExcerpt(
       resolveOriginPolicy: () => mergeOriginPolicy(security.originPolicy, args.allowedOrigins, args.deniedOrigins),
       persistSnapshot: (response) => store.save(response.pageId, response),
       redact: (response) => {
-        response.redactionApplied = redactDomExcerptResponse(response, security.redactionPolicy);
+        if (args.redactPII === true) {
+          response.redactionApplied = redactDomExcerptResponse(response, security.redactionPolicy);
+        }
         return response;
       },
       postProcess: (response) => {

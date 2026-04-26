@@ -231,7 +231,7 @@ describe("M50-EXT-03: Tool registration", () => {
     expect(bridge.registerTools).toHaveBeenCalled();
   });
 
-  it("registers exactly 10 presentation tools", async () => {
+  it("registers exactly 6 presentation tools (4 removed from public surface)", async () => {
     const bridge = makeBridge();
     setupExtensions(bridge, false);
     setupEngineConfig("marp");
@@ -240,7 +240,7 @@ describe("M50-EXT-03: Tool registration", () => {
     await activate(asCtx(ctx));
 
     const [, tools] = (bridge.registerTools as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(tools).toHaveLength(10);
+    expect(tools).toHaveLength(6);
   });
 
   it("registers tools under namespace 'accordo-marp'", async () => {

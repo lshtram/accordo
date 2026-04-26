@@ -1,5 +1,6 @@
 import type { SnapshotEnvelope } from "./snapshot-versioning.js";
 import { hasDataField, hasErrorField, isSnapshotEnvelope } from "./relay-type-guards.js";
+import { resolveImplicitTargetTabId } from "./relay-implicit-target.js";
 
 export const NO_CONTENT_SCRIPT = Symbol("no-content-script");
 
@@ -18,7 +19,7 @@ export async function requestContentScriptEnvelope(
   source: "dom" | "visual",
   tabId?: number,
 ): Promise<SnapshotEnvelope> {
-  const targetTabId = tabId ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+  const targetTabId = tabId ?? await resolveImplicitTargetTabId();
   if (targetTabId === undefined) {
     throw new Error("no-active-tab");
   }

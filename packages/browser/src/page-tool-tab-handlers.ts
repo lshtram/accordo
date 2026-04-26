@@ -82,8 +82,8 @@ export async function handleSelectPage(
   }
   try {
     const response = await relay.request("select_page", args as unknown as Record<string, unknown>, TAB_MGMT_TIMEOUT_MS);
-    if (response.success) {
-      return { success: true };
+    if (response.success && response.data && typeof response.data === "object" && "success" in response.data) {
+      return response.data as SelectPageResponse;
     }
     return { success: false, error: response.error ?? "action-failed", pageUrl: null };
   } catch (err: unknown) {

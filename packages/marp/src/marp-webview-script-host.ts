@@ -41,10 +41,18 @@ function buildMarpUpdateHandler(): string {
       var requested = typeof msg.currentSlide === 'number' ? Math.trunc(msg.currentSlide) : current;
       var clamped = Math.max(0, Math.min(requested, slides.length - 1));
       current = Math.min(current, slides.length - 1);
-      goTo(clamped);
-
-      if (typeof msg.revision === 'number') { lastReceivedRevision = msg.revision; }
-      refreshPins();
+      var mermaidResult = renderMermaidDiagrams();
+      var finishUpdate = function() {
+        slides = Array.from(document.querySelectorAll('svg[data-marpit-svg]'));
+        goTo(Math.max(0, Math.min(clamped, slides.length - 1)));
+        if (typeof msg.revision === 'number') { lastReceivedRevision = msg.revision; }
+        refreshPins();
+      };
+      if (mermaidResult && typeof mermaidResult.then === 'function') {
+        mermaidResult.finally(finishUpdate);
+      } else {
+        finishUpdate();
+      }
       return;
     }`;
 }

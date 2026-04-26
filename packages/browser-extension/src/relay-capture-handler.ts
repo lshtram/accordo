@@ -15,6 +15,7 @@ export { handleDiffSnapshots } from "./relay-diff-snapshots-handler.js";
 export { cropImageToBounds } from "./relay-capture-image.js";
 import { executeCaptureRegion } from "./relay-capture-execution.js";
 import { executeCaptureFullPage, executeCaptureViewport } from "./relay-capture-cdp-modes.js";
+import { resolveImplicitTargetTabId } from "./relay-implicit-target.js";
 
 
 // ── Capture Region Handler ───────────────────────────────────────────────────
@@ -76,8 +77,7 @@ export async function handleCaptureRegion(
     captureResult.success === true &&
     captureResult.dataUrl !== undefined
   ) {
-    const targetTabId = capturePayload.tabId ??
-      (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+    const targetTabId = capturePayload.tabId ?? await resolveImplicitTargetTabId();
 
     if (targetTabId !== undefined) {
       const textMapResult = await collectTextMapForTab(targetTabId);

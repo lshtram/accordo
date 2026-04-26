@@ -15,6 +15,8 @@
 
 **Rule #4:** Slides are 16:9 (1280×720 px). Think in that canvas.
 
+**Rule #5:** If a layout needs dense text to explain itself, it is the wrong layout. Split the idea or turn more of it into a visual.
+
 ---
 
 ## 2. Pattern Recognition Table
@@ -29,7 +31,7 @@
 | **Section divider** | "Now let's look at…", topic change | Full-colour divider slide | `<!-- _class: section -->` (accordo-dark/corporate) |
 | **Image + text** | Photo, diagram, screenshot beside explanation | Split: image left/right, text other half | `![bg right:42%](url)` or `![bg left:40%](url)` |
 | **Code example** | Snippet, command, config | Fenced code block, syntax highlighted | ` ```lang ` fenced block |
-| **Architecture / flow** | Components, relationships, data flow | Mermaid diagram | ` ```mermaid ` block |
+| **Architecture / flow** | Components, relationships, data flow | Pre-rendered diagram image | `![width:1000px](./assets/diagram.svg)` |
 | **Feature list** | Bullet list of capabilities | Clean bullet list, max 6 items | Standard `- item` Markdown |
 | **Closing / CTA** | "Thank you", "Next steps", "Get started" | Lead or invert + large text | `<!-- _class: lead -->` |
 
@@ -100,6 +102,8 @@ Use inline HTML. Marp renders `<div>` and `<style>` blocks faithfully.
 
 > Each inner `<div>` wraps markdown — leave a blank line after the opening tag for Marp to parse headings/bold correctly.
 
+Do not use this pattern for prose. It is only for compact metrics.
+
 ---
 
 ### 3.3 Two-Column Layout
@@ -130,6 +134,8 @@ Use inline HTML. Marp renders `<div>` and `<style>` blocks faithfully.
 </div>
 </div>
 ```
+
+Use this for comparison or paired concepts. If either side needs more than 3 bullets, split the slide.
 
 ---
 
@@ -227,22 +233,69 @@ Brief explanation below the code block.
 
 ---
 
-### 3.8 Mermaid Diagram
+### 3.8 Diagram Image
 
 ```markdown
 ---
 
 # Architecture
 
-```mermaid
-graph LR
-  A[AI Agent] -->|MCP| B[Hub]
-  B -->|WebSocket| C[Bridge]
-  C -->|VS Code API| D[Editor]
-```
+![width:1000px](./assets/architecture.svg)
 ```
 
-Keep diagrams simple — 4–6 nodes maximum for readability at 16:9.
+Use image assets as the primary path for diagrams and charts in Marp. Raw Mermaid is fallback-only in this project and should not be the default authoring path.
+
+Use the repo helper instead of inventing a renderer each time:
+
+```bash
+node scripts/render-mermaid-asset.mjs [--style vivid|calm|neutral] <input.mmd> <output.svg>
+```
+
+Suggested workflow:
+
+1. Write the Mermaid definition to `./assets/<topic>.mmd`
+2. Render to `./assets/<topic>.svg` (prefer `--style calm` for readable dark-theme charts)
+3. Place the SVG on the slide with normal image syntax
+
+When a concept slide feels too abstract, add one generated hero image:
+
+1. Generate and save `./assets/<topic>-hero.png`
+2. Place as `![bg right:42%](./assets/<topic>-hero.png)`
+3. Keep foreground text to one short headline + 2-3 bullets
+
+Keep the rest of the slide sparse. A good diagram slide is usually:
+
+- title
+- one diagram image
+- 2-3 takeaway bullets
+
+If you need a paragraph plus a legend plus 5 bullets, make a second slide.
+
+---
+
+## 3.9 Fit Budgets
+
+| Layout | Safe visible budget |
+|---|---|
+| Lead / thesis | 1 title + 1 subtitle or kicker |
+| Problem / standard content | 1 title + 3-5 bullets |
+| Split image | 1 title + 2-3 bullets + 1 short line |
+| Comparison | 2 columns, 3 bullets per side max |
+| Stats grid | 3 metrics ideal, 4 max |
+| Diagram slide | 1 image + 2-3 takeaway bullets |
+| Closing slide | 1 title + 1 short statement |
+
+When a slide exceeds its budget, split it before doing design polish.
+
+These budgets are heuristics, not guarantees. The final authority is rendered fit in Marp's actual theme box.
+
+Use the repo checker after drafting:
+
+```bash
+node scripts/check-marp-slide-fit.mjs <deck.md>
+```
+
+If it reports overflow, redesign the slide instead of arguing with the budget.
 
 ---
 

@@ -35,13 +35,9 @@ export function resolveElement(args: InspectElementArgs): Element | null {
   if (args.anchorKey) return resolveAnchorKey(normalizeIncomingAnchorKey(args.anchorKey));
   if (args.ref) return getElementByRef(args.ref);
   if (args.selector) {
-    try {
-      const matches = Array.from(document.querySelectorAll(args.selector));
-      if (matches.length === 0) return null;
-      return matches.find(isElementVisible) ?? matches[0];
-    } catch {
-      return null;
-    }
+    const matches = Array.from(document.querySelectorAll(args.selector));
+    if (matches.length === 0) return null;
+    return matches.find(isElementVisible) ?? matches[0];
   }
   if (args.nodeId !== undefined) return resolveElementByNodeId(args.nodeId);
   return null;

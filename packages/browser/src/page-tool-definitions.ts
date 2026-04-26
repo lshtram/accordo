@@ -82,13 +82,13 @@ function isSelectPageArgs(obj: unknown): obj is SelectPageArgs {
  * agents can retrieve recent snapshots without re-requesting.
  *
  * B2-SV-004: All 4 data-producing paths share the same store instance
- * with coherent 5-slot per-page FIFO retention semantics.
+ * with coherent per-page FIFO retention semantics.
  *
  * B2-CTX-001: All existing tools accept an optional `tabId` parameter.
  * New `browser_list_pages` and `browser_select_page` tools are included.
  *
  * @param relay — The relay connection to the Chrome extension
- * @param store — Shared snapshot retention store (5-slot FIFO per page)
+ * @param store — Shared snapshot retention store
  * @param security — Security configuration
  * @param screenshotStore — Optional shared screenshot retention store (GAP-G1)
  * @returns Array of 6 tool definitions

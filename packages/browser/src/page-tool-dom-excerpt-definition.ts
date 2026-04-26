@@ -3,6 +3,7 @@ import type { BrowserRelayLike } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
 import { handleGetDomExcerpt, type GetDomExcerptArgs } from "./page-tool-handlers.js";
+import { IMPLICIT_TARGET_TAB_DESCRIPTION } from "./tab-target-contract.js";
 
 export function buildGetDomExcerptTool(
   relay: BrowserRelayLike,
@@ -21,7 +22,7 @@ export function buildGetDomExcerptTool(
     inputSchema: {
       type: "object",
       properties: {
-        tabId: { type: "number", description: "B2-CTX-001: Optional tab ID to target; omit for active tab" },
+        tabId: { type: "number", description: IMPLICIT_TARGET_TAB_DESCRIPTION },
         anchorKey: { type: "string", description: "Browser comment or capture anchor key identifying the root element" },
         creationSnapshotId: { type: "string", description: "Original snapshotId recorded when the browser comment anchor was created; used to detect drift on re-resolution" },
         selector: { type: "string", description: "CSS selector for the root element" },

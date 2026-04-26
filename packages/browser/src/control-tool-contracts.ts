@@ -43,7 +43,7 @@ export interface ClickArgs {
 export interface ClickResponse {
   success: boolean;
   target?: string;
-  error?: "control-not-granted" | "tab-not-found" | "element-not-found" | "element-off-screen" | "no-target" | "browser-not-connected" | "timeout" | "action-failed";
+  error?: "control-not-granted" | "tab-not-found" | "element-not-found" | "element-off-screen" | "no-target" | "browser-not-connected" | "timeout" | "action-failed" | "invalid-request" | "iframe-cross-origin" | "no-content-script";
   message?: string;
   agentAction?: string;
   userAction?: string;
@@ -60,7 +60,7 @@ export interface TypeArgs {
 
 export interface TypeResponse {
   success: boolean;
-  error?: "control-not-granted" | "tab-not-found" | "element-not-found" | "element-not-focusable" | "no-target" | "browser-not-connected" | "timeout" | "action-failed" | "invalid-request";
+  error?: "control-not-granted" | "tab-not-found" | "element-not-found" | "element-not-focusable" | "no-target" | "browser-not-connected" | "timeout" | "action-failed" | "invalid-request" | "iframe-cross-origin" | "no-content-script";
   message?: string;
   agentAction?: string;
   userAction?: string;
