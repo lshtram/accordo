@@ -249,6 +249,50 @@ describe("comment_list", () => {
 
     expect(result.total).toBe(1);
   });
+
+  it("consistency: when comment_sync_version.threadCount > 0, comment_list discovers open threads for valid scopes", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const listTool = getToolByName(tools, "comment_list");
+    const syncTool = getToolByName(tools, "comment_sync_version");
+
+    await createTool.handler({
+      uri: "file:///project/src/consistency-text.ts",
+      anchor: { kind: "text", startLine: 12 },
+      body: "text scope thread",
+      intent: "question",
+    });
+
+    await createTool.handler({
+      scope: { modality: "slide", uri: "file:///project/demo/demo.deck.md" },
+      anchor: {
+        kind: "surface",
+        surfaceType: "slide",
+        coordinates: { type: "slide", slideIndex: 1, x: 0.5, y: 0.5 },
+      },
+      body: "slide scope thread",
+      intent: "review",
+    });
+
+    const sync = (await syncTool.handler({})) as { success: boolean; threadCount: number };
+    expect(sync.success).toBe(true);
+    expect(sync.threadCount).toBeGreaterThan(0);
+
+    const textList = (await listTool.handler({
+      scope: { modality: "text", uri: "file:///project/src/consistency-text.ts" },
+      status: "open",
+      anchorKind: "text",
+    })) as { total: number };
+
+    const slideList = (await listTool.handler({
+      scope: { modality: "slide", uri: "file:///project/demo/demo.deck.md" },
+      status: "open",
+      anchorKind: "surface",
+      intent: "review",
+    })) as { total: number };
+
+    expect(textList.total).toBeGreaterThan(0);
+    expect(slideList.total).toBeGreaterThan(0);
+  });
 });
 
 // ── comment_get ─────────────────────────────────────────────────────
