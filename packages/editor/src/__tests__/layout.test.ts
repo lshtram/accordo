@@ -226,6 +226,58 @@ describe("layoutStateHandler — §4.25 M74-LS", () => {
     const elapsed = performance.now() - start;
     expect(elapsed).toBeLessThan(5);
   });
+
+  // M74-LS-08: accordo-comments payload is summary-only (no thread/comment bodies)
+  it("M74-LS-08: strips heavy accordo-comments payload fields and bounds summary entries", async () => {
+    const commentSummary = Array.from({ length: 25 }, (_, index) => ({
+      threadId: `thread-${index}`,
+      uri: `file:///tmp/file-${index}.md`,
+      preview: `preview-${index}`,
+      intent: "question",
+      line: index + 1,
+      surfaceType: "text",
+      ignoredField: "ignore-me",
+    }));
+
+    const ideState = makeIDEState({
+      modalities: {
+        "accordo-comments": {
+          isOpen: true,
+          openThreadCount: 6,
+          resolvedThreadCount: 1,
+          summary: commentSummary,
+          tools: "Review-thread tools: comment_list | comment_get",
+          threads: [{ id: "thread-1", comments: [{ id: "c-1", body: "heavy" }] }],
+        },
+      },
+    });
+
+    const getState = vi.fn(() => ideState);
+    const result = await layoutStateHandler({}, getState);
+    expect(result).toMatchObject({ ok: true });
+
+    const okResult = result as { ok: true; state: IDEState };
+    const comments = okResult.state.modalities["accordo-comments"] as Record<string, unknown>;
+
+    expect(comments["isOpen"]).toBe(true);
+    expect(comments["openThreadCount"]).toBe(6);
+    expect(comments["resolvedThreadCount"]).toBe(1);
+
+    expect(comments).not.toHaveProperty("threads");
+    expect(comments).not.toHaveProperty("tools");
+
+    const summary = comments["summary"] as Array<Record<string, unknown>>;
+    expect(summary).toHaveLength(20);
+    expect(summary[0]).toEqual({
+      threadId: "thread-0",
+      uri: "file:///tmp/file-0.md",
+      preview: "preview-0",
+      intent: "question",
+      line: 1,
+      surfaceType: "text",
+    });
+    expect(summary[0]).not.toHaveProperty("ignoredField");
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

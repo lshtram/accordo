@@ -10,6 +10,56 @@ import type { ExtensionToolDefinition, IDEState } from "@accordo/bridge-types";
 import { errorMessage, wrapHandler } from "../util.js";
 import { barTools } from "./bar.js";
 
+const LAYOUT_STATE_COMMENT_SUMMARY_LIMIT = 20;
+
+function sanitizeCommentSummaryEntry(entry: unknown): Record<string, unknown> | null {
+  if (typeof entry !== "object" || entry === null) {
+    return null;
+  }
+  const source = entry as Record<string, unknown>;
+  const sanitized: Record<string, unknown> = {};
+
+  if (typeof source["threadId"] === "string") sanitized["threadId"] = source["threadId"];
+  if (typeof source["uri"] === "string") sanitized["uri"] = source["uri"];
+  if (typeof source["preview"] === "string") sanitized["preview"] = source["preview"];
+  if (typeof source["intent"] === "string") sanitized["intent"] = source["intent"];
+  if (typeof source["line"] === "number") sanitized["line"] = source["line"];
+  if (typeof source["surfaceType"] === "string") sanitized["surfaceType"] = source["surfaceType"];
+
+  return Object.keys(sanitized).length > 0 ? sanitized : null;
+}
+
+function sanitizeLayoutState(state: IDEState): IDEState {
+  const commentModality = state.modalities["accordo-comments"];
+  if (typeof commentModality !== "object" || commentModality === null) {
+    return state;
+  }
+
+  const source = commentModality as Record<string, unknown>;
+  const summary = Array.isArray(source["summary"]) ? source["summary"] : [];
+  const sanitizedSummary = summary
+    .slice(0, LAYOUT_STATE_COMMENT_SUMMARY_LIMIT)
+    .map(sanitizeCommentSummaryEntry)
+    .filter((entry): entry is Record<string, unknown> => entry !== null);
+
+  const sanitizedCommentModality: Record<string, unknown> = {
+    isOpen: source["isOpen"] === true,
+    openThreadCount:
+      typeof source["openThreadCount"] === "number" ? source["openThreadCount"] : 0,
+    resolvedThreadCount:
+      typeof source["resolvedThreadCount"] === "number" ? source["resolvedThreadCount"] : 0,
+    summary: sanitizedSummary,
+  };
+
+  return {
+    ...state,
+    modalities: {
+      ...state.modalities,
+      "accordo-comments": sanitizedCommentModality,
+    },
+  };
+}
+
 // ── Panel command map (§4.14) ─────────────────────────────────────────────────
 
 /** Area indicates whether the panel lives in the left sidebar or the bottom panel. */
@@ -110,7 +160,7 @@ export async function layoutStateHandler(
 ): Promise<{ ok: true; state: IDEState } | { ok: false; error: string }> {
   try {
     const state = getState();
-    return { ok: true, state };
+    return { ok: true, state: sanitizeLayoutState(state) };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -131,7 +181,7 @@ export function createLayoutTools(getState: () => IDEState): ExtensionToolDefini
       name: "accordo_layout_state",
       group: "layout",
       description:
-        "Return the full current IDE state snapshot. Call this at the start of every task to orientate yourself before taking any action.",
+        "Return the current IDE state snapshot with lightweight comment metadata only (counts + summary). Call this at the start of every task to orientate yourself before taking any action.",
       inputSchema: {
         type: "object",
         properties: {},
