@@ -241,6 +241,23 @@ Run this checklist for every module batch review:
 - [ ] Architecture docs reflect changes
 - [ ] Tests pass, typecheck clean
 
+### 7.1 Threshold Source-of-Truth Rule
+
+Numeric modularity thresholds (function/file size) are governed by
+`docs/30-development/coding-guidelines.md` §3.4.
+
+Reviewers must not enforce stricter numeric thresholds as blockers unless the stricter threshold is first documented in canonical project docs.
+
+### 7.2 Test-File Modularity Rule
+
+Test files are not bound to production file-size caps. They are reviewed for:
+
+- one primary behavior area per file
+- clear responsibility boundaries
+- readability/maintainability
+
+Reviewers may require test-file splitting when focus/cohesion degrades.
+
 ---
 
 ## 8. Exceptions to This Document

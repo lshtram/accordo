@@ -157,8 +157,9 @@ Run through every item. An unchecked item blocks the review.
 
 ### 3.4 Code Quality
 
-- [ ] No function exceeds ~40 lines (excluding comments and blank lines)
-- [ ] No file exceeds ~200 lines of implementation code (stubs + docs don't count)
+- [ ] No production/runtime function exceeds **50 lines of executable code** (excluding comments and blank lines). Target **~40** remains preferred.
+- [ ] No production/runtime file exceeds **300 lines of implementation code** (stubs + docs don't count). Target **~200** remains preferred.
+- [ ] Test files are **not** subject to the production file-size cap. They must remain focused on one primary behavior area; split when responsibility/readability degrades.
 - [ ] No duplication — logic that appears twice should be extracted into a shared function
 - [ ] No meaningful literal is hardcoded when a named source-of-truth constant/config already exists or should exist
 - [ ] No two constants/config locations represent the same meaning
@@ -188,6 +189,53 @@ Run through every item. An unchecked item blocks the review.
 - [ ] Commit message follows conventional commits format
 - [ ] No unrelated changes in the same commit
 - [ ] No leftover debug files or generated files that shouldn't be committed
+
+### 3.8 Contract-Hardening Closure Matrix (Required)
+
+For any task that changes a **public contract** (MCP tool behavior, relay/API contract, validation/error taxonomy, identity/routing semantics), include this matrix in Phase A artifacts before implementation starts:
+
+- [ ] Public input invariants are explicit
+- [ ] Invalid combinations are enumerated
+- [ ] Validation/error precedence is explicit
+- [ ] Public error vocabulary is explicit
+- [ ] Required proof boundary is explicit (unit / integration / runtime)
+- [ ] Runtime-doc impact is identified (tool description / instructions / docs resource)
+- [ ] Modularity plan is explicit for touched files/functions
+
+Review may block progression when this matrix is missing or incomplete.
+
+### 3.9 Reviewer FAIL Protocol (Required for Convergent Loops)
+
+Every FAIL response must include:
+
+1. **Blocker type**: correctness / contract / boundary-proof / error-taxonomy / modularity / architecture / SSOT / docs-alignment
+2. **Why release is blocked** (one sentence)
+3. **Done-when acceptance criteria** (explicit closure condition)
+4. **Required proof surface** (helper, package integration, relay, MCP/runtime, real E2E)
+5. **Blocker-set completeness statement**:
+   - "This is the full known blocker set for this patch", or
+   - "This is not the full blocker set; remaining dimensions: ..."
+6. **Standard source tag per blocker**:
+   - `DOC-STANDARD` (cite file/section)
+   - `TASK-SPECIFIC` (cite requirement ID)
+   - `PRECEDENT-STANDARD` (must be promoted to docs before repeated blocking use)
+7. **Fresh citations** to current file/function locations after refactors
+
+### 3.10 Escalation Rule for Non-Converging Review Loops
+
+Stop incremental patching and require a user checkpoint when **any** are true:
+
+- Two consecutive FAIL rounds introduce new blocker categories not called out previously
+- A blocking rule is stricter than documented standards
+- Review rejects evidence due to proof-surface mismatch that was not explicit in Phase A/B plans
+- Blocker citations are stale after refactors
+
+At this checkpoint, present:
+
+- full current blocker matrix
+- documented vs precedent-only blocker split
+- exact remaining closure conditions
+- recommendation: continue implementation vs clarify policy first
 
 ---
 
