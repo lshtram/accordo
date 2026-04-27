@@ -7,9 +7,12 @@ export type { HubHealthEvents, HubHealthSharedState } from "./hub-health.js";
 export type { SecretStorage, OutputChannel, HubManagerConfig, HubManagerEvents } from "./hub-manager-state.js";
 import type { SecretStorage, OutputChannel, HubManagerConfig, HubManagerEvents } from "./hub-manager-state.js";
 import type { HubProcessSharedState } from "./hub-process.js";
-import type { HubHealthSharedState } from "./hub-health.js";
+import type { HubHealthSharedState } from "./hub-health-types.js";
+import type { HubRebindProbeReport } from "./hub-rebind-types.js";
+import type { HealthResponse } from "@accordo/bridge-types";
 import { HubProcess } from "./hub-process.js";
 import { HubHealth } from "./hub-health.js";
+import { HubRebindDiagnosticRecorder } from "./hub-manager-diagnostics.js";
 import { activateHub, generateHubCredentials, probeExistingHub } from "./hub-manager-activate.js";
 import { pollHealth } from "./hub-manager-polling.js";
 import { spawnAndWaitHub } from "./hub-manager-spawn.js";
@@ -25,6 +28,7 @@ export class HubManager {
     restartAttempted: false, killRequested: false,
   };
   readonly healthState: HubHealthSharedState = { port: 0 };
+  readonly diagnosticSink: HubRebindDiagnosticRecorder;
   private port: number;
   private restartInProgress = false;
   private deactivated = false;
@@ -45,6 +49,7 @@ export class HubManager {
       this.processState,
     );
     this.hubHealth = new HubHealth(outputChannel, this.healthState);
+    this.diagnosticSink = new HubRebindDiagnosticRecorder(outputChannel);
   }
   // Public API
   async activate(): Promise<void> { return activateHub(this); }
@@ -69,7 +74,8 @@ export class HubManager {
   isProcessAlive(pid: number): boolean { return this.hubProcess.isProcessAlive(pid); }
   // Lifecycle methods
   async generateHubCredentials(): Promise<{ secret: string; token: string }> { return generateHubCredentials(this); }
-  async probeExistingHub(): Promise<{ alive: boolean; port: number }> { return probeExistingHub(this); }
+  async probeExistingHub(): Promise<HubRebindProbeReport> { return probeExistingHub(this); }
+  async readHealth(port: number): Promise<HealthResponse | null> { return this.hubHealth.readHealth(port); }
   async checkHealth(): Promise<boolean> { return this.hubHealth.checkHealth(); }
   async killHub(): Promise<void> { return this.hubProcess.killHub(); }
   async spawn(secret: string, token: string): Promise<void> {

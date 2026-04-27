@@ -319,10 +319,11 @@ On activation:
 3. If either is absent, generate fresh credentials, persist them, and use them for first launch for that project.
 4. If `autoStart` is enabled, probe `~/.accordo/hubs.json` for the current `projectId`:
    a. If an entry exists, verify the recorded PID is alive.
-   b. Call `GET /health` on the recorded port.
-   c. If healthy, emit reconnect-ready state and skip spawn.
-   d. If stale or unhealthy, ignore the entry and continue to spawn.
-5. If no healthy Hub is found and `autoStart` is true:
+   b. Call `GET /health` on the recorded port using a port-explicit health-reader contract and parse the full JSON body.
+   c. Classify the probe outcome: `bridge-connected`, `registry-loaded` (`bridge:"disconnected"` + `toolCount > 0`), `registry-empty` (`bridge:"disconnected"` + `toolCount === 0`), `registry-unreachable`, `registry-stale`, or `registry-missing`.
+   d. Reuse only `bridge-connected` and `registry-loaded`. Treat `registry-empty`, `registry-stale`, and `registry-unreachable` as non-reusable and continue to spawn/hard-recovery flow.
+   e. Emit a structured startup diagnostic record containing `projectId`, `registryPath`, `outcome`, and when known `pid`, `port`, `bridge`, `toolCount`, `protocolVersion`, without logging secrets or tokens.
+5. If no reusable Hub is found and `autoStart` is true:
    a. Spawn Hub: `execFile(nodePath, [hubEntry, '--port', port, '--project-id', projectId, '--registry', ~/.accordo/hubs.json], { env })`
    b. `env` includes `ACCORDO_BRIDGE_SECRET`, `ACCORDO_TOKEN`, `ACCORDO_HUB_PORT`, `ACCORDO_REGISTRY_PATH`.
    c. Hub picks the first free port and writes/updates its own `~/.accordo/hubs.json` entry for `projectId`.

@@ -123,6 +123,7 @@ Group 1:
 | Method | `GET` |
 | Authentication | None |
 | Response | `{ "ok": true, "uptime": <seconds>, "bridge": "connected"\|"disconnected", "toolCount": <number>, "protocolVersion": <string>, "inflight": <number>, "queued": <number> }` |
+| Rebind semantics | Bridge restart/reload decisions MUST treat `bridge:"disconnected"` + `toolCount > 0` as **reconnect-ready original registry state**, and `bridge:"disconnected"` + `toolCount === 0` as **empty registry state** that is not sufficient for deterministic reuse. |
 
 ### 2.5 WebSocket Server — `/bridge`
 

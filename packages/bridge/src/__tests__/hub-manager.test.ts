@@ -106,6 +106,7 @@ import type {
   SecretStorage,
   OutputChannel,
 } from "../hub-manager.js";
+import type { HubRebindProbeReport } from "../hub-rebind-probe.js";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -145,6 +146,19 @@ function makeEvents() {
     get errorCallCount() { return errorCallCount; },
     get rotatedCallCount() { return rotatedCallCount; },
     get credentialArgs() { return credentialArgs; },
+  };
+}
+
+function makeProbeReport(overrides: Partial<HubRebindProbeReport> = {}): HubRebindProbeReport {
+  return {
+    projectId: "test-project",
+    registryPath: "/tmp/accordo-test-registry.json",
+    outcome: "registry-missing",
+    reusable: false,
+    port: 0,
+    entry: null,
+    health: null,
+    ...overrides,
   };
 }
 
@@ -874,7 +888,10 @@ describe("HubManager — portFilePath: dynamic port discovery", () => {
         secrets: { "accordo.test-project.bridgeSecret": "s", "accordo.test-project.hubToken": "t" },
         config: { port: 3000, registryPath: tmpReg, autoStart: true },
       });
-      vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+      vi.spyOn(manager, "readHealth").mockResolvedValue({
+        ok: true, uptime: 5, bridge: "connected", toolCount: 3,
+        protocolVersion: "1.0.0", inflight: 0, queued: 0,
+      });
       vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
       vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
 
@@ -1032,7 +1049,7 @@ describe("HubManager — probeExistingHub() (PE-01 to PE-05)", () => {
     vi.restoreAllMocks();
   });
 
-  it("PE-01: probeExistingHub() returns { alive: true, port } when registry entry has live PID and health responds 200", async () => {
+  it("PE-01: probeExistingHub() returns registry-loaded when registry entry has live PID and health responds 200", async () => {
     // Set up a real registry with a valid entry for test-project
     const tmpReg = path.join(os.tmpdir(), `accordo-pe01-${process.pid}.json`);
     fs.writeFileSync(tmpReg, JSON.stringify({
@@ -1045,19 +1062,25 @@ describe("HubManager — probeExistingHub() (PE-01 to PE-05)", () => {
         config: { port: 3000, registryPath: tmpReg, autoStart: false },
       });
 
-      vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+      vi.spyOn(manager, "readHealth").mockResolvedValue({
+        ok: true, uptime: 5, bridge: "disconnected", toolCount: 10,
+        protocolVersion: "1.0.0", inflight: 0, queued: 0,
+      });
 
       const result = await manager.probeExistingHub();
 
-      expect(result.alive).toBe(true);
+      expect(result.outcome).toBe("registry-loaded");
+      expect(result.reusable).toBe(true);
       expect(result.port).toBe(3000);
     } finally {
       try { fs.unlinkSync(tmpReg); } catch { /* ok */ }
     }
   });
 
-  it("PE-02: probeExistingHub() returns { alive: false, port: 0 } when registry has dead PID (stale entry)", async () => {
+  it("PE-02: probeExistingHub() returns registry-missing when registry entry has dead PID (stale entry removed by probeRegistryEntry)", async () => {
     // Registry entry points to a guaranteed-dead PID; probeRegistryEntry removes it
+    // and probeHubRebind sees no entry → registry-missing (not registry-stale).
+    // This is the correct LCM-14 contract: stale entries are cleaned silently.
     const tmpReg = path.join(os.tmpdir(), `accordo-pe02-${process.pid}.json`);
     fs.writeFileSync(tmpReg, JSON.stringify({
       "test-project": { pid: 1073741824, port: 3000, startedAt: new Date().toISOString() },
@@ -1069,16 +1092,21 @@ describe("HubManager — probeExistingHub() (PE-01 to PE-05)", () => {
         config: { port: 3000, registryPath: tmpReg, autoStart: false },
       });
 
+      // No readHealth spy needed — probeRegistryEntry returns null (entry removed)
+      // before readHealth is ever called. Outcome is registry-missing.
+
       const result = await manager.probeExistingHub();
 
-      expect(result.alive).toBe(false);
+      // After removeStaleEntry, registry has no entry for test-project → registry-missing
+      expect(result.outcome).toBe("registry-missing");
+      expect(result.reusable).toBe(false);
       expect(result.port).toBe(0);
     } finally {
       try { fs.unlinkSync(tmpReg); } catch { /* ok */ }
     }
   });
 
-  it("PE-03: probeExistingHub() returns { alive: false, port: 0 } when no registry entry exists", async () => {
+  it("PE-03: probeExistingHub() returns registry-missing when no registry entry exists", async () => {
     const { manager } = makeManager({
       secrets: { "accordo.test-project.bridgeSecret": "s", "accordo.test-project.hubToken": "t" },
       config: {
@@ -1090,11 +1118,12 @@ describe("HubManager — probeExistingHub() (PE-01 to PE-05)", () => {
 
     const result = await manager.probeExistingHub();
 
-    expect(result.alive).toBe(false);
+    expect(result.outcome).toBe("registry-missing");
+    expect(result.reusable).toBe(false);
     expect(result.port).toBe(0);
   });
 
-  it("PE-04: probeExistingHub() returns { alive: false, port: 0 } when PID alive but health fails", async () => {
+  it("PE-04: probeExistingHub() returns registry-unreachable when PID alive but health fails", async () => {
     // Valid entry in registry, but the Hub is not responding to health checks
     const tmpReg = path.join(os.tmpdir(), `accordo-pe04-${process.pid}.json`);
     fs.writeFileSync(tmpReg, JSON.stringify({
@@ -1107,11 +1136,12 @@ describe("HubManager — probeExistingHub() (PE-01 to PE-05)", () => {
         config: { port: 3000, registryPath: tmpReg, autoStart: false },
       });
 
-      vi.spyOn(manager, "checkHealth").mockResolvedValue(false);
+      vi.spyOn(manager, "readHealth").mockResolvedValue(null);
 
       const result = await manager.probeExistingHub();
 
-      expect(result.alive).toBe(false);
+      expect(result.outcome).toBe("registry-unreachable");
+      expect(result.reusable).toBe(false);
       expect(result.port).toBe(0);
     } finally {
       try { fs.unlinkSync(tmpReg); } catch { /* ok */ }
@@ -1131,11 +1161,15 @@ describe("HubManager — probeExistingHub() (PE-01 to PE-05)", () => {
         config: { port: 3000, registryPath: tmpReg, autoStart: false },
       });
 
-      vi.spyOn(manager, "checkHealth").mockResolvedValue(true);
+      vi.spyOn(manager, "readHealth").mockResolvedValue({
+        ok: true, uptime: 5, bridge: "disconnected", toolCount: 10,
+        protocolVersion: "1.0.0", inflight: 0, queued: 0,
+      });
 
       const result = await manager.probeExistingHub();
 
-      expect(result.alive).toBe(true);
+      expect(result.outcome).toBe("registry-loaded");
+      expect(result.reusable).toBe(true);
       // Port must come from the registry entry, not the config default
       expect(result.port).toBe(4321);
     } finally {
@@ -1165,7 +1199,7 @@ describe("HubManager — activate() reconnect-first (AR-01 to AR-07)", () => {
     });
 
     // Simulate: Hub is alive at existing port, health check passes
-    vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: true, port: 3000 });
+    vi.spyOn(manager, "probeExistingHub").mockResolvedValue(makeProbeReport({ outcome: "registry-loaded", reusable: true, port: 3000 }));
     const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
 
     // RED: probeExistingHub() and reconnect path not yet implemented in activate()
@@ -1184,7 +1218,7 @@ describe("HubManager — activate() reconnect-first (AR-01 to AR-07)", () => {
       config: { port: 3000, autoStart: true },
     });
 
-    const probeSpy = vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: false, port: 0 });
+    const probeSpy = vi.spyOn(manager, "probeExistingHub").mockResolvedValue(makeProbeReport({ outcome: "registry-missing", reusable: false, port: 0 }));
     const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
     vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
 
@@ -1203,7 +1237,7 @@ describe("HubManager — activate() reconnect-first (AR-01 to AR-07)", () => {
     });
 
     // probeExistingHub fails at health step → returns alive=false
-    const probeSpy = vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: false, port: 0 });
+    const probeSpy = vi.spyOn(manager, "probeExistingHub").mockResolvedValue(makeProbeReport({ outcome: "registry-unreachable", reusable: false, port: 0 }));
     const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
     vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
 
@@ -1221,7 +1255,7 @@ describe("HubManager — activate() reconnect-first (AR-01 to AR-07)", () => {
       config: { port: 3000, autoStart: true },
     });
 
-    vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: true, port: 3000 });
+    vi.spyOn(manager, "probeExistingHub").mockResolvedValue(makeProbeReport({ outcome: "registry-loaded", reusable: true, port: 3000 }));
     vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
 
     // RED: reconnect-first logic not implemented
@@ -1244,7 +1278,7 @@ describe("HubManager — activate() reconnect-first (AR-01 to AR-07)", () => {
       config: { port: 3000, autoStart: true },
     });
 
-    vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: true, port: 3000 });
+    vi.spyOn(manager, "probeExistingHub").mockResolvedValue(makeProbeReport({ outcome: "bridge-connected", reusable: true, port: 3000 }));
     vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
 
     // RED: reconnect-first logic not implemented; isReconnect flag not yet in onHubReady
@@ -1271,7 +1305,7 @@ describe("HubManager — activate() reconnect-first (AR-01 to AR-07)", () => {
       config: { port: 3000, autoStart: true },
     });
 
-    vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: false, port: 0 });
+    vi.spyOn(manager, "probeExistingHub").mockResolvedValue(makeProbeReport({ outcome: "registry-empty", reusable: false, port: 0 }));
     vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
     vi.spyOn(manager, "pollHealth").mockResolvedValue(true);
 
@@ -1293,7 +1327,7 @@ describe("HubManager — activate() reconnect-first (AR-01 to AR-07)", () => {
       config: { port: 3000, autoStart: false },
     });
 
-    const probeSpy = vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: false, port: 0 });
+    const probeSpy = vi.spyOn(manager, "probeExistingHub").mockResolvedValue(makeProbeReport({ outcome: "registry-missing", reusable: false, port: 0 }));
     const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
 
     await manager.activate();
@@ -1311,7 +1345,7 @@ describe("HubManager — activate() reconnect-first (AR-01 to AR-07)", () => {
     });
 
     // Spy on probeExistingHub — must NOT be called on first launch (no token to reconnect with)
-    const probeSpy = vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: false, port: 0 });
+    const probeSpy = vi.spyOn(manager, "probeExistingHub").mockResolvedValue(makeProbeReport({ outcome: "registry-missing", reusable: false, port: 0 }));
     // Spy on generateHubCredentials — MUST be called on first launch
     // RED: generateHubCredentials() throws "not implemented" — activate() does not call it yet
     const genCredsSpy = vi.spyOn(manager, "generateHubCredentials").mockResolvedValue({
@@ -1356,7 +1390,7 @@ describe("HubManager — project-scoped reconnect state (SC-01 to SC-04)", () =>
       secrets: { "accordo.projectA.bridgeSecret": "s", "accordo.projectA.hubToken": "t" },
       config: { projectId: "projectA", autoStart: true },
     });
-    vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: true, port: 3000 });
+    vi.spyOn(manager, "probeExistingHub").mockResolvedValue(makeProbeReport({ outcome: "registry-loaded", reusable: true, port: 3000 }));
     const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
 
     await manager.activate();
@@ -1381,7 +1415,7 @@ describe("HubManager — project-scoped reconnect state (SC-01 to SC-04)", () =>
       .mockReturnValueOnce("b-secret" as `${string}-${string}-${string}-${string}-${string}`)
       .mockReturnValueOnce("b-token" as `${string}-${string}-${string}-${string}-${string}`);
 
-    vi.spyOn(manager, "probeExistingHub").mockResolvedValue({ alive: true, port: 3000 }); // Project A's Hub alive
+    vi.spyOn(manager, "probeExistingHub").mockResolvedValue(makeProbeReport({ outcome: "registry-loaded", reusable: true, port: 3000 })); // Project A's Hub alive
     const spawnSpy = vi.spyOn(manager["hubProcess"], "spawn").mockResolvedValue(undefined);
     const genCredsSpy = vi.spyOn(manager, "generateHubCredentials").mockResolvedValue({
       secret: "b-secret",
@@ -1433,8 +1467,8 @@ describe("HubManager — project-scoped reconnect state (SC-01 to SC-04)", () =>
       events,
     );
 
-    vi.spyOn(managerA, "probeExistingHub").mockResolvedValue({ alive: true, port: 3000 });
-    vi.spyOn(managerB, "probeExistingHub").mockResolvedValue({ alive: true, port: 4000 });
+    vi.spyOn(managerA, "probeExistingHub").mockResolvedValue(makeProbeReport({ projectId: "projectA", outcome: "registry-loaded", reusable: true, port: 3000 }));
+    vi.spyOn(managerB, "probeExistingHub").mockResolvedValue(makeProbeReport({ projectId: "projectB", outcome: "registry-loaded", reusable: true, port: 4000 }));
 
     await managerA.activate();
     await managerB.activate();

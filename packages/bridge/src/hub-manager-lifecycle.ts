@@ -3,9 +3,10 @@
  * Requirements: requirements-bridge.md §4 (LCM-12), adr-reload-reconnect.md §D1-D3
  */
 
+import * as crypto from "node:crypto";
 import type { HubManagerEvents, SecretStorage } from "./hub-manager-state.js";
 import type { HubProcessSharedState } from "./hub-process.js";
-import type { HubHealthSharedState } from "./hub-health.js";
+import type { HubHealthSharedState } from "./hub-health-types.js";
 import { scopedSecretKey, BRIDGE_SECRET_KEY, HUB_TOKEN_KEY } from "./project-identity.js";
 import { probeRegistryEntry, resolveRegistryPath } from "./hub-registry.js";
 

@@ -8,11 +8,11 @@
  */
 
 import type { HubProcessSharedState } from "./hub-process.js";
-import type { HubHealthSharedState } from "./hub-health.js";
+import type { HubHealthSharedState } from "./hub-health-types.js";
 
 // Re-export from upstream modules
 export type { HubProcessSharedState } from "./hub-process.js";
-export type { HubHealthSharedState } from "./hub-health.js";
+export type { HubHealthSharedState } from "./hub-health-types.js";
 
 // ── Abstractions for testability (no direct vscode import) ──────────────────
 
