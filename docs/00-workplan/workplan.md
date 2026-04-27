@@ -176,9 +176,9 @@
 
 ---
 
-### Priority T — Hub Original Registry Rebinding
+### ~~Priority T — Hub Original Registry Rebinding~~ ✅ COMPLETE (2026-04-27)
 
-**Status:** In progress from live session restart validation (2026-04-22). Core startup race fix landed (2026-04-24, `37fa74d`); continue validation/hardening.
+**Status:** Completed. Rebind hardening finalized with deterministic handshake classification, bridge-owned recovery path, diagnostics wiring, and full bridge/hub validation.
 
 **Problem:** We still have a reliability gap around the Hub's original registry/rebind path after restart/reload. In some restarts the Hub is reachable but comes up with `bridge: disconnected` and `toolCount: 0` until additional recovery steps, indicating registry/session rebinding drift.
 
@@ -196,10 +196,18 @@
 2. Tool registry repopulates deterministically on restart/reload flows.
 3. Live health checks show consistent non-zero `toolCount` after normal boot.
 4. Automated tests cover stale/empty/original registry edge cases.
+5. Startup diagnostics classify `registry-missing`, `registry-stale`, `registry-unreachable`, `registry-empty`, `registry-loaded`, and `bridge-connected` outcomes without exposing secrets.
 
-**Execution note:** Revisit this as a dedicated hardening module after current priority queue.
+**Completion notes (2026-04-27):**
+1. Added deterministic rebind outcome contract (`registry-missing`, `registry-stale`, `registry-unreachable`, `registry-empty`, `registry-loaded`, `bridge-connected`) with explicit reusable vs non-reusable branching.
+2. Implemented bridge-side health parsing/readback and startup probe wiring via `probeHubRebind` + `activateHub` decision path.
+3. Added structured bridge diagnostics sink for startup probe outcomes without secret/token leakage.
+4. Added and stabilized dedicated rebind test suites under `packages/bridge/src/__tests__/rebind/`.
+5. Verified full package health:
+   - `accordo-bridge`: 518/518 passing tests
+   - `accordo-hub`: 627/627 passing tests (15 skipped)
 
-**Update (2026-04-24):** Bridge startup race remediated in `37fa74d` by switching initial spawn path from one-shot health probe to `pollHealth` retry loop. This prevents missing `onHubReady` when Hub bind is slightly delayed and removes the common `bridge: disconnected` + `toolCount: 0` first-boot failure.
+**Historical update (2026-04-24):** Bridge startup race remediated in `37fa74d` by switching initial spawn path from one-shot health probe to `pollHealth` retry loop.
 
 ---
 
