@@ -302,8 +302,11 @@ describe("B2-CTX-001: multi-tab support", () => {
   describe('"select_page" action', () => {
     it("B2-CTX-001: with valid tabId → calls chrome.tabs.update and returns success", async () => {
       globalThis.chrome.tabs.update = vi.fn().mockResolvedValue({
-        id: 2, url: "https://example.com/page2", status: "complete", active: true,
+        id: 2, url: "https://example.com/page2", status: "complete", active: true, windowId: 10,
       } as chrome.tabs.Tab);
+      globalThis.chrome.windows.update = vi.fn().mockResolvedValue({
+        id: 10, focused: true,
+      } as chrome.windows.Window);
 
       const result = await handleRelayAction({
         requestId: "req-1",

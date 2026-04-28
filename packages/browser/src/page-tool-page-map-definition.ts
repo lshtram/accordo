@@ -16,6 +16,7 @@ export function buildGetPageMapTool(
     description:
       "Collect a structured page map from the current document. " +
       "Returns an array of nodes, each with: uid (frame-scoped reference for click/type, format \"{frameId}:{nodeId}\"), " +
+      "ref (stable element reference for single-frame inspect targeting), " +
       "tag (HTML tag name), nodeId (snapshot-scoped index), persistentId (content-derived stable ID), " +
       "id (element id attribute), role (explicit role=\"\" attribute if set), name (computed accessible name), " +
       "text (direct child text content), attrs (selected element attributes), " +

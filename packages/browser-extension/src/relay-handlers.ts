@@ -42,9 +42,16 @@ export {
 
 export {
   handleListPages,
-  handleManageSnapshots,
   handleSelectPage,
 } from "./relay-tab-handlers.js";
+
+export { handleManageSnapshots } from "./relay-snapshot-handlers.js";
+
+export {
+  probeTabExists,
+  confirmTabActivation,
+  confirmWindowFocus,
+} from "./relay-select-page.js";
 
 export {
   handleNavigate,

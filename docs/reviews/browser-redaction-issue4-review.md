@@ -2,7 +2,18 @@
 
 ### Findings
 
-- High — `docs/20-requirements/requirements-browser-mcp.md:90-92` still says **all** `capture_region` responses must emit `redactionWarning: "screenshots-not-subject-to-redaction-policy"` whenever a `RedactionPolicy` exists, but `docs/20-requirements/requirements-browser-mcp.md:201-202` now says explicit `redactPII:false` suppresses screenshot redaction attempts and omits that warning. **Done when:** MCP-VC-005 and MCP-SEC-005 are reconciled so the requirements document expresses one capture-warning contract, including the explicit-`false` carveout if that is the intended behavior.
+~~High — `docs/20-requirements/requirements-browser-mcp.md:90-92` still says **all** `capture_region` responses must emit `redactionWarning: "screenshots-not-subject-to-redaction-policy"` whenever a `RedactionPolicy` exists, but `docs/20-requirements/requirements-browser-mcp.md:201-202` now says explicit `redactPII:false` suppresses screenshot redaction attempts and omits that warning.~~
+
+~~**Done when:** MCP-VC-005 and MCP-SEC-005 are reconciled so the requirements document expresses one capture-warning contract, including the explicit-`false` carveout if that is the intended behavior.~~
+
+**Resolved** — Issue #4 is approved on current HEAD.
+
+**Original blocker:** `MCP-VC-005` (§90-92) and `MCP-SEC-005` (§201-202) contained a contradiction — one required `redactionWarning` on every screenshot whenever a policy existed; the other excluded explicit `redactPII:false`.
+
+**Resolution:** Both sections now agree:
+- Warning **may appear** when a policy exists and screenshot redaction was relevant but not applied.
+- Warning **is omitted** when no policy exists.
+- Explicit `redactPII:false` suppresses screenshot redaction and omits the warning.
 
 ### Verification notes
 
@@ -21,4 +32,4 @@
 
 ### Verdict
 
-- Not approved for issue #4 yet because the requirements document still contains a contradictory capture-warning contract.
+- **Approved** on current HEAD — issue #4 is resolved.

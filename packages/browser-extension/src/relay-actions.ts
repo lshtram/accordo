@@ -5,6 +5,7 @@
  * (service-worker.ts, relay-bridge.ts, tests) import from this file.
  * The actual logic lives in:
  *   - relay-definitions.ts  — types, defaultStore, isVersionedSnapshot
+ *   - relay-dispatch-table.ts — action → handler dispatch map
  *   - relay-handlers.ts     — handler implementations per action
  *   - relay-forwarder.ts    — cross-context messaging utilities
  *
@@ -15,37 +16,8 @@
 
 import { resetDefaultManager } from "./snapshot-versioning.js";
 import { defaultStore } from "./relay-definitions.js";
-import { getErrorMeta, type RelayActionRequest, type RelayActionResponse } from "./relay-definitions.js";
-import {
-  handleGetAllComments,
-  handleGetComments,
-  handleCreateComment,
-  handleReplyComment,
-  handleDeleteComment,
-  handleResolveThread,
-  handleReopenThread,
-  handleDeleteThread,
-  handleNotifyCommentsUpdated,
-  handleGetPageMap,
-  handleInspectElement,
-  handleGetDomExcerpt,
-  handleCaptureRegion,
-  handleDiffSnapshots,
-  handleWaitFor,
-  handleGetTextMap,
-  handleGetSemanticGraph,
-  handleGetSpatialRelations,
-  handleListPages,
-  handleManageSnapshots,
-  handleSelectPage,
-} from "./relay-handlers.js";
-
-import {
-  handleNavigate,
-  handleClick,
-  handleType,
-  handlePressKey,
-} from "./relay-control-handlers.js";
+import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
+import { dispatchMap, unsupportedResponse, failedResponse } from "./relay-dispatch-table.js";
 
 // ── Re-exports (preserve public API surface) ─────────────────────────────────
 
@@ -82,81 +54,22 @@ export function handleNavigationReset(): void {
 /**
  * Main dispatch switch — routes each RelayAction to its handler.
  *
- * This function is the single entry point for all relay actions. It delegates
- * to focused handler functions in relay-handlers.ts.
+ * Delegates to the dispatch map in relay-dispatch-table.ts.
+ * capture_full_page_screenshot is the only action with payload transformation.
  */
 export async function handleRelayAction(request: RelayActionRequest): Promise<RelayActionResponse> {
   try {
-    switch (request.action) {
-      // ── Comment actions ──
-      case "get_all_comments":
-        return await handleGetAllComments(request);
-      case "get_comments":
-        return await handleGetComments(request);
-      case "create_comment":
-        return await handleCreateComment(request);
-      case "reply_comment":
-        return await handleReplyComment(request);
-      case "delete_comment":
-        return await handleDeleteComment(request);
-      case "resolve_thread":
-        return await handleResolveThread(request);
-      case "reopen_thread":
-        return await handleReopenThread(request);
-      case "delete_thread":
-        return await handleDeleteThread(request);
-      case "notify_comments_updated":
-        return await handleNotifyCommentsUpdated(request);
-
-      // ── Page understanding actions ──
-      case "get_page_map":
-        return await handleGetPageMap(request);
-      case "inspect_element":
-        return await handleInspectElement(request);
-      case "get_dom_excerpt":
-        return await handleGetDomExcerpt(request);
-      case "get_text_map":
-        return await handleGetTextMap(request);
-      case "get_semantic_graph":
-        return await handleGetSemanticGraph(request);
-      case "get_spatial_relations":
-        return await handleGetSpatialRelations(request);
-
-      // ── Capture and diff ──
-      case "capture_region":
-        return await handleCaptureRegion(request);
-      case "capture_full_page_screenshot":
-        // P4-CR: Full-page screenshot is routed through handleCaptureRegion with mode="fullPage"
-        return await handleCaptureRegion({ ...request, payload: { ...request.payload, mode: "fullPage" } });
-      case "diff_snapshots":
-        return await handleDiffSnapshots(request);
-
-      // ── Wait ──
-      case "wait_for":
-        return await handleWaitFor(request);
-
-      // ── Multi-tab ──
-      case "manage_snapshots":
-        return await handleManageSnapshots(request);
-      case "list_pages":
-        return await handleListPages(request);
-      case "select_page":
-        return await handleSelectPage(request);
-
-      // ── Browser control ──
-      case "navigate":
-        return await handleNavigate(request);
-      case "click":
-        return await handleClick(request);
-      case "type":
-        return await handleType(request);
-      case "press_key":
-        return await handlePressKey(request);
-
-      default:
-        return { requestId: request.requestId, success: false, error: "unsupported-action", ...getErrorMeta("unsupported-action") };
+    // capture_full_page_screenshot is a virtual action — route through capture_region
+    if (request.action === "capture_full_page_screenshot") {
+      const handler = dispatchMap["capture_region"];
+      if (handler) return await handler({ ...request, action: "capture_region", payload: { ...request.payload, mode: "fullPage" } });
+      return unsupportedResponse(request);
     }
-  } catch (error: unknown) {
-    return { requestId: request.requestId, success: false, error: "action-failed", ...getErrorMeta("action-failed") };
+
+    const handler = dispatchMap[request.action];
+    if (handler) return await handler(request);
+    return unsupportedResponse(request);
+  } catch {
+    return failedResponse(request);
   }
 }

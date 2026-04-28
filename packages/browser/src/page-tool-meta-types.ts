@@ -31,6 +31,7 @@ export interface SelectPageResponse {
 }
 
 export interface GetSpatialRelationsArgs {
+  snapshotId: string;
   tabId?: number;
   nodeIds?: number[];
   uids?: string[];
@@ -73,10 +74,12 @@ export type RelayError = "browser-not-connected" | "timeout" | "action-failed";
 export type FrameError = "iframe-cross-origin" | "no-content-script";
 export type SecurityError = "origin-blocked" | "redaction-failed";
 export type SpatialError = "too-many-nodes" | "no-bounds";
+export type SnapshotError = "snapshot-not-found" | "snapshot-stale";
 export type BrowserToolErrorCode =
   | RelayError
   | SecurityError
   | SpatialError
+  | SnapshotError
   | FrameError
   | CaptureError;
 

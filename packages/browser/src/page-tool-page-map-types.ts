@@ -41,6 +41,12 @@ export interface GetPageMapArgs {
 export interface PageMapNode {
   /** Frame-scoped stable reference for click/type operations (format: "{frameId}:{nodeId}"). */
   uid?: string;
+  /**
+   * Stable element reference used as an idempotency key by inspect_element.
+   * Present in the runtime payload; agents should prefer `uid` for cross-frame
+   * targeting but `ref` is available for single-frame lookups.
+   */
+  ref?: string;
   /** HTML tag name in lowercase. */
   tag: string;
   /** Monotonically increasing node index within the snapshot. */

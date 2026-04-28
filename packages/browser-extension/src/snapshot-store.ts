@@ -1,9 +1,11 @@
 /**
  * SnapshotStore — in-memory FIFO store with configurable per-page retention.
+ * Eviction helpers live in snapshot-eviction.ts.
  */
 
 import type { SnapshotNotFound, VersionedSnapshot } from "./snapshot-store-types.js";
 import { DEFAULT_RETENTION_SIZE } from "./snapshot-versioning-types.js";
+import { evictExpired, evictOne } from "./snapshot-eviction.js";
 
 export type { SnapshotNotFound, VersionedSnapshot } from "./snapshot-store-types.js";
 
@@ -28,7 +30,7 @@ export class SnapshotStore {
 
   async save(pageId: string, snapshot: VersionedSnapshot): Promise<void> {
     let list = this.pageSnapshots.get(pageId) ?? [];
-    if (this.maxAgeMs > 0) list = this.evictExpired(list);
+    if (this.maxAgeMs > 0) list = evictExpired(this.maxAgeMs, this.capturedAt, this.bySnapshotId, list);
     list.push(snapshot);
     this.bySnapshotId.set(snapshot.snapshotId, snapshot);
     this.capturedAt.set(snapshot.snapshotId, Date.now());
@@ -46,7 +48,7 @@ export class SnapshotStore {
     const snapshot = this.bySnapshotId.get(snapshotId);
     if (snapshot === undefined) return { error: "snapshot-not-found" };
     if (this.maxAgeMs > 0 && this.isExpired(snapshotId)) {
-      this.evictOne(snapshotId, snapshot.pageId);
+      evictOne(snapshotId, snapshot.pageId, this.pageSnapshots, this.bySnapshotId, this.capturedAt);
       return { error: "snapshot-not-found" };
     }
     return snapshot;
@@ -55,21 +57,21 @@ export class SnapshotStore {
   async getLatest(pageId: string): Promise<VersionedSnapshot | undefined> {
     let list = this.pageSnapshots.get(pageId);
     if (list === undefined || list.length === 0) return undefined;
-    if (this.maxAgeMs > 0) list = this.evictExpired(list);
+    if (this.maxAgeMs > 0) list = evictExpired(this.maxAgeMs, this.capturedAt, this.bySnapshotId, list);
     if (list.length === 0) return undefined;
     return list[list.length - 1];
   }
 
   async list(pageId: string): Promise<VersionedSnapshot[]> {
     let list = this.pageSnapshots.get(pageId) ?? [];
-    if (this.maxAgeMs > 0) list = this.evictExpired(list);
+    if (this.maxAgeMs > 0) list = evictExpired(this.maxAgeMs, this.capturedAt, this.bySnapshotId, list);
     return list.slice().reverse();
   }
 
   listAll(): Map<string, VersionedSnapshot[]> {
     if (this.maxAgeMs > 0) {
       for (const [pageId, list] of this.pageSnapshots.entries()) {
-        const pruned = this.evictExpired(list);
+        const pruned = evictExpired(this.maxAgeMs, this.capturedAt, this.bySnapshotId, list);
         if (pruned.length === 0) {
           this.pageSnapshots.delete(pageId);
         } else {
@@ -116,7 +118,7 @@ export class SnapshotStore {
     if (target === undefined) return undefined;
     let list = this.pageSnapshots.get(target.pageId);
     if (list === undefined) return undefined;
-    if (this.maxAgeMs > 0) list = this.evictExpired(list);
+    if (this.maxAgeMs > 0) list = evictExpired(this.maxAgeMs, this.capturedAt, this.bySnapshotId, list);
     const idx = list.findIndex((s) => s.snapshotId === snapshotId);
     if (idx <= 0) return undefined;
     return list[idx - 1];
@@ -126,35 +128,5 @@ export class SnapshotStore {
     const captured = this.capturedAt.get(snapshotId);
     if (captured === undefined) return false;
     return Date.now() - captured > this.maxAgeMs;
-  }
-
-  private evictExpired(list: VersionedSnapshot[]): VersionedSnapshot[] {
-    if (this.maxAgeMs <= 0) return list;
-    const now = Date.now();
-    const initial = list.length;
-    const pruned = list.filter((s) => {
-      const captured = this.capturedAt.get(s.snapshotId);
-      if (captured !== undefined && now - captured > this.maxAgeMs) {
-        this.bySnapshotId.delete(s.snapshotId);
-        this.capturedAt.delete(s.snapshotId);
-        return false;
-      }
-      return true;
-    });
-    if (pruned.length !== initial) {
-      list.length = 0;
-      list.push(...pruned);
-    }
-    return pruned;
-  }
-
-  private evictOne(snapshotId: string, pageId: string): void {
-    this.bySnapshotId.delete(snapshotId);
-    this.capturedAt.delete(snapshotId);
-    const list = this.pageSnapshots.get(pageId);
-    if (list !== undefined) {
-      const idx = list.findIndex((s) => s.snapshotId === snapshotId);
-      if (idx >= 0) list.splice(idx, 1);
-    }
   }
 }

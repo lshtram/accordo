@@ -100,7 +100,7 @@ export function collectSemanticGraph(options?: SemanticGraphOptions): SemanticGr
 
   return {
     ...envelope,
-    pageUrl: window.location.origin + window.location.pathname,
+    pageUrl: document.location?.href ?? "https://localhost/",
     title: document.title,
     a11yTree,
     landmarks,

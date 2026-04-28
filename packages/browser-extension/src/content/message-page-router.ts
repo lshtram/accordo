@@ -31,8 +31,14 @@ async function routePageMap(payload: Record<string, unknown>): Promise<{ data: u
   const { collectPageMap } = await import("./page-map-collector.js");
   const data = collectPageMap(payload as Parameters<typeof collectPageMap>[0]);
   const { defaultStore, isVersionedSnapshot } = await import("../relay-definitions.js");
+  const { registerPageMapOwner } = await import("./spatial-snapshot-registry.js");
   if (isVersionedSnapshot(data)) {
     await defaultStore.save((data as { pageId: string }).pageId, data as Parameters<typeof defaultStore.save>[1]);
+    // Register owner snapshot + owner frame in the content-script context
+    registerPageMapOwner(
+      (data as { snapshotId: string }).snapshotId,
+      (data as { frameId?: string }).frameId ?? "main",
+    );
   }
   return { data };
 }

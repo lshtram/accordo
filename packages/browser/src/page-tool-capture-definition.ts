@@ -14,7 +14,7 @@ export function buildCaptureRegionTool(
 ): ExtensionToolDefinition {
   return {
     name: "accordo_browser_capture_region",
-    description: "Capture a cropped screenshot of a specific element or region. Supports viewport mode (mode='viewport'), full-page mode (mode='fullPage'), and region mode (default — requires anchorKey, nodeRef, or rect). Screenshots are returned inline as base64 data URLs. Successful responses include artifactMode: \"inline\" in the response to advertise this contract (MCP checklist §3.1). Use format='png' for lossless output. Use format='webp' for smaller files.",
+    description: "Capture a cropped screenshot of a specific element or region. Supports viewport mode (mode='viewport'), full-page mode (mode='fullPage'), and region mode (default — requires anchorKey, nodeRef, or rect). Default transport is file-ref: successful responses include artifactMode='file-ref', fileUri, and filePath, with dataUrl omitted. Set transport='inline' to receive artifactMode='inline' and a base64 dataUrl. Use format='png' for lossless output. Use format='webp' for smaller files.",
     inputSchema: {
       type: "object",
       properties: {

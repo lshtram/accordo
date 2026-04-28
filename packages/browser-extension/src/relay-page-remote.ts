@@ -1,7 +1,58 @@
+/**
+ * GAP-D1 — Spatial Relations Relay Page Remote
+ *
+ * Implements snapshot-aware relay routing for get_spatial_relations:
+ * - frame derives only from validated payload.uids[] via canonical UID parser
+ * - legacy payload.frameId / singular payload.uid are ignored for routing
+ * - nodeIds[] path routes to main frame
+ * - malformed/mixed-frame/mixed uids[] falls through to main frame (content → invalid-request)
+ *
+ * For all other actions: delegates to existing frame routing (payload.frameId / singular uid).
+ *
+ * @module
+ */
+
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
-import { actionFailed, defaultStore, isVersionedSnapshot } from "./relay-definitions.js";
-import { forwardToMainFrame, NO_CONTENT_SCRIPT, reinjectAndForwardToFrame, resolveRequestedUrl, resolveTargetTabId } from "./relay-forwarder.js";
-import { attachRedactionWarning, enrichWithAuditLog, isOriginBlockedByPolicy, mintAuditId, parseOriginPolicy, applyRedaction } from "./relay-privacy.js";
+import { actionFailed } from "./relay-definitions.js";
+import { resolveTargetTabId } from "./relay-forwarder.js";
+import { checkOriginBlocked, forwardMainWithAudit } from "./relay-page-remote-origin.js";
+import { getSpatialRoutingFrame, deriveFrameId } from "./relay-page-remote-helpers.js";
+
+// ── Spatial branch handler ───────────────────────────────────────────────────
+
+async function handleSpatialBranch(
+  request: RelayActionRequest,
+  tabId: number,
+  saveToStore: boolean,
+  handleFrameIdRequest: ((request: RelayActionRequest, tabId: number, frameId: string, saveToStore: boolean) => Promise<RelayActionResponse>) | undefined,
+): Promise<RelayActionResponse | null> {
+  const spatialFrame = getSpatialRoutingFrame(request.payload as Record<string, unknown>);
+  if (spatialFrame === "main") {
+    const result = await forwardMainWithAudit(request, tabId, saveToStore);
+    if (result === null) return actionFailed(request, "no-content-script");
+    return result;
+  }
+  if (spatialFrame !== undefined && handleFrameIdRequest) {
+    return handleFrameIdRequest(request, tabId, spatialFrame, saveToStore);
+  }
+  return null; // fall through
+}
+
+// ── Generic frame routing ────────────────────────────────────────────────────
+
+async function handleGenericFrameRouting(
+  request: RelayActionRequest,
+  tabId: number,
+  saveToStore: boolean,
+  handleFrameIdRequest?: (request: RelayActionRequest, tabId: number, frameId: string, saveToStore: boolean) => Promise<RelayActionResponse>,
+): Promise<RelayActionResponse | null> {
+  const frameId = deriveFrameId(request.payload as Record<string, unknown>);
+  if (frameId === undefined) return null;
+  if (!handleFrameIdRequest) return actionFailed(request, "action-failed");
+  return handleFrameIdRequest(request, tabId, frameId, saveToStore);
+}
+
+// ── Main handler coordinator (<= 30 lines) ─────────────────────────────────
 
 export async function handleRemotePageUnderstandingAction(
   request: RelayActionRequest,
@@ -9,86 +60,23 @@ export async function handleRemotePageUnderstandingAction(
   handleFrameIdRequest?: (request: RelayActionRequest, tabId: number, frameId: string, saveToStore: boolean) => Promise<RelayActionResponse>,
 ): Promise<RelayActionResponse> {
   const tabId = await resolveTargetTabId(request.payload);
-  if (!tabId) {
-    return actionFailed(request);
+  if (!tabId) return actionFailed(request);
+
+  const blocked = await checkOriginBlocked(request, tabId);
+  if (blocked) return blocked;
+
+  // GAP-D1: get_spatial_relations — spatial branch
+  if (request.action === "get_spatial_relations") {
+    const spatial = await handleSpatialBranch(request, tabId, saveToStore, handleFrameIdRequest);
+    if (spatial !== null) return spatial;
   }
 
-  const { allowedOrigins, deniedOrigins } = parseOriginPolicy(request.payload);
-  if (allowedOrigins !== undefined || deniedOrigins !== undefined) {
-    const pageUrl = await resolveRequestedUrl(request.payload);
-    let origin = "unknown";
-    if (pageUrl) {
-      try { origin = new URL(pageUrl).origin; } catch { /* ignore */ }
-    }
-    if (isOriginBlockedByPolicy(origin, allowedOrigins, deniedOrigins)) {
-      const auditId = mintAuditId();
-      const blockedResp: RelayActionResponse = {
-        requestId: request.requestId,
-        success: false,
-        error: "origin-blocked",
-        retryable: false,
-        auditId,
-      };
-      enrichWithAuditLog({ auditId, toolName: request.action, pageId: `tab-${tabId}`, origin, action: "blocked", redacted: false, durationMs: 0, response: blockedResp as unknown as Record<string, unknown> });
-      return blockedResp;
-    }
-  }
+  // All other actions — generic frame routing
+  const generic = await handleGenericFrameRouting(request, tabId, saveToStore, handleFrameIdRequest);
+  if (generic !== null) return generic;
 
-  const rawFrameId = request.payload.frameId;
-  const uid = typeof request.payload.uid === "string" ? request.payload.uid : undefined;
-  const uidFrameId = uid && uid.includes(":") ? uid.slice(0, uid.lastIndexOf(":")) : undefined;
-  const frameId = typeof rawFrameId === "string" && rawFrameId.trim().length > 0 ? rawFrameId : uidFrameId;
-  if (frameId !== undefined) {
-    if (!handleFrameIdRequest) {
-      return actionFailed(request, "action-failed");
-    }
-    return handleFrameIdRequest(request, tabId, frameId, saveToStore);
-  }
-
-  const startMs = Date.now();
-  let data = await forwardToMainFrame(tabId, request.action, request.payload);
-  if (data === NO_CONTENT_SCRIPT) {
-    try {
-      data = await reinjectAndForwardToFrame(tabId, 0, request.action, request.payload);
-    } catch {
-      return actionFailed(request, "no-content-script");
-    }
-    if (data === NO_CONTENT_SCRIPT) {
-      return actionFailed(request, "no-content-script");
-    }
-  }
-  if (data === null) {
-    return actionFailed(request);
-  }
-  if (saveToStore && isVersionedSnapshot(data)) {
-    await defaultStore.save((data as { pageId: string }).pageId, data as Parameters<typeof defaultStore.save>[1]);
-  }
-
-  const auditId = mintAuditId();
-  const redactPII = request.payload.redactPII === true;
-  let finalData: unknown = data;
-  let redactionApplied = false;
-
-  if (redactPII) {
-    try {
-      const result = applyRedaction(data);
-      finalData = result.data;
-      redactionApplied = result.redactionApplied;
-      if (finalData !== null && typeof finalData === "object") {
-        (finalData as Record<string, unknown>).redactionApplied = redactionApplied;
-      }
-    } catch {
-      return { requestId: request.requestId, success: false, error: "redaction-failed", retryable: false, auditId };
-    }
-  }
-
-  const response: RelayActionResponse = { requestId: request.requestId, success: true, data: finalData, auditId };
-  attachRedactionWarning(response, redactPII);
-  const pageUrl = await resolveRequestedUrl(request.payload);
-  let origin = "unknown";
-  if (pageUrl) {
-    try { origin = new URL(pageUrl).origin; } catch { /* ignore */ }
-  }
-  enrichWithAuditLog({ auditId, toolName: request.action, pageId: typeof data === "object" && data !== null ? (data as { pageId?: string }).pageId ?? "" : "", origin, action: "allowed", redacted: redactionApplied, durationMs: Date.now() - startMs, response: response as unknown as Record<string, unknown> });
-  return response;
+  // Default main-frame path
+  const result = await forwardMainWithAudit(request, tabId, saveToStore);
+  if (result === null) return actionFailed(request, "no-content-script");
+  return result;
 }

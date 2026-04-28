@@ -51,6 +51,14 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { BrowserBridgeAPI, BrowserRelayLike } from "../types.js";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+// ── Deterministic source-file resolution (ESM-safe, portable) ─────────────────
+// Resolves source files relative to THIS test file, not the process cwd.
+const __testDir = dirname(fileURLToPath(import.meta.url));
+const SOURCE_ROOT = join(__testDir, "..");
+const src = (filename: string) => join(SOURCE_ROOT, filename);
 
 // ── Per-test isolation ─────────────────────────────────────────────────────────
 
@@ -1299,31 +1307,27 @@ describe("architecture-constraints (§14-B.3, §14-B.6)", () => {
   it("ARCH-01: comment-sync.ts imports are restricted to vscode + bridge-types + local types", async () => {
     // Read the module source directly to verify imports
     const fs = await import("node:fs");
-    const src = fs.readFileSync(
-      "/data/projects/accordo/packages/browser/src/comment-sync.ts",
-      "utf8",
-    );
+    const sourceFile = src("comment-sync.ts");
+    const src_content = fs.readFileSync(sourceFile, "utf8");
     // Must not import anything from browser-extension
-    expect(src).not.toMatch(/from\s+['"].*browser-extension/);
-    expect(src).not.toMatch(/from\s+['"].*\/browser-extension\//);
+    expect(src_content).not.toMatch(/from\s+['"].*browser-extension/);
+    expect(src_content).not.toMatch(/from\s+['"].*\/browser-extension\//);
     // Must not import cross-modality packages
-    expect(src).not.toMatch(/from\s+['"]@accordo\/voice/);
-    expect(src).not.toMatch(/from\s+['"]@accordo\/script/);
-    expect(src).not.toMatch(/from\s+['"]accordo-editor/);
+    expect(src_content).not.toMatch(/from\s+['"]@accordo\/voice/);
+    expect(src_content).not.toMatch(/from\s+['"]@accordo\/script/);
+    expect(src_content).not.toMatch(/from\s+['"]accordo-editor/);
   });
 
   it("ARCH-02: comment-notifier.ts imports are restricted to vscode + local types only", async () => {
     const fs = await import("node:fs");
-    const src = fs.readFileSync(
-      "/data/projects/accordo/packages/browser/src/comment-notifier.ts",
-      "utf8",
-    );
+    const sourceFile = src("comment-notifier.ts");
+    const src_content = fs.readFileSync(sourceFile, "utf8");
     // Must not import browser-extension
-    expect(src).not.toMatch(/from\s+['"].*browser-extension/);
-    expect(src).not.toMatch(/from\s+['"].*\/browser-extension\//);
+    expect(src_content).not.toMatch(/from\s+['"].*browser-extension/);
+    expect(src_content).not.toMatch(/from\s+['"].*\/browser-extension\//);
     // No cross-modality coupling
-    expect(src).not.toMatch(/from\s+['"]@accordo\/voice/);
-    expect(src).not.toMatch(/from\s+['"]@accordo\/script/);
+    expect(src_content).not.toMatch(/from\s+['"]@accordo\/voice/);
+    expect(src_content).not.toMatch(/from\s+['"]@accordo\/script/);
   });
 
   for (const [filename, allowedVscode] of [
@@ -1331,26 +1335,26 @@ describe("architecture-constraints (§14-B.3, §14-B.6)", () => {
     ["tool-assembly.ts", false],
     ["page-tool-pipeline.ts", false],
   ] as const) {
-    const filePath = `/data/projects/accordo/packages/browser/src/${filename}`;
+    const sourceFile = src(filename);
     it(`ARCH-ARCH-${filename}: ${filename} does not import from browser-extension, cross-modality packages, or vscode`, async () => {
       const fs = await import("node:fs");
-      const src = fs.readFileSync(filePath, "utf8");
+      const src_content = fs.readFileSync(sourceFile, "utf8");
 
       // No browser-extension imports (packages/browser-extension is MV3, packages/browser is MV2)
-      expect(src).not.toMatch(/from\s+['"].*browser-extension/);
-      expect(src).not.toMatch(/from\s+['"].*\/browser-extension\//);
+      expect(src_content).not.toMatch(/from\s+['"].*browser-extension/);
+      expect(src_content).not.toMatch(/from\s+['"].*\/browser-extension\//);
 
       // No cross-modality coupling — these modules are browser-only
-      expect(src).not.toMatch(/from\s+['"]@accordo\/voice/);
-      expect(src).not.toMatch(/from\s+['"]@accordo\/script/);
-      expect(src).not.toMatch(/from\s+['"]accordo-editor/);
+      expect(src_content).not.toMatch(/from\s+['"]@accordo\/voice/);
+      expect(src_content).not.toMatch(/from\s+['"]@accordo\/script/);
+      expect(src_content).not.toMatch(/from\s+['"]accordo-editor/);
 
       // Optional vscode restriction per module — only value imports (runtime) are prohibited.
       // Type-only imports (import type ...) are erased by TypeScript and have no runtime
       // effect, so they do not constitute a runtime coupling violation.
       if (!allowedVscode) {
         // Match value imports from vscode: "import ... from 'vscode'" but NOT "import type ... from"
-        expect(src).not.toMatch(/import\s+(?!type\s+).*from\s+['"](?:vscode|@types\/vscode)['"]/);
+        expect(src_content).not.toMatch(/import\s+(?!type\s+).*from\s+['"](?:vscode|@types\/vscode)['"]/);
       }
     });
   }
