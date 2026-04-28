@@ -1,6 +1,47 @@
 import { toInspectPayload } from "./message-action-helpers.js";
+import { isKnownPageMapOwner, isCurrentOwner } from "./spatial-snapshot-registry.js";
 
-export async function routeInspectElement(payload: Record<string, unknown>): Promise<{ data?: unknown; error?: string }> {
+function hasTarget(value?: string): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/** Check if raw args use a snapshot-scoped handle (uid, ref, or nodeId). */
+function usesSnapshotScopedHandle(args: Record<string, unknown>): boolean {
+  return hasTarget(args.uid as string | undefined)
+    || hasTarget(args.ref as string | undefined)
+    || (args.nodeId !== undefined && typeof args.nodeId === "number");
+}
+
+/** Returns true when a snapshot-scoped handle is used without creationSnapshotId. */
+function isMissingCreationSnapshotId(args: Record<string, unknown>): boolean {
+  return usesSnapshotScopedHandle(args)
+    && !hasTarget(args.creationSnapshotId as string | undefined);
+}
+
+/** Classify a snapshotId against the page-map owner registry. */
+function classifySnapshotOwner(snapshotId: string): "current" | "stale" | "not-found" {
+  if (isCurrentOwner(snapshotId)) return "current";
+  if (isKnownPageMapOwner(snapshotId)) return "stale";
+  return "not-found";
+}
+
+/** Validate snapshot-scoped handle usage on the raw payload before normalization. */
+function validateSnapshotScopedHandle(
+  args: Record<string, unknown>,
+): "invalid-request" | "snapshot-not-found" | "snapshot-stale" | null {
+  if (!usesSnapshotScopedHandle(args)) return null;
+  if (isMissingCreationSnapshotId(args)) return "invalid-request";
+  const snapshotId = args.creationSnapshotId as string;
+  const classification = classifySnapshotOwner(snapshotId);
+  if (classification === "not-found") return "snapshot-not-found";
+  if (classification === "stale") return "snapshot-stale";
+  return null;
+}
+
+/** Call inspectElement for the non-snapshot-scoped path (anchorKey/selector only). */
+async function callInspectForNonSnapshotCase(
+  payload: Record<string, unknown>,
+): Promise<{ data?: unknown; error?: string }> {
   const { inspectElement } = await import("./element-inspector.js");
   const inspectPayload = toInspectPayload(payload);
   if ("error" in inspectPayload) return { error: inspectPayload.error };
@@ -10,6 +51,34 @@ export async function routeInspectElement(payload: Record<string, unknown>): Pro
     return { error: "invalid-request" };
   }
   return { data: inspectElement(inspectArgs) };
+}
+
+export async function routeInspectElement(
+  payload: Record<string, unknown>,
+): Promise<{ data?: unknown; error?: string }> {
+  const snapshotError = validateSnapshotScopedHandle(payload);
+  if (snapshotError !== null) return { error: snapshotError };
+
+  const uid = typeof payload.uid === "string" && payload.uid.trim() ? payload.uid : undefined;
+  const ref = typeof payload.ref === "string" && payload.ref.trim() ? payload.ref : undefined;
+  const nodeId = typeof payload.nodeId === "number" ? payload.nodeId : undefined;
+  const creationSnapshotId =
+    typeof payload.creationSnapshotId === "string" ? payload.creationSnapshotId : undefined;
+
+  if (uid !== undefined) {
+    const { inspectElement } = await import("./element-inspector.js");
+    return { data: inspectElement({ uid, creationSnapshotId }) };
+  }
+  if (ref !== undefined) {
+    const { inspectElement } = await import("./element-inspector.js");
+    return { data: inspectElement({ ref, creationSnapshotId }) };
+  }
+  if (nodeId !== undefined) {
+    const { inspectElement } = await import("./element-inspector.js");
+    return { data: inspectElement({ nodeId, creationSnapshotId }) };
+  }
+
+  return callInspectForNonSnapshotCase(payload);
 }
 
 export async function routeDomExcerpt(payload: Record<string, unknown>): Promise<{ data?: unknown; error?: string }> {
@@ -23,7 +92,9 @@ export async function routeDomExcerpt(payload: Record<string, unknown>): Promise
   };
   const selectorTarget = hasTarget(selector) ? selector : undefined;
   if (!hasTarget(anchorKey) && selectorTarget === undefined) return { error: "no-target" };
-  if (!hasTarget(anchorKey) && selectorTarget !== undefined && isMalformedSelector(selectorTarget)) return { error: "invalid-request" };
+  if (!hasTarget(anchorKey) && selectorTarget !== undefined && isMalformedSelector(selectorTarget)) {
+    return { error: "invalid-request" };
+  }
   return { data: getDomExcerpt({ selector, anchorKey, creationSnapshotId }, maxDepth, maxLength) };
 }
 
@@ -47,15 +118,17 @@ export async function routeDiffSnapshots(payload: Record<string, unknown>): Prom
 }
 
 function shouldValidateSelector(args: Record<string, unknown>): boolean {
-  return typeof args.selector === "string" && !hasTarget(args.uid as string | undefined) && !hasTarget(args.anchorKey as string | undefined) && !hasTarget(args.ref as string | undefined) && typeof args.nodeId !== "number";
+  return (
+    typeof args.selector === "string"
+    && !hasTarget(args.uid as string | undefined)
+    && !hasTarget(args.anchorKey as string | undefined)
+    && !hasTarget(args.ref as string | undefined)
+    && typeof args.nodeId !== "number"
+  );
 }
 
 function getSelectorCandidate(args: Record<string, unknown>): string | undefined {
   return typeof args.selector === "string" ? args.selector : undefined;
-}
-
-function hasTarget(value?: string): boolean {
-  return typeof value === "string" && value.trim().length > 0;
 }
 
 function isMalformedSelector(selector: string): boolean {

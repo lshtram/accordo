@@ -5,6 +5,8 @@ export const RELAY_RETRY_AFTER_MS = {
   "detached-node": 1000,
   "capture-failed": 2000,
   "element-off-screen": 1000,
+  "snapshot-not-found": undefined,
+  "snapshot-stale": undefined,
 } as const;
 
 export const RELAY_RECOVERY_HINTS = {
@@ -15,7 +17,10 @@ export const RELAY_RECOVERY_HINTS = {
   "capture-failed": "Screenshot capture failed. The tab may still be loading — wait briefly and retry.",
   "element-off-screen": "The element is outside the visible viewport. Scroll it into view before retrying.",
   "origin-blocked": "This origin is blocked by the security policy. Check allowedOrigins/deniedOrigins.",
-  "invalid-request": "The request parameters are invalid. Check required fields and value constraints.",
+  "invalid-request": "The request parameters are invalid. Check required fields and value constraints. If using uid/ref/nodeId from get_page_map, you must also pass creationSnapshotId from the same response.",
+  "element-not-found": "The element could not be resolved. The snapshot handle may have become stale — re-run get_page_map and retry with the new snapshotId.",
+  "snapshot-not-found": "Call get_page_map to get a current snapshotId, then retry the page-understanding action with that snapshotId.",
+  "snapshot-stale": "The snapshotId is from a prior page-map capture. Call get_page_map again to get a fresh snapshotId, then retry the page-understanding action.",
 } as const;
 
 export function classifyThrownRelayError(err: unknown): "timeout" | "browser-not-connected" {

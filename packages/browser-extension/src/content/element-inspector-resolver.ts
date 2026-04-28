@@ -22,23 +22,18 @@ function resolveElementByUid(uid: string): Element | null {
 }
 
 export function resolveElement(args: InspectElementArgs): Element | null {
-  const resolveVisibleFallback = (el: Element | null): Element | null => {
-    if (!el) return null;
-    if (isElementVisible(el)) return el;
-    const parent = el.parentElement;
-    if (!parent) return el;
-    const visibleSibling = Array.from(parent.children).find((s) => s !== el && isElementVisible(s));
-    return visibleSibling ?? el;
-  };
-
+  // Snapshot-scoped handles (uid, ref, nodeId) take absolute precedence.
+  // If present and valid, they are used exclusively — no fallback to anchorKey/selector.
   if (args.uid !== undefined) return resolveElementByUid(args.uid);
+  if (args.ref !== undefined) return getElementByRef(args.ref);
+  if (args.nodeId !== undefined) return resolveElementByNodeId(args.nodeId);
+
+  // Current-DOM paths — used when no snapshot-scoped handle is present.
   if (args.anchorKey) return resolveAnchorKey(normalizeIncomingAnchorKey(args.anchorKey));
-  if (args.ref) return getElementByRef(args.ref);
   if (args.selector) {
     const matches = Array.from(document.querySelectorAll(args.selector));
     if (matches.length === 0) return null;
     return matches.find(isElementVisible) ?? matches[0];
   }
-  if (args.nodeId !== undefined) return resolveElementByNodeId(args.nodeId);
   return null;
 }

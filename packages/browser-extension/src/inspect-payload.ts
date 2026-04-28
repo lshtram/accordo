@@ -1,8 +1,23 @@
+/**
+ * InspectPayload — discriminated by the snapshot-scoped handle.
+ *
+ * Priority (highest to lowest):
+ *   uid > ref > nodeId > anchorKey > selector
+ *
+ * Each variant guarantees its primary handle is present.
+ * For secondary handles, they are optional (present only if provided alongside
+ * the primary handle and don't change the discriminator).
+ */
 export type InspectPayload =
+  // uid is guaranteed; anchorKey/ref/selector are optional secondary handles
   | { uid: string; creationSnapshotId?: string; anchorKey?: string; ref?: string; selector?: string }
-  | { anchorKey: string; creationSnapshotId?: string; ref?: string; selector?: string }
+  // ref is guaranteed; anchorKey is optional secondary (only if provided alongside ref)
+  | { ref: string; creationSnapshotId?: string; anchorKey?: string }
+  // nodeId is guaranteed; no secondary handles
   | { nodeId: number; creationSnapshotId?: string }
-  | { ref: string; creationSnapshotId?: string; anchorKey?: string; selector?: string }
+  // anchorKey is guaranteed; NO ref or selector (they have their own primary cases)
+  | { anchorKey: string; creationSnapshotId?: string }
+  // selector is guaranteed; no secondary handles
   | { selector: string; creationSnapshotId?: string };
 
 export type InspectPayloadReadResult =
@@ -20,10 +35,10 @@ export function toInspectPayload(raw: Record<string, unknown>): InspectPayloadRe
     return { error: "invalid-request" };
   }
   if (uid !== undefined) return { payload: { uid, creationSnapshotId, anchorKey, ref, selector } };
-  if (anchorKey !== undefined) return { payload: { anchorKey, creationSnapshotId, ref, selector } };
-  if (ref !== undefined) return { payload: { ref, creationSnapshotId, anchorKey, selector } };
-  if (selector !== undefined) return { payload: { selector, creationSnapshotId } };
+  if (ref !== undefined) return { payload: { ref, creationSnapshotId, anchorKey } };
   if (typeof raw.nodeId === "number") return { payload: { nodeId: raw.nodeId, creationSnapshotId } };
+  if (anchorKey !== undefined) return { payload: { anchorKey, creationSnapshotId } };
+  if (selector !== undefined) return { payload: { selector, creationSnapshotId } };
   return { error: "no-target" };
 }
 

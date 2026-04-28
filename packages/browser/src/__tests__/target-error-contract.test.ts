@@ -42,4 +42,19 @@ describe("target error contract", () => {
     await expect(handleClick(relay(), { uid: "main:notnum" })).resolves.toMatchObject({ success: false, error: "invalid-request" });
     await expect(handleType(relay(), { text: "hi", uid: "main:notnum" })).resolves.toMatchObject({ success: false, error: "invalid-request" });
   });
+
+  it("inspect_element preserves snapshot-stale from relay without collapsing to action-failed", async () => {
+    const store = new SnapshotRetentionStore();
+    await expect(handleInspectElement(relay("snapshot-stale"), { uid: "main:1", creationSnapshotId: "page:1" }, store)).resolves.toMatchObject({ success: false, error: "snapshot-stale" });
+  });
+
+  it("inspect_element preserves snapshot-not-found from relay without collapsing to action-failed", async () => {
+    const store = new SnapshotRetentionStore();
+    await expect(handleInspectElement(relay("snapshot-not-found"), { uid: "main:1", creationSnapshotId: "page:999" }, store)).resolves.toMatchObject({ success: false, error: "snapshot-not-found" });
+  });
+
+  it("inspect_element preserves element-not-found from relay without collapsing to action-failed", async () => {
+    const store = new SnapshotRetentionStore();
+    await expect(handleInspectElement(relay("element-not-found"), { uid: "main:1" }, store)).resolves.toMatchObject({ success: false, error: "element-not-found" });
+  });
 });
