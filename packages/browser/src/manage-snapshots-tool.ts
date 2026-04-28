@@ -5,6 +5,9 @@
  *   - browser_manage_snapshots action: "list" — returns snapshot metadata per page
  *   - browser_manage_snapshots action: "clear" — empties the store or a specific page
  *
+ * This is a browser-package local tool. It never delegates to the relay —
+ * uses the local SnapshotRetentionStore directly, mirroring manage-screenshots-tool.
+ *
  * @module
  */
 
@@ -12,123 +15,102 @@ import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { BrowserRelayLike } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 
-// ── Tool Input/Output Types ─────────────────────────────────────────────────
+// ── Input / Output Types ────────────────────────────────────────────────────
 
 /** Input for `browser_manage_snapshots`. */
 export interface ManageSnapshotsArgs {
-  /** Action to perform: "list" returns snapshot metadata, "clear" empties the store */
   action: "list" | "clear";
-  /** Optional pageId to target for "clear" action. If omitted, clears all pages. */
+  /** If omitted or empty/whitespace, treated as "all pages". */
   pageId?: string;
 }
 
-/** Response from `browser_manage_snapshots` — "list" action. */
-export interface ManageSnapshotsListResponse {
-  pages: {
-    pageId: string;
-    snapshotCount: number;
-    snapshots: {
-      snapshotId: string;
-      capturedAt: string;
-      source: string;
-    }[];
-  }[];
+/** Metadata for a single snapshot within a list response. */
+interface SnapshotMetadata {
+  snapshotId: string;
+  capturedAt: string;
+  source: string;
+  frameId?: string;
 }
 
-/** Response from `browser_manage_snapshots` — "clear" action. */
+/** "list" response — one entry per page (only pages that exist). */
+export interface ManageSnapshotsListResponse {
+  pages: { pageId: string; snapshotCount: number; snapshots: SnapshotMetadata[] }[];
+}
+
+/** "clear" response. */
 export interface ManageSnapshotsClearResponse {
-  success: boolean;
+  success: true;
   clearedPageId?: string;
-  /** Total snapshots cleared across all pages */
   clearedCount: number;
 }
 
-/**
- * Union response type for both list and clear actions.
- */
 export type ManageSnapshotsResponse = ManageSnapshotsListResponse | ManageSnapshotsClearResponse;
 
 export interface ManageSnapshotsErrorResponse {
   success: false;
-  error: string;
+  error: "invalid-request";
 }
 
-// ── Tool Definition ────────────────────────────────────────────────────────
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
-/**
- * Build the `browser_manage_snapshots` MCP tool.
- *
- * GAP-G1: Provides retention control — list all snapshot metadata or clear
- * the store (optionally for a specific page only).
- *
- * @param relay — The relay connection (unused for this local-only tool)
- * @param store — Shared snapshot retention store
- * @returns A single tool definition for `browser_manage_snapshots`
- */
+/** Empty / whitespace-only pageId is treated as "no filter". */
+function normalizePageId(pageId?: string): string | undefined {
+  return pageId?.trim().length ? pageId.trim() : undefined;
+}
+
+/** Extract the serializable metadata fields from an envelope — no heavy payloads. */
+function toMetadata(env: { snapshotId: string; capturedAt: string; source: string; frameId?: string }): SnapshotMetadata {
+  return { snapshotId: env.snapshotId, capturedAt: env.capturedAt, source: env.source, frameId: env.frameId };
+}
+
+// ── Handler ─────────────────────────────────────────────────────────────────
+
+async function handleList(
+  store: SnapshotRetentionStore,
+  pageId?: string,
+): Promise<ManageSnapshotsListResponse> {
+  const pid = normalizePageId(pageId);
+  const all = store.listAll();
+  if (pid !== undefined) {
+    const envelopes = all.get(pid);
+    if (!envelopes) return { pages: [] };
+    return { pages: [{ pageId: pid, snapshotCount: envelopes.length, snapshots: envelopes.map(toMetadata) }] };
+  }
+  return {
+    pages: Array.from(all.entries()).map(([id, envs]) => ({
+      pageId: id,
+      snapshotCount: envs.length,
+      snapshots: envs.map(toMetadata),
+    })),
+  };
+}
+
+async function handleClear(
+  store: SnapshotRetentionStore,
+  pageId?: string,
+): Promise<ManageSnapshotsClearResponse> {
+  const pid = normalizePageId(pageId);
+  const all = store.listAll();
+  if (pid !== undefined) {
+    const count = all.get(pid)?.length ?? 0;
+    store.clear(pid);
+    return { success: true, clearedPageId: pid, clearedCount: count };
+  }
+  const total = Array.from(all.values()).reduce((s, e) => s + e.length, 0);
+  store.clear();
+  return { success: true, clearedCount: total };
+}
+
+// ── Tool Definition ─────────────────────────────────────────────────────────
+
 export function buildManageSnapshotsTool(
-  relay: BrowserRelayLike,
+  _relay: BrowserRelayLike,
   store: SnapshotRetentionStore,
 ): ExtensionToolDefinition {
   const handler = async (args: ManageSnapshotsArgs): Promise<ManageSnapshotsResponse | ManageSnapshotsErrorResponse> => {
-    if (relay.isConnected()) {
-      const response = await relay.request("manage_snapshots", args as unknown as Record<string, unknown>);
-      if (response.success && response.data && typeof response.data === "object") {
-        if (args.action === "clear") {
-          if (args.pageId !== undefined) {
-            store.clear(args.pageId);
-          } else {
-            store.clear();
-          }
-        }
-        return response.data as ManageSnapshotsResponse;
-      }
-      return { success: false, error: response.error ?? "action-failed" };
-    }
-
-    if (args.action === "list") {
-      const allPages = store.listAll();
-      const pages: ManageSnapshotsListResponse["pages"] = [];
-
-      for (const [pageId, envelopes] of allPages) {
-        pages.push({
-          pageId,
-          snapshotCount: envelopes.length,
-          snapshots: envelopes.map((env) => ({
-            snapshotId: env.snapshotId,
-            capturedAt: env.capturedAt,
-            source: env.source,
-          })),
-        });
-      }
-
-      return { pages };
-    }
-
-    if (args.action === "clear") {
-      const allPages = store.listAll();
-
-      if (args.pageId !== undefined) {
-        // Clear specific page
-        const pageEnvelopes = allPages.get(args.pageId) ?? [];
-        store.clear(args.pageId);
-        return {
-          success: true,
-          clearedPageId: args.pageId,
-          clearedCount: pageEnvelopes.length,
-        };
-      } else {
-        // Clear all pages
-        const totalCount = Array.from(allPages.values()).reduce((sum, envs) => sum + envs.length, 0);
-        store.clear();
-        return {
-          success: true,
-          clearedCount: totalCount,
-        };
-      }
-    }
-
-    // Should not reach here due to type narrowing
-    return { success: false, clearedCount: 0 };
+    if (args.action === "list") return handleList(store, args.pageId);
+    if (args.action === "clear") return handleClear(store, args.pageId);
+    return { success: false, error: "invalid-request" };
   };
 
   return {
@@ -140,15 +122,8 @@ export function buildManageSnapshotsTool(
       type: "object",
       required: ["action"],
       properties: {
-        action: {
-          type: "string",
-          enum: ["list", "clear"],
-          description: "Action to perform: 'list' returns snapshot metadata per page, 'clear' empties the store",
-        },
-        pageId: {
-          type: "string",
-          description: "Optional page ID to target for 'clear'. If omitted, clears all pages.",
-        },
+        action: { type: "string", enum: ["list", "clear"], description: "'list' returns snapshot metadata per page; 'clear' empties the store" },
+        pageId: { type: "string", description: "Optional page ID. If omitted, targets all pages." },
       },
     },
     dangerLevel: "safe",
