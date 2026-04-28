@@ -41,6 +41,7 @@ describe("shared-relay-server metadata", () => {
     handler(firstSocket, makeMockRequest(`/hub?hubId=h-reconnect&label=hub&token=${SERVER_TOKEN}`));
     const firstTime = server.getConnectedHubs().get("h-reconnect")?.connectedAt;
     firstSocket.handlers["close"]?.forEach((cb) => cb());
+    await new Promise((resolve) => setTimeout(resolve, 1));
     const secondSocket = makeMockSocket();
     handler(secondSocket, makeMockRequest(`/hub?hubId=h-reconnect&label=hub&token=${SERVER_TOKEN}`));
     const secondTime = server.getConnectedHubs().get("h-reconnect")?.connectedAt;

@@ -1543,6 +1543,16 @@ Agent                   Hub/Bridge               Chrome Extension
 | Type contracts | `packages/browser` | `page-tool-types.ts` | `GetSpatialRelationsArgs`, `SpatialRelationsResponse` |
 | Page map enrichment | `packages/browser-extension` | `content/page-map-collector.ts` | `PageNode.viewportRatio`, `PageNode.containerId` fields |
 
+#### Contract Validation (GAP-D1 item 5)
+
+The browser-package boundary enforces input validation before relay:
+- `snapshotId` must be a non-empty string — invalid returns `invalid-request`, no relay.
+- `nodeIds` entries must all be non-negative integers — malformed entries return `invalid-request`, no relay.
+- `uids` entries must all be non-empty strings — malformed entries return `invalid-request`, no relay.
+- Exactly one identity mode required: both non-empty returns `invalid-request` with recovery hint about empty-array adapter pattern, no relay.
+- Empty array for unused mode is accepted (e.g. `nodeIds: [1,2], uids: []` succeeds).
+- Count cap (max 50) is enforced only when exactly one identity mode is used; mutual-exclusion rejection takes precedence over count-cap when both non-empty.
+
 #### Performance Budget
 
 - Page map enrichment: O(n) per node — viewportRatio is a simple rect intersection, containerId walks a short ancestor chain (typically < 10 levels).

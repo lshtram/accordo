@@ -2,13 +2,12 @@
  * spatial-tool-runtime.test.ts
  *
  * GAP-D1 — D2-002..D2-008: Tool handler runtime tests.
- * Split from spatial-relations-tool.test.ts (<=150 lines).
  *
  * @module
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createMockRelay, MOCK_SPATIAL_RELATIONS_DATA, invokeToolHandler } from "./spatial-test-fixtures.js";
+import { createMockRelay, invokeToolHandler } from "./spatial-test-fixtures.js";
 import { SnapshotRetentionStore } from "../snapshot-retention.js";
 import type { SpatialRelationsToolError } from "../spatial-relations-tool.js";
 
@@ -25,9 +24,7 @@ describe("D2-002: Valid nodeIds returns relations", () => {
     const relay = createMockRelay();
     const store = new SnapshotRetentionStore();
     const result = await invokeToolHandler(relay, store, { nodeIds: [1, 2] });
-    if ("success" in result && result.success) {
-      expect(Array.isArray(result.relations)).toBe(true);
-    }
+    if ("success" in result && result.success) expect(Array.isArray(result.relations)).toBe(true);
   });
 
   it("D2-002: response contains nodeCount and pairCount", async () => {
@@ -54,12 +51,24 @@ describe("D2-003: too-many-nodes error", () => {
     }
   });
 
-  it("D2-003: returns error when nodeIds+uids exceeds 50", async () => {
+  it("D2-003: mixed non-empty arrays are rejected as invalid-request (precedence over count cap)", async () => {
     const relay = createMockRelay();
     const store = new SnapshotRetentionStore();
     const nodeIds = Array.from({ length: 30 }, (_, i) => i + 1);
     const uids = Array.from({ length: 25 }, (_, i) => `main:${i + 100}`);
     const result = await invokeToolHandler(relay, store, { nodeIds, uids });
+    expect(result).toHaveProperty("success");
+    if ("success" in result) {
+      expect(result.success).toBe(false);
+      expect((result as SpatialRelationsToolError).error).toBe("invalid-request");
+    }
+  });
+
+  it("D2-003: count cap still applies when exactly one identity mode is used", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    const nodeIds = Array.from({ length: 51 }, (_, i) => i + 1);
+    const result = await invokeToolHandler(relay, store, { nodeIds, uids: [] });
     expect(result).toHaveProperty("success");
     if ("success" in result) {
       expect(result.success).toBe(false);
@@ -89,7 +98,6 @@ describe("D2-005: Single node returns empty relations", () => {
     }
   });
 });
-
 describe("D2-006: Pairwise leftOf relation", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 

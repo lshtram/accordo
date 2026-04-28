@@ -138,6 +138,17 @@ All error codes defined in the `CaptureError` type (`element-not-found`, `elemen
 **Acceptance:** Each of the five `CaptureError` codes is returned by the MCP-level `accordo_browser_capture_region` handler (not just the content script) with the structured error shape. Integration tests verify end-to-end propagation.  
 **Cross-reference:** CR-F-11, CR-F-12 in `requirements-browser-extension.md`; `CaptureError` type in `packages/browser/src/page-tool-types.ts`.
 
+**MCP-ER-005: Spatial relations contract validation (GAP-D1 item 5)**
+`accordo_browser_get_spatial_relations` enforces the following at the browser-package boundary before relay:
+1. `snapshotId` must be a non-empty string — missing/invalid returns `invalid-request`, no relay.
+2. `nodeIds` entries must all be non-negative integers — any malformed entry returns `invalid-request`, no relay.
+3. `uids` entries must all be non-empty strings — any malformed entry returns `invalid-request`, no relay.
+4. Exactly one identity mode must be present and non-empty — both non-empty returns `invalid-request` with detail `"Pass exactly one identity mode: provide nodeIds[] or uids[], not both."` and recovery hint `"If your adapter always emits the unused field, send [] for that field."`, no relay.
+5. Empty array for the unused identity mode is accepted as equivalent to omitting the field — `nodeIds: [1,2], uids: []` and `uids: ["main:1"], nodeIds: []` both succeed.
+6. Count cap (max 50 total) is enforced only when exactly one identity mode is used; when both non-empty, the mutual-exclusion rejection takes precedence.
+**Acceptance:** Malformed entries, mixed non-empty arrays, and missing snapshotId all return `invalid-request` with structured `details` and `recoveryHints` fields. Empty arrays for the unused mode are accepted. Relay is never called for any of these rejection cases.
+**Cross-reference:** GAP-D1 item 5, `spatial-relations-contract.ts`, `spatial-relations-tool.ts`.
+
 **MCP-ER-003: Connection health action**  
 The browser relay MUST support a `connection-health` action (not necessarily a public MCP tool) that returns: `{ connected: boolean, tabCount: number, lastMessageAt: string, uptimeMs: number }`.  
 **Acceptance:** When the Chrome extension is connected, health check returns `connected: true` with accurate metadata. When disconnected, returns `connected: false`.
