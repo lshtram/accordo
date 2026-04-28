@@ -41,6 +41,8 @@ export async function handleGetPageMap(
   }
 
   const policy = mergeOriginPolicy(security.originPolicy, args.allowedOrigins, args.deniedOrigins);
+  // B2-CTX-002: Extract tabId from args for snapshot tabId recovery in diff_snapshots
+  const snapshotTabId = args.tabId;
   const pipeline = await runPageToolPipeline(
     relay,
     payload,
@@ -91,6 +93,8 @@ export async function handleGetPageMap(
         }
         return response;
       },
+      // B2-CTX-002: Record tabId used for capture so diff_snapshots can recover it
+      persistTabId: () => snapshotTabId,
     },
   );
   return pipeline.success ? (pipeline.data as PageMapResponse) : (pipeline.error as PageToolError);

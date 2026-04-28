@@ -16,8 +16,10 @@ export function buildDiffSnapshotsTool(
       "If toSnapshotId is omitted, captures a fresh snapshot. If fromSnapshotId is omitted, uses the previous retained snapshot before toSnapshotId. " +
       "Typical usage: (1) call get_page_map to record a baseline snapshot and note its snapshotId, (2) perform the " +
       "action you want to observe, (3) call diff_snapshots with fromSnapshotId=<baseline> and no toSnapshotId — " +
-      "a fresh snapshot is captured automatically for comparison. If both IDs are omitted, two consecutive snapshots " +
-      "are captured and diffed (useful to detect background mutations, but will show an empty diff for static pages).",
+      "a fresh snapshot is captured automatically for comparison. " +
+      "If both IDs are omitted, diffs the two most recent retained snapshots across all retained pages; " +
+      "if fewer than two are available, returns a clear error. " +
+      "If same-page explicit IDs are provided without tabId and local metadata knows the tab, the recovered tabId is forwarded to the relay; cross-page explicit diffs do not recover tabId.",
     inputSchema: {
       type: "object",
       properties: {

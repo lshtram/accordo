@@ -64,7 +64,6 @@ function createRecordingRelay() {
             title: "Test",
             nodes: [],
             totalElements: 0,
-            depth: 0,
             truncated: false,
           },
         };
@@ -287,5 +286,92 @@ describe("B2-CTX-002/003: diff_snapshots — explicit snapshot IDs do not need t
     const diffCalls = relay.getRecordedCalls().filter(c => c.action === "diff_snapshots");
     expect(diffCalls).toHaveLength(1);
     expect(diffCalls[0]!.payload).not.toHaveProperty("tabId");
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// B2-CTX-002 (design point 3): explicit IDs + omitted tabId + known tabId in store
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("B2-CTX-002 (design point 3): explicit IDs with omitted tabId recovers tabId from store", () => {
+  let relay: ReturnType<typeof createRecordingRelay>;
+  let store: SnapshotRetentionStore;
+
+  beforeEach(() => {
+    relay = createRecordingRelay();
+    relay.resetRecordedCalls();
+    store = new SnapshotRetentionStore();
+  });
+
+  /**
+   * Design point 3: When both explicit snapshot IDs are provided but caller
+   * omits tabId, and local metadata knows the tabId for that page (from a
+   * prior get_page_map call), the recovered tabId is forwarded in the relay
+   * diff_snapshots payload so the Chrome extension can route to the correct tab.
+   */
+  it("recovers tabId from store and forwards it in diff_snapshots relay payload when both IDs explicit and tabId omitted", async () => {
+    // Seed two snapshots for the page, then record a tabId for that page
+    seedSnapshots(store, "page-rec", [3, 4]);
+    store.setTabId("page-rec", 99);
+
+    // Call with explicit IDs but NO tabId
+    const args: DiffSnapshotsArgs = { fromSnapshotId: "page-rec:3", toSnapshotId: "page-rec:4" };
+    await handleDiffSnapshots(relay, args, store);
+
+    // No get_page_map should be called (explicit IDs path)
+    const getPageMapCalls = relay.getRecordedCalls().filter(c => c.action === "get_page_map");
+    expect(getPageMapCalls).toHaveLength(0);
+
+    // diff_snapshots MUST carry the recovered tabId
+    const diffCalls = relay.getRecordedCalls().filter(c => c.action === "diff_snapshots");
+    expect(diffCalls).toHaveLength(1);
+    expect(diffCalls[0]!.payload.fromSnapshotId).toBe("page-rec:3");
+    expect(diffCalls[0]!.payload.toSnapshotId).toBe("page-rec:4");
+    expect(diffCalls[0]!.payload.tabId).toBe(99);
+  });
+
+  /**
+   * Design point 3 (negative): When explicit IDs are provided with no tabId
+   * AND no tabId is recorded in the store for that page, tabId is NOT added
+   * to the relay payload (we have nothing to recover).
+   */
+  it("omits tabId from relay payload when explicit IDs provided, tabId omitted, and no tabId in store", async () => {
+    // Seed snapshots without setting any tabId metadata
+    seedSnapshots(store, "page-no-tab", [1, 2]);
+
+    const args: DiffSnapshotsArgs = { fromSnapshotId: "page-no-tab:1", toSnapshotId: "page-no-tab:2" };
+    await handleDiffSnapshots(relay, args, store);
+
+    const getPageMapCalls = relay.getRecordedCalls().filter(c => c.action === "get_page_map");
+    expect(getPageMapCalls).toHaveLength(0);
+
+    const diffCalls = relay.getRecordedCalls().filter(c => c.action === "diff_snapshots");
+    expect(diffCalls).toHaveLength(1);
+    expect(diffCalls[0]!.payload.tabId).toBeUndefined();
+  });
+
+  /**
+   * Design point 3 (cross-page): When explicit from/to IDs belong to DIFFERENT
+   * pages, tabId recovery is NOT performed — pageId mismatch means the stored
+   * tabId for "from" page is not applicable to the "to" page.
+   * tabId is omitted from the relay payload in this case.
+   */
+  it("does NOT forward recovered tabId for cross-page explicit diff with omitted tabId", async () => {
+    // Seed snapshots on two different pages; record tabId for page-A
+    seedSnapshots(store, "page-A", [1, 2]);
+    seedSnapshots(store, "page-B", [1, 2]);
+    store.setTabId("page-A", 55); // tabId is stored for page-A only
+
+    // Explicit IDs from DIFFERENT pages — cross-page diff
+    const args: DiffSnapshotsArgs = { fromSnapshotId: "page-A:2", toSnapshotId: "page-B:2" };
+    await handleDiffSnapshots(relay, args, store);
+
+    const getPageMapCalls = relay.getRecordedCalls().filter(c => c.action === "get_page_map");
+    expect(getPageMapCalls).toHaveLength(0);
+
+    const diffCalls = relay.getRecordedCalls().filter(c => c.action === "diff_snapshots");
+    expect(diffCalls).toHaveLength(1);
+    // page-A has tabId=55 stored, but since page-A !== page-B, recovery is skipped
+    expect(diffCalls[0]!.payload.tabId).toBeUndefined();
   });
 });

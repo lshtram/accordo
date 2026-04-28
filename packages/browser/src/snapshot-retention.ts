@@ -40,6 +40,12 @@ export class SnapshotRetentionStore {
    * GAP-I1: Maximum age in milliseconds. 0 (default) disables TTL eviction.
    */
   private maxAgeMs: number = 0;
+  /**
+   * B2-CTX-002: Per-page tabId metadata — records the tabId used when capturing
+   * a snapshot so diff_snapshots can recover it for relay routing when the caller
+   * omitted tabId but the page is the same.
+   */
+  private tabIdByPage = new Map<string, number>();
 
   constructor(maxAgeMs: number = 0) {
     this.maxAgeMs = maxAgeMs;
@@ -54,19 +60,44 @@ export class SnapshotRetentionStore {
   }
 
   /**
-   * Save an envelope for a page.
+   * B2-CTX-002: Store the tabId used to capture the latest snapshot for a page.
+   * Called by page-understanding tool handlers after a successful capture so
+   * diff_snapshots can recover the tabId when the caller omitted it.
+   *
+   * @param pageId — Stable page identifier.
+   * @param tabId — Tab ID used for the capture.
+   */
+  setTabId(pageId: string, tabId: number): void {
+    this.tabIdByPage.set(pageId, tabId);
+  }
+
+  /**
+   * B2-CTX-002: Return the tabId most recently associated with a page,
+   * or undefined if no capture tabId has been recorded.
+   *
+   * @param pageId — Stable page identifier.
+   */
+  getTabId(pageId: string): number | undefined {
+    return this.tabIdByPage.get(pageId);
+  }
+
+  /**
+   * Save an envelope for a page, optionally recording the tabId used for capture.
    * GAP-I1: Records capture timestamp and runs TTL eviction before saving.
    * If the page already has RETENTION_SLOTS entries the oldest is evicted.
    *
    * @param pageId — Stable page identifier from the envelope.
    * @param envelope — The full SnapshotEnvelopeFields from the relay response.
+   * @param tabId — Optional tabId used for capture, recorded for diff_snapshots tabId recovery.
    */
-  save(pageId: string, envelope: SnapshotEnvelopeFields): void {
+  save(pageId: string, envelope: SnapshotEnvelopeFields, tabId?: number): void {
     let slots = this.pages.get(pageId) ?? [];
     // GAP-I1: TTL eviction before save
     if (this.maxAgeMs > 0) slots = this.evictExpired(slots);
     slots.push(envelope);
     this.capturedAt.set(envelope.snapshotId, Date.now());
+    // B2-CTX-002: Record tabId for this page
+    if (tabId !== undefined) this.tabIdByPage.set(pageId, tabId);
     // FIFO eviction: remove oldest when over the limit
     while (slots.length > RETENTION_SLOTS) {
       const evicted = slots.shift();
@@ -78,9 +109,11 @@ export class SnapshotRetentionStore {
   /**
    * GAP-G1: Convenience overload — save an envelope when only the envelope
    * is available (pageId is derived from envelope.pageId).
+   * @param envelope — The full SnapshotEnvelopeFields from the relay response.
+   * @param tabId — Optional tabId used for capture, recorded for diff_snapshots tabId recovery.
    */
-  add(envelope: SnapshotEnvelopeFields): void {
-    this.save(envelope.pageId, envelope);
+  add(envelope: SnapshotEnvelopeFields, tabId?: number): void {
+    this.save(envelope.pageId, envelope, tabId);
   }
 
   /**
@@ -137,6 +170,7 @@ export class SnapshotRetentionStore {
     const slots = this.pages.get(pageId);
     if (slots) for (const e of slots) this.capturedAt.delete(e.snapshotId);
     this.pages.delete(pageId);
+    this.tabIdByPage.delete(pageId);
   }
 
   /**
@@ -160,9 +194,11 @@ export class SnapshotRetentionStore {
       const slots = this.pages.get(pageId);
       if (slots) for (const e of slots) this.capturedAt.delete(e.snapshotId);
       this.pages.delete(pageId);
+      this.tabIdByPage.delete(pageId);
     } else {
       this.pages.clear();
       this.capturedAt.clear();
+      this.tabIdByPage.clear();
     }
   }
 

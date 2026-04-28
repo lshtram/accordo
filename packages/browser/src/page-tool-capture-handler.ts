@@ -55,7 +55,7 @@ export async function handleCaptureRegion(
         const previousSnapshot = store.getLatest(data.pageId);
         const relatedSnapshotId = previousSnapshot?.snapshotId;
 
-        store.save(data.pageId, data);
+        store.save(data.pageId, data, args.tabId);
         const result = data as CaptureRegionResponse;
         result.auditId = auditEntry.auditId;
         const relayData = data as Record<string, unknown>;

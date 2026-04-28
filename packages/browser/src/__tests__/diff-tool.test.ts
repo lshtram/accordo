@@ -1099,13 +1099,15 @@ describe("GAP-G2: pre-flight store validation for explicit snapshot IDs", () => 
     expect(diffResult.fromSnapshotId).toBe("page-fresh:0");
   });
 
-  it("relay-level snapshot-not-found includes availableSnapshotIds from store", async () => {
-    // When pre-flight doesn't catch it (IDs in store), but relay still returns snapshot-not-found,
-    // the relay-level handler also includes availableSnapshotIds.
+  it("relay-level snapshot-not-found with both IDs locally present returns mismatch error (omits availableSnapshotIds)", async () => {
+    // Design point 6: When relay returns snapshot-not-found AND both IDs are
+    // present in the local store, this is an extension/runtime lookup mismatch —
+    // not a "here are alternatives" case. availableSnapshotIds is omitted so we
+    // don't claim a snapshot is missing when it is actually in our store.
     const relay = createMockRelay({ errorAction: "snapshot-not-found" });
     const store = new SnapshotRetentionStore();
 
-    // Populate store — both IDs ARE in the store so pre-flight passes
+    // Populate store — both IDs ARE in the store
     store.save("page-g2d", makeEnvelope("page-g2d", 5));
     store.save("page-g2d", makeEnvelope("page-g2d", 6));
 
@@ -1119,9 +1121,135 @@ describe("GAP-G2: pre-flight store validation for explicit snapshot IDs", () => 
     const error = result as DiffToolError;
     expect(error.error).toBe("snapshot-not-found");
     expect(error.details?.reason).toBeDefined();
-    // Both IDs are present in the store → relay-level handler can list available IDs
-    expect(error.details?.availableSnapshotIds).toEqual(
-      expect.arrayContaining(["page-g2d:5", "page-g2d:6"]),
-    );
+    // Both IDs are present locally — availableSnapshotIds must be omitted (design point 6)
+    expect(error.details?.availableSnapshotIds).toBeUndefined();
+    // Recovery hints should point to the mismatch scenario
+    expect(error.recoveryHints).toContain("extension/runtime failed to diff them");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Both IDs omitted — design point 4: no fresh captures, use retained pair
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("both IDs omitted: diffs previous/latest retained pair (design point 4)", () => {
+  /**
+   * Design point 4a: With >=2 retained snapshots, succeeds using previous/latest pair.
+   * No get_page_map calls are made — first relay action is diff_snapshots.
+   */
+  it("succeeds using previous/latest retained pair when both IDs omitted and >=2 snapshots exist", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    seedSnapshots(store, "page-omitted", [3, 4, 5]);
+
+    const result = await handleDiffSnapshots(relay, {}, store);
+
+    expect(result).not.toHaveProperty("success", false);
+    const diffResult = result as DiffSnapshotsResponse;
+    expect(diffResult.fromSnapshotId).toBe("page-omitted:4");
+    expect(diffResult.toSnapshotId).toBe("page-omitted:5");
+
+    // No get_page_map calls should have been made
+    const getPageMapCalls = relay.request.mock.calls.filter(([action]) => action === "get_page_map");
+    expect(getPageMapCalls).toHaveLength(0);
+
+    // First relay call should be diff_snapshots, not get_page_map
+    const firstCall = relay.request.mock.calls[0];
+    expect(firstCall?.[0]).toBe("diff_snapshots");
+  });
+
+  /**
+   * Design point 4b: With <2 retained snapshots, returns snapshot-not-found
+   * with a clear error — no get_page_map calls, no invented next snapshot ID.
+   */
+  it("returns snapshot-not-found when both IDs omitted and fewer than 2 snapshots retained", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore();
+    // Only 1 snapshot — insufficient for a diff pair
+    store.save("page-few", makeEnvelope("page-few", 1));
+
+    const result = await handleDiffSnapshots(relay, {}, store);
+
+    expect(result).toHaveProperty("success", false);
+    const error = result as DiffToolError;
+    expect(error.error).toBe("snapshot-not-found");
+    expect(error.recoveryHints).toContain("fewer than two snapshots");
+    expect(error.recoveryHints).toContain("Capture at least two snapshots");
+    // Must NOT invent or reference a next snapshot ID
+    expect(error.recoveryHints).not.toContain(":2");
+    expect(error.recoveryHints).not.toContain("page-few:2");
+    // availableSnapshotIds must be undefined (no alternatives when <2 exist)
+    expect(error.details?.availableSnapshotIds).toBeUndefined();
+    // No get_page_map calls should have been made
+    const getPageMapCalls = relay.request.mock.calls.filter(([action]) => action === "get_page_map");
+    expect(getPageMapCalls).toHaveLength(0);
+  });
+
+  /**
+   * Design point 4c: With zero snapshots, returns snapshot-not-found with clear guidance.
+   */
+  it("returns snapshot-not-found when store is completely empty and both IDs omitted", async () => {
+    const relay = createMockRelay();
+    const store = new SnapshotRetentionStore(); // empty
+
+    const result = await handleDiffSnapshots(relay, {}, store);
+
+    expect(result).toHaveProperty("success", false);
+    const error = result as DiffToolError;
+    expect(error.error).toBe("snapshot-not-found");
+    expect(error.recoveryHints).toContain("fewer than two snapshots");
+    expect(error.details?.availableSnapshotIds).toBeUndefined();
+    const getPageMapCalls = relay.request.mock.calls.filter(([action]) => action === "get_page_map");
+    expect(getPageMapCalls).toHaveLength(0);
+  });
+
+  /**
+   * Design point 5: from supplied + to omitted — fresh snapshot IS persisted locally.
+   */
+  it("from+omitted-to: fresh captured snapshot is persisted to the local store", async () => {
+    const store = new SnapshotRetentionStore();
+    store.save("page-from", makeEnvelope("page-from", 1));
+
+    const recordedCalls: Array<{ action: string; payload: Record<string, unknown> }> = [];
+    const relay = {
+      request: vi.fn().mockImplementation(async (action: string, payload?: Record<string, unknown>) => {
+        recordedCalls.push({ action, payload: { ...(payload ?? {}) } });
+        if (action === "get_page_map") {
+          return {
+            success: true,
+            requestId: "test",
+            data: {
+              pageId: "page-from",
+              frameId: "main",
+              snapshotId: "page-from:2",
+              capturedAt: "2025-01-01T00:00:02.000Z",
+              viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+              source: "dom" as const,
+            },
+          };
+        }
+        return {
+          success: true,
+          requestId: "test",
+          data: {
+            ...makeDiffResponse("page-from:1", "page-from:2"),
+            pageId: "page-from",
+            frameId: "main",
+            snapshotId: "page-from:2",
+            capturedAt: "2025-01-01T00:00:02.000Z",
+            viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+            source: "dom" as const,
+          },
+        };
+      }),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    const result = await handleDiffSnapshots(relay, { fromSnapshotId: "page-from:1" }, store);
+
+    expect(result).not.toHaveProperty("success", false);
+    // Fresh snapshot page-from:2 must be in the store after the call
+    const snapshots = store.list("page-from");
+    expect(snapshots.map((s) => s.snapshotId)).toContain("page-from:2");
   });
 });

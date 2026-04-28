@@ -1,5 +1,5 @@
 import { hasSnapshotEnvelope } from "./types.js";
-import type { BrowserRelayLike } from "./types.js";
+import type { BrowserRelayLike, SnapshotEnvelopeFields } from "./types.js";
 import { DIFF_TIMEOUT_MS, type DiffToolError } from "./diff-tool-contracts.js";
 import { extractRelayErrorCode } from "./diff-tool-analysis.js";
 import { classifyThrownRelayError, getRelayRetryAfterMs } from "./relay-error-policy.js";
@@ -30,10 +30,19 @@ export function buildTransientRelayError(topLevelError?: unknown): DiffToolError
   return undefined;
 }
 
+/**
+ * B2-CTX-002 + design point 5: Capture a fresh snapshot and persist its envelope.
+ * Returns both the snapshotId (for diff resolution) and the full envelope
+ * (so the caller can persist it to the local store before diffing).
+ *
+ * This replaces the old resolveFreshSnapshot which only returned snapshotId
+ * and let the envelope go unused — breaking the "persist fresh snapshot locally"
+ * requirement for the from+omitted-to path.
+ */
 export async function resolveFreshSnapshot(
   relay: BrowserRelayLike,
   tabId?: number,
-): Promise<string | DiffToolError> {
+): Promise<{ snapshotId: string; envelope: SnapshotEnvelopeFields } | DiffToolError> {
   const payload: Record<string, unknown> = {};
   if (tabId !== undefined) payload.tabId = tabId;
   let freshResponse: Awaited<ReturnType<BrowserRelayLike["request"]>>;
@@ -53,7 +62,7 @@ export async function resolveFreshSnapshot(
   }
 
   if (hasSnapshotEnvelope(freshResponse.data)) {
-    return freshResponse.data.snapshotId;
+    return { snapshotId: freshResponse.data.snapshotId, envelope: freshResponse.data };
   }
 
   return { success: false, error: "action-failed", retryable: false };
@@ -102,5 +111,24 @@ export function resolveFromSnapshot(
     };
   }
 
-  return retainedSnapshots[targetIndex - 1]!.snapshotId;
+  const previous = retainedSnapshots[targetIndex - 1];
+  if (previous === undefined) return buildNoPriorSnapshotError(toSnapshotId);
+  return previous.snapshotId;
+}
+
+function buildNoPriorSnapshotError(toSnapshotId: string): DiffToolError {
+  return {
+    success: false,
+    error: "snapshot-not-found",
+    retryable: false,
+    recoveryHints:
+      `No prior retained snapshot exists before '${toSnapshotId}' in local history. ` +
+      "Capture a fresh baseline with get_page_map (or another read tool), then perform the action you want to observe and diff against that newer snapshot.",
+    details: {
+      reason: `Snapshot '${toSnapshotId}' is the earliest retained snapshot for this page in local history. There is no prior retained snapshot to use as a baseline.`,
+      recoveryHints:
+        `No prior retained snapshot exists before '${toSnapshotId}' in local history. ` +
+        "Capture a fresh baseline with get_page_map (or another read tool), then perform the action you want to observe and diff against that newer snapshot.",
+    },
+  };
 }

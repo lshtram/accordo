@@ -55,6 +55,8 @@ export async function handleInspectElement(
       },
       resolveOriginPolicy: () => mergeOriginPolicy(security.originPolicy, args.allowedOrigins, args.deniedOrigins),
       persistSnapshot: (response) => store.save(response.pageId, response),
+      // B2-CTX-002: Record tabId used for capture so diff_snapshots can recover it
+      persistTabId: (a) => (a as InspectElementArgs).tabId,
       redact: (response) => {
         if (args.redactPII === true) {
           response.redactionApplied = redactInspectElementResponse(response, security.redactionPolicy);
