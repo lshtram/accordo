@@ -34,7 +34,7 @@ function responseFor(action: string): Record<string, unknown> {
   const pii = "user@example.com";
   if (action === "get_text_map") return { ...ENVELOPE, pageUrl: "https://example.com", title: "T", segments: [{ textRaw: pii, textNormalized: pii, nodeId: 1, bbox: { x: 0, y: 0, width: 10, height: 10 }, visibility: "visible", readingOrderIndex: 0 }], totalSegments: 1, truncated: false };
   if (action === "get_semantic_graph") return { ...ENVELOPE, pageUrl: "https://example.com", title: "T", a11yTree: [{ role: "text", name: pii, nodeId: 1, children: [] }], landmarks: [], outline: [{ level: 1, text: pii, nodeId: 1 }], forms: [] };
-  if (action === "get_page_map") return { ...ENVELOPE, pageUrl: "https://example.com", title: "T", nodes: [{ text: pii }], totalElements: 1, truncated: false };
+  if (action === "get_page_map") return { ...ENVELOPE, pageUrl: "https://example.com", title: "T", nodes: [{ nodeId: 1, uid: "main:1", ref: "ref-1", tag: "div", text: pii }], totalElements: 1, truncated: false };
   if (action === "inspect_element") return { ...ENVELOPE, pageUrl: "https://example.com", found: true, element: { textContent: pii } };
   return { ...ENVELOPE, pageUrl: "https://example.com", found: true, html: `<div>${pii}</div>`, text: pii, nodeCount: 1, truncated: false };
 }
@@ -86,6 +86,32 @@ describe("read tool redaction contract", () => {
       expect(relevantText(name, result)).not.toContain("user@example.com");
       expect(result.redactionApplied).toBe(true);
       expect(result.redactionWarning).toBeUndefined();
+    }
+  });
+
+  // Regression: redactPII:true must not redact machine identifiers (pageId/snapshotId/frameId/nodeId/uid/ref).
+  // Live behavior prior to the redaction boundary fix incorrectly redacted pageId and snapshotId,
+  // rendering follow-up tool calls unusable.
+  it("true redacts text fields without redacting machine identifiers across all five read tools", async () => {
+    const tools = getTools(createRelay(), createSecurity());
+    for (const [name, tool] of Object.entries(tools)) {
+      const result = await (tool.handler as any)({ ...argsFor(name), redactPII: true });
+
+      // Envelope identifiers must be preserved.
+      expect(result.pageId).toBe("p1");
+      expect(result.snapshotId).toBe("p1:1");
+      expect(result.frameId).toBe("main");
+
+      // Text content must be redacted.
+      expect(relevantText(name, result)).not.toContain("user@example.com");
+      expect(result.redactionApplied).toBe(true);
+
+      // page_map nodes carry nodeId / uid / ref — verify they survive redaction.
+      if (name === "page") {
+        expect(result.nodes[0].nodeId).toBe(1);
+        expect(result.nodes[0].uid).toBe("main:1");
+        expect(result.nodes[0].ref).toBe("ref-1");
+      }
     }
   });
 });
