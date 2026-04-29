@@ -133,9 +133,9 @@ The following error codes MUST include `retryable: false`:
 
 **Acceptance:** Each listed error code returns the correct `retryable` and `retryAfterMs` values.
 
-**MCP-ER-004: Minimum-contract capture error codes**  
-All error codes defined in the `CaptureError` type (`element-not-found`, `element-off-screen`, `image-too-large`, `capture-failed`, `no-target`) MUST be returned by the MCP handler layer for `accordo_browser_capture_region` in the corresponding failure scenarios. These codes are already implemented at the content script level (CR-F-12 in `requirements-browser-extension.md`) and MUST propagate through the relay → MCP handler path as structured error objects (MCP-ER-001).  
-**Acceptance:** Each of the five `CaptureError` codes is returned by the MCP-level `accordo_browser_capture_region` handler (not just the content script) with the structured error shape. Integration tests verify end-to-end propagation.  
+**MCP-ER-004: Minimum-contract capture error codes**
+All error codes defined in the `CaptureError` type (`element-not-found`, `element-off-screen`, `image-too-large`, `capture-failed`, `no-target`) MUST be returned by the MCP handler layer for `accordo_browser_capture_region` in the corresponding failure scenarios. These codes are already implemented at the content script level (CR-F-12 in `requirements-browser-extension.md`) and MUST propagate through the relay → MCP handler path as structured error objects (MCP-ER-001).
+**Acceptance:** Each of the five `CaptureError` codes is returned by the MCP-level `accordo_browser_capture_region` handler (not just the content script) with the structured error shape. Integration tests verify end-to-end propagation.
 **Cross-reference:** CR-F-11, CR-F-12 in `requirements-browser-extension.md`; `CaptureError` type in `packages/browser/src/page-tool-types.ts`.
 
 **MCP-ER-005: Spatial relations contract validation (GAP-D1 item 5)**
