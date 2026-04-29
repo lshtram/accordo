@@ -133,4 +133,46 @@ describe("readHubHealthWithDeps — HTTP contract", () => {
     expect(calls.length).toBeGreaterThan(0); // stub skips get → 0 calls → RED
     expect(calls[0].opts.port).toBe(4321);   // real impl must pass correct port
   });
+
+  it("HLTH-08: health probe uses IPv4 loopback to match Hub bind host", async () => {
+    const { deps, calls } = makeHttpDeps(VALID_JSON);
+    await readHubHealthWithDeps(4321, deps);
+    expect(calls[0].opts.hostname).toBe("127.0.0.1");
+  });
+
+  it("HLTH-09: response is parsed once when get listener and response event both fire", async () => {
+    const resListeners = new Map<string, (...args: unknown[]) => void>();
+    const reqListeners = new Map<string, (...args: unknown[]) => void>();
+    const res = {
+      statusCode: 200,
+      headers: {},
+      on(event: string, cb: (...args: unknown[]) => void) {
+        resListeners.set(event, cb);
+        return res;
+      },
+    };
+    const req = {
+      on(event: string, cb: (...args: unknown[]) => void) {
+        reqListeners.set(event, cb);
+        return req;
+      },
+      end: vi.fn().mockReturnThis(),
+    };
+    const deps = {
+      get: vi.fn((_opts: http.RequestOptions, listener: (r: http.IncomingMessage) => void) => {
+        setTimeout(() => {
+          listener(res as unknown as http.IncomingMessage);
+          reqListeners.get("response")?.(res as unknown as http.IncomingMessage);
+          resListeners.get("data")?.(Buffer.from(VALID_JSON));
+          resListeners.get("end")?.();
+        }, 0);
+        return req as unknown as http.ClientRequest;
+      }),
+    };
+
+    const result = await readHubHealthWithDeps(4321, deps);
+    expect(result).not.toBeNull();
+    expect(result!.bridge).toBe("connected");
+    expect(result!.toolCount).toBe(3);
+  });
 });

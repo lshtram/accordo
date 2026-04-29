@@ -80,12 +80,19 @@ export async function readHubHealthWithDeps(
 
     const timeoutId = setTimeout(() => settle(null), HEALTH_TIMEOUT_MS);
     const collector = makeChunkCollector();
+    let responseHandled = false;
+
+    const handleResponseOnce = (res: http.IncomingMessage): void => {
+      if (responseHandled) return;
+      responseHandled = true;
+      clearTimeout(timeoutId);
+      makeResponseHandler(res, settle, collector, clearTimeout, timeoutId);
+    };
 
     const req = httpDeps.get(
-      { hostname: "localhost", port, path: "/health", method: "GET", timeout: HEALTH_TIMEOUT_MS },
+      { hostname: "127.0.0.1", port, path: "/health", method: "GET", timeout: HEALTH_TIMEOUT_MS },
       (res): void => {
-        clearTimeout(timeoutId);
-        makeResponseHandler(res, settle, collector, clearTimeout, timeoutId);
+        handleResponseOnce(res);
       },
     );
 
@@ -95,8 +102,7 @@ export async function readHubHealthWithDeps(
       if (typeof reqPartial.on === "function") reqPartial.on(event, handler);
     };
     safeOn("response", (res) => {
-      clearTimeout(timeoutId);
-      makeResponseHandler(res as http.IncomingMessage, settle, collector, clearTimeout, timeoutId);
+      handleResponseOnce(res as http.IncomingMessage);
     });
     safeOn("error", () => { clearTimeout(timeoutId); settle(null); });
     safeOn("timeout", () => {

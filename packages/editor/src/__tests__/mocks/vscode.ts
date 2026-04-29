@@ -152,6 +152,16 @@ export const window = {
   createTerminal: vi.fn(),
   showWarningMessage: vi.fn().mockResolvedValue(undefined),
   onDidCloseTerminal: vi.fn().mockImplementation(() => ({ dispose: vi.fn() })),
+  // S-TR-04: mock shell integration events — uses shared listener storage
+  // so tests can fire events via fireShellExecutionStart/End
+  onDidStartTerminalShellExecution: ((listener: (event: MockTerminalShellExecutionStartEvent) => void) => {
+    _shellStartListeners.push(listener);
+    return { dispose: () => { const i = _shellStartListeners.indexOf(listener); if (i >= 0) _shellStartListeners.splice(i, 1); } };
+  }) as unknown as typeof window.onDidStartTerminalShellExecution,
+  onDidEndTerminalShellExecution: ((listener: (event: MockTerminalShellExecutionEndEvent) => void) => {
+    _shellEndListeners.push(listener);
+    return { dispose: () => { const i = _shellEndListeners.indexOf(listener); if (i >= 0) _shellEndListeners.splice(i, 1); } };
+  }) as unknown as typeof window.onDidEndTerminalShellExecution,
 };
 
 // ── workspace ────────────────────────────────────────────────────────────────
@@ -187,6 +197,57 @@ export const commands = {
   executeCommand: vi.fn().mockResolvedValue(undefined),
   registerCommand: vi.fn().mockImplementation(() => ({ dispose: vi.fn() })),
 };
+
+// ── Shell Execution Event Firing (S-TR-04, S-TR-09, S-TR-11) ─────────────────
+
+// Shared listener storage for onDidStartTerminalShellExecution
+const _shellStartListeners: Array<(event: MockTerminalShellExecutionStartEvent) => void> = [];
+
+// Shared listener storage for onDidEndTerminalShellExecution
+const _shellEndListeners: Array<(event: MockTerminalShellExecutionEndEvent) => void> = [];
+
+/**
+ * Fire a shell execution start event to all registered listeners.
+ *
+ * Uses process.nextTick so the event fires BEFORE the Node.js event loop's
+ * microtask checkpoint — BEFORE any Promise.then() continuations (including
+ * async function await continuations) are processed.
+ *
+ * This mirrors VS Code's real behavior where onDidStartTerminalShellExecution
+ * fires synchronously with sendText() in the extension host, so the output
+ * source is subscribed before any async continuation in the handler.
+ *
+ * Usage:
+ *   terminal.sendText("echo hello");
+ *   fireShellExecutionStart({ terminal, execution: mockExec });
+ *   // The event fires via nextTick, BEFORE collectObservePreview() resumes
+ *   // from its await — so the buffer is populated before the read attempt.
+ */
+export function fireShellExecutionStart(event: MockTerminalShellExecutionStartEvent, useNextTick = true): void {
+  const fire = () => {
+    _shellStartListeners.forEach((l) => l(event));
+  };
+  if (useNextTick) {
+    process.nextTick(fire);
+  } else {
+    _shellStartListeners.forEach((l) => l(event));
+  }
+}
+
+/**
+ * Fire a shell execution end event to all registered listeners.
+ */
+export function fireShellExecutionEnd(event: MockTerminalShellExecutionEndEvent): void {
+  _shellEndListeners.forEach((l) => l(event));
+}
+
+/**
+ * Reset shell execution listeners (call in beforeEach).
+ */
+export function resetShellExecutionListeners(): void {
+  _shellStartListeners.length = 0;
+  _shellEndListeners.length = 0;
+}
 
 // ── languages ────────────────────────────────────────────────────────────────
 
@@ -237,6 +298,172 @@ export class EventEmitter<T> {
   dispose(): void {
     this.listeners = [];
   }
+}
+
+// ── Shell Execution (S-TR-04, S-TR-09, S-TR-11) ────────────────────────────────
+
+/**
+ * Mock TerminalShellExecution with async iterable read().
+ * Used by tests that exercise the real shell-execution → buffer capture path.
+ *
+ * Key behavior: when read() is consumed by for-await-of, each .next() resolves
+ * SYNCHRONOUSLY with the chunk via Promise.resolve(). The for-await-of loop
+ * awaits each result in sequence, but since next() resolves immediately, all
+ * chunks are processed in rapid succession within the same microtask checkpoint.
+ * This ensures the buffer is fully populated before collectObservePreview reads.
+ *
+ * Test-only hook (onExhausted): called when the last chunk has been consumed
+ * by for-await-of. This allows tests to know when readExecutionOutput has
+ * finished populating the buffer.
+ */
+export class MockTerminalShellExecution {
+  private chunks: string[];
+  public onExhausted: (() => void) | null = null;
+  public commandLine: { value: string } | undefined;
+
+  constructor(chunks: string[] = [], commandLine?: string) {
+    this.chunks = chunks;
+    this.commandLine = commandLine ? { value: commandLine } : undefined;
+  }
+
+  /** Set the chunks to be yielded by read() */
+  setChunks(chunks: string[]): void {
+    this.chunks = chunks;
+  }
+
+  /**
+   * Async iterable read() — mimics VS Code TerminalShellExecution.read().
+   * Each .next() resolves SYNCHRONOUSLY via Promise.resolve(), enabling
+   * all chunks to be consumed in one microtask checkpoint.
+   *
+   * When the last chunk is consumed and the iterator signals {done: true},
+   * onExhausted is called synchronously within the await chain.
+   */
+  read(): AsyncIterableIterator<string> {
+    const chunks = this.chunks;
+    let i = 0;
+    const self = this;
+    return {
+      next(): Promise<IteratorResult<string>> {
+        if (i < chunks.length) {
+          const value = chunks[i++];
+          return Promise.resolve({ value, done: false });
+        }
+        // All chunks consumed — fire the exhausted hook synchronously
+        // within the Promise resolution chain.
+        if (self.onExhausted) {
+          self.onExhausted();
+        }
+        return Promise.resolve({ value: undefined, done: true });
+      },
+      [Symbol.asyncIterator](): AsyncIterableIterator<string> {
+        return this;
+      },
+    };
+  }
+}
+
+/**
+ * Mock TerminalShellExecutionStartEvent.
+ * Used to fire onDidStartTerminalShellExecution listeners.
+ */
+export interface MockTerminalShellExecutionStartEvent {
+  readonly terminal: { name: string };
+  readonly execution: MockTerminalShellExecution;
+}
+
+/**
+ * Mock TerminalShellExecutionEndEvent.
+ * Used to fire onDidEndTerminalShellExecution listeners.
+ */
+export interface MockTerminalShellExecutionEndEvent {
+  readonly execution: MockTerminalShellExecution;
+}
+
+/**
+ * Shell execution event emitter — test helper.
+ * Installs an EventEmitter-based onDidStartTerminalShellExecution on the window mock
+ * so tests can fire shell execution events.
+ *
+ * Tests can wrap terminal.sendText() to fire a shell execution start event
+ * during command dispatch. Production observed runs then wait for the source
+ * adapter to stream the mock execution output into the buffer.
+ *
+ * Usage:
+ *   const shellEmitter = installShellExecutionEmitter();
+ *   const mockExec = new MockTerminalShellExecution(['output chunk\n']);
+ *   shellEmitter.fireStart({ terminal: mockTerminal, execution: mockExec });
+ */
+export function installShellExecutionEmitter(chunks: string[] = []): {
+  fireStart(event: MockTerminalShellExecutionStartEvent): void;
+  fireEnd(event: MockTerminalShellExecutionEndEvent): void;
+  setChunks(chunks: string[]): void;
+  wrapTerminal(terminal: Record<string, unknown>): void;
+} {
+  const startEmitter = new EventEmitter<MockTerminalShellExecutionStartEvent>();
+  const endEmitter = new EventEmitter<MockTerminalShellExecutionEndEvent>();
+
+  // Create callable that registers with the emitter and also has an .event property
+  function startHandler(listener: (e: MockTerminalShellExecutionStartEvent) => void) {
+    const disp = startEmitter.event(listener);
+    return { dispose: disp.dispose };
+  }
+  (startHandler as unknown as { event: typeof startHandler }).event = startHandler;
+
+  function endHandler(listener: (e: MockTerminalShellExecutionEndEvent) => void) {
+    const disp = endEmitter.event(listener);
+    return { dispose: disp.dispose };
+  }
+  (endHandler as unknown as { event: typeof endHandler }).event = endHandler;
+
+  // Replace the window mock's shell execution functions
+  // The original values were vi.fn() mocks — we replace them with our emitter-backed functions
+  (window as unknown as Record<string, unknown>).onDidStartTerminalShellExecution = startHandler;
+  (window as unknown as Record<string, unknown>).onDidEndTerminalShellExecution = endHandler;
+
+  // Store for test-time chunk updates
+  let currentChunks = chunks;
+
+  // Wrap createTerminal to install the same sendText shell-event hook on
+  // terminals created through the mock VS Code API.
+  const origCreateTerminal = window.createTerminal as (...args: unknown[]) => unknown;
+  (window as unknown as Record<string, unknown>).createTerminal = vi.fn().mockImplementation((...args: unknown[]) => {
+    const terminal = origCreateTerminal(...args) as Record<string, unknown>;
+    if (!terminal) return undefined;
+    wrapTerminalSendText(terminal, startEmitter, () => currentChunks);
+    return terminal;
+  }) as typeof window.createTerminal;
+
+  return {
+    fireStart: (event) => startEmitter.fire(event),
+    fireEnd: (event) => endEmitter.fire(event),
+    setChunks(chunks: string[]) { currentChunks = chunks; },
+    /**
+     * Manually wrap a terminal's sendText to fire shell events.
+     * Use this for tests that create terminals manually (not via window.createTerminal).
+     */
+    wrapTerminal: (terminal: Record<string, unknown>) => {
+      wrapTerminalSendText(terminal, startEmitter, () => currentChunks);
+    },
+  };
+}
+
+/**
+ * Wrap terminal.sendText to fire shell execution events.
+ * This is called by installShellExecutionEmitter for terminals created via window.createTerminal
+ * and can also be called directly by tests for manually-created terminals.
+ */
+function wrapTerminalSendText(
+  terminal: Record<string, unknown>,
+  startEmitter: EventEmitter<MockTerminalShellExecutionStartEvent>,
+  getChunks: () => readonly string[],
+): void {
+  const origSendText = terminal.sendText as (...args: unknown[]) => unknown;
+  terminal.sendText = ((text: unknown, ...rest: unknown[]) => {
+    const exec = new MockTerminalShellExecution([...getChunks()]);
+    startEmitter.fire({ terminal, execution: exec } as MockTerminalShellExecutionStartEvent);
+    return origSendText(text, ...rest);
+  }) as typeof terminal.sendText;
 }
 
 // ── env ──────────────────────────────────────────────────────────────────────

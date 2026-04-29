@@ -2,7 +2,7 @@
  * accordo-editor — VSCode Extension Entry Point
  *
  * Activates by acquiring the BridgeAPI from accordo-bridge and registering
- * all 23 editor/terminal/layout tools.
+ * all registered editor/terminal/layout tools.
  *
  * If accordo-bridge is not installed, the extension is silently inert.
  *
@@ -20,6 +20,14 @@ import {
   terminalTools,
   registerTerminalLifecycle,
 } from "./tools/terminal.js";
+import {
+  createTerminalReadDeps,
+  initTerminalReadGateway,
+  terminalReadTools,
+  terminalReadHandler,
+  vscodeTerminalOutputSource,
+} from "./tools/terminal-read/index.js";
+import { initTerminalRunGateway, initTerminalRunGatewaySource } from "./tools/terminal/terminal-run.js";
 import { createLayoutTools } from "./tools/layout.js";
 import {
   registerEditorCommandShims,
@@ -46,7 +54,13 @@ async function getBridgeApi(): Promise<BridgeAPI | undefined> {
 }
 
 function buildToolList(getState: () => IDEState): ExtensionToolDefinition[] {
-  return [...editorTools, ...terminalTools, ...vscodeCommandTools, ...createLayoutTools(getState)];
+  return [
+    ...editorTools,
+    ...terminalTools,
+    ...terminalReadTools,
+    ...vscodeCommandTools,
+    ...createLayoutTools(getState),
+  ];
 }
 
 async function registerAllCommandShims(
@@ -92,6 +106,7 @@ function registerTerminalShims(
     terminalFocusHandler: handlers.terminalFocusHandler,
     terminalListHandler: handlers.terminalListHandler,
     terminalCloseHandler: handlers.terminalCloseHandler,
+    terminalReadHandler,
   });
 }
 
@@ -115,6 +130,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (!bridge) return;
 
   const getState = (): IDEState => bridge.getState();
+  // S-TR-03/S-TR-09: initialize readback deps so registered tools do not
+  // hit the throw-"not implemented" stub path at runtime.
+  const terminalReadDeps = createTerminalReadDeps();
+  initTerminalReadGateway(terminalReadDeps);
+  initTerminalRunGateway({
+    read: (req) => terminalReadDeps.buffer.read(req),
+    redact: (text) => terminalReadDeps.redactor.redact(text),
+  });
+  // S-TR-04: wire production terminal output source into run gateway
+  initTerminalRunGatewaySource(terminalReadDeps.source);
+  // S-TR-04: initVscodeCommandGateway must run to restore the gateway regression
   initVscodeCommandGateway(createVsCodeCommandGatewayDeps());
   const allTools = buildToolList(getState);
   context.subscriptions.push(bridge.registerTools("accordo.accordo-editor", allTools));

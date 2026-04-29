@@ -17,6 +17,9 @@ import type { HealthProbe } from "./hub-manager-polling.js";
 import { resolveHubPort } from "./hub-manager-lifecycle.js";
 import { probeRegistryEntry } from "./hub-registry.js";
 
+export const SPAWNED_HUB_REGISTRY_WAIT_MS = 5_000;
+export const SPAWNED_HUB_REGISTRY_POLL_MS = 50;
+
 export interface SpawnDeps {
   readonly projectId: string;
   readonly configRegistryPath: string;
@@ -153,20 +156,21 @@ async function resolveSpawnedHubPortByPid(
     return resolveHubPort(registryPath, projectId, fallbackPort);
   }
 
-  // Unit tests in this package frequently run with fake timers. Avoid waiting
-  // on mocked timer queues here to keep activation tests deterministic.
-  const hasNativeTimers = String(setTimeout).includes("[native code]");
-  if (!hasNativeTimers) {
+  // Unit tests in this package sometimes run with fake timers. Avoid waiting on
+  // mocked timer queues, but do not mistake Vitest's real-timer wrapper for a
+  // fake clock; real timers are needed to prove delayed registry publication.
+  const timerWithPossibleClock = setTimeout as typeof setTimeout & { clock?: unknown };
+  if (timerWithPossibleClock.clock !== undefined) {
     return resolveHubPort(registryPath, projectId, fallbackPort);
   }
 
-  const deadline = Date.now() + 750;
+  const deadline = Date.now() + SPAWNED_HUB_REGISTRY_WAIT_MS;
   while (Date.now() < deadline) {
     const entry = probeRegistryEntry(registryPath, projectId);
     if (entry && entry.pid === expectedPid) {
       return entry.port;
     }
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    await new Promise<void>((resolve) => setTimeout(resolve, SPAWNED_HUB_REGISTRY_POLL_MS));
   }
 
   return resolveHubPort(registryPath, projectId, fallbackPort);

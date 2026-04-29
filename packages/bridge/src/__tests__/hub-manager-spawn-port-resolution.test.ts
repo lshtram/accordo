@@ -83,4 +83,43 @@ describe("hub-manager-spawn port resolution", () => {
 
     expect(events.onHubReady).toHaveBeenCalledWith(3000, "tok");
   });
+
+  it("SPAWN-03: waits for delayed spawned pid registry entry before polling health", async () => {
+    const projectId = "-home-liorshtram-project-a8513ffe";
+    tmpRegistryPath = path.join(os.tmpdir(), `accordo-reg-${process.pid}-${Date.now()}-3.json`);
+
+    const events = { onHubReady: vi.fn(), onHubError: vi.fn(), onCredentialsRotated: vi.fn() };
+    const processState: HubProcessSharedState = {
+      hubProcess: null,
+      token: "tok",
+      secret: "sec",
+      restartAttempted: false,
+      killRequested: false,
+    };
+    const healthState = { port: 3000 };
+
+    const spawnFn = vi.fn(async () => {
+      processState.hubProcess = { pid: process.pid } as unknown as HubProcessSharedState["hubProcess"];
+      setTimeout(() => {
+        fs.writeFileSync(
+          tmpRegistryPath!,
+          JSON.stringify({ [projectId]: { pid: process.pid, port: 3001, startedAt: new Date().toISOString() } }),
+          "utf8",
+        );
+      }, 900);
+    });
+    const pollHealthFn = vi.fn(async () => healthState.port === 3001);
+
+    await spawnAndWaitHub(
+      spawnFn,
+      pollHealthFn,
+      { projectId, configRegistryPath: tmpRegistryPath, events, processState, healthState },
+      "sec",
+      "tok",
+      3000,
+    );
+
+    expect(pollHealthFn).toHaveBeenCalled();
+    expect(events.onHubReady).toHaveBeenCalledWith(3001, "tok");
+  });
 });
