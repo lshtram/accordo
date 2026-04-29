@@ -30,6 +30,17 @@ function createRelay(): BrowserRelayLike {
   } as unknown as BrowserRelayLike;
 }
 
+function createAlreadyRedactedRelay(): BrowserRelayLike {
+  return {
+    request: vi.fn().mockResolvedValue({
+      success: true,
+      requestId: "test",
+      data: { ...ENVELOPE, pageUrl: "https://example.com", title: "T", a11yTree: [], landmarks: [], outline: [], forms: [{ fields: [{ nodeId: 1, uid: "main:1", value: "[REDACTED]" }] }], redactionApplied: true },
+    }),
+    isConnected: vi.fn(() => true),
+  } as unknown as BrowserRelayLike;
+}
+
 function responseFor(action: string): Record<string, unknown> {
   const pii = "user@example.com";
   if (action === "get_text_map") return { ...ENVELOPE, pageUrl: "https://example.com", title: "T", segments: [{ textRaw: pii, textNormalized: pii, nodeId: 1, bbox: { x: 0, y: 0, width: 10, height: 10 }, visibility: "visible", readingOrderIndex: 0 }], totalSegments: 1, truncated: false };
@@ -113,5 +124,16 @@ describe("read tool redaction contract", () => {
         expect(result.nodes[0].ref).toBe("ref-1");
       }
     }
+  });
+
+  it("preserves upstream redactionApplied when forwarded data is already redacted", async () => {
+    const tool = buildSemanticGraphTool(createAlreadyRedactedRelay(), new SnapshotRetentionStore(), createSecurity());
+    const result = await (tool.handler as any)({ redactPII: true });
+
+    expect(result.pageId).toBe("p1");
+    expect(result.snapshotId).toBe("p1:1");
+    expect(result.forms[0].fields[0].uid).toBe("main:1");
+    expect(result.forms[0].fields[0].value).toBe("[REDACTED]");
+    expect(result.redactionApplied).toBe(true);
   });
 });

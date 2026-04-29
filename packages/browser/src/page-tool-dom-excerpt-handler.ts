@@ -55,7 +55,7 @@ export async function handleGetDomExcerpt(
       persistTabId: (a) => (a as GetDomExcerptArgs).tabId,
       redact: (response) => {
         if (args.redactPII === true) {
-          response.redactionApplied = redactDomExcerptResponse(response, security.redactionPolicy);
+          response.redactionApplied = redactDomExcerptResponse(response, security.redactionPolicy) || response.redactionApplied === true;
         }
         return response;
       },

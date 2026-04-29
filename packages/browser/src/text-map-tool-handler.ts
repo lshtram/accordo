@@ -74,7 +74,7 @@ export async function handleGetTextMap(
       },
       redact: (response) => {
         if (args.redactPII === true) {
-          response.redactionApplied = redactTextMapResponse(response, security.redactionPolicy);
+          response.redactionApplied = redactTextMapResponse(response, security.redactionPolicy) || response.redactionApplied === true;
         }
         return response;
       },

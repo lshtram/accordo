@@ -66,7 +66,7 @@ export async function handleGetPageMap(
       },
       redact: (response) => {
         if (args.redactPII === true) {
-          response.redactionApplied = redactPageMapResponse(response, security.redactionPolicy);
+          response.redactionApplied = redactPageMapResponse(response, security.redactionPolicy) || response.redactionApplied === true;
         }
         return response;
       },

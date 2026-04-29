@@ -72,7 +72,7 @@ export async function handleGetSemanticGraphInline(
 
     if (args.redactPII) {
       try {
-        result.redactionApplied = redactSemanticGraphResponse(result, security.redactionPolicy);
+        result.redactionApplied = redactSemanticGraphResponse(result, security.redactionPolicy) || result.redactionApplied === true;
       } catch {
         security.auditLog.completeEntry(auditEntry, {
           action: "blocked",

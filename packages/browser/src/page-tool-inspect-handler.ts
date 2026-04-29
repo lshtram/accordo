@@ -59,7 +59,7 @@ export async function handleInspectElement(
       persistTabId: (a) => (a as InspectElementArgs).tabId,
       redact: (response) => {
         if (args.redactPII === true) {
-          response.redactionApplied = redactInspectElementResponse(response, security.redactionPolicy);
+          response.redactionApplied = redactInspectElementResponse(response, security.redactionPolicy) || response.redactionApplied === true;
         }
         return response;
       },

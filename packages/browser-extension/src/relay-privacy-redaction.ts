@@ -17,6 +17,20 @@ const TEXT_FIELDS = new Set([
   "method",
 ]);
 
+const IDENTIFIER_FIELDS = new Set([
+  "anchorKey",
+  "auditId",
+  "canonicalAnchorKey",
+  "frameId",
+  "nodeId",
+  "pageId",
+  "ref",
+  "snapshotId",
+  "uid",
+]);
+
+const IDENTIFIER_ARRAY_FIELDS = new Set(["uids"]);
+
 const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
 const PHONE_RE = /(\+?1?[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g;
 const API_KEY_RE = /(?:api[_-]?key|apikey|secret[_-]?key|access[_-]?token|auth[_-]?token|bearer|password|passwd|pwd)["\s:=]+[a-zA-Z0-9_\-]{8,}/gi;
@@ -60,7 +74,9 @@ function redactValue(value: unknown): { value: unknown; redacted: boolean } {
     const result: Record<string, unknown> = {};
 
     for (const [key, fieldVal] of Object.entries(obj)) {
-      if (TEXT_FIELDS.has(key) && typeof fieldVal === "string") {
+      if (IDENTIFIER_FIELDS.has(key) || IDENTIFIER_ARRAY_FIELDS.has(key)) {
+        result[key] = fieldVal;
+      } else if (TEXT_FIELDS.has(key) && typeof fieldVal === "string") {
         const { value: redacted, redacted: didRedact } = redactString(fieldVal);
         result[key] = redacted;
         if (didRedact) anyRedacted = true;

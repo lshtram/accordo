@@ -54,7 +54,7 @@ export function finalizeSemanticGraphResult(
 
   if (args.redactPII) {
     try {
-      result.redactionApplied = redactSemanticGraphResponse(result, security.redactionPolicy);
+      result.redactionApplied = redactSemanticGraphResponse(result, security.redactionPolicy) || result.redactionApplied === true;
     } catch {
       return buildStructuredError("redaction-failed") as SemanticGraphToolError;
     }
