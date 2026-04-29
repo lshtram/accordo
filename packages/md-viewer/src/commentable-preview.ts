@@ -32,6 +32,7 @@
  */
 
 import * as vscode from "vscode";
+import type { PreviewHighlightApplyArgs, PreviewHighlightClearArgs } from "@accordo/capabilities";
 import type { CommentStoreLike, ResolverLike } from "./preview-bridge.js";
 import { PreviewBridge } from "./preview-bridge.js";
 import { MarkdownRenderer } from "./renderer.js";
@@ -45,6 +46,8 @@ export const PREVIEW_VIEW_TYPE = "accordo.markdownPreview";
 
 /** Default surface setting values */
 export type DefaultSurface = "viewer" | "text";
+
+interface ActivePreviewHighlight extends PreviewHighlightApplyArgs {}
 
 // ── Pure helpers (exported for unit testing without VSCode) ───────────────────
 
@@ -93,6 +96,7 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
   static readonly liveResolvers = new Map<string, ResolverLike>();
   static readonly pendingRevealLines = new Map<string, number>();
   static readonly readyUris = new Set<string>();
+  static readonly activeHighlights = new Map<string, Map<string, ActivePreviewHighlight>>();
 
   static requestRevealLine(uri: string, line: number): boolean {
     this.pendingRevealLines.set(uri, line);
@@ -116,6 +120,96 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
     panel.reveal(undefined, false);
     void panel.webview.postMessage({ type: "preview:revealBlock", blockId });
     return true;
+  }
+
+  static applyHighlight(args: PreviewHighlightApplyArgs): boolean {
+    const panel = this.livePanels.get(args.uri);
+    const resolver = this.liveResolvers.get(args.uri);
+    if (!panel || !resolver) {
+      return false;
+    }
+
+    const blockIds = this.resolveHighlightBlockIds(resolver, args.startLine, args.endLine);
+    if (blockIds.length === 0) {
+      return false;
+    }
+
+    const highlights = this.activeHighlights.get(args.uri) ?? new Map<string, ActivePreviewHighlight>();
+    highlights.set(args.decorationId, args);
+    this.activeHighlights.set(args.uri, highlights);
+
+    if (this.readyUris.has(args.uri)) {
+      this.postHighlight(panel, args, blockIds);
+    }
+    return true;
+  }
+
+  static clearHighlight(args: PreviewHighlightClearArgs): boolean {
+    const panel = this.livePanels.get(args.uri);
+    if (!panel) {
+      return false;
+    }
+
+    const highlights = this.activeHighlights.get(args.uri);
+    if (args.decorationId) {
+      highlights?.delete(args.decorationId);
+      if (highlights?.size === 0) this.activeHighlights.delete(args.uri);
+      void panel.webview.postMessage({
+        type: "preview:clearHighlight",
+        decorationId: args.decorationId,
+      });
+      return true;
+    }
+
+    this.activeHighlights.delete(args.uri);
+    void panel.webview.postMessage({ type: "preview:clearAllHighlights" });
+    return true;
+  }
+
+  private static replayHighlights(uri: string): void {
+    const panel = this.livePanels.get(uri);
+    const resolver = this.liveResolvers.get(uri);
+    const highlights = this.activeHighlights.get(uri);
+    if (!panel || !resolver || !highlights || !this.readyUris.has(uri)) {
+      return;
+    }
+
+    for (const highlight of highlights.values()) {
+      const blockIds = this.resolveHighlightBlockIds(resolver, highlight.startLine, highlight.endLine);
+      if (blockIds.length > 0) {
+        this.postHighlight(panel, highlight, blockIds);
+      }
+    }
+  }
+
+  private static resolveHighlightBlockIds(
+    resolver: ResolverLike,
+    startLine: number,
+    endLine: number,
+  ): string[] {
+    const blockIds: string[] = [];
+    const seen = new Set<string>();
+    for (let line = startLine; line <= endLine; line += 1) {
+      const blockId = resolver.lineToBlockId(line);
+      if (blockId && !seen.has(blockId)) {
+        seen.add(blockId);
+        blockIds.push(blockId);
+      }
+    }
+    return blockIds;
+  }
+
+  private static postHighlight(
+    panel: vscode.WebviewPanel,
+    highlight: ActivePreviewHighlight,
+    blockIds: string[],
+  ): void {
+    void panel.webview.postMessage({
+      type: "preview:applyHighlight",
+      decorationId: highlight.decorationId,
+      blockIds,
+      color: highlight.color,
+    });
   }
 
   constructor(
@@ -177,6 +271,7 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
       if (mySeq !== renderSeq) return;
 
       latestResolver = resolver;
+      CommentablePreview.readyUris.delete(docUri);
 
       webviewPanel.webview.html = buildWebviewHtml({
         nonce,
@@ -219,10 +314,10 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
     // may not be registered yet when we reach this line synchronously.
     const readySub = webviewPanel.webview.onDidReceiveMessage((msg: unknown) => {
       if ((msg as { type?: string }).type === "webview:ready") {
-        readySub.dispose();
         CommentablePreview.readyUris.add(docUri);
         bridge?.loadThreadsForUri();
         CommentablePreview.flushPendingReveal(docUri);
+        CommentablePreview.replayHighlights(docUri);
       }
     });
 
@@ -238,6 +333,7 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
           if (seqAtStart + 1 === renderSeq) {
             bridge?.loadThreadsForUri();
             CommentablePreview.flushPendingReveal(docUri);
+            CommentablePreview.replayHighlights(docUri);
           }
         });
       }
@@ -249,6 +345,8 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider {
       CommentablePreview.liveResolvers.delete(docUri);
       CommentablePreview.pendingRevealLines.delete(docUri);
       CommentablePreview.readyUris.delete(docUri);
+      CommentablePreview.activeHighlights.delete(docUri);
+      readySub.dispose();
       docChangeSub.dispose();
       bridge?.dispose();
     });

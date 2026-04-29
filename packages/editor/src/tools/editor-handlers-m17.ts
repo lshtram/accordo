@@ -8,6 +8,8 @@
  */
 
 import * as vscode from "vscode";
+import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
+import type { PreviewHighlightApplyArgs, PreviewHighlightClearArgs } from "@accordo/capabilities";
 import { resolvePath, errorMessage } from "../util.js";
 import {
   argString,
@@ -16,6 +18,7 @@ import {
   decorationStore,
   nextDecorationId,
 } from "./editor-utils.js";
+import type { PreviewHighlightEntry, TextHighlightEntry } from "./editor-utils.js";
 
 // ── §4.4 accordo_editor_highlight ────────────────────────────────────────────
 
@@ -44,6 +47,15 @@ export async function highlightHandler(
       (e) => e.document.uri.fsPath === targetFsPath,
     );
     if (!editor) {
+      if (resolved.endsWith(".md")) {
+        const document = vscode.workspace.textDocuments.find(
+          (d) => d.uri.fsPath === targetFsPath,
+        );
+        if (document && endLine > document.lineCount) {
+          return { error: `Line ${endLine} is out of range (file has ${document.lineCount} lines)` };
+        }
+        return applyMarkdownPreviewHighlight(resolved, startLine, endLine, color);
+      }
       return { error: `File is not open: ${resolved}. Open it first.` };
     }
     const lineCount = editor.document.lineCount;
@@ -57,11 +69,53 @@ export async function highlightHandler(
     );
     editor.setDecorations(decorType, [range]);
     const decorationId = nextDecorationId();
-    decorationStore.set(decorationId, { type: decorType, editor });
+    const entry: TextHighlightEntry = {
+      surface: "text",
+      type: decorType,
+      editor,
+      clear: () => decorType.dispose(),
+    };
+    decorationStore.set(decorationId, entry);
     return { highlighted: true, decorationId };
   } catch (err) {
     return { error: errorMessage(err) };
   }
+}
+
+async function applyMarkdownPreviewHighlight(
+  resolvedPath: string,
+  startLine: number,
+  endLine: number,
+  color: string,
+): Promise<{ highlighted: true; decorationId: string } | { error: string }> {
+  const uri = vscode.Uri.file(resolvedPath).toString();
+  const decorationId = nextDecorationId();
+  const applyArgs: PreviewHighlightApplyArgs = {
+    uri,
+    decorationId,
+    startLine: startLine - 1,
+    endLine: endLine - 1,
+    color,
+  };
+  const applied = await vscode.commands.executeCommand<boolean>(
+    CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT,
+    applyArgs,
+  );
+  if (!applied) {
+    return { error: `File is not open: ${resolvedPath}. Open it first.` };
+  }
+
+  const clearArgs: PreviewHighlightClearArgs = { uri, decorationId };
+  const entry: PreviewHighlightEntry = {
+    surface: "markdown-preview",
+    uri,
+    clear: () => vscode.commands.executeCommand(
+      CAPABILITY_COMMANDS.PREVIEW_CLEAR_HIGHLIGHT,
+      clearArgs,
+    ),
+  };
+  decorationStore.set(decorationId, entry);
+  return { highlighted: true, decorationId };
 }
 
 // ── §4.5 accordo_editor_clearHighlights ──────────────────────────────────────
@@ -81,13 +135,13 @@ export async function clearHighlightsHandler(
       if (!entry) {
         return { error: `Decoration not found: ${decorationId}` };
       }
-      entry.type.dispose();
+      await entry.clear();
       decorationStore.delete(decorationId);
       return { cleared: true, count: 1 };
     }
     const count = decorationStore.size;
-    for (const { type } of decorationStore.values()) {
-      type.dispose();
+    for (const entry of decorationStore.values()) {
+      await entry.clear();
     }
     decorationStore.clear();
     return { cleared: true, count };

@@ -54,6 +54,8 @@ const STABLE_COMMANDS = [
   "COMMENTS_GET_SURFACE_ADAPTER",
   "COMMENTS_EXPAND_THREAD",
   "PREVIEW_FOCUS_THREAD",
+  "PREVIEW_APPLY_HIGHLIGHT",
+  "PREVIEW_CLEAR_HIGHLIGHT",
   "DIAGRAM_FOCUS_THREAD",
 ] as const;
 
@@ -65,7 +67,7 @@ const DEFERRED_COMMANDS = [
 ] as const;
 
 describe("CapabilityCommandMap coverage", () => {
-  it("covers all 8 stable commands", () => {
+  it("covers all 10 stable commands", () => {
     const source = readFileSync(CAPABILITIES_SRC, "utf-8");
     const mapBlock = extractCapabilityCommandMapBlock(source);
     const mapKeys = extractMapKeys(mapBlock);
@@ -91,10 +93,10 @@ describe("CapabilityCommandMap coverage", () => {
     }
   });
 
-  it("has exactly 8 entries", () => {
+  it("has exactly 10 entries", () => {
     const source = readFileSync(CAPABILITIES_SRC, "utf-8");
     const mapBlock = extractCapabilityCommandMapBlock(source);
     const mapKeys = extractMapKeys(mapBlock);
-    expect(mapKeys).toHaveLength(8);
+    expect(mapKeys).toHaveLength(10);
   });
 });

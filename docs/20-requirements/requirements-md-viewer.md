@@ -384,6 +384,28 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider { …
 
 ---
 
+### M41b-HLT — Preview Highlighting
+
+**Purpose:** Render and clear `accordo_editor_highlight` decorations inside Accordo Markdown Preview webviews.
+
+| Requirement ID | Requirement |
+|---|---|
+| M41b-HLT-01 | Extension registers internal preview highlight apply/clear commands that are not public MCP tools. |
+| M41b-HLT-02 | Apply command accepts one `PreviewHighlightApplyArgs` object containing `uri`, `decorationId`, 0-based `startLine`, 0-based `endLine`, and `color`. |
+| M41b-HLT-03 | Host maps requested source line ranges to unique rendered markdown block IDs using the preview line/block resolver. |
+| M41b-HLT-04 | Host stores active preview highlights by `decorationId` per URI so they can be replayed after webview ready and markdown rerender. |
+| M41b-HLT-05 | Webview applies preview highlights to matching `[data-block-id]` elements without requiring a full rerender. |
+| M41b-HLT-06 | Clear by `decorationId` removes only that preview highlight and preserves overlapping active highlights. |
+| M41b-HLT-07 | Clear-all removes all preview highlights for the target URI and prevents replay after later rerenders. |
+
+**Boundary notes:**
+
+- Preview highlights are block-granular, not character-granular.
+- Preview highlight commands are an internal bridge between `accordo-editor` and `accordo-md-viewer`; the public MCP surface remains `accordo_editor_highlight` / `accordo_editor_clearHighlights`.
+- If no live preview exists for a URI, the internal command returns a failure that the editor tool maps to the existing “file is not open” behavior.
+
+---
+
 ### M41b-EXT — extension.ts (entry point)
 
 **File:** `src/extension.ts`
@@ -397,6 +419,7 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider { …
 | M41b-EXT-03 | Registers `accordo.preview.open`, `accordo.preview.toggle`, `accordo.preview.openSideBySide` commands |
 | M41b-EXT-04 | All disposables pushed to `context.subscriptions` |
 | M41b-EXT-05 | If `accordo-comments` is unavailable, extension logs a warning and is inert |
+| M41b-EXT-06 | Registers internal preview highlight apply/clear commands required by `accordo_editor_highlight` preview routing |
 
 ---
 
@@ -426,7 +449,10 @@ export class CommentablePreview implements vscode.CustomTextEditorProvider { …
 | WebviewTemplate | `src/__tests__/webview-template.test.ts` | M41b-TPL-01 → TPL-08 |
 | PreviewBridge | `src/__tests__/preview-bridge.test.ts` | M41b-PBR-01 → PBR-10 |
 | CommentablePreview | `src/__tests__/commentable-preview.test.ts` | M41b-CPE-01 → CPE-08 |
-| Extension entrypoint | `src/__tests__/extension.test.ts` | M41b-EXT-01 → EXT-05 |
+| PreviewHighlightPlan | `src/__tests__/preview-highlight-plan.test.ts` | M41b-HLT-02, M41b-HLT-03 |
+| PreviewHighlightDOM | `src/__tests__/preview-highlight-dom.test.ts` | M41b-HLT-05, M41b-HLT-06, M41b-HLT-07 |
+| CommentablePreview highlight replay | `src/__tests__/commentable-preview-highlight.test.ts` | M41b-HLT-03, M41b-HLT-04, M41b-HLT-06, M41b-HLT-07 |
+| Extension entrypoint | `src/__tests__/extension.test.ts` | M41b-EXT-01 → EXT-06, M41b-HLT-01 |
 
 Current automated coverage: **131 tests across 7 test files** (`vitest run`, 2026-04-21).
 

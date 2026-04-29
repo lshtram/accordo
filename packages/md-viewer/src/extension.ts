@@ -16,6 +16,7 @@
  *   M41b-EXT-03  register accordo_preview_open / toggle / openSideBySide commands
  *   M41b-EXT-04  all disposables pushed to context.subscriptions
  *   M41b-EXT-05  if accordo-comments unavailable, preview is inert (no comment bridge)
+ *   M41b-EXT-06  register internal preview highlight apply/clear commands
  */
 
 import * as vscode from "vscode";
@@ -133,6 +134,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand(
       "accordo_preview_internal_revealLine",
       (uri: string, line: number): boolean => CommentablePreview.requestRevealLine(uri, line),
+    ),
+
+    vscode.commands.registerCommand(
+      CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT,
+      (args: import("@accordo/capabilities").PreviewHighlightApplyArgs): boolean => (
+        CommentablePreview.applyHighlight(args)
+      ),
+    ),
+
+    vscode.commands.registerCommand(
+      CAPABILITY_COMMANDS.PREVIEW_CLEAR_HIGHLIGHT,
+      (args: import("@accordo/capabilities").PreviewHighlightClearArgs): boolean => (
+        CommentablePreview.clearHighlight(args)
+      ),
     ),
   );
 }

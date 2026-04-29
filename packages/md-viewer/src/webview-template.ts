@@ -131,6 +131,67 @@ ${extraScripts}
         return { x: rect.left + window.scrollX - 4, y: rect.top + window.scrollY + 11 };
       }
 
+      function highlightIds(el) {
+        var raw = el.getAttribute('data-accordo-highlight-id') || '';
+        return raw.split(' ').filter(Boolean);
+      }
+
+      function setHighlightIds(el, ids) {
+        if (ids.length === 0) {
+          el.classList.remove('accordo-preview-highlight');
+          el.removeAttribute('data-accordo-highlight-id');
+          delete el.__accordoHighlightColors;
+          el.style.removeProperty('background-color');
+          return;
+        }
+        el.classList.add('accordo-preview-highlight');
+        el.setAttribute('data-accordo-highlight-id', ids.join(' '));
+      }
+
+      function highlightColors(el) {
+        if (!el.__accordoHighlightColors) el.__accordoHighlightColors = Object.create(null);
+        return el.__accordoHighlightColors;
+      }
+
+      function paintLastHighlight(el, ids) {
+        if (ids.length === 0) {
+          el.style.removeProperty('background-color');
+          return;
+        }
+        var colors = highlightColors(el);
+        el.style.backgroundColor = colors[ids[ids.length - 1]] || 'rgba(255,255,0,0.3)';
+      }
+
+      function applyPreviewHighlight(msg) {
+        if (!msg.decorationId || !Array.isArray(msg.blockIds)) return;
+        msg.blockIds.forEach(function (blockId) {
+          var el = document.querySelector('[data-block-id="' + blockId + '"]');
+          if (!el) return;
+          var ids = highlightIds(el);
+          if (ids.indexOf(msg.decorationId) === -1) ids.push(msg.decorationId);
+          highlightColors(el)[msg.decorationId] = msg.color || 'rgba(255,255,0,0.3)';
+          setHighlightIds(el, ids);
+          paintLastHighlight(el, ids);
+        });
+      }
+
+      function clearPreviewHighlight(decorationId) {
+        if (!decorationId) return;
+        document.querySelectorAll('[data-accordo-highlight-id]').forEach(function (el) {
+          var colors = highlightColors(el);
+          delete colors[decorationId];
+          var remaining = highlightIds(el).filter(function (id) { return id !== decorationId; });
+          setHighlightIds(el, remaining);
+          paintLastHighlight(el, remaining);
+        });
+      }
+
+      function clearAllPreviewHighlights() {
+        document.querySelectorAll('.accordo-preview-highlight').forEach(function (el) {
+          setHighlightIds(el, []);
+        });
+      }
+
       try {
       sdk.init({
         container: document.body,
@@ -182,6 +243,12 @@ ${extraScripts}
         } else if (msg.type === 'preview:revealBlock') {
           var revealEl = document.querySelector('[data-block-id="' + msg.blockId + '"]');
           if (revealEl) revealEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (msg.type === 'preview:applyHighlight') {
+          applyPreviewHighlight(msg);
+        } else if (msg.type === 'preview:clearHighlight') {
+          clearPreviewHighlight(msg.decorationId);
+        } else if (msg.type === 'preview:clearAllHighlights') {
+          clearAllPreviewHighlights();
         }
       });
 

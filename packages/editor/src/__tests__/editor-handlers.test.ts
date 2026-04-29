@@ -22,6 +22,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
 import { normaliseSlashes } from "../util.js";
 import {
   argString,
@@ -87,6 +88,7 @@ beforeEach(() => {
   mockState.workspaceFolders = [];
   mockState.textDocuments = [];
   mockState.diagnostics = [];
+  mockState.registeredCommands.clear();
   vi.clearAllMocks();
   _clearDecorationStore();
 });
@@ -427,8 +429,235 @@ describe("focusGroupHandler — §4.7", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// _clearDecorationStore
+// §4.4 accordo_editor_highlight — markdown preview routing
+// Requirements: requirements-editor.md §4.4; requirements-md-viewer.md M41b-HLT-01/02/03
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe("highlightHandler — §4.4 preview routing (M41b-HLT-01, M41b-HLT-02, M41b-HLT-03)", () => {
+  it("M41b-HLT-01: .md file with open Accordo Markdown Preview → calls PREVIEW_APPLY_HIGHLIGHT command and returns success", async () => {
+    makeWorkspace();
+    const applyHighlightHandler = vi.fn().mockReturnValue(true);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT, applyHighlightHandler);
+
+    // No visible text editor (preview is a webview, not a text editor)
+    mockState.visibleTextEditors = [];
+
+    const result = await highlightHandler({
+      path: "/workspace/README.md",
+      startLine: 5,
+      endLine: 10,
+    });
+
+    // The handler must route to the preview command and return success
+    expect(result).toEqual(
+      expect.objectContaining({ highlighted: true, decorationId: expect.any(String) }),
+    );
+    expect(applyHighlightHandler).toHaveBeenCalledOnce();
+    const callArgs = applyHighlightHandler.mock.calls[0][0] as Record<string, unknown>;
+    expect(callArgs.uri).toBe("file:///workspace/README.md");
+    expect(callArgs.decorationId).toBeDefined();
+    expect(callArgs.startLine).toBe(4);   // 0-based: 5 - 1
+    expect(callArgs.endLine).toBe(9);     // 0-based: 10 - 1
+    expect(callArgs.color).toBe("rgba(255,255,0,0.3)");
+  });
+
+  it("M41b-HLT-01: .md file with open Accordo Markdown Preview uses custom color", async () => {
+    makeWorkspace();
+    const applyHighlightHandler = vi.fn().mockReturnValue(true);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT, applyHighlightHandler);
+    mockState.visibleTextEditors = [];
+
+    await highlightHandler({
+      path: "/workspace/README.md",
+      startLine: 1,
+      endLine: 3,
+      color: "rgba(255,0,0,0.5)",
+    });
+
+    expect(applyHighlightHandler).toHaveBeenCalledOnce();
+    const callArgs = applyHighlightHandler.mock.calls[0][0] as Record<string, unknown>;
+    expect(callArgs.color).toBe("rgba(255,0,0,0.5)");
+  });
+
+  it("M41b-HLT-01: PREVIEW_APPLY_HIGHLIGHT receives 0-based line numbers (source line - 1)", async () => {
+    makeWorkspace();
+    const applyHighlightHandler = vi.fn().mockReturnValue(true);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT, applyHighlightHandler);
+    mockState.visibleTextEditors = [];
+
+    await highlightHandler({
+      path: "/workspace/doc.md",
+      startLine: 10,
+      endLine: 15,
+    });
+
+    expect(applyHighlightHandler).toHaveBeenCalledOnce();
+    const callArgs = applyHighlightHandler.mock.calls[0][0] as Record<string, unknown>;
+    // 1-based input → 0-based for the command
+    expect(callArgs.startLine).toBe(9);   // 10 - 1
+    expect(callArgs.endLine).toBe(14);    // 15 - 1
+  });
+
+  it("M41b-HLT-01: each preview highlight call gets a unique decorationId stored in decorationStore", async () => {
+    makeWorkspace();
+    const applyHighlightHandler = vi.fn().mockReturnValue(true);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT, applyHighlightHandler);
+    mockState.visibleTextEditors = [];
+
+    const r1 = await highlightHandler({ path: "/workspace/a.md", startLine: 1, endLine: 1 }) as { decorationId: string };
+    const r2 = await highlightHandler({ path: "/workspace/b.md", startLine: 2, endLine: 2 }) as { decorationId: string };
+
+    expect(r1.decorationId).not.toBe(r2.decorationId);
+    // Both IDs must be retrievable from the store for later clearAll
+    const { decorationStore } = await import("../tools/editor-utils.js");
+    expect(decorationStore.has(r1.decorationId)).toBe(true);
+    expect(decorationStore.has(r2.decorationId)).toBe(true);
+  });
+
+  it("M41b-HLT-01: PREVIEW_APPLY_HIGHLIGHT returns false (no live preview) → returns error 'File is not open'", async () => {
+    makeWorkspace();
+    const applyHighlightHandler = vi.fn().mockReturnValue(false);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT, applyHighlightHandler);
+    mockState.visibleTextEditors = [];
+
+    const result = await highlightHandler({
+      path: "/workspace/README.md",
+      startLine: 1,
+      endLine: 3,
+    });
+
+    // When the preview command returns false, the handler must fall through to the error path
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toBe("File is not open: /workspace/README.md. Open it first.");
+  });
+
+  it("M41b-HLT-01: .md with no registered PREVIEW_APPLY_HIGHLIGHT command → returns error 'File is not open'", async () => {
+    makeWorkspace();
+    mockState.visibleTextEditors = [];
+
+    const result = await highlightHandler({
+      path: "/workspace/README.md",
+      startLine: 1,
+      endLine: 3,
+    });
+
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toBe("File is not open: /workspace/README.md. Open it first.");
+  });
+
+  it("M41b-HLT-01: preview-routed .md validates endLine against the open document line count", async () => {
+    makeWorkspace();
+    const applyHighlightHandler = vi.fn().mockReturnValue(true);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT, applyHighlightHandler);
+    mockState.textDocuments = [makeOpenDocument("/workspace/README.md")];
+    mockState.textDocuments[0].lineCount = 3;
+
+    const result = await highlightHandler({
+      path: "/workspace/README.md",
+      startLine: 1,
+      endLine: 4,
+    });
+
+    expect(result).toEqual({ error: "Line 4 is out of range (file has 3 lines)" });
+    expect(applyHighlightHandler).not.toHaveBeenCalled();
+  });
+
+  it("M41b-HLT-01: visible .md text editor remains authoritative and does not route to preview", async () => {
+    makeWorkspace();
+    const applyHighlightHandler = vi.fn().mockReturnValue(true);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT, applyHighlightHandler);
+    const editor = makeVisibleEditor("/workspace/README.md");
+    mockState.visibleTextEditors = [editor];
+
+    const result = await highlightHandler({
+      path: "/workspace/README.md",
+      startLine: 1,
+      endLine: 2,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({ highlighted: true, decorationId: expect.any(String) }),
+    );
+    expect(editor.setDecorations).toHaveBeenCalledOnce();
+    expect(applyHighlightHandler).not.toHaveBeenCalled();
+  });
+
+  it("M41b-HLT-02: decorationId stored with surface=markdown-preview for preview highlights", async () => {
+    makeWorkspace();
+    const applyHighlightHandler = vi.fn().mockReturnValue(true);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT, applyHighlightHandler);
+    mockState.visibleTextEditors = [];
+
+    const result = await highlightHandler({ path: "/workspace/doc.md", startLine: 1, endLine: 1 }) as { decorationId: string };
+    const { decorationStore } = await import("../tools/editor-utils.js");
+    const entry = decorationStore.get(result.decorationId);
+    expect(entry).toBeDefined();
+    expect((entry as { surface: string }).surface).toBe("markdown-preview");
+  });
+
+  it("M41b-HLT-03: clearHighlightsHandler with decorationId calls PREVIEW_CLEAR_HIGHLIGHT for preview entries", async () => {
+    makeWorkspace();
+    const applyHighlightHandler = vi.fn().mockReturnValue(true);
+    const clearHighlightHandler = vi.fn().mockReturnValue(true);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT, applyHighlightHandler);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_CLEAR_HIGHLIGHT, clearHighlightHandler);
+    mockState.visibleTextEditors = [];
+
+    // Create a preview highlight
+    const r = await highlightHandler({ path: "/workspace/doc.md", startLine: 1, endLine: 1 }) as { decorationId: string };
+
+    // Clear by decorationId
+    const clearResult = await clearHighlightsHandler({ decorationId: r.decorationId });
+
+    expect(clearResult).toEqual({ cleared: true, count: 1 });
+    expect(clearHighlightHandler).toHaveBeenCalledOnce();
+    const clearArgs = clearHighlightHandler.mock.calls[0][0] as Record<string, unknown>;
+    expect(clearArgs.uri).toBe("file:///workspace/doc.md");
+    expect(clearArgs.decorationId).toBe(r.decorationId);
+  });
+
+  it("M41b-HLT-03: clearHighlightsHandler clear-all iterates preview entries and calls PREVIEW_CLEAR_HIGHLIGHT per URI", async () => {
+    makeWorkspace();
+    const applyHighlightHandler = vi.fn().mockReturnValue(true);
+    const clearHighlightHandler = vi.fn().mockReturnValue(true);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT, applyHighlightHandler);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_CLEAR_HIGHLIGHT, clearHighlightHandler);
+    mockState.visibleTextEditors = [];
+
+    // Create 2 preview highlights on different files
+    await highlightHandler({ path: "/workspace/a.md", startLine: 1, endLine: 1 });
+    await highlightHandler({ path: "/workspace/b.md", startLine: 2, endLine: 2 });
+
+    const clearResult = await clearHighlightsHandler({});
+
+    expect(clearResult).toEqual({ cleared: true, count: 2 });
+    // clearAll calls PREVIEW_CLEAR_HIGHLIGHT with no decorationId (clear all for that URI)
+    // The command is called twice — once per unique URI in the store
+    expect(clearHighlightHandler).toHaveBeenCalledTimes(2);
+    const uris = clearHighlightHandler.mock.calls.map(c => (c[0] as Record<string, unknown>).uri).sort();
+    expect(uris).toEqual(["file:///workspace/a.md", "file:///workspace/b.md"]);
+  });
+
+  it("M41b-HLT-03: clearHighlightsHandler clear-all clears mixed text-editor and markdown-preview highlights", async () => {
+    makeWorkspace();
+    const textEditor = makeVisibleEditor("/workspace/foo.ts");
+    mockState.visibleTextEditors = [textEditor];
+    const clearHighlightHandler = vi.fn().mockReturnValue(true);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT, vi.fn().mockReturnValue(true));
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_CLEAR_HIGHLIGHT, clearHighlightHandler);
+
+    await highlightHandler({ path: "/workspace/foo.ts", startLine: 1, endLine: 1 });
+    mockState.visibleTextEditors = [];
+    await highlightHandler({ path: "/workspace/doc.md", startLine: 2, endLine: 2 });
+
+    const clearResult = await clearHighlightsHandler({});
+
+    expect(clearResult).toEqual({ cleared: true, count: 2 });
+    expect(clearHighlightHandler).toHaveBeenCalledWith(
+      expect.objectContaining({ uri: "file:///workspace/doc.md" }),
+    );
+  });
+});
 
 describe("_clearDecorationStore", () => {
   it("DECOR-01: clears all decorations from the store", async () => {

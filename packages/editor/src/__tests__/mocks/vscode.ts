@@ -124,6 +124,8 @@ export const mockState = {
     source?: string;
     code?: string | number;
   }>]>,
+  /** Map of registered commands for executeCommand mock routing */
+  registeredCommands: new Map<string, (...args: unknown[]) => unknown>(),
 };
 
 // ── window ───────────────────────────────────────────────────────────────────
@@ -194,8 +196,15 @@ export const workspace = {
 // ── commands ─────────────────────────────────────────────────────────────────
 
 export const commands = {
-  executeCommand: vi.fn().mockResolvedValue(undefined),
-  registerCommand: vi.fn().mockImplementation(() => ({ dispose: vi.fn() })),
+  executeCommand: vi.fn().mockImplementation(async (id: string, ...args: unknown[]) => {
+    const handler = mockState.registeredCommands.get(id);
+    if (handler) return handler(...args);
+    return undefined;
+  }),
+  registerCommand: vi.fn().mockImplementation((id: string, handler: (...args: unknown[]) => unknown) => {
+    mockState.registeredCommands.set(id, handler);
+    return { dispose: () => { mockState.registeredCommands.delete(id); } };
+  }),
 };
 
 // ── Shell Execution Event Firing (S-TR-04, S-TR-09, S-TR-11) ─────────────────

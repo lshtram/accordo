@@ -365,7 +365,7 @@
 
 ### Priority V — Markdown Preview Highlight Support (`accordo_editor_highlight` parity)
 
-**Status:** Planned from live tool-by-tool validation (2026-04-22). Not started.
+**Status:** Complete (2026-04-29). Implemented, reviewed, live-validated, and documented.
 
 **Problem:** `accordo_editor_highlight` currently works on text editor surfaces but not on Markdown preview surfaces. During live validation, attempts to highlight `.md` content in preview failed, creating inconsistency between editor and preview workflows.
 
@@ -386,6 +386,14 @@
 5. Tool docs clearly state both editor and markdown-preview support.
 
 **Execution note:** Schedule after terminal-readback + reconnect reliability items; can be batched with preview-navigation refinements.
+
+**Completion notes (2026-04-29):**
+1. Added canonical preview highlight capability commands and object-shaped payload types in `@accordo/capabilities`.
+2. Routed `accordo_editor_highlight` to already-open Accordo Markdown Preview surfaces while preserving visible text-editor precedence.
+3. Added preview clear-by-ID and clear-all support through stored highlight clear strategies, including mixed text+preview clear-all.
+4. Implemented md-viewer block mapping, active highlight replay after webview ready/rerender, overlap-safe clearing, and webview DOM handling.
+5. Added D3 testing guide: `docs/40-testing/testing-guide-priority-v-markdown-preview-highlights.md`.
+6. Live validation succeeded after VS Code reload: preview highlights applied and cleared on the active Markdown Preview.
 
 ---
 

@@ -193,7 +193,7 @@ For deterministic navigation to a specific file location, prefer `accordo_editor
 
 ### 4.4 `accordo_editor_highlight`
 
-**Purpose:** Apply a colored highlight decoration to a range of lines.
+**Purpose:** Apply a colored highlight decoration to a range of lines in a text editor or an already-open Accordo Markdown Preview.
 
 | Property | Value |
 |---|---|
@@ -240,19 +240,22 @@ For deterministic navigation to a specific file location, prefer `accordo_editor
 | Condition | Error message |
 |---|---|
 | File not open | `"File is not open: <path>. Open it first."` |
+| `.md` target has no text editor and no Accordo Markdown Preview panel | `"File is not open: <path>. Open it first."` |
 | startLine > endLine | `"startLine must be <= endLine"` |
 | Line out of range | `"Line <n> is out of range (file has <total> lines)"` |
 
 **Implementation:**
-- `vscode.window.createTextEditorDecorationType({ backgroundColor: color })`
-- Store decoration type keyed by a generated `decorationId`
-- Apply via `editor.setDecorations(type, [range])`
+- Text editor targets use `vscode.window.createTextEditorDecorationType({ backgroundColor: color })`, store the decoration type by generated `decorationId`, and apply via `editor.setDecorations(type, [range])`.
+- Open `.md` Accordo Markdown Preview targets route through the canonical `PREVIEW_APPLY_HIGHLIGHT` internal md-viewer command with a `PreviewHighlightApplyArgs` object containing `uri`, `decorationId`, 0-based `startLine`, 0-based `endLine`, and `color`.
+- Markdown preview highlighting is block-granular: every rendered block mapped from the requested source line range is highlighted.
+- The tool does not auto-open markdown previews; callers should open the file first with `accordo_editor_open`.
+- Runtime tool descriptions must mention supported surfaces: text editor and open Accordo Markdown Preview.
 
 ---
 
 ### 4.5 `accordo_editor_clearHighlights`
 
-**Purpose:** Remove all highlights created by `accordo_editor_highlight`.
+**Purpose:** Remove highlights created by `accordo_editor_highlight` across text editor and Accordo Markdown Preview surfaces.
 
 | Property | Value |
 |---|---|
@@ -299,8 +302,11 @@ For deterministic navigation to a specific file location, prefer `accordo_editor
 | `decorationId` provided but not found | `"Decoration not found: <id>"` |
 
 **Implementation:**
-- If `decorationId` provided: look up by ID, call `.dispose()`, remove from store.
-- If no `decorationId`: iterate all stored decoration types, call `.dispose()` on each, clear store.
+- If `decorationId` provided: look up by ID, execute that entry's clear strategy, remove it from the store.
+- If no `decorationId`: iterate all stored entries, execute each clear strategy, clear the store.
+- Text-editor entries clear by disposing the decoration type.
+- Markdown preview entries clear by invoking the canonical `PREVIEW_CLEAR_HIGHLIGHT` internal md-viewer command with `{ uri, decorationId? }`.
+- Clear-all must clear mixed text-editor and markdown-preview highlights in one call.
 
 ---
 
@@ -1619,7 +1625,10 @@ interface TerminalOutputRedactor {
 | Unit: input validation | Missing required fields, wrong types, out-of-range values |
 | Integration: tool registration | activate → registerTools called → Bridge receives 26 tools |
 | Integration: tool invocation | Bridge sends invoke → handler runs → result returned |
+| Integration: markdown-preview highlight route | Registered `accordo_editor_highlight` tool/command path routes an open `.md` preview request through the internal md-viewer apply command and fails if that wiring is absent |
+| Integration: markdown-preview clear route | Registered `accordo_editor_clearHighlights` tool/command path clears preview highlights by `decorationId` and clear-all through stored preview clear strategies |
 | Unit: terminal.list | Tracked IDs, untracked terminals, isActive flag |
 | Unit: terminal.close | Happy path, already-closed terminal (stale map entry) |
 | Unit: terminal.read / terminal.run observe | target resolution, cursor advancement, truncation, redaction, backward-compatible dispatch-only behavior, preview/read continuity, close/reset lifecycle |
 | E2E: full round-trip | Agent calls tools/call → Hub → Bridge → Editor handler → result back to agent |
+| Manual runtime: markdown-preview highlight | Open `.md` in Accordo Markdown Preview, call `accordo_editor_highlight`, visually verify target rendered block highlight, clear by returned ID, add two highlights, clear all |

@@ -23,6 +23,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import path from "path";
+import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
 import { normaliseSlashes } from "../util.js";
 import {
   openHandler,
@@ -90,6 +91,7 @@ beforeEach(() => {
   mockState.workspaceFolders = [];
   mockState.textDocuments = [];
   mockState.diagnostics = [];
+  mockState.registeredCommands.clear();
   vi.clearAllMocks();
   _clearDecorationStore();
 });
@@ -641,6 +643,29 @@ describe("editorTools registration", () => {
     );
   });
 
+  it("M41b-HLT-01: registered accordo_editor_highlight routes .md preview highlights through PREVIEW_APPLY_HIGHLIGHT", async () => {
+    makeWorkspace();
+    const applyHighlightHandler = vi.fn().mockReturnValue(true);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT, applyHighlightHandler);
+
+    const result = await tool("accordo_editor_highlight").handler({
+      path: "/workspace/README.md",
+      startLine: 2,
+      endLine: 4,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({ highlighted: true, decorationId: expect.any(String) }),
+    );
+    expect(applyHighlightHandler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uri: "file:///workspace/README.md",
+        startLine: 1,
+        endLine: 3,
+      }),
+    );
+  });
+
   it("REG-14: focus requires [group]", () => {
     expect(tool("accordo_editor_focus").inputSchema.required).toContain("group");
   });
@@ -649,4 +674,3 @@ describe("editorTools registration", () => {
     expect(tool("accordo_editor_clearHighlights").inputSchema.required).toEqual([]);
   });
 });
-

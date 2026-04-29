@@ -34,8 +34,10 @@
 | `subtitle` | `text`, `durationMs?` | Show text in status bar briefly. |
 | `command` | `command`, `args?` | Execute any Accordo tool or VS Code command. |
 | `delay` | `ms` | Pause (1–30 000 ms). |
-| `highlight` | `file`, `startLine`, `endLine`, `durationMs?` | Highlight lines in open file. |
-| `clear-highlights` | — | Remove all highlights. |
+| `highlight` | `file`, `startLine`, `endLine`, `durationMs?` | Highlight lines in an open text editor or already-open Accordo Markdown Preview. |
+| `clear-highlights` | — | Remove all highlights; omit `decorationId` for clear-all rather than passing an empty string. |
+
+**Markdown preview highlighting:** `accordo_editor_highlight` supports Accordo Markdown Preview only when the preview is already open. It does not auto-open previews. If the same `.md` file is visible as a text editor, the text-editor decoration path is intentionally preferred.
 
 ### Top-Level Fields
 

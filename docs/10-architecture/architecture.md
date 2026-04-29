@@ -35,7 +35,7 @@ The project is built as a **layer on top of VSCode**. The human keeps their exis
 │                                                                          │
 │  ┌──────────────────────────────────────────────────────────────────────┐│
 │  │  accordo-editor   (extensionKind: ["workspace"])                     ││
-│  │  • 25 editor/terminal/layout/command-gateway MCP tools               ││
+│  │  • 26 editor/terminal/layout/command-gateway MCP tools               ││
 │  │  • Registers tools via BridgeAPI.registerTools()                     ││
 │  └──────────────────────┬───────────────────────────────────────────────┘│
 │                         │ BridgeAPI (same extension host, direct import)  │
@@ -581,21 +581,49 @@ export async function activate(context: vscode.ExtensionContext) {
 | Tool family | Count | Notes |
 |---|---:|---|
 | Editor tools (`accordo_editor_*`) | 11 | open/close/scroll/split/focus/reveal/highlight/save/format |
-| Terminal tools (`accordo_terminal_*`) | 5 | open/run/focus/list/close with stable terminal IDs |
+| Terminal tools (`accordo_terminal_*`) | 6 | open/run/focus/list/close/read with stable terminal IDs and bounded output readback |
 | VS Code command gateway (`accordo_vscode_command_*`) | 2 | guarded command discovery + execution for long-tail VS Code capabilities |
 | Layout tools (`accordo_panel_toggle`, `accordo_layout_*`) | 7 | panel toggle + explicit area control + layout state snapshot |
-| **Total** | **25** | Registered under `accordo.accordo-editor` |
+| **Total** | **26** | Registered under `accordo.accordo-editor` |
 
 ### 5.5 Implementation Notes
 
 - File paths are resolved by `resolvePath(input)`: absolute paths must remain inside workspace roots; relative paths are accepted only for single-root workspaces (multi-root requires absolute paths).
 - `accordo_editor_open` has surface-aware behavior: `.md` uses markdown preview (`accordo.markdownPreview`) with optional line reveal command; `.mmd` uses `accordo-diagram.open`; other files open as text editors.
-- `accordo_editor_highlight` uses `vscode.window.createTextEditorDecorationType`.
+- `accordo_editor_highlight` is surface-aware: text editor targets use `vscode.window.createTextEditorDecorationType`; open Accordo Markdown Preview targets route through internal md-viewer highlight commands so highlight rendering and replay stay owned by the preview webview.
 - `accordo_terminal_run` uses `terminal.sendText(command, true)`.
 
-### 5.5.1 Priority W migration boundary (selected wrapper removals)
+### 5.5.1 Priority S boundary — terminal output readback + inline observe preview
 
-**Current state:** the 25-tool editor surface above is still the live registered surface until the migration wave lands.
+Priority S extends the terminal modality from **act-only** to **act + observe** with a hybrid contract:
+
+1. `accordo_terminal_run` remains the only tool that dispatches shell commands.
+2. `accordo_terminal_run` may optionally request a bounded inline preview via `observeMaxLines` and `observeMaxChars`, but omitting `observeMaxLines` (or passing `0`) preserves the legacy dispatch-only contract.
+3. `accordo_terminal_read` remains the dedicated read-only incremental follow-up surface and returns buffered output only.
+4. The public observation contract uses an **opaque cursor** for incremental reads rather than replaying the full terminal buffer on every call.
+5. Inline preview and follow-up reads share the same buffer/redaction pipeline so there is only one observation lineage and one cursor model.
+6. Output capture, retention, and redaction stay editor-local; Hub and Bridge continue to see only normal MCP request/response payloads.
+7. The concrete VS Code terminal-output capture mechanism is isolated behind local abstractions (`TerminalOutputSource`, `TerminalOutputBuffer`, `TerminalOutputRedactor`) so the MCP contract does not depend on a specific VS Code API shape.
+8. Buffer lifecycle is terminal-scoped: clearing happens when the tracked terminal closes, and a newly created terminal never inherits stale output from a prior terminal ID.
+
+This boundary is intentionally additive: no change to Hub routing or Bridge wire format is required, and the legacy `accordo_terminal_run` response shape remains valid when inline observe is not requested.
+
+### 5.5.2 Priority V boundary — markdown-preview highlight parity
+
+Priority V extends existing editor highlight tools across text-editor and Accordo Markdown Preview surfaces without adding new public MCP tools or changing public schemas.
+
+1. `accordo_editor_highlight` owns the public MCP contract and chooses the target surface.
+2. If the target file has a visible text editor, the existing decoration flow remains authoritative.
+3. If the target is an open `.md` Accordo Markdown Preview and no text editor is the active target, the editor package invokes internal md-viewer commands using the canonical `@accordo/capabilities` constants: `PREVIEW_APPLY_HIGHLIGHT` with a `PreviewHighlightApplyArgs` object and `PREVIEW_CLEAR_HIGHLIGHT` with a `PreviewHighlightClearArgs` object.
+4. The md-viewer package owns preview-specific line-to-block mapping, DOM application, webview-ready replay, rerender replay, and panel disposal cleanup.
+5. `accordo_editor_clearHighlights` uses one editor-side registry of highlight entries. Each entry records its clear strategy: dispose a text-editor decoration or invoke md-viewer preview clear with `{ uri, decorationId? }`.
+6. Preview highlighting is block-granular because markdown source lines map to rendered block IDs; character-accurate preview highlighting is out of scope.
+7. The editor package does not auto-open markdown previews for highlighting. If neither a text editor nor an Accordo Markdown Preview is open for the target file, the existing “file is not open” error behavior remains.
+8. Runtime tool descriptions must state both supported surfaces and the non-auto-open limitation so external MCP clients can discover the behavior from `tools/list`.
+
+### 5.5.3 Priority W migration boundary (selected wrapper removals)
+
+**Current state:** the 26-tool editor surface above is still the live registered surface until the migration wave lands.
 
 **Approved removal boundary for Phase B/C:**
 
@@ -621,7 +649,23 @@ accordo-editor/
 │   ├── extension.ts           — activate(), tool registration
 │   ├── tools/
 │   │   ├── editor.ts / editor-handlers.ts / editor-definitions.ts
-│   │   ├── terminal.ts
+│   │   ├── terminal.ts        — public barrel only
+│   │   ├── terminal/
+│   │   │   ├── terminal-state.ts      — stable ID map + adoption helpers
+│   │   │   ├── terminal-lifecycle.ts  — close-event cleanup
+│   │   │   ├── terminal-open.ts       — accordo_terminal_open handler
+│   │   │   ├── terminal-run.ts        — accordo_terminal_run handler + validation/dispatch helpers
+│   │   │   ├── terminal-focus.ts      — accordo_terminal_focus handler
+│   │   │   ├── terminal-list.ts       — accordo_terminal_list handler
+│   │   │   ├── terminal-close.ts      — accordo_terminal_close handler
+│   │   │   ├── terminal-basic-tools.ts— open/focus/list/close MCP definitions
+│   │   │   ├── terminal-run-tool.ts   — run MCP definition
+│   │   │   └── terminal-tools.ts      — terminal tool array assembly
+│   │   ├── terminal-read/
+│   │   │   ├── index.ts         — Priority S public barrel
+│   │   │   ├── contracts.ts     — request/response types, caps, local abstractions
+│   │   │   ├── stubs.ts         — Phase A dependency bag + not-implemented handler seam
+│   │   │   └── tools.ts         — accordo_terminal_read MCP tool definition
 │   │   ├── layout.ts
 │   │   ├── bar.ts             — accordo_layout_panel explicit open/close area control
 │   │   ├── vscode-command.ts  — public gateway barrel exports
@@ -634,7 +678,7 @@ accordo-editor/
 └── README.md
 ```
 
-**Gateway module split (Phase A remediation):** `vscode-command.ts` is a barrel only. Contracts, stub handlers/dependencies, and MCP tool definitions live in separate focused files so each module stays within the Phase A file-size limit and keeps a single responsibility.
+**Phase A modularity split:** terminal control now follows the same remediation rule as `terminal-read/` and `vscode-command.ts`: public barrels stay thin, while state/lifecycle helpers, handler logic, and MCP tool definitions live in separate focused files so each touched module stays within the file-size limit and each touched function stays within the function-size limit.
 
 ---
 
@@ -827,7 +871,7 @@ Messages exceeding this limit cause `ws` to close the connection with a protocol
 13. Bridge registers Hub as native MCP server (Copilot — via settings or lm API)
 14. Bridge writes opencode.json / .claude/mcp.json if configured (token from SecretStorage)
 15. Agent starts, connects MCP, fetches /instructions
-16. Agent sees IDE state + 25 editor tools. Session is live.
+16. Agent sees IDE state + 26 editor tools. Session is live.
 ```
 
 ---

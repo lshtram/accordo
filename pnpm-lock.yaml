@@ -243,6 +243,9 @@ importers:
       '@accordo/bridge-types':
         specifier: workspace:*
         version: link:../bridge-types
+      '@accordo/capabilities':
+        specifier: workspace:*
+        version: link:../capabilities
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.35

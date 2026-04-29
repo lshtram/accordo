@@ -4,7 +4,7 @@
  * Typed inter-extension capability interfaces for Accordo IDE.
  *
  * Provides:
- *   - CAPABILITY_COMMANDS  — canonical command ID string constants (8 stable)
+ *   - CAPABILITY_COMMANDS  — canonical command ID string constants (10 stable)
  *   - DEFERRED_COMMANDS    — deferred command IDs for fallback invocation
  *   - SurfaceCommentAdapter — generalised surface adapter interface
  *   - CommentStoreAdapter   — narrower store interface used by md-viewer
@@ -28,7 +28,7 @@ export type { CommentAnchor, CommentIntent, CommentThread };
 // ─── Command ID Constants ─────────────────────────────────────────────────────
 
 /**
- * All 8 stable command string constants — canonical values used by registerCommand
+ * All stable command string constants — canonical values used by registerCommand
  * producers and executeCommand consumers.
  * Changing a value = single-point rename.
  */
@@ -43,6 +43,8 @@ export const CAPABILITY_COMMANDS = {
 
   // preview (producer: accordo-md-viewer)
   PREVIEW_FOCUS_THREAD: "accordo_preview_internal_focusThread",
+  PREVIEW_APPLY_HIGHLIGHT: "accordo_preview_internal_applyHighlight",
+  PREVIEW_CLEAR_HIGHLIGHT: "accordo_preview_internal_clearHighlight",
 
   // diagram (producer: accordo-diagram)
   DIAGRAM_FOCUS_THREAD: "accordo_diagram_focusThread",
@@ -194,6 +196,28 @@ export interface PreviewCapability {
    * @returns true if a live panel was found and focused; false otherwise
    */
   focusThread(uri: string, threadId: string, blockId?: string): Promise<boolean>;
+
+  /**
+   * Applies a block-granular highlight in a live markdown preview panel.
+   * Lines are 0-based source document lines; the producer maps them to rendered block IDs.
+   */
+  applyHighlight(args: PreviewHighlightApplyArgs): Promise<boolean>;
+
+  /** Clears one highlight by ID, or all preview highlights for the URI when omitted. */
+  clearHighlight(args: PreviewHighlightClearArgs): Promise<boolean>;
+}
+
+export interface PreviewHighlightApplyArgs {
+  readonly uri: string;
+  readonly decorationId: string;
+  readonly startLine: number;
+  readonly endLine: number;
+  readonly color: string;
+}
+
+export interface PreviewHighlightClearArgs {
+  readonly uri: string;
+  readonly decorationId?: string;
 }
 
 /**
@@ -260,6 +284,14 @@ export interface CapabilityCommandMap {
   // ── preview ────────────────────────────────────────────────────────────────
   readonly [CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD]: {
     args: [uri: string, threadId: string, blockId?: string];
+    result: boolean;
+  };
+  readonly [CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT]: {
+    args: [params: PreviewHighlightApplyArgs];
+    result: boolean;
+  };
+  readonly [CAPABILITY_COMMANDS.PREVIEW_CLEAR_HIGHLIGHT]: {
+    args: [params: PreviewHighlightClearArgs];
     result: boolean;
   };
 

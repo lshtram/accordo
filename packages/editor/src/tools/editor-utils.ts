@@ -43,22 +43,29 @@ export function argNumberOpt(args: Record<string, unknown>, key: string, default
 
 let decorationCounter = 0;
 
-/**
- * Map from stable decorationId → { type, editor } so clearHighlights can
- * dispose specific decorations.
- */
-export const decorationStore = new Map<
-  string,
-  {
-    type: vscode.TextEditorDecorationType;
-    editor: vscode.TextEditor;
-  }
->();
+export interface HighlightEntry {
+  readonly surface: "text" | "markdown-preview";
+  clear(): void | PromiseLike<void>;
+}
+
+export interface TextHighlightEntry extends HighlightEntry {
+  readonly surface: "text";
+  readonly type: vscode.TextEditorDecorationType;
+  readonly editor: vscode.TextEditor;
+}
+
+export interface PreviewHighlightEntry extends HighlightEntry {
+  readonly surface: "markdown-preview";
+  readonly uri: string;
+}
+
+/** Map from stable decorationId → clear strategy for text and preview highlights. */
+export const decorationStore = new Map<string, HighlightEntry>();
 
 /** Exposed for test teardown only. */
 export function _clearDecorationStore(): void {
-  for (const { type } of decorationStore.values()) {
-    type.dispose();
+  for (const entry of decorationStore.values()) {
+    void entry.clear();
   }
   decorationStore.clear();
   decorationCounter = 0;

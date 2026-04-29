@@ -28,6 +28,7 @@
     "lint": "eslint src/"
   },
   "devDependencies": {
+    "@accordo/capabilities": "workspace:*",
     "@accordo/bridge-types": "workspace:*",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.100.0",

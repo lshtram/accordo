@@ -10,6 +10,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
 import { activate } from "../extension.js";
 import {
   resetMockState,
@@ -23,15 +24,23 @@ import {
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-const { mockResolveEditor } = vi.hoisted(() => ({
+const { mockApplyHighlight, mockClearHighlight, mockResolveEditor } = vi.hoisted(() => ({
+  mockApplyHighlight: vi.fn().mockReturnValue(false),
+  mockClearHighlight: vi.fn().mockReturnValue(false),
   mockResolveEditor: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../commentable-preview.js", () => ({
   PREVIEW_VIEW_TYPE: "accordo.markdownPreview",
-  CommentablePreview: vi.fn().mockImplementation(() => ({
-    resolveCustomTextEditor: mockResolveEditor,
-  })),
+  CommentablePreview: Object.assign(
+    vi.fn().mockImplementation(() => ({
+      resolveCustomTextEditor: mockResolveEditor,
+    })),
+    {
+      applyHighlight: mockApplyHighlight,
+      clearHighlight: mockClearHighlight,
+    },
+  ),
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -70,6 +79,8 @@ describe("activate", () => {
   beforeEach(() => {
     resetMockState();
     vi.clearAllMocks();
+    mockApplyHighlight.mockReturnValue(false);
+    mockClearHighlight.mockReturnValue(false);
     mockResolveEditor.mockReset();
   });
 
@@ -272,5 +283,67 @@ describe("activate", () => {
 
     const handler = mockState.registeredCommands.get("accordo_preview_internal_revealLine");
     expect(handler).toBeDefined();
+  });
+
+  // ── M41b-EXT-06: highlight apply/clear commands ──────────────────────────────
+
+  it("M41b-EXT-06: registers accordo_preview_internal_applyHighlight command", async () => {
+    setupCommentsExtPresent();
+    const ctx = createMockExtensionContext();
+    await activate(ctx as never);
+
+    expect(mockState.registeredCommands.has(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT)).toBe(true);
+  });
+
+  it("M41b-EXT-06: registers accordo_preview_internal_clearHighlight command", async () => {
+    setupCommentsExtPresent();
+    const ctx = createMockExtensionContext();
+    await activate(ctx as never);
+
+    expect(mockState.registeredCommands.has(CAPABILITY_COMMANDS.PREVIEW_CLEAR_HIGHLIGHT)).toBe(true);
+  });
+
+  it("M41b-EXT-06: applyHighlight command returns false when no live preview panel exists", async () => {
+    setupCommentsExtPresent();
+    const ctx = createMockExtensionContext();
+    await activate(ctx as never);
+
+    const handler = mockState.registeredCommands.get(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT)!;
+    const result = await handler({
+      uri: "file:///workspace/no-such-file.md",
+      decorationId: "test-deco-1",
+      startLine: 5,
+      endLine: 10,
+      color: "rgba(255,255,0,0.3)",
+    });
+    expect(result).toBe(false);
+  });
+
+  it("M41b-EXT-06: clearHighlight command returns false when no live preview panel exists", async () => {
+    setupCommentsExtPresent();
+    const ctx = createMockExtensionContext();
+    await activate(ctx as never);
+
+    const handler = mockState.registeredCommands.get(CAPABILITY_COMMANDS.PREVIEW_CLEAR_HIGHLIGHT)!;
+    const result = await handler({ uri: "file:///workspace/no-such-file.md" });
+    expect(result).toBe(false);
+  });
+
+  it("M41b-EXT-06: both highlight commands are registered with CAPABILITY_COMMANDS values", async () => {
+    setupCommentsExtPresent();
+    const ctx = createMockExtensionContext();
+    await activate(ctx as never);
+
+    expect(mockState.registeredCommands.has(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT)).toBe(true);
+    expect(mockState.registeredCommands.has(CAPABILITY_COMMANDS.PREVIEW_CLEAR_HIGHLIGHT)).toBe(true);
+  });
+
+  it("M41b-EXT-06: applyHighlight command is registered as disposable (pushed to subscriptions)", async () => {
+    setupCommentsExtPresent();
+    const ctx = createMockExtensionContext();
+    await activate(ctx as never);
+
+    // At least 6 subscriptions: customEditorProvider + 3 preview commands + revealLine + applyHighlight + clearHighlight
+    expect(ctx.subscriptions.length).toBeGreaterThanOrEqual(6);
   });
 });

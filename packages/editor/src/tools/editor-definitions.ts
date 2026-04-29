@@ -67,7 +67,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   {
     name: "accordo_editor_highlight",
     group: "editor",
-    description: "Apply a colored background highlight to a range of lines.",
+    description: "Apply a colored background highlight to a range of lines in a text editor or an already-open Accordo Markdown Preview. Markdown preview highlights are block-granular and this tool does not auto-open previews.",
     inputSchema: {
       type: "object",
       properties: {
@@ -85,7 +85,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   {
     name: "accordo_editor_clearHighlights",
     group: "editor",
-    description: "Remove highlight decorations created by accordo_editor_highlight.",
+    description: "Remove highlight decorations created by accordo_editor_highlight across text editor and Accordo Markdown Preview surfaces.",
     inputSchema: {
       type: "object",
       properties: {

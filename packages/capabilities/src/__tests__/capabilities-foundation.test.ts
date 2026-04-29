@@ -7,7 +7,7 @@
  * - REQ-1 (§3.1 rule):  Stable commands in CAPABILITY_COMMANDS with correct canonical string values
  * - REQ-2 (§3.2 rule):  Deferred commands are NOT in CAPABILITY_COMMANDS
  * - REQ-3 (§3.2 table): DEFERRED_COMMANDS exists with correct canonical string values
- * - REQ-4 (§3.1 rule):  CapabilityCommandMap has exactly the 8 stable command keys (set equality)
+ * - REQ-4 (§3.1 rule):  CapabilityCommandMap has exactly the 10 stable command keys (set equality)
  * - REQ-5 (§3.1 table): Stable interfaces exported with correct method signatures
  * - REQ-6 (§3.2 rule):  Deferred interfaces are not declared as active root interfaces
  * - REQ-7 (§3.2 table): deferred.ts exists and exports deferred interfaces
@@ -29,6 +29,8 @@ const STABLE_COMMANDS = [
   "COMMENTS_GET_SURFACE_ADAPTER",
   "COMMENTS_EXPAND_THREAD",
   "PREVIEW_FOCUS_THREAD",
+  "PREVIEW_APPLY_HIGHLIGHT",
+  "PREVIEW_CLEAR_HIGHLIGHT",
   "DIAGRAM_FOCUS_THREAD",
 ] as const;
 
@@ -57,6 +59,8 @@ const STABLE_COMMAND_VALUES: Record<(typeof STABLE_COMMANDS)[number], string> = 
   COMMENTS_GET_SURFACE_ADAPTER: "accordo_comments_internal_getSurfaceAdapter",
   COMMENTS_EXPAND_THREAD: "accordo_comments_internal_expandThread",
   PREVIEW_FOCUS_THREAD: "accordo_preview_internal_focusThread",
+  PREVIEW_APPLY_HIGHLIGHT: "accordo_preview_internal_applyHighlight",
+  PREVIEW_CLEAR_HIGHLIGHT: "accordo_preview_internal_clearHighlight",
   DIAGRAM_FOCUS_THREAD: "accordo_diagram_focusThread",
 };
 
@@ -72,7 +76,7 @@ const STABLE_INTERFACE_METHODS: Record<(typeof STABLE_INTERFACES)[number], strin
   SurfaceCommentAdapter: ["createThread", "reply", "resolve", "reopen", "delete", "getThreadsForUri", "onChanged"],
   CommentStoreAdapter: ["createThread", "reply", "resolve", "reopen", "delete", "getThreadsForUri", "onChanged"],
   CommentsCapability: ["getStore", "getThreadsForUri", "createSurfaceComment", "resolveThread", "getSurfaceAdapter", "expandThread"],
-  PreviewCapability: ["focusThread"],
+  PreviewCapability: ["focusThread", "applyHighlight", "clearHighlight"],
   DiagramCapability: ["focusThread"],
 };
 
@@ -115,6 +119,14 @@ const STABLE_INTERFACE_SIGNATURES: Record<
   PreviewCapability: {
     focusThread: {
       paramCount: 3, // uri, threadId, blockId (all at top level)
+      returnType: "Promise<boolean>",
+    },
+    applyHighlight: {
+      paramCount: 1,
+      returnType: "Promise<boolean>",
+    },
+    clearHighlight: {
+      paramCount: 1,
       returnType: "Promise<boolean>",
     },
   },
@@ -454,10 +466,10 @@ describe("CAPABILITIES-REQ-1: Stable commands in CAPABILITY_COMMANDS", () => {
     });
   }
 
-  it("RE1-COUNT: CAPABILITY_COMMANDS has exactly 8 stable keys", () => {
+  it("RE1-COUNT: CAPABILITY_COMMANDS has exactly 10 stable keys", () => {
     const source = readFileSync(CAPABILITIES_SRC, "utf-8");
     const entries = extractConstEntries(source, "CAPABILITY_COMMANDS");
-    expect(entries).toHaveLength(8);
+    expect(entries).toHaveLength(10);
   });
 });
 
@@ -513,7 +525,7 @@ describe("CAPABILITIES-REQ-3: DEFERRED_COMMANDS exists with correct values", () 
  * Set equality: hasAll(stable) AND hasOnly(stable).
  */
 describe("CAPABILITIES-REQ-4: CapabilityCommandMap exact stable command set", () => {
-  it("RE4-ALL: CapabilityCommandMap contains all 8 stable commands", () => {
+  it("RE4-ALL: CapabilityCommandMap contains all 10 stable commands", () => {
     const source = readFileSync(CAPABILITIES_SRC, "utf-8");
     const mapBlock = extractCapabilityCommandMapBlock(source);
     const mapKeys = extractMapKeys(mapBlock);
@@ -533,11 +545,11 @@ describe("CAPABILITIES-REQ-4: CapabilityCommandMap exact stable command set", ()
     }
   });
 
-  it("RE4-SIZE: CapabilityCommandMap has exactly 8 keys", () => {
+  it("RE4-SIZE: CapabilityCommandMap has exactly 10 keys", () => {
     const source = readFileSync(CAPABILITIES_SRC, "utf-8");
     const mapBlock = extractCapabilityCommandMapBlock(source);
     const mapKeys = extractMapKeys(mapBlock);
-    expect(mapKeys).toHaveLength(8);
+    expect(mapKeys).toHaveLength(10);
   });
 });
 
