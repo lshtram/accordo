@@ -6,12 +6,12 @@
  *
  * Removed tools (M76-VCGM-01):
  *   accordo_editor_split, accordo_editor_reveal,
- *   accordo_editor_save, accordo_editor_saveAll, accordo_editor_format
+ *   accordo_editor_scroll, accordo_editor_save, accordo_editor_saveAll, accordo_editor_format
  *
- * Remaining tools: open, close, scroll, focus, highlight, clearHighlights
+ * Remaining tools: open, close, focus, highlight, clearHighlights
  *
  * Exported API checklist (Phase B requirement):
- *   [x] editorTools[] — 6 tool definitions (was 11, 5 removed)
+ *   [x] editorTools[] — 5 tool definitions (was 11, 6 removed)
  *   [x] removed tools are NOT present in the array
  */
 
@@ -24,9 +24,9 @@ import { editorTools } from "../tools/editor-definitions.js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("editorTools — structural", () => {
-  // M76-VCGM-01: exactly 6 tools remain (5 removed: split, reveal, save, saveAll, format)
-  it("DEF-01: editorTools has exactly 6 entries", () => {
-    expect(editorTools).toHaveLength(6);
+  // M76-VCGM-01/PU-01: exactly 5 tools remain (scroll, split, reveal, save, saveAll, format removed)
+  it("DEF-01: editorTools has exactly 5 entries", () => {
+    expect(editorTools).toHaveLength(5);
   });
 
   it("DEF-02: includes tool named 'accordo_editor_open'", () => {
@@ -39,9 +39,9 @@ describe("editorTools — structural", () => {
     expect(names).toContain("accordo_editor_close");
   });
 
-  it("DEF-04: includes tool named 'accordo_editor_scroll'", () => {
+  it("DEF-04: accordo_editor_scroll is ABSENT (migrated to generic gateway)", () => {
     const names = editorTools.map((t) => t.name);
-    expect(names).toContain("accordo_editor_scroll");
+    expect(names).not.toContain("accordo_editor_scroll");
   });
 
   it("DEF-05: includes tool named 'accordo_editor_focus'", () => {
@@ -163,28 +163,6 @@ describe("accordo_editor_open — inputSchema", () => {
   it("DEF-24: column property is type number", () => {
     const props = tool.inputSchema.properties as Record<string, { type?: string }>;
     expect(props["column"].type).toBe("number");
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// accordo_editor_scroll schema
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("accordo_editor_scroll — inputSchema", () => {
-  const tool = editorTools.find((t) => t.name === "accordo_editor_scroll")!;
-
-  it("DEF-25: inputSchema requires 'direction' property", () => {
-    expect(tool.inputSchema.required).toContain("direction");
-  });
-
-  it("DEF-26: direction enum is ['up', 'down']", () => {
-    const props = tool.inputSchema.properties as Record<string, { enum?: string[] }>;
-    expect(props["direction"].enum).toEqual(["up", "down"]);
-  });
-
-  it("DEF-27: by property enum is ['line', 'page']", () => {
-    const props = tool.inputSchema.properties as Record<string, { enum?: string[] }>;
-    expect(props["by"].enum).toEqual(["line", "page"]);
   });
 });
 

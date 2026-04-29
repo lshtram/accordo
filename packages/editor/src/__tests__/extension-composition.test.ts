@@ -3,22 +3,24 @@
  * Req: E2E-VCG-09 (tool-count composition) + M76-VCGM-01/02 (removal cycle)
  *
  * M76-VCGM removal:
- *   editorTools: was 11, now 6 (removed: split, reveal, save, saveAll, format)
- *   layoutTools (base): was 5, now 1 (removed: zen, fullscreen, join, even)
+ *   editorTools: was 11, now 5 (removed: scroll, split, reveal, save, saveAll, format)
+ *   layoutTools (base): was 5, now 0 (retired; panelToggle, zen, fullscreen, join, even removed)
+ *   bar tools: +1 (layout_panel — replaces panelToggle)
  *   layoutState added by factory (+1)
- *   bar tools: +? (see bar.ts)
  * New totals:
- *   editorTools: 6
+ *   editorTools: 5
  *   terminalTools: 5
+ *   terminalReadTools: 1
  *   vscodeCommandTools: 2
- *   createLayoutTools: 1 (panelToggle) + bar + 1 (state) = 3
- *   allTools: 6 + 5 + 2 + 3 = 16
+ *   createLayoutTools: 0 (layoutTools base) + 1 (bar) + 1 (state) = 2
+ *   allTools: 5 + 5 + 1 + 2 + 2 = 15
  */
 
 import { describe, expect, it } from "vitest";
 import type { IDEState } from "@accordo/bridge-types";
 import { editorTools } from "../tools/editor.js";
 import { terminalTools } from "../tools/terminal.js";
+import { terminalReadTools } from "../tools/terminal-read/index.js";
 import { createLayoutTools } from "../tools/layout.js";
 import { vscodeCommandTools } from "../tools/vscode-command-tools.js";
 
@@ -36,16 +38,18 @@ describe("extension activate — tool composition", () => {
     const allTools = [
       ...editorTools,
       ...terminalTools,
+      ...terminalReadTools,
       ...vscodeCommandTools,
       ...createLayoutTools(() => state),
     ];
 
-    // M76-VCGM-01/02: editorTools=6 (was 11), layoutTools base=1 (was 5), state=1, bar=1
-    // Total: 6 + 5 + 2 + 3 = 16
-    expect(editorTools).toHaveLength(6);
+    // M76-VCGM-01/02 + Priority U: editorTools=5 (was 11), layoutTools base=0, state=1, bar=1
+    // Total: 5 + 5 + 1 + 2 + 2 = 15
+    expect(editorTools).toHaveLength(5);
     expect(terminalTools).toHaveLength(5);
+    expect(terminalReadTools).toHaveLength(1);
     expect(vscodeCommandTools).toHaveLength(2);
-    expect(createLayoutTools(() => state)).toHaveLength(3);
-    expect(allTools).toHaveLength(16);
+    expect(createLayoutTools(() => state)).toHaveLength(2);
+    expect(allTools).toHaveLength(15);
   });
 });

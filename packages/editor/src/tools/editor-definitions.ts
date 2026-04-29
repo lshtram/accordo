@@ -9,7 +9,6 @@ import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import {
   openHandler,
   closeHandler,
-  scrollHandler,
   focusGroupHandler,
   highlightHandler,
   clearHighlightsHandler,
@@ -49,22 +48,6 @@ export const editorTools: ExtensionToolDefinition[] = [
     dangerLevel: "safe",
     idempotent: true,
     handler: wrapHandler("accordo_editor_close", closeHandler),
-  },
-  {
-    name: "accordo_editor_scroll",
-    group: "editor",
-    description: "Scroll the active editor viewport up or down by line or page.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        direction: { type: "string", enum: ["up", "down"], description: "Scroll direction" },
-        by: { type: "string", enum: ["line", "page"], description: "Scroll unit. Default: page" },
-      },
-      required: ["direction"],
-    },
-    dangerLevel: "safe",
-    idempotent: false,
-    handler: wrapHandler("accordo_editor_scroll", scrollHandler),
   },
   {
     name: "accordo_editor_focus",

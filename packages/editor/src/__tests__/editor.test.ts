@@ -567,15 +567,14 @@ describe("clearHighlightsHandler — §4.5", () => {
 describe("editorTools registration", () => {
   const toolNames = editorTools.map((t) => t.name);
 
-  // M76-VCGM-01: exactly 6 tools remain (was 11; split, reveal, save, saveAll, format removed)
-  it("REG-01: exports exactly 6 tool definitions for modules 16+17", () => {
-    expect(editorTools).toHaveLength(6);
+  // M76-VCGM-01/PU-01: exactly 5 tools remain (scroll, split, reveal, save, saveAll, format removed)
+  it("REG-01: exports exactly 5 tool definitions for modules 16+17", () => {
+    expect(editorTools).toHaveLength(5);
   });
 
   it("REG-02: all remaining module 16 tools are present", () => {
     expect(toolNames).toContain("accordo_editor_open");
     expect(toolNames).toContain("accordo_editor_close");
-    expect(toolNames).toContain("accordo_editor_scroll");
     expect(toolNames).toContain("accordo_editor_focus");
   });
 
@@ -585,7 +584,8 @@ describe("editorTools registration", () => {
   });
 
   // M76-VCGM-01: removed tools are absent
-  it("REG-03b: removed tools (split, reveal, save, saveAll, format) are absent", () => {
+  it("REG-03b: removed tools (scroll, split, reveal, save, saveAll, format) are absent", () => {
+    expect(toolNames).not.toContain("accordo_editor_scroll");
     expect(toolNames).not.toContain("accordo_editor_split");
     expect(toolNames).not.toContain("accordo_editor_reveal");
     expect(toolNames).not.toContain("accordo_editor_save");
@@ -620,11 +620,6 @@ describe("editorTools registration", () => {
     }
   });
 
-  it("REG-07: scroll is NOT idempotent", () => {
-    const tool = editorTools.find((t) => t.name === "accordo_editor_scroll");
-    expect(tool?.idempotent ?? false).toBe(false);
-  });
-
   it("REG-08: all handlers are functions", () => {
     for (const tool of editorTools) {
       expect(typeof tool.handler).toBe("function");
@@ -638,20 +633,6 @@ describe("editorTools registration", () => {
 
   it("REG-09: open requires [path]", () => {
     expect(tool("accordo_editor_open").inputSchema.required).toEqual(["path"]);
-  });
-
-  it("REG-10: scroll required includes direction", () => {
-    expect(tool("accordo_editor_scroll").inputSchema.required).toContain("direction");
-  });
-
-  it("REG-11: scroll.direction enum is ['up','down']", () => {
-    const props = tool("accordo_editor_scroll").inputSchema.properties as Record<string, { enum?: string[] }>;
-    expect(props["direction"].enum).toEqual(["up", "down"]);
-  });
-
-  it("REG-12: scroll.by enum is ['line','page'] when present", () => {
-    const props = tool("accordo_editor_scroll").inputSchema.properties as Record<string, { enum?: string[] }>;
-    expect(props["by"].enum).toEqual(["line", "page"]);
   });
 
   it("REG-13: highlight requires [path, startLine, endLine]", () => {
@@ -668,5 +649,4 @@ describe("editorTools registration", () => {
     expect(tool("accordo_editor_clearHighlights").inputSchema.required).toEqual([]);
   });
 });
-
 

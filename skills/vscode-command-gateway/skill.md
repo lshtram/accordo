@@ -51,6 +51,7 @@ For bulk discovery, paginate with `offset` and `limit`.
 | `accordo_editor_save` | `workbench.action.files.save` | confirm | **Yes** |
 | `accordo_editor_saveAll` | `workbench.action.files.saveAll` | confirm | **Yes** |
 | `accordo_editor_format` | `editor.action.formatDocument` | confirm | **Yes** |
+| `accordo_editor_scroll` | `editorScroll` | allow | No |
 | `accordo_layout_joinGroups` | `workbench.action.joinAllGroups` | allow | No |
 | `accordo_layout_evenGroups` | `workbench.action.evenEditorWidths` | allow | No |
 | `accordo_layout_zen` | `workbench.action.toggleZenMode` | allow | No |
@@ -118,6 +119,18 @@ accordo_vscode_command_execute({ command: "workbench.action.toggleZenMode" })
 
 // Toggle fullscreen
 accordo_vscode_command_execute({ command: "workbench.action.toggleFullScreen" })
+
+// Scroll the active editor down by one page
+accordo_vscode_command_execute({
+  command: "editorScroll",
+  args: [{ to: "down", by: "page", value: 1, revealCursor: false }]
+})
+
+// Scroll the active editor up by one line
+accordo_vscode_command_execute({
+  command: "editorScroll",
+  args: [{ to: "up", by: "line", value: 1, revealCursor: false }]
+})
 ```
 
 ### Workflows for path-based commands

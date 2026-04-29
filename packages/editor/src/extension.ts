@@ -89,7 +89,6 @@ function registerEditorShims(
   registerEditorCommandShims(context, {
     openHandler: handlers.openHandler,
     closeHandler: handlers.closeHandler,
-    scrollHandler: handlers.scrollHandler,
     focusGroupHandler: handlers.focusGroupHandler,
     highlightHandler: handlers.highlightHandler,
     clearHighlightsHandler: handlers.clearHighlightsHandler,

@@ -140,36 +140,51 @@
 
 ---
 
-### Priority S — Terminal Output Readback for Agents (`accordo_terminal_read`)
+### Priority S — Terminal Output Readback for Agents (`accordo_terminal_read` + observed `accordo_terminal_run`)
 
-**Status:** Planned from live tool validation (2026-04-22). Not started.
+**Status:** Phase A design/stubs prepared (2026-04-27). Phase B/C implementation not started.
 
-**Problem:** `accordo_terminal_run` confirms dispatch (`sent: true`) but does not return terminal stdout/stderr, so agents cannot verify interactive terminal results without using separate shell tools.
+**Problem:** `accordo_terminal_run` confirms dispatch (`sent: true`) but does not return terminal stdout/stderr, so agents cannot verify interactive terminal results without using separate shell tools. A pure split design also forces a second MCP call even for short confirmatory reads.
 
 **Intent:** This is part of Accordo's original terminal modality intent — agents should be able to both **act** in terminals and **observe** terminal output through MCP.
 
 **Planned module scope:**
-1. Add MCP tool `accordo_terminal_read` in `packages/editor/src/tools/terminal.ts`.
-2. Introduce bounded terminal output capture buffer (per terminal + active terminal fallback).
-3. Support incremental reads via cursor/since token to avoid duplicate output replay.
-4. Add redaction/safety guardrails for obvious secrets + strict output size caps.
-5. Define retention lifecycle (buffer reset on terminal close/restart; bounded memory footprint).
+1. Keep MCP tool `accordo_terminal_read` as the dedicated follow-up read surface under `packages/editor/src/tools/terminal-read/` (barrel + focused contract/stub/tool files).
+2. Extend `accordo_terminal_run` with optional inline observe parameters so one run call can return a bounded preview without replacing `terminal_read`.
+3. Introduce bounded terminal output capture buffer (per terminal + active terminal fallback).
+4. Support incremental reads via cursor/since token to avoid duplicate output replay.
+5. Add redaction/safety guardrails for obvious secrets + strict output size caps.
+6. Define retention lifecycle (buffer reset on terminal close/restart; bounded memory footprint).
 
-**Proposed tool contract (draft):**
-- **Input:** `terminalId?`, `since?`, `maxLines?`, `maxChars?`
-- **Output:** `{ terminalId, text, cursor, truncated }`
-- **Danger level:** safe
-- **Timeout class:** fast
+**Phase A contracts (revised):**
+- `accordo_terminal_run` input adds `observeMaxLines?`, `observeMaxChars?`; omitting `observeMaxLines` (or passing `0`) preserves legacy dispatch-only behavior.
+- `accordo_terminal_run` response remains `{ sent: true, terminalId }` unless inline observe is requested, in which case it may additionally return `observe: { text, cursor, truncated }`.
+- `accordo_terminal_read` remains the dedicated incremental follow-up surface with input `terminalId?`, `since?`, `maxLines?`, `maxChars?` and output `{ terminalId, text, cursor, truncated }`.
+- `accordo_terminal_read` danger level stays safe / timeout fast.
+
+**Phase A design notes (2026-04-27):**
+1. `accordo_terminal_read` stays as the canonical incremental read contract; `accordo_terminal_run` only gains an optional bounded preview for same-call confirmation.
+2. `observeMaxLines` is the feature switch for inline observe: omitted/`0` means no preview, preserving backward compatibility and existing confirmation semantics.
+3. Inline preview and follow-up reads share the same buffer/redaction pipeline and cursor lineage so agents can continue from the preview cursor with `accordo_terminal_read`.
+4. Incremental reads use an opaque per-terminal cursor; cross-terminal cursor reuse is rejected.
+5. Output capture is isolated behind editor-local abstractions (`TerminalOutputSource`, `TerminalOutputBuffer`, `TerminalOutputRedactor`) so the public MCP contract stays stable if the VS Code capture mechanism changes.
+6. Active-terminal fallback remains supported, including adoption of an untracked active terminal into a stable accordo terminal ID before readback.
+7. Buffer lifecycle is terminal-scoped: close/reset clears retained output and invalidates stale cursors.
+8. Phase A remediation also splits terminal control into `packages/editor/src/tools/terminal/` with a thin `terminal.ts` barrel so no touched production file exceeds the modularity cap and `terminalRunHandler` stays under the function-size cap.
+9. The approved public error vocabulary now explicitly includes the terminal.run command-validation message to match the documented precedence order.
 
 **Acceptance criteria:**
-1. Agent can run `accordo_terminal_run` and then read resulting output via `accordo_terminal_read` without leaving MCP.
-2. Read calls are deterministic and bounded (no unbounded memory, no huge payloads).
-3. Works for both tracked terminals (`accordo-terminal-*`) and active untracked terminal fallback.
-4. Unit tests cover buffering, cursor advancement, truncation, and terminal-close lifecycle.
-5. No regression to existing terminal tools (`open/run/focus/list/close`).
+1. Agent can run `accordo_terminal_run` with `observeMaxLines` and receive a bounded inline preview when requested.
+2. Agent can still run `accordo_terminal_run` and then read resulting output via `accordo_terminal_read` without leaving MCP.
+3. Dispatch-only `accordo_terminal_run` callers remain backward compatible when observe parameters are omitted.
+4. Read calls and inline previews are deterministic and bounded (no unbounded memory, no huge payloads).
+5. Works for both tracked terminals (`accordo-terminal-*`) and active untracked terminal fallback.
+6. Unit tests cover buffering, cursor advancement, truncation, preview/read cursor continuity, and terminal-close lifecycle.
+7. No regression to existing terminal tools (`open/run/focus/list/close`).
 
 **Risk notes:**
 - Potential leakage of secrets from terminal output; must enforce conservative redaction + explicit docs warning.
+- Inline preview must not create a second, divergent output contract; Phase B should prove it is backed by the same read pipeline as `accordo_terminal_read`.
 - VS Code terminal output event fidelity should be validated against long-running and ANSI-heavy streams.
 
 **Execution note:** Queue this as a dedicated TDD module in a future implementation session.
@@ -211,26 +226,26 @@
 
 ---
 
-### Priority U — Deprecate/Remove `accordo_editor_scroll`
+### ~~Priority U — Deprecate/Remove `accordo_editor_scroll`~~ ✅ COMPLETE
 
-**Status:** Planned from live tool-by-tool validation (2026-04-22). Not started.
+**Status:** Completed. `accordo_editor_scroll` was removed from MCP registration and command shims; use `accordo_vscode_command_execute` with `editorScroll` for viewport scrolling.
 
 **Problem:** `accordo_editor_scroll` is low-value and inconsistent across surfaces. It works on text editors but fails on markdown preview surfaces with `No active editor`. The preferred navigation pattern is deterministic file open + line targeting via `accordo_editor_open`.
 
 **Decision direction:** Retire `accordo_editor_scroll` entirely rather than broadening surface-specific behavior.
 
-**Open tasks:**
-1. Confirm removal in requirements and architecture docs.
-2. Remove `accordo_editor_scroll` from editor tool registration and schema catalogs.
-3. Update any references/tests expecting the tool in `tools/list`.
-4. Add migration note: use `accordo_editor_open` with `line`/`column` for viewport positioning.
+**Completed tasks:**
+1. Confirmed removal in requirements and migration docs.
+2. Removed `accordo_editor_scroll` from editor tool registration and command shims.
+3. Updated tests so `tools/list` composition no longer expects the tool.
+4. Added migration guidance: use `accordo_vscode_command_execute({ command: "editorScroll", args: [...] })`, or `accordo_editor_open` with `line`/`column` for deterministic file positioning.
 
 **Acceptance criteria:**
 1. `tools/list` does not include `accordo_editor_scroll` (or clearly marks it deprecated during transition window).
 2. Editor tool tests pass after removal/deprecation updates.
 3. Docs consistently point to `accordo_editor_open` for navigation.
 
-**Execution note:** Schedule as a cleanup module after current high-priority reconnect and terminal-readback work.
+**Completion note:** Retired as part of the generic VS Code command gateway migration wave.
 
 ---
 

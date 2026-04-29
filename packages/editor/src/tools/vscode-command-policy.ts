@@ -14,7 +14,6 @@ import type {
 const ACCORDO_INTERNAL_COMMANDS = new Set([
   "accordo_editor_open",
   "accordo_editor_close",
-  "accordo_editor_scroll",
   "accordo_editor_focus",
   "accordo_editor_highlight",
   "accordo_editor_clearHighlights",

@@ -27,7 +27,6 @@ export function registerEditorCommandShims(
   handlers: {
     openHandler: (args: Record<string, unknown>) => unknown;
     closeHandler: (args: Record<string, unknown>) => unknown;
-    scrollHandler: (args: Record<string, unknown>) => unknown;
     focusGroupHandler: (args: Record<string, unknown>) => unknown;
     highlightHandler: (args: Record<string, unknown>) => unknown;
     clearHighlightsHandler: (args: Record<string, unknown>) => unknown;
@@ -36,7 +35,6 @@ export function registerEditorCommandShims(
   context.subscriptions.push(
     makeCommandShim("accordo_editor_open",           handlers.openHandler),
     makeCommandShim("accordo_editor_close",           handlers.closeHandler),
-    makeCommandShim("accordo_editor_scroll",         handlers.scrollHandler),
     makeCommandShim("accordo_editor_focus",          handlers.focusGroupHandler),
     makeCommandShim("accordo_editor_highlight",      handlers.highlightHandler),
     makeCommandShim("accordo_editor_clearHighlights", handlers.clearHighlightsHandler),
@@ -75,6 +73,7 @@ export function registerTerminalCommandShims(
     terminalFocusHandler: (args: Record<string, unknown>) => unknown;
     terminalListHandler: (args: Record<string, unknown>) => unknown;
     terminalCloseHandler: (args: Record<string, unknown>) => unknown;
+    terminalReadHandler: (args: Record<string, unknown>) => unknown;
   },
 ): void {
   context.subscriptions.push(
@@ -83,6 +82,7 @@ export function registerTerminalCommandShims(
     makeCommandShim("accordo_terminal_focus", handlers.terminalFocusHandler),
     makeCommandShim("accordo_terminal_list",   handlers.terminalListHandler),
     makeCommandShim("accordo_terminal_close",  handlers.terminalCloseHandler),
+    makeCommandShim("accordo_terminal_read",   handlers.terminalReadHandler),
   );
 }
 

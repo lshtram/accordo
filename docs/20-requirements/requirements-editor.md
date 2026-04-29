@@ -44,7 +44,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const allTools: ExtensionToolDefinition[] = [
     ...editorTools,        // 11 editor tools
-    ...terminalTools,      // 5 terminal tools
+    ...terminalTools,      // 5 terminal control tools
+    ...terminalReadTools,  // 1 terminal readback tool
     ...vscodeCommandTools, // 2 generic VS Code command gateway tools
     ...createLayoutTools(() => bridge.getState()),  // 7 layout tools
   ];
@@ -173,53 +174,20 @@ Each tool below is defined with its full interface contract: input schema, respo
 
 ---
 
-### 4.3 `accordo_editor_scroll`
+### 4.3 `accordo_editor_scroll` — removed
 
-**Purpose:** Scroll the active editor viewport.
+**Status:** Removed from MCP tool registration. Use the generic VS Code command gateway instead.
 
-| Property | Value |
-|---|---|
-| Danger level | safe |
-| Idempotent | no |
-| Requires confirmation | no |
-| Timeout class | fast (5s) |
-
-**Input Schema:**
+**Replacement:**
 
 ```typescript
-{
-  type: "object",
-  properties: {
-    direction: {
-      type: "string",
-      enum: ["up", "down"],
-      description: "Scroll direction"
-    },
-    by: {
-      type: "string",
-      enum: ["line", "page"],
-      description: "Scroll unit. Default: page"
-    }
-  },
-  required: ["direction"]
-}
+accordo_vscode_command_execute({
+  command: "editorScroll",
+  args: [{ to: "down", by: "page", value: 1, revealCursor: false }]
+})
 ```
 
-**Response:**
-
-```typescript
-{ line: number }  // new visible start line after scroll
-```
-
-**Errors:**
-
-| Condition | Error message |
-|---|---|
-| No active editor | `"No active editor"` |
-
-**Implementation:**
-- `vscode.commands.executeCommand('editorScroll', { to: direction, by: by, value: 1 })`
-- Read new `visibleRanges[0].start.line` for response
+For deterministic navigation to a specific file location, prefer `accordo_editor_open({ path, line, column })`.
 
 ---
 
@@ -522,6 +490,13 @@ Each tool below is defined with its full interface contract: input schema, respo
 | Requires confirmation | **yes** |
 | Timeout class | interactive (30s) |
 
+**Requirement IDs:**
+
+- **S-TR-07** — `accordo_terminal_run` remains the only execution tool and may optionally return a bounded inline observe preview after dispatch.
+- **S-TR-08** — omitting `observeMaxLines` (or passing `0`) preserves backward-compatible dispatch-only behavior for callers that expect `{ sent: true, terminalId }`.
+- **S-TR-09** — when inline observe is requested, preview bounds and redaction use the same terminal output pipeline as `accordo_terminal_read` so cursor continuity and safety rules stay consistent.
+- **S-TR-10** — validation precedence for `accordo_terminal_run` is deterministic: command validation, then observe-parameter validation, then terminal resolution, then dispatch, then optional bounded preview.
+
 **Input Schema:**
 
 ```typescript
@@ -535,6 +510,14 @@ Each tool below is defined with its full interface contract: input schema, respo
     terminalId: {
       type: "string",
       description: "Terminal to use (stable ID from terminal.open). If omitted, uses active terminal or creates one."
+    },
+    observeMaxLines: {
+      type: "number",
+      description: "Optional inline observe line bound. Omit or pass 0 for legacy dispatch-only behavior. Positive values request bounded output preview. Hard cap: 500."
+    },
+    observeMaxChars: {
+      type: "number",
+      description: "Optional inline observe character bound used only when observeMaxLines > 0. Default: 12000. Hard cap: 20000."
     }
   },
   required: ["command"]
@@ -544,21 +527,36 @@ Each tool below is defined with its full interface contract: input schema, respo
 **Response:**
 
 ```typescript
-{ sent: true, terminalId: string }
+{
+  sent: true;
+  terminalId: string;
+  observe?: {
+    text: string;
+    cursor: string;
+    truncated: boolean;
+  };
+}
 ```
 
 **Errors:**
 
 | Condition | Error message |
 |---|---|
+| `command` is missing, not a string, or empty | `"Argument 'command' must be a non-empty string"` |
 | terminalId not found | `"Terminal <id> not found"` |
 | No terminals exist and no terminalId | Creates a new terminal, then runs the command |
+| `observeMaxLines` is negative, non-integer, or exceeds the hard cap | `"Argument 'observeMaxLines' must be 0 or an integer between 1 and 500"` |
+| `observeMaxChars` is provided while `observeMaxLines` enables preview and is non-integer, non-positive, or exceeds the hard cap | `"Argument 'observeMaxChars' must be an integer between 1 and 20000"` |
 
 **Implementation:**
 - Find terminal by `accordoTerminalId` in the terminal map (see §5.3)
 - `terminal.sendText(command, true)` — the `true` appends newline
 - `terminal.show()`
-- Note: This tool sends the command but does NOT wait for output. The agent observes results through other means (file changes, etc.) or through future terminal output tools.
+- Validate `command` before any observe-parameter validation or terminal resolution.
+- `observeMaxLines` is the inline-observe feature switch. If omitted or `0`, return the legacy dispatch-only response.
+- When `observeMaxLines > 0`, the tool may also return `observe: { text, cursor, truncated }` sourced from the same bounded/redacted pipeline used by `accordo_terminal_read`.
+- `observeMaxChars` is meaningful only when `observeMaxLines > 0`; otherwise it is ignored for backward compatibility.
+- Inline observe never replaces `accordo_terminal_read`; it only provides a same-call preview so callers can continue with `accordo_terminal_read` from the returned cursor when needed.
 
 **Security note:** This is the most dangerous Phase 1 tool. Default confirmation behavior shows a `vscode.window.showWarningMessage` with the command text.
 
@@ -1425,6 +1423,86 @@ interface TerminalInfo {
 
 ---
 
+### 4.30 `accordo_terminal_read`
+
+**Purpose:** Read recent buffered terminal output through MCP without executing a new shell command.
+
+| Property | Value |
+|---|---|
+| Danger level | safe |
+| Idempotent | yes |
+| Requires confirmation | no |
+| Timeout class | fast (5s) |
+
+**Requirement IDs:**
+
+- **S-TR-01** — tool resolves the read target from `terminalId` when provided, otherwise from the active terminal.
+- **S-TR-02** — tool supports incremental reads via an opaque cursor returned in prior responses.
+- **S-TR-03** — reads are strictly bounded by line/character caps and report `truncated` when clipped.
+- **S-TR-04** — output is redacted before crossing MCP so obvious secrets are not replayed verbatim.
+- **S-TR-05** — buffered output is reset when the tracked terminal closes; stale cursors do not survive terminal replacement.
+- **S-TR-06** — validation precedence and public error messages are deterministic for missing target, bad bounds, and cursor/terminal mismatch cases.
+- **S-TR-11** — `accordo_terminal_read` remains the authoritative follow-up read surface after any optional inline observe preview returned by `accordo_terminal_run`.
+
+**Input Schema:**
+
+```typescript
+{
+  type: "object",
+  properties: {
+    terminalId: {
+      type: "string",
+      description: "Stable accordo terminal ID. If omitted, uses the active terminal."
+    },
+    since: {
+      type: "string",
+      description: "Opaque cursor from a previous terminal.read response. Reuse only with the same terminal."
+    },
+    maxLines: {
+      type: "number",
+      description: "Maximum lines to return. Default: 200. Hard cap: 500."
+    },
+    maxChars: {
+      type: "number",
+      description: "Maximum characters to return. Default: 12000. Hard cap: 20000."
+    }
+  },
+  required: []
+}
+```
+
+**Response:**
+
+```typescript
+{
+  terminalId: string;
+  text: string;
+  cursor: string;
+  truncated: boolean;
+}
+```
+
+**Errors:**
+
+| Condition | Error message |
+|---|---|
+| No `terminalId` and no active terminal exists | `"No active terminal"` |
+| Provided `terminalId` does not resolve to a live terminal | `"Terminal <id> not found"` |
+| `since` cursor belongs to a different terminal | `"Cursor does not belong to terminal <id>"` |
+| `maxLines` is not a positive integer or exceeds the hard cap | `"Argument 'maxLines' must be an integer between 1 and 500"` |
+| `maxChars` is not a positive integer or exceeds the hard cap | `"Argument 'maxChars' must be an integer between 1 and 20000"` |
+
+**Implementation:**
+
+- Reads from a bounded per-terminal output buffer owned by the editor extension (see §5.4).
+- Does **not** execute shell commands and does **not** mutate terminal state.
+- If `terminalId` is omitted and the active VS Code terminal is currently untracked, assign it a stable accordo terminal ID before reading so the returned `terminalId` is reusable.
+- `since` is an opaque cursor tied to the specific terminal buffer; callers must not infer structure from it.
+- Redaction happens before the `text` field is returned to MCP callers.
+- Buffer entries are cleared when the terminal closes so a newly created terminal cannot inherit stale output or stale cursors.
+
+---
+
 ## 5. Shared Utilities
 
 ### 5.1 `resolvePath(input: string, context?: { workspaceFolders: string[] }): string`
@@ -1492,6 +1570,31 @@ function getTerminalId(terminal: vscode.Terminal): string | undefined {
 
 **Lifecycle:** When a terminal is closed by the user (`vscode.window.onDidCloseTerminal`), its entry is removed from the map. The counter is never reset (IDs are unique for the lifetime of the extension host session).
 
+### 5.4 Terminal Output Read Buffer
+
+```typescript
+interface TerminalOutputBuffer {
+  read(request: TerminalReadRequest): Promise<TerminalReadSuccess>;
+  clearTerminal(terminalId: string): Promise<void>;
+}
+
+interface TerminalOutputSource {
+  startTrackingTerminal(terminalId: string): Promise<void>;
+  stopTrackingTerminal(terminalId: string): Promise<void>;
+}
+
+interface TerminalOutputRedactor {
+  redact(text: string): string;
+}
+```
+
+**Design contract:**
+
+1. `TerminalOutputSource` is the only module allowed to depend on the concrete VS Code terminal-output capture mechanism.
+2. `TerminalOutputBuffer` owns bounded retention, cursor generation, truncation rules, inline-preview/read continuity, and close/reset semantics.
+3. `TerminalOutputRedactor` owns secret-scrubbing policy before output crosses the MCP boundary.
+4. `accordo_terminal_read` and the optional observe branch of `accordo_terminal_run` both depend on these local abstractions, so the capture mechanism can change without changing the public tool contract.
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -1514,8 +1617,9 @@ function getTerminalId(terminal: vscode.Terminal): string | undefined {
 | Unit: wrapHandler | success, throw, non-serializable return |
 | Unit: each tool handler | Happy path with mock VSCode API |
 | Unit: input validation | Missing required fields, wrong types, out-of-range values |
-| Integration: tool registration | activate → registerTools called → Bridge receives 25 tools |
+| Integration: tool registration | activate → registerTools called → Bridge receives 26 tools |
 | Integration: tool invocation | Bridge sends invoke → handler runs → result returned |
 | Unit: terminal.list | Tracked IDs, untracked terminals, isActive flag |
 | Unit: terminal.close | Happy path, already-closed terminal (stale map entry) |
+| Unit: terminal.read / terminal.run observe | target resolution, cursor advancement, truncation, redaction, backward-compatible dispatch-only behavior, preview/read continuity, close/reset lifecycle |
 | E2E: full round-trip | Agent calls tools/call → Hub → Bridge → Editor handler → result back to agent |
