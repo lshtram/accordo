@@ -37,6 +37,7 @@
 | Priority 0 — browser_diff_snapshots fix (B2-CTX-000/000b) | ✅ Completed (`2a20512`) |
 | Hub spawn + MCP config sync + protocol fixes | ✅ Completed (`6f1e6b0`) |
 | Browser Relay Auth Hardening (Phase 1) | ✅ Completed (`d91368f`, 2026-04-10). Deferred follow-up remains in Phase 2: Chrome token discovery via native messaging, query-string transport, and token rotation. |
+| Browser MCP checklist closeout hardening | ✅ Approved (`f390181`, review `docs/50-reviews/browser-mcp-checklist-review-2026-04-29.md`). Independent score improved from 29/45 to 36/45 after identifier-safe redaction, `redactionApplied` flag preservation, spatial request validation, and snapshot/diff contract fixes. |
 
 ---
 
@@ -59,6 +60,7 @@
 | P2 cleanup | MOD-P2-11 through MOD-P2-16: relay helpers, merge/sync, response normalization, README ✅ |
 | B2-CTX-000 | Priority 0: browser_diff_snapshots + semantic_graph fix ✅ |
 | 6f1e6b0 | Hub spawn, MCP config sync, protocol contract fixes ✅ |
+| 2026-04-29 Browser closeout | MCP WebView checklist approved at 36/45; residual improvements are non-blocking redaction false positives, live inspect/spatial ergonomics, screenshot retention dimensions, and optional OCR screenshot redaction. |
 
 ---
 

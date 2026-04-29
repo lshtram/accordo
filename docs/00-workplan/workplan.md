@@ -123,16 +123,27 @@
 
 ### Priority J — Browser MCP Closeout
 
-**Implementation status:** Waves 1-8 are implemented and committed.  
-**Conservative live score:** **44/45** based on `docs/50-reviews/browser-mcp-live-eval-wave8-2026-04-07.md`.  
-**Residual gap:** OCR-assisted screenshot redaction for image-only PII. Current screenshot redaction is bbox/pattern-based and intentionally does not claim OCR coverage.
+**Implementation status:** Approved for production agent workflows in the current MCP WebView checklist review.
+**Current independent checklist score:** **36/45** based on `docs/50-reviews/browser-mcp-checklist-review-2026-04-29.md`.
+**Historical targeted live score:** **44/45** based on `docs/50-reviews/browser-mcp-live-eval-wave8-2026-04-07.md`; that Wave 8 run used a broader targeted evidence matrix and is retained as historical implementation evidence, not the current closeout score.
 
-**Open closeout tasks:**
-1. Decide whether OCR screenshot redaction is in-scope for the browser MCP target, or whether 44/45 is the accepted end state for this release.
-2. If accepted as-is, update planning docs so they no longer claim 45/45 as the current live-evaluated state.
-3. Keep the implementation review trail and historical planning artifacts in `docs/50-reviews/` / `docs/60-archive/`.
+**Completed closeout hardening (2026-04-28 / 2026-04-29):**
+1. Snapshot handle identity hardened so stale snapshot-scoped `uid`/`ref`/`nodeId` cannot silently resolve to the wrong element (`ff1bbcc`).
+2. `diff_snapshots` retained-snapshot selection and mismatch errors stabilized (`5da9d79`).
+3. Local snapshot management and `manage_snapshots` contract fixed (`a229642`).
+4. Browser tool runtime contracts and descriptions hardened (`e73331b`).
+5. Redaction now preserves machine identifiers and anchor handles while still redacting text-bearing PII (`0d2c8c2`, `f390181`).
+6. Spatial relations now rejects malformed/mixed identity requests with structured `invalid-request` errors before relay (`38bbe5e`).
+7. Independent reviewer approved the current browser MCP/WebView surface against `docs/30-development/mcp-webview-agent-evaluation-checklist.md` with all must-haves satisfied and no blocking findings (`docs/50-reviews/browser-mcp-checklist-review-2026-04-29.md`).
+
+**Future improvements (non-blocking):**
+1. Reduce redaction false positives in ordinary page text; identifiers and anchor handles are protected, but benign text fragments can still be over-masked.
+2. Improve live wrapper ergonomics for `inspect_element` and `get_spatial_relations`; automated coverage is strong, but reviewer/agent live usage is still awkward when optional fields need to be omitted cleanly.
+3. Tighten retained screenshot metadata so listed artifacts report accurate dimensions after successful captures.
+4. Decide whether OCR-assisted screenshot redaction is in scope for a future release. Current screenshot redaction is bbox/pattern-based and intentionally does not claim image-only PII coverage.
 
 **Key evidence:**
+- Current checklist review: `docs/50-reviews/browser-mcp-checklist-review-2026-04-29.md`
 - Plan: `docs/50-reviews/M110-TC-45-45-plan.md`
 - Wave 6 review: `docs/50-reviews/browser-mcp-wave6-eval-2026-04-06.md`
 - Wave 7 live eval: `docs/50-reviews/browser-mcp-live-eval-wave7-2026-04-07.md`
