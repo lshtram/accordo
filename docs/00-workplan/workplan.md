@@ -100,34 +100,13 @@
 
 ---
 
-### ~~Priority 0 — Critical fixes (D2 review gap — found via live E2E)~~ ✅ RESOLVED
-
-`browser_diff_snapshots` action-failed cascade fixed via B2-CTX-000 (`2a20512`). Root cause was `browser_get_semantic_graph` content-script stub throwing "not implemented". Semantic graph now implemented via `collectSemanticGraph()`. Remaining item (D2-001: add "requires live E2E" flag to checklist) moved to Later queue.
-
----
-
-### ~~Priority A — Browser continuity for agents~~ ✅ COMPLETE (2026-04-13)
-
-**Problem solved:** `browser_*` tools now support explicit `tabId` targeting across all understanding tools — agents can keep operating on a previously selected tab while the user works elsewhere.
-
-**What was delivered:**
-1. ✅ `browser_list_pages` + `browser_select_page` — prerequisite tab targeting (`2a1cf9b`, `9c3fa9f`)
-2. ✅ `tabId` on 7 tools: `browser_wait_for`, `browser_get_text_map`, `browser_get_semantic_graph`, `browser_list_pages`, `browser_select_page`, `browser_inspect_element`, `browser_capture_region` (wave 8, `94b41ba`)
-3. ✅ `browser_diff_snapshots` relay payload now forwards `tabId` to Chrome extension (`packages/browser/src/diff-tool.ts` — Phase 1 fix, 2026-04-13)
-4. ✅ Chrome extension `handleDiffSnapshots` bypasses SW in-memory fast-path when explicit `tabId` is present — routes directly to content-script store, which is authoritative per-tab (`packages/browser-extension/src/relay-capture-handler.ts` — Phase 2 fix, 2026-04-13)
-5. ✅ E2E smoke tests added: B2-CTX-006 tests in `diff-snapshots-tabid.test.ts` and `relay-actions-diff.test.ts`
-
-**All tests green (current rerun):** `browser` 1178/1178, `browser-extension` 1271/1271.
-
----
-
 ### Priority J — Browser MCP Closeout
 
 **Implementation status:** Approved for production agent workflows in the current MCP WebView checklist review.
 **Current independent checklist score:** **36/45** based on `docs/50-reviews/browser-mcp-checklist-review-2026-04-29.md`.
 **Historical targeted live score:** **44/45** based on `docs/50-reviews/browser-mcp-live-eval-wave8-2026-04-07.md`; that Wave 8 run used a broader targeted evidence matrix and is retained as historical implementation evidence, not the current closeout score.
 
-**Completed closeout hardening (2026-04-28 / 2026-04-29):**
+**Completed closeout hardening (2026-04-28 / 2026-04-30):**
 1. Snapshot handle identity hardened so stale snapshot-scoped `uid`/`ref`/`nodeId` cannot silently resolve to the wrong element (`ff1bbcc`).
 2. `diff_snapshots` retained-snapshot selection and mismatch errors stabilized (`5da9d79`).
 3. Local snapshot management and `manage_snapshots` contract fixed (`a229642`).
@@ -135,12 +114,15 @@
 5. Redaction now preserves machine identifiers and anchor handles while still redacting text-bearing PII (`0d2c8c2`, `f390181`).
 6. Spatial relations now rejects malformed/mixed identity requests with structured `invalid-request` errors before relay (`38bbe5e`).
 7. Independent reviewer approved the current browser MCP/WebView surface against `docs/30-development/mcp-webview-agent-evaluation-checklist.md` with all must-haves satisfied and no blocking findings (`docs/50-reviews/browser-mcp-checklist-review-2026-04-29.md`).
+8. `get_spatial_relations` live-wrapper ergonomics are covered by schema/description guidance, empty-array acceptance, exact-one validation, and recovery hints (`spatial-tool-contract-valid.test.ts`, `spatial-tool-contract-invalid.test.ts`).
+9. Browser redaction false-positive risk reduced for ordinary numeric page text; tests now cover dimensions, coordinates, dates, video IDs, long digit identifiers, and prose-like numbers in both browser and browser-extension redaction paths.
+10. CDP viewport/full-page capture dimensions are now derived when Chrome's `Page.captureScreenshot` omits width/height, using the snapshot envelope for viewport captures and `Page.getLayoutMetrics` content size for full-page captures.
+11. OCR-assisted screenshot redaction decision documented as deferred/out of current scope; current coverage remains DOM text-map/bounding-box based and does not claim image-only PII redaction.
+12. Browser-extension reconnect scheduling is covered for missing-token/unauthorized direct bridge retries, transport duplicate-close/token-refresh reconnect paths, and token-poll close/reconnect races; `RelayTransport.scheduleReconnect()` now deduplicates pending reconnect timers.
+13. Added compact live browser closeout checklist covering background-tab reads, control tools, stale snapshot/diff flow, and screenshot capture/list/clear (`docs/40-testing/testing-guide-browser-closeout.md`).
+14. Refreshed browser MCP requirements and browser-extension module map to remove stale pre-closeout score language and align docs with the current split capture/page/snapshot modules.
 
-**Future improvements (non-blocking):**
-1. Reduce redaction false positives in ordinary page text; identifiers and anchor handles are protected, but benign text fragments can still be over-masked.
-2. Improve live wrapper ergonomics for `inspect_element` and `get_spatial_relations`; automated coverage is strong, but reviewer/agent live usage is still awkward when optional fields need to be omitted cleanly.
-3. Tighten retained screenshot metadata so listed artifacts report accurate dimensions after successful captures.
-4. Decide whether OCR-assisted screenshot redaction is in scope for a future release. Current screenshot redaction is bbox/pattern-based and intentionally does not claim image-only PII coverage.
+**Remaining improvements:** None currently tracked for Priority J. Reopen this priority only if live closeout smoke testing finds a new browser regression.
 
 **Key evidence:**
 - Current checklist review: `docs/50-reviews/browser-mcp-checklist-review-2026-04-29.md`
@@ -148,115 +130,6 @@
 - Wave 6 review: `docs/50-reviews/browser-mcp-wave6-eval-2026-04-06.md`
 - Wave 7 live eval: `docs/50-reviews/browser-mcp-live-eval-wave7-2026-04-07.md`
 - Wave 8 live eval: `docs/50-reviews/browser-mcp-live-eval-wave8-2026-04-07.md`
-
----
-
-### Priority S — Terminal Output Readback for Agents (`accordo_terminal_read` + observed `accordo_terminal_run`)
-
-**Status:** Phase A design/stubs prepared (2026-04-27). Phase B/C implementation not started.
-
-**Problem:** `accordo_terminal_run` confirms dispatch (`sent: true`) but does not return terminal stdout/stderr, so agents cannot verify interactive terminal results without using separate shell tools. A pure split design also forces a second MCP call even for short confirmatory reads.
-
-**Intent:** This is part of Accordo's original terminal modality intent — agents should be able to both **act** in terminals and **observe** terminal output through MCP.
-
-**Planned module scope:**
-1. Keep MCP tool `accordo_terminal_read` as the dedicated follow-up read surface under `packages/editor/src/tools/terminal-read/` (barrel + focused contract/stub/tool files).
-2. Extend `accordo_terminal_run` with optional inline observe parameters so one run call can return a bounded preview without replacing `terminal_read`.
-3. Introduce bounded terminal output capture buffer (per terminal + active terminal fallback).
-4. Support incremental reads via cursor/since token to avoid duplicate output replay.
-5. Add redaction/safety guardrails for obvious secrets + strict output size caps.
-6. Define retention lifecycle (buffer reset on terminal close/restart; bounded memory footprint).
-
-**Phase A contracts (revised):**
-- `accordo_terminal_run` input adds `observeMaxLines?`, `observeMaxChars?`; omitting `observeMaxLines` (or passing `0`) preserves legacy dispatch-only behavior.
-- `accordo_terminal_run` response remains `{ sent: true, terminalId }` unless inline observe is requested, in which case it may additionally return `observe: { text, cursor, truncated }`.
-- `accordo_terminal_read` remains the dedicated incremental follow-up surface with input `terminalId?`, `since?`, `maxLines?`, `maxChars?` and output `{ terminalId, text, cursor, truncated }`.
-- `accordo_terminal_read` danger level stays safe / timeout fast.
-
-**Phase A design notes (2026-04-27):**
-1. `accordo_terminal_read` stays as the canonical incremental read contract; `accordo_terminal_run` only gains an optional bounded preview for same-call confirmation.
-2. `observeMaxLines` is the feature switch for inline observe: omitted/`0` means no preview, preserving backward compatibility and existing confirmation semantics.
-3. Inline preview and follow-up reads share the same buffer/redaction pipeline and cursor lineage so agents can continue from the preview cursor with `accordo_terminal_read`.
-4. Incremental reads use an opaque per-terminal cursor; cross-terminal cursor reuse is rejected.
-5. Output capture is isolated behind editor-local abstractions (`TerminalOutputSource`, `TerminalOutputBuffer`, `TerminalOutputRedactor`) so the public MCP contract stays stable if the VS Code capture mechanism changes.
-6. Active-terminal fallback remains supported, including adoption of an untracked active terminal into a stable accordo terminal ID before readback.
-7. Buffer lifecycle is terminal-scoped: close/reset clears retained output and invalidates stale cursors.
-8. Phase A remediation also splits terminal control into `packages/editor/src/tools/terminal/` with a thin `terminal.ts` barrel so no touched production file exceeds the modularity cap and `terminalRunHandler` stays under the function-size cap.
-9. The approved public error vocabulary now explicitly includes the terminal.run command-validation message to match the documented precedence order.
-
-**Acceptance criteria:**
-1. Agent can run `accordo_terminal_run` with `observeMaxLines` and receive a bounded inline preview when requested.
-2. Agent can still run `accordo_terminal_run` and then read resulting output via `accordo_terminal_read` without leaving MCP.
-3. Dispatch-only `accordo_terminal_run` callers remain backward compatible when observe parameters are omitted.
-4. Read calls and inline previews are deterministic and bounded (no unbounded memory, no huge payloads).
-5. Works for both tracked terminals (`accordo-terminal-*`) and active untracked terminal fallback.
-6. Unit tests cover buffering, cursor advancement, truncation, preview/read cursor continuity, and terminal-close lifecycle.
-7. No regression to existing terminal tools (`open/run/focus/list/close`).
-
-**Risk notes:**
-- Potential leakage of secrets from terminal output; must enforce conservative redaction + explicit docs warning.
-- Inline preview must not create a second, divergent output contract; Phase B should prove it is backed by the same read pipeline as `accordo_terminal_read`.
-- VS Code terminal output event fidelity should be validated against long-running and ANSI-heavy streams.
-
-**Execution note:** Queue this as a dedicated TDD module in a future implementation session.
-
----
-
-### ~~Priority T — Hub Original Registry Rebinding~~ ✅ COMPLETE (2026-04-27)
-
-**Status:** Completed. Rebind hardening finalized with deterministic handshake classification, bridge-owned recovery path, diagnostics wiring, and full bridge/hub validation.
-
-**Problem:** We still have a reliability gap around the Hub's original registry/rebind path after restart/reload. In some restarts the Hub is reachable but comes up with `bridge: disconnected` and `toolCount: 0` until additional recovery steps, indicating registry/session rebinding drift.
-
-**Intent:** Make Hub startup/reconnect deterministic so the original registry state is restored without manual intervention.
-
-**Planned module scope:**
-1. Trace Hub startup path for registry load + Bridge rebind sequencing.
-2. Audit hub registry read/write lifecycle (creation, replacement, stale entry cleanup).
-3. Add explicit diagnostics for "registry loaded / registry empty / registry stale" outcomes.
-4. Add reconnect logic/tests for restart scenarios where Hub is healthy but tool registry is empty.
-5. Document expected operator recovery flow only as fallback (not primary path).
-
-**Acceptance criteria:**
-1. After `scripts/start-session.sh`, Hub reaches connected Bridge state without manual rebind.
-2. Tool registry repopulates deterministically on restart/reload flows.
-3. Live health checks show consistent non-zero `toolCount` after normal boot.
-4. Automated tests cover stale/empty/original registry edge cases.
-5. Startup diagnostics classify `registry-missing`, `registry-stale`, `registry-unreachable`, `registry-empty`, `registry-loaded`, and `bridge-connected` outcomes without exposing secrets.
-
-**Completion notes (2026-04-27):**
-1. Added deterministic rebind outcome contract (`registry-missing`, `registry-stale`, `registry-unreachable`, `registry-empty`, `registry-loaded`, `bridge-connected`) with explicit reusable vs non-reusable branching.
-2. Implemented bridge-side health parsing/readback and startup probe wiring via `probeHubRebind` + `activateHub` decision path.
-3. Added structured bridge diagnostics sink for startup probe outcomes without secret/token leakage.
-4. Added and stabilized dedicated rebind test suites under `packages/bridge/src/__tests__/rebind/`.
-5. Verified full package health:
-   - `accordo-bridge`: 518/518 passing tests
-   - `accordo-hub`: 627/627 passing tests (15 skipped)
-
-**Historical update (2026-04-24):** Bridge startup race remediated in `37fa74d` by switching initial spawn path from one-shot health probe to `pollHealth` retry loop.
-
----
-
-### ~~Priority U — Deprecate/Remove `accordo_editor_scroll`~~ ✅ COMPLETE
-
-**Status:** Completed. `accordo_editor_scroll` was removed from MCP registration and command shims; use `accordo_vscode_command_execute` with `editorScroll` for viewport scrolling.
-
-**Problem:** `accordo_editor_scroll` is low-value and inconsistent across surfaces. It works on text editors but fails on markdown preview surfaces with `No active editor`. The preferred navigation pattern is deterministic file open + line targeting via `accordo_editor_open`.
-
-**Decision direction:** Retire `accordo_editor_scroll` entirely rather than broadening surface-specific behavior.
-
-**Completed tasks:**
-1. Confirmed removal in requirements and migration docs.
-2. Removed `accordo_editor_scroll` from editor tool registration and command shims.
-3. Updated tests so `tools/list` composition no longer expects the tool.
-4. Added migration guidance: use `accordo_vscode_command_execute({ command: "editorScroll", args: [...] })`, or `accordo_editor_open` with `line`/`column` for deterministic file positioning.
-
-**Acceptance criteria:**
-1. `tools/list` does not include `accordo_editor_scroll` (or clearly marks it deprecated during transition window).
-2. Editor tool tests pass after removal/deprecation updates.
-3. Docs consistently point to `accordo_editor_open` for navigation.
-
-**Completion note:** Retired as part of the generic VS Code command gateway migration wave.
 
 ---
 
@@ -299,7 +172,7 @@
 3. Failures are debuggable via audit trail (command ID + normalized args + error).
 4. Existing essential first-class tools remain supported and are not regressed.
 
-**Execution note:** Schedule after Priority S/T; evaluate retiring the command-backed wrappers (`accordo_editor_reveal`, `accordo_editor_split`, `accordo_layout_evenGroups`, `accordo_layout_joinGroups`, `accordo_editor_save`, `accordo_editor_saveAll`, `accordo_editor_format`, `accordo_layout_zen`, `accordo_layout_fullscreen`) alongside the non-command diagram helper removals (`accordo_diagram_list`, `accordo_diagram_get`, `accordo_diagram_style_guide`), with separate gateway examples vs file/script/skill/runtime-doc fallback guidance, plus mode-state probing and runtime-doc consolidation.
+**Execution note:** Completed; details retained in `docs/00-workplan/accomplished-tasks.md`.
 
 **Completion notes (2026-04-25):**
 1. Added and validated `accordo_vscode_command_list` + `accordo_vscode_command_execute` with policy and confirmation handling.
@@ -312,54 +185,27 @@
 
 ---
 
-### Priority X — Skill-First Workflow Enforcement for New Agents
+### Priority X/Y — MCP Skill Resources and Thin Runtime Guidance
 
-**Status:** Planned from live operator feedback (2026-04-23). Not started.
+**Status:** In progress (2026-04-30). Merged from Priority X and Priority Y.
 
-**Problem:** First-time agents may skip project skills (e.g., diagram styling skill) and produce technically valid but non-compliant outputs. Relying on agent intuition is not sufficient.
+**Problem:** First-time MCP agents may skip Accordo usage guidance or receive conflicting guidance split across repo-local skills, tool descriptions, and server instructions.
 
-**Recommendations (adopt as implementation tasks):**
-1. Put mandatory workflow hints directly in runtime tool descriptions (e.g., diagram tools must state style workflow and anti-patterns).
-2. Add server-instruction rule: diagram tasks must follow `skills/diagrams/skill.md` conventions.
-3. Add runtime warning/metadata when diagram creation/patch is done without style-layer application.
-4. Add regression checks so newly created diagrams in docs/demo follow style-guide expectations (nodeStyles/edgeStyles usage path).
-5. Add a canonical MCP-readable “recipes” resource with first-time safe sequences (create/open/patch/render, common recovery flows).
-
-**Acceptance criteria:**
-1. A new agent with no repo context is explicitly guided by runtime docs to the correct diagram workflow.
-2. Diagram outputs from first-pass agent runs conform to style conventions without manual correction in the common path.
-3. Non-compliant flows are detectable (warning or failing check), not silent.
-
-**Execution note:** Implement alongside Priority W runtime-doc consolidation and generic-command skill rollout.
-
----
-
-### Priority Y — MCP Runtime Directives Source-of-Truth (Mandatory Guidance Hardening)
-
-**Status:** Planned from operator feedback (2026-04-24). Not started.
-
-**Problem:** Agent behavior still diverges because mandatory usage directives are split across repo docs/skills and are not consistently visible to every MCP client at runtime.
-
-**Goal:** Make mandatory Accordo directives unambiguous and consistently available in the runtime channel used by MCP clients.
-
-**Working notes (to validate in implementation):**
-1. Primary runtime channel appears to be Hub `initialize.instructions` + `GET /instructions` prompt payload.
-2. Tool descriptions are secondary runtime guidance and should reinforce (not contradict) the primary directives.
-3. References like `accordo://docs/tool-reference/*` and `accordo://docs/troubleshooting/*` must map to a clearly implemented runtime mechanism (or be replaced with one that is implemented and testable).
-4. Repo-only docs (`AGENTS.md`, `skills/*`) remain maintainer guidance and are insufficient as the sole source for external MCP clients.
-
-**Planned module scope:**
-1. Define a canonical "runtime directives contract" document and ownership.
-2. Ensure the same directives are emitted via runtime prompt/instructions in a stable section.
-3. Add parity checks/tests so runtime instructions, tool descriptions, and requirements cannot drift.
-4. Add a diagnostic/verification path so operators can prove what directives a connected MCP client received.
+**Implementation direction:**
+1. Keep `initialize.instructions` and `/instructions` thin: route agents to MCP-readable skills.
+2. Expose `accordo://skills/accordo`, `diagram`, `browser`, `presentation`, and `walkthrough` through MCP resources.
+3. Keep tool descriptions thin: immediate preconditions plus the relevant skill URI.
+4. Put procedural material in skill resources, including generic command gateway examples and walkthrough patterns.
+5. Add regression checks so tool descriptions cannot reference missing skill resources.
 
 **Acceptance criteria:**
-1. New MCP clients receive mandatory skill-routing directives without requiring repo file access.
-2. Runtime directives are discoverable, testable, and versioned.
-3. Contradictions across prompt/tool-description/requirements are caught by automated checks.
+1. New MCP clients can discover and read skill resources without repo file access.
+2. `initialize.instructions` points to all five skill resources.
+3. Tool descriptions point to skill resources instead of duplicating long workflows.
+4. Command gateway examples live in `accordo://skills/accordo`.
+5. Presentation, code-review, and feature-demo walkthrough guidance lives in `accordo://skills/walkthrough`.
 
-**Execution note:** Prioritize before large gateway migration/removal work, so behavior guidance is stable for all agents.
+**Execution note:** Manual effectiveness testing will refine skill content over time.
 
 ---
 
@@ -385,7 +231,7 @@
 4. Existing editor-surface highlight tests remain green.
 5. Tool docs clearly state both editor and markdown-preview support.
 
-**Execution note:** Schedule after terminal-readback + reconnect reliability items; can be batched with preview-navigation refinements.
+**Execution note:** Completed; details retained in `docs/00-workplan/accomplished-tasks.md`.
 
 **Completion notes (2026-04-29):**
 1. Added canonical preview highlight capability commands and object-shaped payload types in `@accordo/capabilities`.
@@ -497,101 +343,6 @@
 
 ---
 
-### ~~Priority O — Browser Relay Auth Phase 2 — Pairing Flow~~ ✅ COMPLETE
-
-**What was delivered:** Replaced the native messaging approach (which required system-level install scripts) with a simpler in-band pairing flow. No native host, no install step.
-
-**Flow:**
-1. Agent calls `accordo_browser_pair` MCP tool → relay issues a one-time code (`NNNN-NNNN`, 5-min TTL)
-2. User copies code into the browser extension popup's "VS Code code:" field and clicks Connect
-3. Popup POSTs to `/pair/confirm` → relay validates code, returns token
-4. Token stored in `chrome.storage.local` → extension auto-connects
-
-**Files changed:**
-- `packages/browser/src/shared-relay-server.ts` — added `generatePairCode()`, `/pair/code` (GET) and `/pair/confirm` (POST) endpoints with origin security
-- `packages/browser/src/extension.ts` — added `accordo_browser_pair` MCP tool via `buildPairTool()`
-- `packages/browser-extension/src/relay-bridge.ts` — removed hardcoded token, reads from `chrome.storage.local`; code 1008 clears stored token
-- `packages/browser-extension/src/popup.ts` — added `renderPairingSection()` pairing UI banner
-- `packages/browser-extension/src/manifest.json` — removed `"nativeMessaging"` permission
-
-**Tests:** `relay-bridge.test.ts` 5/5, `shared-relay-server.test.ts` 24/24 — all passing.
-
----
-
-### ~~Priority P — Comment Store Unification: VS Code ↔ Browser Extension~~ ✅ COMPLETE (Phase A/B/C/D — 2026-04-19)
-
-**Root cause (corrected by architect):** Relay mode divergence — `activateSharedRelay` and `activatePerWindowRelay` return different shapes (`{ threads }` vs bare array). Merge code in browser-extension expects `raw.threads` → Hub/agent comments silently dropped.
-
-**What was delivered (Phase A/B/C/D):**
-1. Phase A — Architecture review + interface definitions: `comment-relay-contract.ts`, `relay-comment-dispatch.ts`, `sw-comment-sync-contract.ts`
-2. Phase B — 32 failing tests across 3 test files (all pass against implementation)
-3. Phase C — `normalizeReadResult()`, `shapeRelayResponse()`, `dispatchBrowserCommentAction()`, `decodeHubThreadsPayload()`, `encodeBrowserCommentAction()` implemented
-4. Phase D — Fixed TS2352 unsafe cast; all 5016 tests green
-
-**Requirements delivered:** BR-F-144 (mode-invariant `{ threads }` envelope), BR-F-145 (mutation notify parity), BR-F-146 (legacy bare-array tolerance). Aligned BR-F-122, BR-F-124, BR-F-130, PU-F-41, PU-F-43, PU-F-44, PU-F-56.
-
-**Remaining open tasks:**
-1. ✅ (done) Wire `dispatchBrowserCommentAction()` into `browser-comment-relay-handler.ts` (commit 21c21e8) — replaces `executeCommand(...Object.values(args))` pattern, adds mutation push to Hub/owner client paths
-2. ✅ (done) Bidirectional sync: mutation push (`notify_comments_updated`) now fires after successful Hub/owner client mutations, matching per-window relay behavior (BR-F-145 parity)
-3. ✅ (done) Verify `selectAdapter()` correctly selects `VscodeRelayAdapter` in connected state — all 5 tests pass (PU-F-43-01 through PU-F-43-05)
-
-**Test evidence:** `browser` 1142/1142, `browser-extension` 1271/1271, full suite 5016/5016
-**Reviews:** `docs/reviews/priority-p-architecture-review.md`, `priority-p-phase-b-review.md`, `priority-p-phase-d-review.md`, `priority-p-D2.md`
-**Testing guide:** `docs/40-testing/testing-guide-priority-p.md`
-
----
-
-### ~~Priority Q — Comments Panel Navigation: Focus to Surface~~ ✅ COMPLETE (Phase A/B/C/D — 2026-04-19)
-
-**Root cause:** `navigateToThread` used inconsistent command mappings per surface; no surface-inference from `blockId` hints; browser surface always reported disconnected.
-
-**What was delivered:**
-1. Phase A — `SURFACE_FOCUS_COMMANDS` map, `NavigationDispatchPlan` interface, `buildNavigationDispatchPlan()` / `buildSlideFocusArgs()` stubs, `BrowserRelayHealthReader` abstraction
-2. Phase B — 501 tests written (M45-NR-*, Q-*, REQ-NR-*, M45-CMD-*)
-3. Phase C — `navigateToThread()`, `navigateWithPlan()`, `buildNavigationDispatchPlan()`, `buildSlideFocusArgs()`, `CommandBackedBrowserRelayHealthReader` implemented
-4. Phase D — fixed skip gate, double-cast, hardcoded browser health, retry propagation
-
-**Requirements delivered:** BR-Q-01 through BR-Q-05. Surface→command mapping now correct for `text`, `slide`, `diagram`, `browser`. Browser health reader probes `accordo_browser_health` before dispatch. Slide `blockId` hints take precedence over `.md` text inference.
-
-**Open tasks:**
-1. ✅ Map all surface types to correct focus/navigation command — `SURFACE_FOCUS_COMMANDS` map
-2. ✅ Browser surface routes to `accordo_browser.focusThread` with real health check
-3. ✅ Browser relay health (`connected: true`) reflected via `CommandBackedBrowserRelayHealthReader`
-4. ✅ (Partial — Priority R covers the Marp slide-dismiss issue specifically)
-
-**Test evidence:** `packages/comments` 501/501 ✅
-**Reviews:** `docs/reviews/priority-q-phase-a.md`, `priority-q-phase-b-review.md`, `priority-q-phase-d-review.md`
-**Testing guide:** `docs/40-testing/testing-guide-priority-q.md`
-
----
-
-### Priority R — Marp Slide Comment: User-left vs Agent-left Behaviour Divergence
-
-### ~~Priority R — Marp Slide Comment: User-left vs Agent-left Behaviour Divergence~~ ✅ COMPLETE (Phase A/B/C/D — 2026-04-19)
-
-**Root cause:** Split entry-path — `accordo.comments.focusInPreview` routed slide comments to `accordo_preview_internal_focusThread` (generic preview handler), causing presentation dismiss. `accordo.presentation.internal.focusThread` (Marp's internal focus) was correct.
-
-**What was delivered:**
-1. Phase A — Corrected diagnosis: not author-based divergence, but entry-path divergence. Interface stubs: `focus-thread-contract.ts`, `unified-focus-dispatch.ts`
-2. Phase B — 24 failing tests across 2 packages
-3. Phase C — `normalizeDeckUriToFsPath`, `toVsCodeUri`, `buildPresentationFocusThreadPlan`, `parseSlideIndex`, `isValidSlideIndex`, `buildUnifiedThreadFocusPlan`, `focusThreadViaSharedPlanner` implemented
-4. Phase D — Fixed unsafe cast, typecheck clean
-
-**Key fix:** `buildUnifiedThreadFocusPlan` now routes `native-comments` + slide → `PRESENTATION_FOCUS_THREAD` (not `PREVIEW_FOCUS_THREAD`). User-left and agent-left now produce identical command tuples.
-
-**Requirements delivered:** M50-FOCUS-06, M50-PVD-18, M45-NR-15, M45-NR-16.
-
-**Open tasks:**
-1. ✅ Unified focus dispatch for slide surfaces — `buildUnifiedThreadFocusPlan`
-2. ✅ Slide index validation before `goTo()` — `isValidSlideIndex` (no throw on invalid)
-3. ✅ URI/fsPath normalization prevents spurious reopen — `normalizeDeckUriToFsPath`
-4. ✅ Author-kind parity — `R-NR-16-04` proves user/agent identical command tuples
-
-**Test evidence:** `accordo-marp` 308/308 ✅, `accordo-comments` 509/509 ✅
-**Reviews:** `docs/reviews/priority-r-phase-a.md`, `priority-r-phase-b-review.md`, `priority-r-phase-d-review.md`
-**Testing guide:** `docs/40-testing/testing-guide-priority-r.md`
-
----
 
 ## 3) Guardrails
 

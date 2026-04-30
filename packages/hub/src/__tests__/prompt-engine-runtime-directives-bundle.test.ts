@@ -33,7 +33,7 @@ describe("MockRuntimeDirectiveCatalog — Canonical bundle is single source of t
       expect(clause.instruction.length).toBeGreaterThan(0);
       const repoOnlyPatterns = [
         /docs\/[a-z-]+\.md/i,
-        /skills\//i,
+        /(^|[\s("'])skills\//i,
         /\.ts\b/,
         /\.js\b/,
         /require\s*\(/,

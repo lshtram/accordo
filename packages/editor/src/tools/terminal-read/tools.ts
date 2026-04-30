@@ -15,6 +15,7 @@ const terminalReadDescription = [
   `Caps: ${MAX_TERMINAL_READ_MAX_LINES} lines / ${MAX_TERMINAL_READ_MAX_CHARS} chars.`,
   "Omit terminalId to use the active terminal.",
   "Cursor is opaque and must be replayed only for the same terminal.",
+  "Read accordo://skills/accordo for terminal workflows.",
 ].join(" ");
 
 export const terminalReadTools: ExtensionToolDefinition[] = [

@@ -87,11 +87,10 @@ describe("M75-VCG-07/07a: runtime description and MCP-visible docs guidance", ()
     expect(listTool.description).toMatch(/unstable|internal commands/i);
   });
 
-  it("M75-VCG-07a: tool description includes MCP-visible accordo://docs resource URLs", async () => {
+  it("M75-VCG-07a: tool description includes MCP-visible skill resource URL", async () => {
     const { vscodeCommandTools } = await import("../tools/vscode-command-tools.js");
     const listTool = vscodeCommandTools.find((t) => t.name === "accordo_vscode_command_list")!;
-    expect(listTool.description).toContain("accordo://docs/tool-reference/vscode-command-gateway");
-    expect(listTool.description).toContain("accordo://docs/troubleshooting/vscode-command-gateway");
+    expect(listTool.description).toContain("accordo://skills/accordo");
   });
 });
 
@@ -113,6 +112,6 @@ describe("M75-VCG-18: server instructions point to MCP-visible runtime docs", ()
   it("M75-VCG-18: tool descriptions reference MCP-visible docs resources", async () => {
     const { vscodeCommandTools } = await import("../tools/vscode-command-tools.js");
     const listTool = vscodeCommandTools.find((t) => t.name === "accordo_vscode_command_list")!;
-    expect(listTool.description).toContain("accordo://docs/");
+    expect(listTool.description).toContain("accordo://skills/accordo");
   });
 });

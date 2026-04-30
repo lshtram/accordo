@@ -32,7 +32,7 @@ export const vscodeCommandTools: ToolRegistration[] = [
     name: "accordo_vscode_command_list",
     group: "editor",
     description:
-      "List discoverable VS Code command IDs with paging and policy metadata. Runtime-safe usage guidance lives in this tool description plus MCP docs resources accordo://docs/tool-reference/vscode-command-gateway and accordo://docs/troubleshooting/vscode-command-gateway; prefer first-class accordo_* tools and treat internal commands as unstable.",
+      "List discoverable VS Code command IDs with paging and policy metadata. Prefer first-class accordo_* tools and treat internal commands as unstable. Read accordo://skills/accordo for command gateway examples and policy guidance.",
     inputSchema: {
       type: "object",
       properties: {

@@ -7,6 +7,8 @@
 
 import type { ToolInputSchema } from "@accordo/bridge-types";
 
+const COMMENT_SKILL = " See accordo://skills/accordo.";
+
 /** Minimal tool definition shape used before handlers are attached. */
 export interface ToolSchema {
   name: string;
@@ -24,7 +26,7 @@ export const commentToolSchemas: ToolSchema[] = [
     name: "comment_list",
     group: "comments",
     description:
-      "List comment threads. Use scope.modality to filter by surface type (e.g. browser). Filters: status, intent.",
+      "List comments. Filter by scope.modality, status, or intent." + COMMENT_SKILL,
     dangerLevel: "safe",
     idempotent: true,
     inputSchema: {
@@ -86,7 +88,7 @@ export const commentToolSchemas: ToolSchema[] = [
   {
     name: "comment_get",
     group: "comments",
-    description: "Get a specific comment thread with all comments and context. Pass threadId.",
+    description: "Get one comment thread with comments and context." + COMMENT_SKILL,
     dangerLevel: "safe",
     idempotent: true,
     inputSchema: {
@@ -103,7 +105,7 @@ export const commentToolSchemas: ToolSchema[] = [
     name: "comment_create",
     group: "comments",
     description:
-      "Create a comment thread on any surface. Set scope.modality + anchor.kind to target text, browser, or visual.",
+      "Create a comment thread. Set scope.modality and anchor.kind." + COMMENT_SKILL,
     dangerLevel: "moderate",
     idempotent: false,
     inputSchema: {
@@ -183,7 +185,7 @@ export const commentToolSchemas: ToolSchema[] = [
   {
     name: "comment_reply",
     group: "comments",
-    description: "Reply to an existing comment thread. Use comment_list to find threadId values.",
+    description: "Reply to a comment thread by threadId." + COMMENT_SKILL,
     dangerLevel: "moderate",
     idempotent: false,
     inputSchema: {
@@ -205,7 +207,7 @@ export const commentToolSchemas: ToolSchema[] = [
     name: "comment_resolve",
     group: "comments",
     description:
-      "Mark a comment thread as resolved. Always include a resolutionNote summarising what was done.",
+      "Resolve a comment thread with a resolutionNote." + COMMENT_SKILL,
     dangerLevel: "moderate",
     idempotent: false,
     inputSchema: {
@@ -222,7 +224,7 @@ export const commentToolSchemas: ToolSchema[] = [
   {
     name: "comment_reopen",
     group: "comments",
-    description: "Reopen a resolved comment thread. Both users and agents can reopen.",
+    description: "Reopen a resolved comment thread." + COMMENT_SKILL,
     dangerLevel: "moderate",
     idempotent: false,
     inputSchema: {
@@ -239,7 +241,7 @@ export const commentToolSchemas: ToolSchema[] = [
     name: "comment_delete",
     group: "comments",
     description:
-      "Delete a specific comment or entire thread. Use deleteScope for bulk browser cleanup.",
+      "Delete a comment, thread, or deleteScope batch." + COMMENT_SKILL,
     dangerLevel: "moderate",
     idempotent: false,
     inputSchema: {
@@ -277,7 +279,7 @@ export const commentToolSchemas: ToolSchema[] = [
     name: "comment_sync_version",
     group: "comments",
     description:
-      "Returns the current comment store version and thread count for sync drift detection.",
+      "Return comment store version and thread count." + COMMENT_SKILL,
     dangerLevel: "safe",
     idempotent: true,
     inputSchema: {

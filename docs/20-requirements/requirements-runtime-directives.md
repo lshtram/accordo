@@ -1,108 +1,67 @@
-# Runtime Directives — Requirements Specification
+# MCP Skill Resources and Thin Runtime Guidance — Requirements
 
-**Scope:** Cross-cutting Accordo runtime guidance contract for MCP clients  
-**Priority:** Y — MCP Runtime Directives Source-of-Truth  
-**Date:** 2026-04-25
+**Scope:** Cross-cutting Accordo MCP usage guidance  
+**Priority:** X/Y — merged Skill-First Workflow Enforcement + Runtime Directives Source-of-Truth  
+**Date:** 2026-04-30
 
 ---
 
 ## 1. Purpose
 
-Accordo must deliver mandatory operating directives to MCP clients through **runtime-visible channels**, not only through repository files. The runtime contract must be stable, testable, and diagnosable.
+Accordo must guide MCP clients to correct tool-use patterns without duplicating long instructions across server prompts and tool descriptions.
 
-This module hardens guidance consistency only. It does **not** change tool execution semantics or gateway policy behavior.
+The runtime model is intentionally thin:
 
----
-
-## 2. Ownership Model
-
-| Layer | Role | Owner |
-|---|---|---|
-| Canonical directive bundle | Single source of truth for mandatory directives, IDs, version, and digest | `accordo-hub` |
-| `initialize.instructions` | Primary delivery channel for connected MCP clients | `accordo-hub` |
-| `GET /instructions` | Human-readable runtime mirror of the same bundle | `accordo-hub` |
-| Tool descriptions | Reinforcement only; must not contradict the canonical bundle | Tool-owning package |
-| Requirements/docs | Normative wording and traceability | Documentation |
-| Delivery diagnostics | Proof of what bundle/version a client received | `accordo-hub` |
+1. `initialize.instructions` and `GET /instructions` route agents to MCP-readable skill resources.
+2. Tool descriptions state immediate preconditions and point to the relevant skill resource.
+3. Procedural guidance lives in `accordo://skills/*` resources.
 
 ---
 
-## 3. Runtime Contract
+## 2. Skill Resources
 
-### 3.1 Canonical bundle
-
-The runtime directives contract is a versioned bundle with stable clause IDs.
-
-```typescript
-interface RuntimeDirectiveBundle {
-  version: string;
-  digest: string;
-  clauses: RuntimeDirectiveClause[];
-}
-
-interface RuntimeDirectiveClause {
-  id: string;
-  summary: string;
-  instruction: string;
-  requirementIds: string[];
-  parityTargets: Array<"initialize" | "instructions" | "tool-description" | "diagnostics">;
-}
-```
-
-### 3.2 Mandatory delivery channels
-
-| ID | Requirement |
+| URI | Scope |
 |---|---|
-| Y-01 | A single canonical runtime-directives bundle exists in code and is the only allowed source for mandatory directive wording used at runtime. |
-| Y-02 | MCP `initialize` responses include a stable `## Runtime Directives` section rendered from that bundle. |
-| Y-03 | `GET /instructions` includes the same directive bundle, in the same clause order, with the same version and digest metadata. |
-| Y-04 | Mandatory directives required for safe Accordo operation must be fully understandable from `initialize.instructions` alone; repo files are supplemental only. |
-| Y-05 | Tool descriptions may reinforce or specialize directives, but they must not contradict the canonical bundle. |
-
-### 3.3 Versioning and diagnostics
-
-| ID | Requirement |
-|---|---|
-| Y-06 | The bundle exposes a machine-testable `version` and `digest` so operators and tests can prove equivalence across runtime surfaces. |
-| Y-07 | The Hub exposes authenticated JSON endpoints for (a) `GET /runtime-directives`, which returns the canonical bundle payload plus ownership metadata, and (b) `GET /runtime-directives/diagnostics`, which returns the active publication metadata plus per-session delivery receipts. |
-| Y-08 | Delivery receipts record at minimum: MCP session ID, detected client/agent hint, delivery channel (`initialize` and optional `/instructions` fetch), bundle version, bundle digest, and timestamp. |
-
-### 3.4 Parity protection
-
-| ID | Requirement |
-|---|---|
-| Y-09 | Automated parity checks fail if any required clause is missing from `initialize.instructions`, `GET /instructions`, or declared tool-description reinforcement targets. |
-| Y-10 | Automated parity checks fail if a tool description claims a runtime-doc location or directive path that is not implemented and testable. |
-| Y-11 | Requirement-to-clause traceability is explicit: every mandatory directive clause references at least one requirement ID, and every Priority Y requirement maps to at least one clause or diagnostic assertion. |
-
-### 3.5 Scope guardrails
-
-| ID | Requirement |
-|---|---|
-| Y-12 | Priority Y must preserve existing tool behavior and confirmation policy; only guidance consistency, delivery, and diagnostics are in scope. |
-| Y-13 | Existing runtime-doc references that are not backed by an implemented mechanism must either be replaced by implemented runtime paths or flagged by parity checks as invalid. |
+| `accordo://skills/accordo` | General IDE workflows: layout, editor, terminal, comments, voice, and generic VS Code command gateway examples. |
+| `accordo://skills/diagram` | Diagram creation, styling, patching, and rendering. |
+| `accordo://skills/browser` | Browser inspection, tab targeting, snapshots, screenshots, and control recovery. |
+| `accordo://skills/presentation` | Marp deck authoring, navigation, narration generation, and capture. |
+| `accordo://skills/walkthrough` | Presentation shows, code-review walkthroughs, narrated demos, highlights, and voice sequencing. |
 
 ---
 
-## 4. Initial mandatory clauses for Priority Y
+## 3. Requirements
 
-Priority Y only standardizes clauses that already exist as mandatory Accordo guidance:
-
-1. Use Accordo tools for editor/file/UI operations when available.
-2. Mandatory project skill routing for matching tasks.
-3. Tool descriptions are secondary guidance; primary runtime directives come from initialize and `/instructions`.
-4. Runtime guidance must not rely on repo-only files for external MCP clients.
-
-Future priorities may add more clauses, but they must extend the same bundle rather than introduce a second source of truth.
+| ID | Requirement |
+|---|---|
+| XY-01 | MCP `initialize` responses advertise the `resources` capability. |
+| XY-02 | `resources/list` returns every `accordo://skills/*` resource with `text/markdown` MIME type. |
+| XY-03 | `resources/read` returns Markdown contents for each listed skill resource. |
+| XY-04 | `resources/read` returns a resource-not-found JSON-RPC error for unknown skill URIs. |
+| XY-05 | `initialize.instructions` includes a short skill-router section that points to the five skill resources. |
+| XY-06 | `GET /instructions` includes the same skill-router guidance before dynamic prompt content. |
+| XY-07 | Tool descriptions may point to skill resources and state immediate preconditions, but they must not duplicate long procedural guidance. |
+| XY-08 | The generic VS Code command gateway examples live in `accordo://skills/accordo`. |
+| XY-09 | Presentation, code-review, and feature-demo walkthrough guidance lives in `accordo://skills/walkthrough`. |
+| XY-10 | Automated tests fail when tool descriptions reference a missing `accordo://skills/*` URI. |
 
 ---
 
-## 5. Acceptance criteria
+## 4. Scope Guardrails
 
-1. `GET /runtime-directives` requires bearer authentication and rejects missing or invalid tokens.
-2. `GET /runtime-directives` returns one canonical publication payload with `bundle.version`, `bundle.digest`, ordered clauses, and ownership metadata identifying Hub as the owner.
-3. `GET /runtime-directives/diagnostics` requires bearer authentication and rejects missing or invalid tokens.
-4. `GET /runtime-directives/diagnostics` returns the same publication metadata as `GET /runtime-directives` plus delivery receipts for each observed MCP session/channel pair.
-5. Delivery receipts include session ID, agent hint, delivery channel, bundle version, bundle digest, and timestamp.
-6. Parity validation fails when initialize output, `/instructions`, tool-description reinforcement targets, or declared runtime-doc references drift from the canonical bundle.
-7. Priority Y introduces no tool execution or confirmation-policy behavior change.
+| ID | Requirement |
+|---|---|
+| XY-11 | This priority does not change tool execution semantics, confirmation policy, or tool authorization behavior. |
+| XY-12 | `/runtime-directives` may remain as compatibility/debug infrastructure, but it is not the primary procedural guidance surface. |
+| XY-13 | Repo-local `skills/*` files may mirror or inform content, but MCP clients must be able to retrieve the authoritative operational guidance through `resources/read`. |
+
+---
+
+## 5. Acceptance Criteria
+
+1. `initialize` returns `capabilities.resources` and instructions mentioning all five skill URIs.
+2. `resources/list` and `resources/read` work for all five skill resources.
+3. Command gateway usage examples are available in `accordo://skills/accordo`.
+4. Walkthrough guidance covers presenting topics, code-review walkthroughs, and feature demos in `accordo://skills/walkthrough`.
+5. Relevant tool descriptions point to the correct skill resources.
+6. Existing tool behavior remains unchanged.

@@ -100,7 +100,7 @@ describe("Editor tool descriptions — canonical reinforcement alignment (Y-05)"
     // Canonical Y-04: instructions must be self-contained — same applies to tool descriptions
     const repoOnlyPatterns = [
       /docs\/[a-z-]+\.md/i,
-      /skills\//i,
+      /(^|[\s("'])skills\//i,
       /\.ts\b/,
       /\.js\b/,
       /require\s*\(/,

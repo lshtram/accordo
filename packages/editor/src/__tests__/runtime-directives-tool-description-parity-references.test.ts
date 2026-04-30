@@ -3,7 +3,7 @@
  * Requirements: requirements-runtime-directives.md Y-10, Y-13
  *
  * API checklist:
- *   Tool description accordo://docs/* references [4 tests]
+  *   Tool description accordo://skills/* references [4 tests]
  *
  * Blocker 5 remediation: replaced heuristic external-URL check with
  * canonical-source-driven validation against IMPLEMENTED_RUNTIME_DOCS set.
@@ -20,18 +20,14 @@ import {
   IMPLEMENTED_RUNTIME_DOCS,
 } from "./runtime-directives-fixtures.js";
 
-// Pattern to detect accordo://docs/* runtime-doc references in tool descriptions
-const RUNTIME_DOC_PATTERN = /accordo:\/\/docs\/[a-z-]+/gi;
+const RUNTIME_DOC_PATTERN = /accordo:\/\/skills\/[a-z-]+/gi;
 
-// Canonical runtime-doc reference clause (rd-010)
+// Canonical skill-resource reference clause (rd-010)
 const REF_CLAUSE = CANONICAL_CLAUSES.find(c => c.id === "rd-010");
 
-describe("Tool description runtime-doc reference validation — Y-10, Y-13", () => {
-  it("Y-10: Tool descriptions do not reference unimplemented runtime-doc URIs", () => {
-    // Phase C will validate that any accordo://docs/* refs point to real implemented docs.
-    // Phase B documents that editor tool descriptions currently contain no such references.
-    // When Phase C adds tool descriptions referencing accordo://docs/* URIs,
-    // those references must be validated against IMPLEMENTED_RUNTIME_DOCS.
+describe("Tool description skill-resource reference validation — Y-10, Y-13", () => {
+  it("Y-10: Tool descriptions do not reference unimplemented skill-resource URIs", () => {
+    // Any accordo://skills/* refs must point to real implemented MCP resources.
     for (const tool of editorTools) {
       const refs = tool.description.match(RUNTIME_DOC_PATTERN);
       if (refs && refs.length > 0) {
@@ -47,9 +43,9 @@ describe("Tool description runtime-doc reference validation — Y-10, Y-13", () 
     expect(IMPLEMENTED_RUNTIME_DOCS.size).toBeGreaterThan(0);
   });
 
-  it("Y-10: All implemented runtime-doc references follow accordo://docs/* pattern", () => {
+  it("Y-10: All implemented runtime-doc references follow accordo://skills/* pattern", () => {
     for (const ref of IMPLEMENTED_RUNTIME_DOCS) {
-      expect(ref).toMatch(/^accordo:\/\/docs\//);
+      expect(ref).toMatch(/^accordo:\/\/skills\//);
     }
   });
 
@@ -59,7 +55,7 @@ describe("Tool description runtime-doc reference validation — Y-10, Y-13", () 
     // A stale reference would contradict because it claims a doc exists that doesn't.
     expect(REF_CLAUSE).toBeDefined();
 
-    // Validate that tool descriptions do not contain any accordo://docs/* refs
+    // Validate that tool descriptions do not contain any accordo://skills/* refs
     // that are NOT in the implemented set — those would be stale claims.
     for (const tool of editorTools) {
       const refs = tool.description.match(RUNTIME_DOC_PATTERN) ?? [];

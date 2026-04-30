@@ -115,7 +115,7 @@ export function buildHealthTool(
   return {
     name: "accordo_browser_health",
     description:
-      "Reports browser relay connection health, recent errors, and uptime. Use before attempting browser operations to verify the connection is functional. Also surfaces telemetry policy and session isolation model.",
+      "Reports browser relay connection health, recent errors, and uptime. Use before attempting browser operations to verify the connection is functional. Also surfaces telemetry policy and session isolation model. Read accordo://skills/browser for browser workflow and recovery guidance.",
     inputSchema: {
       type: "object",
       properties: {},

@@ -22,7 +22,8 @@ export function buildSemanticGraphTool(
       "Landmark regions identify banner, navigation, main, and complementary areas. " +
       "Form models list every field with its label, type, value, and validation state. " +
       "Use when you need to audit accessibility, understand page layout by region, " +
-      "or enumerate all form fields. Use get_page_map for interactive element references.",
+      "or enumerate all form fields. Use get_page_map for interactive element references. " +
+      "Read accordo://skills/browser for browser workflow and recovery guidance.",
     inputSchema: {
       type: "object",
       properties: {

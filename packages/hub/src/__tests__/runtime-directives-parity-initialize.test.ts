@@ -56,7 +56,7 @@ describe("MockRuntimeDirectiveCatalog — initialize.instructions vs /instructio
       expect(clause.instruction.length).toBeGreaterThan(0);
       const repoOnlyPatterns = [
         /docs\/[a-z-]+\.md/i,
-        /skills\//i,
+        /(^|[\s("'])skills\//i,
         /\.ts\b/,
         /\.js\b/,
         /require\s*\(/,

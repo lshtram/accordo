@@ -15,12 +15,14 @@ import {
 } from "./editor-handlers.js";
 import { wrapHandler } from "../util.js";
 
+const ACCORDO_SKILL = " Read accordo://skills/accordo for editor and layout workflows.";
+
 /** All editor tool definitions for modules 16 and 17. */
 export const editorTools: ExtensionToolDefinition[] = [
   {
     name: "accordo_editor_open",
     group: "editor",
-    description: "Open a file in the editor, optionally scrolling to a line/column.",
+    description: "Open a file in the editor, optionally scrolling to a line/column." + ACCORDO_SKILL,
     inputSchema: {
       type: "object",
       properties: {
@@ -37,7 +39,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   {
     name: "accordo_editor_close",
     group: "editor",
-    description: "Close a specific editor tab (text or webview), or the active editor if no path given. For .mmd diagram files, falls back to closing the active tab if the file is not found in open tabs.",
+    description: "Close a specific editor tab (text or webview), or the active editor if no path given. For .mmd diagram files, falls back to closing the active tab if the file is not found in open tabs." + ACCORDO_SKILL,
     inputSchema: {
       type: "object",
       properties: {
@@ -52,7 +54,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   {
     name: "accordo_editor_focus",
     group: "editor",
-    description: "Focus a specific editor group by 1-based group number.",
+    description: "Focus a specific editor group by 1-based group number." + ACCORDO_SKILL,
     inputSchema: {
       type: "object",
       properties: {
@@ -67,7 +69,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   {
     name: "accordo_editor_highlight",
     group: "editor",
-    description: "Apply a colored background highlight to a range of lines in a text editor or an already-open Accordo Markdown Preview. Markdown preview highlights are block-granular and this tool does not auto-open previews.",
+    description: "Apply a colored background highlight to a range of lines in a text editor or an already-open Accordo Markdown Preview. Markdown preview highlights are block-granular and this tool does not auto-open previews." + ACCORDO_SKILL,
     inputSchema: {
       type: "object",
       properties: {
@@ -85,7 +87,7 @@ export const editorTools: ExtensionToolDefinition[] = [
   {
     name: "accordo_editor_clearHighlights",
     group: "editor",
-    description: "Remove highlight decorations created by accordo_editor_highlight across text editor and Accordo Markdown Preview surfaces.",
+    description: "Remove highlight decorations created by accordo_editor_highlight across text editor and Accordo Markdown Preview surfaces." + ACCORDO_SKILL,
     inputSchema: {
       type: "object",
       properties: {

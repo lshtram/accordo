@@ -177,9 +177,9 @@ When a tool call arrives via MCP:
 Accordo is consumed by both repo-local and external MCP agents. Therefore, tool-usage guidance cannot rely on repository requirements/test documents.
 
 **Contract:**
-1. Critical usage constraints must be present in each tool's runtime description (`tools/list`).
-2. Extended operational guidance must be available through MCP-readable resources. The canonical resource paths are `accordo://docs/tool-reference` and `accordo://docs/troubleshooting`, with feature-specific sections such as `vscode-command-gateway`.
-3. Server instructions provide concise workflow guidance that points agents back to those MCP-visible docs for deeper operational details.
+1. `initialize.instructions` and `GET /instructions` provide a thin router to MCP-readable skill resources.
+2. Tool descriptions state immediate preconditions and point to the relevant skill resource.
+3. Extended operational guidance lives in `accordo://skills/*` resources, readable through MCP `resources/list` and `resources/read`.
 4. Repo-local skills may mirror or expand examples for maintainers, but they are supplemental and never the only safe-usage source.
 
 This keeps the delivered MCP self-describing for any client and prevents reliance on private project docs for basic safe operation.
@@ -211,19 +211,18 @@ Updated via `stateUpdate` WebSocket messages from Bridge. Merges patches (partia
 - Current `IDEState`
 - Registered tool names and descriptions (NOT full input schemas — those are served via MCP `tools/list`)
 - Behaviour guidelines
-- A versioned `## Runtime Directives` section rendered from the canonical runtime-directives bundle
+- A short `## Runtime Directives` skill-router section rendered from the runtime-directives bundle
 
 ### 3.9.1 Runtime Directives Contract (Priority Y)
 
-Accordo now treats mandatory runtime guidance as a first-class contract rather than
-free-form prompt prose.
+Accordo now treats mandatory runtime guidance as a thin skill-router contract rather than free-form prompt prose.
 
 **Design:**
-1. A single canonical bundle in Hub code owns directive clause IDs, wording, version, and digest.
+1. A small canonical bundle in Hub code owns the skill-router wording.
 2. `initialize.instructions` and `GET /instructions` are rendered from that same bundle.
-3. Tool descriptions may reinforce those directives but do not redefine them.
-4. The Hub records delivery receipts per MCP session so operators can prove which bundle/version a client received.
-5. Parity checks compare the canonical bundle against initialize output, `/instructions`, and declared tool-description reinforcement targets.
+3. Tool descriptions point to skill resources and keep only immediate preconditions.
+4. MCP `resources/list` and `resources/read` expose the operational skill material under `accordo://skills/*`.
+5. Tests validate that referenced skill URIs are implemented.
 
 This preserves existing tool behavior while making runtime guidance auditable and stable for external MCP clients.
 

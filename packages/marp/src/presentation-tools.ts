@@ -32,7 +32,7 @@ export function createPresentationTools(
   return [
     {
       name: "accordo_presentation_open",
-      description: "Open a Marp deck and start a presentation session.",
+      description: "Open a Marp deck and start a presentation session. Read accordo://skills/presentation for Marp workflow guidance.",
       dangerLevel: "moderate",
       group: "presentation",
       inputSchema: {
@@ -55,7 +55,7 @@ export function createPresentationTools(
 
     {
       name: "accordo_presentation_close",
-      description: "Close the active presentation session.",
+      description: "Close the active presentation session. Read accordo://skills/presentation for Marp workflow guidance.",
       dangerLevel: "moderate",
       group: "presentation",
       inputSchema: { type: "object", properties: {}, required: [] },
@@ -67,7 +67,7 @@ export function createPresentationTools(
 
     {
       name: "accordo_presentation_getCurrent",
-      description: "Return the current slide number (1-based) and title.",
+      description: "Return the current slide number (1-based) and title. Read accordo://skills/presentation for Marp workflow guidance.",
       dangerLevel: "safe",
       group: "presentation",
       inputSchema: { type: "object", properties: {}, required: [] },
@@ -81,7 +81,7 @@ export function createPresentationTools(
 
     {
       name: "accordo_presentation_goto",
-      description: "Navigate to a specific slide by 1-based slide number (slide 1 is the first slide).",
+      description: "Navigate to a specific slide by 1-based slide number (slide 1 is the first slide). Read accordo://skills/presentation for Marp workflow guidance.",
       dangerLevel: "safe",
       group: "presentation",
       inputSchema: {
@@ -103,7 +103,7 @@ export function createPresentationTools(
 
     {
       name: "accordo_presentation_generateNarration",
-      description: "Generate narration text for a slide or all slides.",
+      description: "Generate narration text for a slide or all slides. Read accordo://skills/presentation and accordo://skills/walkthrough for narration workflows.",
       dangerLevel: "safe",
       group: "presentation",
       inputSchema: {
@@ -131,7 +131,7 @@ export function createPresentationTools(
       description:
         "Capture the currently visible slide as an SVG file and write it to disk. " +
         "Returns the output path and the byte size of the written file. " +
-        "A presentation session must be open (use accordo_presentation_open first).",
+        "A presentation session must be open (use accordo_presentation_open first). Read accordo://skills/presentation for capture workflow guidance.",
       dangerLevel: "safe",
       group: "presentation",
       inputSchema: {

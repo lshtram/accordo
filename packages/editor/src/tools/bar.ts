@@ -347,7 +347,7 @@ export const barTools: ExtensionToolDefinition[] = [
     name: "accordo_layout_panel",
     group: "layout",
     description:
-      "Control VS Code area containers (sidebar, panel, right bar) — open, close, or open a specific view within an area. Use explicit open/close instead of toggle for predictable results.",
+      "Control VS Code area containers (sidebar, panel, right bar) — open, close, or open a specific view within an area. Use explicit open/close instead of toggle for predictable results. Read accordo://skills/accordo for layout workflow guidance.",
     inputSchema: {
       type: "object",
       properties: {

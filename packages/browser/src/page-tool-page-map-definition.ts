@@ -25,7 +25,8 @@ export function buildGetPageMapTool(
       "and children (recursive, present when depth < maxDepth). " +
       "Use this as your primary tool to understand page structure and find interactive elements. " +
       "Use get_text_map instead when you need reading-order text with per-segment accessible names. " +
-      "Use get_semantic_graph instead when you need the full a11y tree, landmark regions, or form models.",
+      "Use get_semantic_graph instead when you need the full a11y tree, landmark regions, or form models. " +
+      "Read accordo://skills/browser for browser workflow and recovery guidance.",
     inputSchema: {
       type: "object",
       properties: {

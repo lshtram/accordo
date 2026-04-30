@@ -23,7 +23,8 @@ export function buildTextMapTool(
       "Set visibleOnly=true to return only visible segments. " +
       "Use when you need to read page content in natural reading order, verify text presence, " +
       "or extract link labels and button names with their a11y context. " +
-      "Use get_page_map instead when you need interactive element references (uid) for clicking or typing.",
+      "Use get_page_map instead when you need interactive element references (uid) for clicking or typing. " +
+      "Read accordo://skills/browser for browser workflow and recovery guidance.",
     inputSchema: {
       type: "object",
       properties: {

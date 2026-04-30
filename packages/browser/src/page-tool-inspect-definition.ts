@@ -21,7 +21,8 @@ export function buildInspectElementTool(
       "B2-UID-001: uid \"{frameId}:{nodeId}\" from get_page_map is snapshot-scoped — " +
       "requires creationSnapshotId from the same get_page_map response. " +
       "Use selector or anchorKey for current-page resolution without a snapshotId. " +
-      "Stale handles (missing creationSnapshotId or outdated snapshotId) must be reacquired via get_page_map.",
+      "Stale handles (missing creationSnapshotId or outdated snapshotId) must be reacquired via get_page_map. " +
+      "Read accordo://skills/browser for browser workflow and recovery guidance.",
     inputSchema: {
       type: "object",
       properties: {

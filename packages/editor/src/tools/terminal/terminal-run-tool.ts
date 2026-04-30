@@ -6,7 +6,7 @@ export const terminalRunTool: ExtensionToolDefinition = {
   name: "accordo_terminal_run",
   group: "terminal",
   description:
-    "Execute a shell command in a terminal. Optional observeMaxLines/observeMaxChars request a bounded inline output preview; omit observeMaxLines or pass 0 for legacy dispatch-only behavior. Requires confirmation — this is destructive.",
+    "Execute a shell command in a terminal. Optional observeMaxLines/observeMaxChars request a bounded inline output preview; omit observeMaxLines or pass 0 for legacy dispatch-only behavior. Requires confirmation — this is destructive. Read accordo://skills/accordo for terminal workflows.",
   inputSchema: {
     type: "object",
     properties: {

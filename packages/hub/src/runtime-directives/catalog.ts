@@ -28,8 +28,11 @@ import {
 // ── Implemented runtime-doc references ──────────────────────────────────────
 
 const IMPLEMENTED_RUNTIME_DOCS: readonly string[] = [
-  "accordo://docs/tool-reference/vscode-command-gateway",
-  "accordo://docs/troubleshooting/vscode-command-gateway",
+  "accordo://skills/accordo",
+  "accordo://skills/diagram",
+  "accordo://skills/browser",
+  "accordo://skills/presentation",
+  "accordo://skills/walkthrough",
 ];
 
 // ── Catalog implementation ────────────────────────────────────────────────────

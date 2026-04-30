@@ -1,6 +1,6 @@
 /**
  * Runtime Directives — Contract: Traceability Invariants
- * Requirements: requirements-runtime-directives.md Y-11
+ * Requirements: requirements-runtime-directives.md XY-13
  *
  * API checklist:
  *   MockRuntimeDirectiveCatalog — canonical bundle structure [4 tests]
@@ -62,7 +62,7 @@ function expectValidCanonicalBundle(bundle: {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("MockRuntimeDirectiveCatalog — Canonical bundle contract (Y-11)", () => {
+describe("MockRuntimeDirectiveCatalog — Canonical bundle contract (XY-13)", () => {
   const catalog = new MockRuntimeDirectiveCatalog();
 
   it("Y-11: getBundle returns valid structure with version, digest, clauses", () => {
@@ -80,19 +80,19 @@ describe("MockRuntimeDirectiveCatalog — Canonical bundle contract (Y-11)", () 
     }
   });
 
-  it("Y-11: All Priority Y requirements map to at least one clause", () => {
-    const priorityY = [
-      "Y-01", "Y-02", "Y-03", "Y-04", "Y-05", "Y-06",
-      "Y-07", "Y-08", "Y-09", "Y-10", "Y-11", "Y-12", "Y-13",
+  it("XY-13: All Priority X/Y requirements map to at least one clause", () => {
+    const priorityXY = [
+      "XY-01", "XY-02", "XY-03", "XY-04", "XY-05", "XY-06",
+      "XY-07", "XY-08", "XY-09", "XY-10", "XY-11", "XY-12", "XY-13",
     ];
     const bundle = catalog.getBundle();
     const covered = new Set<string>();
     for (const clause of bundle.clauses) {
       for (const rid of clause.requirementIds) {
-        if (rid.startsWith("Y-")) covered.add(rid);
+        if (rid.startsWith("XY-")) covered.add(rid);
       }
     }
-    for (const req of priorityY) {
+    for (const req of priorityXY) {
       expect(covered.has(req)).toBe(true);
     }
   });

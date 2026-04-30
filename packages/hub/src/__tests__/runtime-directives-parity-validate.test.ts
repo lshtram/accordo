@@ -61,7 +61,7 @@ describe("MockRuntimeDirectiveCatalog — missing reference detection (Y-10, Y-1
 
   it("Y-10: Parity check structure for runtime-doc surface is valid", () => {
     const checks: RuntimeDirectiveParityCheck[] = [
-      { surface: "runtime-doc", reference: "accordo://docs/some-feature", clauseIds: [] },
+      { surface: "runtime-doc", reference: "accordo://skills/accordo", clauseIds: [] },
     ];
     const report = catalog.validateParity(checks);
     // Mock catalog returns ok:true, real implementation would check implemented set

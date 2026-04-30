@@ -16,6 +16,7 @@ import type { McpDebugLogger } from "./debug-log.js";
 import { renderPrompt } from "./prompt-engine.js";
 import type { Session, McpSessionRegistry } from "./mcp-session.js";
 import { McpCallExecutor } from "./mcp-call-executor.js";
+import { handleResourcesList, handleResourcesRead } from "./mcp-skill-resource-dispatch.js";
 
 // ─── JSON-RPC types ─────────────────────────────────────────────────────────
 
@@ -227,6 +228,12 @@ export class McpDispatch {
       case "tools/call":
         return this._handleToolsCall(id, request, session, rpcStart);
 
+      case "resources/list":
+        return this._handleResourcesList(id, session, rpcStart);
+
+      case "resources/read":
+        return this._handleResourcesRead(id, request, session, rpcStart);
+
       case "ping":
         return this._handlePing(id, session, rpcStart);
 
@@ -259,7 +266,7 @@ export class McpDispatch {
     const initResult = {
       protocolVersion: MCP_PROTOCOL_VERSION,
       serverInfo: { name: "accordo", version: "0.1.0" },
-      capabilities: { tools: { listChanged: true } },
+      capabilities: { tools: { listChanged: true }, resources: { listChanged: false } },
       instructions,
     };
 
@@ -273,7 +280,7 @@ export class McpDispatch {
     initResult: {
       protocolVersion: string;
       serverInfo: { name: string; version: string };
-      capabilities: { tools: { listChanged: boolean } };
+      capabilities: { tools: { listChanged: boolean }; resources: { listChanged: boolean } };
       instructions: string;
     },
     rpcStart: number,
@@ -346,6 +353,38 @@ export class McpDispatch {
         });
         return callResp;
       });
+  }
+
+  private _handleResourcesList(
+    id: string | number | null,
+    session: Session,
+    rpcStart: number,
+  ): JsonRpcResponse {
+    const response = handleResourcesList(id);
+    this.debugLogger?.logRpcResponded({
+      sessionId: session.id,
+      rpcMethod: "resources/list",
+      result: response.result,
+      durationMs: Date.now() - rpcStart,
+    });
+    return response;
+  }
+
+  private _handleResourcesRead(
+    id: string | number | null,
+    request: JsonRpcRequest,
+    session: Session,
+    rpcStart: number,
+  ): JsonRpcResponse {
+    const response = handleResourcesRead(id, request.params ?? {});
+    this.debugLogger?.logRpcResponded({
+      sessionId: session.id,
+      rpcMethod: "resources/read",
+      result: response.result,
+      error: response.error,
+      durationMs: Date.now() - rpcStart,
+    });
+    return response;
   }
 
   private _handlePing(

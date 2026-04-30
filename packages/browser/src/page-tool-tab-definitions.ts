@@ -6,7 +6,7 @@ import { ACTIVE_PAGE_STATE_DESCRIPTION } from "./tab-target-contract.js";
 export function buildListPagesTool(relay: BrowserRelayLike): ExtensionToolDefinition {
   return {
     name: "accordo_browser_list_pages",
-    description: `List all open browser tabs/pages with their tabId, windowId, url, title, per-window active state, a single isImplicitTarget marker, and whether browser control permission has already been granted for each tab. ${ACTIVE_PAGE_STATE_DESCRIPTION}`,
+    description: `List all open browser tabs/pages with their tabId, windowId, url, title, per-window active state, a single isImplicitTarget marker, and whether browser control permission has already been granted for each tab. ${ACTIVE_PAGE_STATE_DESCRIPTION} Read accordo://skills/browser for browser workflow and recovery guidance.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -25,7 +25,7 @@ export function buildSelectPageTool(
 ): ExtensionToolDefinition {
   return {
     name: "accordo_browser_select_page",
-    description: "Select (activate) a browser tab by its tabId and make it the implicit target by focusing its window.",
+    description: "Select (activate) a browser tab by its tabId and make it the implicit target by focusing its window. Read accordo://skills/browser for browser workflow and recovery guidance.",
     inputSchema: {
       type: "object",
       required: ["tabId"],

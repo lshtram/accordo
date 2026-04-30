@@ -37,7 +37,7 @@ export function createDiagramTools(ctx: DiagramToolContext): ExtensionToolDefini
       name: "accordo_diagram_create",
       group: "diagram",
       description:
-        "Create a new .mmd diagram file and write its computed initial layout alongside it.",
+        "Create a new .mmd diagram file and write its computed initial layout alongside it. Read accordo://skills/diagram for diagram workflow and styling rules.",
       inputSchema: {
         type: "object",
         properties: {
@@ -65,7 +65,7 @@ export function createDiagramTools(ctx: DiagramToolContext): ExtensionToolDefini
         "Use the optional 'nodeStyles' argument to set per-node colours, fonts, fill patterns, " +
         "roughness, and size overrides. Use 'edgeStyles' to set per-edge stroke colour, width, " +
         "style, and routing. This is the ONLY correct way to style nodes and edges — " +
-        "never use Mermaid classDef directives (Accordo ignores them).",
+        "never use Mermaid classDef directives (Accordo ignores them). Read accordo://skills/diagram for examples.",
       inputSchema: {
         type: "object",
         properties: {
@@ -158,7 +158,7 @@ export function createDiagramTools(ctx: DiagramToolContext): ExtensionToolDefini
       name: "accordo_diagram_render",
       group: "diagram",
       description:
-        "Export the currently open diagram panel to SVG or PNG and write it to disk.",
+        "Export the currently open diagram panel to SVG or PNG and write it to disk. Read accordo://skills/diagram for render/export workflow guidance.",
       inputSchema: {
         type: "object",
         properties: {

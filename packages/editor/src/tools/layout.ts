@@ -99,7 +99,7 @@ export function createLayoutTools(getState: () => IDEState): ExtensionToolDefini
       name: "accordo_layout_state",
       group: "layout",
       description:
-        "Return the current IDE state snapshot with lightweight comment metadata only (counts + summary). Call this at the start of every task to orientate yourself before taking any action.",
+        "Return the current IDE state snapshot with lightweight comment metadata only (counts + summary). Call this at the start of every task to orientate yourself before taking any action. Read accordo://skills/accordo for Accordo IDE workflow guidance.",
       inputSchema: {
         type: "object",
         properties: {},

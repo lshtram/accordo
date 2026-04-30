@@ -5,11 +5,13 @@ import { terminalFocusHandler } from "./terminal-focus.js";
 import { terminalListHandler } from "./terminal-list.js";
 import { terminalOpenHandler } from "./terminal-open.js";
 
+const TERMINAL_SKILL = " Read accordo://skills/accordo for terminal workflows.";
+
 export const terminalBasicTools: ExtensionToolDefinition[] = [
   {
     name: "accordo_terminal_open",
     group: "terminal",
-    description: "Create and show a new terminal instance. Returns a stable accordo terminal ID.",
+    description: "Create and show a new terminal instance. Returns a stable accordo terminal ID." + TERMINAL_SKILL,
     inputSchema: {
       type: "object",
       properties: {
@@ -25,7 +27,7 @@ export const terminalBasicTools: ExtensionToolDefinition[] = [
   {
     name: "accordo_terminal_focus",
     group: "terminal",
-    description: "Focus the terminal panel (make it visible and active).",
+    description: "Focus the terminal panel (make it visible and active)." + TERMINAL_SKILL,
     inputSchema: { type: "object", properties: {}, required: [] },
     dangerLevel: "safe",
     idempotent: true,
@@ -34,7 +36,7 @@ export const terminalBasicTools: ExtensionToolDefinition[] = [
   {
     name: "accordo_terminal_list",
     group: "terminal",
-    description: "List all currently open terminal instances with their stable accordo IDs.",
+    description: "List all currently open terminal instances with their stable accordo IDs." + TERMINAL_SKILL,
     inputSchema: { type: "object", properties: {}, required: [] },
     dangerLevel: "safe",
     idempotent: true,
@@ -43,7 +45,7 @@ export const terminalBasicTools: ExtensionToolDefinition[] = [
   {
     name: "accordo_terminal_close",
     group: "terminal",
-    description: "Close a specific terminal by its stable accordo ID. Untracked terminals (not opened via accordo) can be closed by name.",
+    description: "Close a specific terminal by its stable accordo ID. Untracked terminals (not opened via accordo) can be closed by name." + TERMINAL_SKILL,
     inputSchema: {
       type: "object",
       properties: {

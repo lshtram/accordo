@@ -5,7 +5,7 @@
  * These represent the canonical clause set that all parity checks
  * reference as the single source of truth.
  *
- * Requirements: requirements-runtime-directives.md Y-01, Y-05, Y-09, Y-11, Y-13
+ * Requirements: requirements-runtime-directives.md XY-01, XY-05, XY-09, XY-11, XY-13
  */
 
 import type {
@@ -26,95 +26,40 @@ import type {
 export const CANONICAL_CLAUSES: readonly RuntimeDirectiveClause[] = [
   {
     id: "rd-001",
-    summary: "Skill routing mandatory",
+    summary: "Use MCP skill resources",
     instruction:
-      "Before acting, map the user request to project skills. Use skill-tester for testing tasks, tdd-guide for TDD tasks, test-master for test generation, property-based-testing for invariants, debugging skill for failures.",
-    requirementIds: ["Y-01", "Y-05", "Y-09"],
+      "Accordo publishes MCP-readable skill resources. Before using a tool family, read the relevant resource: accordo://skills/accordo, accordo://skills/diagram, accordo://skills/browser, accordo://skills/presentation, or accordo://skills/walkthrough.",
+    requirementIds: ["XY-01", "XY-02", "XY-03", "XY-04", "XY-05", "XY-06"],
     parityTargets: ["initialize", "instructions", "tool-description"],
   },
   {
     id: "rd-002",
-    summary: "MCP tool naming convention",
+    summary: "Prefer first-class tools",
     instruction:
-      "All MCP tools exposed via the gateway must use the accordo_<modality>_<action> prefix (e.g., accordo_editor_open, accordo_terminal_run).",
-    requirementIds: ["Y-05", "Y-09"],
+      "Prefer first-class accordo_* tools. Use the generic VS Code command gateway only when no first-class Accordo tool fits the task.",
+    requirementIds: ["XY-07", "XY-08", "XY-11"],
     parityTargets: ["initialize", "instructions", "tool-description"],
   },
   {
     id: "rd-003",
-    summary: "Conventional commits",
-    instruction: "Use conventional commits: feat:, fix:, docs:, refactor:, test:, chore:.",
-    requirementIds: ["Y-01", "Y-05"],
+    summary: "Tool descriptions are pointers",
+    instruction:
+      "Tool descriptions provide only immediate preconditions and point to MCP skill resources for workflow details; the skill resources contain the procedural guidance.",
+    requirementIds: ["XY-07", "XY-09", "XY-12", "XY-13"],
     parityTargets: ["initialize", "instructions"],
-  },
-  {
-    id: "rd-004",
-    summary: "No VSCode imports in Hub packages",
-    instruction:
-      "Hub is editor-agnostic. Importing vscode in accordo-hub is a hard failure.",
-    requirementIds: ["Y-01", "Y-05"],
-    parityTargets: ["initialize", "instructions"],
-  },
-  {
-    id: "rd-005",
-    summary: "Security middleware first",
-    instruction:
-      "Security middleware comes first on every authenticated HTTP endpoint. No request reaches a handler without passing the auth layer.",
-    requirementIds: ["Y-07", "Y-09"],
-    parityTargets: ["initialize", "instructions", "diagnostics"],
-  },
-  {
-    id: "rd-006",
-    summary: "Runtime directives single source",
-    instruction:
-      "The RuntimeDirectiveCatalog is the single source of truth for runtime directives. All delivery surfaces must obtain directives from this catalog.",
-    requirementIds: ["Y-01", "Y-02", "Y-03", "Y-06"],
-    parityTargets: ["initialize", "instructions"],
-  },
-  {
-    id: "rd-007",
-    summary: "Runtime directives delivery receipt",
-    instruction:
-      "Every runtime directive delivery must be recorded as a receipt with session ID, agent hint, channel, bundle version, bundle digest, and timestamp.",
-    requirementIds: ["Y-08"],
-    parityTargets: ["initialize", "instructions", "diagnostics"],
-  },
-  {
-    id: "rd-008",
-    summary: "Runtime directives parity checking",
-    instruction:
-      "Runtime directive parity must be validated across all delivery surfaces: initialize, instructions, tool-description, and diagnostics.",
-    requirementIds: ["Y-09", "Y-10", "Y-11"],
-    parityTargets: ["initialize", "instructions", "diagnostics"],
-  },
-  {
-    id: "rd-009",
-    summary: "Runtime directives diagnostics endpoint",
-    instruction:
-      "The /runtime-directives/diagnostics endpoint provides publication metadata and delivery receipts for verification and debugging.",
-    requirementIds: ["Y-06", "Y-07"],
-    parityTargets: ["diagnostics"],
   },
   {
     id: "rd-010",
-    summary: "Tool description canonical parity",
+    summary: "Tool description skill references",
     instruction:
-      "Tool descriptions must not contradict canonical runtime directives. They should reinforce mandatory behaviors defined in the catalog.",
-    requirementIds: ["Y-05", "Y-12", "Y-13"],
+      "Tool descriptions must not contradict skill-router guidance. When they reference workflow guidance, they must use implemented accordo://skills/* resources.",
+    requirementIds: ["XY-07", "XY-10", "XY-13"],
     parityTargets: ["tool-description"],
-  },
-  {
-    id: "rd-011",
-    summary: "Self-contained directive instructions",
-    instruction:
-      "Runtime directive instructions must be self-contained and not reference repo-only resources like documentation files or internal tooling paths.",
-    requirementIds: ["Y-04"],
-    parityTargets: ["initialize", "instructions"],
   },
 ];
 
 export const CANONICAL_BUNDLE_VERSION = "1.0.0";
-export const CANONICAL_BUNDLE_DIGEST = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+export const CANONICAL_BUNDLE_DIGEST = "sha256:skill-router-v1";
 
 export const CANONICAL_BUNDLE: RuntimeDirectiveBundle = {
   version: CANONICAL_BUNDLE_VERSION,
@@ -217,13 +162,16 @@ export const FIXTURE_IDE_STATE: IDEState = {
   modalities: {},
 };
 
-// ── Implemented runtime-doc references (Phase C target) ───────────────────────
+// ── Implemented skill-resource references ─────────────────────────────────────
 
 /**
- * Set of implemented accordo://docs/* paths.
- * Phase C will add validation that tool descriptions reference only these.
+ * Set of implemented accordo://skills/* paths.
+ * Tool descriptions must reference only these MCP-readable skill resources.
  */
 export const IMPLEMENTED_RUNTIME_DOCS = new Set<string>([
-  "accordo://docs/tool-reference/vscode-command-gateway",
-  "accordo://docs/troubleshooting/vscode-command-gateway",
+  "accordo://skills/accordo",
+  "accordo://skills/diagram",
+  "accordo://skills/browser",
+  "accordo://skills/presentation",
+  "accordo://skills/walkthrough",
 ]);
