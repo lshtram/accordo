@@ -633,6 +633,17 @@ describe("handleClick — REQ-TC-005..008", () => {
     );
   });
 
+  it("returns invalid-request for empty uid placeholder with malformed selector", async () => {
+    const relay = makeRelayResolve<ClickResponse>({ success: true, target: "unused" });
+    const result = await expectHandle(
+      () => handleClick(relay, { uid: "", selector: "div[" }),
+      "REQ-TC-empty-uid-selector"
+    ) as ClickResponse;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("invalid-request");
+    expect(relay.request).not.toHaveBeenCalled();
+  });
+
   it("REQ-TC-006: supports explicit coordinates option", async () => {
     const relay = makeRelayResolve<ClickResponse>({ success: true, target: "100,200" });
     const result = await expectHandle(
@@ -643,6 +654,26 @@ describe("handleClick — REQ-TC-005..008", () => {
     expect(relay.request).toHaveBeenCalledWith(
       "click",
       expect.objectContaining({ coordinates: { x: 100, y: 200 } }),
+      expect.any(Number)
+    );
+  });
+
+  it("REQ-TC-006: explicit coordinates outrank selector when both are provided", async () => {
+    const relay = makeRelayResolve<ClickResponse>({ success: true, target: "100,200" });
+    const result = await expectHandle(
+      () => handleClick(relay, { selector: "#my-form button", coordinates: { x: 100, y: 200 } }),
+      "REQ-TC-006"
+    ) as ClickResponse;
+    expect(result.success).toBe(true);
+    expect(result.target).toBe("100,200");
+    expect(relay.request).toHaveBeenCalledWith(
+      "click",
+      expect.objectContaining({ coordinates: { x: 100, y: 200 } }),
+      expect.any(Number)
+    );
+    expect(relay.request).toHaveBeenCalledWith(
+      "click",
+      expect.not.objectContaining({ selector: expect.any(String) }),
       expect.any(Number)
     );
   });
@@ -807,6 +838,30 @@ describe("handleType — REQ-TC-009..012", () => {
       expect.objectContaining({ selector: "#my-input" }),
       expect.any(Number)
     );
+  });
+
+  it("omits lower-priority selector when uid target is provided", async () => {
+    const relay = makeRelayResolve<TypeResponse>({ success: true });
+    await expectHandle(
+      () => handleType(relay, { text: "hello", uid: "main:1", selector: "div[" }),
+      "REQ-TC-type-uid-precedence"
+    );
+    expect(relay.request).toHaveBeenCalledWith(
+      "type",
+      expect.not.objectContaining({ selector: expect.any(String) }),
+      expect.any(Number)
+    );
+  });
+
+  it("returns invalid-request for empty uid placeholder with malformed selector", async () => {
+    const relay = makeRelayResolve<TypeResponse>({ success: true });
+    const result = await expectHandle(
+      () => handleType(relay, { text: "hello", uid: "", selector: "div[" }),
+      "REQ-TC-empty-uid-type-selector"
+    ) as TypeResponse;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("invalid-request");
+    expect(relay.request).not.toHaveBeenCalled();
   });
 });
 

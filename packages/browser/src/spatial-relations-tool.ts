@@ -83,10 +83,11 @@ export function buildSpatialRelationsTool(
     handler: async (
       rawArgs,
     ): Promise<SpatialRelationsResponse | SpatialRelationsToolError | PageToolError> => {
-      const invalidError = getInvalidRequestError(rawArgs);
+      const normalizedArgs = normalizeAdapterIdentityPlaceholders(rawArgs);
+      const invalidError = getInvalidRequestError(normalizedArgs);
       if (invalidError !== null) return invalidError;
 
-      const args = narrowSpatialArgs(rawArgs);
+      const args = narrowSpatialArgs(normalizedArgs);
       if (!args) {
         return buildStructuredError(
           "invalid-request",
@@ -96,4 +97,17 @@ export function buildSpatialRelationsTool(
       return handleGetSpatialRelationsRuntime(relay, args, store, security);
     },
   };
+}
+
+function normalizeAdapterIdentityPlaceholders(rawArgs: unknown): unknown {
+  if (typeof rawArgs !== "object" || rawArgs === null) return rawArgs;
+  const obj = rawArgs as Record<string, unknown>;
+  const nodeIds = obj["nodeIds"];
+  const uids = obj["uids"];
+  const hasNodeIds = Array.isArray(nodeIds) && nodeIds.length > 0;
+  const hasUids = Array.isArray(uids) && uids.length > 0;
+  if (hasNodeIds && hasUids && uids.length === 1 && uids[0] === "") {
+    return { ...obj, uids: [] };
+  }
+  return rawArgs;
 }

@@ -1,15 +1,25 @@
 import { toInspectPayload } from "./message-action-helpers.js";
 import { isKnownPageMapOwner, isCurrentOwner } from "./spatial-snapshot-registry.js";
+import { parseUid } from "./spatial-relations-grammar.js";
 
 function hasTarget(value?: string): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function isMalformedUid(uid: string): boolean {
+  return parseUid(uid) === null;
+}
+
 /** Check if raw args use a snapshot-scoped handle (uid, ref, or nodeId). */
 function usesSnapshotScopedHandle(args: Record<string, unknown>): boolean {
+  const hasUid = hasTarget(args.uid as string | undefined);
+  const hasRef = hasTarget(args.ref as string | undefined);
+  const hasAnchorKey = hasTarget(args.anchorKey as string | undefined);
+  const hasSelector = hasTarget(args.selector as string | undefined);
+  const hasSnapshotContext = hasTarget(args.creationSnapshotId as string | undefined);
   return hasTarget(args.uid as string | undefined)
     || hasTarget(args.ref as string | undefined)
-    || (args.nodeId !== undefined && typeof args.nodeId === "number");
+    || ((hasSnapshotContext || (!hasUid && !hasRef && !hasAnchorKey && !hasSelector)) && args.nodeId !== undefined && typeof args.nodeId === "number");
 }
 
 /** Returns true when a snapshot-scoped handle is used without creationSnapshotId. */
@@ -56,14 +66,20 @@ async function callInspectForNonSnapshotCase(
 export async function routeInspectElement(
   payload: Record<string, unknown>,
 ): Promise<{ data?: unknown; error?: string }> {
+  const rawUid = typeof payload.uid === "string" && payload.uid.trim() ? payload.uid : undefined;
+  if (rawUid !== undefined && isMalformedUid(rawUid)) return { error: "invalid-request" };
+
   const snapshotError = validateSnapshotScopedHandle(payload);
   if (snapshotError !== null) return { error: snapshotError };
 
-  const uid = typeof payload.uid === "string" && payload.uid.trim() ? payload.uid : undefined;
+  const uid = rawUid;
   const ref = typeof payload.ref === "string" && payload.ref.trim() ? payload.ref : undefined;
-  const nodeId = typeof payload.nodeId === "number" ? payload.nodeId : undefined;
-  const creationSnapshotId =
-    typeof payload.creationSnapshotId === "string" ? payload.creationSnapshotId : undefined;
+  const anchorKey = typeof payload.anchorKey === "string" && payload.anchorKey.trim() ? payload.anchorKey : undefined;
+  const selector = typeof payload.selector === "string" && payload.selector.trim() ? payload.selector : undefined;
+  const creationSnapshotId = hasTarget(payload.creationSnapshotId as string | undefined)
+    ? (payload.creationSnapshotId as string)
+    : undefined;
+  const nodeId = (creationSnapshotId !== undefined || (uid === undefined && ref === undefined && anchorKey === undefined && selector === undefined)) && typeof payload.nodeId === "number" ? payload.nodeId : undefined;
 
   if (uid !== undefined) {
     const { inspectElement } = await import("./element-inspector.js");

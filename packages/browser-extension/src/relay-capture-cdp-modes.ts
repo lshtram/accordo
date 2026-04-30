@@ -16,6 +16,25 @@ function classifyCdpError(err: unknown, envelope?: Record<string, unknown>): Rec
   return { success: false, error: "capture-failed", ...getErrorMeta("capture-failed"), ...(envelope ?? {}) };
 }
 
+function numericDimension(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+async function getContentSize(tabId: number): Promise<{ width?: number; height?: number }> {
+  try {
+    const metrics = await sendCommand<{ contentSize?: { width?: number; height?: number } }>(
+      tabId,
+      "Page.getLayoutMetrics",
+    );
+    return {
+      width: numericDimension(metrics.contentSize?.width),
+      height: numericDimension(metrics.contentSize?.height),
+    };
+  } catch {
+    return {};
+  }
+}
+
 export async function executeCaptureFullPage(
   payload: CapturePayload,
 ): Promise<Record<string, unknown>> {
@@ -29,11 +48,14 @@ export async function executeCaptureFullPage(
     const envelope = await requestContentScriptEnvelope("visual", context.targetTabId);
     await ensureAttached(context.targetTabId);
     const format: "jpeg" | "png" | "webp" = payload.format ?? "jpeg";
-    const cdpResult = await sendCommand<{ data: string; width: number; height: number }>(
+    const cdpResult = await sendCommand<{ data: string; width?: number; height?: number }>(
       context.targetTabId,
       "Page.captureScreenshot",
       { captureBeyondViewport: true, format },
     );
+    const contentSize = await getContentSize(context.targetTabId);
+    const width = numericDimension(cdpResult.width) ?? contentSize.width ?? envelope.viewport.width;
+    const height = numericDimension(cdpResult.height) ?? contentSize.height ?? envelope.viewport.height;
     const mimeType = format === "png" ? "image/png" : format === "webp" ? "image/webp" : "image/jpeg";
     const dataUrl = `data:${mimeType};base64,${cdpResult.data}`;
     const sizeBytes = Math.round((cdpResult.data.length * 3) / 4);
@@ -41,16 +63,16 @@ export async function executeCaptureFullPage(
     return {
       success: true,
       dataUrl,
-      width: cdpResult.width,
-      height: cdpResult.height,
+      width,
+      height,
       sizeBytes,
       anchorSource: "fullPage",
       mode: "fullPage",
       originalBounds: {
         x: 0,
         y: 0,
-        width: envelope.viewport.width > 0 ? envelope.viewport.width : cdpResult.width,
-        height: envelope.viewport.height > 0 ? envelope.viewport.height : cdpResult.height,
+        width,
+        height,
       },
       ...envelope,
     };
@@ -82,7 +104,7 @@ export async function executeCaptureViewport(
     const quality = Math.min(MAX_QUALITY, Math.max(MIN_QUALITY, payload.quality ?? DEFAULT_QUALITY));
     const screenshotParams: Record<string, unknown> = { captureBeyondViewport: false, format };
     if (format === "jpeg" || format === "webp") screenshotParams.quality = quality;
-    const cdpResult = await sendCommand<{ data: string; width: number; height: number }>(
+    const cdpResult = await sendCommand<{ data: string; width?: number; height?: number }>(
       context.targetTabId,
       "Page.captureScreenshot",
       screenshotParams,
@@ -91,13 +113,15 @@ export async function executeCaptureViewport(
     const dataUrl = `data:${mimeType};base64,${cdpResult.data}`;
     const sizeBytes = Math.round((cdpResult.data.length * 3) / 4);
     await restoreCaptureTab(context);
-    const cssViewportWidth = envelope.viewport.width > 0 ? envelope.viewport.width : cdpResult.width;
-    const cssViewportHeight = envelope.viewport.height > 0 ? envelope.viewport.height : cdpResult.height;
+    const cssViewportWidth = envelope.viewport.width > 0 ? envelope.viewport.width : (numericDimension(cdpResult.width) ?? envelope.viewport.width);
+    const cssViewportHeight = envelope.viewport.height > 0 ? envelope.viewport.height : (numericDimension(cdpResult.height) ?? envelope.viewport.height);
+    const width = numericDimension(cdpResult.width) ?? cssViewportWidth;
+    const height = numericDimension(cdpResult.height) ?? cssViewportHeight;
     return {
       success: true,
       dataUrl,
-      width: cdpResult.width,
-      height: cdpResult.height,
+      width,
+      height,
       sizeBytes,
       anchorSource: "viewport",
       mode: "viewport",

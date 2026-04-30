@@ -1,3 +1,5 @@
+import { parseUid } from "./spatial-relations-grammar.js";
+
 export { toInspectPayload } from "../inspect-payload.js";
 
 export async function resolveElementTarget(uid?: string, selector?: string): Promise<Element | null> {
@@ -7,12 +9,9 @@ export async function resolveElementTarget(uid?: string, selector?: string): Pro
     const { getElementByRef } = await import("./page-map-traversal.js");
     element = getElementByRef(uid) ?? null;
     if (!element) {
-      const colonIdx = uid.indexOf(":");
-      if (colonIdx >= 0) {
-        const nodeId = Number.parseInt(uid.slice(colonIdx + 1), 10);
-        if (!Number.isNaN(nodeId)) {
-          element = getElementByRef(`ref-${nodeId}`) ?? null;
-        }
+      const parsed = parseUid(uid);
+      if (parsed !== null) {
+        element = getElementByRef(`ref-${parsed.nodeId}`) ?? null;
       }
     }
     if (!element) {

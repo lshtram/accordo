@@ -70,7 +70,7 @@ export const SPATIAL_INPUT_SCHEMA: SpatialInputSchema = {
         "Maximum 50 requested identities — pairwise computation is O(n²). " +
         "Pass exactly one of nodeIds or uids, not both. " +
         "If your adapter always emits the unused field, send [] for that field.",
-      minItems: 1,
+      minItems: 0,
       maxItems: 50,
     },
     uids: {
@@ -82,7 +82,7 @@ export const SPATIAL_INPUT_SCHEMA: SpatialInputSchema = {
         "Maximum 50 requested identities. " +
         "Pass exactly one of nodeIds or uids, not both. " +
         "If your adapter always emits the unused field, send [] for that field.",
-      minItems: 1,
+      minItems: 0,
       maxItems: 50,
     },
     allowedOrigins: {

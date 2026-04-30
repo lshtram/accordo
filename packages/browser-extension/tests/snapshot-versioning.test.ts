@@ -603,6 +603,27 @@ describe("M100-SNAP — Snapshot Versioning", () => {
         expect(currentVersion).toBeGreaterThan(nextVersion);
       }
     });
+
+    it("B2-SV-004: listAll suppresses duplicate snapshot IDs", async () => {
+      const store = new SnapshotStore(5);
+      const pageId = "page-15b";
+      const snapshot: VersionedSnapshot = {
+        pageId,
+        frameId: "main",
+        snapshotId: `${pageId}:1`,
+        capturedAt: new Date().toISOString(),
+        viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+        source: "dom",
+        nodes: [],
+        totalElements: 0,
+      };
+
+      await store.save(pageId, snapshot);
+      await store.save(pageId, { ...snapshot, capturedAt: new Date().toISOString() });
+
+      expect(await store.list(pageId)).toHaveLength(1);
+      expect(store.listAll().get(pageId)).toHaveLength(1);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════════

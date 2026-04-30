@@ -7,7 +7,7 @@
  *   - tabs.update undefined + probe tab exists -> action-failed
  *   - tabs.update undefined + probe tab gone -> tab-not-found
  *   - tabs.update wrong tab id -> action-failed (no probe)
- *   - tabs.update active !== true -> action-failed (no probe)
+ *   - tabs.update active !== true but id/windowId match -> success
  *   - tabs.update windowId missing -> action-failed; windows.update NOT called
  *
  * @module
@@ -71,15 +71,14 @@ describe("handleSelectPage — tabs.update failures", () => {
     expect(chrome.tabs.get).not.toHaveBeenCalled();
   });
 
-  it("action-failed when tabs.update resolves with active !== true (no probe)", async () => {
+  it("success when tabs.update resolves with stale active:false metadata", async () => {
     chrome.tabs.update = vi.fn().mockResolvedValue({ id: 7, windowId: 42, active: false, url: "https://target.example" } as chrome.tabs.Tab);
-    chrome.tabs.get = vi.fn();
+    chrome.windows.update = vi.fn().mockResolvedValue({ id: 42, focused: true } as chrome.windows.Window);
 
     const result = await handleSelectPage({ requestId: "req-tv2", action: "select_page", payload: { tabId: 7 } } as never);
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("action-failed");
-    expect(chrome.tabs.get).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(chrome.windows.update).toHaveBeenCalledWith(42, { focused: true });
   });
 
   it("action-failed when tabs.update resolves but windowId is missing; windows.update NOT called", async () => {

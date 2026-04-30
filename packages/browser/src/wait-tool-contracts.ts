@@ -13,10 +13,13 @@ export interface WaitForArgs {
 export type WaitError = "timeout" | "navigation-interrupted" | "page-closed";
 
 export interface WaitForResult {
+  success?: false;
   met: boolean;
   matchedCondition?: string;
   elapsedMs: number;
   error?: WaitError;
+  errorCode?: WaitError;
+  timeoutMs?: number;
   retryable?: boolean;
   retryAfterMs?: number;
   recoveryHints?: string;
@@ -25,6 +28,7 @@ export interface WaitForResult {
 export interface WaitToolError {
   success: false;
   error: "browser-not-connected" | "timeout" | "action-failed" | "invalid-request";
+  errorCode?: "browser-not-connected" | "timeout" | "action-failed" | "invalid-request";
   retryable: boolean;
   retryAfterMs?: number;
   recoveryHints?: string;

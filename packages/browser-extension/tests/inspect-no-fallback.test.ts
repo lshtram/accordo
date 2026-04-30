@@ -6,8 +6,8 @@
  * Per approved design:
  * - uid/ref/nodeId are snapshot-scoped handles from get_page_map
  * - anchorKey/selector are current-DOM paths
- * - If a snapshot-scoped handle is present and valid, it is used exclusively
- * - No fallback to anchorKey/selector when uid/ref/nodeId is present
+ * - uid/ref/nodeId snapshot-scoped handles outrank current-DOM paths when creationSnapshotId is non-empty
+ * - anchorKey/selector current-DOM paths outrank adapter-emitted nodeId when creationSnapshotId is empty
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";

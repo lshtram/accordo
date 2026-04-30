@@ -32,7 +32,7 @@ const IDENTIFIER_FIELDS = new Set([
 const IDENTIFIER_ARRAY_FIELDS = new Set(["uids"]);
 
 const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
-const PHONE_RE = /(\+?1?[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g;
+const PHONE_RE = /(?<!\d)(?:\+\d{7,15}|(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)[\s.-]?|\d{3}[\s.-])\d{3}[\s.-]\d{4})(?!\d)/g;
 const API_KEY_RE = /(?:api[_-]?key|apikey|secret[_-]?key|access[_-]?token|auth[_-]?token|bearer|password|passwd|pwd)["\s:=]+[a-zA-Z0-9_\-]{8,}/gi;
 
 function redactString(value: string): { value: string; redacted: boolean } {

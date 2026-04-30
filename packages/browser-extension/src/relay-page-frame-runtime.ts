@@ -41,7 +41,15 @@ export async function resolveFrameTarget(
   const iframe = findIframeMetadataByPath(iframes, frameId);
   if (!iframe) return actionFailed(request);
   if (iframe.sameOrigin === false) return actionFailed(request, "iframe-cross-origin");
-  return framePathIndex.get(frameId) ?? actionFailed(request);
+  const indexedFrameId = framePathIndex.get(frameId);
+  if (indexedFrameId !== undefined) return indexedFrameId;
+  const iframeSrc = typeof iframe.src === "string" ? iframe.src : undefined;
+  if (iframeSrc !== undefined) {
+    const frames = await chrome.webNavigation.getAllFrames({ tabId }).catch(() => []);
+    const matches = Array.isArray(frames) ? frames.filter((frame) => frame.frameId !== 0 && frame.url === iframeSrc) : [];
+    if (matches.length === 1 && matches[0]?.frameId !== undefined) return matches[0].frameId;
+  }
+  return actionFailed(request);
 }
 
 export async function forwardFrameAction(

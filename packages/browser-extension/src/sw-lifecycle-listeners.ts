@@ -1,6 +1,7 @@
 import { toggleCommentsMode, getCommentsMode } from "./state-machine.js";
 import { MESSAGE_TYPES } from "./constants.js";
 import { handleNavigationReset, type RelayActionRequest, type RelayActionResponse, handleRelayAction } from "./relay-actions.js";
+import { RELAY_TOKEN_STORAGE_KEY } from "./relay-bridge-constants.js";
 import { normalizeUrl } from "./store.js";
 import type { SwMessage, SwResponse } from "./sw-router.js";
 
@@ -83,6 +84,14 @@ export function registerListeners(
         }
       })();
     }
+  });
+}
+
+export function registerRelayTokenReconnect(startRelay: () => void): void {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local") return;
+    if (!Object.prototype.hasOwnProperty.call(changes, RELAY_TOKEN_STORAGE_KEY)) return;
+    startRelay();
   });
 }
 

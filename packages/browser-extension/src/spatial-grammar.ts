@@ -36,13 +36,14 @@ export function parseUid(raw: string): { frameId: string; nodeId: number } | nul
   const s = raw as string;
   if (typeof s !== "string" || s.length === 0) return null;
   if (s.includes(" ")) return null;
-  const colonIdx = s.indexOf(":");
+  const colonIdx = s.lastIndexOf(":");
   if (colonIdx < 0) return null;
   const frameId = s.slice(0, colonIdx);
   const nodeIdStr = s.slice(colonIdx + 1);
   if (frameId.length === 0) return null;
-  if (frameId.includes(":")) return null;
   if (nodeIdStr.length === 0) return null;
+  if (!/^\d+$/.test(nodeIdStr)) return null;
+  if (nodeIdStr !== "0" && nodeIdStr.startsWith("0")) return null;
   const nodeId = parseInt(nodeIdStr, 10);
   if (!Number.isFinite(nodeId) || nodeId < 0 || !Number.isInteger(nodeId)) return null;
   return { frameId, nodeId };

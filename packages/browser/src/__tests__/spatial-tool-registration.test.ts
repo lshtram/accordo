@@ -51,7 +51,7 @@ describe("D2-001: Tool registration", () => {
     expect(nodeIdsSchema).toBeDefined();
     expect(nodeIdsSchema.type).toBe("array");
     expect(nodeIdsSchema.items.type).toBe("integer");
-    expect(nodeIdsSchema.minItems).toBe(1);
+    expect(nodeIdsSchema.minItems).toBe(0);
     expect(nodeIdsSchema.maxItems).toBe(50);
   });
 
@@ -63,7 +63,7 @@ describe("D2-001: Tool registration", () => {
     expect(uidsSchema).toBeDefined();
     expect(uidsSchema.type).toBe("array");
     expect(uidsSchema.items.type).toBe("string");
-    expect(uidsSchema.minItems).toBe(1);
+    expect(uidsSchema.minItems).toBe(0);
     expect(uidsSchema.maxItems).toBe(50);
   });
 

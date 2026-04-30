@@ -4,6 +4,7 @@ import { buildSemanticGraphTool } from "../semantic-graph-tool.js";
 import { buildTextMapTool } from "../text-map-tool.js";
 import { SnapshotRetentionStore } from "../snapshot-retention.js";
 import { BrowserAuditLog, DEFAULT_REDACTION_PATTERNS, type SecurityConfig } from "../security/index.js";
+import { redactText } from "../security/redaction-patterns.js";
 import type { BrowserRelayLike } from "../types.js";
 
 const ENVELOPE = {
@@ -135,5 +136,13 @@ describe("read tool redaction contract", () => {
     expect(result.forms[0].fields[0].uid).toBe("main:1");
     expect(result.forms[0].fields[0].value).toBe("[REDACTED]");
     expect(result.redactionApplied).toBe(true);
+  });
+
+  it("default patterns preserve fixture non-PII numeric identifiers", () => {
+    const source = "Bidi number 123, date 2026-04-30, dimensions 1920x1080, opaque id 3326350485, URL http://127.0.0.1:4175/index.html";
+    const result = redactText(source, { redactPatterns: DEFAULT_REDACTION_PATTERNS, replacement: "[REDACTED]" });
+
+    expect(result.redactionApplied).toBe(false);
+    expect(result.text).toBe(source);
   });
 });

@@ -10,7 +10,7 @@
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
 import { defaultStore, isVersionedSnapshot } from "./relay-definitions.js";
 import { isOriginBlockedByPolicy, parseOriginPolicy, enrichWithAuditLog, attachRedactionWarning, mintAuditId } from "./relay-privacy.js";
-import { clampOffsetLimit } from "./relay-page-runtime.js";
+import { appendNodePaginationMetadata, clampOffsetLimit, cloneRecord } from "./relay-page-runtime.js";
 
 // ── Origin check ─────────────────────────────────────────────────────────────
 
@@ -69,30 +69,11 @@ export function mapCollectorOptions(p: Record<string, unknown>): PageMapCollecto
   };
 }
 
-// ── Pagination ─────────────────────────────────────────────────────────────────
-
-function appendPaginationMetadata(
-  data: Record<string, unknown>,
-  opts: { itemsKey: "nodes" | "segments"; totalAvailable: number; offset: number; limit: number },
-): void {
-  const rawItems = data[opts.itemsKey];
-  const items = Array.isArray(rawItems) ? rawItems : [];
-  const sliced = items.slice(opts.offset, opts.offset + opts.limit);
-  data[opts.itemsKey] = sliced;
-  const nextOffset = opts.offset + sliced.length;
-  data.hasMore = nextOffset < opts.totalAvailable;
-  data.totalAvailable = opts.totalAvailable;
-  if (sliced.length > 0) data.nextOffset = nextOffset;
-}
-
 export function applyPagination(result: Record<string, unknown>, p: Record<string, unknown>): void {
   const pagination = clampOffsetLimit(p, 200, 500, "maxNodes");
   if (!pagination.hasPagination) return;
-  const r = result as { filterSummary?: { totalAfterFilter?: number }; totalElements?: number };
-  const totalAvailable = typeof r.filterSummary?.totalAfterFilter === "number"
-    ? r.filterSummary.totalAfterFilter
-    : (r.totalElements as number);
-  appendPaginationMetadata(result, { itemsKey: "nodes", totalAvailable, offset: pagination.offset, limit: pagination.limit });
+  const totalAvailable = Array.isArray(result.nodes) ? result.nodes.length : 0;
+  appendNodePaginationMetadata(result, { totalAvailable, offset: pagination.offset, limit: pagination.limit });
 }
 
 // ── Snapshot save ─────────────────────────────────────────────────────────────
@@ -110,7 +91,9 @@ export async function handleGetPageMapLocal(request: RelayActionRequest): Promis
   if (originCheck.blocked) return originCheck.response;
   const result = await collectLocalPageMap(request.payload as Record<string, unknown>);
   await saveVersionedSnapshot(result as unknown as Record<string, unknown>);
-  return buildLocalSuccessResponse(request, result);
+  const responseResult = cloneRecord(result as unknown as Record<string, unknown>);
+  applyPagination(responseResult, request.payload as Record<string, unknown>);
+  return buildLocalSuccessResponse(request, responseResult);
 }
 
 async function collectLocalPageMap(p: Record<string, unknown>): Promise<Record<string, unknown> & { snapshotId: string; frameId?: string; pageId?: string }> {
@@ -122,7 +105,6 @@ async function collectLocalPageMap(p: Record<string, unknown>): Promise<Record<s
   if (regionFilter) opts.regionFilter = regionFilter;
   const result = collectPageMap(opts);
   registerPageMapOwner(result.snapshotId, result.frameId ?? "main");
-  applyPagination(result as unknown as Record<string, unknown>, p);
   return result as unknown as Record<string, unknown> & { snapshotId: string; frameId?: string; pageId?: string };
 }
 

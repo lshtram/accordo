@@ -76,6 +76,7 @@ export interface RelayActionResponse {
     | "no-content-script"
     | "origin-blocked"
     | "redaction-failed";
+  errorCode?: RelayActionResponse["error"];
   /**
    * MCP-ER-002: Whether the error is retryable.
    * Present on error responses only.

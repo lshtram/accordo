@@ -138,4 +138,31 @@ describe("GAP-D1-05: mutual exclusivity rejection", () => {
     expect(result.recoveryHints).toContain("[]");
     expect(result.recoveryHints).toContain("adapter");
   });
+
+  it("accepts adapter-emitted empty uids placeholder when nodeIds is active", async () => {
+    const result = await call({ snapshotId: "page:1", nodeIds: [1, 2], uids: [""] });
+    expect(result).toHaveProperty("relations");
+    expect(relay.request).toHaveBeenCalledWith(
+      "get_spatial_relations",
+      { snapshotId: "page:1", nodeIds: [1, 2] },
+      expect.any(Number),
+    );
+  });
+
+  it("rejects multiple or whitespace uid placeholders when nodeIds is active", async () => {
+    const multiple = await call({ snapshotId: "page:1", nodeIds: [1, 2], uids: ["", ""] });
+    expect(multiple).toHaveProperty("success", false);
+    expect((multiple as { success: false; error: string }).error).toBe("invalid-request");
+    const whitespace = await call({ snapshotId: "page:1", nodeIds: [1, 2], uids: [" "] });
+    expect(whitespace).toHaveProperty("success", false);
+    expect((whitespace as { success: false; error: string }).error).toBe("invalid-request");
+    expect(relay.request).not.toHaveBeenCalled();
+  });
+
+  it("rejects null nodeIds placeholders when uids mode is active", async () => {
+    const result = await call({ snapshotId: "page:1", uids: ["main:1"], nodeIds: [null] });
+    expect(result).toHaveProperty("success", false);
+    expect((result as { success: false; error: string }).error).toBe("invalid-request");
+    expect(relay.request).not.toHaveBeenCalled();
+  });
 });

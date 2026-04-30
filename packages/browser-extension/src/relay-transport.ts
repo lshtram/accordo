@@ -41,7 +41,7 @@ export class RelayTransport {
 
   start(): void {
     if (this.stopped) throw new Error("transport has been stopped");
-    if (this.state === "connected" || this.state === "connecting") {
+    if ((this.state === "connected" || this.state === "connecting") && hasActiveSocket(this.ws)) {
       dbg("start() no-op — already", this.state);
       return;
     }
@@ -63,6 +63,7 @@ export class RelayTransport {
           this.startHeartbeat();
         },
         onClose: () => {
+          this.ws = null;
           if (!this.stopped) this.scheduleReconnect();
         },
       });
@@ -120,6 +121,7 @@ export class RelayTransport {
   }
 
   private scheduleReconnect(): void {
+    if (this.stopped || this.reconnectTimer !== null) return;
     dbg("scheduleReconnect() — waiting", this.config.reconnectDelayMs, "ms");
     this.clearTimers();
     this.setState("reconnecting");

@@ -2,6 +2,7 @@ import { getElementByRef } from "./page-map-collector.js";
 import { normalizeIncomingAnchorKey } from "./anchor-resolution-metadata.js";
 import { resolveAnchorKey } from "./enhanced-anchor-resolution.js";
 import type { InspectElementArgs } from "./element-inspector-types.js";
+import { parseUid } from "./spatial-relations-grammar.js";
 
 function isElementVisible(element: Element): boolean {
   if (element.hasAttribute("hidden")) return false;
@@ -14,11 +15,9 @@ function resolveElementByNodeId(nodeId: number): Element | null {
 }
 
 function resolveElementByUid(uid: string): Element | null {
-  const colonIdx = uid.indexOf(":");
-  if (colonIdx < 0) return null;
-  const nodeId = parseInt(uid.slice(colonIdx + 1), 10);
-  if (isNaN(nodeId)) return null;
-  return resolveElementByNodeId(nodeId);
+  const parsed = parseUid(uid);
+  if (parsed === null) return null;
+  return resolveElementByNodeId(parsed.nodeId);
 }
 
 export function resolveElement(args: InspectElementArgs): Element | null {

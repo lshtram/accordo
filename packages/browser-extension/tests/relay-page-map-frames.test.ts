@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetChromeMocks } from "./setup/chrome-mock.js";
 import { handleGetPageMap } from "../src/relay-page-handlers.js";
+import { defaultStore } from "../src/relay-definitions.js";
 
 describe("Feature 11: service-worker frame stitching for get_page_map", () => {
   beforeEach(() => {
     resetChromeMocks();
+    defaultStore.clear();
   });
 
   it("attaches child frame nodes for same-origin iframe metadata", async () => {
@@ -526,6 +528,164 @@ describe("Feature 12: iframe-cross-origin contract for frameId-targeted requests
     expect(response.data).toHaveProperty("found", true);
   });
 
+  it("F12: inspect_element same-origin URL fallback rejects duplicate same-URL frames", async () => {
+    const request = {
+      requestId: "f12-2-ambiguous-inspect",
+      action: "inspect_element" as const,
+      payload: { tabId: 1, ref: "btn", frameId: "child-frame" },
+    };
+
+    (chrome.webNavigation.getAllFrames as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com/parent" },
+      { frameId: 7, parentFrameId: 0, url: "https://example.com/child" },
+      { frameId: 8, parentFrameId: 0, url: "https://example.com/child" },
+    ]);
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        if (message.action === "get_page_map") {
+          return {
+            data: {
+              pageId: "p1",
+              frameId: "main",
+              snapshotId: "p1:1",
+              capturedAt: "2025-01-01T00:00:00Z",
+              viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+              source: "dom",
+              pageUrl: "https://example.com/parent",
+              title: "Parent",
+              nodes: [],
+              totalElements: 1,
+              truncated: false,
+              iframes: [{ frameId: "child-frame", src: "https://example.com/child", sameOrigin: true }],
+            },
+          };
+        }
+      }
+      if (options?.frameId !== undefined && (message as { action?: string }).action === "get_frame_path") return null;
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleInspectElement } = await import("../src/relay-page-handlers.js");
+      response = await handleInspectElement(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("action-failed");
+  });
+
+  it("F12: inspect_element same-origin URL fallback ignores the main frame URL", async () => {
+    const request = {
+      requestId: "f12-2-parent-same-url",
+      action: "inspect_element" as const,
+      payload: { tabId: 1, ref: "btn", frameId: "child-frame" },
+    };
+
+    (chrome.webNavigation.getAllFrames as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com/same" },
+      { frameId: 7, parentFrameId: 0, url: "https://example.com/same" },
+    ]);
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        if (message.action === "get_page_map") {
+          return {
+            data: {
+              pageId: "p1",
+              frameId: "main",
+              snapshotId: "p1:1",
+              capturedAt: "2025-01-01T00:00:00Z",
+              viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+              source: "dom",
+              pageUrl: "https://example.com/same",
+              title: "Parent",
+              nodes: [],
+              totalElements: 1,
+              truncated: false,
+              iframes: [{ frameId: "child-frame", src: "https://example.com/same", sameOrigin: true }],
+            },
+          };
+        }
+      }
+      if (options?.frameId === 7 && (message as { action?: string }).action === "get_frame_path") return null;
+      if (options?.frameId === 7 && (message as { action?: string }).action === "inspect_element") {
+        return { data: { found: true, anchorKey: "id:btn", anchorStrategy: "id", anchorConfidence: "high" } };
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleInspectElement } = await import("../src/relay-page-handlers.js");
+      response = await handleInspectElement(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(true);
+    expect(response.data).toHaveProperty("found", true);
+  });
+
+  it("F12: get_text_map same-origin URL fallback rejects duplicate about:blank frames", async () => {
+    const request = {
+      requestId: "f12-2-ambiguous-text",
+      action: "get_text_map" as const,
+      payload: { tabId: 1, frameId: "blank-frame" },
+    };
+
+    (chrome.webNavigation.getAllFrames as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { frameId: 0, parentFrameId: -1, url: "https://example.com/parent" },
+      { frameId: 7, parentFrameId: 0, url: "about:blank" },
+      { frameId: 8, parentFrameId: 0, url: "about:blank" },
+    ]);
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        if (message.action === "get_page_map") {
+          return {
+            data: {
+              pageId: "p1",
+              frameId: "main",
+              snapshotId: "p1:1",
+              capturedAt: "2025-01-01T00:00:00Z",
+              viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+              source: "dom",
+              pageUrl: "https://example.com/parent",
+              title: "Parent",
+              nodes: [],
+              totalElements: 1,
+              truncated: false,
+              iframes: [{ frameId: "blank-frame", src: "about:blank", sameOrigin: true }],
+            },
+          };
+        }
+      }
+      if (options?.frameId !== undefined && (message as { action?: string }).action === "get_frame_path") return null;
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleGetTextMap } = await import("../src/relay-page-handlers.js");
+      response = await handleGetTextMap(request);
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("action-failed");
+  });
+
   it("F12: inspect_element with same-origin frameId retries after reinjection when the main-frame probe has no receiver", async () => {
     const request = {
       requestId: "f12-2b",
@@ -758,7 +918,7 @@ describe("Feature 12: iframe-cross-origin contract for frameId-targeted requests
     expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("PAG-03 passthrough: get_page_map preserves content-script response when metadata is omitted", async () => {
+  it("PAG-03 pagination: get_page_map applies relay pagination when metadata is omitted", async () => {
     const request = {
       requestId: "pag-page-1",
       action: "get_page_map" as const,
@@ -804,10 +964,171 @@ describe("Feature 12: iframe-cross-origin contract for frameId-targeted requests
 
     expect(response.success).toBe(true);
     expect(response.data).toHaveProperty("nodes");
-    expect((response.data as { nodes: unknown[] }).nodes).toHaveLength(92);
-    expect((response.data as Record<string, unknown>).hasMore).toBeUndefined();
-    expect((response.data as Record<string, unknown>).totalAvailable).toBeUndefined();
-    expect((response.data as Record<string, unknown>).nextOffset).toBeUndefined();
+    expect((response.data as { nodes: unknown[] }).nodes).toHaveLength(5);
+    expect((response.data as Record<string, unknown>).hasMore).toBe(true);
+    expect((response.data as Record<string, unknown>).totalAvailable).toBe(92);
+    expect((response.data as Record<string, unknown>).nextOffset).toBe(5);
+    const stored = await defaultStore.get("p1:1");
+    expect("error" in stored).toBe(false);
+    expect((stored as { nodes: unknown[] }).nodes).toHaveLength(92);
+  });
+
+  it("PAG-03 remote pagination: diff_snapshots works after paginated get_page_map calls", async () => {
+    let pageMapCall = 0;
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        pageMapCall += 1;
+        const snapshotId = `p-remote:${pageMapCall}`;
+        return {
+          data: {
+            pageId: "p-remote",
+            frameId: "main",
+            snapshotId,
+            capturedAt: `2025-01-01T00:00:0${pageMapCall}Z`,
+            viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+            source: "dom",
+            pageUrl: "https://example.com/parent",
+            title: "Parent",
+            nodes: [
+              { uid: "main:1", nodeId: 1, tag: "section", children: [{ uid: "main:2", nodeId: 2, tag: "p", text: pageMapCall === 1 ? "before" : "after" }] },
+              { uid: "main:3", nodeId: 3, tag: "section", children: [{ uid: "main:4", nodeId: 4, tag: "p", text: "unpaged" }] },
+            ],
+            totalElements: 4,
+            truncated: false,
+          },
+        };
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let first;
+    let second;
+    try {
+      const { handleGetPageMap } = await import("../src/relay-page-handlers.js");
+      first = await handleGetPageMap({ requestId: "pag-remote-first", action: "get_page_map", payload: { tabId: 1, offset: 0, limit: 1 } });
+      second = await handleGetPageMap({ requestId: "pag-remote-second", action: "get_page_map", payload: { tabId: 1, offset: 0, limit: 1 } });
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+    expect((first.data as { nodes: unknown[] }).nodes).toHaveLength(1);
+    const storedFirst = await defaultStore.get("p-remote:1");
+    expect("error" in storedFirst).toBe(false);
+    expect((storedFirst as { nodes: unknown[] }).nodes).toHaveLength(2);
+
+    const { handleRelayAction } = await import("../src/relay-actions.js");
+    const diff = await handleRelayAction({
+      requestId: "pag-remote-diff",
+      action: "diff_snapshots",
+      payload: { fromSnapshotId: "p-remote:1", toSnapshotId: "p-remote:2" },
+    });
+    expect(diff.success).toBe(true);
+    expect(diff.error).toBeUndefined();
+    const diffData = diff.data as {
+      added?: Array<{ text?: string }>;
+      removed?: Array<{ text?: string }>;
+      changed?: unknown[];
+      summary?: { addedCount: number; removedCount: number; changedCount: number };
+    };
+    const summary = diffData.summary;
+    expect((summary?.addedCount ?? 0) + (summary?.removedCount ?? 0) + (summary?.changedCount ?? 0)).toBeGreaterThan(0);
+    expect(diffData.removed).toEqual(expect.arrayContaining([expect.objectContaining({ text: "before" })]));
+    expect(diffData.added).toEqual(expect.arrayContaining([expect.objectContaining({ text: "after" })]));
+  });
+
+  it("PAG-03 remote pagination: nested page maps page top-level nodes without duplicates", async () => {
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        return {
+          data: {
+            pageId: "p-remote-nested",
+            frameId: "main",
+            snapshotId: "p-remote-nested:1",
+            capturedAt: "2025-01-01T00:00:01Z",
+            viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+            source: "dom",
+            pageUrl: "https://example.com/parent",
+            title: "Parent",
+            nodes: [
+              { uid: "main:1", nodeId: 1, tag: "section", id: "first", children: [{ uid: "main:2", nodeId: 2, tag: "p", text: "nested" }] },
+              { uid: "main:3", nodeId: 3, tag: "section", id: "second", children: [{ uid: "main:4", nodeId: 4, tag: "p", text: "nested" }] },
+            ],
+            totalElements: 4,
+            truncated: false,
+          },
+        };
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let first;
+    let second;
+    try {
+      const { handleGetPageMap } = await import("../src/relay-page-handlers.js");
+      first = await handleGetPageMap({ requestId: "pag-remote-nested-first", action: "get_page_map", payload: { tabId: 1, offset: 0, limit: 1 } });
+      second = await handleGetPageMap({ requestId: "pag-remote-nested-second", action: "get_page_map", payload: { tabId: 1, offset: 1, limit: 1 } });
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+    const firstNodes = (first.data as { nodes: Array<{ id?: string; nodeId: number; children?: unknown[] }> }).nodes;
+    const secondNodes = (second.data as { nodes: Array<{ id?: string; nodeId: number; children?: unknown[] }> }).nodes;
+    expect(firstNodes.map((node) => node.id)).toEqual(["first"]);
+    expect(secondNodes.map((node) => node.id)).toEqual(["second"]);
+    expect(firstNodes[0]?.children).toEqual(expect.any(Array));
+    expect(secondNodes[0]?.children).toEqual(expect.any(Array));
+    expect(new Set([...firstNodes, ...secondNodes].map((node) => node.nodeId)).size).toBe(2);
+  });
+
+  it("PAG-03 remote pagination: metadata uses top-level node count when filterSummary counts descendants", async () => {
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(async (_tabId, message, options) => {
+      if (!options?.frameId && (message as { type?: string }).type === "PAGE_UNDERSTANDING_ACTION") {
+        return {
+          data: {
+            pageId: "p-remote-filtered-nested",
+            frameId: "main",
+            snapshotId: "p-remote-filtered-nested:1",
+            capturedAt: "2025-01-01T00:00:01Z",
+            viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+            source: "dom",
+            pageUrl: "https://example.com/parent",
+            title: "Parent",
+            nodes: [
+              { uid: "main:1", nodeId: 1, tag: "section", children: [{ uid: "main:2", nodeId: 2, tag: "button", text: "nested" }] },
+              { uid: "main:3", nodeId: 3, tag: "section", children: [{ uid: "main:4", nodeId: 4, tag: "button", text: "nested" }] },
+            ],
+            totalElements: 4,
+            truncated: false,
+            filterSummary: { activeFilters: ["interactiveOnly"], totalAfterFilter: 4 },
+          },
+        };
+      }
+      throw new Error(`Unexpected sendMessage call: ${JSON.stringify({ message, options })}`);
+    });
+
+    const originalDocument = globalThis.document;
+    vi.stubGlobal("document", undefined);
+    let response;
+    try {
+      const { handleGetPageMap } = await import("../src/relay-page-handlers.js");
+      response = await handleGetPageMap({ requestId: "pag-remote-filtered-nested", action: "get_page_map", payload: { tabId: 1, offset: 1, limit: 1 } });
+    } finally {
+      vi.stubGlobal("document", originalDocument);
+    }
+
+    expect(response.success).toBe(true);
+    expect((response.data as { nodes: unknown[] }).nodes).toHaveLength(1);
+    expect((response.data as Record<string, unknown>).totalAvailable).toBe(2);
+    expect((response.data as Record<string, unknown>).hasMore).toBe(false);
+    expect((response.data as Record<string, unknown>).nextOffset).toBe(2);
   });
 
   it("PAG-03 passthrough: get_text_map preserves content-script response when metadata is omitted", async () => {

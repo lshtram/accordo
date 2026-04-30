@@ -35,8 +35,8 @@ export async function handleWaitFor(relay: BrowserRelayLike, args: WaitForArgs):
   const startMs = Date.now();
   try {
     const response = await relay.request("wait_for", payload, RELAY_TIMEOUT_MS);
-    if (response.success && response.data !== undefined) return enrichWaitResult(response.data as WaitForResult);
-    return relayErrorToResult(response, startMs);
+    if (response.success && response.data !== undefined) return enrichWaitResult(response.data as WaitForResult, payload.timeout as number);
+    return relayErrorToResult(response, startMs, payload.timeout as number);
   } catch (err: unknown) {
     return relayThrownToError(err);
   }

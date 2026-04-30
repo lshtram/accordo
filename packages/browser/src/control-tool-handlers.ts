@@ -57,7 +57,7 @@ export async function handleClick(
   if (isMalformedFrameScopedUid(args.uid)) {
     return { success: false, error: "invalid-request", message: 'framed uid must use the format "{frameId}:{nodeId}".' };
   }
-  if (args.uid === undefined && args.coordinates === undefined && isMalformedSelector(args.selector)) {
+  if (!hasTargetString(args.uid) && args.coordinates === undefined && isMalformedSelector(args.selector)) {
     return { success: false, error: "invalid-request", message: "selector must be a valid CSS selector." };
   }
   try {
@@ -81,7 +81,7 @@ export async function handleType(
   if (isMalformedFrameScopedUid(args.uid)) {
     return { success: false, error: "invalid-request", message: 'framed uid must use the format "{frameId}:{nodeId}".' };
   }
-  if (args.uid === undefined && isMalformedSelector(args.selector)) {
+  if (!hasTargetString(args.uid) && isMalformedSelector(args.selector)) {
     return { success: false, error: "invalid-request", message: "selector must be a valid CSS selector." };
   }
   try {
@@ -119,25 +119,30 @@ export async function handlePressKey(
 function buildClickPayload(args: ClickArgs): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
   if (args.tabId !== undefined) payload["tabId"] = args.tabId;
-  if (args.uid !== undefined) payload["uid"] = args.uid;
+  if (hasTargetString(args.uid)) payload["uid"] = args.uid;
   else if (args.coordinates !== undefined) payload["coordinates"] = args.coordinates;
-  else if (args.selector !== undefined) payload["selector"] = args.selector;
+  else if (hasTargetString(args.selector) && !isMalformedSelector(args.selector)) payload["selector"] = args.selector;
   if (args.dblClick !== undefined) payload["dblClick"] = args.dblClick;
   return payload;
 }
 
 function clickTargetLabel(args: ClickArgs): string | undefined {
-  if (args.uid !== undefined) return args.uid;
+  if (hasTargetString(args.uid)) return args.uid;
   if (args.coordinates !== undefined) return `${args.coordinates.x},${args.coordinates.y}`;
-  return args.selector;
+  if (hasTargetString(args.selector) && !isMalformedSelector(args.selector)) return args.selector;
+  return undefined;
 }
 
 function buildTypePayload(args: TypeArgs): Record<string, unknown> {
   const payload: Record<string, unknown> = { text: args.text };
   if (args.tabId !== undefined) payload["tabId"] = args.tabId;
-  if (args.uid !== undefined) payload["uid"] = args.uid;
-  if (args.selector !== undefined) payload["selector"] = args.selector;
+  if (hasTargetString(args.uid)) payload["uid"] = args.uid;
+  else if (hasTargetString(args.selector)) payload["selector"] = args.selector;
   if (args.clearFirst !== undefined) payload["clearFirst"] = args.clearFirst;
   if (args.submitKey !== undefined) payload["submitKey"] = args.submitKey;
   return payload;
+}
+
+function hasTargetString(value: string | undefined): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }

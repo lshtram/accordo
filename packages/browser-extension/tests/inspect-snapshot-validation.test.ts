@@ -51,6 +51,49 @@ describe("M90-ACT snapshot-scoped handle validation", () => {
     expect(result).toHaveProperty("error", "invalid-request");
   });
 
+  it("ignores adapter-emitted empty creationSnapshotId and nodeId when selector is present", async () => {
+    const { inspectElement } = await import("../src/content/element-inspector.js");
+    const result = await routeInspectElement({ selector: "#click-target", nodeId: 0, creationSnapshotId: "" });
+
+    expect(result).toHaveProperty("data");
+    expect(inspectElement).toHaveBeenCalledWith({ selector: "#click-target", creationSnapshotId: undefined });
+  });
+
+  it("uses snapshot-scoped nodeId when creationSnapshotId is non-empty", async () => {
+    registerPageMapOwner("page:1", "main");
+    const { inspectElement } = await import("../src/content/element-inspector.js");
+    const result = await routeInspectElement({ selector: "#click-target", nodeId: 0, creationSnapshotId: "page:1" });
+
+    expect(result).toHaveProperty("data");
+    expect(inspectElement).toHaveBeenCalledWith({ nodeId: 0, creationSnapshotId: "page:1" });
+  });
+
+  it("returns invalid-request for malformed uid even when creationSnapshotId is current", async () => {
+    registerPageMapOwner("page:1", "main");
+    const result = await routeInspectElement({ uid: "main:notnum", creationSnapshotId: "page:1" });
+    expect(result).toHaveProperty("error", "invalid-request");
+  });
+
+  it("returns invalid-request for whitespace-bearing uid frame IDs", async () => {
+    registerPageMapOwner("page:1", "main");
+    const result = await routeInspectElement({ uid: "main :1", creationSnapshotId: "page:1" });
+    expect(result).toHaveProperty("error", "invalid-request");
+  });
+
+  it("returns invalid-request for leading-zero uid node IDs", async () => {
+    registerPageMapOwner("page:1", "main");
+    const result = await routeInspectElement({ uid: "main:01", creationSnapshotId: "page:1" });
+    expect(result).toHaveProperty("error", "invalid-request");
+  });
+
+  it("accepts self-generated framed uid whose frameId contains colons", async () => {
+    registerPageMapOwner("page:1", "main");
+    const { inspectElement } = await import("../src/content/element-inspector.js");
+    const result = await routeInspectElement({ uid: "https://example.test/frame:5", creationSnapshotId: "page:1" });
+    expect(result).toHaveProperty("data");
+    expect(inspectElement).toHaveBeenCalledWith({ uid: "https://example.test/frame:5", creationSnapshotId: "page:1" });
+  });
+
   it("returns snapshot-not-found when creationSnapshotId is not a known page-map owner", async () => {
     const result = await routeInspectElement({
       uid: "main:5",

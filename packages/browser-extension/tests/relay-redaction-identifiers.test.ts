@@ -44,6 +44,19 @@ describe("redaction identifier preservation", () => {
     expect(result.segments[0].textRaw).not.toContain("444-555-6666");
   });
 
+  it("preserves fixture non-PII identifiers in text fields", () => {
+    const { data: redacted, redactionApplied } = applyRedaction({
+      text: "Bidi number 123, date 2026-04-30, dimensions 1920x1080, opaque id 3326350485, URL http://127.0.0.1:4175/index.html",
+    });
+
+    expect(redactionApplied).toBe(false);
+    expect((redacted as { text: string }).text).toContain("123");
+    expect((redacted as { text: string }).text).toContain("2026-04-30");
+    expect((redacted as { text: string }).text).toContain("1920x1080");
+    expect((redacted as { text: string }).text).toContain("3326350485");
+    expect((redacted as { text: string }).text).toContain("127.0.0.1:4175");
+  });
+
   it("preserves inspect handles on forwarded read-tool responses with redactPII", async () => {
     const originalDocument = globalThis.document;
     Object.defineProperty(globalThis, "document", { value: undefined, writable: true });

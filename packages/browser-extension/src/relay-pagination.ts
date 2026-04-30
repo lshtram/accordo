@@ -36,3 +36,21 @@ export function appendPaginationMetadata(
     data.nextOffset = nextOffset;
   }
 }
+
+export function cloneRecord(data: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
+}
+
+export function appendNodePaginationMetadata(
+  data: Record<string, unknown>,
+  opts: { totalAvailable: number; offset: number; limit: number },
+): void {
+  const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+  const totalAvailable = opts.totalAvailable;
+  const sliced = nodes.slice(opts.offset, opts.offset + opts.limit);
+  data.nodes = sliced;
+  const nextOffset = opts.offset + sliced.length;
+  data.hasMore = nextOffset < totalAvailable;
+  data.totalAvailable = totalAvailable;
+  if (sliced.length > 0) data.nextOffset = nextOffset;
+}

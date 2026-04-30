@@ -12,19 +12,22 @@ export function clampTimeout(rawTimeout: number | undefined): number {
   return Math.min(rawTimeout ?? WAIT_DEFAULT_TIMEOUT_MS, WAIT_MAX_TIMEOUT_MS);
 }
 
-export function enrichWaitResult(result: WaitForResult): WaitForResult | WaitToolError {
-  if (result.met === false && result.error === "timeout") return timeoutResult(result);
+export function enrichWaitResult(result: WaitForResult, timeoutMs: number = WAIT_DEFAULT_TIMEOUT_MS): WaitForResult | WaitToolError {
+  if (result.met === false && result.error === "timeout") return timeoutResult(result, timeoutMs);
   if (result.met === false && result.error === "navigation-interrupted") return navigationInterruptedResult(result);
   if (result.met === false && result.error === "page-closed") return pageClosedResult(result);
   return result;
 }
 
-export function relayErrorToResult(response: { error?: string; data?: unknown }, startMs: number): WaitForResult {
+export function relayErrorToResult(response: { error?: string; data?: unknown }, startMs: number, timeoutMs: number = WAIT_DEFAULT_TIMEOUT_MS): WaitForResult {
   const errCode = response.error ?? "timeout";
   if (errCode === "navigation-interrupted" || errCode === "page-closed") return { met: false, error: errCode, elapsedMs: 0 };
   return (response.data as WaitForResult) ?? {
+    success: false,
     met: false,
     error: "timeout",
+    errorCode: "timeout",
+    timeoutMs,
     elapsedMs: Date.now() - startMs,
     retryable: true,
     retryAfterMs: getRelayRetryAfterMs("timeout"),
@@ -36,6 +39,7 @@ export function relayThrownToError(err: unknown): WaitToolError {
   return {
     success: false,
     error: code,
+    errorCode: code,
     retryable: true,
     retryAfterMs: getRelayRetryAfterMs(code),
     recoveryHints: getRelayRecoveryHint(code),
@@ -43,12 +47,15 @@ export function relayThrownToError(err: unknown): WaitToolError {
 }
 
 function invalidRequest(recoveryHints: string): { ok: false; error: WaitToolError } {
-  return { ok: false, error: { success: false, error: "invalid-request", retryable: false, recoveryHints } };
+  return { ok: false, error: { success: false, error: "invalid-request", errorCode: "invalid-request", retryable: false, recoveryHints } };
 }
 
-function timeoutResult(result: WaitForResult): WaitForResult | WaitToolError {
+function timeoutResult(result: WaitForResult, timeoutMs: number): WaitForResult | WaitToolError {
   return {
     ...result,
+    success: false,
+    errorCode: "timeout",
+    timeoutMs,
     retryable: true,
     retryAfterMs: getRelayRetryAfterMs("timeout"),
     recoveryHints: "The condition was not met within the timeout. Increase timeout or retry after the page has had more time to load.",

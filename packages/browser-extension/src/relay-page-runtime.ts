@@ -2,7 +2,7 @@ import type { RelayActionRequest, RelayActionResponse } from "./relay-definition
 import { handleLocalPageUnderstandingAction } from "./relay-page-local.js";
 import { handleRemotePageUnderstandingAction } from "./relay-page-remote.js";
 
-export { appendPaginationMetadata, clampOffsetLimit } from "./relay-pagination.js";
+export { appendNodePaginationMetadata, appendPaginationMetadata, clampOffsetLimit, cloneRecord } from "./relay-pagination.js";
 
 export async function handlePageUnderstandingAction(
   request: RelayActionRequest,

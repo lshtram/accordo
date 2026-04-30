@@ -31,6 +31,10 @@ export class SnapshotStore {
   async save(pageId: string, snapshot: VersionedSnapshot): Promise<void> {
     let list = this.pageSnapshots.get(pageId) ?? [];
     if (this.maxAgeMs > 0) list = evictExpired(this.maxAgeMs, this.capturedAt, this.bySnapshotId, list);
+    const existingIndex = list.findIndex((entry) => entry.snapshotId === snapshot.snapshotId);
+    if (existingIndex >= 0) {
+      list.splice(existingIndex, 1);
+    }
     list.push(snapshot);
     this.bySnapshotId.set(snapshot.snapshotId, snapshot);
     this.capturedAt.set(snapshot.snapshotId, Date.now());
@@ -65,7 +69,7 @@ export class SnapshotStore {
   async list(pageId: string): Promise<VersionedSnapshot[]> {
     let list = this.pageSnapshots.get(pageId) ?? [];
     if (this.maxAgeMs > 0) list = evictExpired(this.maxAgeMs, this.capturedAt, this.bySnapshotId, list);
-    return list.slice().reverse();
+    return dedupeSnapshots(list).reverse();
   }
 
   listAll(): Map<string, VersionedSnapshot[]> {
@@ -79,7 +83,7 @@ export class SnapshotStore {
         }
       }
     }
-    return new Map(Array.from(this.pageSnapshots.entries(), ([pageId, list]) => [pageId, list.slice()]));
+    return new Map(Array.from(this.pageSnapshots.entries(), ([pageId, list]) => [pageId, dedupeSnapshots(list)]));
   }
 
   clear(): void;
@@ -129,4 +133,16 @@ export class SnapshotStore {
     if (captured === undefined) return false;
     return Date.now() - captured > this.maxAgeMs;
   }
+}
+
+function dedupeSnapshots(list: VersionedSnapshot[]): VersionedSnapshot[] {
+  const seen = new Set<string>();
+  const deduped: VersionedSnapshot[] = [];
+  for (let index = list.length - 1; index >= 0; index--) {
+    const snapshot = list[index];
+    if (seen.has(snapshot.snapshotId)) continue;
+    seen.add(snapshot.snapshotId);
+    deduped.unshift(snapshot);
+  }
+  return deduped;
 }

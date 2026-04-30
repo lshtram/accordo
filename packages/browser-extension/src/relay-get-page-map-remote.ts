@@ -10,6 +10,7 @@
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
 import { actionFailed } from "./relay-definitions.js";
 import { applyRedaction, attachRedactionWarning, enrichWithAuditLog, mintAuditId } from "./relay-privacy.js";
+import { appendNodePaginationMetadata, clampOffsetLimit, cloneRecord } from "./relay-pagination.js";
 
 // ── Target resolution ───────────────────────────────────────────────────────
 
@@ -80,6 +81,17 @@ export function buildRedactionErrorResponse(request: RelayActionRequest, auditId
   return { requestId: request.requestId, success: false, error: "redaction-failed", retryable: false, auditId };
 }
 
+function applyRemotePagination(data: Record<string, unknown>, payload: Record<string, unknown>): void {
+  const pagination = clampOffsetLimit(payload, 200, 500, "maxNodes");
+  if (!pagination.hasPagination) return;
+  const totalAvailable = Array.isArray(data.nodes) ? data.nodes.length : 0;
+  appendNodePaginationMetadata(data, {
+    totalAvailable,
+    offset: pagination.offset,
+    limit: pagination.limit,
+  });
+}
+
 // ── Response finalization ────────────────────────────────────────────────────
 
 export function finalizeRemoteResponse(
@@ -120,11 +132,13 @@ export async function handleGetPageMapRemote(request: RelayActionRequest): Promi
 
   await stitchFrameNodes(tabId, data, request.payload as Record<string, unknown>);
   await persistRemoteSnapshot(data);
+  const responseData = cloneRecord(data);
+  applyRemotePagination(responseData, request.payload as Record<string, unknown>);
 
   const auditId = mintAuditId();
   const redactPII = request.payload.redactPII === true;
-  const { finalData, redactionApplied } = applyRedactionToData(data, redactPII);
+  const { finalData, redactionApplied } = applyRedactionToData(responseData, redactPII);
   if (finalData === null) return buildRedactionErrorResponse(request, auditId);
 
-  return finalizeRemoteResponse(request, data, finalData, redactionApplied, redactPII, auditId);
+  return finalizeRemoteResponse(request, responseData, finalData, redactionApplied, redactPII, auditId);
 }

@@ -66,4 +66,6 @@ export interface CaptureRegionResult {
   screenshotRedactionApplied?: boolean;
   /** GAP-I1: Number of text regions that were redacted */
   redactedSegmentCount?: number;
+  /** GAP-I2: Browser capture does not perform OCR-based screenshot redaction. */
+  ocrRedactionOutOfScope?: true;
 }

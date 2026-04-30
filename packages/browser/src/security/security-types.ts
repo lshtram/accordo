@@ -74,7 +74,7 @@ export interface RedactionResult {
  */
 export const DEFAULT_REDACTION_PATTERNS: RedactionPattern[] = [
   { name: "email", pattern: "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}" },
-  { name: "phone", pattern: "\\+?[1-9]\\d{1,14}|\\(\\d{3}\\)\\s?\\d{3}[\\-.]\\d{4}" },
+  { name: "phone", pattern: "(?<!\\d)(?:\\+\\d{7,15}|(?:\\+\\d{1,3}[\\s.-]?)?(?:\\(\\d{3}\\)[\\s.-]?|\\d{3}[\\s.-])\\d{3}[\\s.-]\\d{4})(?!\\d)" },
   {
     name: "api-key",
     pattern: "(?:api[_-]?key|token|secret|password)\\s*[:=]\\s*['\"]?[a-zA-Z0-9_\\-]{20,}['\"]?",

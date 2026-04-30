@@ -62,9 +62,10 @@ export async function handleCaptureRegion(
 
   // P4-CR: Route to full-page capture when mode is "fullPage"
   let captureResult: Record<string, unknown>;
+  const hasRegionTarget = capturePayload.anchorKey !== undefined || capturePayload.nodeRef !== undefined || capturePayload.rect !== undefined;
   if (capturePayload.mode === "fullPage") {
     captureResult = await executeCaptureFullPage(capturePayload);
-  } else if (capturePayload.mode === "viewport") {
+  } else if (capturePayload.mode === "viewport" && !hasRegionTarget) {
     captureResult = await executeCaptureViewport(capturePayload);
   } else {
     captureResult = await executeCaptureRegion(capturePayload);
@@ -117,6 +118,9 @@ export async function handleCaptureRegion(
   }
 
   // B2-SV-004: persist successful captures in the store for retention.
+  if (captureResult.success === true) {
+    captureResult.ocrRedactionOutOfScope = true;
+  }
   await persistCaptureResult(captureResult);
 
   return { requestId: request.requestId, success: true, data: captureResult };

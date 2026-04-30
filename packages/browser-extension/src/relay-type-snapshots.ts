@@ -31,6 +31,12 @@ export function toCaptureStoreRecord(
   source: VersionedSnapshot["source"];
   nodes: VersionedSnapshot["nodes"];
   totalElements: number;
+  width?: number;
+  height?: number;
+  sizeBytes?: number;
+  dataUrl?: string;
+  mode?: string;
+  originalBounds?: unknown;
 } | null {
   const pageId = captureResult.pageId;
   const frameId = captureResult.frameId;
@@ -59,5 +65,11 @@ export function toCaptureStoreRecord(
     source: source as VersionedSnapshot["source"],
     nodes: [],
     totalElements: typeof captureResult.totalElements === "number" ? captureResult.totalElements : 0,
+    ...(typeof captureResult.width === "number" ? { width: captureResult.width } : {}),
+    ...(typeof captureResult.height === "number" ? { height: captureResult.height } : {}),
+    ...(typeof captureResult.sizeBytes === "number" ? { sizeBytes: captureResult.sizeBytes } : {}),
+    ...(typeof captureResult.dataUrl === "string" ? { dataUrl: captureResult.dataUrl } : {}),
+    ...(typeof captureResult.mode === "string" ? { mode: captureResult.mode } : {}),
+    ...(captureResult.originalBounds !== undefined ? { originalBounds: captureResult.originalBounds } : {}),
   };
 }

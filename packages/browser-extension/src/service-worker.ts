@@ -20,6 +20,7 @@ import {
   broadcastCommentsUpdated,
   handleRelayActionWithBroadcast,
   registerListeners as _registerListeners,
+  registerRelayTokenReconnect,
   onInstalled,
   checkAndSync,
   startPeriodicSync,
@@ -49,6 +50,7 @@ export function registerListeners(): void {
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 registerListeners();
+registerRelayTokenReconnect(() => relayBridge.start());
 chrome.runtime.onInstalled.addListener((details) => { void onInstalled(details); });
 relayBridge.start();
 startPeriodicSync();

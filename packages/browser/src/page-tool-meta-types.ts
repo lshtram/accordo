@@ -62,6 +62,7 @@ export interface SpatialRelationsResponse extends SnapshotEnvelopeFields {
 export interface PageToolError {
   success: false;
   error: string;
+  errorCode?: string;
   retryable?: boolean;
   retryAfterMs?: number;
   details?: string;
@@ -109,6 +110,7 @@ export function buildStructuredError(
   return {
     success: false,
     error: errorCode,
+    errorCode,
     ...(retryable ? { retryable: true, retryAfterMs } : { retryable: false }),
     ...(details !== undefined ? { details } : {}),
     ...(recoveryHints !== undefined ? { recoveryHints } : {}),

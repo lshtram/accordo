@@ -1,10 +1,9 @@
 import { NO_CONTENT_SCRIPT, forwardToFrame, forwardToMainFrame } from "./relay-forwarder.js";
+import { parseUid } from "./spatial-grammar.js";
 
 function parseUidFrameKey(uid?: string): string | undefined {
   if (!uid) return undefined;
-  const colonIdx = uid.indexOf(":");
-  if (colonIdx <= 0) return undefined;
-  return uid.slice(0, colonIdx);
+  return parseUid(uid)?.frameId;
 }
 
 async function buildFramePathIndex(tabId: number): Promise<Map<string, number>> {
@@ -89,6 +88,9 @@ export type ControlFrameTargetResult =
   | { ok: false; error: "iframe-cross-origin" | "element-not-found" | "no-content-script" | "action-failed" };
 
 export async function resolveControlFrameTarget(tabId: number, uid?: string): Promise<ControlFrameTargetResult> {
+  if (uid && uid.includes(":") && parseUid(uid) === null) {
+    return { ok: false, error: "element-not-found" };
+  }
   const frameKey = parseUidFrameKey(uid);
   if (!frameKey || frameKey === "main") {
     return { ok: true, target: { frameId: 0, offsetX: 0, offsetY: 0 } };

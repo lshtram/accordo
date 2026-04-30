@@ -56,6 +56,7 @@ describe("M82-RELAY — browser-extension relay client", () => {
 
   afterEach(() => {
     globalThis.WebSocket = originalWebSocket;
+    vi.useRealTimers();
   });
 
   it("BR-F-120: starts websocket connection to local relay endpoint", async () => {
@@ -111,6 +112,27 @@ describe("M82-RELAY — browser-extension relay client", () => {
     bridge.stop();
   });
 
+  it("BR-F-126: missing-token reconnect scheduling is deduplicated", async () => {
+    vi.useFakeTimers();
+    mockStorage(null);
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const ctor = vi.fn((url: string) => new FakeSocket(url));
+    (ctor as unknown as { OPEN: number; CONNECTING: number }).OPEN = FakeSocket.OPEN;
+    (ctor as unknown as { OPEN: number; CONNECTING: number }).CONNECTING = FakeSocket.CONNECTING;
+    globalThis.WebSocket = ctor as unknown as typeof WebSocket;
+
+    const bridge = new RelayBridgeClient(async () => ({ requestId: "r", success: true }));
+    bridge.start();
+    bridge.start();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(ctor).not.toHaveBeenCalled();
+    expect(timeoutSpy).toHaveBeenCalledTimes(1);
+    bridge.stop();
+    timeoutSpy.mockRestore();
+  });
+
   it("BR-F-122: close code 1008 clears stored token", async () => {
     const socket = new FakeSocket("ws://127.0.0.1:40111");
     const ctor = vi.fn(() => socket);
@@ -129,6 +151,28 @@ describe("M82-RELAY — browser-extension relay client", () => {
     socket.onclose?.({ code: 1008 });
     expect(chromeMock.storage.local.remove).toHaveBeenCalledWith("relayToken");
     bridge.stop();
+  });
+
+  it("BR-F-126: repeated unauthorized closes schedule only one reconnect", async () => {
+    vi.useFakeTimers();
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const socket = new FakeSocket("ws://127.0.0.1:40111");
+    const ctor = vi.fn(() => socket);
+    (ctor as unknown as { OPEN: number; CONNECTING: number }).OPEN = FakeSocket.OPEN;
+    (ctor as unknown as { OPEN: number; CONNECTING: number }).CONNECTING = FakeSocket.CONNECTING;
+    globalThis.WebSocket = ctor as unknown as typeof WebSocket;
+
+    const bridge = new RelayBridgeClient(async () => ({ requestId: "r", success: true }));
+    bridge.start();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    socket.onclose?.({ code: 1008 });
+    socket.onclose?.({ code: 1008 });
+
+    expect(timeoutSpy).toHaveBeenCalledTimes(1);
+    bridge.stop();
+    timeoutSpy.mockRestore();
   });
 
   it("BR-F-123: incoming relay request is handled and responded with same requestId", async () => {

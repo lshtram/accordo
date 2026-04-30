@@ -4,10 +4,11 @@
 
 import type { RelayActionRequest, RelayActionResponse } from "./relay-actions.js";
 import { relayTransport, wireRelayBridge } from "./sw-lifecycle-bridge.js";
-import { broadcastCommentsUpdated, handleRelayActionWithBroadcast, onInstalled, registerListeners } from "./sw-lifecycle-listeners.js";
+import { broadcastCommentsUpdated, handleRelayActionWithBroadcast, onInstalled, registerListeners, registerRelayTokenReconnect } from "./sw-lifecycle-listeners.js";
 import { checkAndSync, startPeriodicSync, stopPeriodicSync } from "./sw-lifecycle-sync.js";
 
 export { broadcastCommentsUpdated, onInstalled, registerListeners } from "./sw-lifecycle-listeners.js";
+export { registerRelayTokenReconnect } from "./sw-lifecycle-listeners.js";
 export { handleRelayActionWithBroadcast } from "./sw-lifecycle-listeners.js";
 export { checkAndSync, startPeriodicSync, stopPeriodicSync } from "./sw-lifecycle-sync.js";
 

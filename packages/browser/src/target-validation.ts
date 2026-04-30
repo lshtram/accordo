@@ -14,13 +14,13 @@ export function hasDomExcerptTarget(args: { anchorKey?: string; selector?: strin
 
 export function isMalformedUid(uid?: string): boolean {
   if (!hasNonEmpty(uid)) return false;
-  return !/^[^:]+:\d+$/.test(uid);
+  return !hasValidFrameScopedNodeId(uid);
 }
 
 export function isMalformedFrameScopedUid(uid?: string): boolean {
   if (!hasNonEmpty(uid)) return false;
   if (!uid.includes(":")) return false;
-  return !/^[^:]+:\d+$/.test(uid);
+  return !hasValidFrameScopedNodeId(uid);
 }
 
 export function isMalformedSelector(selector?: string): boolean {
@@ -62,6 +62,16 @@ function isNonEmpty(value?: string): boolean {
 
 function hasNonEmpty(value?: string): value is string {
   return isNonEmpty(value);
+}
+
+function hasValidFrameScopedNodeId(uid: string): boolean {
+  if (uid.includes(" ")) return false;
+  const colonIdx = uid.lastIndexOf(":");
+  if (colonIdx <= 0 || colonIdx === uid.length - 1) return false;
+  const nodeIdStr = uid.slice(colonIdx + 1);
+  if (!/^\d+$/.test(nodeIdStr)) return false;
+  const nodeId = Number.parseInt(nodeIdStr, 10);
+  return Number.isInteger(nodeId) && nodeId >= 0 && String(nodeId) === nodeIdStr;
 }
 
 function getDocument(): { querySelector(selector: string): unknown | null } | undefined {

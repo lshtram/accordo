@@ -117,6 +117,13 @@ describe("MCP-SEC-002: applyRedaction", () => {
     expect((redacted as { text: string }).text).not.toContain("555-123-4567");
   });
 
+  it("does not redact ordinary numeric page text", () => {
+    const data = { text: "Viewport 1280x720 at x=42 y=63; video dQw4w9WgXcQ starts at 120 seconds; order 123555123456789." };
+    const { data: redacted, redactionApplied } = applyRedaction(data);
+    expect(redacted).toEqual(data);
+    expect(redactionApplied).toBe(false);
+  });
+
   it("redacts API key patterns (api_key=value style)", () => {
     const data = { text: "Authorization: Bearer abc123xyz" };
     const { data: redacted, redactionApplied } = applyRedaction(data);

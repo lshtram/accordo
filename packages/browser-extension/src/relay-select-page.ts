@@ -37,7 +37,6 @@ export async function confirmTabActivation(
 ): Promise<{ ok: true; tabId: number; windowId: number } | { ok: false; response?: RelayActionResponse }> {
   if (!updateResult || typeof updateResult.id !== "number") return { ok: false };
   if (updateResult.id !== requestedTabId) return { ok: false, response: actionFailed({ requestId }, "action-failed") };
-  if (updateResult.active !== true) return { ok: false, response: actionFailed({ requestId }, "action-failed") };
   if (typeof updateResult.windowId !== "number") return { ok: false };
   return { ok: true, tabId: updateResult.id, windowId: updateResult.windowId };
 }
@@ -57,6 +56,5 @@ export async function confirmWindowFocus(
 ): Promise<{ ok: true; windowId: number } | { ok: false; response?: RelayActionResponse }> {
   if (!updateResult || typeof updateResult.id !== "number") return { ok: false };
   if (updateResult.id !== expectedWindowId) return { ok: false, response: actionFailed({ requestId }, "action-failed") };
-  if (updateResult.focused !== true) return { ok: false, response: actionFailed({ requestId }, "action-failed") };
   return { ok: true, windowId: updateResult.id };
 }

@@ -30,4 +30,10 @@ describe("control frame target classification", () => {
     const result = await resolveControlFrameTarget(1, "child:7");
     expect(result).toEqual({ ok: false, error: "no-content-script" });
   });
+
+  it("does not route malformed framed uid suffixes to the main frame", async () => {
+    const result = await resolveControlFrameTarget(1, "https://example.test/frame:12junk");
+    expect(result).toEqual({ ok: false, error: "element-not-found" });
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+  });
 });

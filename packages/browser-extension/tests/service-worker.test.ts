@@ -27,6 +27,8 @@ import {
   checkAndSync,
   stopPeriodicSync,
 } from "../src/service-worker.js";
+import { registerRelayTokenReconnect } from "../src/sw-lifecycle-listeners.js";
+import { RelayBridgeClient } from "../src/relay-bridge.js";
 import type { BrowserCommentThread, BrowserComment } from "../src/types.js";
 
 describe("M80-SW — Background Service Worker", () => {
@@ -948,6 +950,18 @@ describe("M80-SW — Background Service Worker", () => {
       expect(chrome.runtime.onMessage.addListener).toBeDefined();
       // No throw means listeners registered successfully
     });
+
+    it("restarts the relay when the pairing token changes in local storage", () => {
+      const startSpy = vi.fn();
+
+      registerRelayTokenReconnect(startSpy);
+      const listener = vi.mocked(chrome.storage.onChanged.addListener).mock.calls.at(-1)?.[0];
+      expect(listener).toBeDefined();
+
+      listener?.({ relayToken: { oldValue: undefined, newValue: "token-1" } }, "local");
+
+      expect(startSpy).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("onInstalled", () => {
@@ -1131,8 +1145,6 @@ describe("M80-SW — Background Service Worker", () => {
 // ── Periodic Sync ─────────────────────────────────────────────────────────────
 // These tests use vi.spyOn on RelayBridgeClient.prototype.send to simulate
 // VS Code returning a version. checkAndSync() is exported for testability.
-
-import { RelayBridgeClient } from "../src/relay-bridge.js";
 
 describe("PeriodicSync — checkAndSync", () => {
   beforeEach(() => {

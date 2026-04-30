@@ -5,8 +5,7 @@
  *
  * These tests validate:
  * - Valid current owner → proceeds to inspectElement and returns data
- * - Mixed valid requests preserve snapshot-scoped identity all the way into inspectElement()
- * - inspectElement is called with the snapshot-scoped handle, NOT anchorKey/selector
+ * - Mixed valid requests preserve documented target priority all the way into inspectElement()
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -91,7 +90,7 @@ describe("M90-ACT mixed valid requests preserve snapshot-scoped identity in insp
     expect(args).not.toHaveProperty("anchorKey");
   });
 
-  it("nodeId+selector with current owner → inspectElement receives nodeId, not selector", async () => {
+  it("nodeId+selector with current owner → inspectElement receives snapshot-scoped nodeId", async () => {
     registerPageMapOwner("page:2", "main");
     await routeInspectElement({
       nodeId: 5,
@@ -105,7 +104,7 @@ describe("M90-ACT mixed valid requests preserve snapshot-scoped identity in insp
     expect(args).not.toHaveProperty("selector");
   });
 
-  it("nodeId+anchorKey with current owner → inspectElement receives nodeId, not anchorKey", async () => {
+  it("nodeId+anchorKey with current owner → inspectElement receives snapshot-scoped nodeId", async () => {
     registerPageMapOwner("page:2", "main");
     await routeInspectElement({
       nodeId: 5,

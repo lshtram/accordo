@@ -26,13 +26,21 @@ export function getElementRect(el: HTMLElement): DOMRect {
   return el.getBoundingClientRect();
 }
 
+const hiddenCache = new WeakMap<HTMLElement, { signature: string; hidden: boolean }>();
+
 export function isHidden(el: HTMLElement): boolean {
+  const signature = `${el.getAttribute("style") ?? ""}|${el.className}|${el.hasAttribute("hidden") ? "1" : "0"}`;
+  const cached = hiddenCache.get(el);
+  if (cached?.signature === signature) return cached.hidden;
+
   const style = window.getComputedStyle(el);
-  return (
+  const hidden = (
     style.display === "none" ||
     style.visibility === "hidden" ||
     style.visibility === "collapse" ||
     style.opacity === "0" ||
     el.hasAttribute("hidden")
   );
+  hiddenCache.set(el, { signature, hidden });
+  return hidden;
 }

@@ -75,6 +75,31 @@ describe("malformed uids[] grammar precedes snapshot classification", () => {
     expect(result).toHaveProperty("error");
     expect((result as { error: string }).error).toBe("invalid-request");
   });
+
+  it("adapter-emitted empty uids placeholder does not make nodeIds mixed", () => {
+    registerPageMapOwner("page-001:1", "main");
+    const payload = { snapshotId: "page-001:1", nodeIds: [1, 2], uids: [""] };
+    const result = handleGetSpatialRelationsAction(payload);
+    expect(result).toHaveProperty("data");
+  });
+
+  it("multiple or whitespace uid placeholders remain invalid when nodeIds is active", () => {
+    registerPageMapOwner("page-001:1", "main");
+    const multiple = handleGetSpatialRelationsAction({ snapshotId: "page-001:1", nodeIds: [1, 2], uids: ["", ""] });
+    expect(multiple).toHaveProperty("error");
+    expect((multiple as { error: string }).error).toBe("invalid-request");
+    const whitespace = handleGetSpatialRelationsAction({ snapshotId: "page-001:1", nodeIds: [1, 2], uids: [" "] });
+    expect(whitespace).toHaveProperty("error");
+    expect((whitespace as { error: string }).error).toBe("invalid-request");
+  });
+
+  it("null nodeIds placeholders remain invalid when uids mode is active", () => {
+    registerPageMapOwner("page-001:1", "main");
+    const payload = { snapshotId: "page-001:1", nodeIds: [null], uids: ["main:1"] };
+    const result = handleGetSpatialRelationsAction(payload);
+    expect(result).toHaveProperty("error");
+    expect((result as { error: string }).error).toBe("invalid-request");
+  });
 });
 
 describe("get_spatial_relations does NOT register snapshots", () => {

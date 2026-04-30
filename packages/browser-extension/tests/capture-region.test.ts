@@ -93,6 +93,7 @@ describe("M92-CR CaptureRegionResult type", () => {
       height: 600,
       sizeBytes: 102400,
       source: "anchorKey",
+      ocrRedactionOutOfScope: true,
     };
     expect(result.success).toBe(true);
     expect(result.dataUrl).toContain("data:image/jpeg");
@@ -100,6 +101,7 @@ describe("M92-CR CaptureRegionResult type", () => {
     expect(result.height).toBe(600);
     expect(result.sizeBytes).toBe(102400);
     expect(result.source).toBe("anchorKey");
+    expect(result.ocrRedactionOutOfScope).toBe(true);
   });
 
   /**

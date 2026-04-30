@@ -36,6 +36,7 @@ export function actionFailed(
     requestId: request.requestId,
     success: false,
     error: code,
+    errorCode: code,
     retryable: meta.retryable,
     ...(meta.retryAfterMs !== undefined ? { retryAfterMs: meta.retryAfterMs } : {}),
   };

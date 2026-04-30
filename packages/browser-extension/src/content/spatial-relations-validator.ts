@@ -110,13 +110,14 @@ function assembleSpatialRequest(
 export function validateSpatialShape(
   obj: Record<string, unknown>,
 ): ValidationFailure {
-  const rawNodeIds = (obj["nodeIds"] as unknown[] | undefined) ?? [];
-  const rawUids = (obj["uids"] as unknown[] | undefined) ?? [];
+  const normalizedObj = normalizeAdapterIdentityPlaceholders(obj);
+  const rawNodeIds = (normalizedObj["nodeIds"] as unknown[] | undefined) ?? [];
+  const rawUids = (normalizedObj["uids"] as unknown[] | undefined) ?? [];
 
   const shapeCheck = step1ShapeAndCap(rawNodeIds, rawUids);
   if (shapeCheck) return shapeCheck;
 
-  const snapshotIdResult = validateSnapshotIdShape(obj["snapshotId"]);
+  const snapshotIdResult = validateSnapshotIdShape(normalizedObj["snapshotId"]);
   if (!snapshotIdResult.ok) return snapshotIdResult;
   const snapshotId = (snapshotIdResult as { ok: true; snapshotId: string }).snapshotId;
 
@@ -129,11 +130,22 @@ export function validateSpatialShape(
     validUids = uidsResult.validUids;
   }
 
-  const nodeIdsResult = step4NodeIdsAndMixed(obj["nodeIds"] as unknown[] | undefined, validUids);
+  const nodeIdsResult = step4NodeIdsAndMixed(normalizedObj["nodeIds"] as unknown[] | undefined, validUids);
   if (!nodeIdsResult.ok) return nodeIdsResult;
   const validNodeIds = (nodeIdsResult as { ok: true; validNodeIds: number[] }).validNodeIds;
 
   return { ok: true, request: assembleSpatialRequest(snapshotId, validNodeIds, validUids, frameId) };
+}
+
+function normalizeAdapterIdentityPlaceholders(obj: Record<string, unknown>): Record<string, unknown> {
+  const nodeIds = obj["nodeIds"];
+  const uids = obj["uids"];
+  const hasNodeIds = Array.isArray(nodeIds) && nodeIds.length > 0;
+  const hasUids = Array.isArray(uids) && uids.length > 0;
+  if (hasNodeIds && hasUids && uids.length === 1 && uids[0] === "") {
+    return { ...obj, uids: [] };
+  }
+  return obj;
 }
 
 // ── Step 5: Snapshot classification ──────────────────────────────────────────

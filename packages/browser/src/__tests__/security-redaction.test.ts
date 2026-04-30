@@ -374,6 +374,16 @@ describe("DEFAULT_REDACTION_PATTERNS: built-in pattern coverage", () => {
     expect("+1 555 123 4567").toMatch(regex);
     expect("555.123.4567").toMatch(regex);
   });
+
+  it("DEFAULT_REDACTION_PATTERNS phone pattern does not mask ordinary numbers", () => {
+    const phonePattern = DEFAULT_REDACTION_PATTERNS.find((p) => p.name === "phone")!;
+    const regex = new RegExp(phonePattern.pattern);
+    expect("viewport 1280x720").not.toMatch(regex);
+    expect("position x=42 y=63 width=320 height=180").not.toMatch(regex);
+    expect("video id dQw4w9WgXcQ starts at 120 seconds").not.toMatch(regex);
+    expect("published on 2026-04-30").not.toMatch(regex);
+    expect("order id 123555123456789 should stay intact").not.toMatch(regex);
+  });
 });
 
 // ── I1: capture_region redactPII gate ─────────────────────────────────────────

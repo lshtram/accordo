@@ -52,18 +52,19 @@ describe("handleSelectPage — success paths", () => {
     expect(result.error).toBeUndefined();
   });
 
-  it("windows.update is NOT called when tab activation confirmation fails", async () => {
+  it("focuses the window when tab activation returns stale active:false metadata", async () => {
     chrome.tabs.update = vi.fn().mockResolvedValue({
-      id: 7, windowId: 42, active: false, // active === false → confirmation fails
+      id: 7, windowId: 42, active: false,
     } as unknown as chrome.tabs.Tab);
-    chrome.windows.update = vi.fn();
+    chrome.windows.update = vi.fn().mockResolvedValue({ id: 42, focused: true } as chrome.windows.Window);
 
-    await handleSelectPage({
+    const result = await handleSelectPage({
       requestId: "req-nwu",
       action: "select_page",
       payload: { tabId: 7 },
     } as never);
 
-    expect(chrome.windows.update).not.toHaveBeenCalled();
+    expect(chrome.windows.update).toHaveBeenCalledWith(42, { focused: true });
+    expect(result.success).toBe(true);
   });
 });

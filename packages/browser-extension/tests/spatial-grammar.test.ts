@@ -55,6 +55,10 @@ describe("parseUid", () => {
     expect(parseUid("iframe-embedded-0:1")).toEqual({ frameId: "iframe-embedded-0", nodeId: 1 });
   });
 
+  it("parses valid UID when frameId contains colons", () => {
+    expect(parseUid("https://example.test/frame:1")).toEqual({ frameId: "https://example.test/frame", nodeId: 1 });
+  });
+
   it("rejects UID with no colon", () => {
     expect(parseUid("main1")).toBeNull();
   });
@@ -65,10 +69,15 @@ describe("parseUid", () => {
 
   it("rejects UID with non-numeric nodeId", () => {
     expect(parseUid("main:notanumber")).toBeNull();
+    expect(parseUid("https://example.test/frame:12junk")).toBeNull();
   });
 
   it("rejects UID with negative nodeId", () => {
     expect(parseUid("main:-1")).toBeNull();
+  });
+
+  it("rejects UID with leading zeros in nodeId", () => {
+    expect(parseUid("main:01")).toBeNull();
   });
 
   it("rejects UID with whitespace", () => {
