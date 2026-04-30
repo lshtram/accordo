@@ -39,6 +39,7 @@
 | Browser Relay Auth Hardening (Phase 1) | ✅ Completed (`d91368f`, 2026-04-10). Deferred follow-up remains in Phase 2: Chrome token discovery via native messaging, query-string transport, and token rotation. |
 | Browser MCP checklist closeout hardening | ✅ Approved (`f390181`, review `docs/50-reviews/browser-mcp-checklist-review-2026-04-29.md`). Independent score improved from 29/45 to 36/45 after identifier-safe redaction, `redactionApplied` flag preservation, spatial request validation, and snapshot/diff contract fixes. |
 | Priority V — Markdown Preview Highlight Support | ✅ Completed (2026-04-29). `accordo_editor_highlight` now supports already-open Accordo Markdown Preview surfaces with preview clear/replay support and live validation. |
+| Priority X/Y — MCP Skill Resources and Thin Runtime Guidance | ✅ Completed (`334d12e`, 2026-04-30). Hub now exposes MCP-readable `accordo://skills/*` resources, thin `initialize.instructions`, skill-resource tool-description pointers, and regression coverage. |
 
 ---
 
@@ -63,6 +64,7 @@
 | 6f1e6b0 | Hub spawn, MCP config sync, protocol contract fixes ✅ |
 | 2026-04-29 Browser closeout | MCP WebView checklist approved at 36/45; residual improvements are non-blocking redaction false positives, live inspect/spatial ergonomics, screenshot retention dimensions, and optional OCR screenshot redaction. |
 | 2026-04-29 Priority V | Markdown preview highlight parity completed across capabilities/editor/md-viewer; testing guide added at `docs/40-testing/testing-guide-priority-v-markdown-preview-highlights.md`. |
+| 2026-04-30 Priority X/Y | MCP skill resources added for Accordo, diagram, browser, presentation, and walkthrough workflows; tool descriptions now point to skill resources and tests verify resource discovery/read contracts. |
 
 ---
 

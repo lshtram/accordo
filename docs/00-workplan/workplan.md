@@ -185,30 +185,6 @@
 
 ---
 
-### Priority X/Y — MCP Skill Resources and Thin Runtime Guidance
-
-**Status:** In progress (2026-04-30). Merged from Priority X and Priority Y.
-
-**Problem:** First-time MCP agents may skip Accordo usage guidance or receive conflicting guidance split across repo-local skills, tool descriptions, and server instructions.
-
-**Implementation direction:**
-1. Keep `initialize.instructions` and `/instructions` thin: route agents to MCP-readable skills.
-2. Expose `accordo://skills/accordo`, `diagram`, `browser`, `presentation`, and `walkthrough` through MCP resources.
-3. Keep tool descriptions thin: immediate preconditions plus the relevant skill URI.
-4. Put procedural material in skill resources, including generic command gateway examples and walkthrough patterns.
-5. Add regression checks so tool descriptions cannot reference missing skill resources.
-
-**Acceptance criteria:**
-1. New MCP clients can discover and read skill resources without repo file access.
-2. `initialize.instructions` points to all five skill resources.
-3. Tool descriptions point to skill resources instead of duplicating long workflows.
-4. Command gateway examples live in `accordo://skills/accordo`.
-5. Presentation, code-review, and feature-demo walkthrough guidance lives in `accordo://skills/walkthrough`.
-
-**Execution note:** Manual effectiveness testing will refine skill content over time.
-
----
-
 ### Priority V — Markdown Preview Highlight Support (`accordo_editor_highlight` parity)
 
 **Status:** Complete (2026-04-29). Implemented, reviewed, live-validated, and documented.
