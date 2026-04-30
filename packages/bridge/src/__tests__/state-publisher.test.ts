@@ -253,6 +253,20 @@ describe("StatePublisher", () => {
       expect(publisher.getState().openEditors).toEqual(["/workspace/a.ts"]);
     });
 
+    it("§6.1: captures activeFile and visibleEditors from active URI-bearing tab when no text editor is active", () => {
+      mock.state.activeTextEditor = undefined;
+      mock.state.visibleTextEditors = [];
+      mock.state.tabGroups = [
+        { tabs: [{ label: "README.md", isActive: true, input: { viewType: "markdown.preview", uri: { fsPath: "/workspace/README.md" } } }] },
+      ];
+      publisher.start();
+      expect(publisher.getState().activeFile).toBe("/workspace/README.md");
+      expect(publisher.getState().visibleEditors).toEqual(["/workspace/README.md"]);
+      expect(publisher.getState().openTabs).toEqual([
+        { label: "README.md", type: "webview", path: "/workspace/README.md", viewType: "markdown.preview", isActive: true, groupIndex: 0 },
+      ]);
+    });
+
     it("§6.1: does not send any messages during start()", () => {
       publisher.start();
       expect(s.send.sendSnapshot).not.toHaveBeenCalled();
@@ -360,6 +374,17 @@ describe("StatePublisher", () => {
       ];
       mock.emit.tabs({});
       expect(publisher.getState().openEditors).toEqual(["/c.ts"]);
+    });
+
+    it("§6.1: onDidChangeTabs updates activeFile and visibleEditors from active URI-bearing tab when no text editor is active", () => {
+      mock.state.activeTextEditor = undefined;
+      mock.state.visibleTextEditors = [];
+      mock.state.tabGroups = [
+        { tabs: [{ label: "README.md", isActive: true, input: { viewType: "markdown.preview", uri: { fsPath: "/preview.md" } } }] },
+      ];
+      mock.emit.tabs({});
+      expect(publisher.getState().activeFile).toBe("/preview.md");
+      expect(publisher.getState().visibleEditors).toEqual(["/preview.md"]);
     });
 
     it("§6.1: openEditors ignores tabs without a URI input (webviews etc.)", () => {

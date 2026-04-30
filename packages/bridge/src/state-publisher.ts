@@ -23,8 +23,10 @@ import type {
 import { ACCORDO_PROTOCOL_VERSION } from "@accordo/bridge-types";
 import {
   collectCurrentState,
+  deriveActiveFileFromTabs,
   deriveOpenEditors,
   deriveOpenTabs,
+  deriveVisibleEditorsFromTabs,
   normalizePath,
   EDITOR_DEBOUNCE_MS,
   TAB_DEBOUNCE_MS,
@@ -158,9 +160,7 @@ export class StatePublisher {
         this.scheduleFlush("editor", EDITOR_DEBOUNCE_MS);
       }),
       this.vscode.window.onDidChangeVisibleTextEditors(() => {
-        this.currentState.visibleEditors = Array.from(this.vscode.window.visibleTextEditors).map(
-          (e) => normalizePath(e.document.uri.fsPath),
-        );
+        this.refreshVisibleEditors();
         this.scheduleFlush("editor", EDITOR_DEBOUNCE_MS);
       }),
       this.vscode.window.onDidChangeTextEditorSelection((e) => {
@@ -186,16 +186,33 @@ export class StatePublisher {
         this.flushPatch();
       }),
       this.vscode.window.tabGroups.onDidChangeTabGroups(() => {
-        this.currentState.openEditors = deriveOpenEditors(this.vscode.window.tabGroups.all);
-        this.currentState.openTabs = deriveOpenTabs(this.vscode.window.tabGroups.all);
+        this.refreshTabState();
         this.scheduleFlush("tabs", TAB_DEBOUNCE_MS);
       }),
       this.vscode.window.tabGroups.onDidChangeTabs(() => {
-        this.currentState.openEditors = deriveOpenEditors(this.vscode.window.tabGroups.all);
-        this.currentState.openTabs = deriveOpenTabs(this.vscode.window.tabGroups.all);
+        this.refreshTabState();
         this.scheduleFlush("tabs", TAB_DEBOUNCE_MS);
       }),
     );
+  }
+
+  private refreshVisibleEditors(): void {
+    this.currentState.visibleEditors = Array.from(new Set([
+      ...Array.from(this.vscode.window.visibleTextEditors).map((e) => normalizePath(e.document.uri.fsPath)),
+      ...deriveVisibleEditorsFromTabs(this.vscode.window.tabGroups.all),
+    ]));
+  }
+
+  private refreshTabState(): void {
+    const tabGroups = this.vscode.window.tabGroups.all;
+    this.currentState.openEditors = deriveOpenEditors(tabGroups);
+    this.currentState.openTabs = deriveOpenTabs(tabGroups);
+    if (!this.vscode.window.activeTextEditor) {
+      this.currentState.activeFile = deriveActiveFileFromTabs(tabGroups);
+      this.currentState.activeFileLine = 1;
+      this.currentState.activeFileColumn = 1;
+    }
+    this.refreshVisibleEditors();
   }
 
   /**

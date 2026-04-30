@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   deriveOpenEditors,
   deriveOpenTabs,
+  deriveActiveFileFromTabs,
+  deriveVisibleEditorsFromTabs,
   isTabInputText,
   isTabInputWebview,
   normalizePath,
@@ -44,5 +46,36 @@ describe("state-collector helpers", () => {
       { label: "Diagram", type: "webview", viewType: "accordo.diagram", isActive: false, groupIndex: 0 },
       { label: "Welcome", type: "other", isActive: false, groupIndex: 0 },
     ]);
+  });
+
+  it("deriveOpenTabs classifies URI-bearing webviews as webview with path", () => {
+    const groups: TabGroup[] = [
+      {
+        tabs: [
+          { label: "README.md", isActive: true, input: { viewType: "markdown.preview", uri: { fsPath: "/repo/README.md" } } },
+        ],
+      },
+    ];
+
+    expect(deriveOpenTabs(groups)).toEqual([
+      { label: "README.md", type: "webview", path: "/repo/README.md", viewType: "markdown.preview", isActive: true, groupIndex: 0 },
+    ]);
+  });
+
+  it("deriveActiveFileFromTabs returns the active URI-bearing tab path", () => {
+    const groups: TabGroup[] = [
+      { tabs: [{ label: "README.md", isActive: true, input: { viewType: "markdown.preview", uri: { fsPath: "/repo/README.md" } } }] },
+    ];
+
+    expect(deriveActiveFileFromTabs(groups)).toBe("/repo/README.md");
+  });
+
+  it("deriveVisibleEditorsFromTabs returns active URI-bearing tabs from each group", () => {
+    const groups: TabGroup[] = [
+      { tabs: [{ label: "A", isActive: true, input: { uri: { fsPath: "/repo/a.ts" } } }] },
+      { tabs: [{ label: "B", isActive: true, input: { viewType: "markdown.preview", uri: { fsPath: "/repo/b.md" } } }] },
+    ];
+
+    expect(deriveVisibleEditorsFromTabs(groups)).toEqual(["/repo/a.ts", "/repo/b.md"]);
   });
 });

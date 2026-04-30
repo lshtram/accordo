@@ -196,10 +196,36 @@ export function deriveOpenEditors(tabGroups: readonly TabGroup[]): string[] {
   const seen = new Set<string>();
   for (const group of tabGroups) {
     for (const tab of group.tabs) {
-      if (isTabInputText(tab.input)) {
-        seen.add(normalizePath(tab.input.uri.fsPath));
+      const path = getTabInputPath(tab.input);
+      if (path !== undefined) {
+        seen.add(path);
       }
     }
+  }
+  return Array.from(seen);
+}
+
+function getTabInputPath(input: unknown): string | undefined {
+  return isTabInputText(input) ? normalizePath(input.uri.fsPath) : undefined;
+}
+
+export function deriveActiveFileFromTabs(tabGroups: readonly TabGroup[]): string | null {
+  for (const group of tabGroups) {
+    for (const tab of group.tabs) {
+      if (tab.isActive !== true) continue;
+      const path = getTabInputPath(tab.input);
+      if (path !== undefined) return path;
+    }
+  }
+  return null;
+}
+
+export function deriveVisibleEditorsFromTabs(tabGroups: readonly TabGroup[]): string[] {
+  const seen = new Set<string>();
+  for (const group of tabGroups) {
+    const activeTab = group.tabs.find((tab) => tab.isActive === true);
+    const path = activeTab ? getTabInputPath(activeTab.input) : undefined;
+    if (path !== undefined) seen.add(path);
   }
   return Array.from(seen);
 }
@@ -219,19 +245,21 @@ export function deriveOpenTabs(tabGroups: readonly TabGroup[]): OpenTab[] {
     for (const tab of group.tabs) {
       const label = tab.label;
       const isActive = tab.isActive ?? false;
-      if (isTabInputText(tab.input)) {
+      if (isTabInputWebview(tab.input)) {
+        const path = getTabInputPath(tab.input);
+        result.push({
+          label,
+          type: "webview",
+          ...(path !== undefined ? { path } : {}),
+          viewType: tab.input.viewType,
+          isActive,
+          groupIndex: gi,
+        });
+      } else if (isTabInputText(tab.input)) {
         result.push({
           label,
           type: "text",
           path: normalizePath(tab.input.uri.fsPath),
-          isActive,
-          groupIndex: gi,
-        });
-      } else if (isTabInputWebview(tab.input)) {
-        result.push({
-          label,
-          type: "webview",
-          viewType: tab.input.viewType,
           isActive,
           groupIndex: gi,
         });
@@ -256,15 +284,20 @@ export function collectCurrentState(
   modalities: Record<string, Record<string, unknown>>,
 ): IDEState {
   const active = vscode.window.activeTextEditor;
+  const tabActiveFile = deriveActiveFileFromTabs(vscode.window.tabGroups.all);
+  const visibleEditors = new Set<string>([
+    ...Array.from(vscode.window.visibleTextEditors).map(
+      (e) => normalizePath(e.document.uri.fsPath),
+    ),
+    ...deriveVisibleEditorsFromTabs(vscode.window.tabGroups.all),
+  ]);
   return {
-    activeFile: active ? normalizePath(active.document.uri.fsPath) : null,
+    activeFile: active ? normalizePath(active.document.uri.fsPath) : tabActiveFile,
     activeFileLine: active ? active.selection.active.line + 1 : 1,
     activeFileColumn: active ? active.selection.active.character + 1 : 1,
     openEditors: deriveOpenEditors(vscode.window.tabGroups.all),
     openTabs: deriveOpenTabs(vscode.window.tabGroups.all),
-    visibleEditors: Array.from(vscode.window.visibleTextEditors).map(
-      (e) => normalizePath(e.document.uri.fsPath),
-    ),
+    visibleEditors: Array.from(visibleEditors),
     workspaceFolders: (vscode.workspace.workspaceFolders ?? []).map(
       (f) => normalizePath(f.uri.fsPath),
     ),
