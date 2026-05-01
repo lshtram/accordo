@@ -69,7 +69,7 @@ export function buildShadowNode(
 
   const node: PageNode = { ref, tag, nodeId, uid: `${frameId}:${nodeId}`, inShadowRoot: true, shadowHostId };
   const directTextForId = Array.from(element.childNodes).filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent ?? "").join("").trim();
-  node.persistentId = computePersistentId(tag, element.id || undefined, directTextForId || undefined);
+  node.persistentId = computePersistentId(tag, element.id || undefined, String(nodeId));
   if (element.id) node.id = element.id;
   const role = element.getAttribute("role");
   if (role) node.role = role;

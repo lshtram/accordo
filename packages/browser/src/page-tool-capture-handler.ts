@@ -29,6 +29,40 @@ export async function handleCaptureRegion(
   const startTime = Date.now();
 
   try {
+    const policy = mergeOriginPolicy(security.originPolicy, args.allowedOrigins, args.deniedOrigins);
+    const needsOriginPreflight = (policy.allowedOrigins?.length ?? 0) > 0 || (policy.deniedOrigins?.length ?? 0) > 0;
+    if (needsOriginPreflight) {
+      const preflightPayload: Record<string, unknown> = {
+        tabId: args.tabId,
+        offset: 0,
+        limit: 1,
+      };
+      const preflight = await relay.request("get_page_map", preflightPayload, CAPTURE_REGION_TIMEOUT_MS);
+      if (!preflight.success) {
+        const preflightError = typeof preflight.error === "string" ? preflight.error : "action-failed";
+        security.auditLog.completeEntry(auditEntry, {
+          action: "blocked",
+          redacted: false,
+          durationMs: Date.now() - startTime,
+        });
+        return buildStructuredError(preflightError) as PageToolError;
+      }
+      if (preflight.data && typeof preflight.data === "object") {
+        const preflightPageUrl = (preflight.data as { pageUrl?: string }).pageUrl;
+        if (preflightPageUrl) {
+          const preflightOrigin = extractOrigin(preflightPageUrl) ?? preflightPageUrl;
+          if (checkOrigin(preflightOrigin, policy) === "block") {
+            security.auditLog.completeEntry(auditEntry, {
+              action: "blocked",
+              redacted: false,
+              durationMs: Date.now() - startTime,
+            });
+            return buildStructuredError("origin-blocked") as PageToolError;
+          }
+        }
+      }
+    }
+
     const payload: Record<string, unknown> = { ...args };
     const hasRedactPatterns = security.redactionPolicy.redactPatterns.length > 0;
     const shouldRedact = args.redactPII !== false && hasRedactPatterns;
@@ -37,13 +71,21 @@ export async function handleCaptureRegion(
     }
 
     const response = await relay.request("capture_region", payload, CAPTURE_REGION_TIMEOUT_MS);
+    if (!response.success) {
+      const relayError = typeof response.error === "string" ? response.error : "action-failed";
+      security.auditLog.completeEntry(auditEntry, {
+        action: "blocked",
+        redacted: false,
+        durationMs: Date.now() - startTime,
+      });
+      return buildStructuredError(relayError) as PageToolError;
+    }
     if (response.success && response.data && typeof response.data === "object" && hasSnapshotEnvelope(response.data)) {
       const data = response.data;
       if ("success" in data && data.success === true) {
         const relayPageUrl = (data as { pageUrl?: string }).pageUrl;
         if (relayPageUrl) {
           const origin = extractOrigin(relayPageUrl) ?? relayPageUrl;
-          const policy = mergeOriginPolicy(security.originPolicy, args.allowedOrigins, args.deniedOrigins);
           if (checkOrigin(origin, policy) === "block") {
             security.auditLog.completeEntry(auditEntry, {
               action: "blocked",

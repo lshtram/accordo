@@ -1036,8 +1036,13 @@ describe("Feature 12: iframe-cross-origin contract for frameId-targeted requests
     };
     const summary = diffData.summary;
     expect((summary?.addedCount ?? 0) + (summary?.removedCount ?? 0) + (summary?.changedCount ?? 0)).toBeGreaterThan(0);
-    expect(diffData.removed).toEqual(expect.arrayContaining([expect.objectContaining({ text: "before" })]));
-    expect(diffData.added).toEqual(expect.arrayContaining([expect.objectContaining({ text: "after" })]));
+    const changedText = Array.isArray(diffData.changed)
+      ? diffData.changed.some((entry) => {
+        const candidate = entry as { field?: string; before?: string; after?: string };
+        return candidate.field === "textContent" && candidate.before === "before" && candidate.after === "after";
+      })
+      : false;
+    expect(changedText).toBe(true);
   });
 
   it("PAG-03 remote pagination: nested page maps page top-level nodes without duplicates", async () => {

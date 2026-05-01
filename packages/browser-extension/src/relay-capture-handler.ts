@@ -16,6 +16,7 @@ export { cropImageToBounds } from "./relay-capture-image.js";
 import { executeCaptureRegion } from "./relay-capture-execution.js";
 import { executeCaptureFullPage, executeCaptureViewport } from "./relay-capture-cdp-modes.js";
 import { resolveImplicitTargetTabId } from "./relay-implicit-target.js";
+import { checkOriginBlocked } from "./relay-privacy-origin.js";
 
 
 // ── Capture Region Handler ───────────────────────────────────────────────────
@@ -55,9 +56,27 @@ async function collectTextMapForTab(tabId: number): Promise<unknown> {
   }
 }
 
+async function getTabPageUrl(tabId: number | undefined): Promise<string | undefined> {
+  if (tabId === undefined) return undefined;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return typeof tab.url === "string" ? tab.url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function handleCaptureRegion(
   request: RelayActionRequest,
 ): Promise<RelayActionResponse> {
+  const originCheck = await checkOriginBlocked({
+    requestId: request.requestId,
+    payload: request.payload as Record<string, unknown>,
+  });
+  if (originCheck.blocked) {
+    return originCheck.response;
+  }
+
   const capturePayload = toCapturePayload(request.payload);
 
   // Explicit capture modes take precedence over region target fields.
@@ -119,6 +138,10 @@ export async function handleCaptureRegion(
   // B2-SV-004: persist successful captures in the store for retention.
   if (captureResult.success === true) {
     captureResult.ocrRedactionOutOfScope = true;
+  }
+  const capturePageUrl = await getTabPageUrl(capturePayload.tabId ?? await resolveImplicitTargetTabId());
+  if (capturePageUrl !== undefined) {
+    captureResult.pageUrl = capturePageUrl;
   }
   await persistCaptureResult(captureResult);
 

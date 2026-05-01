@@ -525,6 +525,76 @@ describe("Feature 5: artifactMode: 'inline' on successful screenshot responses",
     expect((result as Record<string, unknown>).error).toBe("origin-blocked");
     expect(result as Record<string, unknown>).not.toHaveProperty("artifactMode");
   });
+
+  it("Feature 5: relay-level origin-blocked error is preserved and has no artifactMode", async () => {
+    const blockedRelay = {
+      request: vi.fn().mockResolvedValue({
+        success: false,
+        requestId: "test",
+        error: "origin-blocked",
+      }),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    const result = await handleCaptureRegion(blockedRelay, { tabId: 1, mode: "viewport" }, store);
+
+    expect(result).toHaveProperty("success", false);
+    expect((result as Record<string, unknown>).error).toBe("origin-blocked");
+    expect(result as Record<string, unknown>).not.toHaveProperty("artifactMode");
+  });
+
+  it("MCP-SEC-001: blocked origin short-circuits before capture_region relay action", async () => {
+    const blockedRelay = {
+      request: vi.fn().mockImplementation(async (action: string) => {
+        if (action === "get_page_map") {
+          return {
+            success: true,
+            requestId: "preflight",
+            data: {
+              pageId: "page",
+              frameId: "main",
+              snapshotId: "page:1",
+              capturedAt: "2025-01-01T00:00:00.000Z",
+              viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+              source: "dom" as const,
+              pageUrl: "https://blocked.example/path",
+            },
+          };
+        }
+        return {
+          success: true,
+          requestId: "capture",
+          data: {
+            success: true,
+            dataUrl: "data:image/jpeg;base64,abc",
+            width: 100,
+            height: 80,
+            sizeBytes: 3,
+            pageId: "page",
+            frameId: "main",
+            snapshotId: "page:2",
+            capturedAt: "2025-01-01T00:00:01.000Z",
+            viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+            source: "visual" as const,
+            pageUrl: "https://blocked.example/path",
+          },
+        };
+      }),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    const localStore = new SnapshotRetentionStore();
+    const security = createSecurityFixture();
+    security.originPolicy.deniedOrigins = ["https://blocked.example"];
+
+    const result = await handleCaptureRegion(blockedRelay, { tabId: 1, mode: "viewport" }, localStore, security);
+
+    expect(result).toHaveProperty("success", false);
+    expect((result as Record<string, unknown>).error).toBe("origin-blocked");
+    const actions = (blockedRelay.request as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0]);
+    expect(actions).toContain("get_page_map");
+    expect(actions).not.toContain("capture_region");
+  });
 });
 
 // ── G6: file-ref artifact transport (ADR-2) ──────────────────────────────────

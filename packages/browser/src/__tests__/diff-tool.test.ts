@@ -1271,6 +1271,61 @@ describe("both IDs omitted: diffs previous/latest retained pair (design point 4)
     expect(result).not.toHaveProperty("success", false);
     // Fresh snapshot page-from:2 must be in the store after the call
     const snapshots = store.list("page-from");
+    expect(snapshots).toHaveLength(2);
     expect(snapshots.map((s) => s.snapshotId)).toContain("page-from:2");
+  });
+
+  it("preserves relay changed text entries at browser tool boundary", async () => {
+    const store = new SnapshotRetentionStore();
+    store.save("page-changed", makeEnvelope("page-changed", 1));
+    store.save("page-changed", makeEnvelope("page-changed", 2));
+
+    const relay = {
+      request: vi.fn().mockResolvedValue({
+        success: true,
+        requestId: "test",
+        data: {
+          ...makeDiffResponse("page-changed:1", "page-changed:2"),
+          pageId: "page-changed",
+          frameId: "main",
+          snapshotId: "page-changed:2",
+          capturedAt: "2025-01-01T00:00:02.000Z",
+          viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+          source: "dom" as const,
+          changed: [
+            {
+              nodeId: 7,
+              tag: "button",
+              field: "textContent",
+              before: "before",
+              after: "after",
+            },
+          ],
+          summary: {
+            addedCount: 0,
+            removedCount: 0,
+            changedCount: 1,
+            textDelta: "1 changed",
+          },
+        },
+      }),
+      isConnected: vi.fn(() => true),
+    } as unknown as BrowserRelayLike;
+
+    const result = await handleDiffSnapshots(
+      relay,
+      { fromSnapshotId: "page-changed:1", toSnapshotId: "page-changed:2" },
+      store,
+    );
+
+    expect(result).not.toHaveProperty("success", false);
+    const changed = (result as DiffSnapshotsResponse).changed;
+    expect(changed).toEqual([
+      expect.objectContaining({
+        field: "textContent",
+        before: "before",
+        after: "after",
+      }),
+    ]);
   });
 });

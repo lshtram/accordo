@@ -40,6 +40,15 @@ describe("SnapshotRetentionStore", () => {
     expect(store.list("p1")).toEqual([makeEnvelope("p1", 1), makeEnvelope("p1", 2)]);
   });
 
+  it("B2-SV-004: save keeps snapshotId unique per page", () => {
+    const store = new SnapshotRetentionStore();
+    store.save("p1", makeEnvelope("p1", 1));
+    store.save("p1", makeEnvelope("p1", 1));
+    const retained = store.list("p1");
+    expect(retained).toHaveLength(1);
+    expect(retained[0].snapshotId).toBe("p1:1");
+  });
+
   it("B2-SV-004: list returns empty array for unknown pageId", () => {
     expect(new SnapshotRetentionStore().list("unknown")).toEqual([]);
   });

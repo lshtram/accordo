@@ -201,6 +201,28 @@ describe("B2-DE-002: computeDiff returns added, removed, changed arrays", () => 
     expect(result.summary.changedCount).toBe(result.changed.length);
   });
 
+  it("B2-DE-002: detects shared text changes on partial snapshots when persistentId is absent", () => {
+    const from = {
+      ...makeVersionedSnapshot("page-filtered-fallback-change", 0, [
+        makeNodeIdentity("button", 1, { id: "shared", text: "Before" }),
+      ]),
+      truncated: true,
+    } as VersionedSnapshot & { truncated: true };
+    const to = {
+      ...makeVersionedSnapshot("page-filtered-fallback-change", 1, [
+        makeNodeIdentity("button", 1, { id: "shared", text: "After" }),
+      ]),
+      hasMore: true,
+    } as VersionedSnapshot & { hasMore: true };
+
+    const result = computeDiff(from, to);
+
+    expect(result.added).toEqual([]);
+    expect(result.removed).toEqual([]);
+    expect(result.changed).toHaveLength(1);
+    expect(result.changed[0]).toMatchObject({ field: "textContent", before: "Before", after: "After" });
+  });
+
   it("B2-DE-002: changed text content appears in changed array with field=textContent", () => {
     const from = makeVersionedSnapshot("page-3", 0, [
       makeNodeIdentity("div", 0, { id: "msg", persistentId: "div:msg:Hello", text: "Hello" }),

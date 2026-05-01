@@ -82,7 +82,6 @@ if (resolvedFromSnapshotId === undefined && resolvedToSnapshotId === undefined) 
     const response = await relay.request("diff_snapshots", diffPayload, DIFF_TIMEOUT_MS);
 
     if (response.success && response.data && typeof response.data === "object" && "added" in response.data && "removed" in response.data && "changed" in response.data && hasSnapshotEnvelope(response.data)) {
-      store.save(response.data.pageId, response.data);
       return { ...response.data, orderingWarning } as DiffSnapshotsResponse;
     }
 

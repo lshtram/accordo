@@ -78,6 +78,7 @@ describe("E1/H5: capture_region mode precedence", () => {
       width: 1280,
       height: 720,
     });
+    expect((response.data as Record<string, unknown>)["pageUrl"]).toBe("https://example.com/page");
   });
 
   it("mode=viewport ignores rect targets instead of falling back to region capture", async () => {
@@ -106,6 +107,29 @@ describe("E1/H5: capture_region mode precedence", () => {
       anchorSource: "viewport",
       originalBounds: { x: 0, y: 0, width: 1280, height: 720 },
     });
+  });
+
+  it("MCP-SEC-001: deniedOrigins blocks capture before capture path executes", async () => {
+    const { handleCaptureRegion } = await import("../src/relay-capture-handler.js");
+
+    setMockTabUrl(1, "https://blocked.example/page");
+
+    const originalDocument = globalThis.document;
+    Object.defineProperty(globalThis, "document", { value: undefined, writable: true });
+    let response;
+    try {
+      response = await handleCaptureRegion({
+        requestId: "test-capture-origin-blocked",
+        action: "capture_region",
+        payload: { tabId: 1, mode: "viewport", deniedOrigins: ["https://blocked.example"] },
+      });
+    } finally {
+      Object.defineProperty(globalThis, "document", { value: originalDocument, writable: true });
+    }
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("origin-blocked");
+    expect(chrome.tabs.captureVisibleTab).not.toHaveBeenCalled();
   });
 });
 

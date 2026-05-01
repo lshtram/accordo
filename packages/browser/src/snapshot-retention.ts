@@ -94,6 +94,8 @@ export class SnapshotRetentionStore {
     let slots = this.pages.get(pageId) ?? [];
     // GAP-I1: TTL eviction before save
     if (this.maxAgeMs > 0) slots = this.evictExpired(slots);
+    // Keep snapshot IDs unique per page: replace existing record with the same snapshotId.
+    slots = slots.filter((entry) => entry.snapshotId !== envelope.snapshotId);
     slots.push(envelope);
     this.capturedAt.set(envelope.snapshotId, Date.now());
     // B2-CTX-002: Record tabId for this page

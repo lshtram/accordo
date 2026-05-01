@@ -898,11 +898,8 @@ describe("M100-SNAP — Snapshot Versioning", () => {
       expect(node1!.persistentId).toBeDefined();
       expect(node2!.persistentId).toBeDefined();
 
-      // B2-SV-007: persistentId is derived from tag + id + text content.
-      // When text changes, the persistentId SHOULD differ (deterministic hash based on content).
-      // This distinguishes changed elements from unchanged ones (which retain same persistentId).
-      // The 90% stability requirement applies to unchanged elements; changed elements
-      // are expected to potentially have different persistentIds.
+      // B2-SV-007: persistentId is derived from stable structural identity
+      // (tag/id/nodeId), so text mutation should not change persistentId.
       const pid1 = node1!.persistentId;
       const pid2 = node2!.persistentId;
 
@@ -912,9 +909,8 @@ describe("M100-SNAP — Snapshot Versioning", () => {
       expect((pid1 as string).length).toBeGreaterThan(0);
       expect((pid2 as string).length).toBeGreaterThan(0);
 
-      // After content change (text: "original" → "modified"), persistentId should differ
-      // because persistentId is computed from tag:id:text tuple
-      expect(pid1).not.toBe(pid2);
+      // After content change (text: "original" → "modified"), persistentId stays stable.
+      expect(pid1).toBe(pid2);
     });
 
     /**
