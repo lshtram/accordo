@@ -72,6 +72,9 @@ export function mapCollectorOptions(p: Record<string, unknown>): PageMapCollecto
 export function applyPagination(result: Record<string, unknown>, p: Record<string, unknown>): void {
   const pagination = clampOffsetLimit(p, 200, 500, "maxNodes");
   if (!pagination.hasPagination) return;
+  // Use the full node-list length as totalAvailable — not the already-sliced
+  // result — so the diff engine can distinguish partial from complete snapshots
+  // reliably regardless of what the pagination cap returns.
   const totalAvailable = Array.isArray(result.nodes) ? result.nodes.length : 0;
   appendNodePaginationMetadata(result, { totalAvailable, offset: pagination.offset, limit: pagination.limit });
 }
