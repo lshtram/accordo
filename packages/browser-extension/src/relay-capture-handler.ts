@@ -60,12 +60,11 @@ export async function handleCaptureRegion(
 ): Promise<RelayActionResponse> {
   const capturePayload = toCapturePayload(request.payload);
 
-  // P4-CR: Route to full-page capture when mode is "fullPage"
+  // Explicit capture modes take precedence over region target fields.
   let captureResult: Record<string, unknown>;
-  const hasRegionTarget = capturePayload.anchorKey !== undefined || capturePayload.nodeRef !== undefined || capturePayload.rect !== undefined;
   if (capturePayload.mode === "fullPage") {
     captureResult = await executeCaptureFullPage(capturePayload);
-  } else if (capturePayload.mode === "viewport" && !hasRegionTarget) {
+  } else if (capturePayload.mode === "viewport") {
     captureResult = await executeCaptureViewport(capturePayload);
   } else {
     captureResult = await executeCaptureRegion(capturePayload);

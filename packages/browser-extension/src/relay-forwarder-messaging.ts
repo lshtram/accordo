@@ -1,7 +1,6 @@
 import type { SnapshotEnvelope } from "./snapshot-versioning.js";
 import { hasDataField, hasErrorField, isSnapshotEnvelope } from "./relay-type-guards.js";
 import { resolveImplicitTargetTabId } from "./relay-implicit-target.js";
-import { readSpatialError } from "./relay-page-spatial-errors.js";
 
 export const NO_CONTENT_SCRIPT = Symbol("no-content-script");
 
@@ -49,7 +48,7 @@ export async function forwardToContentScript(
     return null;
   }
   if (!response) return null;
-  if (hasErrorField(response)) return readSpatialError(action, response) ? response : null;
+  if (hasErrorField(response)) return response;
   return hasDataField(response) ? response.data : response;
 }
 
@@ -67,7 +66,7 @@ export async function forwardToFrame(
     return null;
   }
   if (!response) return null;
-  if (hasErrorField(response)) return readSpatialError(action, response) ? response : null;
+  if (hasErrorField(response)) return response;
   return hasDataField(response) ? response.data : response;
 }
 

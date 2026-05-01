@@ -50,6 +50,65 @@ import { toCapturePayload } from "../src/relay-type-guards.js";
 import { requestContentScriptEnvelope } from "../src/relay-forwarder.js";
 import type { CapturePayload } from "../src/relay-definitions.js";
 
+describe("E1/H5: capture_region mode precedence", () => {
+  beforeEach(() => {
+    resetChromeMocks();
+    const sendCommand = globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>;
+    sendCommand.mockImplementation(async (_target, method) => {
+      if (method === "Page.captureScreenshot") return { data: "AAAA", width: 1280, height: 720 };
+      if (method === "Page.getFrameTree") return { frameTree: { frame: { id: "main" } } };
+      return {};
+    });
+  });
+
+  it("captures viewport without requiring a region target", async () => {
+    const { handleCaptureRegion } = await import("../src/relay-capture-handler.js");
+
+    const response = await handleCaptureRegion({
+      requestId: "test-viewport-no-target",
+      action: "capture_region",
+      payload: { tabId: 1, mode: "viewport", format: "png", transport: "file-ref" },
+    });
+
+    expect(response.success).toBe(true);
+    expect(response.data).toMatchObject({
+      success: true,
+      mode: "viewport",
+      anchorSource: "viewport",
+      width: 1280,
+      height: 720,
+    });
+  });
+
+  it("mode=viewport ignores rect targets instead of falling back to region capture", async () => {
+    const { handleCaptureRegion } = await import("../src/relay-capture-handler.js");
+
+    const response = await handleCaptureRegion({
+      requestId: "test-viewport-ignores-rect",
+      action: "capture_region",
+      payload: {
+        tabId: 1,
+        mode: "viewport",
+        rect: { x: 10, y: 20, width: 300, height: 150 },
+        padding: 0,
+        format: "png",
+      },
+    });
+
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({ type: "RESOLVE_ANCHOR_BOUNDS" }),
+    );
+    expect(response.success).toBe(true);
+    expect(response.data).toMatchObject({
+      success: true,
+      mode: "viewport",
+      anchorSource: "viewport",
+      originalBounds: { x: 0, y: 0, width: 1280, height: 720 },
+    });
+  });
+});
+
 // ── Tests: toCapturePayload ────────────────────────────────────────────────────
 
 describe("B2-CTX-003: toCapturePayload extracts tabId from relay payload", () => {

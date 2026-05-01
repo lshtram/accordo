@@ -22,12 +22,13 @@ export async function handleType(request: RelayActionRequest): Promise<RelayActi
       return actionFailed(request, "control-not-granted");
     }
 
-    await ensureAttached(tabId);
-
-    const text = payload.text as string;
-    if (!text) {
+    const text = typeof payload.text === "string" && payload.text.trim().length > 0 ? payload.text : undefined;
+    if (text === undefined) {
       return actionFailed(request, "invalid-request");
     }
+
+    await ensureAttached(tabId);
+    await sendCommand(tabId, "Page.bringToFront");
 
     const uid = payload.uid as string | undefined;
     const selector = payload.selector as string | undefined;

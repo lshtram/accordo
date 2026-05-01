@@ -96,6 +96,29 @@ describe("M109-WAIT — wait_for routing in service worker context", () => {
     expect(data.elapsedMs).toBe(120);
   });
 
+  it("H1/H5: forwards wrapped timeout result when callers send empty optional fields", async () => {
+    const timeoutResult = { met: false, error: "timeout", elapsedMs: 250 };
+
+    (chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: timeoutResult,
+    });
+    (chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 7, url: "https://example.com/", active: true },
+    ]);
+
+    const response = await handleRelayAction({
+      requestId: "req-wait-timeout-empty-fields",
+      action: "wait_for",
+      payload: { texts: ["NeverShown"], selector: "", stableLayoutMs: 0, timeout: 250 },
+    });
+
+    expect(response).toMatchObject({
+      requestId: "req-wait-timeout-empty-fields",
+      success: true,
+      data: timeoutResult,
+    });
+  });
+
   /**
    * B2-WA-RT-08: The relay must call chrome.tabs.sendMessage with the
    * PAGE_UNDERSTANDING_ACTION message type, action "wait_for", and the

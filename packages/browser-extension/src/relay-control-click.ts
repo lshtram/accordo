@@ -21,13 +21,23 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
       return actionFailed(request, "control-not-granted");
     }
 
+    const uid = payload.uid as string | undefined;
+    const selector = payload.selector as string | undefined;
+    const hasCoordinates = payload.coordinates && typeof payload.coordinates === "object";
+    const hasValidCoordinates = hasCoordinates && isValidCoordinates(payload.coordinates as { x?: unknown; y?: unknown });
+    if (!uid && !selector && !hasCoordinates) {
+      return actionFailed(request, "invalid-request");
+    }
+    if (!uid && !selector && !hasValidCoordinates) {
+      return actionFailed(request, "invalid-request");
+    }
+
     await ensureAttached(tabId);
+    await sendCommand(tabId, "Page.bringToFront");
 
     let x: number;
     let y: number;
 
-    const uid = payload.uid as string | undefined;
-    const selector = payload.selector as string | undefined;
     const frameTarget = await resolveControlFrameTarget(tabId, uid);
     if (!frameTarget.ok) {
       return actionFailed(request, frameTarget.error);
@@ -66,7 +76,7 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
         x = updatedCoords.x + frameTarget.target.offsetX;
         y = updatedCoords.y + frameTarget.target.offsetY;
       }
-    } else if (payload.coordinates && typeof payload.coordinates === "object") {
+    } else if (hasValidCoordinates) {
       const coords = payload.coordinates as { x: number; y: number };
       x = coords.x;
       y = coords.y;
@@ -96,4 +106,9 @@ export async function handleClick(request: RelayActionRequest): Promise<RelayAct
   } catch {
     return actionFailed(request, "action-failed");
   }
+}
+
+function isValidCoordinates(value: { x?: unknown; y?: unknown }): boolean {
+  return typeof value.x === "number" && Number.isFinite(value.x)
+    && typeof value.y === "number" && Number.isFinite(value.y);
 }

@@ -2,7 +2,7 @@ import type { BrowserRelayLike } from "./types.js";
 import type { ListPagesArgs, ListPagesResponse, PageToolError, SelectPageArgs, SelectPageResponse, WaitForArgs } from "./page-tool-types.js";
 import { buildStructuredError, classifyRelayError, TAB_MGMT_TIMEOUT_MS, WAIT_FOR_RELAY_TIMEOUT_MS } from "./page-tool-types.js";
 import { getRelayRecoveryHint, getRelayRetryAfterMs } from "./relay-error-policy.js";
-import { clampTimeout, enrichWaitResult, relayErrorToResult } from "./wait-tool-runtime.js";
+import { clampTimeout, enrichWaitResult, normalizeWaitArgs, relayErrorToResult } from "./wait-tool-runtime.js";
 import type { WaitForResult } from "./wait-tool-contracts.js";
 
 export async function handleWaitForInline(
@@ -14,8 +14,9 @@ export async function handleWaitForInline(
   }
   try {
     const startMs = Date.now();
-    const effectiveTimeout = clampTimeout(args.timeout);
-    const response = await relay.request("wait_for", { ...args, timeout: effectiveTimeout } as Record<string, unknown>, WAIT_FOR_RELAY_TIMEOUT_MS);
+    const normalizedArgs = normalizeWaitArgs(args);
+    const effectiveTimeout = clampTimeout(normalizedArgs.timeout);
+    const response = await relay.request("wait_for", { ...normalizedArgs, timeout: effectiveTimeout } as Record<string, unknown>, WAIT_FOR_RELAY_TIMEOUT_MS);
     if (response.success && response.data !== undefined) {
       return enrichWaitResult(response.data as WaitForResult, effectiveTimeout);
     }

@@ -305,6 +305,29 @@ describe("handleWaitFor — B2-WA-005: Timeout error semantics", () => {
     expect(result.error).toBe("timeout");
     expect(result.elapsedMs).toBe(25000);
   });
+
+  it("H1/H5: empty optional fields do not turn a text timeout into action-failed", async () => {
+    const relay = makeRelayResolve({ met: false, error: "timeout", elapsedMs: 250 });
+    const result = await expectHandleWaitFor(relay, {
+      texts: ["never"],
+      selector: "",
+      stableLayoutMs: 0,
+      timeout: 250,
+    }, "H1/H5:empty-optional-fields");
+
+    expect(result).toMatchObject({
+      success: false,
+      met: false,
+      error: "timeout",
+      errorCode: "timeout",
+      timeoutMs: 250,
+    });
+    expect(relay.request).toHaveBeenCalledWith(
+      "wait_for",
+      { texts: ["never"], timeout: 250 },
+      expect.any(Number),
+    );
+  });
 });
 
 // ── handleWaitFor: B2-WA-006 Navigation interrupt ────────────────────────────────

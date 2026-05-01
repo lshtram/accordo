@@ -2,10 +2,22 @@ import { getRelayRecoveryHint, getRelayRetryAfterMs, classifyThrownRelayError } 
 import { WAIT_DEFAULT_TIMEOUT_MS, WAIT_MAX_TIMEOUT_MS, type WaitForArgs, type WaitForResult, type WaitToolError } from "./wait-tool-contracts.js";
 
 export function validateWaitArgs(args: WaitForArgs): { ok: true } | { ok: false; error: WaitToolError } {
-  const hasCondition = (args.texts !== undefined && args.texts.length > 0) || args.selector !== undefined || args.stableLayoutMs !== undefined;
+  const normalized = normalizeWaitArgs(args);
+  const hasCondition = (normalized.texts !== undefined && normalized.texts.length > 0) || normalized.selector !== undefined || normalized.stableLayoutMs !== undefined;
   if (!hasCondition) return invalidRequest("Provide at least one of: texts, selector, or stableLayoutMs.");
   if (args.timeout !== undefined && args.timeout < 0) return invalidRequest("timeout must be a non-negative number.");
   return { ok: true };
+}
+
+export function normalizeWaitArgs(args: WaitForArgs): WaitForArgs {
+  const normalized: WaitForArgs = {};
+  if (args.tabId !== undefined) normalized.tabId = args.tabId;
+  const texts = args.texts?.filter((text) => text.length > 0);
+  if (texts !== undefined && texts.length > 0) normalized.texts = texts;
+  if (args.selector !== undefined && args.selector.trim().length > 0) normalized.selector = args.selector;
+  if (args.stableLayoutMs !== undefined && args.stableLayoutMs > 0) normalized.stableLayoutMs = args.stableLayoutMs;
+  if (args.timeout !== undefined) normalized.timeout = args.timeout;
+  return normalized;
 }
 
 export function clampTimeout(rawTimeout: number | undefined): number {

@@ -146,6 +146,26 @@ describe("handleClick — selector resolution", () => {
     expect(response.success).toBe(false);
     expect(response.error).toBe("element-not-found");
   });
+
+  it("returns invalid-request without foregrounding when no click target is provided", async () => {
+    const response = await handleClick(makeRequest({ tabId: 1 }));
+
+    const commandCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls;
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("invalid-request");
+    expect(commandCalls.some(([, method]) => method === "Page.bringToFront")).toBe(false);
+    expect(commandCalls.some(([, method]) => method === "Input.dispatchMouseEvent")).toBe(false);
+  });
+
+  it("returns invalid-request without foregrounding when coordinates are malformed", async () => {
+    const response = await handleClick(makeRequest({ tabId: 1, coordinates: { x: "bad" } }));
+
+    const commandCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls;
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("invalid-request");
+    expect(commandCalls.some(([, method]) => method === "Page.bringToFront")).toBe(false);
+    expect(commandCalls.some(([, method]) => method === "Input.dispatchMouseEvent")).toBe(false);
+  });
 });
 
 describe("handleClick — CDP mouse sequence", () => {
@@ -196,6 +216,25 @@ describe("handleClick — CDP mouse sequence", () => {
     expect(clickCalls[0][2]).toMatchObject({ type: "mouseMoved" });
     expect(clickCalls[1][2]).toMatchObject({ type: "mousePressed", button: "left", clickCount: 1 });
     expect(clickCalls[2][2]).toMatchObject({ type: "mouseReleased", button: "left", clickCount: 1 });
+  });
+
+  it("brings the page to front before dispatching selector click input", async () => {
+    (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      x: 75,
+      y: 90,
+      bounds: { x: 50, y: 80, width: 50, height: 20 },
+      inViewport: true,
+    });
+
+    const request = makeRequest({ tabId: 1, selector: "#selector-click-target" });
+    await handleClick(request);
+
+    const commandCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls;
+    const bringToFrontIndex = commandCalls.findIndex(([, method]) => method === "Page.bringToFront");
+    const firstMouseIndex = commandCalls.findIndex(([, method]) => method === "Input.dispatchMouseEvent");
+
+    expect(bringToFrontIndex).toBeGreaterThanOrEqual(0);
+    expect(firstMouseIndex).toBeGreaterThan(bringToFrontIndex);
   });
 });
 

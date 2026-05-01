@@ -31,6 +31,7 @@ export class SnapshotStore {
   async save(pageId: string, snapshot: VersionedSnapshot): Promise<void> {
     let list = this.pageSnapshots.get(pageId) ?? [];
     if (this.maxAgeMs > 0) list = evictExpired(this.maxAgeMs, this.capturedAt, this.bySnapshotId, list);
+    this.removeSnapshotIdFromOtherPages(pageId, snapshot.snapshotId);
     const existingIndex = list.findIndex((entry) => entry.snapshotId === snapshot.snapshotId);
     if (existingIndex >= 0) {
       list.splice(existingIndex, 1);
@@ -132,6 +133,16 @@ export class SnapshotStore {
     const captured = this.capturedAt.get(snapshotId);
     if (captured === undefined) return false;
     return Date.now() - captured > this.maxAgeMs;
+  }
+
+  private removeSnapshotIdFromOtherPages(pageId: string, snapshotId: string): void {
+    for (const [otherPageId, otherList] of this.pageSnapshots.entries()) {
+      if (otherPageId === pageId) continue;
+      const filtered = otherList.filter((entry) => entry.snapshotId !== snapshotId);
+      if (filtered.length === otherList.length) continue;
+      if (filtered.length === 0) this.pageSnapshots.delete(otherPageId);
+      else this.pageSnapshots.set(otherPageId, filtered);
+    }
   }
 }
 

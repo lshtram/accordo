@@ -312,6 +312,24 @@ describe("M109-WAIT handleWaitForAction", () => {
     expect(result).toEqual({ error: "invalid-request" });
   });
 
+  it("H1/H5: ignores empty optional selector and zero stableLayoutMs when text wait is present", async () => {
+    const resultPromise = handleWaitForAction({
+      texts: ["NeverShown"],
+      selector: "",
+      stableLayoutMs: 0,
+      timeout: 250,
+    });
+
+    await tick(250 + POLL_INTERVAL_MS);
+
+    const result = await resultPromise;
+    expect(result).toMatchObject({
+      met: false,
+      error: "timeout",
+      elapsedMs: 250,
+    });
+  });
+
   /**
    * B2-WA-004: timeout defaults to DEFAULT_TIMEOUT_MS when omitted.
    */

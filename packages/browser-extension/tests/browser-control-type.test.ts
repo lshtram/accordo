@@ -150,6 +150,48 @@ describe("handleType — text insertion", () => {
     );
   });
 
+  it("brings the page to front before dispatching type input", async () => {
+    const request = makeRequest({ tabId: 1, text: "foreground me" });
+    await handleType(request);
+
+    const commandCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls;
+    const bringToFrontIndex = commandCalls.findIndex(([, method]) => method === "Page.bringToFront");
+    const insertTextIndex = commandCalls.findIndex(([, method]) => method === "Input.insertText");
+
+    expect(bringToFrontIndex).toBeGreaterThanOrEqual(0);
+    expect(insertTextIndex).toBeGreaterThan(bringToFrontIndex);
+  });
+
+  it("returns invalid-request without foregrounding when text is missing", async () => {
+    const response = await handleType(makeRequest({ tabId: 1 }));
+    const commandCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls;
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("invalid-request");
+    expect(commandCalls.some(([, method]) => method === "Page.bringToFront")).toBe(false);
+    expect(commandCalls.some(([, method]) => method === "Input.insertText")).toBe(false);
+  });
+
+  it("returns invalid-request without foregrounding when text is blank", async () => {
+    const response = await handleType(makeRequest({ tabId: 1, text: "   " }));
+    const commandCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls;
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("invalid-request");
+    expect(commandCalls.some(([, method]) => method === "Page.bringToFront")).toBe(false);
+    expect(commandCalls.some(([, method]) => method === "Input.insertText")).toBe(false);
+  });
+
+  it("returns invalid-request without foregrounding when text is not a string", async () => {
+    const response = await handleType(makeRequest({ tabId: 1, text: 123 }));
+    const commandCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls;
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("invalid-request");
+    expect(commandCalls.some(([, method]) => method === "Page.bringToFront")).toBe(false);
+    expect(commandCalls.some(([, method]) => method === "Input.insertText")).toBe(false);
+  });
+
   it("REQ-TC-010: text can contain Unicode and emoji", async () => {
     (globalThis.chrome.tabs.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
       x: 200,

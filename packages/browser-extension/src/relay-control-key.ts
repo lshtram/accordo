@@ -22,12 +22,13 @@ export async function handlePressKey(request: RelayActionRequest): Promise<Relay
       return actionFailed(request, "control-not-granted");
     }
 
-    await ensureAttached(tabId);
-
-    const keyCombo = payload.key as string;
-    if (!keyCombo) {
+    const keyCombo = typeof payload.key === "string" && payload.key.trim().length > 0 ? payload.key : undefined;
+    if (keyCombo === undefined) {
       return actionFailed(request, "invalid-request");
     }
+
+    await ensureAttached(tabId);
+    await sendCommand(tabId, "Page.bringToFront");
 
     const { modifiers, key } = parseKeyCombination(keyCombo);
     const keyEntry = KeyCodeMap[key];

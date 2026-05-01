@@ -18,9 +18,9 @@ export { waitForSelector, waitForStableLayout, waitForText } from "./wait-provid
 export async function handleWaitForAction(
   payload: Record<string, unknown>,
 ): Promise<WaitResult | { error: string }> {
-  const texts = Array.isArray(payload.texts) ? (payload.texts as string[]) : undefined;
-  const selector = typeof payload.selector === "string" ? payload.selector : undefined;
-  const stableLayoutMs = typeof payload.stableLayoutMs === "number" ? payload.stableLayoutMs : undefined;
+  const texts = Array.isArray(payload.texts) ? (payload.texts as string[]).filter((text) => text.length > 0) : undefined;
+  const selector = typeof payload.selector === "string" && payload.selector.trim().length > 0 ? payload.selector : undefined;
+  const stableLayoutMs = typeof payload.stableLayoutMs === "number" && payload.stableLayoutMs > 0 ? payload.stableLayoutMs : undefined;
   const rawTimeout = typeof payload.timeout === "number" ? payload.timeout : DEFAULT_TIMEOUT_MS;
 
   const hasCondition =

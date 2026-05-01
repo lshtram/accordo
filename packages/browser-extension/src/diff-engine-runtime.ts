@@ -43,18 +43,24 @@ export function computeDiff(from: VersionedSnapshot, to: VersionedSnapshot): Dif
   const toFlat = flattenNodes(to.nodes);
   const fromIndex = buildNodeIndex(fromFlat);
   const toIndex = buildNodeIndex(toFlat);
+  const fromIsPartial = isPartialSnapshot(from);
+  const toIsPartial = isPartialSnapshot(to);
 
   const added: DiffNode[] = [];
-  for (const [pid, node] of toIndex) {
-    if (!fromIndex.has(pid)) {
-      added.push({ nodeId: node.nodeId, tag: node.tag, id: node.id, text: node.text, role: node.role });
+  if (!fromIsPartial) {
+    for (const [pid, node] of toIndex) {
+      if (!fromIndex.has(pid)) {
+        added.push({ nodeId: node.nodeId, tag: node.tag, id: node.id, text: node.text, role: node.role });
+      }
     }
   }
 
   const removed: DiffNode[] = [];
-  for (const [pid, node] of fromIndex) {
-    if (!toIndex.has(pid)) {
-      removed.push({ nodeId: node.nodeId, tag: node.tag, id: node.id, text: node.text, role: node.role });
+  if (!toIsPartial) {
+    for (const [pid, node] of fromIndex) {
+      if (!toIndex.has(pid)) {
+        removed.push({ nodeId: node.nodeId, tag: node.tag, id: node.id, text: node.text, role: node.role });
+      }
     }
   }
 
@@ -97,4 +103,9 @@ export function computeDiff(from: VersionedSnapshot, to: VersionedSnapshot): Dif
     changed,
     summary,
   };
+}
+
+function isPartialSnapshot(snapshot: VersionedSnapshot): boolean {
+  const metadata = snapshot as VersionedSnapshot & { truncated?: unknown; hasMore?: unknown };
+  return metadata.truncated === true || metadata.hasMore === true;
 }

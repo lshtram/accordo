@@ -144,6 +144,63 @@ describe("B2-DE-002: computeDiff returns added, removed, changed arrays", () => 
     expect(removedDiv!.text).toBe("Goodbye");
   });
 
+  it("B2-DE-002: suppresses added noise when the baseline snapshot is partial", () => {
+    const from = {
+      ...makeVersionedSnapshot("page-filtered-baseline", 0, [
+        makeNodeIdentity("button", 1, { id: "only-filtered-match", persistentId: "button:only-filtered-match:" }),
+      ]),
+      truncated: true,
+    } as VersionedSnapshot & { truncated: true };
+    const to = makeVersionedSnapshot("page-filtered-baseline", 1, [
+      makeNodeIdentity("button", 1, { id: "only-filtered-match", persistentId: "button:only-filtered-match:" }),
+      makeNodeIdentity("main", 2, { id: "unrelated-full-page-node", persistentId: "main:unrelated-full-page-node:" }),
+    ]);
+
+    const result = computeDiff(from, to);
+
+    expect(result.added).toEqual([]);
+    expect(result.summary.addedCount).toBe(0);
+  });
+
+  it("B2-DE-002: suppresses removed noise when the target snapshot is partial", () => {
+    const from = makeVersionedSnapshot("page-filtered-target", 0, [
+      makeNodeIdentity("button", 1, { id: "only-filtered-match", persistentId: "button:only-filtered-match:" }),
+      makeNodeIdentity("main", 2, { id: "unrelated-full-page-node", persistentId: "main:unrelated-full-page-node:" }),
+    ]);
+    const to = {
+      ...makeVersionedSnapshot("page-filtered-target", 1, [
+        makeNodeIdentity("button", 1, { id: "only-filtered-match", persistentId: "button:only-filtered-match:" }),
+      ]),
+      hasMore: true,
+    } as VersionedSnapshot & { hasMore: true };
+
+    const result = computeDiff(from, to);
+
+    expect(result.removed).toEqual([]);
+    expect(result.summary.removedCount).toBe(0);
+  });
+
+  it("B2-DE-002: preserves shared-node changes when snapshots are partial", () => {
+    const from = {
+      ...makeVersionedSnapshot("page-filtered-change", 0, [
+        makeNodeIdentity("button", 1, { id: "shared", text: "Before", persistentId: "button:shared:" }),
+      ]),
+      truncated: true,
+    } as VersionedSnapshot & { truncated: true };
+    const to = {
+      ...makeVersionedSnapshot("page-filtered-change", 1, [
+        makeNodeIdentity("button", 1, { id: "shared", text: "After", persistentId: "button:shared:" }),
+      ]),
+      hasMore: true,
+    } as VersionedSnapshot & { hasMore: true };
+
+    const result = computeDiff(from, to);
+
+    expect(result.changed).toHaveLength(1);
+    expect(result.changed[0]).toMatchObject({ field: "textContent", before: "Before", after: "After" });
+    expect(result.summary.changedCount).toBe(result.changed.length);
+  });
+
   it("B2-DE-002: changed text content appears in changed array with field=textContent", () => {
     const from = makeVersionedSnapshot("page-3", 0, [
       makeNodeIdentity("div", 0, { id: "msg", persistentId: "div:msg:Hello", text: "Hello" }),

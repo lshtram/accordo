@@ -62,11 +62,19 @@ function collectAriaStates(el: HTMLElement): Record<string, boolean | undefined>
 }
 
 function computeObstruction(element: Element, rect: DOMRect): boolean | undefined {
-  if (rect.width > 0 && rect.height > 0 && typeof document.elementFromPoint === "function") {
-    const centerX = rect.x + rect.width / 2;
-    const centerY = rect.y + rect.height / 2;
+  if (rect.width <= 0 || rect.height <= 0) return undefined;
+  const centerX = rect.x + rect.width / 2;
+  const centerY = rect.y + rect.height / 2;
+
+  if (typeof document.elementsFromPoint === "function") {
+    const top = document.elementsFromPoint(centerX, centerY)
+      .find((candidate) => window.getComputedStyle(candidate).pointerEvents !== "none");
+    return top !== undefined && top !== element && !element.contains(top);
+  }
+
+  if (typeof document.elementFromPoint === "function") {
     const top = document.elementFromPoint(centerX, centerY);
-    return top !== null && !element.contains(top);
+    return top !== null && top !== element && !element.contains(top);
   }
   return undefined;
 }

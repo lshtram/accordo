@@ -103,6 +103,54 @@ describe("handlePressKey — basic key press", () => {
     expect(response.success).toBe(true);
     expect((response as { data?: { key?: string } }).data).toHaveProperty("key", "Enter");
   });
+
+  it("brings the page to front before dispatching key input", async () => {
+    const request = makeRequest({ tabId: 1, key: "Enter" });
+    await handlePressKey(request);
+
+    const commandCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls;
+    const bringToFrontIndex = commandCalls.findIndex(([, method]) => method === "Page.bringToFront");
+    const firstKeyIndex = commandCalls.findIndex(([, method]) => method === "Input.dispatchKeyEvent");
+
+    expect(bringToFrontIndex).toBeGreaterThanOrEqual(0);
+    expect(firstKeyIndex).toBeGreaterThan(bringToFrontIndex);
+  });
+
+  it("does not foreground the page or dispatch input when key is missing", async () => {
+    const request = makeRequest({ tabId: 1 });
+    const response = await handlePressKey(request);
+
+    const commandCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls;
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("invalid-request");
+    expect(commandCalls.some(([, method]) => method === "Page.bringToFront")).toBe(false);
+    expect(commandCalls.some(([, method]) => method === "Input.dispatchKeyEvent")).toBe(false);
+  });
+
+  it("does not foreground the page or dispatch input when key is not a string", async () => {
+    const request = makeRequest({ tabId: 1, key: 42 });
+    const response = await handlePressKey(request);
+
+    const commandCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls;
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("invalid-request");
+    expect(commandCalls.some(([, method]) => method === "Page.bringToFront")).toBe(false);
+    expect(commandCalls.some(([, method]) => method === "Input.dispatchKeyEvent")).toBe(false);
+  });
+
+  it("does not foreground the page or dispatch input when key is blank", async () => {
+    const request = makeRequest({ tabId: 1, key: "   " });
+    const response = await handlePressKey(request);
+
+    const commandCalls = (globalThis.chrome.debugger.sendCommand as ReturnType<typeof vi.fn>).mock.calls;
+
+    expect(response.success).toBe(false);
+    expect(response.error).toBe("invalid-request");
+    expect(commandCalls.some(([, method]) => method === "Page.bringToFront")).toBe(false);
+    expect(commandCalls.some(([, method]) => method === "Input.dispatchKeyEvent")).toBe(false);
+  });
 });
 
 describe("handlePressKey — modifier bitmask", () => {

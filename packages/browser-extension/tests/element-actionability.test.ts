@@ -189,6 +189,82 @@ describe("ElementDetail actionability fields", () => {
         vi.restoreAllMocks();
       }
     });
+
+    it("F4-EVENT-002: uses hit-test stack to detect overlay obstruction", async () => {
+      const el = makeElementWithRect("stack-obstructed-el", { x: 10, y: 10, width: 100, height: 50 });
+      const overlay = document.createElement("div");
+      document.body.appendChild(overlay);
+      const originalElementsFromPoint = document.elementsFromPoint;
+
+      Object.defineProperty(document, "elementsFromPoint", { configurable: true, value: vi.fn((x: number, y: number) => {
+        if (x === 60 && y === 35) return [overlay, el];
+        return [el];
+      }) });
+      vi.spyOn(window, "getComputedStyle").mockReturnValue({ pointerEvents: "auto" } as CSSStyleDeclaration);
+
+      try {
+        const result = inspectElement({ selector: "#stack-obstructed-el" });
+        expect(result.found).toBe(true);
+        expect(result.element?.isObstructed).toBe(true);
+      } finally {
+        document.body.removeChild(el);
+        document.body.removeChild(overlay);
+        if (originalElementsFromPoint === undefined) Reflect.deleteProperty(document, "elementsFromPoint");
+        else Object.defineProperty(document, "elementsFromPoint", { configurable: true, value: originalElementsFromPoint });
+        vi.restoreAllMocks();
+      }
+    });
+
+    it("F4-EVENT-002: ignores pointer-events none overlays in the hit-test stack", async () => {
+      const el = makeElementWithRect("pointer-none-overlay-target", { x: 10, y: 10, width: 100, height: 50 });
+      const overlay = document.createElement("div");
+      document.body.appendChild(overlay);
+      const originalElementsFromPoint = document.elementsFromPoint;
+
+      Object.defineProperty(document, "elementsFromPoint", { configurable: true, value: vi.fn((x: number, y: number) => {
+        if (x === 60 && y === 35) return [overlay, el];
+        return [el];
+      }) });
+      vi.spyOn(window, "getComputedStyle").mockImplementation((candidate: Element) => ({
+        pointerEvents: candidate === overlay ? "none" : "auto",
+      } as CSSStyleDeclaration));
+
+      try {
+        const result = inspectElement({ selector: "#pointer-none-overlay-target" });
+        expect(result.found).toBe(true);
+        expect(result.element?.isObstructed).toBe(false);
+      } finally {
+        document.body.removeChild(el);
+        document.body.removeChild(overlay);
+        if (originalElementsFromPoint === undefined) Reflect.deleteProperty(document, "elementsFromPoint");
+        else Object.defineProperty(document, "elementsFromPoint", { configurable: true, value: originalElementsFromPoint });
+        vi.restoreAllMocks();
+      }
+    });
+
+    it("F4-EVENT-002: does not treat child hit targets as obstruction", async () => {
+      const el = makeElementWithRect("child-hit-target", { x: 10, y: 10, width: 100, height: 50 });
+      const child = document.createElement("span");
+      el.appendChild(child);
+      const originalElementsFromPoint = document.elementsFromPoint;
+
+      Object.defineProperty(document, "elementsFromPoint", { configurable: true, value: vi.fn((x: number, y: number) => {
+        if (x === 60 && y === 35) return [child, el];
+        return [el];
+      }) });
+      vi.spyOn(window, "getComputedStyle").mockReturnValue({ pointerEvents: "auto" } as CSSStyleDeclaration);
+
+      try {
+        const result = inspectElement({ selector: "#child-hit-target" });
+        expect(result.found).toBe(true);
+        expect(result.element?.isObstructed).toBe(false);
+      } finally {
+        document.body.removeChild(el);
+        if (originalElementsFromPoint === undefined) Reflect.deleteProperty(document, "elementsFromPoint");
+        else Object.defineProperty(document, "elementsFromPoint", { configurable: true, value: originalElementsFromPoint });
+        vi.restoreAllMocks();
+      }
+    });
   });
 
   describe("clickTargetSize", () => {

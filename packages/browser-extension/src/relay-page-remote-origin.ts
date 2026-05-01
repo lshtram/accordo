@@ -8,11 +8,12 @@
  */
 
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
-import { defaultStore, isVersionedSnapshot } from "./relay-definitions.js";
+import { actionFailed, defaultStore, isVersionedSnapshot } from "./relay-definitions.js";
 import { forwardToMainFrame, NO_CONTENT_SCRIPT, reinjectAndForwardToFrame, resolveRequestedUrl } from "./relay-forwarder.js";
 import { enrichWithAuditLog, isOriginBlockedByPolicy, mintAuditId, parseOriginPolicy } from "./relay-privacy.js";
 import { buildSpatialErrorResponse, readSpatialError } from "./relay-page-spatial-errors.js";
 import { buildAuditedSuccess } from "./relay-page-remote-audit.js";
+import { readForwardedContentError } from "./relay-page-forwarded-errors.js";
 
 /**
  * Returns null when origin is allowed.
@@ -76,6 +77,8 @@ export function unwrapForwardData(
 ): RelayActionResponse | unknown {
   const spatialError = readSpatialError(request.action, data);
   if (spatialError) return buildSpatialErrorResponse(request, spatialError);
+  const contentError = readForwardedContentError(data);
+  if (contentError) return actionFailed(request, contentError);
   return data;
 }
 

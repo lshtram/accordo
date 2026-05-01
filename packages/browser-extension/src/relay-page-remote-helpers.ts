@@ -50,7 +50,10 @@ export function deriveFrameId(payload: Record<string, unknown>): string | undefi
   const rawFrameId = payload.frameId;
   const uid = typeof payload.uid === "string" ? payload.uid : undefined;
   const uidFrameId = uid && uid.includes(":") ? uid.slice(0, uid.lastIndexOf(":")) : undefined;
-  return typeof rawFrameId === "string" && rawFrameId.trim().length > 0 ? rawFrameId : uidFrameId;
+  if (typeof rawFrameId === "string" && rawFrameId.trim().length > 0) {
+    return rawFrameId === "main" ? undefined : rawFrameId;
+  }
+  return uidFrameId === "main" ? undefined : uidFrameId;
 }
 
 // ── Spatial routing decision (returns frameId or "main" or undefined) ───────

@@ -3,6 +3,7 @@ import { actionFailed, defaultStore, isVersionedSnapshot } from "./relay-definit
 import { forwardToFrame, NO_CONTENT_SCRIPT, reinjectAndForwardToFrame } from "./relay-forwarder.js";
 import { buildSpatialErrorResponse, readSpatialError } from "./relay-page-spatial-errors.js";
 import { buildFramePathIndex, findIframeMetadataByPath, stitchIframeNodes } from "./relay-page-frame-tree.js";
+import { readForwardedContentError } from "./relay-page-forwarded-errors.js";
 
 function pageMapPayload(payload: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -72,6 +73,8 @@ export async function forwardFrameAction(
   if (data === null) return actionFailed(request);
   const spatialError = readSpatialError(request.action, data);
   if (spatialError) return buildSpatialErrorResponse(request, spatialError);
+  const contentError = readForwardedContentError(data);
+  if (contentError) return actionFailed(request, contentError);
   if (saveToStore && isVersionedSnapshot(data)) {
     await defaultStore.save((data as { pageId: string }).pageId, data as Parameters<typeof defaultStore.save>[1]);
   }

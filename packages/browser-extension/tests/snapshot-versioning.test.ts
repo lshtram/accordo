@@ -624,6 +624,27 @@ describe("M100-SNAP — Snapshot Versioning", () => {
       expect(await store.list(pageId)).toHaveLength(1);
       expect(store.listAll().get(pageId)).toHaveLength(1);
     });
+
+    it("B2-SV-004: save keeps snapshot IDs unique across pages", async () => {
+      const store = new SnapshotStore(5);
+      const snapshot: VersionedSnapshot = {
+        pageId: "page-a",
+        frameId: "main",
+        snapshotId: "shared:1",
+        capturedAt: new Date().toISOString(),
+        viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+        source: "dom",
+        nodes: [],
+        totalElements: 0,
+      };
+
+      await store.save("page-a", snapshot);
+      await store.save("page-b", { ...snapshot, pageId: "page-b", capturedAt: new Date().toISOString() });
+
+      const all = store.listAll();
+      expect(all.get("page-a")).toBeUndefined();
+      expect(all.get("page-b")?.map((entry) => entry.snapshotId)).toEqual(["shared:1"]);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════════

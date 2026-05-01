@@ -2,7 +2,7 @@ import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { BrowserRelayLike } from "./types.js";
 import { RELAY_TIMEOUT_MS, WAIT_DEFAULT_TIMEOUT_MS, WAIT_MAX_TIMEOUT_MS, type WaitForArgs, type WaitForResult, type WaitToolError } from "./wait-tool-contracts.js";
 import { IMPLICIT_TARGET_TAB_DESCRIPTION } from "./tab-target-contract.js";
-import { clampTimeout, enrichWaitResult, relayErrorToResult, relayThrownToError, validateWaitArgs } from "./wait-tool-runtime.js";
+import { clampTimeout, enrichWaitResult, normalizeWaitArgs, relayErrorToResult, relayThrownToError, validateWaitArgs } from "./wait-tool-runtime.js";
 
 export { RELAY_TIMEOUT_MS, WAIT_DEFAULT_TIMEOUT_MS, WAIT_MAX_TIMEOUT_MS, type WaitForArgs, type WaitForResult, type WaitToolError } from "./wait-tool-contracts.js";
 
@@ -31,7 +31,8 @@ export function buildWaitForTool(relay: BrowserRelayLike): ExtensionToolDefiniti
 export async function handleWaitFor(relay: BrowserRelayLike, args: WaitForArgs): Promise<WaitForResult | WaitToolError> {
   const validation = validateWaitArgs(args);
   if (!validation.ok) return validation.error;
-  const payload: Record<string, unknown> = { ...args, timeout: clampTimeout(args.timeout) };
+  const normalizedArgs = normalizeWaitArgs(args);
+  const payload: Record<string, unknown> = { ...normalizedArgs, timeout: clampTimeout(normalizedArgs.timeout) };
   const startMs = Date.now();
   try {
     const response = await relay.request("wait_for", payload, RELAY_TIMEOUT_MS);
