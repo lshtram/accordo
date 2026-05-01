@@ -595,6 +595,15 @@ describe("G6: capture_region transport='file-ref' artifact transport", () => {
     expect((result.filePath as string).endsWith(".png")).toBe(true);
   });
 
+  it("G6: file extension uses .webp when format='webp' and transport='file-ref'", async () => {
+    const args: CaptureRegionArgs = { tabId: 1, mode: "viewport", transport: "file-ref", format: "webp" };
+
+    const result = await handleCaptureRegion(relay, args, store) as Record<string, unknown>;
+
+    expect(result.artifactMode).toBe("file-ref");
+    expect((result.filePath as string).endsWith(".webp")).toBe(true);
+  });
+
   /**
    * G6: Default transport (omitted) now uses file-ref — writes file and returns fileUri + filePath.
    * Inline base64 is no longer the default; caller must pass transport="inline" to get dataUrl.
@@ -626,6 +635,33 @@ describe("G6: capture_region transport='file-ref' artifact transport", () => {
     expect(result).not.toHaveProperty("filePath");
     expect(result).not.toHaveProperty("fileUri");
     expect(result).not.toHaveProperty("transportFallback");
+  });
+
+  it("MCP-VC-004: format='webp' returns inline data:image/webp payload", async () => {
+    relay.request = vi.fn().mockResolvedValue({
+      success: true,
+      requestId: "test-webp",
+      data: {
+        success: true,
+        dataUrl: "data:image/webp;base64,bW9jaw==",
+        width: 100,
+        height: 100,
+        sizeBytes: 1000,
+        anchorSource: "rect",
+        pageId: "page",
+        frameId: "main",
+        snapshotId: "page:0",
+        capturedAt: "2025-01-01T00:00:00.000Z",
+        viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0, devicePixelRatio: 1 },
+        source: "dom" as const,
+      },
+    });
+
+    const args: CaptureRegionArgs = { tabId: 1, mode: "viewport", transport: "inline", format: "webp" };
+    const result = await handleCaptureRegion(relay, args, store) as Record<string, unknown>;
+
+    expect(result.artifactMode).toBe("inline");
+    expect((result.dataUrl as string).startsWith("data:image/webp;base64,")).toBe(true);
   });
 
   /**

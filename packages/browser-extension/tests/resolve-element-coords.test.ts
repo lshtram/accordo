@@ -165,7 +165,7 @@ describe("RESOLVE_ELEMENT_COORDS — error codes", () => {
       uid: "this-uid-does-not-exist-anywhere-12345",
     });
 
-    expect(response).toHaveProperty("error");
+    expect(response).toEqual({ error: "not-found" });
   });
 
   it("error 'zero-size': should be returned for 0x0 elements when handler is implemented", async () => {

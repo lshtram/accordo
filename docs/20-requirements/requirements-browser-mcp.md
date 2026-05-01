@@ -2,8 +2,8 @@
 
 **Scope:** `accordo_browser_*` MCP tools — the agent-facing page understanding, interaction, and visual capture surface  
 **Type:** Consolidated requirements for the MCP-visible browser tool surface  
-**Version:** 0.2.0  
-**Date:** 2026-04-24 (revised)  
+**Version:** 0.2.1  
+**Date:** 2026-04-30 (closeout refresh)  
 **Evaluation checklist:** [`docs/30-development/mcp-webview-agent-evaluation-checklist.md`](../30-development/mcp-webview-agent-evaluation-checklist.md)  
 **Evaluation results:** [`docs/50-reviews/M110-TC-browser-tools-evaluation.md`](../50-reviews/M110-TC-browser-tools-evaluation.md)  
 **Improvement plan:** [`docs/50-reviews/M110-TC-improvement-plan.md`](../50-reviews/M110-TC-improvement-plan.md)
@@ -83,14 +83,16 @@ All browser MCP tools use the `accordo_browser_*` naming convention (underscore-
 When `mode` is omitted, `accordo_browser_capture_region` MUST behave exactly as today — requiring `rect`, `anchorKey`, or `nodeRef`. This is equivalent to `mode: "region"`.  
 **Acceptance:** All existing tests pass without modification. Existing callers that omit `mode` see no behavior change.
 
-**MCP-VC-004: PNG format support**  
-`accordo_browser_capture_region` MUST accept an optional `format` parameter: `"jpeg"` (default) or `"png"`. When `format: "png"`, the output data URL uses `image/png` encoding. Quality parameter is ignored for PNG (lossless). WebP is deferred.  
-**Acceptance:** `capture_region(format: "png")` returns a `data:image/png;base64,...` data URL.
+**MCP-VC-004: PNG/WebP format support**  
+`accordo_browser_capture_region` MUST accept an optional `format` parameter: `"jpeg"` (default), `"png"`, or `"webp"`. When `format: "png"`, the output uses `image/png` encoding and `quality` is ignored (lossless). When `format: "webp"`, the output uses `image/webp` encoding and `quality` applies.  
+**Acceptance:** `capture_region(format: "png")` returns a `data:image/png;base64,...` payload (or a file-ref PNG artifact when file transport is selected). `capture_region(format: "webp")` returns a `data:image/webp;base64,...` payload (or a file-ref WebP artifact when file transport is selected).
 
 **MCP-VC-005: Redaction warning on screenshot responses**  
 When a `RedactionPolicy` is configured (i.e., `redactPatterns` is non-empty), screenshot responses from `accordo_browser_capture_region` (in any `mode`: region, viewport, or fullPage) MUST include `redactionWarning: "screenshots-not-subject-to-redaction-policy"` when screenshot redaction was relevant but not applied. This makes explicit that screenshot content has not been redacted, even though text-producing tools apply redaction. When no `RedactionPolicy` is configured, the field is omitted. When `redactPII:false` is explicitly passed, screenshot redaction is suppressed and this warning is omitted.  
 **Acceptance:** With a `RedactionPolicy` containing at least one pattern, `capture_region(mode: "viewport")` response includes `redactionWarning: "screenshots-not-subject-to-redaction-policy"` unless screenshot redaction was applied or `redactPII:false` explicitly suppressed it. Without a policy, the field is absent.  
 **Cross-reference:** B2-PS-007 (screenshot redaction deferred), B2-PS-004 (text redaction).
+
+**OCR scope decision (2026-04-30):** OCR-assisted screenshot redaction remains out of scope for the current browser closeout. Screenshot redaction is limited to text-map/bounding-box overlays from DOM-visible text; image-only PII is not claimed as covered. Tool descriptions and operator docs MUST preserve that limitation rather than implying full-image OCR redaction.
 
 **MCP-VC-006: artifactMode metadata on successful screenshot responses**  
 All successful screenshot responses from `accordo_browser_capture_region` (in any `mode`: region, viewport, or fullPage) MUST include an `artifactMode` field. The current implementation supports `"inline"` for base64 `dataUrl` transport and `"file-ref"` when file-backed transport is requested. `"remote-ref"` remains reserved for future storage subsystems. Error responses MUST NOT include `artifactMode`.  
@@ -123,13 +125,15 @@ The following error codes MUST include `retryable: true` and a `retryAfterMs` va
 
 The following error codes MUST include `retryable: false`:
 - `"element-not-found"` → `retryable: false`
-- `"element-off-screen"` → `retryable: false`
 - `"image-too-large"` → `retryable: false`
-- `"capture-failed"` → `retryable: false`
 - `"origin-blocked"` → `retryable: false`
 - `"snapshot-not-found"` → `retryable: false`
 - `"snapshot-stale"` → `retryable: false`
 - `"redaction-failed"` → `retryable: false`
+
+The following capture-adjacent error codes are treated as transient and MUST include retry hints:
+- `"capture-failed"` → `retryable: true, retryAfterMs: 2000`
+- `"element-off-screen"` → `retryable: true, retryAfterMs: 1000`
 
 **Acceptance:** Each listed error code returns the correct `retryable` and `retryAfterMs` values.
 
@@ -245,17 +249,17 @@ These requirements are fully specified in other documents and are not duplicated
 
 ## 6. Evaluation Category → Requirement Traceability
 
-| Eval Category | Score | Target | This Doc | Other Docs | Key Gap |
-|---|---:|---:|---|---|---|
-| A. Session & Context | 4 | 4–5 | MCP-NAV-001 | B2-SV-003, PU-F-01..06 | readyState on navigate |
-| B. Text Extraction | 5 | 5 | — | B2-TX-001..010 | None — production-ready |
-| C. Semantic Structure | 4 | 5 | MCP-A11Y-001 | B2-SG-001..015 | Actionability states, form labels |
-| D. Layout/Geometry | 3 | 3 | — | B2-FI-006, B2-VD-010..013 | Geometry helpers deferred |
-| E. Visual Capture | 3 | 4 | MCP-VC-001..006 | CR-F-01..12 | Viewport/full-page screenshot; redaction warning; artifact transport metadata |
-| F. Interaction Model | 3 | 4 | — (bug fix) | B2-FI-002 | `interactiveOnly` depth bug |
-| G. Deltas/Efficiency | 4 | 4 | — | B2-SV/DE/FI-* | Cross-nav diff deferred (B2-SV-002/005 unchanged) |
-| H. Robustness | 3 | 4 | MCP-ER-001..004 | B2-WA-*, B2-ER-* | Retry hints, structured errors, capture error taxonomy |
-| I. Security/Privacy | 0 | 2–3 | MCP-SEC-001..005 | B2-PS-001..007, B2-ER-007..008 | Implemented; remaining work is confidence/coverage, not core design |
+| Eval Category | Current Status | This Doc | Other Docs | Remaining Gap |
+|---|---|---|---|---|
+| A. Session & Context | Closeout approved | MCP-NAV-001 | B2-SV-003, PU-F-01..06 | Maintain live tab-continuity smoke coverage |
+| B. Text Extraction | Closeout approved | — | B2-TX-001..010 | None currently tracked |
+| C. Semantic Structure | Closeout approved | MCP-A11Y-001 | B2-SG-001..015 | Live inspect wrapper ergonomics only |
+| D. Layout/Geometry | Closeout approved | — | B2-FI-006, B2-VD-010..013 | None currently tracked for closeout |
+| E. Visual Capture | Closeout approved | MCP-VC-001..006 | CR-F-01..12 | Maintain screenshot metadata live smoke coverage |
+| F. Interaction Model | Closeout approved | — | B2-FI-002 | Maintain control-tool live smoke coverage |
+| G. Deltas/Efficiency | Closeout approved | — | B2-SV/DE/FI-* | Cross-navigation diff remains deferred unless reprioritized |
+| H. Robustness | Closeout approved | MCP-ER-001..005 | B2-WA-*, B2-ER-* | Reconnect scheduling and live retry-path smoke coverage |
+| I. Security/Privacy | Closeout approved | MCP-SEC-001..005 | B2-PS-001..007, B2-ER-007..008 | OCR screenshot redaction explicitly deferred |
 
 ---
 
@@ -279,7 +283,7 @@ All `accordo_browser_*` tools MUST return responses conforming to the `SnapshotE
 
 ## 8. Phase Mapping
 
-> **Note:** The improvement plan sequence (in [`M110-TC-improvement-plan.md`](../50-reviews/M110-TC-improvement-plan.md)) is authoritative for execution order. This table groups requirements by phase for traceability.
+> **Historical note:** The M110-TC improvement phases below describe the original implementation sequence. The current browser MCP surface has since passed the closeout review in `docs/50-reviews/browser-mcp-checklist-review-2026-04-29.md`; remaining work is tracked in `docs/00-workplan/workplan.md` under Priority J.
 
 | Phase | New Requirements | Effort | Score Impact |
 |---|---|---:|---|

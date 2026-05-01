@@ -825,6 +825,8 @@ describe("handleCaptureRegion propagates RESOLVE_ANCHOR_BOUNDS error codes", () 
     expect(response.success).toBe(true);
     expect((response.data as Record<string, unknown>)["success"]).toBe(false);
     expect((response.data as Record<string, unknown>)["error"]).toBe("element-off-screen");
+    expect((response.data as Record<string, unknown>)["retryable"]).toBe(true);
+    expect((response.data as Record<string, unknown>)["retryAfterMs"]).toBe(1000);
   });
 
   /**
@@ -944,8 +946,9 @@ describe("CR-F-12: capture-failed and image-too-large integration tests (Gap 3)"
     const data = response.data as Record<string, unknown>;
     expect(data["success"]).toBe(false);
     expect(data["error"]).toBe("capture-failed");
-    // Must carry retryable:false metadata from ERROR_META
-    expect(data["retryable"]).toBe(false);
+    // Must carry transient retry metadata from ERROR_META
+    expect(data["retryable"]).toBe(true);
+    expect(data["retryAfterMs"]).toBe(2000);
   });
 
   /**
