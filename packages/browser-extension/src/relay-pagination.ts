@@ -45,11 +45,14 @@ export function appendNodePaginationMetadata(
   data: Record<string, unknown>,
   opts: { totalAvailable: number; offset: number; limit: number },
 ): void {
-  const nodes = Array.isArray(data.nodes) ? data.nodes : [];
-  const totalAvailable = opts.totalAvailable;
-  const sliced = nodes.slice(opts.offset, opts.offset + opts.limit);
+  // Use the full node list length (totalElements) as totalAvailable — not the
+  // already-sliced result — so the diff engine can distinguish partial from
+  // complete snapshots reliably regardless of what the pagination cap returns.
+  const fullNodes = Array.isArray(data.nodes) ? data.nodes : [];
+  const sliced = fullNodes.slice(opts.offset, opts.offset + opts.limit);
   data.nodes = sliced;
   const nextOffset = opts.offset + sliced.length;
+  const totalAvailable = opts.totalAvailable;
   data.hasMore = nextOffset < totalAvailable;
   data.totalAvailable = totalAvailable;
   if (sliced.length > 0) data.nextOffset = nextOffset;

@@ -24,7 +24,7 @@ export function buildPassedNode(
 
   const node: PageNode = { ref, tag, nodeId, uid: `${frameId}:${nodeId}` };
   const directTextForId = Array.from(element.childNodes).filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent ?? "").join("").trim();
-  node.persistentId = computePersistentId(tag, element.id || undefined, String(nodeId));
+  node.persistentId = computePersistentId(tag, element.id || undefined, nodeId);
   if (element.id) node.id = element.id;
   const role = element.getAttribute("role");
   if (role) node.role = role;

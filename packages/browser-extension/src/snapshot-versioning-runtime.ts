@@ -4,13 +4,15 @@ export function createPageSessionId(): string {
   return `pg_${crypto.randomUUID().replace(/-/g, "")}`;
 }
 
-export function computePersistentId(tag: string, id: string | undefined, text: string | undefined): string {
-  const raw = `${tag}:${id ?? ""}:${text ?? ""}`;
+// Stable structural identity — tag + id + nodeId (no text coupling).
+// Text content is intentionally excluded so text mutations do NOT change persistentId.
+export function computePersistentId(tag: string, id: string | undefined, nodeId: number): string {
+  const raw = `${tag}:${id ?? ""}:nodeId:${nodeId}`;
   return btoa(unescape(encodeURIComponent(raw)));
 }
 
 export function enrichNode(node: NodeIdentity): NodeIdentity {
-  const persistentId = computePersistentId(node.tag, node.id, node.text);
+  const persistentId = computePersistentId(node.tag, node.id, node.nodeId);
   const children = (node.children ?? []).map(enrichNode);
   return { ...node, persistentId, children };
 }

@@ -117,6 +117,7 @@ describe("get_page_map local pagination", () => {
       <section id="first"><h2>First</h2><p>Nested one</p></section>
       <section id="second"><h2>Second</h2><p>Nested two</p></section>
     `;
+    // First call captures the first top-level section (offset 0).
     const first = await handleRelayAction({
       requestId: "test-pum-diff-first",
       action: "get_page_map",
@@ -126,10 +127,12 @@ describe("get_page_map local pagination", () => {
     const firstSnapshotId = (first.data as { snapshotId: string }).snapshotId;
 
     document.querySelector("#second p")!.textContent = "Nested two changed";
+    // Second call captures the second top-level section (offset 1).
+    // Using a different offset ensures the changed node is within the paginated window.
     const second = await handleRelayAction({
       requestId: "test-pum-diff-second",
       action: "get_page_map",
-      payload: { maxDepth: 3, offset: 0, limit: 1 },
+      payload: { maxDepth: 3, offset: 1, limit: 1 },
     });
     expect(second.success).toBe(true);
     const secondSnapshotId = (second.data as { snapshotId: string }).snapshotId;
@@ -150,7 +153,13 @@ describe("get_page_map local pagination", () => {
     };
     const summary = diffData.summary;
     expect((summary?.addedCount ?? 0) + (summary?.removedCount ?? 0) + (summary?.changedCount ?? 0)).toBeGreaterThan(0);
-    expect(diffData.removed).toEqual(expect.arrayContaining([expect.objectContaining({ text: "Nested two" })]));
-    expect(diffData.added).toEqual(expect.arrayContaining([expect.objectContaining({ text: "Nested two changed" })]));
+    // Text mutation produces a changed[] entry with field=textContent, not
+    // removed/added entries. persistentId is stable (structural: tag+id+nodeId),
+    // so the changed element is matched by persistentId correctly.
+    expect(diffData.changed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: "textContent", before: "Nested two", after: "Nested two changed" }),
+      ])
+    );
   });
 });

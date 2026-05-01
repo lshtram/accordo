@@ -6,7 +6,9 @@ export function flattenNodes(nodes: readonly NodeIdentity[]): FlatNode[] {
   function visit(node: NodeIdentity): void {
     result.push({
       nodeId: node.nodeId,
-      persistentId: node.persistentId ?? `${node.tag}:${node.id ?? ""}:${node.text ?? ""}`,
+      // Stable structural identity — never text-coupled (which would suppress
+      // real text changes and make text mutations produce spurious persistentIds).
+      persistentId: node.persistentId ?? `${node.tag}:${node.id ?? ""}:nodeId:${node.nodeId}`,
       tag: node.tag,
       text: node.text,
       role: node.role,
