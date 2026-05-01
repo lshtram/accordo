@@ -27,8 +27,8 @@ export interface WaitForResult {
 
 export interface WaitToolError {
   success: false;
-  error: "browser-not-connected" | "timeout" | "action-failed" | "invalid-request";
-  errorCode?: "browser-not-connected" | "timeout" | "action-failed" | "invalid-request";
+  error: "browser-not-connected" | "timeout" | "action-failed" | "invalid-request" | "no-content-script";
+  errorCode?: "browser-not-connected" | "timeout" | "action-failed" | "invalid-request" | "no-content-script";
   retryable: boolean;
   retryAfterMs?: number;
   recoveryHints?: string;

@@ -11,7 +11,7 @@ import type { BrowserRelayLike } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { SecurityConfig } from "./security/index.js";
 import type { SpatialRelationsToolError } from "./spatial-relations-tool.js";
-import type { GetSpatialRelationsArgs, SpatialRelationsResponse } from "./page-tool-meta-types.js";
+import { buildStructuredError, type GetSpatialRelationsArgs, type SpatialRelationsResponse } from "./page-tool-meta-types.js";
 import { beginSpatialAudit } from "./spatial-relations-audit.js";
 import {
   guardCapAndAudit,
@@ -27,7 +27,7 @@ export async function handleGetSpatialRelationsRuntime(
   store: SnapshotRetentionStore,
   security: SecurityConfig,
 ): Promise<SpatialRelationsToolError | SpatialRelationsResponse> {
-  if (!relay.isConnected()) return { success: false, error: "browser-not-connected" } as unknown as SpatialRelationsToolError;
+  if (!relay.isConnected()) return buildStructuredError("browser-not-connected") as SpatialRelationsToolError;
   const { entry, startTime } = beginSpatialAudit(security);
   const capErr = guardCapAndAudit(security, entry, startTime, args.nodeIds, args.uids);
   if (capErr) return capErr;

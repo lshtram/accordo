@@ -498,7 +498,7 @@ describe("B2-DE-004: implicit `from` snapshot — RED test: handler must resolve
 
     const result = await handleDiffSnapshots(relay, { toSnapshotId: "page-missing:5" }, store);
 
-    expect(result).toMatchObject({ success: false, error: "snapshot-not-found", retryable: false });
+    expect(result).toMatchObject({ success: false, error: "snapshot-not-found", errorCode: "snapshot-not-found", retryable: false });
     const error = result as DiffToolError;
     expect(error.details?.reason).toContain("page-missing:5");
     expect(relay.getRecordedPayload()).toEqual({});
@@ -511,7 +511,7 @@ describe("B2-DE-004: implicit `from` snapshot — RED test: handler must resolve
 
     const result = await handleDiffSnapshots(relay, { toSnapshotId: "page-first:0" }, store);
 
-    expect(result).toMatchObject({ success: false, error: "snapshot-not-found", retryable: false });
+    expect(result).toMatchObject({ success: false, error: "snapshot-not-found", errorCode: "snapshot-not-found", retryable: false });
     const error = result as DiffToolError;
     expect(error.details?.reason).toContain("page-first:0");
     expect(relay.getRecordedPayload()).toEqual({});
@@ -524,7 +524,7 @@ describe("B2-DE-004: implicit `from` snapshot — RED test: handler must resolve
 
     const result = await handleDiffSnapshots(relay, { toSnapshotId: "page-retained:5" }, store);
 
-    expect(result).toMatchObject({ success: false, error: "snapshot-not-found", retryable: false });
+    expect(result).toMatchObject({ success: false, error: "snapshot-not-found", errorCode: "snapshot-not-found", retryable: false });
     const error = result as DiffToolError;
     expect(error.details?.reason).toContain("earliest retained snapshot");
     expect(error.details?.reason).not.toContain("version 0");
@@ -557,6 +557,7 @@ describe("B2-DE-006: snapshot-not-found error for missing snapshots", () => {
     expect(result).toHaveProperty("success", false);
     const error = result as DiffToolError;
     expect(error.error).toBe("snapshot-not-found");
+    expect(error.errorCode).toBe("snapshot-not-found");
     expect(error.details).toBeDefined();
     // No eviction hint because the store has no snapshots for this pageId
     expect(error.details!.eviction).toBeUndefined();
@@ -651,6 +652,7 @@ describe("B2-DE-007: snapshot-stale error for pre-navigation snapshots", () => {
     expect(result).toHaveProperty("success", false);
     const error = result as DiffToolError;
     expect(error.error).toBe("snapshot-stale");
+    expect(error.errorCode).toBe("snapshot-stale");
   });
 
   it("B2-DE-007: after navigation, requesting pre-navigation snapshot returns snapshot-stale", async () => {
@@ -663,6 +665,7 @@ describe("B2-DE-007: snapshot-stale error for pre-navigation snapshots", () => {
     expect(result).toHaveProperty("success", false);
     const error = result as DiffToolError;
     expect(error.error).toBe("snapshot-stale");
+    expect(error.errorCode).toBe("snapshot-stale");
   });
 
   it("B2-DE-007: snapshot-stale response includes details.reason and details.recoveryHints", async () => {
@@ -896,8 +899,10 @@ describe("browser-not-connected: relay disconnection handling", () => {
     expect(result).toHaveProperty("success", false);
     const error = result as DiffToolError;
     expect(error.error).toBe("browser-not-connected");
+    expect(error.errorCode).toBe("browser-not-connected");
     expect(error.retryable).toBe(true);
     expect(error.retryAfterMs).toBe(2000);
+    expect(error.recoveryHints).toContain("browser relay");
   });
 
   it("preserves retry guidance when relay returns browser-not-connected", async () => {
@@ -909,8 +914,10 @@ describe("browser-not-connected: relay disconnection handling", () => {
     expect(result).toHaveProperty("success", false);
     const error = result as DiffToolError;
     expect(error.error).toBe("browser-not-connected");
+    expect(error.errorCode).toBe("browser-not-connected");
     expect(error.retryable).toBe(true);
     expect(error.retryAfterMs).toBe(2000);
+    expect(error.recoveryHints).toContain("browser relay");
   });
 
   it("preserves retry guidance when relay returns timeout", async () => {
@@ -924,6 +931,20 @@ describe("browser-not-connected: relay disconnection handling", () => {
     expect(error.error).toBe("timeout");
     expect(error.retryable).toBe(true);
     expect(error.retryAfterMs).toBe(1000);
+  });
+
+  it("preserves errorCode when relay returns action-failed", async () => {
+    const relay = createMockRelay({ errorAction: "action-failed" });
+    const store = new SnapshotRetentionStore();
+
+    const result = await handleDiffSnapshots(relay, { fromSnapshotId: "page-action:0", toSnapshotId: "page-action:1" }, store);
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "action-failed",
+      errorCode: "action-failed",
+      retryable: false,
+    });
   });
 });
 

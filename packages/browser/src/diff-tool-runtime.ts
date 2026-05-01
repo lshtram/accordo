@@ -2,7 +2,7 @@ import { hasSnapshotEnvelope } from "./types.js";
 import type { BrowserRelayLike } from "./types.js";
 import { RETENTION_SLOTS, type SnapshotRetentionStore } from "./snapshot-retention.js";
 import { DIFF_TIMEOUT_MS, type DiffToolError, type EvictionHint } from "./diff-tool-contracts.js";
-import { classifyThrownRelayError, getRelayRetryAfterMs } from "./relay-error-policy.js";
+import { classifyThrownRelayError, getRelayRecoveryHint, getRelayRetryAfterMs } from "./relay-error-policy.js";
 
 export function normalizeSnapshotId(id: string | undefined): string | undefined {
   if (id === undefined) return undefined;
@@ -40,10 +40,10 @@ export function extractRelayErrorCode(
 
 export function buildTransientRelayError(topLevelError?: unknown): DiffToolError | undefined {
   if (topLevelError === "browser-not-connected") {
-    return { success: false, error: "browser-not-connected", retryable: true, retryAfterMs: getRelayRetryAfterMs("browser-not-connected") };
+    return { success: false, error: "browser-not-connected", errorCode: "browser-not-connected", retryable: true, retryAfterMs: getRelayRetryAfterMs("browser-not-connected"), recoveryHints: getRelayRecoveryHint("browser-not-connected") };
   }
   if (topLevelError === "timeout") {
-    return { success: false, error: "timeout", retryable: true, retryAfterMs: getRelayRetryAfterMs("timeout") };
+    return { success: false, error: "timeout", errorCode: "timeout", retryable: true, retryAfterMs: getRelayRetryAfterMs("timeout"), recoveryHints: getRelayRecoveryHint("timeout") };
   }
   return undefined;
 }
@@ -59,22 +59,22 @@ export async function resolveFreshSnapshot(
     freshResponse = await relay.request("get_page_map", payload, DIFF_TIMEOUT_MS);
   } catch (err: unknown) {
     const error = classifyThrownRelayError(err);
-    return { success: false, error, retryable: true, retryAfterMs: getRelayRetryAfterMs(error) };
+    return { success: false, error, errorCode: error, retryable: true, retryAfterMs: getRelayRetryAfterMs(error), recoveryHints: getRelayRecoveryHint(error) };
   }
 
   if (!freshResponse.success) {
     const code = extractRelayErrorCode(freshResponse.data, freshResponse.error);
-    if (code !== undefined) return { success: false, error: code, retryable: false };
+    if (code !== undefined) return { success: false, error: code, errorCode: code, retryable: false };
     const transient = buildTransientRelayError(freshResponse.error);
     if (transient !== undefined) return transient;
-    return { success: false, error: "action-failed", retryable: false };
+    return { success: false, error: "action-failed", errorCode: "action-failed", retryable: false };
   }
 
   if (hasSnapshotEnvelope(freshResponse.data)) {
     return freshResponse.data.snapshotId;
   }
 
-  return { success: false, error: "action-failed", retryable: false };
+  return { success: false, error: "action-failed", errorCode: "action-failed", retryable: false };
 }
 
 export async function resolveFromSnapshot(
@@ -82,7 +82,7 @@ export async function resolveFromSnapshot(
   toSnapshotId: string,
 ): Promise<string | DiffToolError> {
   const parsed = parseSnapshotId(toSnapshotId);
-  if (parsed === null) return { success: false, error: "action-failed", retryable: false };
+  if (parsed === null) return { success: false, error: "action-failed", errorCode: "action-failed", retryable: false };
 
   const retainedSnapshots = store.list(parsed.pageId);
   const targetIndex = retainedSnapshots.findIndex((snapshot) => snapshot.snapshotId === toSnapshotId);
@@ -90,6 +90,7 @@ export async function resolveFromSnapshot(
     return {
       success: false,
       error: "snapshot-not-found",
+      errorCode: "snapshot-not-found",
       retryable: false,
       recoveryHints:
         `Snapshot '${toSnapshotId}' is not retained in the local snapshot store. ` +
@@ -107,6 +108,7 @@ export async function resolveFromSnapshot(
     return {
       success: false,
       error: "snapshot-not-found",
+      errorCode: "snapshot-not-found",
       retryable: false,
       recoveryHints:
         `No prior retained snapshot exists before '${toSnapshotId}' in local history. ` +
@@ -128,6 +130,7 @@ function buildNoPriorSnapshotError(toSnapshotId: string): DiffToolError {
   return {
     success: false,
     error: "snapshot-not-found",
+    errorCode: "snapshot-not-found",
     retryable: false,
     recoveryHints:
       `No prior retained snapshot exists before '${toSnapshotId}' in local history. ` +

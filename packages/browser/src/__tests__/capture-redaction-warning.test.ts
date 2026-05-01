@@ -41,6 +41,8 @@ describe("capture redaction warning contract", () => {
     expect(payloads[0]).not.toHaveProperty("redactPatterns");
     expect((result as any).redactionWarning).toBeUndefined();
     expect((result as any).screenshotRedactionApplied).not.toBe(true);
+    expect((result as any).ocrRedactionOutOfScope).toBe(true);
+    expect((result as any).screenshotRedactionLimitations).toContain("not OCR-complete");
   });
 
   it("omitted and true preserve warning semantics when screenshot redaction was relevant but not applied", async () => {
@@ -48,6 +50,8 @@ describe("capture redaction warning contract", () => {
     const explicit = await handleCaptureRegion(createRelay({ ...ENVELOPE }, []), { redactPII: true, transport: "inline" }, new SnapshotRetentionStore(), createSecurity());
     expect((omitted as any).redactionWarning).toBe("screenshots-not-subject-to-redaction-policy");
     expect((explicit as any).redactionWarning).toBe("screenshots-not-subject-to-redaction-policy");
+    expect((omitted as any).ocrRedactionOutOfScope).toBe(true);
+    expect((explicit as any).screenshotRedactionLimitations).toContain("image-only PII may remain");
   });
 
   it("warning semantics are transport-neutral for explicit opt-out", async () => {
@@ -57,5 +61,7 @@ describe("capture redaction warning contract", () => {
     const fileRef = await handleCaptureRegion(createRelay({ ...ENVELOPE }, []), { redactPII: false, transport: "file-ref" }, new SnapshotRetentionStore(), createSecurity());
     expect((inline as any).redactionWarning).toBeUndefined();
     expect((fileRef as any).redactionWarning).toBeUndefined();
+    expect((inline as any).screenshotRedactionLimitations).toContain("DOM text overlays");
+    expect((fileRef as any).screenshotRedactionLimitations).toContain("DOM text overlays");
   });
 });

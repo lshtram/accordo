@@ -62,6 +62,21 @@ describe("MCP skill resources", () => {
     expect(result.contents[0]?.text).toContain("Code Reviews");
   });
 
+  it("serves screenshot redaction privacy limitations in runtime skills", async () => {
+    const handler = createHandler();
+    const session = handler.createSession();
+
+    for (const uri of ["accordo://skills/browser", "accordo://skills/accordo"]) {
+      const response = await handler.handleRequest(request("resources/read", { uri }), session);
+      const result = response?.result as { contents: Array<{ text: string }> };
+      const text = result.contents[0]?.text ?? "";
+
+      expect(text).toContain("DOM-text-overlay based");
+      expect(text).toContain("not OCR-complete");
+      expect(text).toContain("image-only PII may remain");
+    }
+  });
+
   it("returns resource-not-found for unknown skill URI", async () => {
     const handler = createHandler();
     const session = handler.createSession();

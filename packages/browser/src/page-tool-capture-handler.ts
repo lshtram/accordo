@@ -12,6 +12,8 @@ import type { CaptureRegionArgs, CaptureRegionResponse, PageToolError } from "./
 import { CAPTURE_REGION_TIMEOUT_MS, classifyRelayError } from "./page-tool-types.js";
 import { DEFAULT_SCREENSHOTS_DIR } from "./browser-paths.js";
 
+const SCREENSHOT_REDACTION_LIMITATIONS = "Screenshot redaction uses DOM text overlays only and is not OCR-complete; image-only PII may remain.";
+
 export async function handleCaptureRegion(
   relay: BrowserRelayLike,
   args: CaptureRegionArgs,
@@ -71,6 +73,8 @@ export async function handleCaptureRegion(
         if (args.redactPII !== false && hasRedactPatterns && !result.screenshotRedactionApplied) {
           result.redactionWarning = "screenshots-not-subject-to-redaction-policy";
         }
+        result.ocrRedactionOutOfScope = true;
+        result.screenshotRedactionLimitations = SCREENSHOT_REDACTION_LIMITATIONS;
         result.artifactMode = "inline";
         if (args.transport !== "inline" && typeof result.dataUrl === "string") {
           try {

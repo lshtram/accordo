@@ -385,6 +385,25 @@ describe("handleWaitFor — edge cases", () => {
     expect(typeof err.recoveryHints).toBe("string");
   });
 
+  it("maps relay-level browser-not-connected responses to structured disconnected errors", async () => {
+    const relay = {
+      request: vi.fn().mockResolvedValue({ success: false, error: "browser-not-connected" }),
+      isConnected: vi.fn(() => true),
+    };
+
+    const result = await handleWaitFor(relay as never, { texts: ["test"] });
+
+    expect(result).toMatchObject({
+      success: false,
+      met: false,
+      error: "browser-not-connected",
+      errorCode: "browser-not-connected",
+      retryable: true,
+      retryAfterMs: 2000,
+    });
+    expect((result as { recoveryHints?: string }).recoveryHints).toContain("browser relay");
+  });
+
   it("MCP-ER-002: invalid-request error includes retryable:false", async () => {
     const relay = makeRelayResolve({ met: false, error: "timeout", elapsedMs: 0 });
     // @ts-expect-error — intentionally passing empty args
@@ -459,6 +478,189 @@ describe("handleWaitForInline — H2: retry hints on timeout fallback", () => {
     const result = await handleWaitForInline(relay as never, { texts: ["x"], timeout: 100 });
     const r = result as { retryAfterMs?: number };
     expect(r.retryAfterMs).toBe(1000);
+  });
+
+  it("H2: browser-not-connected fallback includes structured recovery fields", async () => {
+    const relay = makeInlineRelay({ success: false, error: "browser-not-connected" });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"], timeout: 100 });
+    expect(result).toMatchObject({
+      success: false,
+      error: "browser-not-connected",
+      errorCode: "browser-not-connected",
+      retryable: true,
+      retryAfterMs: 2000,
+    });
+    expect((result as { recoveryHints?: string }).recoveryHints).toContain("browser relay");
+  });
+
+  it("H2: thrown browser-not-connected includes errorCode", async () => {
+    const relay = {
+      request: vi.fn().mockRejectedValue(new Error("browser not-connected")),
+      isConnected: vi.fn(() => true),
+    };
+
+    const result = await handleWaitForInline(relay as never, { texts: ["x"], timeout: 100 });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "browser-not-connected",
+      errorCode: "browser-not-connected",
+      retryable: true,
+      retryAfterMs: 2000,
+    });
+  });
+
+  it("H2: thrown timeout includes errorCode", async () => {
+    const relay = {
+      request: vi.fn().mockRejectedValue(new Error("request timeout")),
+      isConnected: vi.fn(() => true),
+    };
+
+    const result = await handleWaitForInline(relay as never, { texts: ["x"], timeout: 100 });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "timeout",
+      errorCode: "timeout",
+      retryable: true,
+      retryAfterMs: 1000,
+    });
+  });
+
+  it("H2: timeout fallback reports the default effective timeout when omitted", async () => {
+    const relay = makeInlineRelay({ success: false });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"] });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "timeout",
+      errorCode: "timeout",
+      timeoutMs: WAIT_DEFAULT_TIMEOUT_MS,
+    });
+  });
+
+  it("H2: timeout fallback reports the clamped effective timeout", async () => {
+    const relay = makeInlineRelay({ success: false });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"], timeout: 60_000 });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "timeout",
+      errorCode: "timeout",
+      timeoutMs: WAIT_MAX_TIMEOUT_MS,
+    });
+  });
+
+  it("H2: successful relay timeout results are enriched consistently", async () => {
+    const relay = makeInlineRelay({ success: true, data: { met: false, error: "timeout", elapsedMs: 25 } });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"] });
+
+    expect(result).toMatchObject({
+      success: false,
+      met: false,
+      error: "timeout",
+      errorCode: "timeout",
+      timeoutMs: WAIT_DEFAULT_TIMEOUT_MS,
+      retryable: true,
+      retryAfterMs: 1000,
+    });
+  });
+
+  it("H2: successful relay navigation interruption results include errorCode", async () => {
+    const relay = makeInlineRelay({ success: true, data: { met: false, error: "navigation-interrupted", elapsedMs: 25 } });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"] });
+
+    expect(result).toMatchObject({
+      success: false,
+      met: false,
+      error: "navigation-interrupted",
+      errorCode: "navigation-interrupted",
+      retryable: true,
+    });
+  });
+
+  it("H2: successful relay page-closed results include errorCode", async () => {
+    const relay = makeInlineRelay({ success: true, data: { met: false, error: "page-closed", elapsedMs: 25 } });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"] });
+
+    expect(result).toMatchObject({
+      success: false,
+      met: false,
+      error: "page-closed",
+      errorCode: "page-closed",
+      retryable: false,
+    });
+  });
+
+  it("H2: non-success navigation interruption results include errorCode", async () => {
+    const relay = makeInlineRelay({ success: false, error: "navigation-interrupted" });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"] });
+
+    expect(result).toMatchObject({
+      success: false,
+      met: false,
+      error: "navigation-interrupted",
+      errorCode: "navigation-interrupted",
+      retryable: true,
+    });
+  });
+
+  it("H2: non-success page-closed results include errorCode", async () => {
+    const relay = makeInlineRelay({ success: false, error: "page-closed" });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"] });
+
+    expect(result).toMatchObject({
+      success: false,
+      met: false,
+      error: "page-closed",
+      errorCode: "page-closed",
+      retryable: false,
+    });
+  });
+
+  it("H2: non-success timeout data is still enriched", async () => {
+    const relay = makeInlineRelay({ success: false, error: "timeout", data: { met: false, error: "timeout", elapsedMs: 25 } });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"], timeout: 60_000 });
+
+    expect(result).toMatchObject({
+      success: false,
+      met: false,
+      error: "timeout",
+      errorCode: "timeout",
+      timeoutMs: WAIT_MAX_TIMEOUT_MS,
+      retryable: true,
+      retryAfterMs: 1000,
+    });
+  });
+
+  it("H2: non-success action-failed preserves action-failed semantics", async () => {
+    const relay = makeInlineRelay({ success: false, error: "action-failed" });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"] });
+
+    expect(result).toMatchObject({
+      success: false,
+      met: false,
+      error: "action-failed",
+      errorCode: "action-failed",
+      retryable: true,
+      retryAfterMs: 1000,
+    });
+    expect((result as { recoveryHints?: string }).recoveryHints).toContain("browser action failed");
+  });
+
+  it("H2: non-success no-content-script preserves injection failure semantics", async () => {
+    const relay = makeInlineRelay({ success: false, error: "no-content-script" });
+    const result = await handleWaitForInline(relay as never, { texts: ["x"] });
+
+    expect(result).toMatchObject({
+      success: false,
+      met: false,
+      error: "no-content-script",
+      errorCode: "no-content-script",
+      retryable: true,
+      retryAfterMs: 1000,
+    });
+    expect((result as { recoveryHints?: string }).recoveryHints).toContain("content script");
   });
 
   it("H2: timeout fallback elapsedMs is a non-negative number (not hardcoded 0)", async () => {

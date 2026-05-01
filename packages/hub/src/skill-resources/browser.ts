@@ -8,6 +8,13 @@ Use this skill for browser page inspection, tab continuity, screenshots, and bro
 2. Use \`accordo_browser_list_pages\` and \`accordo_browser_select_page\` to target the right tab.
 3. Use read-only tools first to acquire current page state before clicking or typing.
 
+## Session Model
+
+- Browser tools operate in the user's active Chrome profile through the paired Accordo browser extension.
+- Accordo does not provide MCP controls for fresh-profile, incognito, or per-task browser isolation.
+- For isolated work, the operator must launch a separate Chrome profile or Incognito window outside Accordo, pair the extension there, then use \`list_pages\` / \`select_page\` or explicit \`tabId\` targeting.
+- Use \`accordo_browser_health\` to inspect the current \`sessionIsolation\` disclosure before handling sensitive browser state.
+
 ## Choosing A Read Tool
 
 - \`accordo_browser_get_page_map\`: DOM structure and interactive element references. Use this before clicks/typing.
@@ -32,7 +39,7 @@ Use this skill for browser page inspection, tab continuity, screenshots, and bro
 
 - Prefer structured page tools over screenshots when text/DOM data is enough.
 - Use \`accordo_browser_capture_region\` for visual verification or cropped evidence.
-- Screenshot redaction is not OCR-complete; do not assume image-only PII is removed.
+- Screenshot redaction is DOM-text-overlay based and not OCR-complete; image-only PII may remain.
 
 ## Common Recovery
 

@@ -56,6 +56,7 @@ export function resolveBothOmittedFromStore(
     return {
       success: false,
       error: "snapshot-not-found",
+      errorCode: "snapshot-not-found",
       retryable: false,
       recoveryHints:
         "diff_snapshots was called with both IDs omitted but fewer than two snapshots are retained. " +

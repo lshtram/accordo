@@ -46,6 +46,7 @@ import {
   handleGetDomExcerpt,
   handleCaptureRegion,
   handleListPages,
+  handleSelectPage,
   GetPageMapArgs,
   InspectElementArgs,
   GetDomExcerptArgs,
@@ -1826,6 +1827,21 @@ describe("B2-CTX-001: browser_select_page tool registration", () => {
     const selectPageTool = tools.find((t) => t.name === "accordo_browser_select_page");
     expect(selectPageTool?.dangerLevel).toBe("safe");
   });
+
+  it("browser_select_page invalid args return structured invalid-request", async () => {
+    const relay = createMockRelay();
+    const tools = buildPageUnderstandingTools(relay, noopStore);
+    const selectPageTool = tools.find((t) => t.name === "accordo_browser_select_page");
+
+    const result = await selectPageTool?.handler({});
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "invalid-request",
+      errorCode: "invalid-request",
+      retryable: false,
+    });
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -1957,6 +1973,68 @@ describe("B2-CTX-001: browser_list_pages response shape", () => {
     }
     expect(result.pages[0]?.controlGranted).toBe(true);
     expect(result.pages[1]?.controlGranted).toBe(false);
+  });
+
+  it("returns structured browser-not-connected error when list_pages relay is disconnected", async () => {
+    const relay = createMockRelay();
+    relay.isConnected = vi.fn(() => false);
+
+    const result = await handleListPages(relay, {});
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "browser-not-connected",
+      errorCode: "browser-not-connected",
+      retryable: true,
+      retryAfterMs: 2000,
+    });
+    expect((result as { recoveryHints?: string }).recoveryHints).toContain("browser relay");
+  });
+
+  it("preserves structured browser-not-connected error when list_pages relay resolves failure", async () => {
+    const relay = createMockRelay();
+    relay.request = vi.fn().mockResolvedValue({ success: false, error: "browser-not-connected" });
+
+    const result = await handleListPages(relay, {});
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "browser-not-connected",
+      errorCode: "browser-not-connected",
+      retryable: true,
+      retryAfterMs: 2000,
+    });
+  });
+
+  it("preserves structured timeout error when list_pages relay resolves failure", async () => {
+    const relay = createMockRelay();
+    relay.request = vi.fn().mockResolvedValue({ success: false, error: "timeout" });
+
+    const result = await handleListPages(relay, {});
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "timeout",
+      errorCode: "timeout",
+      retryable: true,
+      retryAfterMs: 1000,
+    });
+  });
+
+  it("returns structured browser-not-connected error when select_page relay is disconnected", async () => {
+    const relay = createMockRelay();
+    relay.isConnected = vi.fn(() => false);
+
+    const result = await handleSelectPage(relay, { tabId: 1 });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "browser-not-connected",
+      errorCode: "browser-not-connected",
+      retryable: true,
+      retryAfterMs: 2000,
+    });
+    expect((result as { recoveryHints?: string }).recoveryHints).toContain("browser relay");
   });
 });
 

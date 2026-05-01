@@ -48,6 +48,7 @@ export interface DiffSnapshotsResponse extends SnapshotEnvelopeFields {
 export interface DiffToolError {
   success: false;
   error: "snapshot-not-found" | "snapshot-stale" | "browser-not-connected" | "timeout" | "action-failed" | "implicit-snapshot-resolution-required";
+  errorCode?: "snapshot-not-found" | "snapshot-stale" | "browser-not-connected" | "timeout" | "action-failed" | "implicit-snapshot-resolution-required";
   retryable: boolean;
   retryAfterMs?: number;
   recoveryHints?: string;

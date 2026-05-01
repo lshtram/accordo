@@ -16,6 +16,7 @@ import type { SpatialRelationsToolError } from "./spatial-relations-tool.js";
 import type { SpatialRelationsResponse } from "./page-tool-meta-types.js";
 import { forwardSpatialRelations } from "./spatial-relations-relay-call.js";
 import { classifySpatialError, buildSpatialError } from "./spatial-relations-error-map.js";
+import { classifyThrownRelayError } from "./relay-error-policy.js";
 import { completeAuditBlocked, completeAuditAllowed } from "./spatial-relations-audit.js";
 import type { beginSpatialAudit } from "./spatial-relations-audit.js";
 import { checkRelayOrigin } from "./spatial-relations-origin.js";
@@ -117,7 +118,7 @@ export async function forwardWithAudit(
   try { response = await forwardSpatialRelations(relay, args); }
   catch (err: unknown) {
     completeAuditBlocked(security, entry, startTime);
-    return { success: false, error: "timeout" } as unknown as SpatialRelationsToolError;
+    return buildSpatialError(classifyThrownRelayError(err)) as SpatialRelationsToolError;
   }
   const resp = guardResponseObject(response);
   if (!resp) { completeAuditBlocked(security, entry, startTime); return buildSpatialError(classifySpatialError("action-failed")); }

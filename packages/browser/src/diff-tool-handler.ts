@@ -3,7 +3,7 @@ import { hasSnapshotEnvelope } from "./types.js";
 import type { SnapshotRetentionStore } from "./snapshot-retention.js";
 import type { DiffSnapshotsArgs, DiffSnapshotsResponse, DiffToolError } from "./diff-tool-contracts.js";
 import { DIFF_TIMEOUT_MS } from "./diff-tool-contracts.js";
-import { classifyThrownRelayError, getRelayRetryAfterMs } from "./relay-error-policy.js";
+import { classifyThrownRelayError, getRelayRecoveryHint, getRelayRetryAfterMs } from "./relay-error-policy.js";
 import { extractRelayErrorCode } from "./diff-tool-analysis.js";
 import { buildTransientRelayError, normalizeSnapshotId, parseSnapshotId, resolveFreshSnapshot, resolveFromSnapshot } from "./diff-tool-resolution.js";
 import { resolveBothOmittedFromStore } from "./diff-snapshots-retained-pair.js";
@@ -18,8 +18,10 @@ export async function handleDiffSnapshots(
     return {
       success: false,
       error: "browser-not-connected",
+      errorCode: "browser-not-connected",
       retryable: true,
       retryAfterMs: getRelayRetryAfterMs("browser-not-connected"),
+      recoveryHints: getRelayRecoveryHint("browser-not-connected"),
     };
   }
 
@@ -96,6 +98,7 @@ if (resolvedFromSnapshotId === undefined && resolvedToSnapshotId === undefined) 
           return {
             success: false,
             error: code,
+            errorCode: code,
             retryable: false,
             recoveryHints,
             details: {
@@ -104,15 +107,15 @@ if (resolvedFromSnapshotId === undefined && resolvedToSnapshotId === undefined) 
             },
           };
         }
-        return { success: false, error: code, retryable: false };
+        return { success: false, error: code, errorCode: code, retryable: false };
       }
       const transient = buildTransientRelayError(response.error);
       if (transient !== undefined) return transient;
     }
 
-    return { success: false, error: "action-failed", retryable: false };
+    return { success: false, error: "action-failed", errorCode: "action-failed", retryable: false };
   } catch (err: unknown) {
     const error = classifyThrownRelayError(err);
-    return { success: false, error, retryable: true, retryAfterMs: getRelayRetryAfterMs(error) };
+    return { success: false, error, errorCode: error, retryable: true, retryAfterMs: getRelayRetryAfterMs(error), recoveryHints: getRelayRecoveryHint(error) };
   }
 }

@@ -94,6 +94,7 @@ describe("M92-CR CaptureRegionResult type", () => {
       sizeBytes: 102400,
       source: "anchorKey",
       ocrRedactionOutOfScope: true,
+      screenshotRedactionLimitations: "Screenshot redaction uses DOM text overlays only and is not OCR-complete; image-only PII may remain.",
     };
     expect(result.success).toBe(true);
     expect(result.dataUrl).toContain("data:image/jpeg");
@@ -102,6 +103,7 @@ describe("M92-CR CaptureRegionResult type", () => {
     expect(result.sizeBytes).toBe(102400);
     expect(result.source).toBe("anchorKey");
     expect(result.ocrRedactionOutOfScope).toBe(true);
+    expect(result.screenshotRedactionLimitations).toContain("image-only PII may remain");
   });
 
   /**

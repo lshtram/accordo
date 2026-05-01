@@ -86,6 +86,55 @@ describe("D2-004: Unknown pageId error", () => {
   });
 });
 
+describe("structured relay errors", () => {
+  it("returns structured browser-not-connected error when relay is disconnected", async () => {
+    const relay = createMockRelay({ connected: false });
+    const store = new SnapshotRetentionStore();
+
+    const result = await invokeToolHandler(relay, store, { nodeIds: [1, 2] });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "browser-not-connected",
+      errorCode: "browser-not-connected",
+      retryable: true,
+      retryAfterMs: 2000,
+    });
+    expect((result as { recoveryHints?: string }).recoveryHints).toContain("browser relay");
+  });
+
+  it("returns structured browser-not-connected error when relay request rejects as disconnected", async () => {
+    const relay = createMockRelay({ response: Promise.reject(new Error("browser not-connected")) });
+    const store = new SnapshotRetentionStore();
+
+    const result = await invokeToolHandler(relay, store, { nodeIds: [1, 2] });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "browser-not-connected",
+      errorCode: "browser-not-connected",
+      retryable: true,
+      retryAfterMs: 2000,
+    });
+    expect((result as { recoveryHints?: string }).recoveryHints).toContain("browser relay");
+  });
+
+  it("returns structured timeout error when relay request rejects as timeout", async () => {
+    const relay = createMockRelay({ response: Promise.reject(new Error("request timeout")) });
+    const store = new SnapshotRetentionStore();
+
+    const result = await invokeToolHandler(relay, store, { nodeIds: [1, 2] });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "timeout",
+      errorCode: "timeout",
+      retryable: true,
+      retryAfterMs: 1000,
+    });
+  });
+});
+
 describe("D2-005: Single node returns empty relations", () => {
   it("D2-005: single nodeId returns empty relations array", async () => {
     const relay = createMockRelay();

@@ -55,6 +55,7 @@ export function shapeSnapshotNotFoundError(
     return {
       success: false,
       error: "snapshot-not-found",
+      errorCode: "snapshot-not-found",
       retryable: false,
       recoveryHints:
         "Both requested snapshots were found in the local retention store, but the extension/runtime failed to diff them. " +
@@ -75,6 +76,7 @@ export function shapeSnapshotNotFoundError(
   return {
     success: false,
     error: "snapshot-not-found",
+    errorCode: "snapshot-not-found",
     retryable: false,
     recoveryHints,
     details: {

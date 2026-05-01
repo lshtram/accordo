@@ -49,14 +49,19 @@ export interface HealthResponse {
    *
    * I3: Describes the browser profile and isolation model in use.
    * The relay operates against the user's active Chrome profile — no
-   * automatic session sandboxing is applied. Use separate Chrome profiles
-   * or Incognito mode for isolated sessions.
+   * automatic session sandboxing is applied, and Accordo does not expose
+   * MCP controls for switching to a fresh/incognito profile. Use separate
+   * Chrome profiles or Incognito mode outside Accordo for isolated sessions.
    */
   sessionIsolation: {
     /** Profile isolation model. */
     model: "shared-profile" | "incognito" | "separate-profile";
     /** Human-readable description of the current isolation mode. */
     description: string;
+    /** Whether Accordo exposes MCP controls for changing browser profile/session isolation. */
+    controlsAvailable: boolean;
+    /** Operator guidance for isolated sessions. */
+    recommendation: string;
   };
 }
 
@@ -104,10 +109,13 @@ export function buildHealthTool(
       },
       sessionIsolation: {
         model: "shared-profile",
+        controlsAvailable: false,
         description:
-          "The relay operates against the user's active Chrome profile. " +
-          "No automatic session sandboxing is applied. " +
-          "For isolated sessions, use a separate Chrome profile or launch Chrome with --incognito.",
+          "Accordo browser tools use the browser extension in the user's active Chrome profile. " +
+          "They observe and interact with pages as loaded in that profile, including authenticated page views already available to the user, subject to tool permissions and origin policies. " +
+          "Accordo does not automatically sandbox browser sessions.",
+        recommendation:
+          "For isolated sessions, launch a separate Chrome profile or Incognito window outside Accordo, pair the Accordo browser extension there, and target that tab explicitly.",
       },
     };
   };
@@ -115,7 +123,7 @@ export function buildHealthTool(
   return {
     name: "accordo_browser_health",
     description:
-      "Reports browser relay connection health, recent errors, and uptime. Use before attempting browser operations to verify the connection is functional. Also surfaces telemetry policy and session isolation model. Read accordo://skills/browser for browser workflow and recovery guidance.",
+      "Reports browser relay connection health, recent errors, and uptime. Use before attempting browser operations to verify the connection is functional. Also surfaces telemetry policy and the supported shared-profile session model. Read accordo://skills/browser for browser workflow and recovery guidance.",
     inputSchema: {
       type: "object",
       properties: {},

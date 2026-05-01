@@ -19,18 +19,49 @@ export function enrichWaitResult(result: WaitForResult, timeoutMs: number = WAIT
   return result;
 }
 
-export function relayErrorToResult(response: { error?: string; data?: unknown }, startMs: number, timeoutMs: number = WAIT_DEFAULT_TIMEOUT_MS): WaitForResult {
+type DisconnectedWaitError = WaitToolError & { met: false; elapsedMs: number };
+type RelayFailureWaitError = WaitToolError & { met: false; elapsedMs: number };
+
+export function relayErrorToResult(response: { error?: string; data?: unknown }, startMs: number, timeoutMs: number = WAIT_DEFAULT_TIMEOUT_MS): WaitForResult | WaitToolError {
   const errCode = response.error ?? "timeout";
-  if (errCode === "navigation-interrupted" || errCode === "page-closed") return { met: false, error: errCode, elapsedMs: 0 };
-  return (response.data as WaitForResult) ?? {
+  if (errCode === "browser-not-connected") {
+    return relayErrorResult("browser-not-connected", startMs);
+  }
+  if (response.data !== undefined) {
+    return enrichWaitResult(response.data as WaitForResult, timeoutMs);
+  }
+  if (errCode === "navigation-interrupted" || errCode === "page-closed") {
+    return enrichWaitResult({ met: false, error: errCode, elapsedMs: Date.now() - startMs }, timeoutMs);
+  }
+  if (errCode === "action-failed" || errCode === "no-content-script") {
+    return relayFailureResult(errCode, startMs);
+  }
+  return enrichWaitResult({ met: false, error: "timeout", elapsedMs: Date.now() - startMs }, timeoutMs);
+}
+
+function relayErrorResult(code: "browser-not-connected", startMs: number): DisconnectedWaitError {
+  return {
     success: false,
     met: false,
-    error: "timeout",
-    errorCode: "timeout",
-    timeoutMs,
+    error: code,
+    errorCode: code,
     elapsedMs: Date.now() - startMs,
     retryable: true,
-    retryAfterMs: getRelayRetryAfterMs("timeout"),
+    retryAfterMs: getRelayRetryAfterMs(code),
+    recoveryHints: getRelayRecoveryHint(code),
+  };
+}
+
+function relayFailureResult(code: "action-failed" | "no-content-script", startMs: number): RelayFailureWaitError {
+  return {
+    success: false,
+    met: false,
+    error: code,
+    errorCode: code,
+    elapsedMs: Date.now() - startMs,
+    retryable: true,
+    retryAfterMs: getRelayRetryAfterMs(code),
+    recoveryHints: getRelayRecoveryHint(code),
   };
 }
 
@@ -65,6 +96,8 @@ function timeoutResult(result: WaitForResult, timeoutMs: number): WaitForResult 
 function navigationInterruptedResult(result: WaitForResult): WaitForResult | WaitToolError {
   return {
     ...result,
+    success: false,
+    errorCode: "navigation-interrupted",
     retryable: true,
     retryAfterMs: 500,
     recoveryHints: "The page navigated during the wait. Wait for the new page to load, then retry wait_for on the new page.",
@@ -72,5 +105,5 @@ function navigationInterruptedResult(result: WaitForResult): WaitForResult | Wai
 }
 
 function pageClosedResult(result: WaitForResult): WaitForResult | WaitToolError {
-  return { ...result, retryable: false, recoveryHints: "The tab was closed during the wait. Open a new tab and retry." };
+  return { ...result, success: false, errorCode: "page-closed", retryable: false, recoveryHints: "The tab was closed during the wait. Open a new tab and retry." };
 }

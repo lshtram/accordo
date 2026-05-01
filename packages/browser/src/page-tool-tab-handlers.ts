@@ -1,45 +1,32 @@
 import type { BrowserRelayLike } from "./types.js";
 import type { ListPagesArgs, ListPagesResponse, PageToolError, SelectPageArgs, SelectPageResponse, WaitForArgs } from "./page-tool-types.js";
-import { classifyRelayError, TAB_MGMT_TIMEOUT_MS, WAIT_FOR_RELAY_TIMEOUT_MS } from "./page-tool-types.js";
+import { buildStructuredError, classifyRelayError, TAB_MGMT_TIMEOUT_MS, WAIT_FOR_RELAY_TIMEOUT_MS } from "./page-tool-types.js";
 import { getRelayRecoveryHint, getRelayRetryAfterMs } from "./relay-error-policy.js";
+import { clampTimeout, enrichWaitResult, relayErrorToResult } from "./wait-tool-runtime.js";
+import type { WaitForResult } from "./wait-tool-contracts.js";
 
 export async function handleWaitForInline(
   relay: BrowserRelayLike,
   args: WaitForArgs,
 ): Promise<unknown> {
   if (!relay.isConnected()) {
-    return {
-      success: false,
-      error: "browser-not-connected",
-      retryable: true,
-      retryAfterMs: getRelayRetryAfterMs("browser-not-connected"),
-      recoveryHints: getRelayRecoveryHint("browser-not-connected"),
-    };
+    return buildStructuredError("browser-not-connected");
   }
   try {
     const startMs = Date.now();
-    const response = await relay.request("wait_for", args as Record<string, unknown>, WAIT_FOR_RELAY_TIMEOUT_MS);
+    const effectiveTimeout = clampTimeout(args.timeout);
+    const response = await relay.request("wait_for", { ...args, timeout: effectiveTimeout } as Record<string, unknown>, WAIT_FOR_RELAY_TIMEOUT_MS);
     if (response.success && response.data !== undefined) {
-      return response.data;
+      return enrichWaitResult(response.data as WaitForResult, effectiveTimeout);
     }
-    const errCode = response.error ?? "timeout";
-    const elapsedMs = Date.now() - startMs;
-    if (errCode === "navigation-interrupted" || errCode === "page-closed") {
-      return { met: false, error: errCode, elapsedMs };
-    }
-    return response.data ?? {
-      met: false,
-      error: "timeout",
-      elapsedMs,
-      retryable: true,
-      retryAfterMs: getRelayRetryAfterMs("timeout"),
-    };
+    return relayErrorToResult(response, startMs, effectiveTimeout);
   } catch (err: unknown) {
     const code = classifyRelayError(err);
     if (code === "browser-not-connected") {
       return {
         success: false,
         error: code,
+        errorCode: code,
         retryable: true,
         retryAfterMs: getRelayRetryAfterMs(code),
         recoveryHints: getRelayRecoveryHint(code),
@@ -48,6 +35,7 @@ export async function handleWaitForInline(
     return {
       success: false,
       error: code,
+      errorCode: code,
       retryable: true,
       retryAfterMs: getRelayRetryAfterMs(code),
       recoveryHints: getRelayRecoveryHint(code),
@@ -60,16 +48,16 @@ export async function handleListPages(
   args: ListPagesArgs,
 ): Promise<ListPagesResponse | PageToolError> {
   if (!relay.isConnected()) {
-    return { success: false, error: "browser-not-connected", pageUrl: null };
+    return buildStructuredError("browser-not-connected");
   }
   try {
     const response = await relay.request("list_pages", args as Record<string, unknown>, TAB_MGMT_TIMEOUT_MS);
     if (response.success && response.data && typeof response.data === "object" && "pages" in response.data) {
       return response.data as ListPagesResponse;
     }
-    return { success: false, error: "action-failed", pageUrl: null };
+    return buildStructuredError(response.error ?? "action-failed");
   } catch (err: unknown) {
-    return { success: false, error: classifyRelayError(err), pageUrl: null };
+    return buildStructuredError(classifyRelayError(err));
   }
 }
 
@@ -78,15 +66,15 @@ export async function handleSelectPage(
   args: SelectPageArgs,
 ): Promise<SelectPageResponse | PageToolError> {
   if (!relay.isConnected()) {
-    return { success: false, error: "browser-not-connected", pageUrl: null };
+    return buildStructuredError("browser-not-connected");
   }
   try {
     const response = await relay.request("select_page", args as unknown as Record<string, unknown>, TAB_MGMT_TIMEOUT_MS);
     if (response.success && response.data && typeof response.data === "object" && "success" in response.data) {
       return response.data as SelectPageResponse;
     }
-    return { success: false, error: response.error ?? "action-failed", pageUrl: null };
+    return buildStructuredError(response.error ?? "action-failed");
   } catch (err: unknown) {
-    return { success: false, error: classifyRelayError(err), pageUrl: null };
+    return buildStructuredError(classifyRelayError(err));
   }
 }

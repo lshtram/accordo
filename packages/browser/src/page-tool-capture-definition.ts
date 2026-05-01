@@ -14,7 +14,7 @@ export function buildCaptureRegionTool(
 ): ExtensionToolDefinition {
   return {
     name: "accordo_browser_capture_region",
-    description: "Capture a cropped screenshot of a specific element or region. Supports viewport mode (mode='viewport'), full-page mode (mode='fullPage'), and region mode (default — requires anchorKey, nodeRef, or rect). Default transport is file-ref: successful responses include artifactMode='file-ref', fileUri, and filePath, with dataUrl omitted. Set transport='inline' to receive artifactMode='inline' and a base64 dataUrl. Use format='png' for lossless output. Use format='webp' for smaller files.",
+    description: "Capture a cropped screenshot of a specific element or region. Supports viewport mode (mode='viewport'), full-page mode (mode='fullPage'), and region mode (default — requires anchorKey, nodeRef, or rect). Default transport is file-ref: successful responses include artifactMode='file-ref', fileUri, and filePath, with dataUrl omitted. Set transport='inline' to receive artifactMode='inline' and a base64 dataUrl. Use format='png' for lossless output. Use format='webp' for smaller files. Screenshot redaction is DOM-text-overlay based and not OCR-complete; image-only PII may remain.",
     inputSchema: {
       type: "object",
       properties: {
@@ -29,7 +29,7 @@ export function buildCaptureRegionTool(
         allowedOrigins: { type: "array", items: { type: "string" }, description: "Only allow data from these origins. Empty = use global policy." },
         deniedOrigins: { type: "array", items: { type: "string" }, description: "Block data from these origins. Takes precedence over allowedOrigins." },
         transport: { type: "string", enum: ["inline", "file-ref"], description: "G6: Artifact transport mode. 'file-ref' (default): screenshot saved to ~/.accordo/screenshots/ and returned by fileUri + filePath instead of inline data. 'inline': base64 data URL returned in dataUrl — opt in explicitly to avoid large payloads." },
-        redactPII: { type: "boolean", description: "I1-text: When true, scan text content for PII and replace with [REDACTED]. When false, suppress PII redaction even if global policy has patterns. When omitted, honour the global redaction policy. MCP-SEC-002." },
+        redactPII: { type: "boolean", description: "I1-text: When true, scan DOM text content for PII and overlay matching screenshot text regions. This is not OCR-complete; image-only PII may remain. When false, suppress PII redaction even if global policy has patterns. When omitted, honour the global redaction policy. MCP-SEC-002." },
       },
     },
     dangerLevel: "safe",

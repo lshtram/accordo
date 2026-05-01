@@ -1166,14 +1166,14 @@ describe("B2-SG-010: Performance budget", () => {
     setupLargeDOM(5000);
     vi.stubGlobal("__accordoTestGetBoundingClientRect", mockGetBoundingClientRect);
 
-    const start = Date.now();
+    const start = performance.now();
     const result = await collectGraph();
-    const elapsed = Date.now() - start;
+    const elapsed = performance.now() - start;
 
     expect(result).toBeDefined();
     // Assert the result actually has content (not stubbed out early)
     expect(result.a11yTree.length).toBeGreaterThan(0);
     // Performance budget: must complete within 15 seconds
-    expect(elapsed).toBeLessThan(15_000);
-  }, 15_000);
+    expect(elapsed).toBeLessThan(SEMANTIC_GRAPH_TIMEOUT_MS);
+  }, SEMANTIC_GRAPH_TIMEOUT_MS + 5_000);
 });

@@ -2,6 +2,7 @@ import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { BrowserRelayLike } from "./types.js";
 import { handleListPages, handleSelectPage, type ListPagesArgs, type SelectPageArgs } from "./page-tool-handlers.js";
 import { ACTIVE_PAGE_STATE_DESCRIPTION } from "./tab-target-contract.js";
+import { buildStructuredError } from "./page-tool-meta-types.js";
 
 export function buildListPagesTool(relay: BrowserRelayLike): ExtensionToolDefinition {
   return {
@@ -35,8 +36,8 @@ export function buildSelectPageTool(
     },
     dangerLevel: "safe",
     idempotent: true,
-    handler: (args): Promise<Awaited<ReturnType<typeof handleSelectPage>> | { success: false; error: string; pageUrl: null }> => {
-      if (!isSelectPageArgs(args)) return Promise.resolve({ success: false, error: "invalid-request", pageUrl: null });
+    handler: (args): Promise<Awaited<ReturnType<typeof handleSelectPage>>> => {
+      if (!isSelectPageArgs(args)) return Promise.resolve(buildStructuredError("invalid-request"));
       return handleSelectPage(relay, args);
     },
   };

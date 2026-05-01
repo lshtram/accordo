@@ -30,6 +30,7 @@ export interface CaptureRegionResponse extends SnapshotEnvelopeFields {
   screenshotRedactionApplied?: boolean;
   redactedSegmentCount?: number;
   ocrRedactionOutOfScope?: true;
+  screenshotRedactionLimitations?: string;
   artifactMode?: "inline" | "file-ref" | "remote-ref";
   fileUri?: string;
   filePath?: string;

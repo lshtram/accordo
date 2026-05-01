@@ -16,6 +16,13 @@ Use this skill for general Accordo IDE work: editor, layout, terminals, comments
 - Clear highlights with \`accordo_editor_clearHighlights\`; omit \`decorationId\` for clear-all.
 - Open/close panels explicitly with \`accordo_layout_panel\`; avoid toggle-style workflows when deterministic state matters.
 
+### Markdown Highlight Guidance
+
+- Markdown preview and Markdown text editor highlights are separate VS Code surfaces. If both need to show the same callout, apply the highlight once per surface: switch to preview and highlight, then switch to text and highlight the same range again.
+- If both preview and text tabs are open for the same Markdown file, \`accordo_editor_highlight\` may prefer the visible text editor path. Use \`accordo_markdown_setSurface\` to make the intended surface active before highlighting.
+- For Markdown text headings, avoid single-line ranges because they may be hard to see in some VS Code decoration states. Highlight the heading plus the following line instead, for example \`startLine: 270, endLine: 271\`.
+- For walkthroughs or reviews, prefer highlighting a whole subsection range, such as \`4.1\` from its heading through the line before \`4.2\`, rather than a one-line heading.
+
 ## Terminal
 
 - Use \`accordo_terminal_open\` to create a stable terminal ID.
@@ -27,7 +34,17 @@ Use this skill for general Accordo IDE work: editor, layout, terminals, comments
 
 - Use \`comment_list\` to discover threads and \`comment_get\` for full thread context.
 - Use \`comment_reply\`, \`comment_resolve\`, and \`comment_delete\` for mutations.
+- \`comment_list({})\` is the unfiltered listing path; it returns open and resolved threads. Use \`status: "all"\` when you need to be explicit.
+- To start a clean comment session, use \`comment_delete({ all: true })\` and then verify with \`comment_sync_version\`.
+- Use \`comment_delete({ deleteScope: { modality, all: true } })\` only when cleaning one modality.
 - Browser comment context should be resolved with \`accordo_browser_resolve_comment_context\` when available.
+
+## Browser Tools
+
+- Use \`accordo_browser_health\` when browser connection state or privacy posture is uncertain.
+- Browser tools operate through the paired Accordo browser extension in the user's active Chrome profile. Accordo does not expose MCP controls for fresh-profile, incognito, or per-task browser isolation.
+- Prefer structured page tools over screenshots when text/DOM data is enough.
+- \`accordo_browser_capture_region\` screenshot redaction is DOM-text-overlay based and not OCR-complete; image-only PII may remain even when \`redactPII\` is enabled.
 
 ## Generic VS Code Command Gateway
 

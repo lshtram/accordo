@@ -34,5 +34,13 @@ describe("health-tool status", () => {
     expect(result).toHaveProperty("recentErrors");
     expect(result.telemetryPolicy.enabled).toBe(false);
     expect(result.sessionIsolation.model).toBe("shared-profile");
+    expect(result.sessionIsolation.controlsAvailable).toBe(false);
+    expect(result.sessionIsolation.description).toContain("active Chrome profile");
+    expect(result.sessionIsolation.description).toContain("authenticated page views");
+    expect(result.sessionIsolation.description).toContain("does not automatically sandbox");
+    expect(result.sessionIsolation.description).not.toContain("cookies");
+    expect(result.sessionIsolation.description).not.toContain("localStorage");
+    expect(result.sessionIsolation.recommendation).toContain("separate Chrome profile");
+    expect(result.sessionIsolation.recommendation).toContain("target that tab explicitly");
   });
 });
