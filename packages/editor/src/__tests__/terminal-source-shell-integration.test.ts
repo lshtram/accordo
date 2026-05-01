@@ -31,6 +31,8 @@
  *   ✓ terminalRunHandler         — S-TR-09 (observe via real shell execution)
  *   ✓ terminalReadHandler       — S-TR-11 (continuation via real cursor)
  *   ✓ MockTerminalShellExecution — mock execution with async iterable read()
+ *   ✓ terminalOpenHandler        — S-TR-OPEN-01 (manual typing captured after open)
+ *   ✓ initTerminalOpenGatewaySource — wires source into open handler
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
@@ -42,8 +44,12 @@ import {
   terminalReadHandler,
   vscodeTerminalOutputSource,
 } from "../tools/terminal-read/index.js";
-import { terminalRunHandler } from "../tools/terminal.js";
+import { terminalRunHandler, terminalOpenHandler } from "../tools/terminal.js";
 import { initTerminalRunGateway } from "../tools/terminal/terminal-run.js";
+import {
+  initTerminalOpenGatewaySource,
+  _resetTerminalOpenGatewaySource,
+} from "../tools/terminal/terminal-open.js";
 import { _resetTerminalMap, terminalMap } from "../tools/terminal.js";
 
 import { MockTerminalShellExecution } from "./mocks/vscode.js";
@@ -365,5 +371,83 @@ describe("S-TR-11: run→read authority via real shell-execution pipeline", () =
     // Must not contain "initial output" (already returned via observe)
     expect(readText).not.toContain("initial output");
     expect(readText).toContain("continuation output");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S-TR-OPEN-01: terminal_open must attach the output source so manually typed
+//               commands are captured by terminal_read.
+//
+// Regression test for the bug where terminal-open.ts called trackTerminal but
+// never called attachToTerminal, leaving manually-typed commands invisible to
+// the shell-integration capture pipeline.
+//
+// Runtime-proof: after terminal_open, a shell execution event fired for that
+// terminal must appear in terminal_read output. If attachToTerminal is not
+// called in the open handler, onStartExecution skips the terminal (tracking.has
+// returns false) and the buffer stays empty.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("S-TR-OPEN-01: terminal_open attaches output source for manual typing capture", () => {
+  it("S-TR-OPEN-01-RT-01: manually typed command output is captured after terminal_open", async () => {
+    // Arrange: wire real deps and inject source into open handler
+    const realDeps = createTerminalReadDeps();
+    initTerminalReadGateway(realDeps);
+    initTerminalOpenGatewaySource(realDeps.source);
+
+    // Create the terminal via the open handler (simulates user calling accordo_terminal_open)
+    const mock = makeMockTerminal("my-terminal");
+    vi.mocked(vscodeMock.window.createTerminal).mockReturnValueOnce(mock as never);
+    mockState.terminals = [mock as never];
+
+    const openResult = await terminalOpenHandler({ name: "my-terminal" });
+    expect(openResult).not.toHaveProperty("error");
+    const { terminalId } = openResult as { terminalId: string };
+
+    // Act: simulate user manually typing a command — VS Code fires shell execution event
+    const mockExec = new MockTerminalShellExecution(["hello from manual typing\n"], "echo hello");
+    const event = makeMockStartEvent(mock, mockExec);
+    (vscodeTerminalOutputSource as unknown as { onStartExecution: (e: typeof event) => void }).onStartExecution(event);
+
+    // Wait for async streaming to complete
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Assert: terminal_read must return the manually typed output
+    const readResult = await terminalReadHandler({ terminalId });
+    expect(readResult).not.toHaveProperty("error");
+    const readText = (readResult as { text: string }).text;
+    expect(readText).toContain("hello from manual typing");
+    expect(readText).toContain("echo hello");
+  });
+
+  it("S-TR-OPEN-01-RT-02: terminal_read returns empty for terminal_open without source wired (control)", async () => {
+    // Control test: without initTerminalOpenGatewaySource, open does NOT attach source.
+    // Shell execution events for that terminal are silently ignored.
+    // Reset the source to null to simulate the pre-fix state.
+    _resetTerminalOpenGatewaySource();
+
+    const realDeps = createTerminalReadDeps();
+    initTerminalReadGateway(realDeps);
+    // Intentionally NOT calling initTerminalOpenGatewaySource — simulates the bug
+
+    const mock = makeMockTerminal("unwired-terminal");
+    vi.mocked(vscodeMock.window.createTerminal).mockReturnValueOnce(mock as never);
+    mockState.terminals = [mock as never];
+
+    const openResult = await terminalOpenHandler({ name: "unwired-terminal" });
+    expect(openResult).not.toHaveProperty("error");
+    const { terminalId } = openResult as { terminalId: string };
+
+    // Simulate manual typing — but source is not attached, so it should be ignored
+    const mockExec = new MockTerminalShellExecution(["this should not appear\n"], "echo invisible");
+    const event = makeMockStartEvent(mock, mockExec);
+    (vscodeTerminalOutputSource as unknown as { onStartExecution: (e: typeof event) => void }).onStartExecution(event);
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Assert: buffer is empty because source was never attached
+    const readResult = await terminalReadHandler({ terminalId });
+    expect(readResult).not.toHaveProperty("error");
+    const readText = (readResult as { text: string }).text;
+    expect(readText).toBe("");
   });
 });

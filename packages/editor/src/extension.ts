@@ -28,6 +28,7 @@ import {
   vscodeTerminalOutputSource,
 } from "./tools/terminal-read/index.js";
 import { initTerminalRunGateway, initTerminalRunGatewaySource } from "./tools/terminal/terminal-run.js";
+import { initTerminalOpenGatewaySource } from "./tools/terminal/terminal-open.js";
 import { createLayoutTools } from "./tools/layout.js";
 import {
   registerEditorCommandShims,
@@ -140,6 +141,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   // S-TR-04: wire production terminal output source into run gateway
   initTerminalRunGatewaySource(terminalReadDeps.source);
+  // S-TR-OPEN-01: wire production terminal output source into open handler so
+  // manually typed commands in tool-opened terminals are captured by readback.
+  initTerminalOpenGatewaySource(terminalReadDeps.source);
   // S-TR-04: initVscodeCommandGateway must run to restore the gateway regression
   initVscodeCommandGateway(createVsCodeCommandGatewayDeps());
   const allTools = buildToolList(getState);
