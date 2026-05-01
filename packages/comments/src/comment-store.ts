@@ -11,6 +11,10 @@ import * as vscode from "vscode";
 import { rename as fsRename } from "node:fs/promises";
 import type { CommentAuthor, CommentStoreFile } from "@accordo/bridge-types";
 import { CommentRepository } from "./comment-repository.js";
+import {
+  assertValidMutationIds,
+  normalizeOptionalId,
+} from "./comment-store-validation.js";
 
 // ── StorageAdapter ────────────────────────────────────────────────────────────
 
@@ -213,7 +217,15 @@ export class CommentStore {
    * Throws if thread cap (500) is reached.
    */
   async createThread(params: CreateCommentParams): Promise<CreateCommentResult> {
-    const result = this._repo.createThread(params);
+    // M36-CS-13: validate caller-supplied IDs at mutation boundary BEFORE any processing.
+    // Validate raw input; normalizeOptionalId is for tool-layer normalization.
+    assertValidMutationIds({ threadId: params.threadId, commentId: params.commentId });
+    const normalizedParams = {
+      ...params,
+      threadId: normalizeOptionalId(params.threadId) ?? params.threadId,
+      commentId: normalizeOptionalId(params.commentId) ?? params.commentId,
+    };
+    const result = this._repo.createThread(normalizedParams);
     await this._persist();
     this._emit(result.affectedUri);
     return { threadId: result.threadId, commentId: result.commentId };
@@ -224,7 +236,12 @@ export class CommentStore {
    * Throws if thread not found or comment-per-thread cap (50) reached.
    */
   async reply(params: ReplyParams): Promise<ReplyResult> {
-    const result = this._repo.reply(params);
+    // M36-CS-13: validate threadId; commentId optional but if provided must be non-whitespace
+    assertValidMutationIds({ threadId: params.threadId, commentId: params.commentId });
+    const result = this._repo.reply({
+      ...params,
+      commentId: normalizeOptionalId(params.commentId),
+    });
     await this._persist();
     this._emit(result.affectedUri);
     return { commentId: result.commentId };
@@ -235,6 +252,8 @@ export class CommentStore {
    * Throws if thread not found or already resolved.
    */
   async resolve(params: ResolveParams): Promise<void> {
+    // M36-CS-13: validate threadId
+    assertValidMutationIds({ threadId: params.threadId, commentId: undefined });
     const result = this._repo.resolve(params);
     await this._persist();
     this._emit(result.affectedUri);
@@ -247,6 +266,8 @@ export class CommentStore {
    * Source: comments-architecture.md §4 state machine — "user or agent" can reopen.
    */
   async reopen(threadId: string, author: CommentAuthor): Promise<void> {
+    // M36-CS-13: validate threadId
+    assertValidMutationIds({ threadId, commentId: undefined });
     const result = this._repo.reopen(threadId, author);
     await this._persist();
     this._emit(result.affectedUri);
@@ -259,6 +280,8 @@ export class CommentStore {
    * Throws if thread/comment not found.
    */
   async delete(params: DeleteParams): Promise<void> {
+    // M36-CS-13: validate threadId; commentId optional but if present must be non-whitespace
+    assertValidMutationIds({ threadId: params.threadId, commentId: params.commentId });
     const result = this._repo.delete(params);
     await this._persist();
     this._emit(result.affectedUri);
@@ -273,6 +296,18 @@ export class CommentStore {
    */
   async deleteAllByModality(surfaceType: string): Promise<{ count: number; deletedIds: string[] }> {
     const result = this._repo.deleteAllByModality(surfaceType);
+    if (result.count > 0) {
+      await this._persist();
+      for (const uri of result.affectedUris) {
+        this._emit(uri);
+      }
+    }
+    return { count: result.count, deletedIds: result.deletedIds };
+  }
+
+  /** Delete every thread in the store. */
+  async deleteAll(): Promise<{ count: number; deletedIds: string[] }> {
+    const result = this._repo.deleteAll();
     if (result.count > 0) {
       await this._persist();
       for (const uri of result.affectedUris) {

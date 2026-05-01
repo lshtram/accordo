@@ -182,6 +182,11 @@ export class MockComment {
   body: string;
   mode: CommentMode;
   author: { name: string; iconPath?: Uri };
+  label?: string;
+  timestamp?: Date;
+  contextValue?: string;
+  threadId?: string;
+  commentId?: string;
 
   constructor(body: string, mode: CommentMode, author: { name: string; iconPath?: Uri }) {
     this.body = body;
@@ -200,22 +205,69 @@ export class MockCommentController {
     provideCommentingRanges: (document: unknown) => Range[];
   } | undefined;
 
-  private threads: MockCommentThread[] = [];
+  /** Mirrors NativeCommentController.widgets map for test assertions */
+  widgets = new Map<string, MockCommentThread>();
+
+  private _threads: MockCommentThread[] = [];
 
   constructor(id: string, label: string) {
     this.id = id;
     this.label = label;
   }
 
-  createCommentThread(uri: Uri, range: Range | undefined, comments: MockComment[]): MockCommentThread {
+createCommentThread(uri: Uri, range: Range | undefined, comments: MockComment[]): MockCommentThread {
     const thread = new MockCommentThread(uri, range, comments);
-    this.threads.push(thread);
+    this._threads.push(thread);
+    // Keep widgets map in sync for tests that inspect projection drift/orphans.
+    // If no explicit id is assigned later, use a stable synthetic id.
+    if (!(thread as { id?: string }).id) {
+      (thread as { id?: string }).id = `mock-thread-${this._threads.length - 1}`;
+    }
+    this.widgets.set((thread as { id?: string }).id!, thread);
+    // createCommentThread is the low-level VSCode widget factory.
+    // Only createWidget() (which wraps it) registers in this.widgets by id.
+    // Tests should use controller.widgets.get(id) to find widgets by thread ID,
+    // or getThreads() below for all widgets.
     return thread;
   }
 
   /** Test helper — get all created threads */
   getThreads(): MockCommentThread[] {
-    return this.threads;
+    return this._threads;
+  }
+
+  /** Mirrors native-comment-controller.ts createWidget(thread): void.
+   *  Called by NativeCommentSync.addThread(thread) via this._ctrl.createWidget(thread).
+   *  Creates a widget, sets widget.id, and registers it in this.widgets map.
+   *
+   *  In the real controller, createWidget disposes any existing widget for the same
+   *  thread.id before creating a new one (see native-comment-controller.ts createWidget).
+   *  We mirror that behavior here so reconcile's "update changed" path correctly
+   *  disposes the old widget and creates a new one. */
+  createWidget(thread: { id: string; anchor: { uri: string; kind: string; range?: { startLine: number; startChar: number; endLine: number; endChar: number } }; comments: MockComment[]; status: string }): void {
+    // Mirror real controller: dispose existing widget with same id before creating new one
+    const existing = this.widgets.get(thread.id);
+    if (existing) {
+      existing.dispose();
+    }
+    let rng: Range | undefined;
+    if (thread.anchor.kind === "text" && thread.anchor.range) {
+      rng = new Range(thread.anchor.range.startLine, thread.anchor.range.startChar, thread.anchor.range.endLine, thread.anchor.range.endChar);
+    }
+    const widget = this.createCommentThread(Uri.parse(thread.anchor.uri), rng, thread.comments);
+    const syntheticId = (widget as unknown as { id?: string }).id;
+    if (syntheticId && syntheticId !== thread.id) {
+      this.widgets.delete(syntheticId);
+    }
+    (widget as unknown as { id?: string }).id = thread.id;
+    widget.contextValue = thread.status;
+    // Mirror real controller: set widget.state to the vscode.CommentThreadState enum.
+    // _widgetNeedsUpdate compares this against expected state; without it, every
+    // reconciliation triggers a false positive "update needed" → dispose+recreate loop.
+    widget.state = thread.status === "resolved"
+      ? CommentThreadState.Resolved   // 1
+      : CommentThreadState.Unresolved; // 0
+    this.widgets.set(thread.id, widget);
   }
 
   dispose = vi.fn();
@@ -444,5 +496,9 @@ export function resetMockState(): void {
   mockState.registeredCommands.clear();
   textDocChangeListeners.length = 0;
 
-  vi.clearAllMocks();
+  // Only clear mock call history — do NOT call vi.clearAllMocks() here.
+  // clearAllMocks resets mock implementations to undefined, which breaks
+  // workspace.fs.readFile mock setups that tests configure in beforeEach.
+  // Tests that need fresh mocks should use mockImplementation or mockReset()
+  // directly on the specific mock, or call vi.clearAllMocks() explicitly.
 }

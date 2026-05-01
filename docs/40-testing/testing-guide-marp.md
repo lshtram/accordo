@@ -39,7 +39,3 @@ All commands were executed from **outside the repo root** (`/tmp`) and passed.
    - Trigger a slide comment focus path (`accordo.presentation.internal.focusThread`).
    - Verify invalid/malformed slide anchors do not break navigation state.
    - Verify valid anchors navigate to target slide and open the comment popover.
-
-4. **Capture behavior**
-   - Use `accordo_webview_capture` with and without `output_path`.
-   - Verify a valid SVG file is written and returned metadata includes `output_path`, `slide`, and `bytes`.

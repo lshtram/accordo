@@ -37,6 +37,14 @@ This is the standard SKILL.md entry point that mirrors the runtime MCP resource
 
 ### Markdown Highlight Guidance
 
+- For demos/walkthroughs where the user must see the highlighted content on
+  screen, use this exact sequence: (1) open or switch to the target surface at
+  the target line with `accordo_markdown_setSurface` and/or
+  `accordo_editor_open({ path, line })`, (2) apply
+  `accordo_editor_highlight({ path, startLine, endLine })`, then (3) after the
+  explanation, remove the highlight via
+  `accordo_editor_clearHighlights({ decorationId })` before moving to the next
+  feature.
 - Markdown preview and Markdown text editor highlights are separate VS Code
   surfaces. If both need to show the same callout, apply the highlight once per
   surface: switch to preview and highlight, then switch to text and highlight the

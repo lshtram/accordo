@@ -18,13 +18,15 @@ Chrome browser extension (service worker + content scripts) that captures page s
 | `relay-definitions.ts` | All public types (RelayAction, RelayActionRequest, RelayActionResponse); module-level SnapshotStore singleton | `RelayAction`, `RelayActionRequest`, `RelayActionResponse`, `defaultStore`, `isVersionedSnapshot()` |
 | `relay-handlers.ts` | Barrel re-exporting all handler sub-modules | All handler functions |
 | `relay-comment-handlers.ts` | Comment CRUD handlers (get_all_comments, create_comment, reply, resolve, reopen, delete, etc.) | `handleGetAllComments()`, `handleCreateComment()`, etc. |
-| `relay-page-handlers.ts` | Page understanding handlers (get_page_map, inspect_element, get_dom_excerpt, wait_for, get_text_map, get_semantic_graph) | `handleGetPageMap()`, `handleInspectElement()`, etc. |
-| `relay-capture-handler.ts` | Screenshot capture and snapshot diff | `handleCaptureRegion()`, `handleDiffSnapshots()`, `cropImageToBounds()` |
+| `relay-get-page-map.ts` + local/remote helpers | Page-map dispatch and local/remote collection path | `handleGetPageMap()` |
+| `relay-page-local.ts` / `relay-page-remote.ts` | Local document and content-script-forwarded page understanding operations | Page-map, inspect, excerpt, text-map, semantic-graph helpers |
+| `relay-capture-handler.ts` | Screenshot capture dispatch and redaction wiring | `handleCaptureRegion()`, `handleDiffSnapshots()` re-export |
+| `relay-capture-execution.ts` / `relay-capture-cdp-modes.ts` | Region capture, viewport capture, and full-page CDP capture execution | `executeCaptureRegion()`, `executeCaptureViewport()`, `executeCaptureFullPage()` |
 | `relay-tab-handlers.ts` | Multi-tab management (list_pages, select_page) | `handleListPages()`, `handleSelectPage()` |
 | `relay-forwarder.ts` | Cross-context messaging utilities (content script ↔ service worker) | Internal utility functions |
 | `relay-bridge.ts` | WebSocket client that connects the service worker to accordo-browser's relay server; manages reconnection and request/response routing | `RelayBridgeClient` class |
-| `snapshot-store.ts` | In-memory snapshot retention with 5-slot FIFO per page | `SnapshotStore` class |
-| `snapshot-versioning.ts` | Snapshot ID minting, version tracking, navigation reset | `VersionedSnapshot`, `SnapshotEnvelope`, `resetDefaultManager()` |
+| `snapshot-store.ts` / `relay-snapshot-store.ts` | In-memory snapshot retention with 5-slot FIFO per page and relay-facing helpers | `SnapshotStore` class, relay snapshot store helpers |
+| `snapshot-versioning.ts` + manager/runtime modules | Snapshot ID minting, version tracking, navigation reset | `VersionedSnapshot`, `SnapshotEnvelope`, `resetDefaultManager()` |
 | `content-anchor.ts` | Resolves comment anchors within page content | Content script utility |
 | `content-input.ts` | Captures user input state within page forms | Content script utility |
 | `content/comment-ui.ts` | Canonical SDK-converged comment UI path for pin/popover/composer interactions | `CommentUI` class |
@@ -33,7 +35,7 @@ Chrome browser extension (service worker + content scripts) that captures page s
 
 ## Extension Points
 
-- **`RelayAction`** discriminated union: All 19 actions are enumerated in `relay-definitions.ts`. New relay actions are added by creating a handler in the appropriate `relay-*.ts` file and registering it in `relay-actions.ts`'s dispatch switch.
+- **`RelayAction`** discriminated union: Relay actions are enumerated in `relay-definitions.ts`. New relay actions are added by creating a handler in the appropriate `relay-*.ts` file and registering it in `relay-actions.ts`'s dispatch switch.
 - **`SnapshotStore`** singleton: Exported as `defaultStore` for direct test access. The `handleNavigationReset()` function clears it on top-level navigation.
 - **`RelayBridgeClient`**: The WebSocket client class — can be replaced or subclassed for alternative transport (e.g., chrome.runtime.connect instead of raw WebSocket).
 - **`defaultStore`** (SnapshotStore): Module-level singleton used by all handler functions. `handleNavigationReset()` resets it on navigation.

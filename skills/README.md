@@ -6,6 +6,7 @@ This directory contains project-specific skills for the Accordo IDE agent.
 
 | Skill ID | Purpose | When to Load |
 |----------|---------|--------------|
+| `accordo` | General Accordo MCP editor/layout/terminal/comment workflows | Any general Accordo tool-use task |
 | `accordo-diagrams` | Create and edit Mermaid diagrams with Accordo styling | Diagram-related tasks |
 | `accordo-presentations` | Create Marp presentations with narration | Presentation/slide tasks |
 | `accordo-script-authoring` | Author demo scripts via external Python runner (NarrationScript format, `accordo-run.py`) | Script/narration tasks |
@@ -17,6 +18,7 @@ This directory contains project-specific skills for the Accordo IDE agent.
 When working on a relevant task, load the skill using:
 
 ```
+skill: accordo
 skill: accordo-diagrams
 skill: accordo-presentations
 skill: accordo-script-authoring

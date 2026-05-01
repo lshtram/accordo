@@ -8,6 +8,7 @@
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import {
   openHandler,
+  markdownSetSurfaceHandler,
   closeHandler,
   focusGroupHandler,
   highlightHandler,
@@ -50,6 +51,24 @@ export const editorTools: ExtensionToolDefinition[] = [
     dangerLevel: "safe",
     idempotent: true,
     handler: wrapHandler("accordo_editor_close", closeHandler),
+  },
+  {
+    name: "accordo_markdown_setSurface",
+    group: "editor",
+    description: "Open a Markdown file in a deterministic target surface: text editor or Accordo Markdown Preview." + ACCORDO_SKILL,
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Markdown file path, relative to workspace root or absolute" },
+        surface: { type: "string", enum: ["text", "preview"], description: "Target Markdown surface to open" },
+        line: { type: "number", description: "Line number to reveal (1-based). Default: 1" },
+        column: { type: "number", description: "Column number for text editor placement (1-based). Default: 1" },
+      },
+      required: ["path", "surface"],
+    },
+    dangerLevel: "safe",
+    idempotent: true,
+    handler: wrapHandler("accordo_markdown_setSurface", markdownSetSurfaceHandler),
   },
   {
     name: "accordo_editor_focus",

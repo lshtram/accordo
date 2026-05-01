@@ -231,7 +231,7 @@ describe("M50-EXT-03: Tool registration", () => {
     expect(bridge.registerTools).toHaveBeenCalled();
   });
 
-  it("registers exactly 6 presentation tools (4 removed from public surface)", async () => {
+  it("registers exactly 5 presentation tools (4 removed from public surface)", async () => {
     const bridge = makeBridge();
     setupExtensions(bridge, false);
     setupEngineConfig("marp");
@@ -240,7 +240,7 @@ describe("M50-EXT-03: Tool registration", () => {
     await activate(asCtx(ctx));
 
     const [, tools] = (bridge.registerTools as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(tools).toHaveLength(6);
+    expect(tools).toHaveLength(5);
   });
 
   it("registers tools under namespace 'accordo-marp'", async () => {
@@ -450,7 +450,7 @@ describe("M50-EXT-08: Only one session at a time", () => {
 // ── Tool handler wiring ───────────────────────────────────────────────────────
 
 describe("Extension — tool handler wiring", () => {
-  it("all 10 tools have handler functions that are functions", async () => {
+  it("all registered tools have handler functions that are functions", async () => {
     // Every tool must have a callable handler — not undefined.
     const bridge = makeBridge();
     setupExtensions(bridge, false);

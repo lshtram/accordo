@@ -113,7 +113,7 @@ export class CommentQueryOps {
     if (options.uri !== undefined) {
       result = result.filter(t => this._urisMatch(t.anchor.uri, options.uri as string));
     }
-    if (options.status !== undefined) {
+    if (options.status !== undefined && options.status !== "all") {
       result = result.filter(t => t.status === options.status);
     }
     if (options.intent !== undefined) {

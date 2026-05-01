@@ -74,14 +74,13 @@ export function wirePanelAndCommands(
         if (!reply?.thread || !reply.text.trim()) return;
         const existingId = nc.getThreadIdForWidget(reply.thread);
         if (existingId) {
-          // Reply to an existing thread from the UI input box
-          const result = await store.reply({
+          // Reply to an existing thread from the UI input box.
+          // store.reply -> store.onChanged -> nc.reconcile handles widget update.
+          await store.reply({
             threadId: existingId,
             body: reply.text,
             author: { kind: "user", name: "User" },
           });
-          if (result) nc.updateThread(store.getThread(existingId)!);
-          // ! is safe: reply succeeds only if the thread exists
         } else {
           // New thread from the gutter "+" input box
           const uri = reply.thread.uri.toString();
@@ -101,14 +100,14 @@ export function wirePanelAndCommands(
                 docVersion: 0,
               }
             : { kind: "file" as const, uri };
-          const result = await store.createThread({
+          // store.createThread -> store.onChanged -> nc.reconcile is the canonical
+          // convergence path. No direct nc.addThread call needed.
+          await store.createThread({
             uri,
             anchor,
             body: reply.text,
             author: { kind: "user", name: "User" },
           });
-          nc.addThread(store.getThread(result.threadId)!);
-          // ! is safe: createThread always persists before returning
         }
       },
     ),

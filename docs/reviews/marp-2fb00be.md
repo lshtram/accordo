@@ -46,17 +46,15 @@
    - SDK callbacks
    - comment mutation handlers
    - comment focus handler
-   - host capture handler
    - marp update handler
 
 3. **MEDIUM — regression tests are still too string-oriented for the refactored runtime fragments**  
    **Test file:** `packages/marp/src/__tests__/marp-webview-html.test.ts:67-374,546-632`  
    Most checks for the moved logic still assert substring presence. The executable harness covers startup, stale `marp:update` revisions, and pin refresh, but it does **not** execute the highest-risk moved flows:
    - `comments:focus` navigation + `sdk.openPopover`
-   - `host:request-capture`
    - Alt+click block-id generation / temporary `data-block-id`
 
-   **Required fix:** Add executable harness tests for those three flows. Prefer behavior assertions over substring assertions for code that is now assembled from multiple string builders.
+   **Required fix:** Add executable harness tests for those flows. Prefer behavior assertions over substring assertions for code that is now assembled from multiple string builders.
 
 4. **LOW — stale / misleading internal documentation in the new builder file**  
    **File:** `packages/marp/src/marp-webview-script-segments.ts:203-209,279-285`  
@@ -66,5 +64,5 @@
 
 ### Residual risk note
 - I did not find a concrete behavior break in the generated webview runtime.
-- However, this refactor moved fragile inline JS into a larger string-builder surface, so the missing executable coverage on `comments:focus`, capture, and Alt+click leaves meaningful regression risk.
+- However, this refactor moved fragile inline JS into a larger string-builder surface, so the missing executable coverage on `comments:focus` and Alt+click leaves meaningful regression risk.
 - Even without a runtime regression, the modularity violations are automatic blockers under reviewer rules.

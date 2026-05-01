@@ -10,7 +10,7 @@
  *   DocumentChangeInfo, ChangeListener,
  *   ToolSchema, commentToolSchemas,
  *   buildCommentToolHandlers(), normalizeCommentUri(),
- *   CommentUINotifier, CompositeCommentUINotifier, CreateRateLimiter,
+ *   CommentUINotifier, ExternalFanoutNotifier, CreateRateLimiter,
  *   all types from @accordo/bridge-types that are used as parameters.
  *
  * Internal (for package use only — may change without notice):
@@ -53,5 +53,5 @@ export { commentToolSchemas } from "./comment-tools/definitions.js";
 export { buildCommentToolHandlers } from "./comment-tools/handlers.js";
 export { normalizeCommentUri } from "./comment-tools/handlers.js";
 export type { CommentUINotifier } from "./comment-tools/handlers.js";
-export { CompositeCommentUINotifier } from "./comment-tools/handlers.js";
+export { ExternalFanoutNotifier } from "./comment-tools/handlers.js";
 export { CreateRateLimiter } from "./comment-tools/handlers.js";

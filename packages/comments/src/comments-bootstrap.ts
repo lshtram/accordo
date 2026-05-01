@@ -16,7 +16,7 @@
 import * as vscode from "vscode";
 import { CommentStore } from "./comment-store.js";
 import { NativeComments } from "./native-comments.js";
-import { createCommentTools, CompositeCommentUINotifier } from "./comment-tools.js";
+import { createCommentTools, ExternalFanoutNotifier } from "./comment-tools.js";
 import type { CommentUINotifier } from "./comment-tools.js";
 import { startStateContribution } from "./state-contribution.js";
 import { wirePanelAndCommands } from "./panel-bootstrap.js";
@@ -33,6 +33,32 @@ export interface CommentsExtensionExports {
 // Re-export types so extension.ts doesn't need to import them directly
 export type { BridgeAPI } from "./bridge-integration.js";
 export type { SurfaceCommentAdapter } from "./bridge-integration.js";
+
+export function runStartupNativeProjectionReconcile(
+  store: CommentStore,
+  nc: NativeComments,
+): void {
+  // Canonical load/prune → native reconcile path.
+  // After store.load() + prune, reconcile so any threads loaded from disk
+  // are projected as native widgets with inSync=true.
+  const storeThreads = store.getAllThreads();
+  if (storeThreads.length > 0) {
+    nc.reconcile(storeThreads);
+  }
+}
+
+export function wireStoreDrivenNativeProjectionReconcile(
+  store: CommentStore,
+  nc: NativeComments,
+): vscode.Disposable {
+  // Canonical store.onChanged → native reconcile path.
+  // Every store mutation fires onChanged → reconcile(store.getAllThreads()).
+  // This is the single convergence point for MCP tools, native commands,
+  // panel commands, and any other store mutation source.
+  return store.onChanged(() => {
+    nc.reconcile(store.getAllThreads());
+  });
+}
 
 // ── activate ──────────────────────────────────────────────────────────────────
 
@@ -62,9 +88,14 @@ export async function activate(
   const nc = new NativeComments();
   nc.init(store, context);
   nc.restoreThreads(store.getAllThreads());
+  runStartupNativeProjectionReconcile(store, nc);
   nc.registerCommands(store, context);
+  context.subscriptions.push(wireStoreDrivenNativeProjectionReconcile(store, nc));
 
-  const composite = new CompositeCommentUINotifier(nc);
+  // External fanout for browser relay and other external observers.
+  // This is ExternalFanoutNotifier only — NativeComments is NEVER here.
+  // Native widget mutation happens via store.onChanged -> nc.reconcile() ONLY.
+  const externalFanout = new ExternalFanoutNotifier();
 
   // ── Panel wiring + user-facing commands ───────────────────────────────────
   const panelDisposables = wirePanelAndCommands(context, store, nc);
@@ -78,7 +109,7 @@ export async function activate(
   const bridgeExt = vscode.extensions.getExtension("accordo.accordo-bridge");
   if (!bridgeExt) {
     console.warn("[accordo-comments] accordo-bridge not installed — MCP tools and state disabled");
-    return { registerBrowserNotifier: (notifier) => composite.add(notifier) };
+    return { registerBrowserNotifier: (notifier) => externalFanout.add(notifier) };
   }
   if (!bridgeExt.isActive) {
     try { await bridgeExt.activate(); } catch { /* bridge failed — skip tools */ }
@@ -86,11 +117,13 @@ export async function activate(
   const bridge = bridgeExt.exports as BridgeAPI | undefined;
   if (!bridge || typeof bridge.registerTools !== "function") {
     console.warn("[accordo-comments] Bridge exports unavailable — MCP tools and state disabled");
-    return { registerBrowserNotifier: (notifier) => composite.add(notifier) };
+    return { registerBrowserNotifier: (notifier) => externalFanout.add(notifier) };
   }
 
   // ── Tools ─────────────────────────────────────────────────────────────────
-  const tools = createCommentTools(store, composite);
+  // Pass external fanout (not composite with nc) — external observers only,
+  // NOT NativeComments. Native widget mutation via store.onChanged -> nc.reconcile().
+  const tools = createCommentTools(store, externalFanout);
   const toolsDisposable = bridge.registerTools("accordo-comments", tools);
   context.subscriptions.push(toolsDisposable);
 
@@ -98,7 +131,7 @@ export async function activate(
   const stateContrib = startStateContribution(bridge, store);
   context.subscriptions.push(stateContrib);
 
-  return { registerBrowserNotifier: (notifier) => composite.add(notifier) };
+  return { registerBrowserNotifier: (notifier) => externalFanout.add(notifier) };
 }
 
 // ── deactivate ────────────────────────────────────────────────────────────────

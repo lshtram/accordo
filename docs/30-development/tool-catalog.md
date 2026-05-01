@@ -12,10 +12,11 @@
 | Family prefix / area | Owning package | Public/Internal | Notes |
 |---|---|---|---|
 | `accordo_editor_*` | `accordo-editor` | Public MCP | Editor/terminal/layout/workspace tool surface |
+| `accordo_markdown_*` | `accordo-editor` | Public MCP | Deterministic Markdown surface control |
 | `accordo_browser_*` | `accordo-browser` (+ browser-extension runtime) | Public MCP | Browser understanding + interaction + control tools |
 | `comment_*` | `accordo-comments` | Public MCP | Unified comment tools across modalities |
 | `accordo_diagram_*` | `accordo-diagram` | Public MCP | Diagram list/get/create/patch/render/style-guide |
-| `accordo_presentation_*` (reduced), `accordo_webview_capture` | `accordo-marp` | Public MCP | Presentation tools — open, close, getCurrent, goto, generateNarration, capture (discover/listSlides/next/prev removed from public surface) |
+| `accordo_presentation_*` (reduced) | `accordo-marp` | Public MCP | Presentation tools — open, close, getCurrent, goto, generateNarration (discover/listSlides/next/prev removed from public surface) |
 | `accordo_voice_readAloud` | `accordo-voice` | Public MCP | Voice playback tool |
 | `accordo_*_internal_*` and capability commands | package-specific via `@accordo/capabilities` | Internal command contracts | Inter-extension command boundaries |
 
@@ -23,11 +24,11 @@
 
 | Package | Count |
 |---|---:|
-| `accordo-editor` | 23 |
+| `accordo-editor` | 24 |
 | `accordo-browser` | 20 |
 | `accordo-comments` | 8 |
 | `accordo-diagram` | 6 |
-| `accordo-marp` | 6 |
+| `accordo-marp` | 5 |
 | `accordo-voice` | 1 |
 
 > Count source is maintained documentation and package tool definitions. When package tool surfaces change, update this catalog and the corresponding requirements doc together.

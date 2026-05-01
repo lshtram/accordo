@@ -38,7 +38,7 @@ export function buildCommentQueryHandlers(
       const detail = args["detail"] as boolean | undefined;
       const listParams = {
         uri,
-        status: args["status"] as "open" | "resolved" | undefined,
+        status: args["status"] as "open" | "resolved" | "all" | undefined,
         intent: args["intent"] as CommentIntent | undefined,
         anchorKind,
         surfaceType,

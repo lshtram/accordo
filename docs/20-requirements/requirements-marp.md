@@ -14,7 +14,7 @@ Accordo Marp is a lightweight presentation modality for Accordo IDE, built on [M
 
 ### 1.1 Relationship to `accordo-slidev`
 
-Both engines expose the **same 9 navigation/session MCP tools** under the public `accordo_presentation_*` namespace, plus one capture tool (`accordo_webview_capture`) that is engine-specific. The Accordo system prompt configuration (`accordo.presentation.engine`) determines which extension is active. Only one engine is active at a time.
+Both engines expose the same reduced navigation/session/narration MCP surface under the public `accordo_presentation_*` namespace. The Accordo system prompt configuration (`accordo.presentation.engine`) determines which extension is active. Only one engine is active at a time.
 
 ### 1.2 Why Marp
 
@@ -90,13 +90,11 @@ The tool names are **identical** to Slidev — the MCP surface is engine-agnosti
 | M50-TL-07 | `accordo_presentation_next` advances one slide — internal VS Code command registered for script runner; not a public MCP tool |
 | M50-TL-08 | `accordo_presentation_prev` goes back one slide — internal VS Code command registered for script runner; not a public MCP tool |
 | M50-TL-09 | `accordo_presentation_generateNarration` returns narration text for a given slide (or all slides) |
-| M50-TL-10 | `accordo_webview_capture` captures the currently visible slide as a UTF-8-encoded SVG file; writes to a caller-specified output path; requires an open presentation session; returns `{ captured, output_path, slide, bytes }`; dangerLevel: `safe` |
 
 ### Tool danger levels
 
 - Navigation/read tools (`getCurrent`, `goto`, `generateNarration`): `safe`, `requiresConfirmation: false`
 - Session management (`open`, `close`): `moderate`, `requiresConfirmation: false`
-- Capture (`accordo_webview_capture`): `safe`, `requiresConfirmation: false` (writes to caller-specified path)
 - Internal only (not MCP): `discover`, `listSlides`, `next`, `prev` — VS Code commands for script runner/internal use
 
 ### MCP tool naming vs internal command naming
@@ -123,7 +121,7 @@ MCP tools exposed to agents use underscores (`accordo_presentation_*`) matching 
 |---|---|
 | M50-EXT-01 | Reads `accordo.presentation.engine` setting; if value is `"slidev"`, does NOT register tools (yields to `accordo-slidev`) |
 | M50-EXT-02 | Activates Bridge dependency and acquires BridgeAPI exports |
-| M50-EXT-03 | Registers 6 public presentation MCP tools when engine is `"marp"` (default): `accordo_presentation_open`, `accordo_presentation_close`, `accordo_presentation_getCurrent`, `accordo_presentation_goto`, `accordo_presentation_generateNarration`, `accordo_webview_capture` |
+| M50-EXT-03 | Registers 5 public presentation MCP tools when engine is `"marp"` (default): `accordo_presentation_open`, `accordo_presentation_close`, `accordo_presentation_getCurrent`, `accordo_presentation_goto`, `accordo_presentation_generateNarration` |
 | M50-EXT-04 | Creates WebviewPanel on demand (via `presentation.open` tool) |
 | M50-EXT-05 | Acquires comments surface adapter via `accordo.comments.internal.getSurfaceAdapter` when available |
 | M50-EXT-06 | Publishes initial modality state via `bridge.publishState` |
@@ -184,7 +182,6 @@ MCP tools exposed to agents use underscores (`accordo_presentation_*`) matching 
 | M50-PVD-08 | Webview CSP: nonce-based script policy, `style-src` for Marp CSS; NO `frame-src` needed (no iframe) |
 | M50-PVD-09 | `marp:update` messages include a monotonic `revision: number`; webview drops updates where `revision ≤ lastReceivedRevision` |
 | M50-PVD-10 | After live-reload re-render, if slide count changes, `currentSlide` is clamped to `Math.min(oldCurrentSlide, newSlideCount - 1)` |
-| M50-PVD-11 | `requestCapture(): Promise<Buffer>` sends `host:request-capture` to the webview and resolves with the decoded SVG buffer when `presentation:capture-ready` is received; rejects if the panel is closed before the response arrives |
 | M50-PVD-12 | Webview HTML is built by `buildMarpWebviewHtml()` in `src/marp-webview-html.ts` (extracted from provider for modularity) |
 | M50-PVD-13 | When Comment SDK URIs are provided, webview HTML includes `<script>` and `<link>` tags for the SDK with nonce attributes |
 | M50-PVD-14 | Webview initializes Comment SDK via `sdk.init()` with `coordinateToScreen` that maps `blockId` → pixel position on the active slide SVG |
@@ -297,13 +294,11 @@ interface MarpRenderResult {
 
 - `webview:ready`
 - `presentation:slideChanged { index: number }`
-- `presentation:capture-ready { data: string | null, error?: string }` — response to `host:request-capture`; `data` is a base64-encoded UTF-8 SVG string (using `btoa(unescape(encodeURIComponent(svgString)))`); `null` on error
 - Comment SDK messages (`comment:create`, `comment:reply`, `comment:resolve`, `comment:delete`)
 
 ### Host → Webview
 
 - `slide-index { index: number, navigate?: boolean }`
-- `host:request-capture` — instructs webview to serialize the active slide SVG (`<svg data-marpit-svg class="active">`) via `XMLSerializer` and respond with `presentation:capture-ready`
 - `marp:update { html: string, css: string, currentSlide: number, revision: number }` — live reload on file change; `revision` is monotonic (webview drops updates where `revision ≤ lastReceivedRevision`); after re-render, `currentSlide` is clamped to `Math.min(oldCurrentSlide, newSlideCount - 1)`
 - Comment SDK updates (`comments:load`, `comments:add`, `comments:update`, `comments:remove`)
 - `comments:focus { threadId: string, blockId: string }` — instructs webview to navigate to the anchored slide (if not current) and open the SDK popover for the thread; sent by `accordo.presentation.internal.focusThread` command
@@ -364,7 +359,7 @@ accordo.presentation.engine: "marp" | "slidev"   (default: "marp")
 
 | Setting value | `accordo-marp` behavior |
 |---|---|
-| `"marp"` (default) | Registers all 10 tools, publishes state |
+| `"marp"` (default) | Registers public presentation tools and publishes state |
 
 Only `accordo-marp` is currently available. The slidev engine is not present in this workspace.
 

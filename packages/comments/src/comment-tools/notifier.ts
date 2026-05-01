@@ -1,7 +1,16 @@
 /**
- * URI normalizer and comment UI notifier interfaces.
+ * URI normalizer and external fanout notifier interfaces.
  *
  * Source: comments-architecture.md §6
+ *
+ * NOTIFIER ARCHITECTURE (comments-sync-hardening):
+ *   - NativeComments receives store mutations ONLY via the canonical path:
+ *     store mutation → store.onChanged → nc.reconcile(store.getAllThreads())
+ *   - MCP mutation handlers notify ONLY external observers (e.g. browser relay)
+ *     via an ExternalFanoutNotifier — never via direct native widget mutation.
+ *   - ExternalFanoutNotifier is constructed WITHOUT NativeComments as primary.
+ *   - Browser notifiers are registered via registerBrowserNotifier() and
+ *     added to the external fanout only.
  */
 
 import path from "path";
@@ -36,34 +45,43 @@ export function normalizeCommentUri(input: string, workspaceRoot: string): strin
   return pathToFileURL(path.resolve(base, input)).href;
 }
 
-// ── UI notifier interfaces ────────────────────────────────────────────────────
+// ── External fanout notifier interfaces ───────────────────────────────────────
 
 /**
- * Minimal interface for updating VS Code's native comment UI after store mutations.
- * Implemented by NativeComments in the extension; omitted (undefined) in tests.
+ * Minimal interface for updating external observers (e.g. browser relay push)
+ * after store mutations.
+ *
+ * NOTE: This is NOT for native widget mutation. NativeComments receives store
+ * mutations ONLY via store.onChanged → nc.reconcile(store.getAllThreads()).
+ *
+ * Implemented by external notifiers (e.g. browser relay); omitted (undefined)
+ * in tests that only verify store state.
  */
 export interface CommentUINotifier {
   addThread(thread: CommentThread): void;
   updateThread(thread: CommentThread): void;
   removeThread(threadId: string): void;
   /**
-   * Remove multiple VS Code CommentThread widgets at once.
+   * Remove multiple CommentThread widgets at once.
    * Used by bulk deleteScope to propagate removals for all deleted threads.
    */
   removeThreads(threadIds: string[]): void;
 }
 
 /**
- * Fans out CommentUINotifier calls to multiple notifiers.
- * Used to attach secondary notifiers (e.g. browser relay push) without
- * modifying the primary NativeComments notifier.
+ * Fans out CommentUINotifier calls to multiple registered external notifiers.
+ *
+ * This notifier is used ONLY for external fanout (browser relay, etc.).
+ * It is NEVER constructed with NativeComments as a member — native widget
+ * mutation always happens via store.onChanged → nc.reconcile().
+ *
+ * Usage:
+ *   const externalFanout = new ExternalFanoutNotifier();
+ *   registerBrowserNotifier(myBrowserRelay) → externalFanout.add(notifier)
+ *   createCommentTools(store, externalFanout) → handlers notify externalFanout only
  */
-export class CompositeCommentUINotifier implements CommentUINotifier {
+export class ExternalFanoutNotifier implements CommentUINotifier {
   private readonly _notifiers: CommentUINotifier[] = [];
-
-  constructor(primary: CommentUINotifier) {
-    this._notifiers.push(primary);
-  }
 
   add(notifier: CommentUINotifier): { dispose(): void } {
     this._notifiers.push(notifier);

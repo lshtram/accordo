@@ -327,6 +327,17 @@ describe("§2.1 Add / Update / Remove threads", () => {
     const vsThread = controller.getThreads()[0];
     expect(vsThread.dispose).not.toHaveBeenCalled();
   });
+
+  it("addThread disposes an existing widget before replacing the same thread ID", () => {
+    native.addThread(makeThread({ id: "thread-1" }));
+    native.addThread(makeThread({ id: "thread-1", lastActivity: "2026-03-03T10:02:00Z" }));
+
+    const controller = native.getController() as unknown as MockCommentController;
+    const allThreads = controller.getThreads();
+    expect(allThreads).toHaveLength(2);
+    expect(allThreads[0].dispose).toHaveBeenCalledTimes(1);
+    expect(allThreads[1].dispose).not.toHaveBeenCalled();
+  });
 });
 
 // ── §9 Staleness indicator ───────────────────────────────────────────────────
@@ -423,6 +434,7 @@ describe("§10.1 Commands", () => {
     mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_FOCUS_THREAD, previewFocus);
 
     const focusInPreview = mockState.registeredCommands.get("accordo.comments.focusInPreview")!;
+    (commands.executeCommand as unknown as ReturnType<typeof vi.fn>).mockClear();
     await focusInPreview({ threadId: created.threadId });
 
     expect(previewFocus).toHaveBeenCalledTimes(2);
@@ -473,10 +485,12 @@ describe("§10.1 Commands", () => {
 
     expect(workspace.openTextDocument).toHaveBeenCalled();
     expect(window.showTextDocument).toHaveBeenCalled();
-    expect(commands.executeCommand).not.toHaveBeenCalledWith(
-      "vscode.openWith",
-      expect.any(Uri),
-      "accordo.markdownPreview",
-    );
+    const openWithAuthCalls = (commands.executeCommand as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([cmd, uri, viewType]) =>
+        cmd === "vscode.openWith" &&
+        (uri as Uri | undefined)?.fsPath === "/project/src/auth.ts" &&
+        viewType === "accordo.markdownPreview",
+      );
+    expect(openWithAuthCalls).toHaveLength(0);
   });
 });

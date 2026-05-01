@@ -95,3 +95,5 @@ state, current policy, etc. They are not a gate to unlock other tools.
 - `docs/architecture.md` — §3.7 description
 - `docs/requirements-hub.md` — template structure section
 - Test comments mentioning "forwarded for progressive disclosure"
+
+---

@@ -13,10 +13,18 @@ import type { CommentThread, CommentAnchor } from "@accordo/bridge-types";
 import { NativeCommentController } from "./native-comment-controller.js";
 import type { NativeCommentsHandle } from "./native-comment-controller.js";
 import { NativeCommentSync } from "./native-comment-sync.js";
+import type {
+  NativeCommentReconcileReport,
+  NativeCommentSyncState,
+} from "./native-comment-sync.js";
 
 // ── Public re-exports ─────────────────────────────────────────────────────────
 
 export type { NativeCommentsHandle } from "./native-comment-controller.js";
+export type {
+  NativeCommentReconcileReport,
+  NativeCommentSyncState,
+} from "./native-comment-sync.js";
 
 // ── Slim facade ────────────────────────────────────────────────────────────────
 
@@ -62,6 +70,14 @@ export class NativeComments {
 
   updateThreadRange(threadId: string, anchor: CommentAnchor): void {
     this._sync.updateThreadRange(threadId, anchor);
+  }
+
+  reconcile(storeThreads: readonly CommentThread[]): NativeCommentReconcileReport {
+    return this._sync.reconcile(storeThreads);
+  }
+
+  getSyncState(storeThreads: readonly CommentThread[]): NativeCommentSyncState {
+    return this._sync.getSyncState(storeThreads);
   }
 
   registerCommands(

@@ -43,7 +43,7 @@ The native Comments panel cannot be made into the unified control surface requir
 Replace the built-in Comments panel as the primary navigation/triage surface with a custom `vscode.TreeView` panel in the Accordo activity bar sidebar. The panel is:
 
 - **Presentation-layer only.** `CommentStore` remains the single source of truth. The panel reads from the store and delegates all mutations to it. No new persistence model.
-- **Additive.** The native `CommentController` (gutter icons, inline thread widgets) is kept unchanged. The two-surface strategy (native API for text, Comment SDK for webviews) is preserved. The custom panel is a third navigation surface that wraps the existing data.
+- **Additive at the product surface.** The native `CommentController` (gutter icons, inline thread widgets) remains the text-surface projection, and the two-surface strategy (native API for text, Comment SDK for webviews) is preserved. This slice may still add shared sync/diagnostic seams in `NativeComments` so all projections converge from store state.
 - **Within the existing package.** The panel is implemented in `accordo-comments` with direct access to `CommentStore` and `NativeComments`. No inter-extension IPC overhead.
 - **Phase 1: TreeView only.** A rich `TreeView` with full context menus, filter state, and anchor-aware navigation. A `WebviewView` detail pane with markdown rendering is deferred to Phase 2.
 
@@ -75,8 +75,8 @@ The panel consists of five components, all living in `packages/comments/src/`:
 ```
 packages/comments/src/
 ├── extension.ts                     (existing — add CommentsPanel wiring)
-├── comment-store.ts                 (existing — unchanged)
-├── native-comments.ts               (existing — unchanged)
+├── comment-store.ts                 (existing — remains authoritative)
+├── native-comments.ts               (existing — projection gains reconcile/diagnostic seams)
 │
 ├── panel/
 │   ├── comments-tree-provider.ts    ← M45-TP  TreeDataProvider + CommentTreeItem
@@ -164,7 +164,7 @@ Registers VS Code commands. Each command receives a `CommentTreeItem` from the t
 | `accordo.commentsPanel.clearFilters` | View title toolbar | `filters.clear()` |
 | `accordo.commentsPanel.groupBy` | View title toolbar | `showQuickPick(['by-status', 'by-file', 'by-activity'])` → `filters.setGroupMode()` |
 
-**Store sync:** After every mutation, `PanelCommands` calls both `store.X()` (which fires `onChanged`) AND updates the `NativeComments` widget via the same pattern used in `SurfaceCommentAdapter` (see [`extension.ts` getSurfaceAdapter](../../packages/comments/src/extension.ts)). This ensures gutter widgets stay in sync.
+**Store sync:** `CommentStore` remains authoritative. Panel commands mutate the store only; native widgets converge through the canonical projection path (`store.onChanged` → native reconcile). Panel-local refresh calls are allowed for responsiveness, but correctness must not depend on bespoke per-command widget edits.
 
 **Idempotency:** Commands that operate on already-resolved/already-open threads show `showInformationMessage` with the current state rather than throwing.
 

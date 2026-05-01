@@ -12,6 +12,7 @@
 
 import type { CommentStoreFile } from "@accordo/bridge-types";
 import { CommentRepositoryOps } from "./comment-store-ops.js";
+import { sanitizeLoadedCommentStoreFile } from "./comment-store-validation.js";
 
 // ── Re-export all public types ────────────────────────────────────────────────
 export type {
@@ -37,13 +38,19 @@ export class CommentRepository extends CommentRepositoryOps {
    * Populate in-memory state from a parsed CommentStoreFile.
    * Called by CommentStore.load() after reading + parsing the JSON file.
    * Clears any existing state before loading.
+   *
+   * Load-time validation: threads/comments with empty IDs, duplicate IDs,
+   * or mismatched comment.threadId are dropped via sanitizeLoadedCommentStoreFile.
+   * The validation result is returned so callers can inspect the report.
    */
-  loadFromStoreFile(file: CommentStoreFile): void {
+  loadFromStoreFile(file: CommentStoreFile): import("./comment-store-validation.js").CommentStoreValidationResult {
+    const result = sanitizeLoadedCommentStoreFile(file);
     this._threads.clear();
     this._stale.clear();
-    for (const thread of file.threads) {
+    for (const thread of result.sanitized.threads) {
       this._threads.set(thread.id, thread);
     }
+    return result;
   }
 
   /**

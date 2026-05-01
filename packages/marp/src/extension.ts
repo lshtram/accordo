@@ -187,8 +187,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     next: () => nextSlide(session, stateContrib),
     prev: () => prevSlide(session, stateContrib),
     generateNarration: (target) => generateNarration(target, session),
-    capture: () => provider.requestCapture(),
-    getSessionDeckUri: () => provider.getCurrentDeckUri(),
   };
 
   const tools = createPresentationTools(deps);

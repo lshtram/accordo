@@ -30,6 +30,7 @@ import {
   argNumber,
   argNumberOpt,
   openHandler,
+  markdownSetSurfaceHandler,
   closeHandler,
   scrollHandler,
   highlightHandler,
@@ -249,6 +250,87 @@ describe("openHandler — §4.1", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// accordo_markdown_setSurface
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("markdownSetSurfaceHandler", () => {
+  it("MD-SURFACE-01: opens a Markdown file in preview surface", async () => {
+    makeWorkspace();
+    const result = await markdownSetSurfaceHandler({ path: "/workspace/src/readme.md", surface: "preview" });
+
+    expect(result).toEqual({ opened: true, path: "/workspace/src/readme.md", surface: "preview" });
+    expect(vi.mocked(commands.executeCommand)).toHaveBeenCalledWith(
+      "vscode.openWith",
+      expect.any(vscodeMock.Uri),
+      "accordo.markdownPreview",
+    );
+  });
+
+  it("MD-SURFACE-02: opens a Markdown file in text surface", async () => {
+    makeWorkspace();
+    const result = await markdownSetSurfaceHandler({ path: "/workspace/src/readme.md", surface: "text", line: 7, column: 3 });
+
+    expect(result).toEqual({ opened: true, path: "/workspace/src/readme.md", surface: "text" });
+    const callArgs = vi.mocked(window.showTextDocument).mock.calls[0];
+    expect(callArgs[0]).toEqual(expect.any(vscodeMock.Uri));
+    const options = callArgs[1] as { selection: vscodeMock.Range; preview: boolean };
+    expect(options.preview).toBe(false);
+    expect(options.selection.start.line).toBe(6);
+    expect(options.selection.start.character).toBe(2);
+  });
+
+  it("MD-SURFACE-03: preview surface with line requests preview reveal", async () => {
+    makeWorkspace();
+    await markdownSetSurfaceHandler({ path: "/workspace/src/readme.md", surface: "preview", line: 12 });
+
+    expect(vi.mocked(commands.executeCommand)).toHaveBeenCalledWith(
+      "accordo_preview_internal_revealLine",
+      "file:///workspace/src/readme.md",
+      11,
+    );
+  });
+
+  it("MD-SURFACE-04: rejects non-Markdown files", async () => {
+    makeWorkspace();
+    const result = await markdownSetSurfaceHandler({ path: "/workspace/src/file.txt", surface: "preview" });
+
+    expect(result).toEqual({ error: "Path must be a Markdown .md file" });
+  });
+
+  it("MD-SURFACE-05: rejects unknown surfaces", async () => {
+    makeWorkspace();
+    const result = await markdownSetSurfaceHandler({ path: "/workspace/src/readme.md", surface: "toggle" });
+
+    expect(result).toEqual({ error: "Argument 'surface' must be 'text' or 'preview'" });
+  });
+
+  it("MD-SURFACE-06: replays existing Markdown preview highlights when switching to text", async () => {
+    makeWorkspace();
+    const applyHighlightHandler = vi.fn().mockReturnValue(true);
+    mockState.registeredCommands.set(CAPABILITY_COMMANDS.PREVIEW_APPLY_HIGHLIGHT, applyHighlightHandler);
+    mockState.visibleTextEditors = [];
+
+    await highlightHandler({
+      path: "/workspace/src/readme.md",
+      startLine: 270,
+      endLine: 270,
+      color: "rgba(255, 214, 10, 0.45)",
+    });
+
+    const editor = makeVisibleEditor("/workspace/src/readme.md");
+    vi.mocked(window.showTextDocument).mockResolvedValueOnce(editor as never);
+
+    const result = await markdownSetSurfaceHandler({ path: "/workspace/src/readme.md", surface: "text", line: 270 });
+
+    expect(result).toEqual({ opened: true, path: "/workspace/src/readme.md", surface: "text" });
+    expect(editor.setDecorations).toHaveBeenCalledOnce();
+    expect(vi.mocked(window.createTextEditorDecorationType)).toHaveBeenCalledWith({
+      backgroundColor: "rgba(255, 214, 10, 0.45)",
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // §4.2 accordo_editor_close
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -331,6 +413,20 @@ describe("highlightHandler — §4.4", () => {
     expect(result).toEqual(
       expect.objectContaining({ highlighted: true, decorationId: expect.any(String) }),
     );
+  });
+
+  it("HL-01b: single-line highlights cover the full line", async () => {
+    makeWorkspace();
+    const editor = makeVisibleEditor("/workspace/foo.ts");
+    mockState.visibleTextEditors = [editor];
+
+    await highlightHandler({ path: "/workspace/foo.ts", startLine: 5, endLine: 5 });
+
+    const ranges = vi.mocked(editor.setDecorations).mock.calls[0][1] as vscodeMock.Range[];
+    expect(ranges[0].start.line).toBe(4);
+    expect(ranges[0].start.character).toBe(0);
+    expect(ranges[0].end.line).toBe(4);
+    expect(ranges[0].end.character).toBe(Number.MAX_SAFE_INTEGER);
   });
 
   it("HL-02: returns { error: string } when startLine > endLine", async () => {

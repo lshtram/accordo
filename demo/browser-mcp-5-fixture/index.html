@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Accordo Browser MCP 5 Fixture</title>
+    <style>
+      :root { font-family: Arial, sans-serif; color: #172033; background: #f7f8fb; }
+      body { margin: 0; min-height: 1600px; }
+      header, nav, main, aside, footer { padding: 16px 24px; }
+      header { background: #172033; color: white; }
+      nav { background: #dde7ff; }
+      main { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; }
+      section, aside, footer { border: 1px solid #c8d0df; border-radius: 12px; background: white; margin: 16px 0; }
+      button, input, select { font: inherit; margin: 4px; }
+      .sr-hidden { display: none; }
+      .offscreen { position: absolute; top: 1450px; left: 24px; }
+      .geometry { position: relative; height: 620px; background: #f0f4ff; }
+      .box { position: absolute; display: grid; place-items: center; border: 2px solid #172033; background: #fff; }
+      #left-box { left: 40px; top: 40px; width: 120px; height: 80px; }
+      #right-box { left: 260px; top: 40px; width: 120px; height: 80px; }
+      #above-box { left: 40px; top: 160px; width: 120px; height: 60px; }
+      #below-box { left: 40px; top: 290px; width: 120px; height: 60px; }
+      #container-box { left: 220px; top: 160px; width: 220px; height: 160px; background: #e8fff2; }
+      #contained-box { left: 270px; top: 210px; width: 80px; height: 50px; background: #d4ffe5; }
+      #overlap-a { left: 500px; top: 40px; width: 160px; height: 120px; background: rgba(255, 193, 7, 0.75); }
+      #overlap-b { left: 590px; top: 90px; width: 160px; height: 120px; background: rgba(3, 169, 244, 0.65); }
+      #region-target { left: 500px; top: 270px; width: 320px; height: 180px; background: linear-gradient(135deg, #7c3aed, #f97316); color: white; }
+      #obstruction-wrap { position: absolute; left: 40px; top: 430px; width: 240px; height: 120px; }
+      #obstructed-button { position: absolute; left: 20px; top: 30px; }
+      #obstruction-overlay { position: absolute; left: 0; top: 0; width: 180px; height: 90px; background: rgba(30, 41, 59, 0.78); color: white; display: grid; place-items: center; }
+      .partial { position: absolute; left: 900px; top: 760px; width: 240px; height: 120px; background: #fde68a; }
+      iframe { width: 420px; height: 140px; border: 2px solid #475569; margin: 8px; }
+    </style>
+  </head>
+  <body>
+    <header role="banner">
+      <h1>Browser MCP 5 Fixture</h1>
+      <p>VISIBLE_TEXT_ALPHA</p>
+    </header>
+    <nav aria-label="Fixture navigation">
+      <a href="#controls">Fixture Controls</a>
+      <a href="#geometry-section">Fixture Geometry</a>
+    </nav>
+    <main>
+      <div>
+        <section aria-labelledby="text-heading">
+          <h2 id="text-heading">Fixture Text Cases</h2>
+          <p id="whitespace-case">WHITESPACE_RAW_ALPHA   spaced   words
+next line</p>
+          <p id="rtl-text" dir="rtl">RTL_TEXT_ALPHA שלום</p>
+          <p id="bidi-text">BIDI_TEXT_ALPHA abc אבג 123</p>
+          <p id="pii-text">PII_TEXT_ALPHA user@example.test +1 415 555 2671</p>
+          <p id="opaque-id">OPAQUE_ID_ALPHA https://example.test/path?id=abc123 2026-04-30 1920x1080 98765432101234567890 abc123XYZ789</p>
+          <p id="hidden-text" class="sr-hidden">HIDDEN_TEXT_BRAVO</p>
+          <p id="offscreen-text" class="offscreen">OFFSCREEN_TEXT_CHARLIE</p>
+        </section>
+        <section id="controls" aria-labelledby="controls-heading">
+          <h2 id="controls-heading">Fixture Controls</h2>
+          <h3>Nested Fixture Detail</h3>
+          <form aria-label="Fixture form">
+            <label for="type-target">Type target</label>
+            <input id="type-target" name="type-target" />
+            <output id="type-output" for="type-target"></output>
+            <label for="required-target">Required target</label>
+            <input id="required-target" required aria-describedby="validation-text" />
+            <p id="validation-text" role="alert">VALIDATION_TEXT_ALPHA required target is required</p>
+            <label for="readonly-target">Readonly target</label>
+            <input id="readonly-target" value="readonly value" readonly />
+            <label><input id="fixture-checkbox" type="checkbox" checked /> Fixture checkbox</label>
+            <label for="fixture-select">Fixture select</label>
+            <select id="fixture-select"><option>alpha</option><option>bravo</option></select>
+            <button id="disabled-target" disabled>Disabled target</button>
+            <button id="hidden-control" hidden>Hidden target</button>
+          </form>
+          <button id="click-target">Click target</button>
+          <span id="click-output">CLICK_COUNT: 0</span>
+          <button id="selector-click-target">Selector click target</button>
+          <span id="selector-click-output">SELECTOR_CLICK_COUNT: 0</span>
+          <button id="key-target">Key target</button>
+          <span id="key-output">KEY_STATE: idle</span>
+          <button id="mutate-button">Add dynamic node</button>
+          <button id="remove-button">Remove node</button>
+          <button id="change-button">Change node</button>
+          <p id="removable-target">REMOVABLE_TEXT_ALPHA</p>
+          <p id="change-target">CHANGE_TEXT_BEFORE</p>
+        </section>
+        <section aria-labelledby="shadow-heading">
+          <h2 id="shadow-heading">Shadow And Frames</h2>
+          <fixture-shadow id="shadow-host"></fixture-shadow>
+          <iframe id="same-origin-frame" src="same-origin-frame.html" title="Same origin frame"></iframe>
+          <iframe id="cross-origin-frame" src="http://127.0.0.1:4176/cross-origin.html" title="Cross origin frame"></iframe>
+        </section>
+        <section id="geometry-section" class="geometry" aria-label="Fixture geometry">
+          <div id="left-box" class="box">LEFT_BOX</div>
+          <div id="right-box" class="box">RIGHT_BOX</div>
+          <div id="above-box" class="box">ABOVE_BOX</div>
+          <div id="below-box" class="box">BELOW_BOX</div>
+          <div id="container-box" class="box">CONTAINER_BOX</div>
+          <div id="contained-box" class="box">CONTAINED_BOX</div>
+          <div id="overlap-a" class="box">OVERLAP_A</div>
+          <div id="overlap-b" class="box">OVERLAP_B</div>
+          <div id="region-target" class="box">REGION_TARGET_ALPHA</div>
+          <div id="obstruction-wrap">
+            <button id="obstructed-button">Obstructed target</button>
+            <div id="obstruction-overlay">OBSTRUCTION_OVERLAY</div>
+          </div>
+          <div id="partial-visible-target" class="partial">PARTIAL_VISIBLE_ALPHA</div>
+        </section>
+      </div>
+      <aside role="complementary">
+        <h2>Fixture Aside</h2>
+        <ul><li>List Alpha</li><li>List Bravo</li></ul>
+      </aside>
+    </main>
+    <footer role="contentinfo">Fixture footer</footer>
+    <script>
+      customElements.define('fixture-shadow', class extends HTMLElement {
+        connectedCallback() {
+          const root = this.attachShadow({ mode: 'open' });
+          root.innerHTML = '<p>SHADOW_TEXT_ALPHA</p><button id="shadow-button">SHADOW_BUTTON_ALPHA</button>';
+        }
+      });
+      let clickCount = 0;
+      let selectorClickCount = 0;
+      document.getElementById('click-target').addEventListener('click', () => {
+        clickCount += 1;
+        document.getElementById('click-output').textContent = `CLICK_COUNT: ${clickCount}`;
+      });
+      document.getElementById('selector-click-target').addEventListener('click', () => {
+        selectorClickCount += 1;
+        document.getElementById('selector-click-output').textContent = `SELECTOR_CLICK_COUNT: ${selectorClickCount}`;
+      });
+      document.getElementById('type-target').addEventListener('input', (event) => {
+        document.getElementById('type-output').textContent = event.target.value;
+      });
+      document.getElementById('key-target').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') document.getElementById('key-output').textContent = 'KEY_STATE: enter';
+      });
+      document.getElementById('mutate-button').addEventListener('click', () => {
+        if (document.getElementById('dynamic-text-delta')) return;
+        const node = document.createElement('p');
+        node.id = 'dynamic-text-delta';
+        node.textContent = 'DYNAMIC_TEXT_DELTA';
+        document.getElementById('controls').appendChild(node);
+      });
+      document.getElementById('remove-button').addEventListener('click', () => {
+        document.getElementById('removable-target')?.remove();
+      });
+      document.getElementById('change-button').addEventListener('click', () => {
+        document.getElementById('change-target').textContent = 'CHANGE_TEXT_AFTER';
+      });
+    </script>
+  </body>
+</html>

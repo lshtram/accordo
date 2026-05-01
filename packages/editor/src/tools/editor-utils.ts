@@ -50,13 +50,24 @@ export interface HighlightEntry {
 
 export interface TextHighlightEntry extends HighlightEntry {
   readonly surface: "text";
+  readonly uri: string;
+  readonly startLine: number;
+  readonly endLine: number;
+  readonly color: string;
   readonly type: vscode.TextEditorDecorationType;
   readonly editor: vscode.TextEditor;
+  previewApplied?: boolean;
 }
 
 export interface PreviewHighlightEntry extends HighlightEntry {
   readonly surface: "markdown-preview";
   readonly uri: string;
+  readonly startLine: number;
+  readonly endLine: number;
+  readonly color: string;
+  textDecoration?: vscode.TextEditorDecorationType;
+  textEditor?: vscode.TextEditor;
+  previewApplied?: boolean;
 }
 
 /** Map from stable decorationId → clear strategy for text and preview highlights. */

@@ -19,6 +19,11 @@ import {
   _clearDecorationStore,
   FOCUS_COMMANDS,
 } from "./editor-utils.js";
+import {
+  highlightHandler,
+  clearHighlightsHandler,
+  replayMarkdownHighlightsOnTextEditor,
+} from "./editor-handlers-m17.js";
 
 // Re-export helpers so existing test imports from "editor-handlers.js" keep working.
 export {
@@ -33,7 +38,7 @@ export {
 export {
   highlightHandler,
   clearHighlightsHandler,
-} from "./editor-handlers-m17.js";
+};
 
 // ── §4.1 accordo_editor_open ─────────────────────────────────────────────────
 
@@ -78,6 +83,43 @@ export async function openHandler(
     const range = new vscode.Range(position, position);
     await vscode.window.showTextDocument(uri, { selection: range });
     return { opened: true, path: resolved, surface: "editor" };
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+}
+
+// ── Markdown surface control ─────────────────────────────────────────────────
+
+export async function markdownSetSurfaceHandler(
+  args: Record<string, unknown>,
+): Promise<{ opened: true; path: string; surface: "text" | "preview" } | { error: string }> {
+  try {
+    const p = argString(args, "path");
+    const surface = argString(args, "surface");
+    const line = argNumberOpt(args, "line", 1);
+    const column = argNumberOpt(args, "column", 1);
+    const resolved = resolvePath(p);
+    if (!resolved.endsWith(".md")) {
+      return { error: "Path must be a Markdown .md file" };
+    }
+    if (surface !== "text" && surface !== "preview") {
+      return { error: "Argument 'surface' must be 'text' or 'preview'" };
+    }
+
+    const uri = vscode.Uri.file(resolved);
+    if (surface === "preview") {
+      await vscode.commands.executeCommand("vscode.openWith", uri, "accordo.markdownPreview");
+      if (line > 1 || column > 1) {
+        await vscode.commands.executeCommand("accordo_preview_internal_revealLine", uri.toString(), line - 1);
+      }
+      return { opened: true, path: resolved, surface };
+    }
+
+    const position = new vscode.Position(line - 1, column - 1);
+    const range = new vscode.Range(position, position);
+    const editor = await vscode.window.showTextDocument(uri, { selection: range, preview: false });
+    replayMarkdownHighlightsOnTextEditor(resolved, editor);
+    return { opened: true, path: resolved, surface };
   } catch (err) {
     return { error: errorMessage(err) };
   }
@@ -194,5 +236,3 @@ export async function focusGroupHandler(
     return { error: errorMessage(err) };
   }
 }
-
-

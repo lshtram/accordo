@@ -88,6 +88,7 @@ function registerEditorShims(
 ): void {
   registerEditorCommandShims(context, {
     openHandler: handlers.openHandler,
+    markdownSetSurfaceHandler: handlers.markdownSetSurfaceHandler,
     closeHandler: handlers.closeHandler,
     focusGroupHandler: handlers.focusGroupHandler,
     highlightHandler: handlers.highlightHandler,

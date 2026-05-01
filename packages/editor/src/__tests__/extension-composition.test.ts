@@ -3,17 +3,17 @@
  * Req: E2E-VCG-09 (tool-count composition) + M76-VCGM-01/02 (removal cycle)
  *
  * M76-VCGM removal:
- *   editorTools: was 11, now 5 (removed: scroll, split, reveal, save, saveAll, format)
+ *   editorTools: 6
  *   layoutTools (base): was 5, now 0 (retired; panelToggle, zen, fullscreen, join, even removed)
  *   bar tools: +1 (layout_panel — replaces panelToggle)
  *   layoutState added by factory (+1)
  * New totals:
- *   editorTools: 5
+ *   editorTools: 6
  *   terminalTools: 5
  *   terminalReadTools: 1
  *   vscodeCommandTools: 2
  *   createLayoutTools: 0 (layoutTools base) + 1 (bar) + 1 (state) = 2
- *   allTools: 5 + 5 + 1 + 2 + 2 = 15
+ *   allTools: 6 + 5 + 1 + 2 + 2 = 16
  */
 
 import { describe, expect, it } from "vitest";
@@ -43,13 +43,13 @@ describe("extension activate — tool composition", () => {
       ...createLayoutTools(() => state),
     ];
 
-    // M76-VCGM-01/02 + Priority U: editorTools=5 (was 11), layoutTools base=0, state=1, bar=1
-    // Total: 5 + 5 + 1 + 2 + 2 = 15
-    expect(editorTools).toHaveLength(5);
+    // M76-VCGM-01/02 + Priority U: layoutTools base=0, state=1, bar=1
+    // Total: 6 + 5 + 1 + 2 + 2 = 16
+    expect(editorTools).toHaveLength(6);
     expect(terminalTools).toHaveLength(5);
     expect(terminalReadTools).toHaveLength(1);
     expect(vscodeCommandTools).toHaveLength(2);
     expect(createLayoutTools(() => state)).toHaveLength(2);
-    expect(allTools).toHaveLength(15);
+    expect(allTools).toHaveLength(16);
   });
 });

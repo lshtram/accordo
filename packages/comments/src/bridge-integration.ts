@@ -23,6 +23,9 @@ import { CAPABILITY_COMMANDS } from "@accordo/capabilities";
 import type { SurfaceCommentAdapter } from "@accordo/capabilities";
 import type { CommentStore } from "./comment-store.js";
 import type { NativeComments } from "./native-comments.js";
+import type { NativeCommentSyncState } from "./native-comments.js";
+
+export const COMMENTS_GET_SYNC_STATE_COMMAND = "accordo_comments_internal_getSyncState";
 
 // ── BridgeAPI ─────────────────────────────────────────────────────────────────
 
@@ -57,32 +60,32 @@ function inferBlockType(blockId: string): BlockCoordinates["blockType"] {
 }
 
 /** Shared CRUD methods for both getStore and getSurfaceAdapter adapters. */
-function buildSharedAdapterMethods(store: CommentStore, nc: NativeComments): Omit<SurfaceCommentAdapter, "createThread"> {
+function buildSharedAdapterMethods(store: CommentStore, _nc: NativeComments): Omit<SurfaceCommentAdapter, "createThread"> {
+  // All mutations go through store, which emits onChanged -> nc.reconcile.
+  // Direct nc.updateThread/removeThread calls are removed per architecture contract.
   return {
     async reply(args) {
       await store.reply({ threadId: args.threadId, body: args.body, author: { kind: "user", name: "User" } });
-      const updated = store.getThread(args.threadId);
-      if (updated) nc.updateThread(updated);
     },
     async resolve(args) {
       await store.resolve({ threadId: args.threadId, resolutionNote: args.resolutionNote ?? "", author: { kind: "user", name: "User" } });
-      const updated = store.getThread(args.threadId);
-      if (updated) nc.updateThread(updated);
     },
     async reopen(args) {
       await store.reopen(args.threadId, { kind: "user", name: "User" });
-      const updated = store.getThread(args.threadId);
-      if (updated) nc.updateThread(updated);
     },
     async delete(args) {
       await store.delete({ threadId: args.threadId, commentId: args.commentId });
-      const updated = store.getThread(args.threadId);
-      if (updated) nc.updateThread(updated);
-      else nc.removeThread(args.threadId);
     },
     getThreadsForUri(uri) { return store.getThreadsForUri(uri); },
     onChanged(listener) { return store.onChanged(listener); },
   };
+}
+
+export function getCommentSyncStateSnapshot(
+  store: CommentStore,
+  nc: NativeComments,
+): NativeCommentSyncState {
+  return nc.getSyncState(store.getAllThreads());
 }
 
 // ── registerBridgeIntegrationCommands ─────────────────────────────────────────
@@ -116,10 +119,9 @@ export function registerBridgeIntegrationCommands(
           const coords: BlockCoordinates = { type: "block", blockId: args.blockId, blockType: inferBlockType(args.blockId) };
           anchor = { kind: "surface", uri: args.uri, surfaceType: "markdown-preview", coordinates: coords } as CommentAnchorSurface;
         }
+        // store.createThread -> store.onChanged -> nc.reconcile handles widget creation.
         const result = await store.createThread({ uri: args.uri, anchor, body: args.body, intent: args.intent as CommentIntent | undefined, author: { kind: "user", name: "User" } });
-        const thread = store.getThread(result.threadId)!; // ! safe: createThread persists before returning
-        nc.addThread(thread);
-        return thread;
+        return store.getThread(result.threadId)!; // ! safe: createThread persists before returning
       },
     })),
 
@@ -139,9 +141,14 @@ export function registerBridgeIntegrationCommands(
 
     vscode.commands.registerCommand(CAPABILITY_COMMANDS.COMMENTS_RESOLVE_THREAD,
       async (threadId: string) => {
+        // store.resolve -> store.onChanged -> nc.reconcile handles widget update.
         await store.resolve({ threadId, resolutionNote: "Resolved via internal API", author: { kind: "user", name: "User" } });
-        nc.updateThread(store.getThread(threadId)!); // ! safe: resolveThread succeeds only if thread exists
       },
+    ),
+
+    vscode.commands.registerCommand(
+      COMMENTS_GET_SYNC_STATE_COMMAND,
+      () => getCommentSyncStateSnapshot(store, nc),
     ),
 
     // Generalised surface adapter — M40-EXT-11
@@ -150,14 +157,13 @@ export function registerBridgeIntegrationCommands(
       (): SurfaceCommentAdapter => ({
         ...shared,
         async createThread(args) {
+          // store.createThread -> store.onChanged -> nc.reconcile handles widget creation.
           const result = await store.createThread({
             uri: args.uri, anchor: args.anchor, body: args.body,
             intent: args.intent as CommentIntent | undefined,
             author: { kind: "user", name: "User" },
           });
-          const thread = store.getThread(result.threadId)!; // ! safe: createThread persists before returning
-          nc.addThread(thread);
-          return thread;
+          return store.getThread(result.threadId)!; // ! safe: createThread persists before returning
         },
       }),
     ),

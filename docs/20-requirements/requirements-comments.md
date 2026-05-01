@@ -121,6 +121,27 @@ interface AccordoComment {
 | M36-CS-09 | `load(workspaceRoot)` loads from disk; missing/corrupt file results in empty in-memory state |
 | M36-CS-10 | All mutating methods are async and persist after each mutation |
 | M36-CS-11 | `getWorkspaceRoot()` returns the workspace root path |
+| M36-CS-12 | Persisted store data is validated at load time before entering runtime state; threads/comments with empty IDs, duplicate IDs, or mismatched `comment.threadId !== thread.id` are dropped with a validation report |
+| M36-CS-13 | Mutation boundaries validate caller-supplied IDs before repository mutation so empty/whitespace thread/comment IDs never enter runtime state |
+
+#### Validation contract (load-time and mutation boundaries)
+
+- **Trim rule:** For validation purposes, `threadId` and `commentId` are trimmed first. `undefined` means "not caller-supplied" and is allowed where the schema marks the field optional; `""` or whitespace-only values are invalid.
+- **Load-time duplicate precedence (M36-CS-12):** Validation walks persisted data in file order. **First retained occurrence wins; later duplicates are dropped.** This applies to duplicate thread IDs and duplicate comment IDs.
+- **Load-time thread precedence:** A thread with an invalid/whitespace-only thread ID is dropped before comment-level validation. For a retained thread, comments are validated in array order.
+- **Load-time comment precedence:** For each persisted comment, issue precedence is: `empty-comment-id` → `mismatched-comment-thread-id` → `duplicate-comment-id`. The first matching issue code is the one reported for that dropped comment.
+- **Empty-thread-after-sanitization rule:** If all comments in a persisted thread are dropped during validation, the thread is dropped from runtime state as well; the validation report still contains the original per-item issues that caused the drop.
+- **Validation report visibility:** The load path must retain a machine-checkable validation report surface so tests can assert which persisted items were retained vs dropped.
+
+#### Mutation validation contract (M36-CS-13)
+
+- **Stable error vocabulary:** Validation/domain failures at comment mutation boundaries MUST reject/throw an `Error` whose `message` is one of these stable codes: `invalid-thread-id`, `invalid-comment-id`, `duplicate-thread-id`, `duplicate-comment-id`, `thread-not-found`, `comment-not-found`, `thread-already-resolved`, `thread-not-resolved`.
+- **Precedence rule:** When multiple failures could apply, validation errors win over lookup/state errors, and lookup/state errors win over downstream domain limits/persistence work.
+- **`comment_create` precedence:** validate optional caller-supplied `threadId` first, then optional caller-supplied `commentId`, then reject duplicate `threadId`, then reject duplicate `commentId`; only after those checks may creation proceed.
+- **`comment_reply` precedence:** validate `threadId`, then optional `commentId`, then check `thread-not-found`, then reject duplicate `commentId`; only then may reply/comment-limit logic proceed.
+- **`comment_resolve` precedence:** validate `threadId`, then check `thread-not-found`, then `thread-already-resolved`.
+- **`comment_reopen` precedence:** validate `threadId`, then check `thread-not-found`, then `thread-not-resolved`.
+- **`comment_delete` precedence:** bulk forms (`all: true` or `deleteScope: { all: true }`) bypass per-thread ID validation. Otherwise validate `threadId`, then optional `commentId`, then check `thread-not-found`, then `comment-not-found` if deleting a single comment. A whitespace-only `commentId` is rejected as `invalid-comment-id`; it is **not** treated as "delete whole thread".
 
 ---
 
@@ -141,6 +162,11 @@ interface AccordoComment {
 | M37-NC-07 | `removeThread(threadId)` disposes the widget and removes it from internal mapping |
 | M37-NC-08 | Provides command handlers (`resolve/reopen/delete`) that mutate `CommentStore` then update widgets |
 | M37-NC-09 | Non-text anchors are created without a concrete text range; text anchors render at their exact range |
+| M37-NC-10 | `CommentStore` is the only source of truth; native widget state is a disposable projection and must never be treated as authoritative data |
+| M37-NC-11 | `reconcile(storeThreads)` disposes widgets whose IDs are absent from the store, creates widgets missing from the widget map, updates widgets whose comments/status/range changed, and never creates duplicate widgets for an existing thread ID |
+| M37-NC-12 | Activation wires one store-driven reconciliation path (`store.onChanged` → native projection reconcile) so MCP tools, native commands, panel commands, startup prune/restore, and other store mutations converge through the same sync path |
+| M37-NC-13 | Text-document staleness/range shifts are propagated to native widgets through reconciliation or an equivalent exact projection update driven from store state |
+| M37-NC-14 | Exposes an internal sync diagnostic surface returning store thread IDs, native widget IDs, missing-widget IDs, orphan-widget IDs, and an `inSync` boolean for tests/debugging |
 
 ---
 
@@ -152,13 +178,13 @@ interface AccordoComment {
 
 | Requirement ID | Requirement |
 |---|---|
-| M38-CT-01 | Tool `comment_list` — list thread summaries with filters/pagination and optional modality scope |
+| M38-CT-01 | Tool `comment_list` — list thread summaries with filters/pagination and optional modality scope; no filters, or `status: "all"`, returns open and resolved threads |
 | M38-CT-02 | Tool `comment_get` — get one thread by `threadId` |
 | M38-CT-03 | Tool `comment_create` — create a thread with modality-specific anchor |
 | M38-CT-04 | Tool `comment_reply` — append a reply to a thread |
 | M38-CT-05 | Tool `comment_resolve` — resolve a thread with `resolutionNote` |
 | M38-CT-06 | Tool `comment_reopen` — reopen a resolved thread |
-| M38-CT-07 | Tool `comment_delete` — delete a thread, a single comment, or a scoped browser cleanup |
+| M38-CT-07 | Tool `comment_delete` — delete a thread, a single comment, a scoped modality cleanup, or every thread with `all: true` |
 | M38-CT-08 | All tools return structured JSON matching the CommentThread data model |
 | M38-CT-09 | Tools are registered via `bridge.registerTools('accordo-comments', tools)` |
 | M38-CT-10 | `comment_sync_version` exposes store version and thread count for sync drift detection |
@@ -189,7 +215,7 @@ interface AccordoComment {
     url?: string;
   };
   uri?: string;
-  status?: "open" | "resolved";
+  status?: "open" | "resolved" | "all";
   intent?: "fix" | "explain" | "refactor" | "review" | "design" | "question";
   anchorKind?: "text" | "surface" | "file";
   updatedSince?: string;
@@ -261,6 +287,10 @@ interface AccordoComment {
 > `commentId` is optional. When provided (e.g. by browser-extension relay), the store
 > uses the caller-supplied ID instead of generating a new one, ensuring cross-origin
 > ID parity between the browser local store and the Hub/VS Code CommentStore.
+>
+> Validation contract: if `commentId` is supplied here, whitespace-only values reject with
+> `invalid-comment-id`; duplicate IDs reject with `duplicate-comment-id`; omitted values are
+> generated by the store.
 
 #### Tool Schema: `comment_resolve`
 
@@ -287,8 +317,9 @@ interface AccordoComment {
 {
   threadId?: string;
   commentId?: string;
+  all?: true;
   deleteScope?: {
-    modality: "browser";
+    modality?: "text" | "markdown-preview" | "diagram" | "slide" | "image" | "pdf" | "browser";
     all: true;
   };
 }
@@ -296,7 +327,13 @@ interface AccordoComment {
 { success: true; deleted: true; deletedCount?: number }
 ```
 
-`deleteScope: { modality: "browser", all: true }` is reserved for bulk browser cleanup and is the backend path used by the Comments Panel "Delete All Browser Comments" action.
+Use `all: true` or `deleteScope: { all: true }` to delete every thread across modalities.
+Use `deleteScope: { modality, all: true }` to bulk-delete one modality; browser cleanup uses `modality: "browser"`.
+
+#### Observable mutation error behavior (tool/runtime surface)
+
+- `comment_create`, `comment_reply`, `comment_resolve`, `comment_reopen`, and `comment_delete` surface the stable validation/domain codes above without remapping them to tool-specific wording.
+- Internal command adapters and other package-internal mutation entrypoints MUST preserve the same observable error codes so unit tests and package-integration tests can assert identical behavior across MCP and VS Code command boundaries.
 
 ---
 
@@ -338,6 +375,7 @@ interface AccordoComment {
 | M40-EXT-11 | Exposes `accordo_comments_internal_getSurfaceAdapter` — a generalized surface adapter command for any surface modality (slides, diagrams, browser, etc.) |
 | M40-EXT-12 | Registers panel action command `accordo.commentsPanel.deleteAllBrowserComments` that removes all browser-surface threads after confirmation |
 | M40-EXT-13 | Browser-surface threads are included in `CommentsTreeProvider` source so they appear in the shared Accordo Comments Panel |
+| M40-EXT-14 | Registers `accordo_comments_internal_getSyncState` for diagnostics/tests; the command reports store/native projection drift without mutating state |
 
 ---
 
@@ -353,6 +391,7 @@ interface AccordoComment {
 | `accordo_comments_internal_getThreadsForUri` | `uri: string` | `CommentThread[]` |
 | `accordo_comments_internal_createSurfaceComment` | `{ uri, anchor, body, intent? }` | `CreateCommentResult` |
 | `accordo_comments_internal_resolveThread` | `threadId: string` | `void` |
+| `accordo_comments_internal_getSyncState` | none | `{ storeThreadIds, nativeWidgetIds, missingWidgetIds, orphanWidgetIds, inSync }` |
 
 ### 5.2 Generalized Surface Adapter (new — M40-EXT-11)
 
@@ -400,11 +439,11 @@ The existing `getStore` command remains unchanged. `md-viewer` continues to use 
 
 | Module | Test file | Req IDs covered |
 |---|---|---|
-| CommentStore | `src/__tests__/comment-store.test.ts` | M36-CS-01 → M36-CS-11 |
-| NativeComments | `src/__tests__/native-comments.test.ts` | M37-NC-01 → M37-NC-09 |
+| CommentStore | `src/__tests__/comment-store.test.ts` | M36-CS-01 → M36-CS-13 |
+| NativeComments | `src/__tests__/native-comments.test.ts` | M37-NC-01 → M37-NC-14 |
 | CommentTools | `src/__tests__/comment-tools.test.ts` | M38-CT-01 → M38-CT-11 |
 | StateContribution | `src/__tests__/state-contribution.test.ts` | M39-SC-01 → M39-SC-06 |
-| extension (entry) | `src/__tests__/extension.test.ts` | M40-EXT-01 → M40-EXT-13 |
+| extension (entry) | `src/__tests__/extension.test.ts` | M40-EXT-01 → M40-EXT-14 |
 
 ---
 

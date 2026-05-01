@@ -18,6 +18,7 @@ export {
   argNumber,
   argNumberOpt,
   openHandler,
+  markdownSetSurfaceHandler,
   closeHandler,
   scrollHandler,
   highlightHandler,

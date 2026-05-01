@@ -2,7 +2,7 @@
  * comment-mutation-ops — Mutation operations for CommentRepository.
  *
  * Contains all mutation methods (createThread, reply, resolve, reopen,
- * delete, deleteAllByModality, onDocumentChanged, removeThreadsByUris)
+ * delete, deleteAll, deleteAllByModality, onDocumentChanged, removeThreadsByUris)
  * and their private helpers (_applyChangesToAnchor).
  *
  * Source: b4a-architecture.md (Wave 3 modularity)
@@ -44,8 +44,21 @@ export class CommentMutationOps extends CommentQueryOps {
    * Returns threadId, commentId, and affectedUri.
    */
   createThread(params: CreateCommentParams): CreateCommentResult & { affectedUri: string } {
+    // M36-CS-13: reject duplicate caller-supplied IDs (precedence: first wins)
+    if (params.threadId !== undefined && this._threads.has(params.threadId)) {
+      throw new Error("duplicate-thread-id");
+    }
+    if (params.commentId !== undefined) {
+      // Check if commentId already exists in any thread
+      for (const thread of this._threads.values()) {
+        if (thread.comments.some(c => c.id === params.commentId)) {
+          throw new Error("duplicate-comment-id");
+        }
+      }
+    }
+
     if (this._threads.size >= COMMENT_MAX_THREADS) {
-      throw new Error(`Thread limit reached: max ${COMMENT_MAX_THREADS} threads`);
+      throw new Error("thread-limit-reached");
     }
 
     const threadId = params.threadId ?? crypto.randomUUID();
@@ -87,9 +100,15 @@ export class CommentMutationOps extends CommentQueryOps {
    */
   reply(params: ReplyParams): ReplyResult & { affectedUri: string } {
     const thread = this._threads.get(params.threadId);
-    if (!thread) throw new Error(`Thread not found: ${params.threadId}`);
+    if (!thread) throw new Error("thread-not-found");
+
+    // M36-CS-13: reject duplicate caller-supplied commentId (precedence: first wins)
+    if (params.commentId !== undefined && thread.comments.some(c => c.id === params.commentId)) {
+      throw new Error("duplicate-comment-id");
+    }
+
     if (thread.comments.length >= COMMENT_MAX_COMMENTS_PER_THREAD) {
-      throw new Error(`Comment limit reached: max ${COMMENT_MAX_COMMENTS_PER_THREAD} per thread`);
+      throw new Error("comment-limit-reached");
     }
 
     const commentId = params.commentId ?? crypto.randomUUID();
@@ -119,8 +138,8 @@ export class CommentMutationOps extends CommentQueryOps {
    */
   resolve(params: ResolveParams): { affectedUri: string } {
     const thread = this._threads.get(params.threadId);
-    if (!thread) throw new Error(`Thread not found: ${params.threadId}`);
-    if (thread.status === "resolved") throw new Error("Thread already resolved");
+    if (!thread) throw new Error("thread-not-found");
+    if (thread.status === "resolved") throw new Error("thread-already-resolved");
 
     const commentId = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -151,8 +170,8 @@ export class CommentMutationOps extends CommentQueryOps {
    */
   reopen(threadId: string, author: import("@accordo/bridge-types").CommentAuthor): { affectedUri: string } {
     const thread = this._threads.get(threadId);
-    if (!thread) throw new Error(`Thread not found: ${threadId}`);
-    if (thread.status !== "resolved") throw new Error("Thread is not resolved");
+    if (!thread) throw new Error("thread-not-found");
+    if (thread.status !== "resolved") throw new Error("thread-not-resolved");
 
     thread.status = "open";
     thread.lastActivity = new Date().toISOString();
@@ -173,7 +192,7 @@ export class CommentMutationOps extends CommentQueryOps {
    */
   delete(params: DeleteParams): { affectedUri: string } {
     const thread = this._threads.get(params.threadId);
-    if (!thread) throw new Error(`Thread not found: ${params.threadId}`);
+    if (!thread) throw new Error("thread-not-found");
 
     const affectedUri = thread.anchor.uri;
 
@@ -182,7 +201,7 @@ export class CommentMutationOps extends CommentQueryOps {
       this._stale.delete(params.threadId);
     } else {
       const idx = thread.comments.findIndex(c => c.id === params.commentId);
-      if (idx === -1) throw new Error(`Comment not found: ${params.commentId}`);
+      if (idx === -1) throw new Error("comment-not-found");
       thread.comments.splice(idx, 1);
       if (thread.comments.length === 0) {
         this._threads.delete(params.threadId);
@@ -209,6 +228,30 @@ export class CommentMutationOps extends CommentQueryOps {
         toDelete.push({ id, uri: thread.anchor.uri });
       }
     }
+
+    if (toDelete.length === 0) return { count: 0, affectedUris: [], deletedIds: [] };
+
+    const affectedUrisSet = new Set<string>();
+    for (const { id, uri } of toDelete) {
+      this._threads.delete(id);
+      this._stale.delete(id);
+      affectedUrisSet.add(uri);
+    }
+
+    this._versionCounter++;
+    return {
+      count: toDelete.length,
+      affectedUris: Array.from(affectedUrisSet),
+      deletedIds: toDelete.map(d => d.id),
+    };
+  }
+
+  /** Delete every thread in the repository. */
+  deleteAll(): { count: number; affectedUris: string[]; deletedIds: string[] } {
+    const toDelete = Array.from(this._threads.values()).map(thread => ({
+      id: thread.id,
+      uri: thread.anchor.uri,
+    }));
 
     if (toDelete.length === 0) return { count: 0, affectedUris: [], deletedIds: [] };
 

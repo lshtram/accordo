@@ -18,7 +18,7 @@
  *   [x] clearHighlightsHandler — §4.5 (by id or all)
  *   [x] focusGroupHandler     — §4.7 (groups 1–9)
  *   [x] _clearDecorationStore — test helper (internal)
- *   [x] editorTools[]         — 6 tool definitions (5 removed)
+ *   [x] editorTools[]         — 6 tool definitions
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -569,9 +569,8 @@ describe("clearHighlightsHandler — §4.5", () => {
 describe("editorTools registration", () => {
   const toolNames = editorTools.map((t) => t.name);
 
-  // M76-VCGM-01/PU-01: exactly 5 tools remain (scroll, split, reveal, save, saveAll, format removed)
-  it("REG-01: exports exactly 5 tool definitions for modules 16+17", () => {
-    expect(editorTools).toHaveLength(5);
+  it("REG-01: exports exactly 6 editor tool definitions", () => {
+    expect(editorTools).toHaveLength(6);
   });
 
   it("REG-02: all remaining module 16 tools are present", () => {
@@ -583,6 +582,10 @@ describe("editorTools registration", () => {
   it("REG-03: all remaining module 17 tools are present", () => {
     expect(toolNames).toContain("accordo_editor_highlight");
     expect(toolNames).toContain("accordo_editor_clearHighlights");
+  });
+
+  it("REG-03a: Markdown surface control tool is present", () => {
+    expect(toolNames).toContain("accordo_markdown_setSurface");
   });
 
   // M76-VCGM-01: removed tools are absent
@@ -609,9 +612,10 @@ describe("editorTools registration", () => {
     }
   });
 
-  it("REG-06: open, highlight, clearHighlights, focus are idempotent", () => {
+  it("REG-06: open, markdown setSurface, highlight, clearHighlights, focus are idempotent", () => {
     const idempotentNames = [
       "accordo_editor_open",
+      "accordo_markdown_setSurface",
       "accordo_editor_highlight",
       "accordo_editor_clearHighlights",
       "accordo_editor_focus",
@@ -635,6 +639,10 @@ describe("editorTools registration", () => {
 
   it("REG-09: open requires [path]", () => {
     expect(tool("accordo_editor_open").inputSchema.required).toEqual(["path"]);
+  });
+
+  it("REG-09b: markdown setSurface requires [path, surface]", () => {
+    expect(tool("accordo_markdown_setSurface").inputSchema.required).toEqual(["path", "surface"]);
   });
 
   it("REG-13: highlight requires [path, startLine, endLine]", () => {

@@ -8,10 +8,10 @@
  *   accordo_editor_split, accordo_editor_reveal,
  *   accordo_editor_scroll, accordo_editor_save, accordo_editor_saveAll, accordo_editor_format
  *
- * Remaining tools: open, close, focus, highlight, clearHighlights
+ * Remaining tools: open, close, focus, highlight, clearHighlights, markdown setSurface
  *
  * Exported API checklist (Phase B requirement):
- *   [x] editorTools[] — 5 tool definitions (was 11, 6 removed)
+ *   [x] editorTools[] — 6 tool definitions
  *   [x] removed tools are NOT present in the array
  */
 
@@ -24,9 +24,8 @@ import { editorTools } from "../tools/editor-definitions.js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("editorTools — structural", () => {
-  // M76-VCGM-01/PU-01: exactly 5 tools remain (scroll, split, reveal, save, saveAll, format removed)
-  it("DEF-01: editorTools has exactly 5 entries", () => {
-    expect(editorTools).toHaveLength(5);
+  it("DEF-01: editorTools has exactly 6 entries", () => {
+    expect(editorTools).toHaveLength(6);
   });
 
   it("DEF-02: includes tool named 'accordo_editor_open'", () => {
@@ -57,6 +56,11 @@ describe("editorTools — structural", () => {
   it("DEF-07: includes tool named 'accordo_editor_clearHighlights'", () => {
     const names = editorTools.map((t) => t.name);
     expect(names).toContain("accordo_editor_clearHighlights");
+  });
+
+  it("DEF-07b: includes tool named 'accordo_markdown_setSurface'", () => {
+    const names = editorTools.map((t) => t.name);
+    expect(names).toContain("accordo_markdown_setSurface");
   });
 
   // M76-VCGM-01: removed tools are absent
@@ -162,6 +166,29 @@ describe("accordo_editor_open — inputSchema", () => {
 
   it("DEF-24: column property is type number", () => {
     const props = tool.inputSchema.properties as Record<string, { type?: string }>;
+    expect(props["column"].type).toBe("number");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// accordo_markdown_setSurface schema
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("accordo_markdown_setSurface — inputSchema", () => {
+  const tool = editorTools.find((t) => t.name === "accordo_markdown_setSurface")!;
+
+  it("DEF-24b: inputSchema requires path and surface", () => {
+    expect(tool.inputSchema.required).toEqual(["path", "surface"]);
+  });
+
+  it("DEF-24c: surface enum is text or preview", () => {
+    const props = tool.inputSchema.properties as Record<string, { enum?: string[] }>;
+    expect(props["surface"].enum).toEqual(["text", "preview"]);
+  });
+
+  it("DEF-24d: line and column are optional numbers", () => {
+    const props = tool.inputSchema.properties as Record<string, { type?: string }>;
+    expect(props["line"].type).toBe("number");
     expect(props["column"].type).toBe("number");
   });
 });

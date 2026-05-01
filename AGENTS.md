@@ -130,7 +130,7 @@ These apply regardless of which mode you are in:
    Read only the YAML front matter to see what is documented — load the full section
    only if a relevant pattern ID applies. When you hit new friction, add an entry to
    the appropriate file (generic tool issue → `patterns.md`, project-specific → `accordo-patterns.md`).
-7. **Runtime MCP docs are mandatory for tool behavior.** For tool usage/preconditions/failure modes, prioritize runtime-facing guidance (tool descriptions + MCP resources + server instructions) per [`docs/30-development/mcp-tool-documentation-contract.md`](docs/30-development/mcp-tool-documentation-contract.md). Do not assume external agents can read repo requirements/testing docs.
+7. **Runtime MCP docs are mandatory for tool behavior.** For tool usage/preconditions/failure modes, prioritize runtime-facing guidance (tool descriptions + MCP resources + server instructions) per [`docs/30-development/mcp-tool-documentation-contract.md`](docs/30-development/mcp-tool-documentation-contract.md). Do not assume external agents can read repo requirements/testing docs. When adding operational tool know-how for future agents, follow the documentation placement rules in §5.3.
 8. **Commit every time a task or phase is done; push only when the user explicitly says "push".**
 9. **Skill routing is mandatory on matching tasks.** Before acting, map the request to the project skill matrix in §5.2 and load every required skill for that flow (including companion skills).
 
@@ -173,6 +173,27 @@ These are project-level decisions that override or extend [`docs/30-development/
 | [`skills/vscode-command-gateway/skill.md`](skills/vscode-command-gateway/skill.md) | User needs long-tail VS Code functionality through the generic command gateway instead of a dedicated MCP tool. |
 | [`skills/debugging/skill.md`](skills/debugging/skill.md) | Fails, test failures, unexpected runtime behavior — load before debugging. |
 | [`skills/README.md`](skills/README.md) | Skills index — lists all project skills and how to create new ones. |
+
+## 5.3 Where To Put Agent-Facing Tool Knowledge
+
+Accordo has two skill systems that must stay aligned:
+
+| Surface | File / URI | Audience | Purpose |
+|---|---|---|---|
+| Runtime MCP skill resource | `packages/hub/src/skill-resources/*.ts` exposed as `accordo://skills/*` | Any MCP client connected to Hub | Authoritative operational tool guidance at runtime |
+| Standard repo skill | `skills/<skill>/SKILL.md` (or existing `skills/<skill>/skill.md`) | SKILL.md-based coding agents working in this repo | Discoverable local skill entry point |
+| Tool descriptions | `packages/*/src/**/tools*.ts` | Agents browsing MCP `tools/list` | Short preconditions plus pointer to `accordo://skills/*` |
+| Requirements docs | `docs/20-requirements/*.md` | Implementers and reviewers | Contractual behaviour and acceptance criteria |
+| Pattern files | `docs/30-development/patterns.md`, `docs/30-development/accordo-patterns.md` | Developers maintaining the repo | Development-process gotchas, not runtime tool workflow guidance |
+
+**Rule:** If the knowledge changes how future agents should operate an Accordo MCP tool, update both:
+
+1. The runtime MCP skill resource, usually `packages/hub/src/skill-resources/accordo.ts` for general editor/layout/terminal/comment workflows.
+2. The matching standard skill file under `skills/`, usually `skills/accordo/SKILL.md` for general Accordo workflows.
+
+Also update the relevant tool description if the immediate precondition or skill pointer is missing, and update requirements/tests if the tool contract changed.
+
+Do **not** put runtime tool-operation guidance only in `docs/30-development/*patterns.md`. Pattern files are for development friction and codebase-maintenance lessons; external MCP clients and SKILL.md-based agents may never read them.
 
 ## 5.2 Mandatory Skill Routing Directives
 

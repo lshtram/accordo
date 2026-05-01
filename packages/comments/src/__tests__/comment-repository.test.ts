@@ -714,13 +714,17 @@ describe("§4 Resolve", () => {
       resolutionNote: "First resolve",
       author: { kind: "agent", name: "Agent" },
     });
-    expect(() =>
+    try {
       repo.resolve({
         threadId,
         resolutionNote: "Second resolve",
         author: { kind: "agent", name: "Agent" },
-      }),
-    ).toThrow(/already resolved/i);
+      });
+      throw new Error("Expected thread-already-resolved");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("thread-already-resolved");
+    }
   });
 
   it("throws when resolving non-existent thread", () => {

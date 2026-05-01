@@ -26,7 +26,7 @@ export const commentToolSchemas: ToolSchema[] = [
     name: "comment_list",
     group: "comments",
     description:
-      "List comments. Filter by scope.modality, status, or intent." + COMMENT_SKILL,
+      "List comments. No filters returns all threads." + COMMENT_SKILL,
     dangerLevel: "safe",
     idempotent: true,
     inputSchema: {
@@ -50,7 +50,7 @@ export const commentToolSchemas: ToolSchema[] = [
           type: "string",
           description: "Filter by file — any form accepted: file:///abs, /abs, or repo-relative",
         },
-        status: { type: "string", description: "Filter by status", enum: ["open", "resolved"] },
+        status: { type: "string", description: "Filter by status; use 'all' or omit for all statuses", enum: ["open", "resolved", "all"] },
         intent: {
           type: "string",
           description: "Filter by intent",
@@ -241,7 +241,7 @@ export const commentToolSchemas: ToolSchema[] = [
     name: "comment_delete",
     group: "comments",
     description:
-      "Delete a comment, thread, or deleteScope batch." + COMMENT_SKILL,
+      "Delete a comment, thread, or all threads." + COMMENT_SKILL,
     dangerLevel: "moderate",
     idempotent: false,
     inputSchema: {
@@ -255,19 +255,22 @@ export const commentToolSchemas: ToolSchema[] = [
           type: "string",
           description: "If provided, delete only this comment; otherwise delete the entire thread",
         },
+        all: {
+          type: "boolean",
+          description: "When true and no threadId is provided, delete all comment threads",
+        },
         deleteScope: {
           type: "object",
           description:
-            "Bulk delete scope — use { modality: 'browser', all: true } to delete all browser threads",
+            "Bulk delete scope — use { all: true } to delete all threads, or { modality: 'browser', all: true } to delete one modality",
           properties: {
             modality: {
               type: "string",
               description: "Surface modality to delete",
-              enum: ["browser"],
+              enum: ["text", "markdown-preview", "diagram", "slide", "image", "pdf", "browser"],
             },
             all: { type: "boolean", description: "Must be true for bulk delete" },
           },
-          required: ["modality", "all"],
         },
       },
       required: [],

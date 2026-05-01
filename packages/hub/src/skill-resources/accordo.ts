@@ -18,6 +18,7 @@ Use this skill for general Accordo IDE work: editor, layout, terminals, comments
 
 ### Markdown Highlight Guidance
 
+- For demos/walkthroughs where the user must see the highlighted content on screen, use this exact sequence: (1) open or switch to the target surface at the target line with \`accordo_markdown_setSurface\` and/or \`accordo_editor_open({ path, line })\`, (2) apply \`accordo_editor_highlight({ path, startLine, endLine })\`, then (3) after the explanation, remove the highlight via \`accordo_editor_clearHighlights({ decorationId })\` before moving to the next feature.
 - Markdown preview and Markdown text editor highlights are separate VS Code surfaces. If both need to show the same callout, apply the highlight once per surface: switch to preview and highlight, then switch to text and highlight the same range again.
 - If both preview and text tabs are open for the same Markdown file, \`accordo_editor_highlight\` may prefer the visible text editor path. Use \`accordo_markdown_setSurface\` to make the intended surface active before highlighting.
 - For Markdown text headings, avoid single-line ranges because they may be hard to see in some VS Code decoration states. Highlight the heading plus the following line instead, for example \`startLine: 270, endLine: 271\`.

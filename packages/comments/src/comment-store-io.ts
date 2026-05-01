@@ -21,7 +21,7 @@ import type {
 /** Options for listing threads. */
 export interface ListThreadsOptions {
   uri?: string;
-  status?: CommentStatus;
+  status?: CommentStatus | "all";
   intent?: CommentIntent;
   anchorKind?: "text" | "surface" | "file";
   /** Filter by surface type (e.g. "browser", "diagram"). Only matches surface anchors. */

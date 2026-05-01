@@ -500,56 +500,6 @@ describe("Executable webview runtime behavior", () => {
     expect(posts).toContainEqual({ type: "presentation:slideChanged", index: 1 });
   });
 
-  it("host:request-capture emits presentation:capture-ready with base64 data", async () => {
-    const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
-    const renderResult: MarpRenderResult = {
-      html: "<svg data-marpit-svg></svg><svg data-marpit-svg></svg>",
-      css: "svg { display:block; }",
-      slideCount: 2,
-      comments: ["", ""],
-    };
-    const html = buildMarpWebviewHtml({
-      renderResult,
-      nonce: NONCE,
-      cspSource: CSP_SOURCE,
-    });
-    const runtime = createRuntimeHarness(html);
-
-    runtime.dispatchMessage({ type: "host:request-capture" });
-
-    const posts = runtime.getPostMessages();
-    const capture = posts.find((p) => p.type === "presentation:capture-ready");
-    expect(capture).toBeDefined();
-    expect(capture).toHaveProperty("data");
-    expect(typeof capture?.data).toBe("string");
-    expect((capture?.data as string).length).toBeGreaterThan(0);
-    expect(capture).not.toHaveProperty("error");
-  });
-
-  it("host:request-capture with no active slide emits error 'No active slide'", async () => {
-    const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
-    const renderResult: MarpRenderResult = {
-      html: "",
-      css: "svg { display:block; }",
-      slideCount: 0,
-      comments: [],
-    };
-    const html = buildMarpWebviewHtml({
-      renderResult,
-      nonce: NONCE,
-      cspSource: CSP_SOURCE,
-    });
-    const runtime = createRuntimeHarness(html);
-
-    runtime.dispatchMessage({ type: "host:request-capture" });
-
-    const posts = runtime.getPostMessages();
-    const capture = posts.find((p) => p.type === "presentation:capture-ready");
-    expect(capture).toBeDefined();
-    expect(capture).toHaveProperty("data", null);
-    expect(capture).toHaveProperty("error", "No active slide");
-  });
-
   it("Alt+click sets data-block-id on active SVG then clears it via setTimeout(0)", async () => {
     const { buildMarpWebviewHtml } = await import("../marp-webview-html.js");
     const renderResult: MarpRenderResult = {

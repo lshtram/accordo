@@ -6,14 +6,10 @@
  * call through to Marp-specific implementations.
  *
  * Requirements covered:
- *   M50-TL-01  discover exists, ungrouped (prompt-visible), safe
  *   M50-TL-02  open opens a deck URI; returns error if invalid
  *   M50-TL-03  close ends the active session
- *   M50-TL-04  listSlides returns ordered slide metadata
  *   M50-TL-05  getCurrent returns current index + title
  *   M50-TL-06  goto moves to exact slide index
- *   M50-TL-07  next advances one slide
- *   M50-TL-08  prev goes back one slide
  *   M50-TL-09  generateNarration returns { narrations: [...] } wrapper
  *   M50-NFR-04 Tool handlers return structured errors (no uncaught throws)
  *   M50-NFR-05 All public exports have explicit return types
@@ -22,11 +18,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createPresentationTools } from "../presentation-tools.js";
 import type { PresentationToolDeps } from "../presentation-tools.js";
-
-// Mock node:fs/promises so capture tests don't hit disk
-vi.mock("node:fs/promises", () => ({
-  writeFile: vi.fn().mockResolvedValue(undefined),
-}));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -46,8 +37,6 @@ function makeDeps(overrides?: Partial<PresentationToolDeps>): PresentationToolDe
     generateNarration: vi.fn().mockResolvedValue([
       { slideIndex: 0, narrationText: "Welcome to the presentation." },
     ]),
-    capture: vi.fn().mockResolvedValue(Buffer.from("<svg></svg>")),
-    getSessionDeckUri: vi.fn().mockReturnValue(null),
     ...overrides,
   };
 }
@@ -61,15 +50,15 @@ function getToolByName(tools: ReturnType<typeof createPresentationTools>, name: 
 // ── Tool count and names ──────────────────────────────────────────────────────
 
 describe("createPresentationTools — tool count and names", () => {
-  it("M50-TL-01 through M50-TL-10: returns exactly 6 tools (4 removed)", () => {
-    // 6 remaining tools: open, close, getCurrent, goto, generateNarration, webview_capture
+  it("M50-TL-01 through M50-TL-09: returns exactly 5 tools (4 removed)", () => {
+    // 5 remaining tools: open, close, getCurrent, goto, generateNarration
     // 4 removed: discover, listSlides, next, prev
     const tools = createPresentationTools(makeDeps());
-    expect(tools).toHaveLength(6);
+    expect(tools).toHaveLength(5);
   });
 
   it("M50-TL-01 through M50-TL-09: all expected tool names are present", () => {
-    // Every one of the 6 tool names must appear in the returned array.
+    // Every one of the 5 tool names must appear in the returned array.
     // Note: discover, listSlides, next, prev are removed from public MCP surface.
     const tools = createPresentationTools(makeDeps());
     const names = tools.map((t) => t.name);
@@ -78,7 +67,6 @@ describe("createPresentationTools — tool count and names", () => {
     expect(names).toContain("accordo_presentation_getCurrent");
     expect(names).toContain("accordo_presentation_goto");
     expect(names).toContain("accordo_presentation_generateNarration");
-    expect(names).toContain("accordo_webview_capture");
   });
 
   it("removed tools are not in the returned array", () => {
@@ -247,6 +235,20 @@ describe("accordo_presentation_generateNarration handler", () => {
     expect(result).toMatchObject({ narrations: expect.any(Array) });
   });
 
+  it("M50-TL-09: returns narration slideIndex as 1-based", async () => {
+    // Public presentation tools use 1-based slide numbers in both inputs and outputs.
+    const deps = makeDeps({
+      generateNarration: vi.fn().mockResolvedValue([
+        { slideIndex: 1, narrationText: "Second slide narration." },
+      ]),
+    });
+    const tools = createPresentationTools(deps);
+    const result = await getToolByName(tools, "accordo_presentation_generateNarration").handler({ slideIndex: 2 });
+    expect(result).toMatchObject({
+      narrations: [{ slideIndex: 2, narrationText: "Second slide narration." }],
+    });
+  });
+
   it("M50-NFR-04: propagates structured error from generateNarration", async () => {
     // When deps.generateNarration returns { error }, the handler propagates it.
     const deps = makeDeps({
@@ -297,36 +299,5 @@ describe("createPresentationTools — input schemas", () => {
       expect(typeof tool.description).toBe("string");
       expect(tool.description.length).toBeGreaterThan(0);
     }
-  });
-});
-
-// ── accordo_webview_capture — default output path ────────────────────────────
-
-describe("accordo_webview_capture — default output path", () => {
-  it("M50-TL-10: default output_path uses deck directory and stem when session is open", async () => {
-    // When output_path is omitted and a session is open at /deck/slides.md,
-    // the default path must be /deck/slides-slide1.svg (deck-dir/stem-slideN.svg).
-    const deps = makeDeps({
-      getCurrent: vi.fn().mockResolvedValue({ index: 0, title: "Intro" }),
-      getSessionDeckUri: vi.fn().mockReturnValue("/deck/slides.md"),
-    });
-    const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo_webview_capture").handler({}) as Record<string, unknown>;
-    expect(result.captured).toBe(true);
-    expect(result.output_path).toBe("/deck/slides-slide1.svg");
-  });
-
-  it("M50-TL-10: default output_path falls back to CWD when no session is open", async () => {
-    // When output_path is omitted and no session is active, capture() will fail anyway,
-    // but the path should still be derived relative to CWD as a safe fallback.
-    const deps = makeDeps({
-      getCurrent: vi.fn().mockResolvedValue({ index: 0, title: "Intro" }),
-      getSessionDeckUri: vi.fn().mockReturnValue(null),
-    });
-    const tools = createPresentationTools(deps);
-    const result = await getToolByName(tools, "accordo_webview_capture").handler({}) as Record<string, unknown>;
-    expect(result.captured).toBe(true);
-    expect(typeof result.output_path).toBe("string");
-    expect((result.output_path as string).endsWith("slide1.svg")).toBe(true);
   });
 });

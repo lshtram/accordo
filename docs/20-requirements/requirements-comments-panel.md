@@ -229,7 +229,7 @@ Default implementation uses real `vscode` APIs. Tests inject a mock env.
 | M45-CMD-08 | `accordo.commentsPanel.filterByStatus` — `showQuickPick(["open", "resolved", "all"])`; on selection calls `filters.setStatus()` then `provider.refresh()` |
 | M45-CMD-09 | `accordo.commentsPanel.filterByIntent` — `showQuickPick([...all intents, "all"])`; on selection calls `filters.setIntent()` then `provider.refresh()` |
 | M45-CMD-10 | `accordo.commentsPanel.clearFilters` — calls `filters.clear()` then `provider.refresh()` |
-| M45-CMD-11 | After every `store` mutation, the `NativeComments` instance (`nc`) is updated to sync gutter widgets: `nc.updateThread(thread)` / `nc.removeThread(threadId)`. This mirrors the pattern in `SurfaceCommentAdapter` in `extension.ts` |
+| M45-CMD-11 | After every panel-triggered mutation, native gutter/widgets converge via the canonical store-driven reconciliation path (`store.onChanged` → native projection reconcile). Panel commands may issue exact local refreshes, but correctness must not depend on bespoke per-command widget edits |
 | M45-CMD-12 | All commands no-op gracefully when called with no argument (e.g., from command palette with no tree selection) — shows `showInformationMessage('Select a thread in the Comments panel first')` |
 | M45-CMD-13 | Author passed to store mutations is always `{ kind: "user", name: "User" }` (consistent with existing store caller pattern in `native-comments.ts` / `extension.ts`) |
 | M45-CMD-14 | `accordo.commentsPanel.groupBy` — `showQuickPick(["by-status", "by-file", "by-activity"])` with descriptive labels; on selection calls `filters.setGroupMode(mode)` then `provider.refresh()` |
@@ -316,9 +316,9 @@ Note: `staleOnly` filtering requires access to `store.isThreadStale(id)`. Pass `
 - **No generic bulk actions.** Global resolve-all/delete-all remain deferred. (Exception: browser-only bulk delete via `accordo.commentsPanel.deleteAllBrowserComments` is supported.)
 - **No thread badges on file explorer nodes.** Annotation of the Explorer via `FileDecorationProvider` deferred.
 - **No notifications** when agent creates a comment. Deferred to Phase 3 (see architecture §13 comments-architecture.md).
-- **No changes to MCP tools.** The panel is presentation/navigation only; `comment_*` tool contracts are unchanged.
-- **No changes to `CommentStore`** API or data model.
-- **No changes to `NativeComments`** or the `CommentController`. Two-surface strategy is preserved.
+- **No panel-owned MCP tool family.** The panel remains presentation/navigation only; it does not introduce a separate `commentsPanel_*` MCP API. Shared `comment_*` contracts and internal diagnostics may still evolve in the base comments slice.
+- **No alternate source of truth.** `CommentStore` remains authoritative; the panel does not add its own persistence model or fork the thread schema.
+- **No bespoke panel↔widget sync protocol.** `NativeComments` remains the native projection surface, but any required sync/diagnostic seams are shared package infrastructure (`store.onChanged` → native reconcile), not panel-specific state.
 
 ---
 

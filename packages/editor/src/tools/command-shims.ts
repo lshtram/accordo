@@ -26,6 +26,7 @@ export function registerEditorCommandShims(
   context: vscode.ExtensionContext,
   handlers: {
     openHandler: (args: Record<string, unknown>) => unknown;
+    markdownSetSurfaceHandler: (args: Record<string, unknown>) => unknown;
     closeHandler: (args: Record<string, unknown>) => unknown;
     focusGroupHandler: (args: Record<string, unknown>) => unknown;
     highlightHandler: (args: Record<string, unknown>) => unknown;
@@ -34,6 +35,7 @@ export function registerEditorCommandShims(
 ): void {
   context.subscriptions.push(
     makeCommandShim("accordo_editor_open",           handlers.openHandler),
+    makeCommandShim("accordo_markdown_setSurface",  handlers.markdownSetSurfaceHandler),
     makeCommandShim("accordo_editor_close",           handlers.closeHandler),
     makeCommandShim("accordo_editor_focus",          handlers.focusGroupHandler),
     makeCommandShim("accordo_editor_highlight",      handlers.highlightHandler),

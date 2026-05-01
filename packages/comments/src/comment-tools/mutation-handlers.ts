@@ -7,9 +7,18 @@ import type { CommentUINotifier } from "./notifier.js";
 import { buildAnchor } from "./anchor.js";
 import type { CreateRateLimiter } from "./rate-limiter.js";
 
+/**
+ * Build comment mutation handlers that notify external observers only.
+ *
+ * Canonical architecture (comments-sync-hardening):
+ *   - Store mutations go through CommentStore methods
+ *   - store.onChanged → nc.reconcile(store.getAllThreads()) is the ONLY native widget mutation path
+ *   - MCP handlers notify external observers (browser relay) via the _external notifier
+ *   - _external is ExternalFanoutNotifier — never NativeComments
+ */
 export function buildCommentMutationHandlers(
   store: CommentStore,
-  ui: CommentUINotifier | undefined,
+  _external: CommentUINotifier | undefined,
   rateLimiter: CreateRateLimiter,
 ): Pick<
   Record<string, ExtensionToolDefinition["handler"]>,
@@ -25,6 +34,8 @@ export function buildCommentMutationHandlers(
       const intent = args["intent"] as CommentIntent | undefined;
       const agentId = (args["agentId"] as string | undefined) ?? "default";
       const modality = scope?.["modality"] as string | undefined;
+      // Pass raw IDs to store for validation per M36-CS-13.
+      // Empty/whitespace IDs will be rejected with exact stable error codes.
       const threadId = args["threadId"] as string | undefined;
       const commentId = args["commentId"] as string | undefined;
       const contextArg = args["context"] as Record<string, unknown> | undefined;
@@ -72,14 +83,17 @@ export function buildCommentMutationHandlers(
         threadId,
         commentId,
       });
-      const newThread = store.getThread(result.threadId);
-      if (newThread) ui?.addThread(newThread);
+      // Notify external observers (e.g. browser relay) only.
+      // Native widget mutation happens via store.onChanged -> nc.reconcile (canonical path).
+      const thread = store.getThread(result.threadId);
+      if (_external && thread) _external.addThread(thread);
       return { success: true, created: true, threadId: result.threadId, commentId: result.commentId };
     },
 
     comment_reply: async (args) => {
       const threadId = args["threadId"] as string;
       const body = args["body"] as string;
+      // Pass raw commentId to store for validation per M36-CS-13.
       const commentId = args["commentId"] as string | undefined;
       const agentId = (args["agentId"] as string | undefined) ?? "default";
       const authorKind = args["authorKind"] as "user" | "agent" | undefined;
@@ -89,8 +103,10 @@ export function buildCommentMutationHandlers(
           ? { kind: "user" as const, name: authorName ?? "User" }
           : { kind: "agent" as const, name: "agent", agentId };
       const result = await store.reply({ threadId, body, commentId, author });
-      const repliedThread = store.getThread(threadId);
-      if (repliedThread) ui?.updateThread(repliedThread);
+      // Notify external observers only.
+      // Native widget mutation happens via store.onChanged -> nc.reconcile (canonical path).
+      const updatedThread = store.getThread(threadId);
+      if (_external && updatedThread) _external.updateThread(updatedThread);
       return { success: true, replied: true, commentId: result.commentId };
     },
 
@@ -103,8 +119,10 @@ export function buildCommentMutationHandlers(
         resolutionNote,
         author: { kind: "agent", name: "agent", agentId },
       });
-      const resolvedThread = store.getThread(threadId);
-      if (resolvedThread) ui?.updateThread(resolvedThread);
+      // Notify external observers only.
+      // Native widget mutation happens via store.onChanged -> nc.reconcile (canonical path).
+      const updatedThread = store.getThread(threadId);
+      if (_external && updatedThread) _external.updateThread(updatedThread);
       return { success: true, resolved: true, threadId };
     },
 
@@ -112,33 +130,34 @@ export function buildCommentMutationHandlers(
       const threadId = args["threadId"] as string;
       const agentId = (args["agentId"] as string | undefined) ?? "default";
       await store.reopen(threadId, { kind: "agent", name: "agent", agentId });
-      const reopenedThread = store.getThread(threadId);
-      if (reopenedThread) ui?.updateThread(reopenedThread);
+      // Notify external observers only.
+      // Native widget mutation happens via store.onChanged -> nc.reconcile (canonical path).
+      const updatedThread = store.getThread(threadId);
+      if (_external && updatedThread) _external.updateThread(updatedThread);
       return { success: true, reopened: true, threadId };
     },
 
     comment_delete: async (args) => {
       const deleteScope = args["deleteScope"] as Record<string, unknown> | undefined;
+      if (args["all"] === true || (deleteScope && deleteScope["all"] === true && !deleteScope["modality"])) {
+        // store.deleteAll -> store.onChanged -> nc.reconcile handles widget removal.
+        const result = await store.deleteAll();
+        return { success: true, deleted: true, deletedCount: result.count };
+      }
+
       if (deleteScope && deleteScope["all"] === true && deleteScope["modality"]) {
         const modality = deleteScope["modality"] as string;
+        // store.deleteAllByModality -> store.onChanged -> nc.reconcile handles widget removal.
         const result = await store.deleteAllByModality(modality);
-        if (result.deletedIds.length > 0) {
-          ui?.removeThreads(result.deletedIds);
-        }
         return { success: true, deleted: true, deletedCount: result.count };
       }
 
       const threadId = args["threadId"] as string;
       if (!threadId) throw new Error("Either threadId or deleteScope is required");
+      // Pass raw commentId to store for validation per M36-CS-13.
       const rawCommentId = args["commentId"] as string | undefined;
-      const commentId = rawCommentId !== undefined && rawCommentId.trim() !== "" ? rawCommentId : undefined;
-      await store.delete({ threadId, commentId });
-      if (commentId) {
-        const updatedThread = store.getThread(threadId);
-        if (updatedThread) ui?.updateThread(updatedThread);
-      } else {
-        ui?.removeThread(threadId);
-      }
+      // store.delete -> store.onChanged -> nc.reconcile handles widget update/removal.
+      await store.delete({ threadId, commentId: rawCommentId });
       return { success: true, deleted: true };
     },
   };

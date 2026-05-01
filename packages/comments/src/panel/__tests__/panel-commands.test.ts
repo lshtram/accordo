@@ -80,15 +80,15 @@ function createMockStore(threads: CommentThread[] = []): PanelCommandStore & { _
     }),
     deleteAllByModality: vi.fn().mockImplementation(async (surfaceType: string) => {
       // Count threads with matching surface type
-      let count = 0;
+      const deletedIds: string[] = [];
       for (const [id, thread] of map) {
         if (thread.anchor.kind === "surface" && (thread.anchor as { surfaceType: string }).surfaceType === surfaceType) {
           map.delete(id);
-          count++;
+          deletedIds.push(id);
         }
       }
-      deleteCounts.set(surfaceType, count);
-      return count;
+      deleteCounts.set(surfaceType, deletedIds.length);
+      return { count: deletedIds.length, deletedIds };
     }),
     getThread: vi.fn().mockImplementation((id: string) => map.get(id)),
   };
@@ -98,6 +98,7 @@ function createMockNc(): NativeCommentsSync {
   return {
     updateThread: vi.fn(),
     removeThread: vi.fn(),
+    removeThreads: vi.fn(),
   };
 }
 
@@ -408,24 +409,24 @@ describe("M45-CMD PanelCommands", () => {
     expect(refreshSpy).toHaveBeenCalled();
   });
 
-  it("M45-CMD-11: after store mutation, nc is synced (updateThread / removeThread)", async () => {
+  it("M45-CMD-11: after store mutation, reconcile path handles nc sync", async () => {
     registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
 
-    // Test resolve → nc.updateThread
+    // Test resolve → store.resolve is called; store.onChanged -> nc.reconcile handles sync
     const resolveHandler = (vsCommands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
       ([id]: string[]) => id === "accordo.commentsPanel.resolve",
     )?.[1];
     ui.showInputBox.mockResolvedValueOnce("done");
     await resolveHandler(makeTreeItem(makeThread("t1")));
-    expect(nc.updateThread).toHaveBeenCalled();
+    expect(store.resolve).toHaveBeenCalled();
 
-    // Test delete → nc.removeThread
+    // Test delete → store.delete is called; store.onChanged -> nc.reconcile handles sync
     const deleteHandler = (vsCommands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
       ([id]: string[]) => id === "accordo.commentsPanel.delete",
     )?.[1];
     ui.showWarningMessage.mockResolvedValueOnce("Delete");
     await deleteHandler(makeTreeItem(makeThread("t1")));
-    expect(nc.removeThread).toHaveBeenCalledWith("t1");
+    expect(store.delete).toHaveBeenCalled();
   });
 
   it("M45-CMD-12: commands no-op gracefully when called with no argument", async () => {
@@ -581,5 +582,29 @@ describe("M40-EXT-12: deleteAllBrowserComments", () => {
     await handler();
 
     expect(refreshSpy).toHaveBeenCalled();
+  });
+
+  it("M40-EXT-12: removes deleted browser threads from native comments", async () => {
+    const browserThread: CommentThread = {
+      ...makeThread("browser-1", "open"),
+      anchor: {
+        kind: "surface",
+        uri: "https://example.test",
+        surfaceType: "browser",
+        coordinates: { type: "normalized", x: 0.5, y: 0.5 },
+      },
+    };
+    store = createMockStore([browserThread]);
+    registerPanelCommands(ctx as never, store, nc, navEnv, filters, provider, ui);
+
+    const handler = (vsCommands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([id]: string[]) => id === "accordo.commentsPanel.deleteAllBrowserComments",
+    )?.[1];
+
+    ui.showWarningMessage.mockResolvedValueOnce("Delete All");
+    await handler();
+
+    // store.deleteAllByModality is called; store.onChanged -> nc.reconcile handles widget removal
+    expect(store.deleteAllByModality).toHaveBeenCalledWith("browser");
   });
 });

@@ -26,7 +26,7 @@
 // ✓ SurfaceCommentAdapter interface — exercised in §10.3 getSurfaceAdapter block (11 tests: M40-EXT-11)
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import type { CommentAnchorSurface, SlideCoordinates } from "@accordo/bridge-types";
+import type { CommentAnchorSurface, SlideCoordinates, CommentStoreFile } from "@accordo/bridge-types";
 import {
   resetMockState,
   mockState,
@@ -34,8 +34,14 @@ import {
   workspace,
   comments as vscodeComments,
   extensions,
+  Uri,
+  Range,
+  MarkdownString,
+  CommentMode,
+  MockComment,
 } from "./mocks/vscode.js";
 import { activate, deactivate, type BridgeAPI, type SurfaceCommentAdapter } from "../extension.js";
+import { NativeComments } from "../native-comments.js";
 import type * as vscode from "vscode";
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
@@ -54,6 +60,15 @@ function setupBridgeExtension(bridge: BridgeAPI | undefined): void {
       ? { exports: bridge, isActive: true, activate: vi.fn().mockResolvedValue(undefined) }
       : undefined,
   );
+}
+
+function textAnchor(uri: string, startLine: number): import("@accordo/bridge-types").CommentAnchorText {
+  return {
+    kind: "text",
+    uri,
+    range: { startLine, startChar: 0, endLine: startLine, endChar: 0 },
+    docVersion: 1,
+  };
 }
 
 // ── Setup ────────────────────────────────────────────────────────────────────
@@ -570,6 +585,402 @@ describe("§10.3 getSurfaceAdapter (M40-EXT-11)", () => {
     expect(sub).toHaveProperty("dispose");
     expect(typeof sub.dispose).toBe("function");
     sub.dispose();
+  });
+});
+
+// ── B6: Canonical store-driven reconcile wiring ─────────────────────────────
+
+/**
+ * M37-NC-12: Activation wires one store-driven reconciliation path.
+ * store.onChanged → native reconciliation.
+ *
+ * IMPORTANT: This test MUST NOT pass through legacy direct widget calls
+ * (addThread/updateThread/removeThread). It proves the canonical
+ * store.onChanged listener calls reconcile(store.getAllThreads()).
+ */
+describe("B6: store.onChanged → reconcile canonical wiring (M37-NC-12)", () => {
+  it("store.onChanged listener calls reconcile with current store threads", async () => {
+    const bridge = createMockBridge();
+    setupBridgeExtension(bridge);
+    const ctx = createMockExtensionContext();
+    await activate(ctx);
+
+    // Trigger a store mutation (createThread)
+    const createHandler = mockState.registeredCommands.get("accordo_comments_internal_getStore");
+    const adapter = createHandler!() as Record<string, unknown>;
+    await (adapter.createThread as (args: { uri: string; blockId: string; body: string }) => Promise<unknown>)({
+      uri: "file:///project/src/auth.ts",
+      blockId: "p:42",
+      body: "New comment via store",
+    });
+
+    // Get sync state via the diagnostic command — prove reconcile ran
+    const getSyncStateHandler = mockState.registeredCommands.get("accordo_comments_internal_getSyncState");
+    const state = getSyncStateHandler!() as { storeThreadIds: string[]; nativeWidgetIds: string[]; inSync: boolean; missingWidgetIds: string[] };
+
+    // The canonical path has run — there should be no missing widgets
+    expect(state.inSync).toBe(true);
+    expect(state.storeThreadIds.length).toBeGreaterThan(0);
+    expect(state.missingWidgetIds).toHaveLength(0);
+  });
+
+  it("legacy direct addThread cannot mask missing store.onChanged wiring", async () => {
+    const bridge = createMockBridge();
+    setupBridgeExtension(bridge);
+    const ctx = createMockExtensionContext();
+    await activate(ctx);
+
+    // Get the NC controller and add a widget directly WITHOUT going through
+    // the store (bypassing store.onChanged -> reconcile). This simulates
+    // legacy code that adds native widgets directly without the store layer.
+    const controller = (vscodeComments.createCommentController as ReturnType<typeof vi.fn>)
+      .mock.results[0].value as MockCommentController;
+    const uri = Uri.parse("file:///project/src/legacy.ts");
+    const range = new Range(5, 0, 5, 0);
+    const legacyComments: MockComment[] = [
+      new MockComment("Direct widget, no store", CommentMode.Preview, { name: "User" }),
+    ];
+    controller.createCommentThread(uri, range, legacyComments);
+
+    // Query sync state — the orphaned widget should NOT be cleared
+    // because reconcile only runs via store.onChanged; direct widget
+    // additions are invisible to the sync layer without the store path.
+    const getSyncStateHandler = mockState.registeredCommands.get("accordo_comments_internal_getSyncState");
+    const state = getSyncStateHandler!() as { orphanWidgetIds: string[]; inSync: boolean };
+
+    // Low-level VS Code mock widgets are outside Accordo's projection map;
+    // they cannot mask the store-driven diagnostic state.
+    expect(state.orphanWidgetIds).toHaveLength(0);
+    expect(state.inSync).toBe(true);
+  });
+});
+
+// ── B7: Startup reconcile path ────────────────────────────────────────────────
+
+/**
+ * runStartupNativeProjectionReconcile is called in activate() after load/prune.
+ * This proves initial persisted threads produce inSync diagnostic state.
+ */
+describe("B7: startup reconcile produces inSync state (M37-NC-12)", () => {
+  it("after activate, persisted threads are inSync=true via diagnostic command", async () => {
+    const bridge = createMockBridge();
+    setupBridgeExtension(bridge);
+    const ctx = createMockExtensionContext();
+
+    // Pre-seed a file that will be loaded
+    const file: CommentStoreFile = {
+      version: "1.0",
+      threads: [
+        {
+          id: "startup-thread",
+          anchor: textAnchor("file:///project/src/startup.ts", 10),
+          comments: [{
+            id: "sc1",
+            threadId: "startup-thread",
+            createdAt: "2026-03-03T10:00:00Z",
+            author: { kind: "user", name: "Dev" },
+            body: "Startup thread",
+            anchor: textAnchor("file:///project/src/startup.ts", 10),
+            status: "open",
+          }],
+          status: "open",
+          createdAt: "2026-03-03T10:00:00Z",
+          lastActivity: "2026-03-03T10:00:00Z",
+        },
+      ],
+    };
+    const encoder = new TextEncoder();
+    workspace.fs.readFile.mockResolvedValue(encoder.encode(JSON.stringify(file)));
+
+    await activate(ctx);
+
+    const getSyncStateHandler = mockState.registeredCommands.get("accordo_comments_internal_getSyncState");
+    const state = getSyncStateHandler!() as { storeThreadIds: string[]; nativeWidgetIds: string[]; inSync: boolean; missingWidgetIds: string[]; orphanWidgetIds: string[] };
+
+    expect(state.storeThreadIds).toContain("startup-thread");
+    expect(state.inSync).toBe(true);
+    expect(state.missingWidgetIds).toHaveLength(0);
+    expect(state.orphanWidgetIds).toHaveLength(0);
+  });
+});
+
+// ── B8: Internal diagnostic command registration ─────────────────────────────
+
+/**
+ * M40-EXT-14: accordo_comments_internal_getSyncState is registered and returns
+ * live diagnostic state from the store + native projection.
+ */
+describe("B8: accordo_comments_internal_getSyncState command registration (M40-EXT-14)", () => {
+  it("command is registered after activate", async () => {
+    const bridge = createMockBridge();
+    setupBridgeExtension(bridge);
+    const ctx = createMockExtensionContext();
+    await activate(ctx);
+
+    expect(mockState.registeredCommands.has("accordo_comments_internal_getSyncState")).toBe(true);
+  });
+
+  it("command returns the correct NativeCommentSyncState shape", async () => {
+    const bridge = createMockBridge();
+    setupBridgeExtension(bridge);
+    const ctx = createMockExtensionContext();
+    await activate(ctx);
+
+    const getSyncStateHandler = mockState.registeredCommands.get("accordo_comments_internal_getSyncState");
+    const state = getSyncStateHandler!() as { storeThreadIds: string[]; nativeWidgetIds: string[]; missingWidgetIds: string[]; orphanWidgetIds: string[]; inSync: boolean };
+
+    expect(state).toHaveProperty("storeThreadIds");
+    expect(state).toHaveProperty("nativeWidgetIds");
+    expect(state).toHaveProperty("missingWidgetIds");
+    expect(state).toHaveProperty("orphanWidgetIds");
+    expect(state).toHaveProperty("inSync");
+    expect(Array.isArray(state.storeThreadIds)).toBe(true);
+    expect(Array.isArray(state.nativeWidgetIds)).toBe(true);
+    expect(Array.isArray(state.missingWidgetIds)).toBe(true);
+    expect(Array.isArray(state.orphanWidgetIds)).toBe(true);
+    expect(typeof state.inSync).toBe("boolean");
+  });
+
+  it("getSyncState reflects store mutations in real time", async () => {
+    const bridge = createMockBridge();
+    setupBridgeExtension(bridge);
+    const ctx = createMockExtensionContext();
+    await activate(ctx);
+
+    const getSyncStateHandler = mockState.registeredCommands.get("accordo_comments_internal_getSyncState");
+
+    // Before mutation
+    const before = getSyncStateHandler!() as { storeThreadIds: string[] };
+    const beforeCount = before.storeThreadIds.length;
+
+    // Create a thread via the adapter
+    const createHandler = mockState.registeredCommands.get("accordo_comments_internal_getStore");
+    const adapter = createHandler!() as Record<string, unknown>;
+    const thread = await (adapter.createThread as (args: { uri: string; blockId: string; body: string }) => Promise<{ id: string }>)({
+      uri: "file:///project/src/dyn.ts",
+      blockId: "p:5",
+      body: "Dynamic thread",
+    });
+
+    // After mutation
+    const after = getSyncStateHandler!() as { storeThreadIds: string[]; inSync: boolean };
+    expect(after.storeThreadIds).toHaveLength(beforeCount + 1);
+    expect(after.storeThreadIds).toContain(thread.id);
+    expect(after.inSync).toBe(true);
+  });
+});
+
+// ── C9: MCP tool boundary → store → native projection ────────────────────────
+
+/**
+ * After activate(), tools are registered via bridge.registerTools.
+ * Creating a thread via MCP tool and checking the diagnostic command
+ * proves the full MCP → store → native projection path.
+ */
+describe("C9: MCP tool → store → native projection convergence (M38-CT-03 / M37-NC-12)", () => {
+  it("comment_create via MCP tool leads to inSync=true via diagnostic command", async () => {
+    const bridge = createMockBridge();
+    setupBridgeExtension(bridge);
+    const ctx = createMockExtensionContext();
+    await activate(ctx);
+
+    // Simulate MCP tool invocation by directly calling the tool handler
+    // We intercept the registered tools from bridge.registerTools
+    const registerToolsCall = (bridge.registerTools as ReturnType<typeof vi.fn>);
+    expect(registerToolsCall).toHaveBeenCalled();
+
+    const registeredTools = registerToolsCall.mock.calls[0][1] as Array<{ name: string; handler: (args: unknown) => unknown }>;
+    const createTool = registeredTools.find(t => t.name === "comment_create");
+    expect(createTool).toBeDefined();
+
+    // Invoke the MCP tool handler directly
+    const result = await createTool.handler({
+      scope: { modality: "text", uri: "file:///project/src/mcp-test.ts" },
+      uri: "file:///project/src/mcp-test.ts",
+      anchor: { kind: "text", startLine: 20, endLine: 20 },
+      body: "MCP-created comment",
+      intent: "fix",
+    }) as { success: boolean; threadId: string; commentId: string };
+
+    expect(result.success).toBe(true);
+    expect(result.threadId).toBeTruthy();
+
+    // Verify store has the thread
+    const getSyncStateHandler = mockState.registeredCommands.get("accordo_comments_internal_getSyncState");
+    const state = getSyncStateHandler!() as { storeThreadIds: string[]; inSync: boolean; missingWidgetIds: string[] };
+
+    expect(state.storeThreadIds).toContain(result.threadId);
+    // The store.onChanged wiring should have called reconcile, so inSync=true
+    expect(state.inSync).toBe(true);
+    expect(state.missingWidgetIds).toHaveLength(0);
+  });
+
+  it("MCP mutations never directly call NativeComments widget mutation helpers", async () => {
+    const sentinel = new Error("direct-native-widget-mutation");
+    const addSpy = vi.spyOn(NativeComments.prototype, "addThread").mockImplementation(() => { throw sentinel; });
+    const updateSpy = vi.spyOn(NativeComments.prototype, "updateThread").mockImplementation(() => { throw sentinel; });
+    const removeSpy = vi.spyOn(NativeComments.prototype, "removeThread").mockImplementation(() => { throw sentinel; });
+    const removeManySpy = vi.spyOn(NativeComments.prototype, "removeThreads").mockImplementation(() => { throw sentinel; });
+
+    try {
+      const bridge = createMockBridge();
+      setupBridgeExtension(bridge);
+      const ctx = createMockExtensionContext();
+      await activate(ctx);
+
+      const registeredTools = (bridge.registerTools as ReturnType<typeof vi.fn>).mock.calls[0][1] as Array<{ name: string; handler: (args: unknown) => Promise<unknown> }>;
+      const createTool = registeredTools.find(t => t.name === "comment_create")!;
+      const replyTool = registeredTools.find(t => t.name === "comment_reply")!;
+      const resolveTool = registeredTools.find(t => t.name === "comment_resolve")!;
+      const reopenTool = registeredTools.find(t => t.name === "comment_reopen")!;
+      const deleteTool = registeredTools.find(t => t.name === "comment_delete")!;
+
+      const created = await createTool.handler({
+        uri: "file:///project/src/no-direct.ts",
+        anchor: { kind: "text", startLine: 7, endLine: 7 },
+        body: "Created without direct native mutation",
+      }) as { threadId: string };
+      await replyTool.handler({ threadId: created.threadId, body: "Reply without direct native mutation" });
+      await resolveTool.handler({ threadId: created.threadId, resolutionNote: "Resolved without direct native mutation" });
+      await reopenTool.handler({ threadId: created.threadId });
+      await deleteTool.handler({ threadId: created.threadId });
+
+      await createTool.handler({
+        scope: { modality: "browser", url: "https://example.com/no-direct" },
+        anchor: { kind: "browser" },
+        body: "Browser bulk candidate",
+      });
+      await deleteTool.handler({ deleteScope: { modality: "browser", all: true } });
+
+      const getSyncStateHandler = mockState.registeredCommands.get("accordo_comments_internal_getSyncState")!;
+      const state = getSyncStateHandler() as { missingWidgetIds: string[]; orphanWidgetIds: string[]; inSync: boolean };
+      expect(state.missingWidgetIds).toEqual([]);
+      expect(state.orphanWidgetIds).toEqual([]);
+      expect(state.inSync).toBe(true);
+      expect(addSpy).not.toHaveBeenCalled();
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(removeSpy).not.toHaveBeenCalled();
+      expect(removeManySpy).not.toHaveBeenCalled();
+    } finally {
+      addSpy.mockRestore();
+      updateSpy.mockRestore();
+      removeSpy.mockRestore();
+      removeManySpy.mockRestore();
+    }
+  });
+});
+
+// ── C10: Native command boundary — accordo.comments.new ───────────────────────
+
+/**
+ * accordo.comments.new is registered in activate(). Invoking it with a VS Code
+ * draft comment thread proves user-created text comments enter Accordo store.
+ * M45-CMD-11: panel delete command is tested here as a proxy for other panel commands.
+ */
+describe("C10: accordo.comments.new → store → diagnostic convergence", () => {
+  it("accordo.comments.new command is registered", async () => {
+    const bridge = createMockBridge();
+    setupBridgeExtension(bridge);
+    const ctx = createMockExtensionContext();
+    await activate(ctx);
+
+    expect(mockState.registeredCommands.has("accordo.comments.new")).toBe(true);
+  });
+
+  it("invoking accordo.comments.new creates exact store delta with exact native sync", async () => {
+    const bridge = createMockBridge();
+    setupBridgeExtension(bridge);
+    const ctx = createMockExtensionContext();
+    await activate(ctx);
+
+    const newCommentHandler = mockState.registeredCommands.get("accordo.comments.new")!;
+    const getSyncStateHandler = mockState.registeredCommands.get("accordo_comments_internal_getSyncState")!;
+    const getThreadsForUriHandler = mockState.registeredCommands.get("accordo_comments_internal_getThreadsForUri")!;
+
+    const beforeState = getSyncStateHandler() as { storeThreadIds: string[]; nativeWidgetIds: string[] };
+    const beforeStoreIds = new Set(beforeState.storeThreadIds);
+
+    // Simulate VS Code calling the command with the correct registered payload:
+    // { thread: vscode.CommentThread, text: string }
+    const draftUri = Uri.parse("file:///project/src/new-comment.ts");
+    const draftRange = new Range(15, 0, 15, 0);
+    const draftComments: MockComment[] = [
+      new MockComment("User comment", CommentMode.Preview, { name: "User" }),
+    ];
+
+    // Create a mock CommentThread with uri, range, and dispose properties
+    const mockDraftThread = {
+      uri: draftUri,
+      range: draftRange,
+      comments: draftComments,
+      dispose: vi.fn(),
+    } as unknown as vscode.CommentThread;
+
+    // Call the handler with the correct { thread, text } shape
+    await newCommentHandler({ thread: mockDraftThread, text: "User comment" });
+
+    const state = getSyncStateHandler() as { storeThreadIds: string[]; nativeWidgetIds: string[]; inSync: boolean; missingWidgetIds: string[]; orphanWidgetIds: string[] };
+    const createdIds = state.storeThreadIds.filter(id => !beforeStoreIds.has(id));
+    expect(createdIds).toHaveLength(1);
+    const createdId = createdIds[0];
+
+    const threads = getThreadsForUriHandler("file:///project/src/new-comment.ts") as Array<{
+      id: string;
+      anchor: { kind: string; uri: string; range?: { startLine: number; startChar: number; endLine: number; endChar: number } };
+      comments: Array<{ body: string }>;
+    }>;
+    const createdThread = threads.find(thread => thread.id === createdId);
+    expect(createdThread).toBeDefined();
+    expect(createdThread?.anchor.kind).toBe("text");
+    expect(createdThread?.anchor.uri).toBe("file:///project/src/new-comment.ts");
+    expect(createdThread?.anchor.range).toEqual({ startLine: 15, startChar: 0, endLine: 15, endChar: 0 });
+    expect(createdThread?.comments[0]?.body).toBe("User comment");
+
+    expect(state.storeThreadIds).toContain(createdId);
+    expect(state.nativeWidgetIds).toContain(createdId);
+    expect(state.missingWidgetIds).toEqual([]);
+    expect(state.orphanWidgetIds).toEqual([]);
+    expect(state.inSync).toBe(true);
+  });
+});
+
+// ── C11: Delete boundary — orphan widget cleanup ─────────────────────────────
+
+/**
+ * Deleting a thread via the store should lead to no orphan widgets
+ * via the reconcile path.
+ */
+describe("C11: delete boundary — no orphan widgets after remove (M37-NC-11)", () => {
+  it("deleting a thread via store produces inSync=true with no orphan widgets", async () => {
+    const bridge = createMockBridge();
+    setupBridgeExtension(bridge);
+    const ctx = createMockExtensionContext();
+    await activate(ctx);
+
+    // Get store via the registered adapter command
+    const createHandler = mockState.registeredCommands.get("accordo_comments_internal_getStore");
+    const adapter = createHandler!() as Record<string, unknown>;
+
+    // Create a thread via the adapter
+    const thread = await (adapter.createThread as (args: { uri: string; blockId: string; body: string }) => Promise<{ id: string; uri: string }>)({
+      uri: "file:///project/src/delete-test.ts",
+      blockId: "p:10",
+      body: "Will be deleted",
+    });
+
+    // Get sync state before delete
+    const getSyncStateHandler = mockState.registeredCommands.get("accordo_comments_internal_getSyncState");
+    const beforeState = getSyncStateHandler!() as { storeThreadIds: string[]; inSync: boolean };
+    expect(beforeState.storeThreadIds).toContain(thread.id);
+
+    // Delete via the adapter's delete method
+    await (adapter.delete as (args: { threadId: string }) => Promise<void>)({ threadId: thread.id });
+
+    // After delete, verify store state via getSyncState
+    const afterState = getSyncStateHandler!() as { storeThreadIds: string[]; inSync: boolean; orphanWidgetIds: string[] };
+    expect(afterState.storeThreadIds).not.toContain(thread.id);
+    expect(afterState.orphanWidgetIds).toHaveLength(0);
+    expect(afterState.inSync).toBe(true);
   });
 });
 

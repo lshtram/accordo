@@ -56,11 +56,11 @@ describe("extension activate", () => {
     expect(bridge.registerTools).toHaveBeenCalledTimes(1);
     const [extensionId, registeredTools] = bridge.registerTools.mock.calls[0] as [string, unknown[]];
     expect(extensionId).toBe("accordo.accordo-editor");
-    // Priority U: editorTools (5) + terminalTools (5) + vscodeCommandTools (2) + layout (3) = 15
-    expect(registeredTools).toHaveLength(15);
-    // 15 tools → 15 command shims registered
-    expect(vscodeMock.commands.registerCommand).toHaveBeenCalledTimes(15);
-    // subscriptions: 1 (output channel) + 1 (terminal lifecycle) + 15 (tool shims) = 17
-    expect(context.subscriptions).toHaveLength(17);
+    // editorTools (6) + terminalTools (5) + terminalReadTools (1) + vscodeCommandTools (2) + layout (2) = 16
+    expect(registeredTools).toHaveLength(16);
+    // 16 tools → 16 command shims registered
+    expect(vscodeMock.commands.registerCommand).toHaveBeenCalledTimes(16);
+    // subscriptions: 1 (output channel) + 1 (terminal lifecycle) + 16 (tool shims) = 18
+    expect(context.subscriptions).toHaveLength(18);
   });
 });

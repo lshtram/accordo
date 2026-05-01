@@ -49,6 +49,7 @@ interface SlideModel {
   setAttribute: (name: string, value: string) => void;
   removeAttribute: (name: string) => void;
   _blockId: string | null;
+  outerHTML: string;
 }
 
 function makeSlide(index: number, count: number): SlideModel {
@@ -73,6 +74,7 @@ function makeSlide(index: number, count: number): SlideModel {
       if (name === "data-block-id") this["_blockId"] = null;
     },
     _blockId: null as string | null,
+    outerHTML: `<svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="${index + 1}"><h1>Slide ${index + 1}</h1><script>/* marp polyfill */</script></section></foreignObject></svg>`,
   };
 }
 
@@ -89,10 +91,7 @@ export interface RuntimeHarness {
   getActiveSvgDataBlockId: () => string | null;
   /** Whether each slide is currently active. */
   getSlideActiveStates: () => boolean[];
-  /**
-   * Drain all pending setTimeout callbacks captured since the last call.
-   * After this, any data-block-id set by Alt+click handlers will have been cleared.
-   */
+  /** Drain pending setTimeout callbacks. */
   flushTimeouts: () => void;
 }
 
@@ -183,6 +182,9 @@ export function createRuntimeHarness(html: string): RuntimeHarness {
       listeners[type] = listeners[type] ?? [];
       listeners[type].push(cb);
     },
+    createElement(tag: string): unknown {
+      return {};
+    },
     body: {},
   };
 
@@ -203,7 +205,7 @@ export function createRuntimeHarness(html: string): RuntimeHarness {
   let timeoutId = 0;
   const pendingTimeouts: Array<() => void> = [];
 
-  const context: Record<string, unknown> = {
+const context: Record<string, unknown> = {
     window: {
       addEventListener(type: string, cb: (event: unknown) => void): void {
         listeners[type] = listeners[type] ?? [];
@@ -234,10 +236,6 @@ export function createRuntimeHarness(html: string): RuntimeHarness {
     Math,
     Array,
     JSON,
-    XMLSerializer: function XMLSerializer() {
-      this.serializeToString = (): string => "<svg data-marpit-svg class='active'></svg>";
-    },
-    btoa: (value: string): string => Buffer.from(value, "utf8").toString("base64"),
     unescape,
     encodeURIComponent,
   };

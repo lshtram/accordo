@@ -1,7 +1,7 @@
 /**
  * marp-webview-script-host.ts — Host message handler builder
  *
- * Handles: slide-index, marp:update (with revision guard), host:request-capture.
+ * Handles: slide-index and marp:update (with revision guard).
  *
  * Source: requirements-marp.md §4 M50-PVD
  */
@@ -57,29 +57,7 @@ function buildMarpUpdateHandler(): string {
     }`;
 }
 
-/** Build the host:request-capture handler. */
-function buildCaptureHandler(): string {
-  return `
-    if (msg.type === 'host:request-capture') {
-      var active = slides[current];
-      if (!active) {
-        if (vscode) vscode.postMessage({ type: 'presentation:capture-ready', data: null, error: 'No active slide' });
-        return;
-      }
-      try {
-        var svgString = new XMLSerializer().serializeToString(active);
-        var b64 = btoa(unescape(encodeURIComponent(svgString)));
-        if (vscode) vscode.postMessage({ type: 'presentation:capture-ready', data: b64 });
-      } catch (e) {
-        if (vscode) vscode.postMessage({ type: 'presentation:capture-ready', data: null, error: String(e) });
-      }
-    }`;
-}
-
-/**
- * Build the window 'message' listener for host-originated messages:
- * slide-index, marp:update (with stale-revision guard), host:request-capture.
- */
+/** Build the window 'message' listener for host-originated messages. */
 export function buildHostMessageHandler(): string {
   return `
     window.addEventListener('message', function(event) {
@@ -87,6 +65,5 @@ export function buildHostMessageHandler(): string {
       if (!msg || typeof msg !== 'object') return;
       ${buildSlideIndexRoute()}
       ${buildMarpUpdateHandler()}
-      ${buildCaptureHandler()}
     });`;
 }

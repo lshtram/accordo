@@ -43,11 +43,11 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   const allTools: ExtensionToolDefinition[] = [
-    ...editorTools,        // 11 editor tools
+    ...editorTools,        // 6 editor tools
     ...terminalTools,      // 5 terminal control tools
     ...terminalReadTools,  // 1 terminal readback tool
     ...vscodeCommandTools, // 2 generic VS Code command gateway tools
-    ...createLayoutTools(() => bridge.getState()),  // 7 layout tools
+    ...createLayoutTools(() => bridge.getState()),  // 2 layout tools
   ];
   const disposable = bridge.registerTools('accordo.accordo-editor', allTools);
   context.subscriptions.push(disposable);
@@ -119,6 +119,52 @@ Each tool below is defined with its full interface contract: input schema, respo
 - `.md` files → `vscode.commands.executeCommand('vscode.openWith', uri, 'accordo.markdownPreview')` — opens in the Accordo Markdown Preview custom editor when md-viewer extension is installed; falls back to standard text editor otherwise. If `line`/`column` is provided, also calls `accordo_preview_internal_revealLine` with a 0-based line to align preview navigation. Returns `surface: "preview"`.
 - `.mmd` files → `vscode.commands.executeCommand('accordo-diagram.open', uri)` — opens in the Accordo Diagram custom editor. Returns `surface: "diagram"`.
 - All other files → `vscode.window.showTextDocument(uri, { selection: new Range(line-1, col-1, line-1, col-1) })`. Returns `surface: "editor"`.
+
+---
+
+### 4.1a `accordo_markdown_setSurface`
+
+**Purpose:** Open a Markdown file in an explicit target surface without relying on active-editor toggle state.
+
+| Property | Value |
+|---|---|
+| Danger level | safe |
+| Idempotent | yes |
+| Requires confirmation | no |
+| Timeout class | fast (5s) |
+
+**Input Schema:**
+
+```typescript
+{
+  type: "object",
+  properties: {
+    path: { type: "string" },
+    surface: { type: "string", enum: ["text", "preview"] },
+    line: { type: "number" },
+    column: { type: "number" }
+  },
+  required: ["path", "surface"]
+}
+```
+
+**Response:**
+
+```typescript
+{ opened: true, path: string, surface: "text" | "preview" }
+```
+
+**Errors:**
+
+| Condition | Error message |
+|---|---|
+| Non-Markdown path | `"Path must be a Markdown .md file"` |
+| Invalid surface | `"Argument 'surface' must be 'text' or 'preview'"` |
+
+**Implementation:**
+- `surface: "preview"` uses `vscode.openWith(uri, "accordo.markdownPreview")`; if a line/column target is provided, it also sends `accordo_preview_internal_revealLine`.
+- `surface: "text"` uses `vscode.window.showTextDocument(uri, { selection, preview: false })`.
+- This tool is target-state based. Use it instead of `accordo.preview.toggle` when deterministic MCP behavior matters.
 
 ---
 

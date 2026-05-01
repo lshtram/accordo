@@ -115,13 +115,12 @@ export class NativeCommentController {
         async (vsThread: vscode.CommentThread) => {
           const threadId = this._getThreadIdForWidget(vsThread);
           if (!threadId) return;
+          // store.resolve -> store.onChanged -> nc.reconcile handles widget update.
           await store.resolve({
             threadId,
             resolutionNote: "Resolved via UI",
             author: { kind: "user", name: "User" },
           });
-          const updated = sync.getThread(threadId);
-          if (updated) sync.updateThread(updated);
         },
       ),
       vscode.commands.registerCommand(
@@ -129,9 +128,8 @@ export class NativeCommentController {
         async (vsThread: vscode.CommentThread) => {
           const threadId = this._getThreadIdForWidget(vsThread);
           if (!threadId) return;
+          // store.reopen -> store.onChanged -> nc.reconcile handles widget update.
           await store.reopen(threadId, { kind: "user", name: "User" });
-          const updated = sync.getThread(threadId);
-          if (updated) sync.updateThread(updated);
         },
       ),
       vscode.commands.registerCommand(
@@ -139,8 +137,8 @@ export class NativeCommentController {
         async (vsThread: vscode.CommentThread) => {
           const threadId = this._getThreadIdForWidget(vsThread);
           if (!threadId) return;
+          // store.delete -> store.onChanged -> nc.reconcile handles widget removal.
           await store.delete({ threadId });
-          sync.removeThread(threadId);
         },
       ),
       vscode.commands.registerCommand(
@@ -149,13 +147,8 @@ export class NativeCommentController {
           const threadId = (vsComment as unknown as { threadId?: string }).threadId;
           const commentId = (vsComment as unknown as { commentId?: string }).commentId;
           if (!threadId || !commentId) return;
+          // store.delete -> store.onChanged -> nc.reconcile handles widget update/removal.
           await store.delete({ threadId, commentId });
-          const updated = sync.getThread(threadId);
-          if (updated) {
-            sync.updateThread(updated);
-          } else {
-            sync.removeThread(threadId);
-          }
         },
       ),
       vscode.commands.registerCommand(
@@ -163,13 +156,12 @@ export class NativeCommentController {
         async (vsComment: vscode.Comment) => {
           const threadId = (vsComment as unknown as { threadId?: string }).threadId;
           if (!threadId) return;
+          // store.resolve -> store.onChanged -> nc.reconcile handles widget update.
           await store.resolve({
             threadId,
             resolutionNote: "Resolved via UI",
             author: { kind: "user", name: "User" },
           });
-          const updated = sync.getThread(threadId);
-          if (updated) sync.updateThread(updated);
         },
       ),
       vscode.commands.registerCommand(
@@ -177,14 +169,14 @@ export class NativeCommentController {
         async (vsComment: vscode.Comment) => {
           const threadId = (vsComment as unknown as { threadId?: string }).threadId;
           if (!threadId) return;
+          // store.reopen -> store.onChanged -> nc.reconcile handles widget update.
           await store.reopen(threadId, { kind: "user", name: "User" });
-          const updated = sync.getThread(threadId);
-          if (updated) sync.updateThread(updated);
         },
       ),
       vscode.commands.registerCommand(
         "accordo.comments.cleanStale",
         async () => {
+          // store.pruneStaleThreads -> store.onChanged -> nc.reconcile handles removal.
           const removed = await store.pruneStaleThreads(async (uri) => {
             try {
               await vscode.workspace.fs.stat(vscode.Uri.parse(uri));
@@ -193,7 +185,6 @@ export class NativeCommentController {
               return false;
             }
           });
-          sync.removeThreads(removed);
           void vscode.window.showInformationMessage(
             removed.length === 0
               ? "No stale comment threads found."
@@ -213,13 +204,12 @@ export class NativeCommentController {
             placeHolder: "Write your reply…",
           });
           if (!text?.trim()) return;
+          // store.reply -> store.onChanged -> nc.reconcile handles widget update.
           await store.reply({
             threadId,
             body: text,
             author: { kind: "user", name: "User" },
           });
-          const updated = sync.getThread(threadId);
-          if (updated) sync.updateThread(updated);
         },
       ),
       vscode.commands.registerCommand(
@@ -343,6 +333,12 @@ export class NativeCommentController {
   /** Create a VSCode CommentThread widget from a CommentThread. */
   createWidget(thread: CommentThread): void {
     if (!this._controller) return;
+
+    const existing = this.widgets.get(thread.id);
+    if (existing) {
+      existing.dispose();
+      this.widgets.delete(thread.id);
+    }
 
     const uri = vscode.Uri.parse(thread.anchor.uri);
     let range: vscode.Range;

@@ -4,8 +4,6 @@
  * Source: requirements-marp.md §3 (M50-TL-01 through M50-TL-09)
  */
 
-import { writeFile } from "node:fs/promises";
-import { dirname, basename, extname, join, resolve } from "node:path";
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { SlideSummary, SlideNarration } from "./types.js";
 
@@ -21,9 +19,6 @@ export interface PresentationToolDeps {
   generateNarration(
     target: number | "all",
   ): Promise<SlideNarration[] | { error: string }>;
-  capture(): Promise<Buffer>;
-  /** Returns the absolute path of the currently open deck, or null if no session is active. */
-  getSessionDeckUri(): string | null;
 }
 
 export function createPresentationTools(
@@ -122,72 +117,14 @@ export function createPresentationTools(
           typeof args["slideIndex"] === "number" ? args["slideIndex"] - 1 : "all";
         const result = await deps.generateNarration(target);
         if ("error" in result) return result;
-        return { narrations: result };
-      },
-    },
-
-    {
-      name: "accordo_webview_capture",
-      description:
-        "Capture the currently visible slide as an SVG file and write it to disk. " +
-        "Returns the output path and the byte size of the written file. " +
-        "A presentation session must be open (use accordo_presentation_open first). Read accordo://skills/presentation for capture workflow guidance.",
-      dangerLevel: "safe",
-      group: "presentation",
-      inputSchema: {
-        type: "object",
-        properties: {
-          output_path: {
-            type: "string",
-            description:
-              "Absolute or workspace-relative path for the output .svg file. " +
-              "Defaults to <deck-directory>/<deck-stem>-slide<N>.svg where N is the current 1-based slide number.",
-          },
-        },
-        required: [],
-      },
-      handler: async (args) => {
-        // Get current slide info for default filename
-        const currentResult = await deps.getCurrent();
-        if ("error" in currentResult) return currentResult;
-        const slideNumber = currentResult.index + 1; // already 1-based from getCurrent (tool layer)
-
-        let outputPath: string;
-        if (typeof args["output_path"] === "string" && args["output_path"]) {
-          outputPath = resolve(args["output_path"] as string);
-        } else {
-          // Derive default path from the open deck's location: <deck-dir>/<stem-slide<N>.svg
-          // Fall back to CWD only if no session is active (capture() will error anyway).
-          const deckUri = deps.getSessionDeckUri();
-          if (deckUri) {
-            const dir = dirname(deckUri);
-            const stem = basename(deckUri, extname(deckUri));
-            outputPath = join(dir, `${stem}-slide${slideNumber}.svg`);
-          } else {
-            outputPath = resolve(`slide${slideNumber}.svg`);
-          }
-        }
-
-        let buffer: Buffer;
-        try {
-          buffer = await deps.capture();
-        } catch (e) {
-          return { error: String((e as Error).message) };
-        }
-
-        try {
-          await writeFile(outputPath, buffer);
-        } catch (e) {
-          return { error: `Failed to write file: ${String((e as Error).message)}` };
-        }
-
         return {
-          captured: true,
-          output_path: outputPath,
-          slide: slideNumber,
-          bytes: buffer.length,
+          narrations: result.map((narration) => ({
+            ...narration,
+            slideIndex: narration.slideIndex + 1,
+          })),
         };
       },
     },
+
   ];
 }

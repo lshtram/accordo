@@ -31,6 +31,7 @@ export interface PanelCommandStore {
 export interface NativeCommentsSync {
   updateThread(thread: CommentThread): void;
   removeThread(threadId: string): void;
+  removeThreads(threadIds: string[]): void;
 }
 
 /** VS Code window API subset for UI interactions. */
@@ -115,9 +116,8 @@ export function registerPanelCommands(
     }
     const note = await windowUI.showInputBox({ prompt: "Resolution note (optional)", placeHolder: "What was resolved?" });
     if (note === undefined) return; // cancelled
+    // store.resolve -> store.onChanged -> nc.reconcile handles widget update.
     await store.resolve({ threadId: thread.id!, resolutionNote: note, author: PANEL_AUTHOR });
-    const updated = store.getThread(thread.id!);
-    if (updated) nc.updateThread(updated);
     provider.refresh();
   }));
 
@@ -129,9 +129,8 @@ export function registerPanelCommands(
       await windowUI.showInformationMessage("Thread is already open.");
       return;
     }
+    // store.reopen -> store.onChanged -> nc.reconcile handles widget update.
     await store.reopen(thread.id!, PANEL_AUTHOR);
-    const updated = store.getThread(thread.id!);
-    if (updated) nc.updateThread(updated);
     provider.refresh();
   }));
 
@@ -161,8 +160,8 @@ export function registerPanelCommands(
       "Delete thread and all replies?", "Delete", "Cancel",
     );
     if (answer !== "Delete") return;
+    // store.delete -> store.onChanged -> nc.reconcile handles widget removal.
     await store.delete({ threadId: thread.id! });
-    nc.removeThread(thread.id!);
     provider.refresh();
   }));
 
@@ -211,6 +210,7 @@ export function registerPanelCommands(
       "Delete all browser comments? This cannot be undone.", "Delete All", "Cancel",
     );
     if (answer !== "Delete All") return;
+    // store.deleteAllByModality -> store.onChanged -> nc.reconcile handles widget removal.
     const result = await store.deleteAllByModality("browser");
     await windowUI.showInformationMessage(`Deleted ${result.count} browser comment thread(s).`);
     provider.refresh();

@@ -40,6 +40,9 @@
 | Browser MCP checklist closeout hardening | ✅ Approved (`f390181`, review `docs/50-reviews/browser-mcp-checklist-review-2026-04-29.md`). Independent score improved from 29/45 to 36/45 after identifier-safe redaction, `redactionApplied` flag preservation, spatial request validation, and snapshot/diff contract fixes. |
 | Priority V — Markdown Preview Highlight Support | ✅ Completed (2026-04-29). `accordo_editor_highlight` now supports already-open Accordo Markdown Preview surfaces with preview clear/replay support and live validation. |
 | Priority X/Y — MCP Skill Resources and Thin Runtime Guidance | ✅ Completed (`334d12e`, 2026-04-30). Hub now exposes MCP-readable `accordo://skills/*` resources, thin `initialize.instructions`, skill-resource tool-description pointers, and regression coverage. |
+| Priority 0 — Comment deletion + Markdown surface control | ✅ Completed (2026-04-30). Live `comment_create`/`comment_delete` checks passed for text and markdown-preview threads; `accordo_markdown_setSurface` added for deterministic Markdown text/preview control; `packages/editor` tests/typecheck passed. |
+| Priority K — DEC-024 Reload-Reconnect Hardening | ✅ Implementation verified (2026-04-30). Hub/Bridge reconnect-first lifecycle, soft disconnect, disconnect grace timer, registry rebind probing, first-launch guard, and SIGKILL fallback are implemented; focused Hub/Bridge tests and typechecks passed. |
+| Priority 0 — Voice Live-Baseline Validation | ✅ Completed (2026-04-30). `packages/voice` tests/typecheck passed; Kokoro TTS was recovered via `nvidia_uvm` reload and `helmut-kokoro-tts` restart; `/home/liorshtram/master-scripts/bin/kokoro-smoke.sh` passed and live `accordo_voice_readAloud` returned `spoken: true`. |
 
 ---
 
@@ -145,6 +148,5 @@ All diagram work documented in `docs/20-requirements/requirements-diagram.md §2
 | Task | Status | Evidence |
 |---|---|---|
 | Merge `browser2.0` into `main` | ✅ | Full monorepo test suite green on `main`. Worktree deleted. |
-| `accordo_webview_capture` tool (Marp) | ✅ | postMessage + XMLSerializer capture; `PresentationProvider.requestCapture()`; `accordo_webview_capture` MCP tool writes SVG to disk; 10 tools total; all 229 tests passing. |
 | Session 2026-04-16 — Live E2E module testing | ✅ | Tested MD viewer (✅), Marp presentation (⚠️ user-left comment dismisses presentation), Diagram (✅), Browser tab (❌ store silo). Three new debt items logged: Priority P (comment store unification), Priority Q (comments panel navigation), Priority R (Marp user/agent comment divergence). |
 | Priority P — Comment Store Unification (Phase A/B/C/D) | ✅ | Root cause was relay mode divergence (shared vs per-window returning different shapes). Phase A: corrected diagnosis, interface definitions, stub files. Phase B: 32 failing tests written. Phase C: implemented normalizeReadResult, shapeRelayResponse, dispatchBrowserCommentAction, decodeHubThreadsPayload, encodeBrowserCommentAction. Phase D: fixed TS2352 typecast. All 5016 tests green. Remaining: bidirectional VS Code→browser sync and dispatch wiring in browser-comment-relay-handler. |

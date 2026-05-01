@@ -18,7 +18,7 @@ import {
   decorationStore,
   nextDecorationId,
 } from "./editor-utils.js";
-import type { PreviewHighlightEntry, TextHighlightEntry } from "./editor-utils.js";
+import type { HighlightEntry, PreviewHighlightEntry, TextHighlightEntry } from "./editor-utils.js";
 
 // ── §4.4 accordo_editor_highlight ────────────────────────────────────────────
 
@@ -62,15 +62,15 @@ export async function highlightHandler(
     if (endLine > lineCount) {
       return { error: `Line ${endLine} is out of range (file has ${lineCount} lines)` };
     }
-    const decorType = vscode.window.createTextEditorDecorationType({ backgroundColor: color });
-    const range = new vscode.Range(
-      new vscode.Position(startLine - 1, 0),
-      new vscode.Position(endLine - 1, 0),
-    );
-    editor.setDecorations(decorType, [range]);
+    const decorType = applyTextDecoration(editor, startLine, endLine, color);
     const decorationId = nextDecorationId();
+    const uri = editor.document.uri.toString();
     const entry: TextHighlightEntry = {
       surface: "text",
+      uri,
+      startLine,
+      endLine,
+      color,
       type: decorType,
       editor,
       clear: () => decorType.dispose(),
@@ -109,13 +109,53 @@ async function applyMarkdownPreviewHighlight(
   const entry: PreviewHighlightEntry = {
     surface: "markdown-preview",
     uri,
-    clear: () => vscode.commands.executeCommand(
-      CAPABILITY_COMMANDS.PREVIEW_CLEAR_HIGHLIGHT,
-      clearArgs,
-    ),
+    startLine,
+    endLine,
+    color,
+    previewApplied: true,
+    clear: async () => {
+      entry.textDecoration?.dispose();
+      await vscode.commands.executeCommand(
+        CAPABILITY_COMMANDS.PREVIEW_CLEAR_HIGHLIGHT,
+        clearArgs,
+      );
+    },
   };
   decorationStore.set(decorationId, entry);
   return { highlighted: true, decorationId };
+}
+
+function applyTextDecoration(
+  editor: vscode.TextEditor,
+  startLine: number,
+  endLine: number,
+  color: string,
+): vscode.TextEditorDecorationType {
+  const decorType = vscode.window.createTextEditorDecorationType({ backgroundColor: color });
+  const range = new vscode.Range(
+    new vscode.Position(startLine - 1, 0),
+    new vscode.Position(endLine - 1, Number.MAX_SAFE_INTEGER),
+  );
+  editor.setDecorations(decorType, [range]);
+  return decorType;
+}
+
+export function replayMarkdownHighlightsOnTextEditor(
+  resolvedPath: string,
+  editor: vscode.TextEditor | undefined,
+): void {
+  if (!editor) return;
+  const uri = vscode.Uri.file(resolvedPath).toString();
+  for (const entry of decorationStore.values()) {
+    if (!isPreviewHighlightEntry(entry, uri)) continue;
+    entry.textDecoration?.dispose();
+    entry.textDecoration = applyTextDecoration(editor, entry.startLine, entry.endLine, entry.color);
+    entry.textEditor = editor;
+  }
+}
+
+function isPreviewHighlightEntry(entry: HighlightEntry, uri: string): entry is PreviewHighlightEntry {
+  return entry.surface === "markdown-preview" && (entry as { uri?: string }).uri === uri;
 }
 
 // ── §4.5 accordo_editor_clearHighlights ──────────────────────────────────────

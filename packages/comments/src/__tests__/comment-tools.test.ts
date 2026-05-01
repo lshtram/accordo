@@ -33,6 +33,8 @@ import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import {
   COMMENT_CREATE_RATE_LIMIT,
   COMMENT_CREATE_RATE_WINDOW_MS,
+  COMMENT_MAX_COMMENTS_PER_THREAD,
+  COMMENT_MAX_THREADS,
 } from "@accordo/bridge-types";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -65,6 +67,17 @@ function normalizeUriForComparison(uri: string): string {
     const withoutScheme = uri.slice("file://".length).replace(/\\/g, "/");
     return withoutScheme.replace(/^\/[a-zA-Z]:/, "");
   }
+}
+
+async function expectRejectsWithExactMessage(action: Promise<unknown>, expectedMessage: string): Promise<void> {
+  try {
+    await action;
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(expectedMessage);
+    return;
+  }
+  throw new Error(`Expected rejection with ${expectedMessage}`);
 }
 
 // ── Setup ────────────────────────────────────────────────────────────────────
@@ -145,12 +158,48 @@ describe("comment_list", () => {
     expect(tool.inputSchema.required ?? []).toEqual([]);
   });
 
+  it("inputSchema exposes status=all for unfiltered status listing", () => {
+    const tool = getToolByName(tools, "comment_list");
+    const status = tool.inputSchema.properties["status"] as { enum?: string[] };
+    expect(status.enum).toContain("all");
+  });
+
   it("handler returns { threads, total, hasMore }", async () => {
     const tool = getToolByName(tools, "comment_list");
     const result = (await tool.handler({})) as Record<string, unknown>;
     expect(result).toHaveProperty("threads");
     expect(result).toHaveProperty("total");
     expect(result).toHaveProperty("hasMore");
+  });
+
+  it("handler with no filters returns open and resolved threads", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const resolveTool = getToolByName(tools, "comment_resolve");
+    const listTool = getToolByName(tools, "comment_list");
+
+    await createTool.handler({ uri: "file:///project/open.ts", anchor: { kind: "file" }, body: "open" });
+    const created = (await createTool.handler({ uri: "file:///project/resolved.ts", anchor: { kind: "file" }, body: "resolved" })) as { threadId: string };
+    await resolveTool.handler({ threadId: created.threadId, resolutionNote: "done" });
+
+    const result = (await listTool.handler({})) as { total: number; threads: Array<{ status: string }> };
+
+    expect(result.total).toBe(2);
+    expect(result.threads.map(t => t.status).sort()).toEqual(["open", "resolved"]);
+  });
+
+  it("status=all returns open and resolved threads", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const resolveTool = getToolByName(tools, "comment_resolve");
+    const listTool = getToolByName(tools, "comment_list");
+
+    const open = (await createTool.handler({ uri: "file:///project/open.ts", anchor: { kind: "file" }, body: "open" })) as { threadId: string };
+    const resolved = (await createTool.handler({ uri: "file:///project/resolved.ts", anchor: { kind: "file" }, body: "resolved" })) as { threadId: string };
+    await resolveTool.handler({ threadId: resolved.threadId, resolutionNote: "done" });
+
+    const result = (await listTool.handler({ status: "all" })) as { total: number; threads: Array<{ id: string }> };
+
+    expect(result.total).toBe(2);
+    expect(result.threads.map(t => t.id).sort()).toEqual([open.threadId, resolved.threadId].sort());
   });
 
   it("each thread summary includes lastAuthor field", async () => {
@@ -359,6 +408,102 @@ describe("comment_create", () => {
     expect(result).toHaveProperty("threadId");
     expect(result).toHaveProperty("commentId");
   });
+
+  it("empty threadId rejects with invalid-thread-id", async () => {
+    const tool = getToolByName(tools, "comment_create");
+    await expectRejectsWithExactMessage(tool.handler({
+      uri: "file:///project/src/a.ts",
+      anchor: { kind: "file" },
+      body: "empty IDs",
+      threadId: "",
+    }), "invalid-thread-id");
+  });
+
+  it("whitespace-only threadId rejects with invalid-thread-id", async () => {
+    const tool = getToolByName(tools, "comment_create");
+    await expectRejectsWithExactMessage(tool.handler({
+      uri: "file:///project/src/a.ts",
+      anchor: { kind: "file" },
+      body: "empty IDs",
+      threadId: "   ",
+    }), "invalid-thread-id");
+  });
+
+  it("empty commentId rejects with invalid-comment-id", async () => {
+    const tool = getToolByName(tools, "comment_create");
+    await expectRejectsWithExactMessage(tool.handler({
+      uri: "file:///project/src/a.ts",
+      anchor: { kind: "file" },
+      body: "empty IDs",
+      commentId: "",
+    }), "invalid-comment-id");
+  });
+
+  it("whitespace-only commentId rejects with invalid-comment-id", async () => {
+    const tool = getToolByName(tools, "comment_create");
+    await expectRejectsWithExactMessage(tool.handler({
+      uri: "file:///project/src/a.ts",
+      anchor: { kind: "file" },
+      body: "empty IDs",
+      commentId: "   ",
+    }), "invalid-comment-id");
+  });
+
+  it("duplicate thread ID wins over thread-limit-reached at tool boundary", async () => {
+    const tool = getToolByName(tools, "comment_create");
+    const first = await store.createThread({
+      uri: "file:///project/src/first.ts",
+      anchor: { kind: "file", uri: "file:///project/src/first.ts" },
+      body: "First",
+      author: { kind: "agent", name: "Accordo" },
+      threadId: "duplicate-thread",
+    });
+
+    for (let index = store.getAllThreads().length; index < COMMENT_MAX_THREADS; index++) {
+      await store.createThread({
+        uri: `file:///project/src/${index}.ts`,
+        anchor: { kind: "file", uri: `file:///project/src/${index}.ts` },
+        body: "Filler",
+        author: { kind: "agent", name: "Accordo" },
+        threadId: `thread-${index}`,
+      });
+    }
+
+    await expectRejectsWithExactMessage(tool.handler({
+      uri: "file:///project/src/overflow.ts",
+      anchor: { kind: "file" },
+      body: "Duplicate should win",
+      threadId: first.threadId,
+    }), "duplicate-thread-id");
+  });
+
+  it("duplicate initial comment ID wins over thread-limit-reached at tool boundary", async () => {
+    const tool = getToolByName(tools, "comment_create");
+    const first = await store.createThread({
+      uri: "file:///project/src/first-comment.ts",
+      anchor: { kind: "file", uri: "file:///project/src/first-comment.ts" },
+      body: "First",
+      author: { kind: "agent", name: "Accordo" },
+      commentId: "duplicate-comment",
+    });
+
+    for (let index = store.getAllThreads().length; index < COMMENT_MAX_THREADS; index++) {
+      await store.createThread({
+        uri: `file:///project/src/${index}.ts`,
+        anchor: { kind: "file", uri: `file:///project/src/${index}.ts` },
+        body: "Filler",
+        author: { kind: "agent", name: "Accordo" },
+        threadId: `thread-${index}`,
+      });
+    }
+
+    await expectRejectsWithExactMessage(tool.handler({
+      uri: "file:///project/src/overflow-comment.ts",
+      anchor: { kind: "file" },
+      body: "Duplicate comment should win",
+      commentId: first.commentId,
+    }), "duplicate-comment-id");
+  });
 });
 
 // ── comment_reply ───────────────────────────────────────────────────
@@ -385,6 +530,31 @@ describe("comment_reply", () => {
     await expect(
       tool.handler({ threadId: "nonexistent", body: "reply" }),
     ).rejects.toThrow();
+  });
+
+  it("duplicate reply comment ID wins over comment-limit-reached at tool boundary", async () => {
+    const tool = getToolByName(tools, "comment_reply");
+    const { threadId, commentId } = await store.createThread({
+      uri: "file:///project/src/full-thread.ts",
+      anchor: { kind: "file", uri: "file:///project/src/full-thread.ts" },
+      body: "First",
+      author: { kind: "agent", name: "Accordo" },
+    });
+
+    for (let index = 1; index < COMMENT_MAX_COMMENTS_PER_THREAD; index++) {
+      await store.reply({
+        threadId,
+        body: "Filler reply",
+        author: { kind: "agent", name: "Accordo" },
+        commentId: `reply-${index}`,
+      });
+    }
+
+    await expectRejectsWithExactMessage(tool.handler({
+      threadId,
+      body: "Duplicate reply should win",
+      commentId,
+    }), "duplicate-comment-id");
   });
 });
 
@@ -435,6 +605,11 @@ describe("comment_delete", () => {
     expect(tool.inputSchema.required ?? []).toEqual([]);
   });
 
+  it("inputSchema exposes top-level all for deleting every thread", () => {
+    const tool = getToolByName(tools, "comment_delete");
+    expect(tool.inputSchema.properties["all"]).toBeDefined();
+  });
+
   it("inputSchema has optional commentId", () => {
     const tool = getToolByName(tools, "comment_delete");
     expect(tool.inputSchema.properties["commentId"]).toBeDefined();
@@ -449,11 +624,11 @@ describe("comment_delete", () => {
     ).rejects.toThrow();
   });
 
-  it("empty string commentId deletes entire thread (not treated as non-existent comment)", async () => {
+  it("empty string commentId rejects with invalid-comment-id", async () => {
     const createTool = getToolByName(tools, "comment_create");
     const deleteTool = getToolByName(tools, "comment_delete");
 
-    // Create a thread with multiple comments
+    // Create a thread
     const result = (await createTool.handler({
       uri: "file:///project/src/a.ts",
       anchor: { kind: "file" },
@@ -461,20 +636,11 @@ describe("comment_delete", () => {
     })) as { threadId: string };
     const threadId = result.threadId;
 
-    const replyTool = getToolByName(tools, "comment_reply");
-    await replyTool.handler({ threadId, body: "Second comment" });
-
-    // Delete with empty-string commentId should delete the whole thread (not throw "Comment not found")
-    const deleteResult = (await deleteTool.handler({ threadId, commentId: "" })) as Record<string, unknown>;
-    expect(deleteResult.deleted).toBe(true);
-
-    // Thread should be gone
-    const listTool = getToolByName(tools, "comment_list");
-    const { total } = (await listTool.handler({})) as { total: number };
-    expect(total).toBe(0);
+    // Delete with empty-string commentId should reject (not delete whole thread)
+    await expectRejectsWithExactMessage(deleteTool.handler({ threadId, commentId: "" }), "invalid-comment-id");
   });
 
-  it("whitespace-only commentId deletes entire thread", async () => {
+  it("whitespace-only commentId rejects with invalid-comment-id", async () => {
     const createTool = getToolByName(tools, "comment_create");
     const deleteTool = getToolByName(tools, "comment_delete");
 
@@ -485,13 +651,8 @@ describe("comment_delete", () => {
     })) as { threadId: string };
     const threadId = result.threadId;
 
-    // Whitespace-only commentId should also be treated as undefined
-    const deleteResult = (await deleteTool.handler({ threadId, commentId: "   " })) as Record<string, unknown>;
-    expect(deleteResult.deleted).toBe(true);
-
-    const listTool = getToolByName(tools, "comment_list");
-    const { total } = (await listTool.handler({})) as { total: number };
-    expect(total).toBe(0);
+    // Whitespace-only commentId should also be rejected
+    await expectRejectsWithExactMessage(deleteTool.handler({ threadId, commentId: "   " }), "invalid-comment-id");
   });
 
   it("non-empty commentId still deletes only that single comment", async () => {
@@ -933,6 +1094,30 @@ describe("M38-CT-07: comment_delete deleteScope bulk delete", () => {
     expect(remaining.total).toBe(2); // text + diagram
   });
 
+  it("comment_delete with all=true deletes every thread across modalities", async () => {
+    const deleteTool = tools.find(t => t.name === "comment_delete")!;
+    const result = (await deleteTool.handler({ all: true })) as { deleted: boolean; deletedCount: number };
+
+    expect(result.deleted).toBe(true);
+    expect(result.deletedCount).toBe(4);
+
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const remaining = (await listTool.handler({})) as { total: number };
+    expect(remaining.total).toBe(0);
+  });
+
+  it("deleteScope with all=true and no modality deletes every thread", async () => {
+    const deleteTool = tools.find(t => t.name === "comment_delete")!;
+    const result = (await deleteTool.handler({ deleteScope: { all: true } })) as { deleted: boolean; deletedCount: number };
+
+    expect(result.deleted).toBe(true);
+    expect(result.deletedCount).toBe(4);
+
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const remaining = (await listTool.handler({})) as { total: number };
+    expect(remaining.total).toBe(0);
+  });
+
   it("M38-CT-07: deleteScope requires all=true to trigger bulk delete", async () => {
     const deleteTool = tools.find(t => t.name === "comment_delete")!;
     // Without all=true, it should require threadId
@@ -947,7 +1132,7 @@ describe("M38-CT-07: comment_delete deleteScope bulk delete", () => {
     expect(result.deletedCount).toBe(2);
   });
 
-  it("M38-CT-07: bulk delete calls ui.removeThreads with deleted thread IDs", async () => {
+  it("M38-CT-07: bulk delete calls store.deleteAllByModality - reconcile handles widget removal", async () => {
     // Use an isolated store so we control exactly how many browser threads exist
     const isolatedStore = new CommentStore();
     const createTool = createCommentTools(isolatedStore).find(t => t.name === "comment_create")!;
@@ -965,14 +1150,35 @@ describe("M38-CT-07: comment_delete deleteScope bulk delete", () => {
 
     await deleteTool.handler({ deleteScope: { modality: "browser", all: true } });
 
-    // removeThreads must be called (not removeThread) with IDs of both deleted threads
-    expect(mockUi.removeThreads).toHaveBeenCalledTimes(1);
-    const [deletedIds] = mockUi.removeThreads.mock.calls[0] as [string[]];
-    expect(deletedIds).toContain(browser1.threadId);
-    expect(deletedIds).toContain(browser2.threadId);
-    expect(deletedIds).toHaveLength(2);
-    // removeThread should NOT be called
-    expect(mockUi.removeThread).not.toHaveBeenCalled();
+    // store.deleteAllByModality is called; store.onChanged -> nc.reconcile handles widget removal
+    // (mockUi.removeThreads is no longer called directly from handler)
+    expect(mockUi.removeThreads).not.toHaveBeenCalled();
+    // Verify threads were deleted from store
+    expect(isolatedStore.getAllThreads()).toHaveLength(0);
+  });
+
+  it("comment_delete all=true calls store.deleteAll - reconcile handles widget removal", async () => {
+    const isolatedStore = new CommentStore();
+    const createTool = createCommentTools(isolatedStore).find(t => t.name === "comment_create")!;
+    const first = (await createTool.handler({ uri: "file:///project/src/a.ts", anchor: { kind: "text", startLine: 1 }, body: "a" })) as { threadId: string };
+    const second = (await createTool.handler({ scope: { modality: "diagram" }, uri: "file:///project/diagram.mmd", anchor: { kind: "surface", surfaceType: "diagram", coordinates: { type: "diagram-node", nodeId: "n1" } }, body: "d" })) as { threadId: string };
+
+    const mockUi = {
+      addThread: vi.fn(),
+      updateThread: vi.fn(),
+      removeThread: vi.fn(),
+      removeThreads: vi.fn(),
+    };
+    const toolsWithUi = createCommentTools(isolatedStore, mockUi as any);
+    const deleteTool = toolsWithUi.find(t => t.name === "comment_delete")!;
+
+    await deleteTool.handler({ all: true });
+
+    // store.deleteAll is called; store.onChanged -> nc.reconcile handles widget removal
+    // (mockUi.removeThreads is no longer called directly from handler)
+    expect(mockUi.removeThreads).not.toHaveBeenCalled();
+    // Verify threads were deleted from store
+    expect(isolatedStore.getAllThreads()).toHaveLength(0);
   });
 
   it("M38-CT-07: bulk delete with zero matches does NOT call ui.removeThreads", async () => {
@@ -997,11 +1203,12 @@ describe("M38-CT-07: comment_delete deleteScope bulk delete", () => {
     expect(mockUi.removeThreads).not.toHaveBeenCalled();
   });
 
-  it("M38-CT-07: bulk delete calls ui.removeThreads for diagram modality (not just browser)", async () => {
+  it("M38-CT-07: bulk delete with modality filter removes matching store threads (reconcile handles widget removal)", async () => {
     // Create diagram threads in an isolated store
     const isolatedStore = new CommentStore();
     const createTool = createCommentTools(isolatedStore).find(t => t.name === "comment_create")!;
     const diag1 = (await createTool.handler({ scope: { modality: "diagram" }, uri: "file:///project/diagram.mmd", anchor: { kind: "surface", surfaceType: "diagram", coordinates: { type: "diagram-node", nodeId: "n1" } }, body: "diagram comment 1" })) as { threadId: string };
+    const text1 = (await createTool.handler({ uri: "file:///project/src/a.ts", anchor: { kind: "text", startLine: 1 }, body: "text comment" })) as { threadId: string };
 
     const mockUi = {
       addThread: vi.fn(),
@@ -1014,10 +1221,11 @@ describe("M38-CT-07: comment_delete deleteScope bulk delete", () => {
 
     await deleteTool.handler({ deleteScope: { modality: "diagram", all: true } });
 
-    // removeThreads should be called with diagram thread IDs (covers all modalities, not just browser)
-    expect(mockUi.removeThreads).toHaveBeenCalledTimes(1);
-    const [deletedIds] = mockUi.removeThreads.mock.calls[0] as [string[]];
-    expect(deletedIds).toContain(diag1.threadId);
+    // ui.removeThreads is no longer called directly; store.onChanged -> nc.reconcile handles widget removal
+    expect(mockUi.removeThreads).not.toHaveBeenCalled();
+    // Verify only diagram thread was deleted from store (text thread remains)
+    expect(isolatedStore.getThread(diag1.threadId)).toBeUndefined();
+    expect(isolatedStore.getThread(text1.threadId)).toBeDefined();
   });
 });
 

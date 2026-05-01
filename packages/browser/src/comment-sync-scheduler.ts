@@ -8,6 +8,7 @@ export const SYNC_INTERVAL_MS = 30_000;
 export class BrowserCommentSyncScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private syncing = false;
+  private channelClosed = false;
 
   constructor(
     private readonly relay: BrowserRelayLike,
@@ -15,9 +16,18 @@ export class BrowserCommentSyncScheduler {
     private readonly out: vscode.OutputChannel,
   ) {}
 
+  private log(message: string): void {
+    if (this.channelClosed) return;
+    try {
+      this.out.appendLine(message);
+    } catch {
+      this.channelClosed = true;
+    }
+  }
+
   start(): void {
     if (this.timer !== null) return;
-    this.out.appendLine(`[accordo-browser:comment-sync] starting periodic sync every ${SYNC_INTERVAL_MS / 1000}s`);
+    this.log(`[accordo-browser:comment-sync] starting periodic sync every ${SYNC_INTERVAL_MS / 1000}s`);
     this.timer = setInterval(() => {
       void this.runSync();
     }, SYNC_INTERVAL_MS);
@@ -25,7 +35,7 @@ export class BrowserCommentSyncScheduler {
 
   async syncNow(): Promise<void> {
     if (this.syncing) {
-      this.out.appendLine("[accordo-browser:comment-sync] sync already in-flight — skipping");
+      this.log("[accordo-browser:comment-sync] sync already in-flight — skipping");
       return;
     }
     await this.runSync();
@@ -35,12 +45,12 @@ export class BrowserCommentSyncScheduler {
     if (this.syncing) return;
     this.syncing = true;
     try {
-      this.out.appendLine("[accordo-browser:comment-sync] starting sync...");
+      this.log("[accordo-browser:comment-sync] starting sync...");
       const result = await syncBrowserComments(this.relay, this.bridge, this.out);
-      this.out.appendLine(`[accordo-browser:comment-sync] sync complete: ${result}`);
+      this.log(`[accordo-browser:comment-sync] sync complete: ${result}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.out.appendLine(`[accordo-browser:comment-sync] unexpected error: ${msg}`);
+      this.log(`[accordo-browser:comment-sync] unexpected error: ${msg}`);
     } finally {
       this.syncing = false;
     }
@@ -50,7 +60,7 @@ export class BrowserCommentSyncScheduler {
     if (this.timer !== null) {
       clearInterval(this.timer);
       this.timer = null;
-      this.out.appendLine("[accordo-browser:comment-sync] scheduler stopped");
+      this.log("[accordo-browser:comment-sync] scheduler stopped");
     }
   }
 }

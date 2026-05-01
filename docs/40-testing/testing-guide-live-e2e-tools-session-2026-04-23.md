@@ -130,13 +130,11 @@ Expected:
 2. `accordo_presentation_getCurrent`
 3. `accordo_presentation_goto` to another slide
 4. `accordo_presentation_generateNarration`
-5. `accordo_webview_capture` with explicit temp output path
-6. `accordo_presentation_close`
+5. `accordo_presentation_close`
 
 Expected:
 - explicit open/close acknowledgements
 - correct slide indexing for narration
-- capture artifacts usable and non-trivial
 
 Historical failures to re-check:
 - `presentation_open` returned empty payload
@@ -144,8 +142,6 @@ Historical failures to re-check:
 - slide comments present in store but not visible in Marp
 - `comment_reply` on slide threads failed with `Webview is disposed`
 - user vs agent slide comment visibility mismatch
-- `webview_capture` default path polluted source dirs
-- `webview_capture` produced tiny unusable SVG (~534B)
 
 ---
 
@@ -153,6 +149,6 @@ Historical failures to re-check:
 
 1. No session/auth failures while invoking non-browser tools.
 2. Comment store, list, and UI are consistent after create/reply/delete.
-3. Diagram and presentation exports are valid and usable.
+3. Diagram exports are valid and usable.
 4. No stale artifacts remain after deletion flows.
 5. All previously logged Priority 0 failures above are either fixed or reproducibly re-confirmed with clear evidence.

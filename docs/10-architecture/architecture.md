@@ -29,51 +29,34 @@ The project is built as a **layer on top of VSCode**. The human keeps their exis
 
 ## 2. System Overview (Phase 1)
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│  VSCode                                                                  │
-│                                                                          │
-│  ┌──────────────────────────────────────────────────────────────────────┐│
-│  │  accordo-editor   (extensionKind: ["workspace"])                     ││
-│  │  • 26 editor/terminal/layout/command-gateway MCP tools               ││
-│  │  • Registers tools via BridgeAPI.registerTools()                     ││
-│  └──────────────────────┬───────────────────────────────────────────────┘│
-│                         │ BridgeAPI (same extension host, direct import)  │
-│  ┌──────────────────────▼───────────────────────────────────────────────┐│
-│  │  accordo-bridge  (extensionKind: ["workspace"])                      ││
-│  │  • WebSocket CLIENT connecting to Hub                                ││
-│  │  • Routes Hub → VSCode command invocations                           ││
-│  │  • Publishes IDE state events → Hub                                  ││
-│  │  • Extension registration API (BridgeAPI)                            ││
-│  │  • Hub lifecycle manager                                             ││
-│  │  • Native MCP registration via user-level mcp.json sync              ││
-│  └──────────────────────┬───────────────────────────────────────────────┘│
-└─────────────────────────┼────────────────────────────────────────────────┘
-                          │ WebSocket (ws://localhost:3000/bridge)
-┌─────────────────────────▼────────────────────────────────────────────────┐
-│  accordo-hub  (Node.js standalone process)                               │
-│                                                                          │
-│  SERVERS:                                                                │
-│  • MCP Streamable HTTP — single POST endpoint at /mcp                   │
-│  • MCP stdio — when launched with --stdio flag                          │
-│  • WebSocket server — /bridge path for Bridge connections               │
-│  • HTTP GET /instructions — system prompt generation                    │
-│  • HTTP GET /health — liveness check                                    │
-│                                                                          │
-│  INTERNAL:                                                               │
-│  • Tool registry (runtime registration, no hardcoded tools)             │
-│  • State cache (flat JSON snapshot, patched from Bridge events)         │
-│  • Prompt engine (template rendering with token budget)                 │
-│  • Security: loopback-only, Origin validation, bearer token auth        │
-└─────────────────────────┬────────────────────────────────────────────────┘
-                          │ MCP (Streamable HTTP or stdio)
-┌─────────────────────────▼────────────────────────────────────────────────┐
-│  AI Agent (any MCP-capable agent)                                        │
-│  • GitHub Copilot → VSCode native MCP (auto-registered by Bridge)       │
-│  • Claude Code → .claude/mcp.json (stdio)                               │
-│  • OpenCode → opencode.json (Streamable HTTP + instructions URL)        │
-│  • Cursor, Windsurf → their respective MCP config files                 │
-└──────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  subgraph VS[VSCode]
+    direction TB
+
+    E[accordo-editor]
+
+    B[accordo-bridge]
+
+    E -->|BridgeAPI| B
+  end
+
+  H[accordo-hub]
+
+  A[AI Agent]
+
+  B -->|WebSocket /bridge| H
+  A -->|MCP HTTP or stdio| H
+
+  E_note["extensionKind: workspace\n26 editor/terminal/layout tools\nregisters tools via BridgeAPI"]
+  B_note["extensionKind: workspace\nWS client to Hub\nroutes invoke calls to extensions\npublishes IDE state\nmanages Hub lifecycle"]
+  H_note["Servers: /mcp, /bridge, /instructions, /health\nInternal: tool registry, state cache, prompt engine, security"]
+  A_note["Copilot, Claude Code, OpenCode, Cursor, Windsurf"]
+
+  E -.-> E_note
+  B -.-> B_note
+  H -.-> H_note
+  A -.-> A_note
 ```
 
 ### Key architectural corrections from review
