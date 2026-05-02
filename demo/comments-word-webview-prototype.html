@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Accordo Comments Panel Prototype</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111315;
+        --panel: #181b20;
+        --panel-raised: #20242c;
+        --panel-soft: #252a33;
+        --line: rgba(255, 255, 255, 0.105);
+        --line-strong: rgba(255, 255, 255, 0.18);
+        --text: #f4f1ea;
+        --muted: #b7afa6;
+        --soft: #8f877e;
+        --word-blue: #2b6fde;
+        --word-blue-soft: rgba(43, 111, 222, 0.17);
+        --comment: #fff5c6;
+        --comment-2: #fffbe8;
+        --comment-line: rgba(87, 65, 20, 0.22);
+        --ink: #2c261b;
+        --resolve: #52b36f;
+        --danger: #ef6b68;
+        --shadow: 0 22px 70px rgba(0, 0, 0, 0.38);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        display: grid;
+        min-height: 100vh;
+        margin: 0;
+        place-items: center;
+        background:
+          radial-gradient(circle at 12% 8%, rgba(43, 111, 222, 0.22), transparent 18rem),
+          linear-gradient(135deg, #0c0e11 0%, #17191e 54%, #101113 100%);
+        color: var(--text);
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      .prototype-frame {
+        width: min(100vw - 2rem, 27rem);
+        height: min(100vh - 2rem, 58rem);
+        border: 1px solid var(--line-strong);
+        border-radius: 1.25rem;
+        background: rgba(24, 27, 32, 0.92);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .comments-panel {
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        height: 100%;
+        min-width: 17.5rem;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 11rem),
+          var(--panel);
+      }
+
+      .panel-header {
+        padding: 0.85rem 0.85rem 0.7rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .title-row,
+      .file-summary,
+      .thread-title,
+      .comment-top,
+      .meta-row,
+      .composer-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .title-row {
+        justify-content: space-between;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 0.98rem;
+        letter-spacing: 0.01em;
+      }
+
+      .toolbar-icons {
+        display: flex;
+        gap: 0.3rem;
+      }
+
+      .icon-button {
+        display: grid;
+        width: 1.8rem;
+        height: 1.8rem;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 0.55rem;
+        background: rgba(255, 255, 255, 0.045);
+        color: var(--muted);
+      }
+
+      .stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.7rem;
+      }
+
+      .pill {
+        min-width: 0;
+        padding: 0.25rem 0.48rem;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.045);
+        color: var(--muted);
+        font-size: 0.72rem;
+        line-height: 1.1;
+        white-space: nowrap;
+      }
+
+      .pill.active {
+        border-color: rgba(43, 111, 222, 0.6);
+        background: var(--word-blue-soft);
+        color: #dbe9ff;
+      }
+
+      .filter-strip {
+        padding: 0.6rem 0.7rem;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.025);
+      }
+
+      .search {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.45rem 0.55rem;
+        border: 1px solid var(--line);
+        border-radius: 0.65rem;
+        background: rgba(0, 0, 0, 0.16);
+        color: var(--soft);
+        font-size: 0.78rem;
+      }
+
+      .filter-row {
+        display: flex;
+        gap: 0.35rem;
+        margin-top: 0.5rem;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      .filter-row::-webkit-scrollbar {
+        display: none;
+      }
+
+      .thread-scroll {
+        min-height: 0;
+        padding: 0.55rem;
+        overflow: auto;
+      }
+
+      details.file-group {
+        margin-bottom: 0.55rem;
+        border: 1px solid var(--line);
+        border-radius: 0.85rem;
+        background: rgba(255, 255, 255, 0.028);
+        overflow: hidden;
+      }
+
+      details.file-group:not([open]) {
+        background: rgba(255, 255, 255, 0.018);
+      }
+
+      summary.file-header {
+        cursor: default;
+        list-style: none;
+        padding: 0.58rem 0.65rem;
+        user-select: none;
+      }
+
+      summary.file-header::-webkit-details-marker {
+        display: none;
+      }
+
+      .chevron {
+        width: 0.9rem;
+        color: var(--soft);
+        font-size: 0.68rem;
+        transition: transform 150ms ease;
+      }
+
+      details[open] > summary .chevron {
+        transform: rotate(90deg);
+      }
+
+      .file-summary {
+        justify-content: space-between;
+        min-width: 0;
+      }
+
+      .file-main {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        gap: 0.45rem;
+      }
+
+      .file-name {
+        overflow: hidden;
+        color: #e9e2db;
+        font-size: 0.82rem;
+        font-weight: 650;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .file-count {
+        flex: 0 0 auto;
+        color: var(--soft);
+        font-size: 0.72rem;
+      }
+
+      .thread-list {
+        border-top: 1px solid var(--line);
+      }
+
+      .thread {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+      }
+
+      .thread:last-child {
+        border-bottom: 0;
+      }
+
+      .thread-collapsed,
+      .thread-open {
+        display: block;
+        padding: 0.62rem 0.65rem;
+      }
+
+      .thread-collapsed {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .thread-collapsed:hover,
+      .thread-open {
+        background: rgba(43, 111, 222, 0.08);
+      }
+
+      .thread-title {
+        justify-content: space-between;
+        min-width: 0;
+      }
+
+      .thread-location {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        gap: 0.42rem;
+      }
+
+      .status-dot {
+        width: 0.48rem;
+        height: 0.48rem;
+        flex: 0 0 auto;
+        border-radius: 999px;
+        background: var(--word-blue);
+        box-shadow: 0 0 0 3px rgba(43, 111, 222, 0.13);
+      }
+
+      .status-dot.resolved {
+        background: var(--resolve);
+        box-shadow: 0 0 0 3px rgba(82, 179, 111, 0.12);
+      }
+
+      .line-label {
+        overflow: hidden;
+        color: #f4efe8;
+        font-size: 0.78rem;
+        font-weight: 660;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .reply-count {
+        flex: 0 0 auto;
+        color: var(--soft);
+        font-size: 0.71rem;
+      }
+
+      .thread-preview {
+        display: -webkit-box;
+        margin: 0.24rem 0 0;
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 0.74rem;
+        line-height: 1.32;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+
+      .thread-meta {
+        display: flex;
+        gap: 0.35rem;
+        margin-top: 0.45rem;
+        overflow: hidden;
+      }
+
+      .tiny-tag {
+        overflow: hidden;
+        padding: 0.16rem 0.36rem;
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 999px;
+        color: var(--soft);
+        font-size: 0.66rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .thread-open {
+        background:
+          linear-gradient(90deg, rgba(43, 111, 222, 0.16), transparent 4px),
+          rgba(43, 111, 222, 0.075);
+      }
+
+      .conversation-card {
+        margin-top: 0.58rem;
+        border: 1px solid var(--comment-line);
+        border-radius: 0.82rem;
+        background: linear-gradient(180deg, var(--comment-2), var(--comment));
+        color: var(--ink);
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+        overflow: hidden;
+      }
+
+      .conversation-head {
+        padding: 0.65rem;
+        border-bottom: 1px solid rgba(87, 65, 20, 0.14);
+      }
+
+      .comment-top {
+        align-items: flex-start;
+        justify-content: space-between;
+      }
+
+      .author {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 0.45rem;
+      }
+
+      .avatar {
+        display: grid;
+        width: 1.72rem;
+        height: 1.72rem;
+        flex: 0 0 auto;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--word-blue);
+        color: white;
+        font-size: 0.68rem;
+        font-weight: 760;
+      }
+
+      .avatar.agent {
+        background: #7549be;
+      }
+
+      .author-text {
+        min-width: 0;
+      }
+
+      .author-text strong,
+      .author-text span {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .author-text strong {
+        font-size: 0.76rem;
+      }
+
+      .author-text span,
+      .meta-row {
+        color: #756650;
+        font-size: 0.66rem;
+      }
+
+      .mini-actions {
+        display: flex;
+        gap: 0.25rem;
+      }
+
+      .mini-actions button,
+      .composer-actions button {
+        border: 1px solid rgba(49, 40, 23, 0.16);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.46);
+        color: #453922;
+        font-size: 0.66rem;
+      }
+
+      .mini-actions button {
+        padding: 0.2rem 0.34rem;
+      }
+
+      .quoted {
+        margin-top: 0.55rem;
+        padding: 0.46rem 0.5rem;
+        border-left: 3px solid var(--word-blue);
+        background: rgba(255, 255, 255, 0.42);
+        color: #5b4d39;
+        font-size: 0.7rem;
+        line-height: 1.35;
+      }
+
+      .message,
+      .reply {
+        padding: 0.66rem;
+        border-bottom: 1px solid rgba(87, 65, 20, 0.12);
+      }
+
+      .message p,
+      .reply p {
+        margin: 0.48rem 0 0;
+        font-size: 0.77rem;
+        line-height: 1.42;
+      }
+
+      .reply {
+        background: rgba(255, 255, 255, 0.26);
+      }
+
+      .composer {
+        padding: 0.58rem;
+        background: rgba(255, 255, 255, 0.2);
+      }
+
+      .composer-box {
+        min-height: 3.4rem;
+        padding: 0.48rem;
+        border: 1px solid rgba(49, 40, 23, 0.15);
+        border-radius: 0.55rem;
+        background: rgba(255, 255, 255, 0.42);
+        color: #7a6a52;
+        font-size: 0.72rem;
+        line-height: 1.35;
+      }
+
+      .composer-actions {
+        justify-content: flex-end;
+        margin-top: 0.46rem;
+      }
+
+      .composer-actions .primary {
+        border-color: transparent;
+        background: var(--word-blue);
+        color: white;
+      }
+
+      .collapsed-file-preview {
+        display: flex;
+        gap: 0.28rem;
+        padding: 0 0.65rem 0.58rem 2rem;
+      }
+
+      details[open] .collapsed-file-preview {
+        display: none;
+      }
+
+      .mini-thread-dot {
+        width: 0.42rem;
+        height: 0.42rem;
+        border-radius: 999px;
+        background: var(--word-blue);
+        opacity: 0.78;
+      }
+
+      .mini-thread-dot.resolved {
+        background: var(--resolve);
+      }
+
+      @media (max-width: 420px) {
+        body {
+          place-items: stretch;
+        }
+
+        .prototype-frame {
+          width: 100vw;
+          height: 100vh;
+          border: 0;
+          border-radius: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="prototype-frame" aria-label="Narrow Accordo comments panel prototype">
+      <section class="comments-panel">
+        <header class="panel-header">
+          <div class="title-row">
+            <h1>Comments</h1>
+            <div class="toolbar-icons" aria-label="Panel actions">
+              <button class="icon-button" title="Refresh">↻</button>
+              <button class="icon-button" title="Group by file">☰</button>
+              <button class="icon-button" title="More">⋯</button>
+            </div>
+          </div>
+          <div class="stats" aria-label="Active comment filters">
+            <span class="pill active">Open 6</span>
+            <span class="pill">Resolved 12</span>
+            <span class="pill">Design</span>
+            <span class="pill">Fix</span>
+          </div>
+        </header>
+
+        <div class="filter-strip">
+          <div class="search">⌕ Search comments, files, authors</div>
+          <div class="filter-row">
+            <span class="pill active">By file</span>
+            <span class="pill">Activity</span>
+            <span class="pill">Mine</span>
+            <span class="pill">Agent</span>
+          </div>
+        </div>
+
+        <div class="thread-scroll">
+          <details class="file-group" open>
+            <summary class="file-header">
+              <div class="file-summary">
+                <div class="file-main">
+                  <span class="chevron">▶</span>
+                  <span>📄</span>
+                  <span class="file-name">docs/20-requirements/requirements-comments-panel.md</span>
+                </div>
+                <span class="file-count">3</span>
+              </div>
+            </summary>
+
+            <div class="collapsed-file-preview" aria-hidden="true">
+              <span class="mini-thread-dot"></span>
+              <span class="mini-thread-dot"></span>
+              <span class="mini-thread-dot resolved"></span>
+            </div>
+
+            <div class="thread-list">
+              <article class="thread thread-open" aria-label="Expanded thread prototype">
+                <div class="thread-title">
+                  <div class="thread-location">
+                    <span class="status-dot"></span>
+                    <span class="line-label">line 146 · Panel reply UX</span>
+                  </div>
+                  <span class="reply-count">3</span>
+                </div>
+                <p class="thread-preview">Could this be more obviously in-context? Pressing this title again would collapse the conversation back into one row.</p>
+                <div class="thread-meta">
+                  <span class="tiny-tag">🎨 design</span>
+                  <span class="tiny-tag">LS</span>
+                  <span class="tiny-tag">2m</span>
+                </div>
+
+                <section class="conversation-card" aria-label="Inline conversation preview">
+                  <div class="conversation-head">
+                    <div class="comment-top">
+                      <div class="author">
+                        <div class="avatar">LS</div>
+                        <div class="author-text">
+                          <strong>Lior Shtram</strong>
+                          <span>Today 10:18 · line 146</span>
+                        </div>
+                      </div>
+                      <div class="mini-actions">
+                        <button>Go</button>
+                        <button>Resolve</button>
+                      </div>
+                    </div>
+                    <div class="quoted">"Reply UX uses the same navigation path as navigateToAnchor..."</div>
+                  </div>
+
+                  <div class="message">
+                    <div class="meta-row">🎨 design · open</div>
+                    <p>Can the panel show the conversation in place, like Word, instead of opening a second surface?</p>
+                  </div>
+
+                  <div class="reply">
+                    <div class="author">
+                      <div class="avatar agent">AI</div>
+                      <div class="author-text">
+                        <strong>Accordo Agent</strong>
+                        <span>Today 10:20</span>
+                      </div>
+                    </div>
+                    <p>Yes. The selected row expands into a yellow conversation card while file grouping remains visible around it.</p>
+                  </div>
+
+                  <div class="composer">
+                    <div class="composer-box">Reply in this thread...</div>
+                    <div class="composer-actions">
+                      <button>Cancel</button>
+                      <button class="primary">Reply</button>
+                    </div>
+                  </div>
+                </section>
+              </article>
+
+              <a class="thread thread-collapsed" href="#">
+                <div class="thread-title">
+                  <div class="thread-location">
+                    <span class="status-dot"></span>
+                    <span class="line-label">line 153 · Anchor labels</span>
+                  </div>
+                  <span class="reply-count">1</span>
+                </div>
+                <p class="thread-preview">Clarify whether slide and diagram anchors should use surface-specific labels in the compact row.</p>
+                <div class="thread-meta">
+                  <span class="tiny-tag">👀 review</span>
+                  <span class="tiny-tag">AI</span>
+                  <span class="tiny-tag">14m</span>
+                </div>
+              </a>
+
+              <a class="thread thread-collapsed" href="#">
+                <div class="thread-title">
+                  <div class="thread-location">
+                    <span class="status-dot resolved"></span>
+                    <span class="line-label">line 180 · Command names</span>
+                  </div>
+                  <span class="reply-count">2</span>
+                </div>
+                <p class="thread-preview">Resolved after keeping the existing command contract unchanged.</p>
+                <div class="thread-meta">
+                  <span class="tiny-tag">✅ resolved</span>
+                  <span class="tiny-tag">yesterday</span>
+                </div>
+              </a>
+            </div>
+          </details>
+
+          <details class="file-group" open>
+            <summary class="file-header">
+              <div class="file-summary">
+                <div class="file-main">
+                  <span class="chevron">▶</span>
+                  <span>🧩</span>
+                  <span class="file-name">packages/comments/src/panel/comments-tree-provider.ts</span>
+                </div>
+                <span class="file-count">2</span>
+              </div>
+            </summary>
+
+            <div class="collapsed-file-preview" aria-hidden="true">
+              <span class="mini-thread-dot"></span>
+              <span class="mini-thread-dot"></span>
+            </div>
+
+            <div class="thread-list">
+              <a class="thread thread-collapsed" href="#">
+                <div class="thread-title">
+                  <div class="thread-location">
+                    <span class="status-dot"></span>
+                    <span class="line-label">line 168 · Preview truncation</span>
+                  </div>
+                  <span class="reply-count">4</span>
+                </div>
+                <p class="thread-preview">The narrow panel needs two-line summaries, not dense metadata that wraps unpredictably.</p>
+                <div class="thread-meta">
+                  <span class="tiny-tag">🔧 fix</span>
+                  <span class="tiny-tag">LS</span>
+                  <span class="tiny-tag">1h</span>
+                </div>
+              </a>
+
+              <a class="thread thread-collapsed" href="#">
+                <div class="thread-title">
+                  <div class="thread-location">
+                    <span class="status-dot"></span>
+                    <span class="line-label">line 214 · Store refresh</span>
+                  </div>
+                  <span class="reply-count">1</span>
+                </div>
+                <p class="thread-preview">Keep the source of truth in the store; this webview should only be a projection.</p>
+                <div class="thread-meta">
+                  <span class="tiny-tag">💡 explain</span>
+                  <span class="tiny-tag">AI</span>
+                  <span class="tiny-tag">3h</span>
+                </div>
+              </a>
+            </div>
+          </details>
+
+          <details class="file-group">
+            <summary class="file-header">
+              <div class="file-summary">
+                <div class="file-main">
+                  <span class="chevron">▶</span>
+                  <span>🌐</span>
+                  <span class="file-name">https://example.test/review-flow</span>
+                </div>
+                <span class="file-count">3</span>
+              </div>
+            </summary>
+            <div class="collapsed-file-preview" aria-hidden="true">
+              <span class="mini-thread-dot"></span>
+              <span class="mini-thread-dot"></span>
+              <span class="mini-thread-dot"></span>
+            </div>
+          </details>
+
+          <details class="file-group">
+            <summary class="file-header">
+              <div class="file-summary">
+                <div class="file-main">
+                  <span class="chevron">▶</span>
+                  <span>🎞</span>
+                  <span class="file-name">demo/presentation-skills-demo.deck.md</span>
+                </div>
+                <span class="file-count">1</span>
+              </div>
+            </summary>
+            <div class="collapsed-file-preview" aria-hidden="true">
+              <span class="mini-thread-dot"></span>
+            </div>
+          </details>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
