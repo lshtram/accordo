@@ -1,0 +1,7 @@
+{
+    "accordo.presentation.engine": "marp",
+    "accordo.voice.ttsEndpoint": "http://127.0.0.1:8290/v1",
+    "accordo.voice.ttsAuthToken": "local-kokoro",
+    "accordo.voice.ttsModel": "tts-1",
+    "comments.openView": "never"
+}
