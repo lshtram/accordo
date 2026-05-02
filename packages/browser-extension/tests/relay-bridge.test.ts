@@ -22,9 +22,12 @@ class FakeSocket {
   }
 }
 
-/** Mock chrome.storage.local with a given token value. */
-function mockStorage(token: string | null = "test-token-abc"): void {
-  const store: Record<string, unknown> = token ? { relayToken: token } : {};
+/** Mock chrome.storage.local with token + optional relay identity secret. */
+function mockStorage(token: string | null = "test-token-abc", relayIdentitySecret?: string): void {
+  const store: Record<string, unknown> = {
+    ...(token ? { relayToken: token } : {}),
+    ...(relayIdentitySecret ? { relayIdentitySecret } : {}),
+  };
   (globalThis as unknown as Record<string, unknown>).chrome = {
     storage: {
       local: {
@@ -44,7 +47,12 @@ function mockStorage(token: string | null = "test-token-abc"): void {
 
 /** Flush pending microtasks (Promise.then chains). */
 async function flushMicrotasks(): Promise<void> {
-  await new Promise<void>((r) => setTimeout(r, 0));
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function flushPromises(): Promise<void> {
+  await flushMicrotasks();
 }
 
 describe("M82-RELAY — browser-extension relay client", () => {
@@ -290,10 +298,11 @@ describe("M82-RELAY — browser-extension relay client", () => {
 
       socket.onopen?.(new Event("open"));
       socket.onmessage?.({ data: JSON.stringify({ kind: "relay-hello", nonce: "test-nonce-xyz" }) });
-      // Wait for async crypto.subtle operations
-      await flushMicrotasks();
-      await flushMicrotasks();
-      await flushMicrotasks();
+      // Wait for async crypto operations with bounded polling to avoid timing flakiness.
+      for (let i = 0; i < 20 && socket.sent.length === 0; i += 1) {
+        await flushMicrotasks();
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
 
       expect(socket.sent).toHaveLength(1);
       const ack = JSON.parse(socket.sent[0]) as { kind: string; hmac: string };

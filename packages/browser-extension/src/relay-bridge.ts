@@ -4,6 +4,9 @@ import { DEFAULT_RELAY_HOST, DEFAULT_RELAY_PORT, RELAY_TOKEN_STORAGE_KEY } from 
 import { routeIncomingRequest, tryResolvePending, type PendingResolver, type RelayActionHandler } from "./relay-bridge-routing.js";
 import { sendViaTransport, sendViaWebSocket } from "./relay-bridge-send.js";
 
+const RELAY_IDENTITY_SECRET_STORAGE_KEY = "relayIdentitySecret";
+const RELAY_HELLO_TIMEOUT_MS = 3000;
+
 /**
  * WebSocket client that connects the Chrome extension to the Accordo browser relay.
  *
@@ -30,6 +33,9 @@ export class RelayBridgeClient {
   private readonly handler: RelayActionHandler;
   private readonly transport: RelayTransport | undefined;
   private pending = new Map<string, PendingResolver>();
+  private relayHelloTimer: ReturnType<typeof setTimeout> | null = null;
+  private awaitingRelayHello = false;
+  private relayIdentitySecret: string | undefined;
 
   constructor(handler: RelayActionHandler, transport?: RelayTransport) {
     this.handler = handler;
@@ -59,11 +65,12 @@ export class RelayBridgeClient {
     if (typeof WebSocket === "undefined") return;
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
 
-    void chrome.storage.local.get([RELAY_TOKEN_STORAGE_KEY]).then((result) => {
+    void chrome.storage.local.get([RELAY_TOKEN_STORAGE_KEY, RELAY_IDENTITY_SECRET_STORAGE_KEY]).then((result) => {
       if (this.stopped) return;
       if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
 
       const token = result[RELAY_TOKEN_STORAGE_KEY] as string | undefined;
+      this.relayIdentitySecret = result[RELAY_IDENTITY_SECRET_STORAGE_KEY] as string | undefined;
       if (!token) {
         this.scheduleReconnect();
         return;
@@ -73,13 +80,20 @@ export class RelayBridgeClient {
       const socket = new WebSocket(url);
       this.ws = socket;
 
-      socket.onmessage = (event): void => { void this.handleIncoming(event.data); };
+      socket.onmessage = (event): void => {
+        void this.handleSocketMessage(event.data, socket);
+      };
       socket.onclose = (event): void => {
         this.stopHeartbeat();
+        this.stopRelayHelloTimer();
+        this.awaitingRelayHello = false;
         this.ws = null;
         this.scheduleReconnect();
       };
-      socket.onopen = (): void => { this.startHeartbeat(); };
+      socket.onopen = (): void => {
+        this.startHeartbeat();
+        this.startRelayHelloHandshake(socket);
+      };
       socket.onerror = (): void => { socket.close(); };
     }).catch(() => {
       if (!this.stopped) this.scheduleReconnect();
@@ -98,6 +112,8 @@ export class RelayBridgeClient {
       this.ws = null;
     }
     this.stopHeartbeat();
+    this.stopRelayHelloTimer();
+    this.awaitingRelayHello = false;
   }
 
   private scheduleReconnect(): void {
@@ -108,8 +124,28 @@ export class RelayBridgeClient {
     }, 2000);
   }
 
-  private async handleIncoming(raw: unknown): Promise<void> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+  private startRelayHelloHandshake(socket: WebSocket): void {
+    this.stopRelayHelloTimer();
+    this.awaitingRelayHello = true;
+    this.relayHelloTimer = setTimeout(() => {
+      if (!this.awaitingRelayHello) return;
+      this.awaitingRelayHello = false;
+      if (this.relayIdentitySecret && socket.readyState === WebSocket.OPEN) {
+        socket.close(1008, "relay-hello-timeout");
+      }
+      // No identity secret: legacy path stays active.
+    }, RELAY_HELLO_TIMEOUT_MS);
+  }
+
+  private stopRelayHelloTimer(): void {
+    if (this.relayHelloTimer) {
+      clearTimeout(this.relayHelloTimer);
+      this.relayHelloTimer = null;
+    }
+  }
+
+  private async handleSocketMessage(raw: unknown, socket: WebSocket): Promise<void> {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
     let parsed: Record<string, unknown>;
     try {
@@ -117,6 +153,46 @@ export class RelayBridgeClient {
     } catch {
       return;
     }
+
+    if (this.awaitingRelayHello && parsed.kind === "relay-hello") {
+      const nonce = parsed.nonce;
+      if (typeof nonce !== "string" || nonce.length === 0) {
+        socket.close(1008, "invalid-relay-hello");
+        return;
+      }
+      if (!this.relayIdentitySecret) {
+        socket.close(1008, "no-identity-secret");
+        return;
+      }
+
+      const hmac = await this.computeRelayHelloHmac(nonce, this.relayIdentitySecret);
+      socket.send(JSON.stringify({ kind: "relay-hello-ack", hmac }));
+      this.awaitingRelayHello = false;
+      this.stopRelayHelloTimer();
+      return;
+    }
+
+    await this.handleIncoming(parsed);
+  }
+
+  private async computeRelayHelloHmac(nonce: string, secret: string): Promise<string> {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(nonce));
+    return Array.from(new Uint8Array(signature))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  private async handleIncoming(raw: unknown): Promise<void> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+    const parsed = typeof raw === "string" ? JSON.parse(raw) as Record<string, unknown> : raw as Record<string, unknown>;
 
     if (tryResolvePending(parsed, this.pending)) return;
     routeIncomingRequest(parsed, this.handler, undefined, this.ws);
