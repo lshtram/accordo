@@ -36,8 +36,10 @@ Use this skill for general Accordo IDE work: editor, layout, terminals, comments
 - Use \`comment_list\` to discover threads and \`comment_get\` for full thread context.
 - Use \`comment_reply\`, \`comment_resolve\`, and \`comment_delete\` for mutations.
 - \`comment_list({})\` is the unfiltered listing path; it returns open and resolved threads. Use \`status: "all"\` when you need to be explicit.
+- For slide/Marp comments, use canonical slide coordinates, including the discriminant and zero-based slide index. The currently valid shape is: \`comment_create({ scope: { modality: "slide", uri: "file:///abs/deck.md" }, anchor: { kind: "surface", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 1, x: 0.5, y: 0.5 } }, body: "..." })\`. \`slideIndex\` is zero-based (\`1\` targets presentation slide 2); \`x\` and \`y\` are normalized 0..1 slide coordinates. Do not use pixel-only \`coordinates: { x, y }\`, \`anchorKey\`, or top-level \`x\`/\`y\` until the tool accepts and normalizes those aliases.
+- When verifying newly-created comments, avoid accidental filters. Prefer \`comment_list({ scope: { modality: "slide", uri: "file:///abs/deck.md" }, status: "all", detail: true })\` or \`comment_list({})\` for a fully unfiltered check. Only add \`intent\`, \`anchorKind\`, or \`lastAuthor\` when you intentionally want to narrow results.
+- Delete comments carefully: delete a whole thread with \`comment_delete({ threadId })\`; delete one reply/comment with \`comment_delete({ threadId, commentId })\`; clean one modality with \`comment_delete({ deleteScope: { modality, all: true } })\`. Do not pass empty optional strings such as \`commentId: ""\`; omit the field.
 - To start a clean comment session, use \`comment_delete({ all: true })\` and then verify with \`comment_sync_version\`.
-- Use \`comment_delete({ deleteScope: { modality, all: true } })\` only when cleaning one modality.
 - Browser comment context should be resolved with \`accordo_browser_resolve_comment_context\` when available.
 
 ## Browser Tools
