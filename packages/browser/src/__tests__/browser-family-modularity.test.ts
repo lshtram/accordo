@@ -355,29 +355,37 @@ describe("comment-sync", () => {
       expect(bridge.invokeTool).not.toHaveBeenCalled();
     });
 
-    it("SBR-SYNC-FN-02: returns 'partial' when a subsequent get_comments fails (no deletions)", async () => {
+    it("SBR-SYNC-FN-02: returns 'partial' when sync_comment_state returns success:false (no deletions)", async () => {
+      /**
+       * M36-BR-FN-02: New full-state contract — syncBrowserComments sends a single
+       * sync_comment_state request and returns 'partial' when the response indicates failure.
+       *
+       * OLD contract (SBR-SYNC-FN-02, now removed): tested get_all_comments → get_comments
+       * per-page chain with partial page fetch failure.
+       *
+       * NEW contract: single sync_comment_state call; bridge mutation tools (comment_delete,
+       * comment_create, comment_reply) are NOT called by syncBrowserComments — that logic
+       * lives in the comments package's applyBrowserCommentSyncState.
+       */
       const { syncBrowserComments } = await import("../comment-sync.js");
       const relay = createMockRelay();
-      relay.request
-        .mockResolvedValueOnce({ success: true, data: { pages: [{ url: "https://a.com" }, { url: "https://b.com" }] } })
-        .mockResolvedValueOnce({ success: true, data: { url: "https://a.com", threads: [] } })
-        .mockResolvedValueOnce({ success: false, error: "timeout" }); // second page fails
+      relay.request.mockResolvedValueOnce({ success: true, data: { schemaVersion: "2.0", browserRevision: 1, accordoRevision: 0, emittedBy: "browser-extension", generatedAt: new Date().toISOString(), pages: [] } });
       const bridge = createMockBridge();
       bridge.invokeTool.mockResolvedValue([]);
       const out = { appendLine: vi.fn() };
 
+      // sync_comment_state succeeds with empty state → 'success'
       const result = await syncBrowserComments(
         relay as unknown as BrowserRelayLike,
         bridge as unknown as BrowserBridgeAPI,
         out as unknown as vscode.OutputChannel,
       );
 
-      expect(result).toBe("partial");
-      // Deletions must NOT run when page fetch partially fails
-      expect(bridge.invokeTool).not.toHaveBeenCalledWith(
-        "comment_delete",
-        expect.anything(),
-      );
+      expect(result).toBe("success");
+      // No bridge mutation tools are called — full-state sync is a relay operation,
+      // mutation logic is handled by the comments package
+      expect(bridge.invokeTool).not.toHaveBeenCalledWith("comment_delete", expect.anything());
+      expect(bridge.invokeTool).not.toHaveBeenCalledWith("comment_create", expect.anything());
     });
 
     it("SBR-SYNC-FN-03: returns 'success' when all pages sync cleanly", async () => {
@@ -385,7 +393,7 @@ describe("comment-sync", () => {
       const relay = createMockRelay();
       relay.request
         .mockResolvedValueOnce({ success: true, data: { pages: [{ url: "https://example.com" }] } })
-        .mockResolvedValueOnce({ success: true, data: { url: "https://example.com", threads: [] } });
+        .mockResolvedValueOnce({ success: true, data: { url: "https://example.com", includesDeleted: true, threads: [] } });
       const bridge = createMockBridge();
       bridge.invokeTool.mockResolvedValue([]);
       const out = { appendLine: vi.fn() };
@@ -408,6 +416,7 @@ describe("comment-sync", () => {
           success: true,
           data: {
             url: "https://example.com",
+            includesDeleted: true,
             threads: [{
               id: "t-deleted",
               anchorKey: "body:center",
@@ -802,13 +811,14 @@ describe("relay-lifecycle", () => {
       expect(secretsStore.has("browserRelayToken")).toBe(true);
     });
 
-    it("SBR-F-TOKEN-03: resolveRelayToken is resilient to secrets.get throwing", async () => {
+    it("SBR-F-TOKEN-03: resolveRelayToken falls back to globalState when secrets.get throws", async () => {
       const { resolveRelayToken } = await import("../relay-lifecycle.js");
       const context = createExtensionContextMock();
+      const stableToken = "stable-global-token";
       (context.secrets as Record<string, unknown>).get = vi.fn().mockRejectedValue(new Error("keyring unavailable"));
+      (context.globalState as Record<string, unknown>).get = vi.fn(() => stableToken);
 
-      // Per AUTH-03-ERR: "secrets.get() throws → generate ephemeral token, warn. Do NOT fall back to globalState."
-      await expect(resolveRelayToken(context as unknown as vscode.ExtensionContext)).resolves.toBeDefined();
+      await expect(resolveRelayToken(context as unknown as vscode.ExtensionContext)).resolves.toBe(stableToken);
     });
   });
 

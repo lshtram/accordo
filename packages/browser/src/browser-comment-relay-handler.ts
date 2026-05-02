@@ -8,10 +8,14 @@
  *   BrowserExtension/VscodeRelayAdapter.send(action, payload)
  *     → relay WebSocket → accordo-browser relay server
  *     → handleBrowserCommentAction(action, payload, relay)
- *     → dispatchBrowserCommentAction(deps, action, payload, correlationId)
+ *     → dispatchBrowserCommentAction(deps, action, payload)
  *     → bridge.invokeTool(toolName, args)
- *     → on success: push notify_comments_updated to browser extension (mutation push)
+ *     → on success: push request_comment_state_sync to browser extension (mutation push)
  *     → relay.onRelayRequest returns BrowserRelayResponse → SharedRelayClient sends it back
+ *
+ * Note: sync_comment_state and request_comment_state_sync are handled directly in
+ * createRelayRequestHandler (relay-lifecycle-runtime.ts), not here, because they
+ * require access to the OutputChannel for syncBrowserComments logging.
  */
 
 import * as vscode from "vscode";
@@ -24,7 +28,6 @@ import { normalizeReadResult } from "./comment-relay-contract.js";
 import type { BrowserRelayCommentAction } from "./comment-relay-contract.js";
 
 const MUTATING = ["create_comment", "reply_comment", "resolve_thread", "reopen_thread", "delete_comment", "delete_thread"] as const;
-const READ_ACTIONS = ["get_comments", "get_all_comments"] as const;
 
 // ── Handler ────────────────────────────────────────────────────────────────────
 
@@ -34,13 +37,11 @@ const READ_ACTIONS = ["get_comments", "get_all_comments"] as const;
  * @param action   - The relay action name (e.g. "create_comment", "reply_comment")
  * @param payload  - The action payload
  * @param relay    - The relay (SharedRelayClient or BrowserRelayServer) for mutation push
- * @param correlationId - Optional correlation ID for response routing
  */
 export function handleBrowserCommentAction(
   action: BrowserRelayAction,
   payload: Record<string, unknown>,
   relay: BrowserRelayLike,
-  correlationId?: string,
 ): Promise<BrowserRelayResponse> {
   // Handle get_comments_version and focus_thread via the existing mapping
   // (dispatchBrowserCommentAction only handles the 8 CRUD actions)
@@ -48,7 +49,7 @@ export function handleBrowserCommentAction(
     const mapped = browserActionToUnifiedTool(action, payload);
     if (!mapped) {
       return Promise.resolve({
-        requestId: correlationId ?? action,
+        requestId: action,
         success: false,
         error: "action-failed" as const,
       });
@@ -56,8 +57,8 @@ export function handleBrowserCommentAction(
     return Promise.resolve(
       vscode.commands.executeCommand(mapped.toolName, ...Object.values(mapped.args)),
     ).then(
-      (result) => ({ requestId: correlationId ?? action, success: true, data: result }),
-      () => ({ requestId: correlationId ?? action, success: false, error: "action-failed" as const }),
+      (result) => ({ requestId: action, success: true, data: result }),
+      () => ({ requestId: action, success: false, error: "action-failed" as const }),
     );
   }
 
@@ -70,20 +71,19 @@ export function handleBrowserCommentAction(
     deps,
     action as BrowserRelayCommentAction,
     payload,
-    correlationId,
   ).then((result) => {
     // For read operations, normalize the result to the canonical { threads } envelope
     if ((action === "get_comments" || action === "get_all_comments") && result.success && result.data) {
       return { ...result, data: normalizeReadResult(result.data) };
     }
 
-    // For mutations: push notify_comments_updated to the browser extension so it
-    // refreshes its local store. This is the bidirectional sync path — without this,
-    // the browser extension never learns about agent mutations routed via the Hub.
+    // For mutations: push request_comment_state_sync to trigger full-state sync.
+    // The browser extension will do sync_comment_state and persist to canonical storage,
+    // replacing the old per-mutation notify approach.
     if (result.success && (MUTATING as readonly string[]).includes(action)) {
       const url = payload["url"] as string | undefined;
       try {
-        relay.push("notify_comments_updated", url ? { url } : {});
+        relay.push("request_comment_state_sync", url ? { url } : {});
       } catch {
         // push is best-effort
       }
@@ -96,11 +96,10 @@ export function handleBrowserCommentAction(
 /**
  * Adapter to wire handleBrowserCommentAction as a SharedRelayClient.onRelayRequest handler.
  * SharedRelayClient.onRelayRequest expects (action, payload) => Promise<BrowserRelayResponse>,
- * so we curry the relay instance and correlationId.
+ * so we curry the relay instance.
  */
 export function createBrowserCommentRelayHandler(
   relay: BrowserRelayLike,
-  correlationId?: string,
 ): (action: BrowserRelayAction, payload: Record<string, unknown>) => Promise<BrowserRelayResponse> {
-  return (action, payload) => handleBrowserCommentAction(action, payload, relay, correlationId);
+  return (action, payload) => handleBrowserCommentAction(action, payload, relay);
 }

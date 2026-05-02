@@ -27,7 +27,9 @@ export type BrowserRelayAction =
   | "click"
   | "type"
   | "press_key"
-  | "get_spatial_relations";
+  | "get_spatial_relations"
+  | "sync_comment_state"
+  | "request_comment_state_sync";
 
 // ── Snapshot Envelope (shared contract) ──────────────────────────────────────
 
@@ -114,7 +116,7 @@ export interface BrowserRelayResponse {
    */
   snapshotId?: string;
   data?: unknown;
-  error?: "browser-not-connected" | "unauthorized" | "timeout" | "action-failed" | "invalid-request" | "navigation-interrupted" | "page-closed" | "iframe-cross-origin" | "no-content-script";
+  error?: "browser-not-connected" | "unauthorized" | "timeout" | "action-failed" | "invalid-request" | "navigation-interrupted" | "page-closed" | "iframe-cross-origin" | "no-content-script" | "action-unsupported";
 }
 
 export interface BrowserRelayLike {

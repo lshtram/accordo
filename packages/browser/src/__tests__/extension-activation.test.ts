@@ -661,7 +661,7 @@ describe("M83-BTOOLS extension activation", () => {
       }
     });
 
-    it("AUTH-03-ERR / AUTH-06: SecretStorage.get throws → ephemeral token generated, no dev fallback", async () => {
+    it("AUTH-03-ERR / AUTH-06: SecretStorage.get throws → stable globalState token generated, no dev fallback", async () => {
       const bridge = {
         registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
         publishState: vi.fn(),
@@ -683,12 +683,40 @@ describe("M83-BTOOLS extension activation", () => {
 
       await activate(context as never);
 
-      // A fresh token must have been generated (ephemeral) — no dev fallback.
-      // The store call must NOT have the hardcoded dev token value.
+      // A fresh token must have been generated and stored in globalState so reloads keep the same pairing.
+      expect(context.globalState.update).toHaveBeenCalledWith("browserRelayToken", expect.any(String));
+      const globalUpdate = (context.globalState.update as ReturnType<typeof vi.fn>).mock.calls.find(([k]) => k === "browserRelayToken");
+      expect(globalUpdate?.[1]).not.toBe("accordo-local-dev-token");
       const storeCalls = (context.secrets.store as ReturnType<typeof vi.fn>).mock.calls;
       for (const [_k, v] of storeCalls) {
         expect(v).not.toBe("accordo-local-dev-token");
       }
+    });
+
+    it("AUTH-03-ERR: SecretStorage.get throws → existing globalState token is reused", async () => {
+      const bridge = {
+        registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+        publishState: vi.fn(),
+        invokeTool: invokeToolMock,
+      };
+      (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+
+      const stableToken = "stable-token-from-globalstate";
+      const context = {
+        subscriptions: [] as Array<{ dispose(): void }>,
+        globalState: {
+          get: vi.fn((_k: string) => stableToken),
+          update: vi.fn(async (_k: string, _v: unknown) => {}),
+        },
+        secrets: {
+          get: vi.fn(async (_k: string) => { throw new Error("keyring unavailable"); }),
+          store: vi.fn(async (_k: string, _v: string) => {}),
+        },
+      };
+
+      await activate(context as never);
+
+      expect(context.globalState.update).not.toHaveBeenCalled();
     });
 
     it("AUTH-03-ERR: secrets.store throws during migration → keep global token, no cleanup", async () => {
@@ -750,7 +778,7 @@ describe("M83-BTOOLS extension activation", () => {
       expect(context.globalState.update).toHaveBeenCalledWith("browserRelayToken", undefined);
     });
 
-    it("AUTH-03-ERR: secrets.store throws for fresh token → ephemeral token returned", async () => {
+    it("AUTH-03-ERR: secrets.store throws for fresh token → token is stored in globalState", async () => {
       const bridge = {
         registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
         publishState: vi.fn(),
@@ -772,7 +800,8 @@ describe("M83-BTOOLS extension activation", () => {
 
       await activate(context as never);
 
-      // Fresh token generated and returned despite store failure (ephemeral).
+      // Fresh token generated and retained in globalState despite SecretStorage failure.
+      expect(context.globalState.update).toHaveBeenCalledWith("browserRelayToken", expect.any(String));
       // No hardcoded dev token in store calls.
       const storeCalls = (context.secrets.store as ReturnType<typeof vi.fn>).mock.calls;
       for (const [_k, v] of storeCalls) {

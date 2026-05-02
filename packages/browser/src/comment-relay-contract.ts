@@ -30,7 +30,7 @@ export interface BrowserRelayResponse<TData = unknown> {
   requestId: string;
   success: boolean;
   data?: TData;
-  error?: "browser-not-connected" | "unauthorized" | "timeout" | "action-failed" | "invalid-request";
+  error?: "browser-not-connected" | "unauthorized" | "timeout" | "action-failed" | "invalid-request" | "action-unsupported";
 }
 
 /**

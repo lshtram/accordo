@@ -15,6 +15,7 @@
  */
 
 import * as vscode from "vscode";
+import type { AccordoComment, CommentThread } from "@accordo/bridge-types";
 import type { BrowserRelayAction } from "./types.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -25,6 +26,46 @@ import type { BrowserRelayAction } from "./types.js";
  */
 export interface PushableRelay {
   push(action: string, payload: Record<string, unknown>): void;
+}
+
+type BrowserNotifierSource = "accordo-browser-notifier";
+
+function isHttpUri(uri: string): boolean {
+  return uri.startsWith("http://") || uri.startsWith("https://");
+}
+
+function getAnchorKey(comment: AccordoComment): string {
+  return comment.context?.surfaceMetadata?.["anchorKey"] ?? "body:center";
+}
+
+function pushBestEffort(relay: PushableRelay, action: string, payload: Record<string, unknown>): void {
+  try {
+    relay.push(action, payload);
+  } catch {
+    // push is best-effort
+  }
+}
+
+function pushBrowserThreadCreate(relay: PushableRelay, thread: CommentThread, comment: AccordoComment): void {
+  pushBestEffort(relay, "create_comment", {
+    source: "accordo-browser-notifier" satisfies BrowserNotifierSource,
+    url: thread.anchor.uri,
+    threadId: thread.id,
+    commentId: comment.id,
+    body: comment.body,
+    authorName: comment.author.name,
+    anchorKey: getAnchorKey(comment),
+  });
+}
+
+function pushBrowserThreadReply(relay: PushableRelay, thread: CommentThread, comment: AccordoComment): void {
+  pushBestEffort(relay, "reply_comment", {
+    source: "accordo-browser-notifier" satisfies BrowserNotifierSource,
+    threadId: thread.id,
+    commentId: comment.id,
+    body: comment.body,
+    authorName: comment.author.name,
+  });
 }
 
 // ── Notifier Registration ────────────────────────────────────────────────────
@@ -55,8 +96,8 @@ export function registerBrowserNotifier(
   }
   const commentsExports = commentsExt.exports as {
     registerBrowserNotifier?: (notifier: {
-      addThread(thread: { anchor: { uri: string } }): void;
-      updateThread(thread: { anchor: { uri: string } }): void;
+      addThread(thread: CommentThread): void;
+      updateThread(thread: CommentThread): void;
       removeThread(threadId: string): void;
     }) => { dispose(): void };
   } | undefined;
@@ -65,30 +106,21 @@ export function registerBrowserNotifier(
     return undefined;
   }
   const sub = commentsExports.registerBrowserNotifier({
-    addThread(thread: { anchor: { uri: string } }) {
+    addThread(thread: CommentThread) {
       const url = thread.anchor.uri;
-      if (!url.startsWith("http://") && !url.startsWith("https://")) return;
-      try {
-        relay.push("notify_comments_updated", { url });
-      } catch {
-        // push is best-effort
-      }
+      if (!isHttpUri(url)) return;
+      // Full-state sync wakeup — browser extension will do sync_comment_state
+      pushBestEffort(relay, "request_comment_state_sync", { url });
     },
-    updateThread(thread: { anchor: { uri: string } }) {
+    updateThread(thread: CommentThread) {
       const url = thread.anchor.uri;
-      if (!url.startsWith("http://") && !url.startsWith("https://")) return;
-      try {
-        relay.push("notify_comments_updated", { url });
-      } catch {
-        // push is best-effort
-      }
+      if (!isHttpUri(url)) return;
+      // Full-state sync wakeup — browser extension will do sync_comment_state
+      pushBestEffort(relay, "request_comment_state_sync", { url });
     },
     removeThread(threadId: string) {
-      try {
-        relay.push("notify_comments_updated", { threadId });
-      } catch {
-        // push is best-effort
-      }
+      // Full-state sync wakeup — browser extension will do sync_comment_state
+      pushBestEffort(relay, "request_comment_state_sync", { threadId });
     },
   });
   context.subscriptions.push(sub);

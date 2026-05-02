@@ -8,6 +8,7 @@ import { BrowserAuditLog } from "./security/audit-log.js";
 import { generateRelayToken } from "./relay-auth.js";
 import { ACCORDO_HOME_DIR, BROWSER_AUDIT_LOG_PATH, RELAY_PORT_FILE_PATH } from "./browser-paths.js";
 import { RELAY_BASE_PORT, RELAY_HOST } from "./relay-transport-constants.js";
+import { readSharedRelayInfo } from "./relay-discovery.js";
 
 export { RELAY_BASE_PORT, RELAY_HOST } from "./relay-transport-constants.js";
 
@@ -48,8 +49,21 @@ export async function resolveRelayToken(context: vscode.ExtensionContext): Promi
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`[accordo-browser] WARN: SecretStorage unavailable — using ephemeral relay token (${msg})`);
-    return generateRelayToken();
+    const fromGlobal = context.globalState.get<string>(TOKEN_KEY);
+    if (typeof fromGlobal === "string" && fromGlobal.trim().length > 0) {
+      console.warn(`[accordo-browser] WARN: SecretStorage unavailable — using globalState relay token (${msg})`);
+      return fromGlobal.trim();
+    }
+
+    const fresh = generateRelayToken();
+    try {
+      await toPromise(context.globalState.update(TOKEN_KEY, fresh));
+      console.warn(`[accordo-browser] WARN: SecretStorage unavailable — stored relay token in globalState (${msg})`);
+    } catch (globalErr) {
+      const globalMsg = globalErr instanceof Error ? globalErr.message : String(globalErr);
+      console.warn(`[accordo-browser] WARN: SecretStorage and globalState unavailable — using ephemeral relay token (${msg}; ${globalMsg})`);
+    }
+    return fresh;
   }
 
   const fromGlobal = context.globalState.get<string>(TOKEN_KEY);
@@ -70,15 +84,46 @@ export async function resolveRelayToken(context: vscode.ExtensionContext): Promi
     return fromGlobal.trim();
   }
 
+  const fromSharedRelay = readReusableSharedRelayToken();
+  if (fromSharedRelay !== undefined) {
+    try {
+      await toPromise(context.secrets.store(TOKEN_KEY, fromSharedRelay));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      try {
+        await toPromise(context.globalState.update(TOKEN_KEY, fromSharedRelay));
+        console.warn(`[accordo-browser] WARN: SecretStorage unavailable for shared relay token — stored relay token in globalState (${msg})`);
+      } catch (globalErr) {
+        const globalMsg = globalErr instanceof Error ? globalErr.message : String(globalErr);
+        console.warn(`[accordo-browser] WARN: SecretStorage and globalState unavailable for shared relay token — using shared relay token (${msg}; ${globalMsg})`);
+      }
+    }
+    return fromSharedRelay;
+  }
+
   const fresh = generateRelayToken();
   try {
     await toPromise(context.secrets.store(TOKEN_KEY, fresh));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`[accordo-browser] WARN: SecretStorage unavailable for fresh token — using ephemeral token (${msg})`);
+    try {
+      await toPromise(context.globalState.update(TOKEN_KEY, fresh));
+      console.warn(`[accordo-browser] WARN: SecretStorage unavailable for fresh token — stored relay token in globalState (${msg})`);
+    } catch (globalErr) {
+      const globalMsg = globalErr instanceof Error ? globalErr.message : String(globalErr);
+      console.warn(`[accordo-browser] WARN: SecretStorage and globalState unavailable for fresh token — using ephemeral token (${msg}; ${globalMsg})`);
+    }
     return fresh;
   }
   return fresh;
+}
+
+function readReusableSharedRelayToken(): string | undefined {
+  const info = readSharedRelayInfo();
+  const token = info?.token;
+  if (typeof token !== "string") return undefined;
+  const trimmed = token.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 export function writeRelayPort(port: number): void {

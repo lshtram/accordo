@@ -19,6 +19,11 @@ export interface RelayDispatchDeps {
 /**
  * Dispatch a browser comment relay action to the unified comment tool layer.
  *
+ * In full-state sync mode, deprecated mutation actions (create_comment,
+ * reply_comment, delete_comment, delete_thread, update_comment) are rejected
+ * with "action-unsupported". The browser extension uses sync_comment_state
+ * for all data exchange, and request_comment_state_sync for wakeup.
+ *
  * @param deps          - Relay dispatch dependencies (invokeTool)
  * @param action        - The browser relay comment action
  * @param payload       - The action payload
@@ -31,31 +36,37 @@ export async function dispatchBrowserCommentAction(
   payload: unknown,
   correlationId?: string,
 ): Promise<BrowserRelayResponse> {
+  // Deprecated mutation actions — replaced by full-state sync
+  const deprecatedMutationActions = [
+    "create_comment",
+    "reply_comment",
+    "delete_comment",
+    "delete_thread",
+    "update_comment",
+  ] as const;
+
+  if (deprecatedMutationActions.includes(action as (typeof deprecatedMutationActions)[number])) {
+    return {
+      requestId: correlationId ?? crypto.randomUUID(),
+      success: false,
+      error: "action-unsupported",
+    };
+  }
+
   let toolName: string;
   let args: Record<string, unknown>;
 
   switch (action) {
     case "get_comments":
       toolName = "comment_list";
-      args = { url: (payload as Record<string, unknown>).url as string };
+      args = {
+        scope: { modality: "browser", url: (payload as Record<string, unknown>).url as string },
+        detail: true,
+      };
       break;
     case "get_all_comments":
       toolName = "comment_list";
-      args = { allWindows: true };
-      break;
-    case "create_comment":
-      toolName = "comment_create";
-      args = payload as Record<string, unknown>;
-      break;
-    case "reply_comment":
-      toolName = "comment_reply";
-      args = {
-        threadId: (payload as Record<string, unknown>).threadId as string,
-        body: (payload as Record<string, unknown>).body as string,
-        ...(("authorName" in (payload as Record<string, unknown>))
-          ? { authorName: (payload as Record<string, unknown>).authorName as string }
-          : {}),
-      };
+      args = { scope: { modality: "browser" }, detail: true };
       break;
     case "resolve_thread":
       toolName = "comment_resolve";
@@ -68,17 +79,13 @@ export async function dispatchBrowserCommentAction(
       toolName = "comment_reopen";
       args = { threadId: (payload as Record<string, unknown>).threadId as string };
       break;
-    case "delete_comment":
-      toolName = "comment_delete";
-      args = {
-        threadId: (payload as Record<string, unknown>).threadId as string,
-        commentId: (payload as Record<string, unknown>).commentId as string | undefined,
+    default:
+      // Any unhandled action is unsupported
+      return {
+        requestId: correlationId ?? crypto.randomUUID(),
+        success: false,
+        error: "action-unsupported",
       };
-      break;
-    case "delete_thread":
-      toolName = "comment_delete";
-      args = { threadId: (payload as Record<string, unknown>).threadId as string };
-      break;
   }
 
   try {

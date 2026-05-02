@@ -45,7 +45,10 @@ describe("dispatchBrowserCommentAction — action routing", () => {
 
       expect(deps.invokeTool).toHaveBeenCalledWith(
         "comment_list",
-        expect.objectContaining({ url: "https://example.com/page" }),
+        expect.objectContaining({
+          scope: expect.objectContaining({ modality: "browser", url: "https://example.com/page" }),
+          detail: true,
+        }),
         undefined,
       );
     });
@@ -63,61 +66,44 @@ describe("dispatchBrowserCommentAction — action routing", () => {
 
       expect(deps.invokeTool).toHaveBeenCalledWith(
         "comment_list",
-        expect.objectContaining({ allWindows: true }),
+        expect.objectContaining({
+          scope: expect.objectContaining({ modality: "browser" }),
+          detail: true,
+        }),
         undefined,
       );
     });
   });
 
   describe("BR-F-122-03: create_comment", () => {
-    it("routes to comment_create with correct args", async () => {
+    it("returns action-unsupported (M40-EXT-15)", async () => {
       const deps = makeDeps();
 
-      const payload = {
-        url: "https://example.com/page",
-        anchorKey: "body:center",
-        body: "Hello world",
-        authorName: "Agent",
-      };
-
-      await dispatchBrowserCommentAction(
+      const result = await dispatchBrowserCommentAction(
         deps,
         "create_comment" as Action,
-        payload,
+        { url: "https://example.com/page", anchorKey: "body:center", body: "Hello world" },
       );
 
-      expect(deps.invokeTool).toHaveBeenCalledWith(
-        "comment_create",
-        expect.objectContaining({
-          url: "https://example.com/page",
-          anchorKey: "body:center",
-          body: "Hello world",
-          authorName: "Agent",
-        }),
-        undefined,
-      );
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("action-unsupported");
+      expect(deps.invokeTool).not.toHaveBeenCalled();
     });
   });
 
   describe("BR-F-122-04: reply_comment", () => {
-    it("routes to comment_reply with correct args", async () => {
+    it("returns action-unsupported (M40-EXT-15)", async () => {
       const deps = makeDeps();
 
-      await dispatchBrowserCommentAction(
+      const result = await dispatchBrowserCommentAction(
         deps,
         "reply_comment" as Action,
-        { threadId: "t123", body: "reply text", authorName: "Agent" },
+        { threadId: "t123", body: "reply text" },
       );
 
-      expect(deps.invokeTool).toHaveBeenCalledWith(
-        "comment_reply",
-        expect.objectContaining({
-          threadId: "t123",
-          body: "reply text",
-          authorName: "Agent",
-        }),
-        undefined,
-      );
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("action-unsupported");
+      expect(deps.invokeTool).not.toHaveBeenCalled();
     });
   });
 
@@ -139,58 +125,31 @@ describe("dispatchBrowserCommentAction — action routing", () => {
     });
   });
 
-  describe("BR-F-122-06: reopen_thread", () => {
-    it("routes to comment_reopen with correct args", async () => {
-      const deps = makeDeps();
+  /**
+   * BR-F-122-06 / BR-F-122-07 / BR-F-122-08: Deprecated mutation actions.
+   *
+   * Per the full-state browser comment sync contract (Phase B), these actions
+   * are no longer supported via the relay — they are replaced by the
+   * sync_comment_state action which provides complete JSON state.
+   * The relay now returns action-unsupported for these deprecated actions.
+   */
+  describe("BR-F-122-06..08: deprecated mutation actions now return action-unsupported", () => {
+    for (const action of ["reply_comment", "delete_comment", "delete_thread"] as const) {
+      it(`${action} returns action-unsupported (M40-EXT-15)`, async () => {
+        const deps = makeDeps();
 
-      await dispatchBrowserCommentAction(
-        deps,
-        "reopen_thread" as Action,
-        { threadId: "t789" },
-      );
+        const result = await dispatchBrowserCommentAction(
+          deps,
+          action as Action,
+          { threadId: "t1", commentId: "c1" },
+        );
 
-      expect(deps.invokeTool).toHaveBeenCalledWith(
-        "comment_reopen",
-        expect.objectContaining({ threadId: "t789" }),
-        undefined,
-      );
-    });
-  });
-
-  describe("BR-F-122-07: delete_comment", () => {
-    it("routes to comment_delete with correct args", async () => {
-      const deps = makeDeps();
-
-      await dispatchBrowserCommentAction(
-        deps,
-        "delete_comment" as Action,
-        { threadId: "t-del", commentId: "c-del" },
-      );
-
-      expect(deps.invokeTool).toHaveBeenCalledWith(
-        "comment_delete",
-        expect.objectContaining({ threadId: "t-del", commentId: "c-del" }),
-        undefined,
-      );
-    });
-  });
-
-  describe("BR-F-122-08: delete_thread", () => {
-    it("routes to comment_delete with correct args", async () => {
-      const deps = makeDeps();
-
-      await dispatchBrowserCommentAction(
-        deps,
-        "delete_thread" as Action,
-        { threadId: "t-full-del" },
-      );
-
-      expect(deps.invokeTool).toHaveBeenCalledWith(
-        "comment_delete",
-        expect.objectContaining({ threadId: "t-full-del" }),
-        undefined,
-      );
-    });
+        expect(result.success).toBe(false);
+        expect(result.error).toBe("action-unsupported");
+        // invokeTool should NOT be called for deprecated actions
+        expect(deps.invokeTool).not.toHaveBeenCalled();
+      });
+    }
   });
 });
 

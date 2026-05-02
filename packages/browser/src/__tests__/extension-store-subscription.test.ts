@@ -95,8 +95,8 @@ function makeBridge() {
 }
 
 type BrowserNotifier = {
-  addThread(thread: { anchor: { uri: string } }): void;
-  updateThread(thread: { anchor: { uri: string } }): void;
+  addThread(thread: { id?: string; anchor: { uri: string }; comments?: Array<Record<string, unknown>> }): void;
+  updateThread(thread: { id?: string; anchor: { uri: string }; comments?: Array<Record<string, unknown>> }): void;
   removeThread(threadId: string): void;
 };
 
@@ -112,9 +112,10 @@ describe("extension.ts — accordo-comments browser notifier registration", () =
 
   /**
    * SUB-01: When registerBrowserNotifier is called and notifier.addThread fires with
-   *         an https:// URI, relay.push("notify_comments_updated", { url }) is called.
+   *         an https:// URI, relay.push("request_comment_state_sync", { url }) is called.
+   *         This triggers full-state sync instead of the old per-mutation notify approach.
    */
-  it("SUB-01: calls relay.push with notify_comments_updated when addThread fires with https:// URI", async () => {
+  it("SUB-01: calls relay.push with request_comment_state_sync when addThread fires with https:// URI", async () => {
     const bridge = makeBridge();
 
     // Track the notifier passed to registerBrowserNotifier so we can fire it manually
@@ -147,7 +148,8 @@ describe("extension.ts — accordo-comments browser notifier registration", () =
     capturedNotifier!.addThread({ anchor: { uri: "https://example.com/page" } });
 
     // relay.push must have been called with the correct arguments
-    expect(pushMock).toHaveBeenCalledWith("notify_comments_updated", {
+    // NEW CONTRACT: use request_comment_state_sync for full-state sync wakeup
+    expect(pushMock).toHaveBeenCalledWith("request_comment_state_sync", {
       url: "https://example.com/page",
     });
   });
@@ -216,7 +218,8 @@ describe("extension.ts — accordo-comments browser notifier registration", () =
   });
 
   /**
-   * SUB-01d: When notifier.removeThread fires, relay.push("notify_comments_updated", { threadId }) is called.
+   * SUB-01d: When notifier.removeThread fires, relay.push("request_comment_state_sync", { threadId }) is called.
+   *         This triggers full-state sync instead of the old per-mutation notify approach.
    */
   it("SUB-01d: relay.push includes threadId when removeThread fires", async () => {
     const bridge = makeBridge();
@@ -246,7 +249,50 @@ describe("extension.ts — accordo-comments browser notifier registration", () =
     // Fire removeThread — should push with threadId payload
     capturedNotifier!.removeThread("thread-abc");
 
-    expect(pushMock).toHaveBeenCalledWith("notify_comments_updated", { threadId: "thread-abc" });
+    // NEW CONTRACT: use request_comment_state_sync for full-state sync wakeup
+    expect(pushMock).toHaveBeenCalledWith("request_comment_state_sync", { threadId: "thread-abc" });
+  });
+
+  /**
+   * SUB-01e: agent browser reply triggers request_comment_state_sync full-state wakeup.
+   *         NEW CONTRACT: all mutations (including agent replies) trigger full-state sync,
+   *         not individual reply_comment mutations.
+   */
+  it("SUB-01e: agent browser reply triggers request_comment_state_sync wakeup", async () => {
+    const bridge = makeBridge();
+    let capturedNotifier: BrowserNotifier | null = null;
+
+    const commentsExports = {
+      registerBrowserNotifier: vi.fn().mockImplementation((notifier: BrowserNotifier) => {
+        capturedNotifier = notifier;
+        return { dispose: vi.fn() };
+      }),
+    };
+
+    (extensions as Record<string, unknown>).getExtension = vi.fn().mockImplementation(
+      (id: string) => {
+        if (id === "accordo.accordo-bridge") return { exports: bridge };
+        if (id === "accordo.accordo-comments") return { exports: commentsExports };
+        return undefined;
+      },
+    );
+
+    const context = createExtensionContextMock();
+    await activate(context as never);
+
+    capturedNotifier!.updateThread({
+      id: "thread-1",
+      anchor: { uri: "https://example.com/page" },
+      comments: [
+        { id: "comment-1", body: "original", author: { kind: "user", name: "User" } },
+        { id: "comment-2", body: "agent reply", author: { kind: "agent", name: "agent" } },
+      ],
+    });
+
+    // NEW CONTRACT: use request_comment_state_sync for full-state sync wakeup
+    expect(pushMock).toHaveBeenCalledWith("request_comment_state_sync", {
+      url: "https://example.com/page",
+    });
   });
 
   /**

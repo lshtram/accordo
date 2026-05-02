@@ -5,7 +5,7 @@ import { ScreenshotRetentionStore } from "./screenshot-retention.js";
 import { buildBrowserTools } from "./tool-assembly.js";
 import { registerBrowserNotifier, browserActionToUnifiedTool } from "./comment-notifier.js";
 import { normalizeReadResult } from "./comment-relay-contract.js";
-import { BrowserCommentSyncScheduler } from "./comment-sync.js";
+import { BrowserCommentSyncScheduler, syncBrowserComments } from "./comment-sync.js";
 import { EXTENSION_ID, getSecurityConfig } from "./relay-lifecycle-primitives.js";
 
 const MUTATING = ["create_comment", "reply_comment", "resolve_thread", "reopen_thread", "delete_comment", "delete_thread"] as const;
@@ -17,11 +17,12 @@ interface RelayRequestHandlerOptions<TRelay extends BrowserRelayLike> {
   logLabel?: string;
   logMappingDetails?: boolean;
   includeInvokeErrorData?: boolean;
+  /** Browser comment handler callback. Receives out for use in syncBrowserComments. */
   handleBrowserComment?: (
     action: BrowserRelayAction,
     payload: Record<string, unknown>,
     relay: TRelay,
-    correlationId?: string,
+    out?: vscode.OutputChannel,
   ) => Promise<BrowserRelayResponse>;
 }
 
@@ -36,12 +37,29 @@ export function createRelayRequestHandler<TRelay extends BrowserRelayLike>(
   return async (action, payload) => {
     options.out.appendLine(`${prefix} action=${action} payload=${JSON.stringify(payload)}`);
 
-    if (options.handleBrowserComment) {
-      return options.handleBrowserComment(action, payload, options.getRelay());
+    // ── Full-state sync actions ─────────────────────────────────────────────────
+    // These are relay-level actions (not VS Code tool calls) handled here directly.
+    // Chrome initiates sync_comment_state request → VS Code triggers sync cycle and
+    // returns merged state. request_comment_state_sync is a wakeup trigger.
+    if (action === "sync_comment_state" || action === "request_comment_state_sync") {
+      try {
+        const syncResult = await syncBrowserComments(options.getRelay(), options.bridge, options.out);
+        return {
+          requestId: "",
+          success: syncResult === "success",
+          error: syncResult === "partial" ? "action-failed" : undefined,
+          data: { synced: syncResult === "success" },
+        };
+      } catch {
+        return { requestId: "", success: false, error: "action-failed" };
+      }
     }
 
     const mapped = browserActionToUnifiedTool(action, payload);
     if (!mapped) {
+      if (options.handleBrowserComment) {
+        return options.handleBrowserComment(action, payload, options.getRelay(), options.out);
+      }
       if (options.logMappingDetails) {
         options.out.appendLine(`${prefix} action=${action} → no tool mapping, returning error`);
       }
@@ -71,7 +89,7 @@ export function createRelayRequestHandler<TRelay extends BrowserRelayLike>(
     if ((MUTATING as readonly string[]).includes(action)) {
       const url = payload["url"] as string | undefined;
       try {
-        options.getRelay().push("notify_comments_updated", url ? { url } : {});
+        options.getRelay().push("request_comment_state_sync", url ? { url } : {});
       } catch {
         // push is best-effort
       }

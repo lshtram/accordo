@@ -4,7 +4,7 @@
  * Verifies:
  * - When onRelayRequest handles a mutating action (create_comment, reply_comment,
  *   resolve_thread, reopen_thread, delete_comment, delete_thread), it calls
- *   relay.push("notify_comments_updated", ...) with the url from payload.
+ *   relay.push("request_comment_state_sync", ...) with the url from payload.
  * - When onRelayRequest handles a non-mutating action (get_comments), it does
  *   NOT call relay.push().
  */
@@ -95,9 +95,10 @@ beforeEach(() => {
 describe("extension.ts onRelayRequest — push notification after mutating action", () => {
 
   /**
-   * REQ-PUSH-01: create_comment triggers relay.push("notify_comments_updated", { url })
+   * REQ-PUSH-01: create_comment triggers relay.push("request_comment_state_sync", { url })
+   * (Full-state sync wakeup — replaces legacy notify_comments_updated)
    */
-  it("REQ-PUSH-01: create_comment calls relay.push with notify_comments_updated and url", async () => {
+  it("REQ-PUSH-01: create_comment calls relay.push with request_comment_state_sync and url", async () => {
     const bridge = {
       registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
       publishState: vi.fn(),
@@ -119,13 +120,13 @@ describe("extension.ts onRelayRequest — push notification after mutating actio
     });
 
     expect(push).toHaveBeenCalledTimes(1);
-    expect(push).toHaveBeenCalledWith("notify_comments_updated", { url: "https://example.com/page" });
+    expect(push).toHaveBeenCalledWith("request_comment_state_sync", { url: "https://example.com/page" });
   });
 
   /**
    * REQ-PUSH-02: reply_comment triggers relay.push with url from payload
    */
-  it("REQ-PUSH-02: reply_comment calls relay.push with notify_comments_updated", async () => {
+  it("REQ-PUSH-02: reply_comment calls relay.push with request_comment_state_sync", async () => {
     const bridge = {
       registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
       publishState: vi.fn(),
@@ -146,13 +147,13 @@ describe("extension.ts onRelayRequest — push notification after mutating actio
     });
 
     expect(push).toHaveBeenCalledTimes(1);
-    expect(push).toHaveBeenCalledWith("notify_comments_updated", { url: "https://example.com/other" });
+    expect(push).toHaveBeenCalledWith("request_comment_state_sync", { url: "https://example.com/other" });
   });
 
   /**
    * REQ-PUSH-03: resolve_thread triggers relay.push
    */
-  it("REQ-PUSH-03: resolve_thread calls relay.push with notify_comments_updated", async () => {
+  it("REQ-PUSH-03: resolve_thread calls relay.push with request_comment_state_sync", async () => {
     const bridge = {
       registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
       publishState: vi.fn(),
@@ -172,13 +173,13 @@ describe("extension.ts onRelayRequest — push notification after mutating actio
     });
 
     expect(push).toHaveBeenCalledTimes(1);
-    expect(push).toHaveBeenCalledWith("notify_comments_updated", { url: "https://example.com" });
+    expect(push).toHaveBeenCalledWith("request_comment_state_sync", { url: "https://example.com" });
   });
 
   /**
    * REQ-PUSH-04: reopen_thread triggers relay.push
    */
-  it("REQ-PUSH-04: reopen_thread calls relay.push with notify_comments_updated", async () => {
+  it("REQ-PUSH-04: reopen_thread calls relay.push with request_comment_state_sync", async () => {
     const bridge = {
       registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
       publishState: vi.fn(),
@@ -198,13 +199,13 @@ describe("extension.ts onRelayRequest — push notification after mutating actio
     });
 
     expect(push).toHaveBeenCalledTimes(1);
-    expect(push).toHaveBeenCalledWith("notify_comments_updated", { url: "https://example.com" });
+    expect(push).toHaveBeenCalledWith("request_comment_state_sync", { url: "https://example.com" });
   });
 
   /**
    * REQ-PUSH-05: delete_comment triggers relay.push
    */
-  it("REQ-PUSH-05: delete_comment calls relay.push with notify_comments_updated", async () => {
+  it("REQ-PUSH-05: delete_comment calls relay.push with request_comment_state_sync", async () => {
     const bridge = {
       registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
       publishState: vi.fn(),
@@ -225,13 +226,13 @@ describe("extension.ts onRelayRequest — push notification after mutating actio
     });
 
     expect(push).toHaveBeenCalledTimes(1);
-    expect(push).toHaveBeenCalledWith("notify_comments_updated", { url: "https://example.com" });
+    expect(push).toHaveBeenCalledWith("request_comment_state_sync", { url: "https://example.com" });
   });
 
   /**
    * REQ-PUSH-06: delete_thread triggers relay.push
    */
-  it("REQ-PUSH-06: delete_thread calls relay.push with notify_comments_updated", async () => {
+  it("REQ-PUSH-06: delete_thread calls relay.push with request_comment_state_sync", async () => {
     const bridge = {
       registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
       publishState: vi.fn(),
@@ -251,13 +252,13 @@ describe("extension.ts onRelayRequest — push notification after mutating actio
     });
 
     expect(push).toHaveBeenCalledTimes(1);
-    expect(push).toHaveBeenCalledWith("notify_comments_updated", { url: "https://example.com" });
+    expect(push).toHaveBeenCalledWith("request_comment_state_sync", { url: "https://example.com" });
   });
 
   /**
-   * REQ-PUSH-07: mutating action with no url in payload sends empty payload to push()
+   * REQ-PUSH-07: mutating action with no url in payload sends request_comment_state_sync with empty payload
    */
-  it("REQ-PUSH-07: mutating action without url calls relay.push with empty payload", async () => {
+  it("REQ-PUSH-07: mutating action without url calls relay.push with request_comment_state_sync and empty payload", async () => {
     const bridge = {
       registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
       publishState: vi.fn(),
@@ -278,7 +279,7 @@ describe("extension.ts onRelayRequest — push notification after mutating actio
     });
 
     expect(push).toHaveBeenCalledTimes(1);
-    expect(push).toHaveBeenCalledWith("notify_comments_updated", {});
+    expect(push).toHaveBeenCalledWith("request_comment_state_sync", {});
   });
 
   /**

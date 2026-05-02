@@ -10,16 +10,20 @@ export function getActiveRemoteCommentIds(thread: RemoteBrowserThread): Set<stri
   return new Set(thread.comments.filter((comment) => !comment.deletedAt).map((comment) => comment.id));
 }
 
+export function getDeletedRemoteCommentIds(thread: RemoteBrowserThread): Set<string> {
+  return new Set(thread.comments.filter((comment) => comment.deletedAt).map((comment) => comment.id));
+}
+
 export async function deleteMissingReplies(
   bridge: BrowserBridgeAPI,
   localThread: CommentThread,
   remoteThread: RemoteBrowserThread,
   log: (message: string) => void,
 ): Promise<void> {
-  const remoteCommentIds = getActiveRemoteCommentIds(remoteThread);
+  const remoteDeletedCommentIds = getDeletedRemoteCommentIds(remoteThread);
   for (const localComment of localThread.comments) {
     const isThreadRootComment = localComment.id === localThread.id || localComment.id === remoteThread.id;
-    if (isThreadRootComment || remoteCommentIds.has(localComment.id)) {
+    if (isThreadRootComment || !remoteDeletedCommentIds.has(localComment.id)) {
       continue;
     }
     try {

@@ -59,7 +59,7 @@ export async function activateSharedRelay(
     action: BrowserRelayAction,
     payload: Record<string, unknown>,
     relay: SharedRelayClient,
-    correlationId?: string,
+    out?: vscode.OutputChannel,
   ) => Promise<BrowserRelayResponse>,
 ): Promise<void> {
   let relayStartError: string | null = null;

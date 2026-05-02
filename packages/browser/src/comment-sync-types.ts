@@ -38,5 +38,6 @@ export interface RemoteBrowserComment {
 /** Shape returned by the Chrome relay `get_comments` action for a single page. */
 export interface GetCommentsResponse {
   url: string;
+  includesDeleted?: boolean;
   threads: RemoteBrowserThread[];
 }

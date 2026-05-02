@@ -18,7 +18,7 @@ export async function startSharedRelayOwner(
     action: BrowserRelayAction,
     payload: Record<string, unknown>,
     relay: SharedRelayClient,
-    correlationId?: string,
+    out?: vscode.OutputChannel,
   ) => Promise<BrowserRelayResponse>,
 ): Promise<void> {
   const server = new SharedBrowserRelayServer({
