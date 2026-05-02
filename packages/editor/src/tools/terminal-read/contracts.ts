@@ -93,10 +93,20 @@ export interface TerminalOutputRedactor {
   redact(text: string): string;
 }
 
+export interface TerminalSnapshotSource {
+  read(
+    request: TerminalReadRequest,
+    terminal: vscode.Terminal,
+    terminalId: string,
+  ): Promise<TerminalReadSuccess>;
+  clearTerminal(terminalId: string): Promise<void>;
+}
+
 export interface TerminalReadGatewayDeps {
   readonly source: TerminalOutputSource;
   readonly buffer: TerminalOutputBuffer;
   readonly redactor: TerminalOutputRedactor;
+  readonly snapshot?: TerminalSnapshotSource;
 }
 
 export type TerminalReadHandler = (

@@ -18,6 +18,7 @@ import type * as BarHandlers from "./tools/bar.js";
 import { editorTools } from "./tools/editor.js";
 import {
   terminalTools,
+  initTerminalTrackingPersistence,
   registerTerminalLifecycle,
 } from "./tools/terminal.js";
 import {
@@ -126,6 +127,7 @@ function registerLayoutShims(
 // ── activate ──────────────────────────────────────────────────────────────
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  initTerminalTrackingPersistence(context.workspaceState);
   registerTerminalLifecycle(context);
   const bridge = await getBridgeApi();
   if (!bridge) return;

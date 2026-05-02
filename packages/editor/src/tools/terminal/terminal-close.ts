@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { errorMessage } from "../../util.js";
-import { findTerminalId, getTerminal, terminalMap } from "./terminal-state.js";
+import { findTerminalId, getTerminal, untrackTerminal } from "./terminal-state.js";
 import { terminalOutputBuffer } from "../terminal-read/runtime-buffer.js";
+import { vscodeTerminalSnapshotSource } from "../terminal-read/vscode-terminal-snapshot-source.js";
 
 interface ResolvedCloseTarget {
   readonly terminal: vscode.Terminal;
@@ -19,7 +20,8 @@ export async function terminalCloseHandler(
 
     // S-TR-05: clear output buffer for the terminal before removing tracking
     await terminalOutputBuffer.clearTerminal(resolved.terminalId);
-    terminalMap.delete(resolved.terminalId);
+    await vscodeTerminalSnapshotSource.clearTerminal(resolved.terminalId);
+    untrackTerminal(resolved.terminalId);
     resolved.terminal.dispose();
     return { closed: true, terminalId: resolved.terminalId };
   } catch (error) {

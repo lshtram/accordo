@@ -10,6 +10,7 @@ export type {
   TerminalOutputBuffer,
   TerminalOutputRedactor,
   TerminalOutputSource,
+  TerminalSnapshotSource,
   TerminalReadErrorResponse,
   TerminalReadGatewayDeps,
   TerminalReadHandler,
@@ -29,4 +30,8 @@ export {
   vscodeTerminalOutputSource,
 } from "./stubs.js";
 export type { VSCodeTerminalOutputSource } from "./vscode-terminal-source.js";
+export {
+  isSnapshotCursor,
+  vscodeTerminalSnapshotSource,
+} from "./vscode-terminal-snapshot-source.js";
 export { terminalReadTools } from "./tools.js";

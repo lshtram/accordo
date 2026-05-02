@@ -8,6 +8,7 @@ import { errorMessage } from "../../util.js";
 import {
   adoptTerminal,
   createTerminalId,
+  flushTerminalTrackingPersistence,
   getTerminal,
   trackTerminal,
 } from "./terminal-state.js";
@@ -68,7 +69,7 @@ export const terminalRunHandler: TerminalRunHandler = async (args) => {
 
     // 4. Resolve terminal
     const requestedTerminalId = readRequestedTerminalId(args);
-    const resolved = resolveRunTerminal(requestedTerminalId);
+    const resolved = await resolveRunTerminal(requestedTerminalId);
     if ("error" in resolved) {
       return resolved;
     }
@@ -172,9 +173,9 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function resolveRunTerminal(
+async function resolveRunTerminal(
   requestedTerminalId: string | undefined,
-): ResolvedRunTerminal | { error: string } {
+): Promise<ResolvedRunTerminal | { error: string }> {
   if (requestedTerminalId) {
     return resolveTrackedRunTerminal(requestedTerminalId);
   }
@@ -195,7 +196,7 @@ function resolveTrackedRunTerminal(
   return { terminal, terminalId };
 }
 
-function resolveActiveOrNewRunTerminal(): ResolvedRunTerminal {
+async function resolveActiveOrNewRunTerminal(): Promise<ResolvedRunTerminal> {
   const activeTerminal = vscode.window.activeTerminal;
   if (activeTerminal) {
     const terminalId = adoptTerminal(activeTerminal);
@@ -208,7 +209,8 @@ function resolveActiveOrNewRunTerminal(): ResolvedRunTerminal {
 
   const terminal = vscode.window.createTerminal({ name: "Accordo" });
   const terminalId = createTerminalId();
-  trackTerminal(terminalId, terminal);
+  trackTerminal(terminalId, terminal, { restorable: true });
+  await flushTerminalTrackingPersistence();
   // S-TR-04/S-TR-09: attach output source for observe-capable terminals
   if (terminalSource) {
     terminalSource.attachToTerminal(terminalId, terminal);

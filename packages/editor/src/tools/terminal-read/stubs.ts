@@ -20,6 +20,10 @@ import * as vscode from "vscode";
 import { terminalOutputBuffer } from "./runtime-buffer.js";
 import { terminalOutputRedactor } from "./runtime-redactor.js";
 import { vscodeTerminalOutputSource } from "./vscode-terminal-source.js";
+import {
+  isSnapshotCursor,
+  vscodeTerminalSnapshotSource,
+} from "./vscode-terminal-snapshot-source.js";
 
 /**
  * Parse request args into a strongly-typed request.
@@ -88,12 +92,13 @@ function validateAndApplyDefaults(
  */
 function resolveTerminalIdForRead(
   explicitId: string | undefined,
-): { terminalId: string } | { error: TerminalReadErrorResponse } {
+): { terminalId: string; terminal: vscode.Terminal } | { error: TerminalReadErrorResponse } {
   if (explicitId) {
-    if (!getTerminal(explicitId)) {
+    const terminal = getTerminal(explicitId);
+    if (!terminal) {
       return { error: { error: `Terminal ${explicitId} not found` } };
     }
-    return { terminalId: explicitId };
+    return { terminalId: explicitId, terminal };
   }
 
   const active = vscode.window.activeTerminal;
@@ -103,7 +108,7 @@ function resolveTerminalIdForRead(
 
   // Adopt active untracked terminal so returned terminalId is reusable
   const terminalId = adoptTerminal(active);
-  return { terminalId };
+  return { terminalId, terminal: active };
 }
 
 /**
@@ -117,6 +122,8 @@ function extractCursorTerminalId(cursor: string): string | undefined {
   // Standard format: t-accordo-terminal-1:...
   const standard = /^t-(accordo-terminal-\d+):/.exec(cursor);
   if (standard) return standard[1];
+  const snapshot = /^s-(accordo-terminal-\d+):/.exec(cursor);
+  if (snapshot) return snapshot[1];
   // Short format: t1-cursor, t2-output — extract the terminal number
   // This handles cases where the buffer uses a short-form cursor encoding.
   // We need to reject cross-terminal cursors in this format too.
@@ -155,6 +162,10 @@ function validateCursorBelongsToTerminal(
 export function createTerminalReadHandler(
   deps: TerminalReadGatewayDeps,
 ): TerminalReadHandler {
+  const snapshotSource = deps.snapshot ?? vscodeTerminalSnapshotSource;
+  const supportsSnapshotFallback = snapshotSource === vscodeTerminalSnapshotSource
+    && deps.buffer === terminalOutputBuffer;
+
   return async (args: Record<string, unknown>): Promise<TerminalReadResult> => {
     const parsed = parseReadArgs(args);
 
@@ -168,7 +179,7 @@ export function createTerminalReadHandler(
     // Step 2: terminal resolution
     const terminalResolution = resolveTerminalIdForRead(parsed.terminalId);
     if ("error" in terminalResolution) return terminalResolution.error;
-    const { terminalId } = terminalResolution;
+    const { terminalId, terminal } = terminalResolution;
 
     // Build request with correct defaults (S-TR-03: 200/12000, not 500/20000)
     const request: TerminalReadRequest = {
@@ -190,16 +201,22 @@ export function createTerminalReadHandler(
 
     // Step 4: bounded read
     try {
-      const raw = await deps.buffer.read(request);
+      const raw = isSnapshotCursor(parsed.since)
+        ? await snapshotSource.read(request, terminal, terminalId)
+        : await deps.buffer.read(request);
+
+      const terminalRead = shouldUseSnapshotFallback(parsed.since, raw, supportsSnapshotFallback)
+        ? await snapshotSource.read(request, terminal, terminalId)
+        : raw;
 
       // Step 5: response-side cursor re-validation (belt-and-suspenders)
-      if (raw.cursor) {
-        const responseCursorErr = validateCursorBelongsToTerminal(raw.cursor, terminalId);
+      if (terminalRead.cursor) {
+        const responseCursorErr = validateCursorBelongsToTerminal(terminalRead.cursor, terminalId);
         if (responseCursorErr) return { error: responseCursorErr };
       }
 
-      const redacted = deps.redactor.redact(raw.text);
-      return { terminalId, text: redacted, cursor: raw.cursor, truncated: raw.truncated };
+      const redacted = deps.redactor.redact(terminalRead.text);
+      return { terminalId, text: redacted, cursor: terminalRead.cursor, truncated: terminalRead.truncated };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return { error: msg };
@@ -225,6 +242,7 @@ export function createTerminalReadDeps(): TerminalReadGatewayDeps {
     source: vscodeTerminalOutputSource,
     buffer: terminalOutputBuffer,
     redactor: terminalOutputRedactor,
+    snapshot: vscodeTerminalSnapshotSource,
   };
 }
 
@@ -245,3 +263,11 @@ export async function terminalReadHandler(
 }
 
 export { vscodeTerminalOutputSource } from "./vscode-terminal-source.js";
+
+function shouldUseSnapshotFallback(
+  since: string | undefined,
+  raw: TerminalReadSuccess,
+  supportsSnapshotFallback: boolean,
+): boolean {
+  return !since && supportsSnapshotFallback && !raw.text && !raw.cursor;
+}

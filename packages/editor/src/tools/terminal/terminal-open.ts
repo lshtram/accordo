@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { errorMessage } from "../../util.js";
-import { createTerminalId, trackTerminal } from "./terminal-state.js";
+import { createTerminalId, flushTerminalTrackingPersistence, trackTerminal } from "./terminal-state.js";
 
 // Source reference for terminal output capture — provided via initTerminalOpenGatewaySource
 let terminalSource: {
@@ -33,7 +33,8 @@ export async function terminalOpenHandler(
     terminal.show();
 
     const terminalId = createTerminalId();
-    trackTerminal(terminalId, terminal);
+    trackTerminal(terminalId, terminal, { restorable: true });
+    await flushTerminalTrackingPersistence();
 
     // Attach output source so shell integration events (including manually typed
     // commands) are captured by the readback pipeline for this terminal.

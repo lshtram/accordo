@@ -4,6 +4,9 @@ export {
   getTerminal,
   trackTerminal,
   adoptTerminal,
+  initTerminalTrackingPersistence,
+  reconcileTrackedTerminals,
+  untrackTerminal,
   terminalMap,
   _resetTerminalMap,
 } from "./terminal/terminal-state.js";

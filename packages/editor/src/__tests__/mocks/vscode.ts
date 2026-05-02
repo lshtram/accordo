@@ -126,6 +126,7 @@ export const mockState = {
   }>]>,
   /** Map of registered commands for executeCommand mock routing */
   registeredCommands: new Map<string, (...args: unknown[]) => unknown>(),
+  clipboardText: "",
 };
 
 // ── window ───────────────────────────────────────────────────────────────────
@@ -479,12 +480,42 @@ function wrapTerminalSendText(
 
 export const env = {
   remoteName: null as string | null,
+  clipboard: {
+    readText: vi.fn().mockImplementation(async () => mockState.clipboardText),
+    writeText: vi.fn().mockImplementation(async (value: string) => {
+      mockState.clipboardText = value;
+    }),
+  },
 };
 
 // ── ExtensionContext ─────────────────────────────────────────────────────────
 
+export class MockMemento {
+  private readonly store = new Map<string, unknown>();
+
+  constructor(private readonly updateDelayMs = 0) {}
+
+  get<T>(key: string, defaultValue?: T): T {
+    return (this.store.has(key) ? this.store.get(key) : defaultValue) as T;
+  }
+
+  async update(key: string, value: unknown): Promise<void> {
+    if (this.updateDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.updateDelayMs));
+    }
+    this.store.set(key, value);
+  }
+}
+
 export class ExtensionContext {
+  readonly workspaceState: MockMemento;
+  readonly globalState: MockMemento;
   subscriptions: Array<{ dispose(): void }> = [];
+
+  constructor(states?: { workspaceState?: MockMemento; globalState?: MockMemento }) {
+    this.workspaceState = states?.workspaceState ?? new MockMemento();
+    this.globalState = states?.globalState ?? new MockMemento();
+  }
 }
 
 export const extensions = {
