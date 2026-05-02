@@ -4,6 +4,24 @@ import { DEFAULT_RELAY_HOST, DEFAULT_RELAY_PORT, RELAY_TOKEN_STORAGE_KEY } from 
 import { routeIncomingRequest, tryResolvePending, type PendingResolver, type RelayActionHandler } from "./relay-bridge-routing.js";
 import { sendViaTransport, sendViaWebSocket } from "./relay-bridge-send.js";
 
+/**
+ * WebSocket client that connects the Chrome extension to the Accordo browser relay.
+ *
+ * Authentication flow:
+ *   1. On each connection attempt, reads the relay token from `chrome.storage.local`.
+ *      If no token is stored (not yet paired), schedules a retry.
+ *   2. If the server rejects the token with close code 1008, the stored token and
+ *      identity secret are cleared so the popup can prompt for re-pairing.
+ *   3. After the WS opens, the relay sends a `relay-hello` challenge (nonce). The
+ *      extension computes HMAC-SHA256(nonce, relayIdentitySecret) and replies with
+ *      `relay-hello-ack`. If the secret is not stored or the relay doesn't send a
+ *      hello within RELAY_HELLO_TIMEOUT_MS, the connection is closed (re-pair required).
+ *
+ * @see PAIR-01 — Token read from chrome.storage.local on each connect attempt
+ * @see PAIR-02 — No token → schedule retry (wait until user completes pairing)
+ * @see PAIR-03 — Close code 1008 → clear stored token, schedule retry
+ * @see PAIR-SEC-06 — relay-hello challenge/response for relay identity verification
+ */
 export class RelayBridgeClient {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -18,6 +36,15 @@ export class RelayBridgeClient {
     this.transport = transport;
   }
 
+  /**
+   * Start the relay bridge connection.
+   *
+   * Reads the relay token from chrome.storage.local. If present, opens a WebSocket
+   * to the relay. If absent (not paired yet), schedules a reconnect.
+   *
+   * @see PAIR-01 — Token read from chrome.storage.local on each connect attempt
+   * @see PAIR-02 — No token → no WebSocket, schedule reconnect
+   */
   start(): void {
     this.stopped = false;
     if (this.transport) {

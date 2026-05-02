@@ -7,6 +7,11 @@
  *
  * Split from relay-actions.ts (B5a modularity).
  *
+ * Shared relay contract types (BrowserRelayAction, BrowserRelayRequest,
+ * BrowserRelayResponse, CapturePayload) are imported from @accordo/bridge-types.
+ * Local extensions (auditId, redactionWarning, index signature on Response)
+ * and runtime helpers stay local.
+ *
  * @module
  */
 

@@ -109,6 +109,13 @@ export interface SharedRelayServerOptions {
   host: string;
   /** Single shared authentication token for all connections (Chrome + Hub clients). */
   token: string;
+  /**
+   * PAIR-SEC-03: If set, only the exact `chrome-extension://<allowedExtensionId>`
+   * origin is accepted for pairing endpoints. If unset (dev/test), any
+   * `chrome-extension://` origin is accepted. Set this to the production extension
+   * ID before publishing.
+   */
+  allowedExtensionId?: string;
   /** Event callback for logging/diagnostics. */
   onEvent?: (event: string, details?: Record<string, unknown>) => void;
 }

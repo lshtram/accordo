@@ -4,6 +4,8 @@
  * Source: requirements-marp.md §3 (M50-TL-01 through M50-TL-09)
  */
 
+import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { SlideSummary, SlideNarration } from "./types.js";
 
@@ -19,6 +21,7 @@ export interface PresentationToolDeps {
   generateNarration(
     target: number | "all",
   ): Promise<SlideNarration[] | { error: string }>;
+  capture(): Promise<Buffer>;
 }
 
 export function createPresentationTools(

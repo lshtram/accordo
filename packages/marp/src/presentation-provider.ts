@@ -262,6 +262,18 @@ export class PresentationProvider {
       return;
     }
 
+    if (msg["type"] === "presentation:capture-ready") {
+      const pending = this._pendingCapture;
+      this._pendingCapture = null;
+      if (!pending) return;
+      if (msg["error"] !== undefined || msg["data"] === null) {
+        pending.reject(new Error(String(msg["error"] ?? "Capture failed")));
+      } else {
+        pending.resolve(Buffer.from(msg["data"] as string, "base64"));
+      }
+      return;
+    }
+
     if (msg["type"] === "presentation:slideChanged") {
       if (!this.adapter) return;
       const index = msg["index"] as number;
@@ -274,6 +286,24 @@ export class PresentationProvider {
 
   getPanel(): vscode.WebviewPanel | null {
     return this.panel;
+  }
+
+  /**
+   * Capture the currently visible slide as an SVG buffer.
+   * Sends `host:request-capture` to the webview and resolves when the webview
+   * replies with `presentation:capture-ready`.
+   */
+  requestCapture(): Promise<Buffer> {
+    if (!this.panel) {
+      return Promise.reject(new Error("No presentation panel is open"));
+    }
+    if (this._pendingCapture) {
+      return Promise.reject(new Error("A capture is already in progress"));
+    }
+    return new Promise<Buffer>((resolve, reject) => {
+      this._pendingCapture = { resolve, reject };
+      this.panel!.webview.postMessage({ type: "host:request-capture" });
+    });
   }
 
   getCurrentDeckUri(): string | null {
@@ -313,6 +343,13 @@ export class PresentationProvider {
     }
     this.currentSlide = 0;
     this.revision = 0;
+
+    // Reject any pending capture
+    const pendingCapture = this._pendingCapture;
+    this._pendingCapture = null;
+    if (pendingCapture) {
+      pendingCapture.reject(new Error("Presentation panel closed"));
+    }
 
     panel?.dispose();
 

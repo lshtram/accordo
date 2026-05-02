@@ -37,6 +37,7 @@ function makeDeps(overrides?: Partial<PresentationToolDeps>): PresentationToolDe
     generateNarration: vi.fn().mockResolvedValue([
       { slideIndex: 0, narrationText: "Welcome to the presentation." },
     ]),
+    capture: vi.fn().mockResolvedValue(Buffer.from("<svg></svg>")),
     ...overrides,
   };
 }
