@@ -34,12 +34,23 @@ export class CommentQueryOps {
   protected readonly _threads = new Map<string, CommentThread>();
   protected readonly _stale = new Set<string>();
   protected _versionCounter = 0;
+  /** Tracks thread IDs that have been tombstoned (soft-deleted) from browser sync */
+  protected readonly _deletedThreadIds = new Set<string>();
+  /** Tracks comment IDs that have been tombstoned from browser sync */
+  protected readonly _deletedCommentIds = new Set<string>();
 
   // ── Read methods ───────────────────────────────────────────────────────────
 
-  /** Get all threads as an array. */
+  /** Get all non-tombstoned threads as an array. Tombstoned threads are filtered out. */
   getAllThreads(): CommentThread[] {
-    return Array.from(this._threads.values());
+    return Array.from(this._threads.values())
+      .filter((t) => !this._deletedThreadIds.has(t.id))
+      .map((t) => ({
+        ...t,
+        comments: t.comments
+          .filter((c) => !this._deletedCommentIds.has(c.id))
+          .map((c) => ({ ...c })),
+      }));
   }
 
   /** Lightweight snapshot of store state for sync drift detection. */

@@ -6,6 +6,7 @@ import { normalizeCommentUri } from "./notifier.js";
 import type { CommentUINotifier } from "./notifier.js";
 import { buildAnchor } from "./anchor.js";
 import type { CreateRateLimiter } from "./rate-limiter.js";
+import { normalizeOptionalId } from "../comment-store-validation.js";
 
 /**
  * Build comment mutation handlers that notify external observers only.
@@ -107,6 +108,9 @@ export function buildCommentMutationHandlers(
       // Native widget mutation happens via store.onChanged -> nc.reconcile (canonical path).
       const updatedThread = store.getThread(threadId);
       if (_external && updatedThread) _external.updateThread(updatedThread);
+      // Trigger full-state browser sync wakeup so the browser extension pulls
+      // the updated state via sync_comment_state.
+      if (_external) _external.scheduleWakeup("request_comment_state_sync");
       return { success: true, replied: true, commentId: result.commentId };
     },
 
@@ -154,10 +158,11 @@ export function buildCommentMutationHandlers(
 
       const threadId = args["threadId"] as string;
       if (!threadId) throw new Error("Either threadId or deleteScope is required");
-      // Pass raw commentId to store for validation per M36-CS-13.
-      const rawCommentId = args["commentId"] as string | undefined;
+      // Normalize blank optional commentId to undefined so that blank commentId ""
+      // deletes the whole thread rather than failing with invalid-comment-id.
+      const commentId = normalizeOptionalId(args["commentId"] as string | undefined);
       // store.delete -> store.onChanged -> nc.reconcile handles widget update/removal.
-      await store.delete({ threadId, commentId: rawCommentId });
+      await store.delete({ threadId, commentId });
       return { success: true, deleted: true };
     },
   };

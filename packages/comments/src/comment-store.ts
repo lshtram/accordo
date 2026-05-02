@@ -9,12 +9,19 @@
 
 import * as vscode from "vscode";
 import { rename as fsRename } from "node:fs/promises";
-import type { CommentAuthor, CommentStoreFile } from "@accordo/bridge-types";
+import type { CommentAnchor, CommentAuthor, CommentStoreFile } from "@accordo/bridge-types";
 import { CommentRepository } from "./comment-repository.js";
 import {
   assertValidMutationIds,
   normalizeOptionalId,
 } from "./comment-store-validation.js";
+import type { BrowserCommentSyncState } from "./comment-store-browser-sync.js";
+import {
+  collectBrowserStateIds,
+  pruneVolatileBrowserThreads,
+  resetStaleTombstones,
+  applyBrowserStatePages,
+} from "./comment-store-browser-sync.js";
 
 // ── StorageAdapter ────────────────────────────────────────────────────────────
 
@@ -75,6 +82,15 @@ export function vscodeWorkspaceFsAdapter(workspaceRoot: string): StorageAdapter 
   };
 }
 
+// ── Browser full-state sync types ───────────────────────────────────────────────
+// Re-exported from comment-store-browser-sync.ts for backward compatibility.
+export type {
+  BrowserCommentSyncState,
+  BrowserCommentSyncPage,
+  BrowserCommentSyncThread,
+  BrowserCommentSyncComment,
+} from "./comment-store-browser-sync.js";
+
 // ── Re-export all domain types ───────────────────────────────────────────────
 // Preserves backward-compat: `import { type CreateCommentParams } from "./comment-store.js"`
 export type {
@@ -110,9 +126,9 @@ import type { CommentThread } from "@accordo/bridge-types";
 // ── CommentStore class ───────────────────────────────────────────────────────
 
 export class CommentStore {
-  private readonly _repo = new CommentRepository();
-  private readonly _listeners: ChangeListener[] = [];
-  private _workspaceRoot = "";
+  private readonly _repo: CommentRepository;
+  private readonly _listeners: ChangeListener[];
+  private _workspaceRoot: string;
   /** Serializes concurrent _persist() calls to prevent file-rename races. */
   private _writeQueue: Promise<void> = Promise.resolve();
   /** Persistence adapter — defaults to vscodeWorkspaceFsAdapter when load() is called. */
@@ -123,7 +139,12 @@ export class CommentStore {
    *                 adapter is created automatically by `load()` from the workspace root.
    */
   constructor(adapter?: StorageAdapter) {
+    this._repo = new CommentRepository();
+    this._listeners = [];
+    this._workspaceRoot = "";
     this._adapter = adapter ?? null;
+    // Bind the method so it works when called as (method)(state) without store.
+    this.applyBrowserCommentSyncState = this.applyBrowserCommentSyncState.bind(this);
   }
 
   /** Return the workspace root path passed to `load()`. */
@@ -381,6 +402,35 @@ export class CommentStore {
     return removedIds;
   }
 
+  /**
+   * Apply a full-state browser comment sync document to the store.
+   *
+   * The incoming state may include threads and comments with `deletedAt` set
+   * (tombstones). These are stored as soft-deleted markers and MUST be excluded
+   * from subsequent `getAllThreads()` / `getThreadsForUri()` calls.
+   *
+   * This method replaces the entire browser-sync thread state — it does NOT
+   * merge incrementally. Each invocation replaces what was previously stored
+   * for the IDs present in the incoming state.
+   *
+   * @param state  The full-state BrowserCommentSyncState from the browser extension.
+   *               schemaVersion must be "2.0". Unknown schema versions are rejected.
+   */
+  async applyBrowserCommentSyncState(state: BrowserCommentSyncState): Promise<void> {
+    if (state.schemaVersion !== "2.0") {
+      throw new Error(`unsupported-sync-schema: expected "2.0", got "${state.schemaVersion}"`);
+    }
+
+    const repo = this._repo;
+
+    const { incomingThreadIds, incomingCommentIds } = collectBrowserStateIds(state);
+    pruneVolatileBrowserThreads(repo, incomingThreadIds);
+    resetStaleTombstones(repo, incomingThreadIds, incomingCommentIds);
+    applyBrowserStatePages(repo, state.pages);
+
+    await this._persist();
+  }
+
   // ── Change listener ────────────────────────────────────────────────────────
 
   /** Register a callback that fires after any mutation. */
@@ -394,3 +444,5 @@ export class CommentStore {
     };
   }
 }
+
+

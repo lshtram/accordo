@@ -187,6 +187,32 @@ describe("comment_list", () => {
     expect(result.threads.map(t => t.status).sort()).toEqual(["open", "resolved"]);
   });
 
+  it("treats gateway-filled default filter values as no filters", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const listTool = getToolByName(tools, "comment_list");
+
+    await createTool.handler({ uri: "file:///project/file.ts", anchor: { kind: "file" }, body: "file" });
+    await createTool.handler({ scope: { modality: "browser", url: "https://example.com/page" }, anchor: { kind: "browser" }, body: "browser" });
+
+    const result = (await listTool.handler({
+      scope: { modality: "text", uri: "", url: "" },
+      uri: "",
+      status: "all",
+      intent: "question",
+      anchorKind: "text",
+      updatedSince: "",
+      lastAuthor: "agent",
+      limit: 20,
+      offset: 0,
+    })) as { total: number; threads: Array<{ anchor: { uri: string } }> };
+
+    expect(result.total).toBe(2);
+    expect(result.threads.map(t => t.anchor.uri).sort()).toEqual([
+      "file:///project/file.ts",
+      "https://example.com/page",
+    ]);
+  });
+
   it("status=all returns open and resolved threads", async () => {
     const createTool = getToolByName(tools, "comment_create");
     const resolveTool = getToolByName(tools, "comment_resolve");
@@ -624,37 +650,6 @@ describe("comment_delete", () => {
     ).rejects.toThrow();
   });
 
-  it("empty string commentId rejects with invalid-comment-id", async () => {
-    const createTool = getToolByName(tools, "comment_create");
-    const deleteTool = getToolByName(tools, "comment_delete");
-
-    // Create a thread
-    const result = (await createTool.handler({
-      uri: "file:///project/src/a.ts",
-      anchor: { kind: "file" },
-      body: "First comment",
-    })) as { threadId: string };
-    const threadId = result.threadId;
-
-    // Delete with empty-string commentId should reject (not delete whole thread)
-    await expectRejectsWithExactMessage(deleteTool.handler({ threadId, commentId: "" }), "invalid-comment-id");
-  });
-
-  it("whitespace-only commentId rejects with invalid-comment-id", async () => {
-    const createTool = getToolByName(tools, "comment_create");
-    const deleteTool = getToolByName(tools, "comment_delete");
-
-    const result = (await createTool.handler({
-      uri: "file:///project/src/b.ts",
-      anchor: { kind: "file" },
-      body: "Thread to wipe",
-    })) as { threadId: string };
-    const threadId = result.threadId;
-
-    // Whitespace-only commentId should also be rejected
-    await expectRejectsWithExactMessage(deleteTool.handler({ threadId, commentId: "   " }), "invalid-comment-id");
-  });
-
   it("non-empty commentId still deletes only that single comment", async () => {
     const createTool = getToolByName(tools, "comment_create");
     const deleteTool = getToolByName(tools, "comment_delete");
@@ -864,6 +859,23 @@ describe("M38-CT-01: comment_list scope.modality routing", () => {
     const result = (await listTool.handler({ scope: { modality: "browser" } })) as { threads: unknown[]; total: number };
     expect(result.total).toBe(1);
   });
+
+  it("ignores empty optional filters when listing browser comments", async () => {
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const result = (await listTool.handler({
+      scope: { modality: "browser", uri: "", url: "" },
+      uri: "",
+      status: "all",
+      intent: "",
+      anchorKind: "surface",
+      updatedSince: "",
+      lastAuthor: "",
+      limit: 50,
+      offset: 0,
+    })) as { threads: unknown[]; total: number };
+
+    expect(result.total).toBe(1);
+  });
 });
 
 // ── M38-CT-01: comment_list detail=true for browser modality ──────────────────
@@ -1012,6 +1024,225 @@ describe("M38-CT-03: comment_create browser modality retention", () => {
     expect(metadata?.confidence).toBe("high");
     expect(metadata?.resolvedTier).toBe("1");
     expect(metadata?.snapshotDrift).toBe("false");
+  });
+});
+
+// ── Slide surface anchor validation ────────────────────────────────────────
+
+describe("comment_create slide surface anchor validation", () => {
+  it("rejects surface anchor with missing coordinates for slide surfaceType", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    await expectRejectsWithExactMessage(
+      createTool.handler({
+        scope: { modality: "slide", uri: "file:///deck.md" },
+        anchor: { kind: "surface", surfaceType: "slide" },
+        body: "missing coords",
+      }),
+      "coordinates are required for surface anchors",
+    );
+  });
+
+  it("rejects slide coordinates with missing type field", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    await expectRejectsWithExactMessage(
+      createTool.handler({
+        scope: { modality: "slide", uri: "file:///deck.md" },
+        anchor: { kind: "surface", surfaceType: "slide", coordinates: { slideIndex: 1, x: 0.5, y: 0.5 } },
+        body: "missing type",
+      }),
+      "Slide coordinates must have type 'slide'. Canonical shape: { type: 'slide', slideIndex: number, x: number, y: number } where x and y are in the 0..1 range.",
+    );
+  });
+
+  it("rejects slide coordinates with wrong type string", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    await expectRejectsWithExactMessage(
+      createTool.handler({
+        scope: { modality: "slide", uri: "file:///deck.md" },
+        anchor: { kind: "surface", surfaceType: "slide", coordinates: { type: "normalized", slideIndex: 1, x: 0.5, y: 0.5 } },
+        body: "wrong type",
+      }),
+      "Slide coordinates must have type 'slide'. Canonical shape: { type: 'slide', slideIndex: number, x: number, y: number } where x and y are in the 0..1 range.",
+    );
+  });
+
+  it("rejects slide coordinates with non-finite slideIndex", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    await expectRejectsWithExactMessage(
+      createTool.handler({
+        scope: { modality: "slide", uri: "file:///deck.md" },
+        anchor: { kind: "surface", surfaceType: "slide", coordinates: { type: "slide", slideIndex: NaN, x: 0.5, y: 0.5 } },
+        body: "NaN slideIndex",
+      }),
+      "Slide coordinates require a finite numeric slideIndex. Canonical shape: { type: 'slide', slideIndex: number, x: number, y: number }.",
+    );
+  });
+
+  it("rejects slide coordinates with non-finite x", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    await expectRejectsWithExactMessage(
+      createTool.handler({
+        scope: { modality: "slide", uri: "file:///deck.md" },
+        anchor: { kind: "surface", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 1, x: Infinity, y: 0.5 } },
+        body: "Infinity x",
+      }),
+      "Slide coordinates require a finite numeric x (0..1). Canonical shape: { type: 'slide', slideIndex: number, x: number, y: number }.",
+    );
+  });
+
+  it("rejects slide coordinates with non-finite y", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    await expectRejectsWithExactMessage(
+      createTool.handler({
+        scope: { modality: "slide", uri: "file:///deck.md" },
+        anchor: { kind: "surface", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 1, x: 0.5, y: -Infinity } },
+        body: "-Infinity y",
+      }),
+      "Slide coordinates require a finite numeric y (0..1). Canonical shape: { type: 'slide', slideIndex: number, x: number, y: number }.",
+    );
+  });
+
+  it("rejects slide coordinates with x outside 0..1 range", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    await expectRejectsWithExactMessage(
+      createTool.handler({
+        scope: { modality: "slide", uri: "file:///deck.md" },
+        anchor: { kind: "surface", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 1, x: 1.5, y: 0.5 } },
+        body: "x out of range",
+      }),
+      "Slide coordinates x and y must be within 0..1 range (normalized position within slide). Canonical shape: { type: 'slide', slideIndex: number, x: number, y: number }.",
+    );
+  });
+
+  it("rejects slide coordinates with y outside 0..1 range", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    await expectRejectsWithExactMessage(
+      createTool.handler({
+        scope: { modality: "slide", uri: "file:///deck.md" },
+        anchor: { kind: "surface", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 1, x: 0.5, y: -0.1 } },
+        body: "y out of range",
+      }),
+      "Slide coordinates x and y must be within 0..1 range (normalized position within slide). Canonical shape: { type: 'slide', slideIndex: number, x: number, y: number }.",
+    );
+  });
+
+  it("accepts canonical slide coordinates and stores them", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const result = (await createTool.handler({
+      scope: { modality: "slide", uri: "file:///deck.md" },
+      anchor: { kind: "surface", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 3, x: 0.25, y: 0.75 } },
+      body: "valid slide comment",
+    })) as { threadId: string };
+    const thread = store.getThread(result.threadId)!;
+    expect(thread.anchor.kind).toBe("surface");
+    expect((thread.anchor as { surfaceType: string }).surfaceType).toBe("slide");
+    const coords = (thread.anchor as { coordinates: { type: string; slideIndex: number; x: number; y: number } }).coordinates;
+    expect(coords.type).toBe("slide");
+    expect(coords.slideIndex).toBe(3);
+    expect(coords.x).toBe(0.25);
+    expect(coords.y).toBe(0.75);
+  });
+
+  it("accepts slide coordinates with x=0 and y=0 (origin)", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const result = (await createTool.handler({
+      scope: { modality: "slide", uri: "file:///deck.md" },
+      anchor: { kind: "surface", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 0, x: 0, y: 0 } },
+      body: "origin slide comment",
+    })) as { threadId: string };
+    const thread = store.getThread(result.threadId)!;
+    const coords = (thread.anchor as { coordinates: { slideIndex: number; x: number; y: number } }).coordinates;
+    expect(coords.slideIndex).toBe(0);
+    expect(coords.x).toBe(0);
+    expect(coords.y).toBe(0);
+  });
+
+  it("accepts slide coordinates with x=1 and y=1 (max values)", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const result = (await createTool.handler({
+      scope: { modality: "slide", uri: "file:///deck.md" },
+      anchor: { kind: "surface", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 10, x: 1, y: 1 } },
+      body: "max slide comment",
+    })) as { threadId: string };
+    const thread = store.getThread(result.threadId)!;
+    const coords = (thread.anchor as { coordinates: { slideIndex: number; x: number; y: number } }).coordinates;
+    expect(coords.slideIndex).toBe(10);
+    expect(coords.x).toBe(1);
+    expect(coords.y).toBe(1);
+  });
+
+  it("non-slide surface types (diagram) are not validated as slide coords", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const result = (await createTool.handler({
+      scope: { modality: "diagram", uri: "file:///diagram.mmd" },
+      anchor: { kind: "surface", surfaceType: "diagram", coordinates: { type: "diagram-node", nodeId: "n1" } },
+      body: "diagram comment",
+    })) as { threadId: string };
+    const thread = store.getThread(result.threadId)!;
+    expect(thread.anchor.kind).toBe("surface");
+    expect((thread.anchor as { surfaceType: string }).surfaceType).toBe("diagram");
+  });
+});
+
+// ── comment_delete blank commentId normalization ─────────────────────────────
+
+describe("comment_delete blank commentId normalization", () => {
+  it("blank commentId ('') deletes the whole thread (treated as undefined)", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const deleteTool = getToolByName(tools, "comment_delete");
+
+    const result = (await createTool.handler({
+      uri: "file:///project/src/a.ts",
+      anchor: { kind: "file" },
+      body: "First comment",
+    })) as { threadId: string };
+    const threadId = result.threadId;
+
+    // commentId: "" should be normalized to undefined, deleting the whole thread
+    const deleteResult = (await deleteTool.handler({ threadId, commentId: "" })) as Record<string, unknown>;
+    expect(deleteResult.deleted).toBe(true);
+    expect(store.getThread(threadId)).toBeUndefined();
+  });
+
+  it("whitespace commentId ('   ') deletes the whole thread (treated as undefined)", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const deleteTool = getToolByName(tools, "comment_delete");
+
+    const result = (await createTool.handler({
+      uri: "file:///project/src/b.ts",
+      anchor: { kind: "file" },
+      body: "Second comment",
+    })) as { threadId: string };
+    const threadId = result.threadId;
+
+    const deleteResult = (await deleteTool.handler({ threadId, commentId: "   " })) as Record<string, unknown>;
+    expect(deleteResult.deleted).toBe(true);
+    expect(store.getThread(threadId)).toBeUndefined();
+  });
+
+  it("nonblank valid commentId still deletes only that comment", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const replyTool = getToolByName(tools, "comment_reply");
+    const deleteTool = getToolByName(tools, "comment_delete");
+
+    const result = (await createTool.handler({
+      uri: "file:///project/src/c.ts",
+      anchor: { kind: "file" },
+      body: "First",
+    })) as { threadId: string; commentId: string };
+    const threadId = result.threadId;
+    const firstCommentId = result.commentId;
+
+    const replyResult = (await replyTool.handler({ threadId, body: "Second reply" })) as { commentId: string };
+    const secondCommentId = replyResult.commentId;
+
+    // Delete only the first comment — thread should still exist with the reply
+    const deleteResult = (await deleteTool.handler({ threadId, commentId: firstCommentId })) as Record<string, unknown>;
+    expect(deleteResult.deleted).toBe(true);
+
+    const thread = store.getThread(threadId)!;
+    expect(thread.comments).toHaveLength(1);
+    expect(thread.comments[0].id).toBe(secondCommentId);
   });
 });
 

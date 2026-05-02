@@ -15,6 +15,7 @@
 
 import * as vscode from "vscode";
 import { CommentStore } from "./comment-store.js";
+import type { BrowserCommentSyncState } from "./comment-store.js";
 import { NativeComments } from "./native-comments.js";
 import { createCommentTools, ExternalFanoutNotifier } from "./comment-tools.js";
 import type { CommentUINotifier } from "./comment-tools.js";
@@ -23,11 +24,26 @@ import { wirePanelAndCommands } from "./panel-bootstrap.js";
 import { registerBridgeIntegrationCommands } from "./bridge-integration.js";
 import type { BridgeAPI } from "./bridge-integration.js";
 
+// ── Module-level store reference ──────────────────────────────────────────────
+// Stored here so the applyBrowserCommentSyncState export can delegate to it.
+// Initialised once in activate() and never reassigned.
+let _activatedStore: CommentStore | null = null;
+
 // ── Exports ───────────────────────────────────────────────────────────────────
 
 /** Exports returned by activate() for inter-extension consumption. */
 export interface CommentsExtensionExports {
   registerBrowserNotifier: (notifier: CommentUINotifier) => { dispose(): void };
+  /** Apply merged browser comment full-state to the VS Code comment store.
+   *
+   * Called by the browser package after `sync_comment_state` returns the
+   * reconciled merged state from Accordo Hub. This is the canonical seam
+   * between the browser-extension (which holds Chrome-canonical state) and
+   * the comments extension (which projects into VS Code UI).
+   *
+   * @param state Full-state document from `sync_comment_state` response.
+   */
+  applyBrowserCommentSyncState(state: BrowserCommentSyncState): Promise<void>;
 }
 
 // Re-export types so extension.ts doesn't need to import them directly
@@ -70,6 +86,7 @@ export async function activate(
 ): Promise<CommentsExtensionExports> {
   // ── Store (always created — does not depend on Bridge) ─────────────────────
   const store = new CommentStore();
+  _activatedStore = store; // Make available to applyBrowserCommentSyncState export
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
   await store.load(workspaceRoot);
 
@@ -109,7 +126,12 @@ export async function activate(
   const bridgeExt = vscode.extensions.getExtension("accordo.accordo-bridge");
   if (!bridgeExt) {
     console.warn("[accordo-comments] accordo-bridge not installed — MCP tools and state disabled");
-    return { registerBrowserNotifier: (notifier) => externalFanout.add(notifier) };
+    return {
+      registerBrowserNotifier: (notifier) => externalFanout.add(notifier),
+      applyBrowserCommentSyncState: async (state: BrowserCommentSyncState) => {
+        if (_activatedStore) await _activatedStore.applyBrowserCommentSyncState(state);
+      },
+    };
   }
   if (!bridgeExt.isActive) {
     try { await bridgeExt.activate(); } catch { /* bridge failed — skip tools */ }
@@ -117,7 +139,12 @@ export async function activate(
   const bridge = bridgeExt.exports as BridgeAPI | undefined;
   if (!bridge || typeof bridge.registerTools !== "function") {
     console.warn("[accordo-comments] Bridge exports unavailable — MCP tools and state disabled");
-    return { registerBrowserNotifier: (notifier) => externalFanout.add(notifier) };
+    return {
+      registerBrowserNotifier: (notifier) => externalFanout.add(notifier),
+      applyBrowserCommentSyncState: async (state: BrowserCommentSyncState) => {
+        if (_activatedStore) await _activatedStore.applyBrowserCommentSyncState(state);
+      },
+    };
   }
 
   // ── Tools ─────────────────────────────────────────────────────────────────
@@ -131,7 +158,12 @@ export async function activate(
   const stateContrib = startStateContribution(bridge, store);
   context.subscriptions.push(stateContrib);
 
-  return { registerBrowserNotifier: (notifier) => externalFanout.add(notifier) };
+  return {
+    registerBrowserNotifier: (notifier) => externalFanout.add(notifier),
+    applyBrowserCommentSyncState: async (state: BrowserCommentSyncState) => {
+      await store.applyBrowserCommentSyncState(state);
+    },
+  };
 }
 
 // ── deactivate ────────────────────────────────────────────────────────────────

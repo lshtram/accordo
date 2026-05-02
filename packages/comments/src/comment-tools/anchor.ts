@@ -48,6 +48,9 @@ export function buildAnchor(
     const coordinates = input["coordinates"] as SurfaceCoordinates;
     if (!surfaceType) throw new Error("surfaceType is required for surface anchors");
     if (!coordinates) throw new Error("coordinates are required for surface anchors");
+    if (surfaceType === "slide") {
+      validateSlideCoordinates(coordinates);
+    }
     return { kind: "surface", uri, surfaceType, coordinates };
   }
 
@@ -107,4 +110,44 @@ function inferBlockTypeFromAnchorKey(anchorKey: string): BlockCoordinates["block
   if (anchorKey.startsWith("li:")) return "list-item";
   if (anchorKey.startsWith("pre:")) return "code-block";
   return "paragraph";
+}
+
+/**
+ * Validate slide surface coordinates.
+ * Requires: type === "slide", finite numeric slideIndex, finite numeric x and y.
+ * x and y must be within 0..1 range (normalized position within slide).
+ */
+function validateSlideCoordinates(coords: SurfaceCoordinates): void {
+  if (coords.type !== "slide") {
+    throw new Error(
+      "Slide coordinates must have type 'slide'. " +
+      "Canonical shape: { type: 'slide', slideIndex: number, x: number, y: number } " +
+      "where x and y are in the 0..1 range.",
+    );
+  }
+  const slideCoords = coords as { type: string; slideIndex?: unknown; x?: unknown; y?: unknown };
+  if (typeof slideCoords.slideIndex !== "number" || !Number.isFinite(slideCoords.slideIndex)) {
+    throw new Error(
+      "Slide coordinates require a finite numeric slideIndex. " +
+      "Canonical shape: { type: 'slide', slideIndex: number, x: number, y: number }.",
+    );
+  }
+  if (typeof slideCoords.x !== "number" || !Number.isFinite(slideCoords.x)) {
+    throw new Error(
+      "Slide coordinates require a finite numeric x (0..1). " +
+      "Canonical shape: { type: 'slide', slideIndex: number, x: number, y: number }.",
+    );
+  }
+  if (typeof slideCoords.y !== "number" || !Number.isFinite(slideCoords.y)) {
+    throw new Error(
+      "Slide coordinates require a finite numeric y (0..1). " +
+      "Canonical shape: { type: 'slide', slideIndex: number, x: number, y: number }.",
+    );
+  }
+  if (slideCoords.x < 0 || slideCoords.x > 1 || slideCoords.y < 0 || slideCoords.y > 1) {
+    throw new Error(
+      "Slide coordinates x and y must be within 0..1 range (normalized position within slide). " +
+      "Canonical shape: { type: 'slide', slideIndex: number, x: number, y: number }.",
+    );
+  }
 }

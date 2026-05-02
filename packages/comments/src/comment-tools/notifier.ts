@@ -48,14 +48,12 @@ export function normalizeCommentUri(input: string, workspaceRoot: string): strin
 // ── External fanout notifier interfaces ───────────────────────────────────────
 
 /**
- * Minimal interface for updating external observers (e.g. browser relay push)
- * after store mutations.
+ * External fanout notifier interface for browser sync wakeup.
  *
- * NOTE: This is NOT for native widget mutation. NativeComments receives store
- * mutations ONLY via store.onChanged → nc.reconcile(store.getAllThreads()).
- *
- * Implemented by external notifiers (e.g. browser relay); omitted (undefined)
- * in tests that only verify store state.
+ * scheduleWakeup is the Phase C seam for full-state browser sync wakeup.
+ * After any mutation that affects browser-visible state, the mutation handler
+ * calls _external.scheduleWakeup("request_comment_state_sync") to trigger
+ * a browser → Accordo full-state sync.
  */
 export interface CommentUINotifier {
   addThread(thread: CommentThread): void;
@@ -66,6 +64,13 @@ export interface CommentUINotifier {
    * Used by bulk deleteScope to propagate removals for all deleted threads.
    */
   removeThreads(threadIds: string[]): void;
+  /**
+   * Schedule a browser full-state sync wakeup.
+   * Called by mutation handlers after successful mutations to trigger a
+   * full-state sync via the browser extension's request_comment_state_sync
+   * control action.
+   */
+  scheduleWakeup(action: "request_comment_state_sync", payload?: unknown): void;
 }
 
 /**
@@ -107,5 +112,13 @@ export class ExternalFanoutNotifier implements CommentUINotifier {
 
   removeThreads(threadIds: string[]): void {
     for (const n of this._notifiers) n.removeThreads(threadIds);
+  }
+
+  scheduleWakeup(action: "request_comment_state_sync", payload?: unknown): void {
+    for (const n of this._notifiers) {
+      if ("scheduleWakeup" in n && typeof n.scheduleWakeup === "function") {
+        n.scheduleWakeup(action, payload);
+      }
+    }
   }
 }

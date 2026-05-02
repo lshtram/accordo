@@ -9,13 +9,16 @@ export function buildCommentQueryHandlers(
   return {
     comment_list: async (args) => {
       const scope = args["scope"] as Record<string, unknown> | undefined;
-      const rawUri = (scope?.["uri"] as string | undefined) ?? (args["uri"] as string | undefined);
-      let anchorKind = args["anchorKind"] as "text" | "surface" | "file" | undefined;
+      const ignoreGatewayDefaultFilters = isGatewayDefaultUnfilteredList(args, scope);
+      const rawUri = optionalString(scope?.["uri"]) ?? optionalString(args["uri"]);
+      let anchorKind = ignoreGatewayDefaultFilters
+        ? undefined
+        : optionalEnum(args["anchorKind"], ["text", "surface", "file"] as const);
       let surfaceType: string | undefined;
       let browserUrl: string | undefined;
       let isBrowserModality = false;
 
-      if (scope?.["modality"]) {
+      if (!ignoreGatewayDefaultFilters && scope?.["modality"]) {
         const modality = scope["modality"] as string;
         if (modality === "text") {
           anchorKind = "text";
@@ -25,7 +28,7 @@ export function buildCommentQueryHandlers(
         }
         if (modality === "browser") {
           isBrowserModality = true;
-          if (!rawUri && scope["url"]) browserUrl = scope["url"] as string;
+          if (!rawUri) browserUrl = optionalString(scope["url"]);
         }
       }
 
@@ -38,12 +41,16 @@ export function buildCommentQueryHandlers(
       const detail = args["detail"] as boolean | undefined;
       const listParams = {
         uri,
-        status: args["status"] as "open" | "resolved" | "all" | undefined,
-        intent: args["intent"] as CommentIntent | undefined,
+        status: optionalEnum(args["status"], ["open", "resolved", "all"] as const),
+        intent: ignoreGatewayDefaultFilters
+          ? undefined
+          : optionalEnum(args["intent"], ["fix", "explain", "refactor", "review", "design", "question"] as const),
         anchorKind,
         surfaceType,
-        updatedSince: args["updatedSince"] as string | undefined,
-        lastAuthor: args["lastAuthor"] as "user" | "agent" | undefined,
+        updatedSince: optionalString(args["updatedSince"]),
+        lastAuthor: ignoreGatewayDefaultFilters
+          ? undefined
+          : optionalEnum(args["lastAuthor"], ["user", "agent"] as const),
         limit: args["limit"] as number | undefined,
         offset: args["offset"] as number | undefined,
       };
@@ -78,4 +85,30 @@ export function buildCommentQueryHandlers(
       };
     },
   };
+}
+
+function isGatewayDefaultUnfilteredList(args: Record<string, unknown>, scope: Record<string, unknown> | undefined): boolean {
+  return (
+    optionalString(scope?.["uri"]) === undefined &&
+    optionalString(scope?.["url"]) === undefined &&
+    optionalString(args["uri"]) === undefined &&
+    optionalString(args["updatedSince"]) === undefined &&
+    scope?.["modality"] === "text" &&
+    args["status"] === "all" &&
+    args["intent"] === "question" &&
+    args["anchorKind"] === "text" &&
+    args["lastAuthor"] === "agent"
+  );
+}
+
+function optionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function optionalEnum<const T extends readonly string[]>(value: unknown, allowed: T): T[number] | undefined {
+  if (typeof value !== "string") return undefined;
+  if (value.trim().length === 0) return undefined;
+  return (allowed as readonly string[]).includes(value) ? value as T[number] : undefined;
 }

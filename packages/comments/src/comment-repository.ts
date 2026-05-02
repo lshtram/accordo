@@ -63,4 +63,76 @@ export class CommentRepository extends CommentRepositoryOps {
       threads: Array.from(this._threads.values()),
     };
   }
+
+  // ── Browser sync tombstone tracking ───────────────────────────────────────
+
+  /** Mark a thread as tombstoned (soft-deleted from browser sync) */
+  markDeletedThread(threadId: string): void {
+    this._deletedThreadIds.add(threadId);
+  }
+
+  /** Unmark a thread as tombstoned */
+  unmarkDeletedThread(threadId: string): void {
+    this._deletedThreadIds.delete(threadId);
+  }
+
+  /** Mark a comment as tombstoned (soft-deleted from browser sync) */
+  markDeletedComment(commentId: string): void {
+    this._deletedCommentIds.add(commentId);
+  }
+
+  /** Unmark a comment as tombstoned */
+  unmarkDeletedComment(commentId: string): void {
+    this._deletedCommentIds.delete(commentId);
+  }
+
+  /** Get all tombstoned thread IDs */
+  getDeletedThreadIds(): Set<string> {
+    return this._deletedThreadIds;
+  }
+
+  /** Get all tombstoned comment IDs */
+  getDeletedCommentIds(): Set<string> {
+    return this._deletedCommentIds;
+  }
+
+  /**
+   * Add a thread directly to the repository (for browser sync merge).
+   * Does NOT persist — caller (CommentStore) is responsible for that.
+   */
+  addThread(thread: import("@accordo/bridge-types").CommentThread): void {
+    this._threads.set(thread.id, thread);
+  }
+
+  /**
+   * Add a comment to an existing thread (for browser sync merge).
+   * Does NOT persist — caller (CommentStore) is responsible for that.
+   */
+  addCommentToThread(
+    threadId: string,
+    comment: import("@accordo/bridge-types").AccordoComment,
+  ): void {
+    const thread = this._threads.get(threadId);
+    if (!thread) return;
+    thread.comments.push(comment);
+    thread.lastActivity = comment.createdAt;
+  }
+
+  /**
+   * Increment the version counter.
+   * Called after direct repo mutations to keep version info current.
+   */
+  incrementVersion(): void {
+    this._versionCounter++;
+  }
+
+  /**
+   * Remove a thread directly from the repository by ID.
+   * Used for browser sync replace behavior — removes browser threads whose IDs
+   * are no longer in the incoming state.
+   */
+  removeThreadById(threadId: string): void {
+    this._threads.delete(threadId);
+    this._stale.delete(threadId);
+  }
 }
