@@ -431,9 +431,204 @@ describe("PresentationCommentsBridge.loadThreadsForUri", () => {
     // onChanged should have been called for each load
     expect(adapter.onChanged).toHaveBeenCalledTimes(2);
   });
+
+  it("M50-CBR-07: loadThreadsForUri queries both fs path and file:// URI to handle comments stored under either form", () => {
+    // MCP-created comments store anchor.uri as file://; webview-created comments
+    // may use fs path. loadThreadsForUri must query both to avoid missing pins.
+    const adapter = makeAdapter();
+    const sender = makeSender();
+
+    const fsThread: CommentThread = {
+      id: "t-fs",
+      anchor: { kind: "surface", uri: "/deck.md", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 0, x: 0.5, y: 0.5 } },
+      comments: [],
+      status: "open",
+      createdAt: new Date().toISOString(),
+      lastActivity: new Date().toISOString(),
+    };
+    const fileUriThread: CommentThread = {
+      id: "t-file",
+      anchor: { kind: "surface", uri: "file:///deck.md", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 1, x: 0.5, y: 0.5 } },
+      comments: [],
+      status: "open",
+      createdAt: new Date().toISOString(),
+      lastActivity: new Date().toISOString(),
+    };
+
+    // Mock getThreadsForUri to return different results based on the URI argument
+    vi.mocked(adapter.getThreadsForUri).mockImplementation((uri: string) => {
+      if (uri === "/deck.md") return [fsThread];
+      if (uri === "file:///deck.md") return [fileUriThread];
+      return [];
+    });
+
+    const bridge = new PresentationCommentsBridge(adapter, sender);
+    // Call with file:// form — bridge should also query fs path
+    bridge.loadThreadsForUri("file:///deck.md");
+
+    // Both URI forms must have been queried
+    expect(adapter.getThreadsForUri).toHaveBeenCalledWith("/deck.md");
+    expect(adapter.getThreadsForUri).toHaveBeenCalledWith("file:///deck.md");
+    expect(adapter.getThreadsForUri).toHaveBeenCalledTimes(2);
+  });
+
+  it("M50-CBR-07: loadThreadsForUri with fs-path deckUri queries both fs path and file:// URI", () => {
+    // When Marp calls loadThreadsForUri with an fs-path (e.g. on disk), the bridge
+    // must still query both the fs path and the corresponding file:// form since
+    // MCP-created comments are stored under file:// URIs.
+    const adapter = makeAdapter();
+    const sender = makeSender();
+
+    const mcpThread: CommentThread = {
+      id: "t-mcp",
+      anchor: { kind: "surface", uri: "file:///deck.md", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 1, x: 0.5, y: 0.5 } },
+      comments: [],
+      status: "open",
+      createdAt: new Date().toISOString(),
+      lastActivity: new Date().toISOString(),
+    };
+    const userThread: CommentThread = {
+      id: "t-user",
+      anchor: { kind: "surface", uri: "/deck.md", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 2, x: 0.3, y: 0.3 } },
+      comments: [],
+      status: "open",
+      createdAt: new Date().toISOString(),
+      lastActivity: new Date().toISOString(),
+    };
+
+    vi.mocked(adapter.getThreadsForUri).mockImplementation((uri: string) => {
+      if (uri === "/deck.md") return [userThread];
+      if (uri === "file:///deck.md") return [mcpThread];
+      return [];
+    });
+
+    const bridge = new PresentationCommentsBridge(adapter, sender);
+    // Call with fs-path form — bridge must still query file:// form to catch MCP threads
+    bridge.loadThreadsForUri("/deck.md");
+
+    expect(adapter.getThreadsForUri).toHaveBeenCalledWith("/deck.md");
+    expect(adapter.getThreadsForUri).toHaveBeenCalledWith("file:///deck.md");
+    expect(adapter.getThreadsForUri).toHaveBeenCalledTimes(2);
+
+    // Both threads must appear in the webview message
+    const loadCall = vi.mocked(sender.postMessage).mock.calls.find(
+      ([msg]: [unknown]) => (msg as Record<string, unknown>)["type"] === "comments:load",
+    );
+    expect(loadCall).toBeDefined();
+    const threads = (loadCall?.[0] as { threads: Array<{ id: string }> })["threads"];
+    expect(threads).toHaveLength(2);
+    expect(threads.map((t: { id: string }) => t.id)).toContain("t-mcp");
+    expect(threads.map((t: { id: string }) => t.id)).toContain("t-user");
+  });
+
+  it("M50-CBR-07: loadThreadsForUri deduplicates threads from both URI queries by thread id", () => {
+    // When the same thread is returned under both fs path and file:// URI forms,
+    // it must appear only once in the webview message.
+    const adapter = makeAdapter();
+    const sender = makeSender();
+
+    const sharedThread: CommentThread = {
+      id: "t-shared",
+      anchor: { kind: "surface", uri: "file:///deck.md", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 0, x: 0.5, y: 0.5 } },
+      comments: [],
+      status: "open",
+      createdAt: new Date().toISOString(),
+      lastActivity: new Date().toISOString(),
+    };
+
+    // Both queries return the same thread (simulates a store that uses one canonical form)
+    vi.mocked(adapter.getThreadsForUri).mockImplementation((uri: string) => {
+      return [sharedThread];
+    });
+
+    const bridge = new PresentationCommentsBridge(adapter, sender);
+    bridge.loadThreadsForUri("file:///deck.md");
+
+    // Webview must receive exactly one thread (no duplicate)
+    const loadCall = vi.mocked(sender.postMessage).mock.calls.find(
+      ([msg]: [unknown]) => (msg as Record<string, unknown>)["type"] === "comments:load",
+    );
+    expect(loadCall).toBeDefined();
+    const threads = (loadCall?.[0] as { threads: Array<{ id: string }> })["threads"];
+    expect(threads).toHaveLength(1);
+    expect(threads[0].id).toBe("t-shared");
+  });
 });
 
-// ── PresentationCommentsBridge.dispose ────────────────────────────────────────
+// ── toSdkThread defense-in-depth ─────────────────────────────────────────────
+
+describe("toSdkThread", () => {
+  const loadedAt = new Date().toISOString();
+
+  it("canonical slide coordinates encode to correct blockId", () => {
+    const thread: CommentThread = {
+      id: "t1",
+      anchor: { kind: "surface", uri: "file:///deck.md", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 2, x: 0.5, y: 0.3 } },
+      comments: [],
+      status: "open",
+      createdAt: loadedAt,
+      lastActivity: loadedAt,
+    };
+    const result = toSdkThread(thread, loadedAt);
+    expect(result.blockId).toBe("slide:2:0.5000:0.3000");
+  });
+
+  it("returns empty blockId for malformed slide coordinates (defense-in-depth)", () => {
+    // Even if corrupted data has surfaceType=slide but invalid coords shape,
+    // toSdkThread must not produce a garbage blockId like "slide:undefined:...".
+    const thread: CommentThread = {
+      id: "t1",
+      anchor: { kind: "surface", uri: "file:///deck.md", surfaceType: "slide", coordinates: { type: "slide", slideIndex: NaN, x: 0.5, y: 0.3 } as never },
+      comments: [],
+      status: "open",
+      createdAt: loadedAt,
+      lastActivity: loadedAt,
+    };
+    const result = toSdkThread(thread, loadedAt);
+    expect(result.blockId).toBe("");
+  });
+
+  it("returns empty blockId when slide coordinates have non-finite x", () => {
+    const thread: CommentThread = {
+      id: "t1",
+      anchor: { kind: "surface", uri: "file:///deck.md", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 1, x: Infinity, y: 0.5 } as never },
+      comments: [],
+      status: "open",
+      createdAt: loadedAt,
+      lastActivity: loadedAt,
+    };
+    const result = toSdkThread(thread, loadedAt);
+    expect(result.blockId).toBe("");
+  });
+
+  it("returns empty blockId when slide coordinates have non-finite y", () => {
+    const thread: CommentThread = {
+      id: "t1",
+      anchor: { kind: "surface", uri: "file:///deck.md", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 1, x: 0.5, y: -Infinity } as never },
+      comments: [],
+      status: "open",
+      createdAt: loadedAt,
+      lastActivity: loadedAt,
+    };
+    const result = toSdkThread(thread, loadedAt);
+    expect(result.blockId).toBe("");
+  });
+
+  it("returns empty blockId for non-slide surface anchors (file)", () => {
+    const thread: CommentThread = {
+      id: "t1",
+      anchor: { kind: "file", uri: "file:///deck.md" },
+      comments: [],
+      status: "open",
+      createdAt: loadedAt,
+      lastActivity: loadedAt,
+    };
+    const result = toSdkThread(thread, loadedAt);
+    expect(result.blockId).toBe("");
+  });
+});
+
+// ── PresentationCommentsBridge.dispose ───────────────────────────────────────
 
 describe("PresentationCommentsBridge.dispose", () => {
   it("M50-CBR-03: dispose() calls the subscription's dispose to clean up listeners", () => {

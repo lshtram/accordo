@@ -114,10 +114,13 @@ function registerPresentationCommands(
     vscode.commands.registerCommand(
       "accordo.presentation.internal.focusThread",
       async (uri: string, threadId: string, blockId: string) => {
+        // Normalize file:// URI to fsPath so comparison with currentDeckUri works
+        // regardless of which URI form was used when storing the comment.
+        const normalizedUri = uri.startsWith("file://") ? uri.slice("file://".length) : uri;
         const currentDeckUri = provider.getCurrentDeckUri();
-        if (currentDeckUri !== uri) {
+        if (currentDeckUri !== normalizedUri) {
           try {
-            await openSession(uri, session, provider, stateContrib, commentsAdapter);
+            await openSession(normalizedUri, session, provider, stateContrib, commentsAdapter);
           } catch {
             // Allow downstream focus post even if open fails.
           }

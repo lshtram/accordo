@@ -7,6 +7,7 @@
 import type { SlideCoordinates, CommentAnchorSurface, CommentThread } from "@accordo/bridge-types";
 import type { SurfaceCommentAdapter } from "@accordo/capabilities";
 import type { SdkThread } from "@accordo/comment-sdk";
+import { normalizeDeckUriToFsPath } from "./focus-thread-contract.js";
 
 export function encodeBlockId(coords: SlideCoordinates): string {
   return `slide:${coords.slideIndex}:${coords.x.toFixed(4)}:${coords.y.toFixed(4)}`;
@@ -36,7 +37,22 @@ export function toSdkThread(thread: CommentThread, loadedAt: string): SdkThread 
 
   if (anchor.kind === "surface" && anchor.surfaceType === "slide") {
     const coords = anchor.coordinates as SlideCoordinates;
-    blockId = encodeBlockId(coords);
+    // Defense-in-depth: only encode blockId when coordinates have the correct
+    // slide shape with finite numeric fields. Malformed slide coords (e.g. from
+    // a corrupted store) must not produce garbage blockIds like "slide:undefined:...".
+    if (
+      coords?.type === "slide" &&
+      typeof coords.slideIndex === "number" &&
+      Number.isFinite(coords.slideIndex) &&
+      typeof coords.x === "number" &&
+      Number.isFinite(coords.x) &&
+      typeof coords.y === "number" &&
+      Number.isFinite(coords.y)
+    ) {
+      blockId = encodeBlockId(coords);
+    } else {
+      blockId = "";
+    }
   } else {
     // Non-slide anchors (file, text, non-slide surfaces) cannot render pins on Marp slides.
     blockId = "";
@@ -125,8 +141,25 @@ export class PresentationCommentsBridge {
     const send = () => {
       if (!this.adapter) return;
       if (typeof this.adapter.getThreadsForUri !== "function") return;
-      const rawThreads = this.adapter.getThreadsForUri(deckUri);
-      const threads = rawThreads.map((t) => toSdkThread(t, this._loadedAt));
+      // Always query both the fs path and the corresponding file:// URI form so
+      // that MCP-created comments (stored under file://) and user-created comments
+      // (stored under fs path) are both retrieved regardless of which form Marp
+      // passes in.
+      const fsPath = normalizeDeckUriToFsPath(deckUri);
+      const fileUri = fsPath.startsWith("/") ? `file://${fsPath}` : deckUri;
+      const threadsA = this.adapter.getThreadsForUri(fsPath);
+      const threadsB = fileUri !== fsPath ? this.adapter.getThreadsForUri(fileUri) : [];
+      // Deduplicate by thread id — threadsB is only non-empty when deckUri is file://
+      // and fsPath differs, so no dedup needed when they are equal.
+      const seen = new Set<string>();
+      const deduped: CommentThread[] = [];
+      for (const t of [...threadsA, ...threadsB]) {
+        if (!seen.has(t.id)) {
+          seen.add(t.id);
+          deduped.push(t);
+        }
+      }
+      const threads = deduped.map((t) => toSdkThread(t, this._loadedAt));
       void this._sender.postMessage({ type: "comments:load", threads });
     };
     send();

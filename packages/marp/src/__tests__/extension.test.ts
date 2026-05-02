@@ -672,6 +672,65 @@ describe("M50-FOCUS: accordo.presentation.internal.focusThread command", () => {
     expect(window.createWebviewPanel).toHaveBeenCalled();
   });
 
+  it("M50-FOCUS-07: focusThread with file:// URI normalizes to fs path before comparison and openSession", async () => {
+    // file:///deck.md must be normalized to /deck.md before comparing with
+    // currentDeckUri and before passing to openSession, so the deck opens correctly.
+    const bridge = makeBridge();
+    setupExtensions(bridge, true);
+    setupEngineConfig("marp");
+    const ctx = makeExtensionContext();
+
+    await activate(asCtx(ctx));
+
+    vi.mocked(workspace.openTextDocument).mockResolvedValue({
+      getText: vi.fn().mockReturnValue("---\nmarp: true\n---\n\n# Slide 0\n\n---\n\n# Slide 1\n"),
+    } as unknown as import("vscode").TextDocument);
+
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    const focusThreadReg = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([cmd]: [string]) => cmd === "accordo.presentation.internal.focusThread",
+    );
+    const [, handler] = focusThreadReg as [string, (...args: unknown[]) => unknown];
+
+    // Pass file:// URI — must normalize to fs path for openTextDocument and comparison
+    await handler("file:///deck.md", "t1", "slide:1:0.5000:0.5000");
+
+    // openTextDocument must be called with fs path, not file:// string
+    expect(workspace.openTextDocument).toHaveBeenCalledWith("/deck.md");
+    expect(window.createWebviewPanel).toHaveBeenCalled();
+    // Navigation must have used the normalized path — webview panel created
+    expect(panel.webview.postMessage).toHaveBeenCalled();
+  });
+
+  it("M50-FOCUS-07: focusThread with fs path still works (idempotent normalization)", async () => {
+    // An fs path passed directly must also work — no file:// stripping applied incorrectly.
+    const bridge = makeBridge();
+    setupExtensions(bridge, true);
+    setupEngineConfig("marp");
+    const ctx = makeExtensionContext();
+
+    await activate(asCtx(ctx));
+
+    vi.mocked(workspace.openTextDocument).mockResolvedValue({
+      getText: vi.fn().mockReturnValue("---\nmarp: true\n---\n\n# Slide\n"),
+    } as unknown as import("vscode").TextDocument);
+
+    const panel = new MockWebviewPanel("accordo.marp.presentation", "Deck");
+    vi.mocked(window.createWebviewPanel).mockReturnValue(panel);
+
+    const focusThreadReg = (commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([cmd]: [string]) => cmd === "accordo.presentation.internal.focusThread",
+    );
+    const [, handler] = focusThreadReg as [string, (...args: unknown[]) => unknown];
+
+    await handler("/deck.md", "t1", "slide:0:0.5:0.5");
+
+    expect(workspace.openTextDocument).toHaveBeenCalledWith("/deck.md");
+    expect(window.createWebviewPanel).toHaveBeenCalled();
+  });
+
   it("M50-FOCUS-04: focusThread parses slideIndex from blockId and produces observable focus outcome", async () => {
     // The blockId "slide:N:x:y" must be parsed to extract slideIndex.
     // Observable contract: when focusThread is called with blockId "slide:2:...",
