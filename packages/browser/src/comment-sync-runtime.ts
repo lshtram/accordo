@@ -31,7 +31,10 @@ export async function syncBrowserComments(
 
     // Apply merged full-state to VS Code comment store via accordo-comments extension.
     // The response data is the reconciled BrowserCommentSyncState from Accordo Hub.
-    await applyBrowserCommentSyncState(syncResult.data, out);
+    const applyResult = await applyBrowserCommentSyncStateFromRelay(syncResult.data, out);
+    if (applyResult !== "success") {
+      out.appendLine(`[accordo-browser:comment-sync] applyBrowserCommentSyncState returned ${applyResult}`);
+    }
 
     out.appendLine("[accordo-browser:comment-sync] full-state sync complete");
     return "success";
@@ -59,20 +62,22 @@ export async function applyBrowserCommentSyncStateFromRelay(
     const commentsExt = vscode.extensions.getExtension("accordo.accordo-comments");
     if (!commentsExt || !commentsExt.exports) {
       out.appendLine("[accordo-browser:comment-sync] accordo-comments not installed — skipping apply");
-      return;
+      return "partial";
     }
     const exports = commentsExt.exports as {
       applyBrowserCommentSyncState?(state: unknown): Promise<void>;
     };
     if (typeof exports.applyBrowserCommentSyncState !== "function") {
       out.appendLine("[accordo-browser:comment-sync] accordo-comments applyBrowserCommentSyncState not available — skipping apply");
-      return;
+      return "partial";
     }
     await exports.applyBrowserCommentSyncState(mergedState);
     out.appendLine("[accordo-browser:comment-sync] applied merged state to VS Code comment store");
+    return "success";
   } catch (err) {
     out.appendLine(
       `[accordo-browser:comment-sync] applyBrowserCommentSyncState failed — ${err instanceof Error ? err.message : String(err)}`,
     );
+    return "partial";
   }
 }

@@ -6,6 +6,7 @@ import { buildBrowserTools } from "./tool-assembly.js";
 import { registerBrowserNotifier, browserActionToUnifiedTool } from "./comment-notifier.js";
 import { normalizeReadResult } from "./comment-relay-contract.js";
 import { BrowserCommentSyncScheduler, syncBrowserComments } from "./comment-sync.js";
+import { applyBrowserCommentSyncStateFromRelay } from "./comment-sync-runtime.js";
 import { EXTENSION_ID, getSecurityConfig } from "./relay-lifecycle-primitives.js";
 
 const MUTATING = ["create_comment", "reply_comment", "resolve_thread", "reopen_thread", "delete_comment", "delete_thread"] as const;
