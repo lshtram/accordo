@@ -4,6 +4,16 @@ import { readAnchorContext, readOptionalString, readString } from "./relay-type-
 import { resolveRequestedUrl } from "./relay-forwarder.js";
 import { softDeleteThread } from "./store.js";
 import { getAdapter } from "./relay-comment-runtime.js";
+import { LocalStorageAdapter, type CommentBackendAdapter } from "./adapters/comment-backend.js";
+
+const ACCORDO_BROWSER_NOTIFIER_SOURCE = "accordo-browser-notifier";
+
+function getMutationAdapter(payload: Record<string, unknown>): CommentBackendAdapter {
+  if (payload["source"] === ACCORDO_BROWSER_NOTIFIER_SOURCE) {
+    return new LocalStorageAdapter();
+  }
+  return getAdapter();
+}
 
 export async function handleCreateComment(
   request: RelayActionRequest,
@@ -20,7 +30,9 @@ export async function handleCreateComment(
   const authorName = readOptionalString(request.payload, "authorName") ?? "Agent";
   const anchorContext = readAnchorContext(request.payload);
 
-  const thread = await getAdapter().createThread({ url, anchorKey, body, authorName, anchorContext });
+  const threadId = readOptionalString(request.payload, "threadId");
+  const commentId = readOptionalString(request.payload, "commentId");
+  const thread = await getMutationAdapter(request.payload).createThread({ url, anchorKey, body, authorName, threadId, commentId, anchorContext });
   return {
     requestId: request.requestId,
     success: true,
@@ -35,7 +47,7 @@ export async function handleReplyComment(
   const body = readString(request.payload, "body");
   const authorName = readOptionalString(request.payload, "authorName") ?? "Agent";
   const commentId = readOptionalString(request.payload, "commentId");
-  const comment = await getAdapter().reply({ threadId, body, authorName, commentId });
+  const comment = await getMutationAdapter(request.payload).reply({ threadId, body, authorName, commentId });
   return { requestId: request.requestId, success: true, data: { ...comment, pageUrl: comment.pageUrl } };
 }
 

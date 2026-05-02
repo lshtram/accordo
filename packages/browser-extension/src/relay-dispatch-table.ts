@@ -32,6 +32,8 @@ import {
   handleListPages,
   handleManageSnapshots,
   handleSelectPage,
+  handleSyncCommentState,
+  handleRequestCommentStateSync,
 } from "./relay-handlers.js";
 import {
   handleNavigate,
@@ -86,6 +88,10 @@ export const dispatchMap: DispatchMap = {
   click: handleClick,
   type: handleType,
   press_key: handlePressKey,
+
+  // Full-state sync
+  sync_comment_state: handleSyncCommentState,
+  request_comment_state_sync: handleRequestCommentStateSync,
 };
 
 /**

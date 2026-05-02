@@ -6,6 +6,7 @@
  *   - relay-page-handlers.ts      — page understanding + wait_for actions
  *   - relay-capture-handler.ts    — capture_region + diff_snapshots
  *   - relay-tab-handlers.ts       — list_pages + select_page
+ *   - relay-sync-handlers.ts      — full-state sync actions
  *
  * Also re-exports cropImageToBounds (used in tests via relay-actions.js surface).
  *
@@ -59,3 +60,8 @@ export {
   handleType,
   handlePressKey,
 } from "./relay-control-handlers.js";
+
+export {
+  handleSyncCommentState,
+  handleRequestCommentStateSync,
+} from "./relay-sync-handlers.js";

@@ -12,6 +12,7 @@ export {
   toCapturePayload,
 } from "./relay-type-capture.js";
 export {
+  readOptionalBoolean,
   readOptionalNumber,
   readOptionalString,
   readOptionalStringArray,

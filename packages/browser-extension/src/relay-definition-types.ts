@@ -26,7 +26,10 @@ export type RelayAction =
   | "click"
   | "type"
   | "press_key"
-  | "focus_thread";
+  | "focus_thread"
+  // Full-state sync actions
+  | "sync_comment_state"
+  | "request_comment_state_sync";
 
 export interface RelayActionRequest {
   requestId: string;

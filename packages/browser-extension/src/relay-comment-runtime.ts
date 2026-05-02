@@ -4,7 +4,7 @@ import type { BrowserCommentThread } from "./types.js";
 
 let relayClient: RelayBridgeClient | null = null;
 
-export function setRelayClient(relay: RelayBridgeClient): void {
+export function setRelayClient(relay: RelayBridgeClient | null): void {
   relayClient = relay;
 }
 
@@ -13,6 +13,14 @@ export function getAdapter(): CommentBackendAdapter {
     return new LocalStorageAdapter();
   }
   return selectAdapter(relayClient);
+}
+
+/**
+ * Get the underlying relay client directly.
+ * Used by sync handlers that need to send arbitrary relay actions.
+ */
+export function getRelayClient(): RelayBridgeClient | null {
+  return relayClient;
 }
 
 export function toThreadSummary(thread: BrowserCommentThread): {

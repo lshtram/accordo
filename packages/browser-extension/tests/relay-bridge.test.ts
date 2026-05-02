@@ -133,7 +133,7 @@ describe("M82-RELAY — browser-extension relay client", () => {
     timeoutSpy.mockRestore();
   });
 
-  it("BR-F-122: close code 1008 clears stored token", async () => {
+  it("BR-F-122: close code 1008 preserves stored token and schedules reconnect", async () => {
     const socket = new FakeSocket("ws://127.0.0.1:40111");
     const ctor = vi.fn(() => socket);
     (ctor as unknown as { OPEN: number; CONNECTING: number }).OPEN = FakeSocket.OPEN;
@@ -149,7 +149,7 @@ describe("M82-RELAY — browser-extension relay client", () => {
     };
 
     socket.onclose?.({ code: 1008 });
-    expect(chromeMock.storage.local.remove).toHaveBeenCalledWith("relayToken");
+    expect(chromeMock.storage.local.remove).not.toHaveBeenCalled();
     bridge.stop();
   });
 

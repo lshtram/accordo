@@ -24,7 +24,7 @@ export class LocalStorageAdapter implements CommentBackendAdapter {
     const thread = await storeCreateThread(normalized, params.anchorKey, {
       body: params.body,
       author: { kind: "user", name: params.authorName ?? "anonymous" },
-    }, params.anchorContext);
+    }, params.anchorContext, params.threadId, params.commentId);
     const firstComment = thread.comments[0];
     return { threadId: thread.id, commentId: firstComment.id, pageUrl: thread.pageUrl };
   }

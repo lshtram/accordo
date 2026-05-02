@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { resetChromeMocks, setMockTabUrl } from "./setup/chrome-mock.js";
-import { createThread } from "../src/store.js";
+import { createThread, softDeleteComment } from "../src/store.js";
 import { handleRelayAction } from "../src/relay-actions.js";
 import { defaultStore } from "../src/relay-definitions.js";
+import { setRelayClient } from "../src/relay-comment-runtime.js";
 
 describe("M82-RELAY — browser-extension relay actions", () => {
   beforeEach(() => {
     resetChromeMocks();
     defaultStore.clear();
+    setRelayClient(null);
   });
 
   it("BR-F-119: get_comments returns active thread data envelope", async () => {
@@ -25,6 +27,37 @@ describe("M82-RELAY — browser-extension relay actions", () => {
     expect(response).toHaveProperty("success", true);
     expect(response).toHaveProperty("requestId", "req-1");
     expect((response.data as { totalThreads: number }).totalThreads).toBe(1);
+  });
+
+  it("BR-F-119: get_comments can include deleted comments for sync", async () => {
+    const thread = await createThread("https://example.com", "div:0:test", {
+      body: "hello",
+      author: { kind: "user", name: "Alice" },
+    });
+    await handleRelayAction({
+      requestId: "req-reply",
+      action: "reply_comment",
+      payload: { threadId: thread.id, body: "deleted reply", commentId: "reply-deleted" },
+    });
+    await softDeleteComment(thread.id, "reply-deleted");
+
+    const activeOnly = await handleRelayAction({
+      requestId: "req-active",
+      action: "get_comments",
+      payload: { url: "https://example.com" },
+    });
+    const withDeleted = await handleRelayAction({
+      requestId: "req-deleted",
+      action: "get_comments",
+      payload: { url: "https://example.com", includeDeleted: true },
+    });
+
+    const activeComments = (activeOnly.data as { threads: Array<{ comments: Array<{ id: string }> }> }).threads[0]?.comments ?? [];
+    const deletedData = withDeleted.data as { includesDeleted?: boolean; threads: Array<{ comments: Array<{ id: string; deletedAt?: string }> }> };
+    const allComments = deletedData.threads[0]?.comments ?? [];
+    expect(activeComments.some((comment) => comment.id === "reply-deleted")).toBe(false);
+    expect(deletedData.includesDeleted).toBe(true);
+    expect(allComments.find((comment) => comment.id === "reply-deleted")?.deletedAt).toBeDefined();
   });
 
   it("BR-F-124: create_comment creates a new thread on active page by default", async () => {
@@ -103,6 +136,41 @@ describe("M82-RELAY — browser-extension relay actions", () => {
 
     expect(response.success).toBe(true);
     expect((response.data as { body?: string }).body).toBe("reply");
+  });
+
+  it("BR-F-119b: accordo notifier reply persists locally even while relay adapter is connected", async () => {
+    const thread = await createThread("https://example.com", "div:0:test", {
+      body: "hello",
+      author: { kind: "user", name: "Alice" },
+    });
+    setRelayClient({
+      isConnected: () => true,
+      send: vi.fn().mockRejectedValue(new Error("should not bounce notifier mutations to VS Code")),
+      start: vi.fn(),
+      stop: vi.fn(),
+    } as never);
+
+    const response = await handleRelayAction({
+      requestId: "req-local-reply",
+      action: "reply_comment",
+      payload: {
+        source: "accordo-browser-notifier",
+        threadId: thread.id,
+        body: "agent reply",
+        commentId: "agent-comment-1",
+        authorName: "agent",
+      },
+    });
+
+    expect(response.success).toBe(true);
+    const comments = (await handleRelayAction({
+      requestId: "req-read-after-local-reply",
+      action: "get_comments",
+      payload: { url: "https://example.com" },
+    })).data as { threads: Array<{ comments: Array<{ id: string; body: string }> }> };
+    expect(comments.threads[0]?.comments).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "agent-comment-1", body: "agent reply" })]),
+    );
   });
 
   it("BR-F-124: resolve_thread then reopen_thread toggles thread status", async () => {

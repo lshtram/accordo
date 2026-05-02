@@ -33,3 +33,11 @@ export function readOptionalNumber(
   const val = payload[field];
   return typeof val === "number" ? val : undefined;
 }
+
+export function readOptionalBoolean(
+  payload: Record<string, unknown>,
+  field: string,
+): boolean | undefined {
+  const val = payload[field];
+  return typeof val === "boolean" ? val : undefined;
+}

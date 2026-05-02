@@ -10,11 +10,13 @@
 
 import {
   getActiveThreads,
+  getAllThreads,
   getCommentPageSummaries,
 } from "./store.js";
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
 import { actionFailed, getErrorMeta } from "./relay-definitions.js";
 import {
+  readOptionalBoolean,
   readString,
 } from "./relay-type-guards.js";
 import {
@@ -53,13 +55,16 @@ export async function handleGetComments(
   if (!url) {
     return { requestId: request.requestId, success: false, error: "invalid-request", ...getErrorMeta("invalid-request") };
   }
-  const threads = await getActiveThreads(url);
+  const includeDeleted = readOptionalBoolean(request.payload, "includeDeleted") === true;
+  const rawThreads = includeDeleted ? await getAllThreads(url) : await getActiveThreads(url);
+  const threads = rawThreads.filter((thread) => includeDeleted || !thread.deletedAt);
   return {
     requestId: request.requestId,
     success: true,
     data: {
       url,
       activeTabUrl: await getActiveTabUrl(),
+      includesDeleted: includeDeleted,
       threads,
       threadSummaries: threads.map(toThreadSummary),
       totalThreads: threads.length,

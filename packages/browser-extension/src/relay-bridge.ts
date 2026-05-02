@@ -50,7 +50,6 @@ export class RelayBridgeClient {
       socket.onclose = (event): void => {
         this.stopHeartbeat();
         this.ws = null;
-        if (event.code === 1008) void chrome.storage.local.remove(RELAY_TOKEN_STORAGE_KEY);
         this.scheduleReconnect();
       };
       socket.onopen = (): void => { this.startHeartbeat(); };

@@ -7,13 +7,15 @@ export async function createThread(
   anchorKey: string,
   firstComment: Pick<BrowserComment, "body" | "author">,
   anchorContext?: BrowserCommentThread["anchorContext"],
+  callerThreadId?: string,
+  callerCommentId?: string,
 ): Promise<BrowserCommentThread> {
   const normalized = normalizeUrl(url);
-  const id = crypto.randomUUID();
+  const id = callerThreadId ?? crypto.randomUUID();
   const now = new Date().toISOString();
 
   const comment: BrowserComment = {
-    id,
+    id: callerCommentId ?? id,
     threadId: id,
     createdAt: now,
     author: firstComment.author,
@@ -62,6 +64,10 @@ export async function addComment(
   const found = await findThreadAndStore(threadId);
   if (!found) throw new Error(`Thread not found: ${threadId}`);
   const { store, thread } = found;
+  if (comment.commentId) {
+    const existing = thread.comments.find((candidate) => candidate.id === comment.commentId);
+    if (existing) return existing;
+  }
   const now = new Date().toISOString();
   const newComment: BrowserComment = {
     id: comment.commentId ?? crypto.randomUUID(),
