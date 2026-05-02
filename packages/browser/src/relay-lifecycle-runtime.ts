@@ -39,10 +39,17 @@ export function createRelayRequestHandler<TRelay extends BrowserRelayLike>(
     options.out.appendLine(`${prefix} action=${action} payload=${JSON.stringify(payload)}`);
 
     // ── Full-state sync actions ─────────────────────────────────────────────────
-    // These are relay-level actions (not VS Code tool calls) handled here directly.
-    // Chrome initiates sync_comment_state request → VS Code triggers sync cycle and
-    // returns merged state. request_comment_state_sync is a wakeup trigger.
-    if (action === "sync_comment_state" || action === "request_comment_state_sync") {
+    // Protocol (canonical):
+    //   1. request_comment_state_sync: wakeup from browser → Accordo initiates sync
+    //      cycle by calling syncBrowserComments() → sends sync_comment_state to browser
+    //   2. sync_comment_state: browser sends full JSON state as payload → Accordo
+    //      applies it via applyBrowserCommentSyncStateFromRelay() and returns merged ack.
+    //      This path NEVER calls syncBrowserComments() (would cause self-request recursion).
+    //
+    if (action === "request_comment_state_sync") {
+      // Browser signals new data → Accordo initiates one sync cycle.
+      // Calls syncBrowserComments() which sends sync_comment_state to browser,
+      // waits for browser's full-state response, applies it, and returns merged result.
       try {
         const syncResult = await syncBrowserComments(options.getRelay(), options.bridge, options.out);
         return {
@@ -50,6 +57,24 @@ export function createRelayRequestHandler<TRelay extends BrowserRelayLike>(
           success: syncResult === "success",
           error: syncResult === "partial" ? "action-failed" : undefined,
           data: { synced: syncResult === "success" },
+        };
+      } catch {
+        return { requestId: "", success: false, error: "action-failed" };
+      }
+    }
+
+    if (action === "sync_comment_state") {
+      // Browser sends its full JSON state as payload (initiated by request_comment_state_sync
+      // wakeup, or by handleRequestCommentStateSync in the browser).
+      // Apply the incoming state directly — do NOT call syncBrowserComments() here,
+      // as that would send sync_comment_state back to this handler, creating recursion.
+      try {
+        const applyResult = await applyBrowserCommentSyncStateFromRelay(payload, options.out);
+        return {
+          requestId: "",
+          success: applyResult === "success",
+          error: applyResult === "partial" ? "action-failed" : undefined,
+          data: { synced: applyResult === "success" },
         };
       } catch {
         return { requestId: "", success: false, error: "action-failed" };
