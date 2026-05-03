@@ -59,7 +59,7 @@ export class PanelFilters {
         ? (r.surfaceType as SurfaceType) : undefined,
       staleOnly: r.staleOnly === true,
       groupMode: VALID_GROUP_MODES.has(r.groupMode as string)
-        ? (r.groupMode as GroupMode) : "by-status",
+        ? (r.groupMode as GroupMode) : "by-file",
     };
   }
 
@@ -139,7 +139,7 @@ export class PanelFilters {
   }
 
   get groupMode(): GroupMode {
-    return this._state.groupMode ?? "by-status";
+    return this._state.groupMode ?? "by-file";
   }
 
   setGroupMode(value: GroupMode): void {
