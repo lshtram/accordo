@@ -11,9 +11,14 @@ export function buildCommentQueryHandlers(
       const scope = args["scope"] as Record<string, unknown> | undefined;
       const ignoreGatewayDefaultFilters = isGatewayDefaultUnfilteredList(args, scope);
       const rawUri = optionalString(scope?.["uri"]) ?? optionalString(args["uri"]);
-      let anchorKind = ignoreGatewayDefaultFilters
-        ? undefined
-        : optionalEnum(args["anchorKind"], ["text", "surface", "file"] as const);
+      const rawBrowserUrl = optionalString(scope?.["url"]);
+      const hasPrimaryFilter = rawUri !== undefined || rawBrowserUrl !== undefined || optionalString(args["updatedSince"]) !== undefined;
+      const status = optionalEnum(args["status"], ["open", "resolved", "all"] as const);
+      const hasModalityScope = typeof scope?.["modality"] === "string" && (scope["modality"] as string).trim().length > 0;
+      const applySecondaryFilters = !ignoreGatewayDefaultFilters && (!hasModalityScope || hasPrimaryFilter || (status !== undefined && status !== "all"));
+      let anchorKind = applySecondaryFilters
+        ? optionalEnum(args["anchorKind"], ["text", "surface", "file"] as const)
+        : undefined;
       let surfaceType: string | undefined;
       let browserUrl: string | undefined;
       let isBrowserModality = false;
@@ -28,7 +33,7 @@ export function buildCommentQueryHandlers(
         }
         if (modality === "browser") {
           isBrowserModality = true;
-          if (!rawUri) browserUrl = optionalString(scope["url"]);
+          if (!rawUri) browserUrl = rawBrowserUrl;
         }
       }
 
@@ -41,16 +46,16 @@ export function buildCommentQueryHandlers(
       const detail = args["detail"] as boolean | undefined;
       const listParams = {
         uri,
-        status: optionalEnum(args["status"], ["open", "resolved", "all"] as const),
-        intent: ignoreGatewayDefaultFilters
-          ? undefined
-          : optionalEnum(args["intent"], ["fix", "explain", "refactor", "review", "design", "question"] as const),
+        status,
+        intent: applySecondaryFilters
+          ? optionalEnum(args["intent"], ["fix", "explain", "refactor", "review", "design", "question"] as const)
+          : undefined,
         anchorKind,
         surfaceType,
         updatedSince: optionalString(args["updatedSince"]),
-        lastAuthor: ignoreGatewayDefaultFilters
-          ? undefined
-          : optionalEnum(args["lastAuthor"], ["user", "agent"] as const),
+        lastAuthor: applySecondaryFilters
+          ? optionalEnum(args["lastAuthor"], ["user", "agent"] as const)
+          : undefined,
         limit: args["limit"] as number | undefined,
         offset: args["offset"] as number | undefined,
       };

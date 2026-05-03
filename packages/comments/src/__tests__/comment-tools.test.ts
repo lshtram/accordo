@@ -213,6 +213,29 @@ describe("comment_list", () => {
     ]);
   });
 
+  it("scope-only browser discovery ignores incidental intent/anchor/author fields", async () => {
+    const createTool = getToolByName(tools, "comment_create");
+    const listTool = getToolByName(tools, "comment_list");
+
+    await createTool.handler({ uri: "file:///project/file.ts", anchor: { kind: "file" }, body: "file" });
+    await createTool.handler({ scope: { modality: "browser", url: "https://example.com/page" }, anchor: { kind: "browser" }, body: "browser" });
+
+    const result = (await listTool.handler({
+      scope: { modality: "browser", uri: "", url: "" },
+      uri: "",
+      status: "all",
+      intent: "fix",
+      anchorKind: "text",
+      updatedSince: "",
+      lastAuthor: "user",
+      limit: 20,
+      offset: 0,
+    })) as { total: number; threads: Array<{ anchor: { uri: string } }> };
+
+    expect(result.total).toBe(1);
+    expect(result.threads[0]?.anchor.uri).toBe("https://example.com/page");
+  });
+
   it("status=all returns open and resolved threads", async () => {
     const createTool = getToolByName(tools, "comment_create");
     const resolveTool = getToolByName(tools, "comment_resolve");
