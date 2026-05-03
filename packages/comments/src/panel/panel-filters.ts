@@ -21,6 +21,7 @@ export interface CommentPanelFilterState {
   surfaceType?: SurfaceType;
   staleOnly?: boolean;
   groupMode?: GroupMode;
+  searchQuery?: string;
 }
 
 export interface StaleChecker {
@@ -60,6 +61,8 @@ export class PanelFilters {
       staleOnly: r.staleOnly === true,
       groupMode: VALID_GROUP_MODES.has(r.groupMode as string)
         ? (r.groupMode as GroupMode) : "by-file",
+      searchQuery: typeof r.searchQuery === "string" && r.searchQuery.trim().length > 0
+        ? r.searchQuery.trim() : undefined,
     };
   }
 
@@ -76,6 +79,7 @@ export class PanelFilters {
         if (t.anchor.kind !== "surface") return false;
         if ((t.anchor as CommentAnchorSurface).surfaceType !== this._state.surfaceType) return false;
       }
+      if (this._state.searchQuery && !matchesSearchQuery(t, this._state.searchQuery)) return false;
       if (this._state.staleOnly && (!store || !store.isThreadStale(t.id ?? ""))) return false;
       return true;
     });
@@ -106,6 +110,12 @@ export class PanelFilters {
     this._persist();
   }
 
+  setSearchQuery(value: string | undefined): void {
+    const query = value?.trim();
+    this._state = { ...this._state, searchQuery: query ? query : undefined };
+    this._persist();
+  }
+
   clear(): void {
     this._state = {
       status: undefined,
@@ -113,6 +123,7 @@ export class PanelFilters {
       authorKind: undefined,
       surfaceType: undefined,
       staleOnly: false,
+      searchQuery: undefined,
       groupMode: this._state.groupMode ?? "by-status",
     };
     this._persist();
@@ -124,6 +135,7 @@ export class PanelFilters {
     if (this._state.intent) parts.push(`${this._state.intent} intent`);
     if (this._state.authorKind) parts.push(`last author: ${this._state.authorKind}`);
     if (this._state.surfaceType) parts.push(`surface: ${this._state.surfaceType}`);
+    if (this._state.searchQuery) parts.push(`search: ${this._state.searchQuery}`);
     if (this._state.staleOnly) parts.push("stale only");
     return parts.join(", ");
   }
@@ -134,6 +146,7 @@ export class PanelFilters {
       this._state.intent ||
       this._state.authorKind ||
       this._state.surfaceType ||
+      this._state.searchQuery ||
       this._state.staleOnly
     );
   }
@@ -142,8 +155,35 @@ export class PanelFilters {
     return this._state.groupMode ?? "by-file";
   }
 
+  get status(): "open" | "resolved" | undefined {
+    return this._state.status;
+  }
+
+  get searchQuery(): string {
+    return this._state.searchQuery ?? "";
+  }
+
   setGroupMode(value: GroupMode): void {
     this._state = { ...this._state, groupMode: value };
     this._persist();
   }
+}
+
+function matchesSearchQuery(thread: CommentThread, query: string): boolean {
+  const needle = query.toLocaleLowerCase();
+  const fields = [
+    thread.id ?? "",
+    thread.anchor.uri,
+    thread.status,
+    thread.anchor.kind,
+    thread.anchor.kind === "surface" ? thread.anchor.surfaceType : "",
+    ...thread.comments.flatMap((comment) => [
+      comment.author.name,
+      comment.author.kind,
+      comment.body,
+      comment.intent ?? "",
+      comment.createdAt,
+    ]),
+  ];
+  return fields.some((field) => field.toLocaleLowerCase().includes(needle));
 }

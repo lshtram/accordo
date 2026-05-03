@@ -31,10 +31,12 @@ h1 { margin: 0; font-size: .98rem; letter-spacing: .01em; }
 .toolbar-icons { gap: .3rem; }
 .icon-button { display: grid; width: 1.8rem; height: 1.8rem; place-items: center; border: 1px solid var(--line); border-radius: .55rem; background: rgba(255,255,255,.045); color: var(--muted); cursor: pointer; }
 .stats { flex-wrap: wrap; gap: .35rem; margin-top: .7rem; }
-.pill { min-width: 0; padding: .25rem .48rem; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.045); color: var(--muted); font-size: .72rem; line-height: 1.1; white-space: nowrap; }
+.pill { min-width: 0; padding: .25rem .48rem; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.045); color: var(--muted); font-size: .72rem; line-height: 1.1; white-space: nowrap; cursor: pointer; }
 .pill.active { border-color: rgba(43,111,222,.6); background: var(--word-blue-soft); color: #dbe9ff; }
 .filter-strip { padding: .6rem .7rem; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.025); }
-.search { display: flex; align-items: center; gap: .45rem; padding: .45rem .55rem; border: 1px solid var(--line); border-radius: .65rem; background: rgba(0,0,0,.16); color: var(--soft); font-size: .78rem; }
+.search { display: flex; align-items: center; gap: .45rem; padding: .38rem .5rem; border: 1px solid var(--line); border-radius: .65rem; background: rgba(0,0,0,.16); color: var(--soft); font-size: .78rem; }
+.search-input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; }
+.search-input::placeholder { color: var(--soft); }
 .filter-row { gap: .35rem; margin-top: .5rem; overflow-x: auto; scrollbar-width: none; }
 .filter-row::-webkit-scrollbar { display: none; }
 #panel.thread-scroll { min-height: 0; padding: .55rem; overflow: auto; }
@@ -63,11 +65,18 @@ h1 { margin: 0; font-size: .98rem; letter-spacing: .01em; }
 .status-dot.resolved { background: var(--resolve); box-shadow: 0 0 0 3px rgba(82,179,111,.12); }
 .line-label { overflow: hidden; color: var(--text); font-size: .78rem; font-weight: 660; text-overflow: ellipsis; white-space: nowrap; }
 .reply-count { flex: 0 0 auto; color: var(--soft); font-size: .71rem; }
-.thread-preview { display: -webkit-box; margin: .24rem 0 0; overflow: hidden; color: var(--muted); font-size: .74rem; line-height: 1.32; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.thread-reply-summary { display: block; color: var(--muted); font-size: .72rem; margin-top: .12rem; }
+.thread-preview { display: none; }
 .thread-meta-row { gap: .35rem; margin-top: .45rem; overflow: hidden; }
 .tiny-tag { overflow: hidden; padding: .16rem .36rem; border: 1px solid rgba(255,255,255,.09); border-radius: 999px; color: var(--soft); font-size: .66rem; text-overflow: ellipsis; white-space: nowrap; }
+.tiny-tag.surface-slide, .tiny-tag.surface-presentation { border-color: rgba(180,80,200,.5); color: #d4a0ff; background: rgba(180,80,200,.12); }
+.tiny-tag.surface-markdown-preview, .tiny-tag.surface-md { border-color: rgba(80,160,80,.5); color: #a0d4a0; background: rgba(80,160,80,.12); }
+.tiny-tag.surface-browser { border-color: rgba(60,140,220,.5); color: #a0c8ff; background: rgba(60,140,220,.12); }
+.tiny-tag.surface-diagram { border-color: rgba(200,140,40,.5); color: #f0c878; background: rgba(200,140,40,.12); }
+.tiny-tag.intent-tag { border-color: rgba(200,160,60,.5); color: #f0d898; background: rgba(200,160,60,.1); }
+.reply-meta { color: #756650; font-size: .65rem; display: block; margin-top: .1rem; }
 .conversation-card { margin: 0 .65rem .65rem; border: 1px solid var(--comment-line); border-radius: .82rem; background: linear-gradient(180deg, var(--comment-2), var(--comment)); color: var(--ink); box-shadow: 0 10px 24px rgba(0,0,0,.2); overflow: hidden; }
-.conversation-head { padding: .65rem; border-bottom: 1px solid rgba(87,65,20,.14); }
+.conversation-head { display: flex; justify-content: flex-end; padding: .38rem .55rem; border-bottom: 1px solid rgba(87,65,20,.14); }
 .author { min-width: 0; gap: .45rem; }
 .avatar { display: grid; width: 1.72rem; height: 1.72rem; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--word-blue); color: white; font-size: .68rem; font-weight: 760; }
 .avatar.agent { background: #7549be; }
@@ -78,17 +87,22 @@ h1 { margin: 0; font-size: .98rem; letter-spacing: .01em; }
 .mini-actions { gap: .25rem; }
 .mini-actions button, .composer-actions button { border: 1px solid rgba(49,40,23,.16); border-radius: 999px; background: rgba(255,255,255,.46); color: #453922; font-size: .66rem; cursor: pointer; }
 .mini-actions button { padding: .2rem .34rem; }
+.chip { border: 1px solid rgba(255,255,255,.09); border-radius: 999px; background: rgba(255,255,255,.045); color: var(--soft); font-size: .72rem; cursor: pointer; padding: .2rem .48rem; white-space: nowrap; }
+.chip.active { border-color: rgba(43,111,222,.6); background: var(--word-blue-soft); color: #dbe9ff; }
+.chip-sep { width: 1px; height: .9rem; background: var(--line); flex: 0 0 auto; }
 .quoted { margin-top: .55rem; padding: .46rem .5rem; border-left: 3px solid var(--word-blue); background: rgba(255,255,255,.42); color: #5b4d39; font-size: .7rem; line-height: 1.35; }
 .comment { padding: .66rem; border-bottom: 1px solid rgba(87,65,20,.12); }
 .comment p { margin: .48rem 0 0; font-size: .77rem; line-height: 1.42; }
 .comment.reply { background: rgba(255,255,255,.26); }
 .composer { padding: .58rem; background: rgba(255,255,255,.2); }
-.composer-box { min-height: 3.4rem; padding: .48rem; border: 1px solid rgba(49,40,23,.15); border-radius: .55rem; background: rgba(255,255,255,.42); color: #7a6a52; font-size: .72rem; line-height: 1.35; }
-.composer-actions { justify-content: flex-end; margin-top: .46rem; }
+.composer-box { width: 100%; min-height: 3.4rem; padding: .48rem; border: 1px solid rgba(49,40,23,.15); border-radius: .55rem; background: rgba(255,255,255,.42); color: #7a6a52; font-size: .72rem; line-height: 1.35; resize: vertical; font-family: inherit; box-sizing: border-box; }
+.composer-box::placeholder { color: #9e8e76; }
+.composer-actions { justify-content: flex-end; margin-top: .46rem; gap: .35rem; }
 .composer-actions .primary { border-color: transparent; background: var(--word-blue); color: white; }
+.composer-actions .cancel-btn { border-color: transparent; background: rgba(255,255,255,.3); color: #5b4d39; }
 `.trim();
 
-/** Build the static filter-bar HTML. */
+/** Build the interactive filter-bar HTML. */
 export function buildFilterBarHtml(): string {
   return `<section class="comments-panel">
   <header class="panel-header">
@@ -96,19 +110,24 @@ export function buildFilterBarHtml(): string {
       <h1>Comments</h1>
       <div class="toolbar-icons" aria-label="Panel actions">
         <button class="icon-button" id="btn-refresh" title="Refresh">↻</button>
-        <button class="icon-button" id="btn-group" title="Group by file">☰</button>
         <button class="icon-button" id="btn-clear" title="Clear filters">⌧</button>
       </div>
     </div>
     <div class="stats" aria-label="Active comment filters">
-      <span class="pill active" id="open-count">Open 0</span>
-      <span class="pill" id="resolved-count">Resolved 0</span>
-      <span class="pill" id="total-count">Total 0</span>
+      <button class="pill" id="open-count" data-status-view="open">Open 0</button>
+      <button class="pill" id="resolved-count" data-status-view="resolved">Resolved 0</button>
+      <button class="pill active" id="total-count" data-status-view="all">Total 0</button>
     </div>
   </header>
   <div class="filter-strip">
-    <div class="search">⌕ <span id="filter-summary">Loading comments…</span></div>
-    <div class="filter-row"><span class="pill active">By file</span><span class="pill">Activity</span><span class="pill">Mine</span><span class="pill">Agent</span></div>
+    <label class="search" for="comment-search">⌕ <input class="search-input" id="comment-search" type="search" placeholder="Search comments…" aria-label="Search comments" /></label>
+    <div class="filter-row" id="filter-chips">
+      <button class="chip" id="chip-by-file" data-group="by-file">By file</button>
+      <button class="chip" id="chip-by-activity" data-group="by-activity">Activity</button>
+      <span class="chip-sep"></span>
+      <button class="chip" id="chip-mine" data-author="user">Mine</button>
+      <button class="chip" id="chip-agent" data-author="agent">Agent</button>
+    </div>
   </div>`;
 }
 
@@ -154,16 +173,18 @@ export function buildPanelScript(): string {
   var threadActions = ${threadActionsJson};
   var vscode = acquireVsCodeApi();
   var panel = document.getElementById('panel');
-  var filterSummary = document.getElementById('filter-summary');
+  var searchInput = document.getElementById('comment-search');
   var openCount = document.getElementById('open-count');
   var resolvedCount = document.getElementById('resolved-count');
   var totalCount = document.getElementById('total-count');
 
   function renderPanel(model) {
-    filterSummary.textContent = model.filtersSummary || 'All comments';
+    if (searchInput && searchInput.value !== (model.searchQuery || '')) searchInput.value = model.searchQuery || '';
     openCount.textContent = 'Open ' + (model.openThreadCount || 0);
     resolvedCount.textContent = 'Resolved ' + (model.resolvedThreadCount || 0);
     totalCount.textContent = 'Total ' + (model.totalThreadCount || 0);
+    updateStatusButtons(model.statusFilter);
+    updateGroupButtons(model.groupMode);
     if (!model.groups || model.groups.length === 0) {
       panel.innerHTML = '<div class="empty">No comments match the current filters.</div>';
       return;
@@ -184,10 +205,12 @@ export function buildPanelScript(): string {
   function renderThread(thread) {
     var tags = renderThreadTags(thread);
     var card = thread.expanded ? renderConversationCard(thread) : '';
+    var replySummary = escHtml(thread.replySummary || '');
     return '<article class="thread' + (thread.expanded ? ' thread-open' : '') + '" data-thread-id="' + escHtml(thread.threadId) + '">' +
       '<button class="thread-header" data-thread-id="' + escHtml(thread.threadId) + '">' +
       '<div class="thread-title"><div class="thread-location"><span class="status-dot ' + (thread.status === 'resolved' ? 'resolved' : '') + '"></span><span class="line-label">' + escHtml(thread.title) + '</span></div><span class="reply-count">' + thread.replyCount + '</span></div>' +
-      (thread.preview ? '<p class="thread-preview">' + escHtml(thread.preview) + '</p>' : '') + '<div class="thread-meta-row">' + tags + '</div></button>' + card + '</article>';
+      (replySummary ? '<span class="thread-reply-summary">' + replySummary + '</span>' : '') +
+      '<div class="thread-meta-row">' + tags + '</div></button>' + card + '</article>';
   }
 
   function renderAction(thread, action) {
@@ -197,14 +220,11 @@ export function buildPanelScript(): string {
   function renderConversationCard(thread) {
     var first = thread.comments && thread.comments.length ? thread.comments[0] : null;
     var rest = thread.comments && thread.comments.length > 1 ? thread.comments.slice(1) : [];
-    return '<section class="conversation-card" aria-label="Inline conversation"><div class="conversation-head">' + renderConversationTop(thread, first) + renderQuoted(thread) + '</div>' + renderMessage(first, false) + rest.map(function(c) { return renderMessage(c, true); }).join('') + renderComposer(thread) + '</section>';
+    return '<section class="conversation-card" aria-label="Inline conversation"><div class="conversation-head">' + renderConversationActions(thread) + '</div>' + renderMessage(first, false) + rest.map(function(c) { return renderMessage(c, true); }).join('') + renderComposer(thread) + '</section>';
   }
 
-  function renderConversationTop(thread, comment) {
-    var initials = initialsFor(comment ? comment.authorName : 'Comment');
-    var kind = comment && comment.authorKind === 'agent' ? ' agent' : '';
-    var author = escHtml(comment ? comment.authorName : 'Comment thread');
-    return '<div class="comment-top"><div class="author"><div class="avatar' + kind + '">' + initials + '</div><div class="author-text"><strong>' + author + '</strong><span>' + escHtml(thread.subtitle) + '</span></div></div><div class="mini-actions">' + renderPrimaryActions(thread) + '</div></div>';
+  function renderConversationActions(thread) {
+    return '<div class="mini-actions">' + renderPrimaryActions(thread) + '</div>';
   }
 
   function renderPrimaryActions(thread) {
@@ -219,19 +239,26 @@ export function buildPanelScript(): string {
   }
 
   function renderComposer(thread) {
-    return '<div class="composer"><div class="composer-box">Reply in this thread...</div><div class="composer-actions"><button class="thread-action" data-command-id="' + escHtml(commandIds.reply) + '" data-thread-id="' + escHtml(thread.threadId) + '">Reply</button><button class="primary thread-action" data-command-id="' + escHtml(commandIds.navigateToAnchor) + '" data-thread-id="' + escHtml(thread.threadId) + '">Go</button></div></div>';
+    var threadId = escHtml(thread.threadId);
+    return '<div class="composer" data-thread-id="' + threadId + '">' +
+      '<textarea class="composer-box" placeholder="Reply in this thread..." rows="2" data-thread-id="' + threadId + '"></textarea>' +
+      '<div class="composer-actions">' +
+      '<button class="cancel-btn" data-action="cancel" data-thread-id="' + threadId + '">Cancel</button>' +
+      '<button class="reply-btn primary" data-action="reply" data-thread-id="' + threadId + '">Reply</button>' +
+      '</div></div>';
   }
 
   function renderThreadTags(thread) {
-    var tags = ['<span class="tiny-tag">' + escHtml(thread.status) + '</span>'];
-    if (thread.intent) tags.push('<span class="tiny-tag">' + escHtml(thread.intent) + '</span>');
+    var tags = [];
+    if (thread.intent) tags.push('<span class="tiny-tag intent-tag">' + escHtml(thread.intent) + '</span>');
+    if (thread.surfaceType) tags.push('<span class="tiny-tag surface-tag surface-' + escHtml(thread.surfaceType) + '">' + escHtml(surfaceLabel(thread.surfaceType)) + '</span>');
     if (thread.stale) tags.push('<span class="tiny-tag">stale</span>');
-    if (thread.surfaceType) tags.push('<span class="tiny-tag">' + escHtml(thread.surfaceType) + '</span>');
     return tags.join('');
   }
 
-  function renderQuoted(thread) {
-    return thread.preview ? '<div class="quoted">“' + escHtml(thread.preview) + '”</div>' : '';
+  function surfaceLabel(surfaceType) {
+    var map = { 'slide': 'presentation', 'markdown-preview': 'md', 'browser': 'browser', 'diagram': 'diagram', 'image': 'image', 'pdf': 'pdf' };
+    return map[surfaceType] || surfaceType;
   }
 
   function renderMiniDot(thread) {
@@ -266,6 +293,76 @@ export function buildPanelScript(): string {
         vscode.postMessage({ type: 'panel:invoke-thread-command', commandId: el.dataset.commandId, threadId: el.dataset.threadId, source: eventSource() });
       });
     });
+    // Reply/Cancel buttons inside composer
+    panel.querySelectorAll('.reply-btn').forEach(function(el) {
+      bindActivate(el, function() {
+        submitComposerReply(el, eventSource());
+      });
+    });
+    panel.querySelectorAll('.composer-box').forEach(function(el) {
+      el.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          lastSource = 'keyboard';
+          submitComposerReply(el, 'keyboard');
+        }
+      });
+    });
+    panel.querySelectorAll('.cancel-btn').forEach(function(el) {
+      bindActivate(el, function() {
+        var composer = el.closest('.composer');
+        if (composer) {
+          var textarea = composer.querySelector('.composer-box');
+          if (textarea) textarea.value = '';
+        }
+      });
+    });
+  }
+
+  function submitComposerReply(el, source) {
+    var composer = el.closest('.composer');
+    var textarea = composer ? composer.querySelector('.composer-box') : null;
+    var body = textarea ? textarea.value.trim() : '';
+    vscode.postMessage({ type: 'panel:submit-reply', threadId: el.dataset.threadId, body: body, source: source });
+  }
+
+  function bindStaticEvents() {
+    var clearButton = document.getElementById('btn-clear');
+    if (clearButton) clearButton.addEventListener('click', function() {
+      vscode.postMessage({ type: 'panel:clear-filters', source: 'mouse' });
+    });
+    var refreshButton = document.getElementById('btn-refresh');
+    if (refreshButton) refreshButton.addEventListener('click', function() {
+      vscode.postMessage({ type: 'panel:invoke-global-command', commandId: 'accordo.commentsPanel.refresh', source: 'mouse' });
+    });
+    // Status view buttons (Open / Resolved / Total)
+    document.querySelectorAll('[data-status-view]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        var value = el.dataset.statusView;
+        var status = value === 'open' || value === 'resolved' ? value : undefined;
+        vscode.postMessage({ type: 'panel:set-status-filter', status: status, source: eventSource() });
+      });
+    });
+    // Group mode chips (By file / Activity)
+    document.querySelectorAll('[data-group]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        var mode = el.dataset.group;
+        if (mode === 'by-file' || mode === 'by-activity') {
+          vscode.postMessage({ type: 'panel:set-group-mode', groupMode: mode, source: eventSource() });
+        }
+      });
+    });
+    // Author filter chips (Mine / Agent)
+    document.querySelectorAll('[data-author]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        var author = el.dataset.author;
+        var kind = author === 'user' || author === 'agent' ? author : undefined;
+        vscode.postMessage({ type: 'panel:set-author-filter', authorKind: kind, source: eventSource() });
+      });
+    });
+    if (searchInput) searchInput.addEventListener('input', function() {
+      vscode.postMessage({ type: 'panel:set-search-query', query: searchInput.value, source: 'keyboard' });
+    });
   }
 
   var lastSource = 'mouse';
@@ -274,17 +371,20 @@ export function buildPanelScript(): string {
     el.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); lastSource = 'keyboard'; fn(); } });
   }
   function eventSource() { return lastSource; }
+  function updateStatusButtons(status) {
+    openCount.classList.toggle('active', status === 'open');
+    resolvedCount.classList.toggle('active', status === 'resolved');
+    totalCount.classList.toggle('active', status !== 'open' && status !== 'resolved');
+  }
+  function updateGroupButtons(groupMode) {
+    var byFile = document.getElementById('chip-by-file');
+    var byActivity = document.getElementById('chip-by-activity');
+    if (byFile) byFile.classList.toggle('active', groupMode === 'by-file');
+    if (byActivity) byActivity.classList.toggle('active', groupMode === 'by-activity');
+  }
   function escHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
-  document.getElementById('btn-clear').addEventListener('click', function() {
-    vscode.postMessage({ type: 'panel:invoke-global-command', commandId: 'accordo.commentsPanel.clearFilters', source: 'mouse' });
-  });
-  document.getElementById('btn-group').addEventListener('click', function() {
-    vscode.postMessage({ type: 'panel:invoke-global-command', commandId: 'accordo.commentsPanel.groupBy', source: 'mouse' });
-  });
-  document.getElementById('btn-refresh').addEventListener('click', function() {
-    vscode.postMessage({ type: 'panel:invoke-global-command', commandId: 'accordo.commentsPanel.refresh', source: 'mouse' });
-  });
+  bindStaticEvents();
   window.addEventListener('message', function(event) {
     if (event.data && event.data.type === 'panel:state') renderPanel(event.data.model);
   });

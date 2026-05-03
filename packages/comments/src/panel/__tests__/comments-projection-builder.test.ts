@@ -157,7 +157,7 @@ describe("M45-PJ CommentsPanelProjectionBuilder", () => {
       ];
       const store = createMockStore(threads);
       const filters = makeFilters();
-      // M45-FLT-14: groupMode defaults to by-status
+      filters.setGroupMode("by-status"); // explicit for this test
       const result = buildCommentsPanelViewModel(store, filters, emptyUiState());
       expect(result.groupMode).toBe("by-status");
       const groupLabels = result.groups.map(g => g.label);
@@ -532,7 +532,7 @@ describe("M45-PJ CommentsPanelProjectionBuilder", () => {
 
   // Filters integration
   describe("filters affect which threads appear in projection", () => {
-    it("status filter reduces visible threads", () => {
+    it("status filter reduces visible threads while preserving total counter", () => {
       const threads = [
         makeThread({ id: "t1", status: "open" }),
         makeThread({ id: "t2", status: "resolved" }),
@@ -542,10 +542,12 @@ describe("M45-PJ CommentsPanelProjectionBuilder", () => {
       const filters = makeFilters();
       filters.setStatus("open");
       const result = buildCommentsPanelViewModel(store, filters, emptyUiState());
-      expect(result.totalThreadCount).toBe(2);
+      expect(result.totalThreadCount).toBe(3);
+      expect(result.statusFilter).toBe("open");
+      expect(result.groups.flatMap((g) => g.threads)).toHaveLength(2);
     });
 
-    it("intent filter reduces visible threads", () => {
+    it("intent filter reduces visible threads while preserving total counter", () => {
       const threads = [
         makeThread({
           id: "t1",
@@ -570,7 +572,8 @@ describe("M45-PJ CommentsPanelProjectionBuilder", () => {
       const filters = makeFilters();
       filters.setIntent("fix");
       const result = buildCommentsPanelViewModel(store, filters, emptyUiState());
-      expect(result.totalThreadCount).toBe(1);
+      expect(result.totalThreadCount).toBe(2);
+      expect(result.groups.flatMap((g) => g.threads)).toHaveLength(1);
       expect(result.groups[0].threads[0].threadId).toBe("t1");
     });
 

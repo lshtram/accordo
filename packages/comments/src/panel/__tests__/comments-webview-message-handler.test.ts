@@ -798,6 +798,66 @@ describe("M45-WVC-01: unknown message type produces unknown-message error code",
   });
 });
 
+describe("panel:submit-reply", () => {
+  it("calls the injected reply submitter with trimmed body and refreshes", async () => {
+    const postMessage = vi.fn();
+    const refresh = vi.fn();
+    const submitReply = vi.fn().mockResolvedValue(undefined);
+    const store = createMockStore();
+    store.getAllThreads = vi.fn().mockReturnValue([{ id: "t-42" }]);
+    const handler = new RuntimeMessageHandler({
+      postMessage,
+      buildViewModel: () => ({ generatedAt: "", filtersSummary: "", groupMode: "by-status" as const, groups: [], totalThreadCount: 0, openThreadCount: 0, resolvedThreadCount: 0 }),
+      getStore: () => store,
+      executeCommand: vi.fn(),
+      getUiState: () => ({ expandedThreadIds: new Set(), collapsedGroupIds: new Set() }),
+      mutateUiState: () => {},
+      refresh,
+      submitReply,
+    });
+
+    await callHandler(handler, {
+      type: "panel:submit-reply",
+      threadId: "t-42",
+      body: "  Inline reply  ",
+      source: "keyboard",
+    });
+
+    expect(submitReply).toHaveBeenCalledWith("t-42", "Inline reply");
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "panel:error" }));
+  });
+
+  it("rejects empty reply bodies without refreshing", async () => {
+    const postMessage = vi.fn();
+    const refresh = vi.fn();
+    const submitReply = vi.fn().mockResolvedValue(undefined);
+    const store = createMockStore();
+    store.getAllThreads = vi.fn().mockReturnValue([{ id: "t-42" }]);
+    const handler = new RuntimeMessageHandler({
+      postMessage,
+      buildViewModel: () => ({ generatedAt: "", filtersSummary: "", groupMode: "by-status" as const, groups: [], totalThreadCount: 0, openThreadCount: 0, resolvedThreadCount: 0 }),
+      getStore: () => store,
+      executeCommand: vi.fn(),
+      getUiState: () => ({ expandedThreadIds: new Set(), collapsedGroupIds: new Set() }),
+      mutateUiState: () => {},
+      refresh,
+      submitReply,
+    });
+
+    await callHandler(handler, {
+      type: "panel:submit-reply",
+      threadId: "t-42",
+      body: "   ",
+      source: "mouse",
+    });
+
+    expect(submitReply).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "panel:error", code: "invalid-payload" }));
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // M45-WVC-07: malformed/missing-field payloads → invalid-payload before later validation
 // ─────────────────────────────────────────────────────────────────────────────

@@ -35,12 +35,15 @@ export type CommentsPanelFilterMessage =
   | { readonly type: "panel:set-status-filter"; readonly status: "open" | "resolved" | undefined; readonly source: CommentsPanelInteractionSource }
   | { readonly type: "panel:set-group-mode"; readonly groupMode: GroupMode; readonly source: CommentsPanelInteractionSource }
   | { readonly type: "panel:set-author-filter"; readonly authorKind: "user" | "agent" | undefined; readonly source: CommentsPanelInteractionSource }
+  | { readonly type: "panel:set-search-query"; readonly query: string; readonly source: CommentsPanelInteractionSource }
   | { readonly type: "panel:clear-filters"; readonly source: CommentsPanelInteractionSource }
   | { readonly type: "panel:submit-reply"; readonly threadId: string; readonly body: string; readonly source: CommentsPanelInteractionSource };
 
 export interface CommentsPanelViewModel {
   readonly generatedAt: string;
   readonly filtersSummary: string;
+  readonly statusFilter?: "open" | "resolved";
+  readonly searchQuery: string;
   readonly groupMode: GroupMode;
   readonly groups: readonly CommentsPanelGroupViewModel[];
   readonly totalThreadCount: number;
@@ -61,8 +64,11 @@ export interface CommentsPanelThreadViewModel {
   readonly threadId: string;
   readonly uri: string;
   readonly title: string;
+  /** Anchor location subtitle (e.g. "auth.ts @ L42"). */
   readonly subtitle: string;
   readonly preview: string;
+  /** Reply summary for the collapsed row (e.g. "2 replies · last by Lior", "No replies yet"). */
+  readonly replySummary: string;
   readonly status: CommentStatus;
   readonly intent?: CommentIntent;
   readonly surfaceType?: SurfaceType;

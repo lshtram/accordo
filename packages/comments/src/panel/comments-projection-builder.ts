@@ -142,6 +142,15 @@ function buildPreview(thread: CommentThread): string {
   return body.length > 80 ? body.slice(0, 80) + "…" : body;
 }
 
+function buildReplySummary(thread: CommentThread): string {
+  const replyCount = Math.max(0, thread.comments.length - 1);
+  if (replyCount === 0) return "No replies yet";
+  const lastComment = thread.comments.at(-1);
+  const lastAuthor = lastComment?.author.name ?? "Unknown";
+  if (replyCount === 1) return `1 reply · last by ${lastAuthor}`;
+  return `${replyCount} replies · last by ${lastAuthor}`;
+}
+
 function buildThreadViewModel(
   thread: CommentThread,
   stale: boolean,
@@ -169,6 +178,7 @@ function buildThreadViewModel(
     title: buildTitle(thread),
     subtitle: anchorSubtitle(thread),
     preview: buildPreview(thread),
+    replySummary: buildReplySummary(thread),
     status: thread.status,
     intent: first?.intent,
     surfaceType,
@@ -272,15 +282,17 @@ export function buildCommentsPanelViewModel(
       return 0;
     });
 
-  const openThreadCount = filtered.filter((t) => t.status === "open").length;
-  const resolvedThreadCount = filtered.filter((t) => t.status === "resolved").length;
+  const openThreadCount = allThreads.filter((t) => t.status === "open").length;
+  const resolvedThreadCount = allThreads.filter((t) => t.status === "resolved").length;
 
   return {
     generatedAt: new Date().toISOString(),
     filtersSummary: filters.getSummary(),
+    statusFilter: filters.status,
+    searchQuery: filters.searchQuery,
     groupMode,
     groups,
-    totalThreadCount: filtered.length,
+    totalThreadCount: allThreads.length,
     openThreadCount,
     resolvedThreadCount,
   };

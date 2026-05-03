@@ -169,6 +169,36 @@ describe("M45-FLT PanelFilters", () => {
     expect(result[0].id).toBe("t1");
   });
 
+  it("M45-FLT-04: apply() searches file, author, comment body, and replies", () => {
+    const f = new PanelFilters(memento as never);
+    const threads = [
+      makeThread({
+        id: "t1",
+        anchor: { kind: "file", uri: "file:///project/readme.md" },
+        comments: [
+          {
+            id: "c1", threadId: "t1", createdAt: "2026-03-06T00:00:00Z",
+            author: { kind: "user", name: "Alice" }, body: "Initial note",
+            anchor: { kind: "file", uri: "file:///project/readme.md" }, status: "open",
+          },
+          {
+            id: "c2", threadId: "t1", createdAt: "2026-03-06T00:01:00Z",
+            author: { kind: "agent", name: "Review Bot" }, body: "Mentions websocket latency",
+            anchor: { kind: "file", uri: "file:///project/readme.md" }, status: "open",
+          },
+        ],
+      }),
+      makeThread({ id: "t2", anchor: { kind: "file", uri: "file:///project/other.ts" } }),
+    ];
+
+    f.setSearchQuery("websocket");
+    expect(f.apply(threads).map((t) => t.id)).toEqual(["t1"]);
+    f.setSearchQuery("other.ts");
+    expect(f.apply(threads).map((t) => t.id)).toEqual(["t2"]);
+    f.setSearchQuery("review bot");
+    expect(f.apply(threads).map((t) => t.id)).toEqual(["t1"]);
+  });
+
   it("M45-FLT-04: apply() filters by surfaceType (surface anchors only)", () => {
     const f = new PanelFilters(memento as never);
     const slideAnchor: CommentAnchorSurface = { kind: "surface", uri: "file:///deck.md", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 0, x: 0.5, y: 0.5 } };
@@ -289,9 +319,9 @@ describe("M45-FLT PanelFilters", () => {
 
   // ── groupMode ────────────────────────────────────────────────────────────
 
-  it("M45-FLT-14: groupMode defaults to 'by-status'", () => {
+  it("M45-FLT-14: groupMode defaults to 'by-file'", () => {
     const f = new PanelFilters(memento as never);
-    expect(f.groupMode).toBe("by-status");
+    expect(f.groupMode).toBe("by-file");
   });
 
   it("M45-FLT-15: setGroupMode() persists to workspaceState", () => {
@@ -304,11 +334,11 @@ describe("M45-FLT PanelFilters", () => {
     );
   });
 
-  it("M45-FLT-15: invalid groupMode from persisted state falls back to 'by-status'", () => {
+  it("M45-FLT-15: invalid groupMode from persisted state falls back to 'by-file'", () => {
     memento = createMockMemento({
       [FILTER_PERSISTENCE_KEY]: { groupMode: "GARBAGE" },
     });
     const f = new PanelFilters(memento as never);
-    expect(f.groupMode).toBe("by-status");
+    expect(f.groupMode).toBe("by-file");
   });
 });

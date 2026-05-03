@@ -95,6 +95,7 @@ describe("M45-TP CommentsTreeProvider", () => {
   beforeEach(() => {
     store = createMockStore();
     filters = new PanelFilters(createMockMemento() as never);
+    filters.setGroupMode("by-status");
   });
 
   // ── Class & constructor ──────────────────────────────────────────────────

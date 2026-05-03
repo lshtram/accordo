@@ -33,6 +33,7 @@ import type {
   CommentsPanelViewModel,
   CommentsPanelWebviewMessage,
 } from "./comments-webview-contract.js";
+import type { GroupMode } from "./panel-filters.js";
 import type { CommentThread } from "@accordo/bridge-types";
 
 const VALID_SOURCES: readonly CommentsPanelInteractionSource[] = ["mouse", "keyboard", "programmatic"];
@@ -47,6 +48,14 @@ export interface RuntimeMessageHandlerDeps {
   readonly getUiState: () => CommentsPanelUiState;
   readonly mutateUiState: (fn: (s: CommentsPanelUiState) => CommentsPanelUiState) => void;
   readonly refresh: () => void;
+  /** Submit a reply to an existing thread. Called by panel:submit-reply. */
+  readonly submitReply?: (threadId: string, body: string) => Promise<void>;
+  /** Direct filter setters — avoid command dispatch overhead for filter chips. */
+  readonly setStatus?: (status: "open" | "resolved" | undefined) => void;
+  readonly setGroupMode?: (mode: GroupMode) => void;
+  readonly setAuthorKind?: (kind: "user" | "agent" | undefined) => void;
+  readonly setSearchQuery?: (query: string) => void;
+  readonly clearFilters?: () => void;
 }
 
 export class RuntimeMessageHandler {
@@ -94,6 +103,24 @@ export class RuntimeMessageHandler {
         break;
       case "panel:invoke-thread-command":
         await this._handleInvokeThreadCommand(typedMsg.commandId, typedMsg.threadId);
+        break;
+      case "panel:set-status-filter":
+        await this._handleSetStatusFilter(typedMsg.status);
+        break;
+      case "panel:set-group-mode":
+        await this._handleSetGroupMode(typedMsg.groupMode);
+        break;
+      case "panel:set-author-filter":
+        await this._handleSetAuthorFilter(typedMsg.authorKind);
+        break;
+      case "panel:set-search-query":
+        await this._handleSetSearchQuery(typedMsg.query);
+        break;
+      case "panel:clear-filters":
+        await this._handleClearFilters();
+        break;
+      case "panel:submit-reply":
+        await this._handleSubmitReply(typedMsg.threadId, typedMsg.body);
         break;
       default:
         this._postError("unknown-message", `Unknown message type`, true);
@@ -182,6 +209,66 @@ export class RuntimeMessageHandler {
   private _postError(code: CommentsPanelErrorCode, message: string, recoverable: boolean): void {
     this._deps.postMessage({ type: "panel:error", code, message, recoverable });
   }
+
+  private async _handleSetStatusFilter(status: "open" | "resolved" | undefined): Promise<void> {
+    if (status !== undefined && status !== "open" && status !== "resolved") {
+      this._postError("invalid-payload", "status must be 'open', 'resolved', or omitted", true);
+      return;
+    }
+    this._deps.setStatus?.(status);
+    this._deps.refresh();
+  }
+
+  private async _handleSetGroupMode(groupMode: GroupMode): Promise<void> {
+    if (!["by-status", "by-file", "by-activity"].includes(groupMode)) {
+      this._postError("invalid-payload", `groupMode must be one of by-status, by-file, by-activity`, true);
+      return;
+    }
+    this._deps.setGroupMode?.(groupMode);
+    this._deps.refresh();
+  }
+
+  private async _handleSetAuthorFilter(authorKind: "user" | "agent" | undefined): Promise<void> {
+    if (authorKind !== undefined && authorKind !== "user" && authorKind !== "agent") {
+      this._postError("invalid-payload", "authorKind must be 'user', 'agent', or omitted", true);
+      return;
+    }
+    this._deps.setAuthorKind?.(authorKind);
+    this._deps.refresh();
+  }
+
+  private async _handleClearFilters(): Promise<void> {
+    this._deps.clearFilters?.();
+    this._deps.refresh();
+  }
+
+  private async _handleSetSearchQuery(query: string): Promise<void> {
+    if (typeof query !== "string") {
+      this._postError("invalid-payload", "query must be a string for panel:set-search-query", true);
+      return;
+    }
+    this._deps.setSearchQuery?.(query);
+    this._deps.refresh();
+  }
+
+  private async _handleSubmitReply(threadId: string, body: string): Promise<void> {
+    if (!threadId || typeof threadId !== "string") {
+      this._postError("invalid-payload", "threadId is required for panel:submit-reply", true);
+      return;
+    }
+    if (typeof body !== "string" || body.trim().length === 0) {
+      this._postError("invalid-payload", "body is required and must be non-empty for panel:submit-reply", true);
+      return;
+    }
+    const store = this._deps.getStore();
+    const thread = store.getAllThreads().find((t) => t.id === threadId);
+    if (!thread) {
+      this._postError("thread-not-found", `Thread ${threadId} not found`, true);
+      return;
+    }
+    await this._deps.submitReply?.(threadId, body.trim());
+    this._deps.refresh();
+  }
 }
 
 // ── Command scope validation ──────────────────────────────────────────────────
@@ -223,6 +310,12 @@ function isValidWebviewMessage(msg: unknown): msg is CommentsPanelWebviewMessage
     "panel:toggle-thread",
     "panel:invoke-global-command",
     "panel:invoke-thread-command",
+    "panel:set-status-filter",
+    "panel:set-group-mode",
+    "panel:set-author-filter",
+    "panel:set-search-query",
+    "panel:clear-filters",
+    "panel:submit-reply",
   ];
   return validTypes.includes(m["type"]);
 }

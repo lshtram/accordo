@@ -49,6 +49,14 @@ function createCommentsWebviewProvider(store: CommentStore, filters: PanelFilter
     getUiState: () => provider.getUiState(),
     mutateUiState: (fn) => provider.mutateUiState(fn),
     refresh: () => provider.refresh(),
+    submitReply: async (threadId, body) => {
+      await store.reply({ threadId, body, author: { kind: "user", name: "User" } });
+    },
+    setStatus: (status) => filters.setStatus(status),
+    setGroupMode: (mode) => filters.setGroupMode(mode),
+    setAuthorKind: (kind) => filters.setAuthorKind(kind),
+    setSearchQuery: (query) => filters.setSearchQuery(query),
+    clearFilters: () => filters.clear(),
   });
   provider = new CommentsWebviewViewProvider(new WebviewPanelHtmlRenderer(), viewModelSource, handler);
   return provider;
