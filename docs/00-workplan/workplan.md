@@ -36,10 +36,40 @@ Specific live failures that prompted this item:
   a comment-level delete and return `invalid-comment-id`; agents need either
   clearer docs or the handler should normalize blank optional strings to absent.
 
+- **Related `comment_list` discovery gap:** during browser-comment sync E2E,
+  synced browser threads existed and `comment_sync_version` reported them, but
+  repeated `comment_list` calls returned empty because the agent guessed filters
+  such as `intent: "question"`, `lastAuthor: "agent"`, or the wrong anchor kind.
+  `comment_list` combines all provided filters with AND, but that contract was
+  not obvious enough from the tool description/runtime guidance.
+
+  Immediate guidance update: the tool description and Accordo runtime/local skill
+  docs must state that all filters are AND-combined, that uncertain filters
+  should be omitted, and that first-pass browser discovery should use only
+  `scope.modality: "browser"` plus `status: "all"` before narrowing.
+
+  Architect follow-up plan (deferred implementation): keep AND semantics for
+  backward compatibility, but make zero-result responses actionable with
+  `appliedFilters`, `availableFacets`, `suggestedRelaxations`, and an
+  `emptyReason`; add opt-in `discover: true` metadata for non-empty results;
+  expose `retention` as an explicit filter/facet; consistently ignore blank
+  optional string filters; and add tests proving
+  `comment_list({ scope: { modality: "browser" }, status: "all" })` discovers
+  browser-imported threads without requiring `intent`, `lastAuthor`, or
+  `anchorKind` guesses. Treat `detail: true` response-shape normalization as a
+  separate compatibility cleanup.
+
 Root-cause notes:
 
 - `packages/comments/src/comment-tools/anchor.ts` currently passes surface
   `coordinates` through without runtime validation/normalization.
+- `packages/comments/src/comment-tools/definitions.ts` must be explicit that
+  `comment_list` filters are AND-combined and that broad discovery should omit
+  uncertain narrowing filters.
+- Future `comment_list` implementation work likely touches
+  `packages/comments/src/comment-tools/query-handlers.ts`,
+  `packages/comments/src/comment-query-ops.ts`, and comment tool tests to add
+  diagnostics/facets/discovery mode.
 - Slide anchors require canonical `SlideCoordinates`:
   `{ type: "slide", slideIndex: <zero-based number>, x: <0..1>, y: <0..1> }`.
 - `packages/marp/src/presentation-comments-bridge.ts` derives pin block IDs from
@@ -68,6 +98,9 @@ Done when:
 - Error messages mention the accepted canonical and alias shapes.
 - Tool descriptions, runtime MCP skill resource, and local skill docs explain
   the canonical shape, aliases, and delete modes.
+- `comment_list` guidance explains AND filtering and first-pass browser
+  discovery; future implementation adds zero-result diagnostics/facets and a
+  `discover: true` mode per the architect follow-up plan above.
 - Tests cover canonical coordinates, malformed/pixel-only coordinates, alias
   shapes above, blank optional delete fields, and Marp file URI / filesystem path
   equivalence for pin loading and thread focus.

@@ -35,7 +35,7 @@ export const commentToolSchemas: ToolSchema[] = [
         scope: {
           type: "object",
           description:
-            "Optional modality scope — filters by surface type. Use scope.modality='browser' for browser comments, scope.url to filter by page URL.",
+            "Optional modality scope — filters by surface type. Scope filters are combined with all other filters using AND. Use scope.modality='browser' for broad browser comment discovery; add scope.url only when you intentionally want one page URL.",
           properties: {
             modality: {
               type: "string",
@@ -53,12 +53,12 @@ export const commentToolSchemas: ToolSchema[] = [
         status: { type: "string", description: "Filter by status; use 'all' or omit for all statuses", enum: ["open", "resolved", "all"] },
         intent: {
           type: "string",
-          description: "Filter by intent",
+          description: "Filter by intent. This is an AND filter; omit it during discovery unless you know the stored intent.",
           enum: ["fix", "explain", "refactor", "review", "design", "question"],
         },
         anchorKind: {
           type: "string",
-          description: "Filter by anchor type",
+          description: "Filter by anchor type. This is an AND filter; omit it during discovery unless you know the stored anchor kind.",
           enum: ["text", "surface", "file"],
         },
         updatedSince: {
@@ -67,7 +67,7 @@ export const commentToolSchemas: ToolSchema[] = [
         },
         lastAuthor: {
           type: "string",
-          description: "Return threads whose last comment was from this author kind",
+          description: "Return threads whose last comment was from this author kind. This is an AND filter; omit it during discovery unless you intentionally want user-only or agent-only threads.",
           enum: ["user", "agent"],
         },
         limit: {

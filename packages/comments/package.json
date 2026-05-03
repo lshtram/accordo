@@ -24,7 +24,8 @@
           "id": "accordo-comments-panel",
           "name": "Comments",
           "icon": "$(comment-discussion)",
-          "contextualTitle": "Accordo Comments"
+          "contextualTitle": "Accordo Comments",
+          "type": "webview"
         }
       ]
     },

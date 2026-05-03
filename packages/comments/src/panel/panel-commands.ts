@@ -72,47 +72,73 @@ export function registerPanelCommands(
   provider: PanelPresentationSurface,
   ui?: PanelCommandUI,
 ): { dispose(): void }[] {
-  const PANEL_AUTHOR: CommentAuthor = { kind: "user", name: "User" };
-
   const windowUI: PanelCommandUI = ui ?? {
     showInputBox: (opts) => window.showInputBox(opts),
     showWarningMessage: (msg, ...items) => window.showWarningMessage(msg, ...items) as Thenable<string | undefined>,
     showInformationMessage: (msg) => window.showInformationMessage(msg),
   };
 
-  function extractThread(arg: unknown): CommentThread | undefined {
-    if (!arg) return undefined;
-    const item = arg as CommentTreeItem;
-    return item.thread ?? (arg as CommentThread);
-  }
+  const disposables: { dispose(): void }[] = [];
 
+  disposables.push(_registerNavigateToAnchor(store, navEnv, windowUI));
+  disposables.push(_registerResolve(store, windowUI, provider));
+  disposables.push(_registerReopen(store, windowUI, provider));
+  disposables.push(_registerReply(store, navEnv, windowUI));
+  disposables.push(_registerDelete(store, windowUI, provider));
+  disposables.push(_registerRefresh(provider));
+  disposables.push(_registerFilterByStatus(filters, provider));
+  disposables.push(_registerFilterByIntent(filters, provider));
+  disposables.push(_registerClearFilters(filters, provider));
+  disposables.push(_registerGroupBy(filters, provider));
+  disposables.push(_registerDeleteAllBrowserComments(store, windowUI, provider));
+
+  return disposables;
+}
+
+function _registerNavigateToAnchor(
+  store: PanelCommandStore,
+  navEnv: NavigationEnv,
+  windowUI: PanelCommandUI,
+): { dispose(): void } {
   async function noArg(): Promise<void> {
     await windowUI.showInformationMessage("Select a thread in the Comments panel first");
   }
-
-  const disposables: { dispose(): void }[] = [];
-
-  // M45-CMD-02: navigateToAnchor
-  disposables.push(commands.registerCommand("accordo.commentsPanel.navigateToAnchor", async (arg: unknown) => {
+  function extractThread(arg: unknown): CommentThread | undefined {
+    if (!arg) return undefined;
+    if (typeof arg === "string") return store.getThread(arg);
+    const item = arg as CommentTreeItem;
+    return item.thread ?? (arg as CommentThread);
+  }
+  return commands.registerCommand("accordo.commentsPanel.navigateToAnchor", async (arg: unknown) => {
     const thread = extractThread(arg);
     if (!thread) { await noArg(); return; }
-
-    // Acquire the navigation registry from accordo-marp (shared at activation).
-    // Uses the command-based approach for loose coupling between extensions.
-    // Graceful no-op if marp hasn't activated yet — deferred path handles it.
     let registry: NavigationAdapterRegistry | undefined;
     try {
       registry = await commands.executeCommand<NavigationAdapterRegistry | null>(
         "accordo_marp_internal_getNavigationRegistry",
       ) ?? undefined;
-    } catch { /* marp not available — deferred path will be used */ }
-
+    } catch { /* marp not available */ }
     const { navigateToThread } = await import("./navigation-router.js");
     await navigateToThread(thread, navEnv, registry);
-  }));
+  });
+}
 
-  // M45-CMD-03: resolve
-  disposables.push(commands.registerCommand("accordo.commentsPanel.resolve", async (arg: unknown) => {
+function _registerResolve(
+  store: PanelCommandStore,
+  windowUI: PanelCommandUI,
+  provider: PanelPresentationSurface,
+): { dispose(): void } {
+  const PANEL_AUTHOR: CommentAuthor = { kind: "user", name: "User" };
+  async function noArg(): Promise<void> {
+    await windowUI.showInformationMessage("Select a thread in the Comments panel first");
+  }
+  function extractThread(arg: unknown): CommentThread | undefined {
+    if (!arg) return undefined;
+    if (typeof arg === "string") return store.getThread(arg);
+    const item = arg as CommentTreeItem;
+    return item.thread ?? (arg as CommentThread);
+  }
+  return commands.registerCommand("accordo.commentsPanel.resolve", async (arg: unknown) => {
     const thread = extractThread(arg);
     if (!thread) { await noArg(); return; }
     if (thread.status === "resolved") {
@@ -120,31 +146,54 @@ export function registerPanelCommands(
       return;
     }
     const note = await windowUI.showInputBox({ prompt: "Resolution note (optional)", placeHolder: "What was resolved?" });
-    if (note === undefined) return; // cancelled
-    // store.resolve -> store.onChanged -> nc.reconcile handles widget update.
+    if (note === undefined) return;
     await store.resolve({ threadId: thread.id!, resolutionNote: note, author: PANEL_AUTHOR });
     provider.refresh();
-  }));
+  });
+}
 
-  // M45-CMD-04: reopen
-  disposables.push(commands.registerCommand("accordo.commentsPanel.reopen", async (arg: unknown) => {
+function _registerReopen(
+  store: PanelCommandStore,
+  windowUI: PanelCommandUI,
+  provider: PanelPresentationSurface,
+): { dispose(): void } {
+  const PANEL_AUTHOR: CommentAuthor = { kind: "user", name: "User" };
+  async function noArg(): Promise<void> {
+    await windowUI.showInformationMessage("Select a thread in the Comments panel first");
+  }
+  function extractThread(arg: unknown): CommentThread | undefined {
+    if (!arg) return undefined;
+    if (typeof arg === "string") return store.getThread(arg);
+    const item = arg as CommentTreeItem;
+    return item.thread ?? (arg as CommentThread);
+  }
+  return commands.registerCommand("accordo.commentsPanel.reopen", async (arg: unknown) => {
     const thread = extractThread(arg);
     if (!thread) { await noArg(); return; }
     if (thread.status === "open") {
       await windowUI.showInformationMessage("Thread is already open.");
       return;
     }
-    // store.reopen -> store.onChanged -> nc.reconcile handles widget update.
     await store.reopen(thread.id!, PANEL_AUTHOR);
     provider.refresh();
-  }));
+  });
+}
 
-  // M45-CMD-05: reply — navigate to anchor and open its inline input UI
-  // (gutter widget for text anchors, slide popover for surface anchors).
-  // This avoids the top-of-screen showInputBox dialog in favour of native,
-  // in-context input controls.
-  // Uses registry-backed navigation (same as navigateToAnchor) for consistency.
-  disposables.push(commands.registerCommand("accordo.commentsPanel.reply", async (arg: unknown) => {
+function _registerReply(
+  store: PanelCommandStore,
+  navEnv: NavigationEnv,
+  windowUI: PanelCommandUI,
+): { dispose(): void } {
+  async function noArg(): Promise<void> {
+    await windowUI.showInformationMessage("Select a thread in the Comments panel first");
+  }
+  function extractThread(arg: unknown): CommentThread | undefined {
+    if (!arg) return undefined;
+    if (typeof arg === "string") return store.getThread(arg);
+    const item = arg as CommentTreeItem;
+    return item.thread ?? (arg as CommentThread);
+  }
+  return commands.registerCommand("accordo.commentsPanel.reply", async (arg: unknown) => {
     const thread = extractThread(arg);
     if (!thread) { await noArg(); return; }
     const { navigateToThread } = await import("./navigation-router.js");
@@ -153,53 +202,83 @@ export function registerPanelCommands(
       registry = await commands.executeCommand<NavigationAdapterRegistry | null>(
         "accordo_marp_internal_getNavigationRegistry",
       ) ?? undefined;
-    } catch { /* marp not available — deferred path will be used */ }
+    } catch { /* marp not available */ }
     await navigateToThread(thread, navEnv, registry);
-  }));
+  });
+}
 
-  // M45-CMD-06: delete
-  disposables.push(commands.registerCommand("accordo.commentsPanel.delete", async (arg: unknown) => {
+function _registerDelete(
+  store: PanelCommandStore,
+  windowUI: PanelCommandUI,
+  provider: PanelPresentationSurface,
+): { dispose(): void } {
+  async function noArg(): Promise<void> {
+    await windowUI.showInformationMessage("Select a thread in the Comments panel first");
+  }
+  function extractThread(arg: unknown): CommentThread | undefined {
+    if (!arg) return undefined;
+    if (typeof arg === "string") return store.getThread(arg);
+    const item = arg as CommentTreeItem;
+    return item.thread ?? (arg as CommentThread);
+  }
+  return commands.registerCommand("accordo.commentsPanel.delete", async (arg: unknown) => {
     const thread = extractThread(arg);
     if (!thread) { await noArg(); return; }
     const answer = await windowUI.showWarningMessage(
       "Delete thread and all replies?", "Delete", "Cancel",
     );
     if (answer !== "Delete") return;
-    // store.delete -> store.onChanged -> nc.reconcile handles widget removal.
     await store.delete({ threadId: thread.id! });
     provider.refresh();
-  }));
+  });
+}
 
-  // M45-CMD-07: refresh
-  disposables.push(commands.registerCommand("accordo.commentsPanel.refresh", () => {
+function _registerRefresh(provider: PanelPresentationSurface): { dispose(): void } {
+  return commands.registerCommand("accordo.commentsPanel.refresh", () => {
     provider.refresh();
-  }));
+  });
+}
 
-  // M45-CMD-08: filterByStatus
-  disposables.push(commands.registerCommand("accordo.commentsPanel.filterByStatus", async () => {
+function _registerFilterByStatus(
+  filters: PanelFilters,
+  provider: PanelPresentationSurface,
+): { dispose(): void } {
+  return commands.registerCommand("accordo.commentsPanel.filterByStatus", async () => {
     const picked = await window.showQuickPick(["open", "resolved", "all"], { placeHolder: "Filter by status" });
     if (!picked) return;
     filters.setStatus(picked === "all" ? undefined : picked as "open" | "resolved");
     provider.refresh();
-  }));
+  });
+}
 
-  // M45-CMD-09: filterByIntent
-  disposables.push(commands.registerCommand("accordo.commentsPanel.filterByIntent", async () => {
+function _registerFilterByIntent(
+  filters: PanelFilters,
+  provider: PanelPresentationSurface,
+): { dispose(): void } {
+  return commands.registerCommand("accordo.commentsPanel.filterByIntent", async () => {
     const intents = ["fix", "review", "design", "question", "explain", "refactor", "all"];
     const picked = await window.showQuickPick(intents, { placeHolder: "Filter by intent" });
     if (!picked) return;
     filters.setIntent(picked === "all" ? undefined : picked as import("@accordo/bridge-types").CommentIntent);
     provider.refresh();
-  }));
+  });
+}
 
-  // M45-CMD-10: clearFilters
-  disposables.push(commands.registerCommand("accordo.commentsPanel.clearFilters", () => {
+function _registerClearFilters(
+  filters: PanelFilters,
+  provider: PanelPresentationSurface,
+): { dispose(): void } {
+  return commands.registerCommand("accordo.commentsPanel.clearFilters", () => {
     filters.clear();
     provider.refresh();
-  }));
+  });
+}
 
-  // M45-CMD-14: groupBy
-  disposables.push(commands.registerCommand("accordo.commentsPanel.groupBy", async () => {
+function _registerGroupBy(
+  filters: PanelFilters,
+  provider: PanelPresentationSurface,
+): { dispose(): void } {
+  return commands.registerCommand("accordo.commentsPanel.groupBy", async () => {
     const picked = await window.showQuickPick(
       ["by-status", "by-file", "by-activity"],
       { placeHolder: "Group comments by…" }
@@ -207,19 +286,21 @@ export function registerPanelCommands(
     if (!picked) return;
     filters.setGroupMode(picked as import("./panel-filters.js").GroupMode);
     provider.refresh();
-  }));
+  });
+}
 
-  // M40-EXT-12: deleteAllBrowserComments — bulk browser comment cleanup
-  disposables.push(commands.registerCommand("accordo.commentsPanel.deleteAllBrowserComments", async () => {
+function _registerDeleteAllBrowserComments(
+  store: PanelCommandStore,
+  windowUI: PanelCommandUI,
+  provider: PanelPresentationSurface,
+): { dispose(): void } {
+  return commands.registerCommand("accordo.commentsPanel.deleteAllBrowserComments", async () => {
     const answer = await windowUI.showWarningMessage(
       "Delete all browser comments? This cannot be undone.", "Delete All", "Cancel",
     );
     if (answer !== "Delete All") return;
-    // store.deleteAllByModality -> store.onChanged -> nc.reconcile handles widget removal.
     const result = await store.deleteAllByModality("browser");
     await windowUI.showInformationMessage(`Deleted ${result.count} browser comment thread(s).`);
     provider.refresh();
-  }));
-
-  return disposables;
+  });
 }

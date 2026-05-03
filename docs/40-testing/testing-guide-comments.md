@@ -20,6 +20,12 @@ All commands below were executed successfully from a directory **outside** the r
 
 ## 2) User journey tests
 
+For the authoritative **WebviewView-era** panel replacement boundary proof, use:
+
+- `docs/40-testing/testing-guide-comments-webview-panel.md`
+
+The scenarios below remain useful package-level/manual comments checks, but they are not the authoritative panel-replacement boundary guide.
+
 1. **Create and view a text comment thread in the panel**
    - Open any text file in VS Code.
    - Use the inline comment UI to create a thread on a line.
@@ -27,13 +33,13 @@ All commands below were executed successfully from a directory **outside** the r
    - Expected: the thread appears under the correct group with file name label, anchor description, and status badge.
 
 2. **Reply in context from panel**
-   - In the Accordo Comments panel, right-click a thread and choose **Reply**.
+   - In the Accordo Comments webview panel, expand a thread and activate the inline **Reply** action.
    - Expected: VS Code navigates to the thread anchor surface and opens native inline reply context (no top-screen input box).
 
 3. **Resolve and reopen from panel**
-   - Right-click an open thread in the panel and choose **Resolve**; provide resolution text.
+   - Expand an open thread in the webview panel and activate **Resolve**; provide resolution text.
    - Expected: thread moves to Resolved state in panel and native inline widget state updates.
-   - Then right-click resolved thread and choose **Reopen**.
+   - Then expand the resolved thread and activate **Reopen**.
    - Expected: thread returns to Open state in both panel and native widget.
 
 4. **Group and filter behavior**

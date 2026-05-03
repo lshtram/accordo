@@ -1,435 +1,131 @@
 # Accordo — Custom Comments Panel Architecture
 
 **Status:** ACTIVE  
-**Date:** 2026-04-21  
-**Scope:** Custom `vscode.TreeView` sidebar panel that serves as the primary navigation and triage surface for `accordo-comments`, while native inline comments remain active.  
-**Depends on:** `accordo-comments` core modules and cross-surface focus commands from md-viewer/marp/browser/diagram integrations  
+**Date:** 2026-05-02  
+**Scope:** Custom `vscode.WebviewView` sidebar panel that serves as the primary navigation and triage surface for `accordo-comments`, while native inline comments remain active.  
 **References:**
-- `docs/30-development/patterns.md` P-12 — root-cause analysis of native Comments panel limitations
-- `docs/10-architecture/architecture.md` §12.4 — architectural decision record
-- `docs/00-workplan/workplan.md` (historical planning context)
-- `docs/20-requirements/requirements-comments-panel.md` — module specifications and requirement IDs
+- `docs/20-requirements/requirements-comments-panel.md`
+- `docs/10-architecture/comments-panel-webview-contract.md`
+- `docs/30-development/accordo-patterns.md` `P-22`
 
 ---
 
-## 1. Problem Statement
+## 1. Problem statement
 
-The built-in VS Code Comments panel (`workbench.panel.comments`) has three hard blockers that prevent it from serving as the primary control surface for the Accordo comments workflow.
+The built-in VS Code comments panel cannot serve as the primary Accordo comments surface because it cannot properly route non-text anchors and cannot be shaped into the approved inline-conversation narrow-sidebar UX.
 
-### 1.1 No extensible context menu
+The first custom replacement used `TreeView`, but that layout is still too constrained for:
+- grouped file sections in a narrow panel
+- expandable inline conversation cards
+- explicit in-row action controls without a second pane
 
-The built-in panel does **not** honour `view/item/context` menu contributions from extensions. That contribution point only works on extension-contributed `TreeView` instances (see `docs/30-development/patterns.md` P-12). The only action available in the built-in panel is VS Code's own "Reply" entry, and only when `widget.canReply` is truthy.
-
-This means the primary actions — resolve, reopen, delete, navigate-to-surface — cannot be placed in the panel right-click menu. Users must hunt for them in the inline gutter widget or command palette.
-
-### 1.2 Navigation is text-editor-only
-
-When a user clicks a thread in the built-in Comments panel, VS Code routes to `editor.revealRange`. For text anchors, this works. For surface-anchored threads (slides, markdown preview blocks), it opens the source `.md` or `.deck.md` file in a plain text editor — not the webview the comment was created in. There is no API hook to intercept or redirect this navigation.
-
-**Confirmed failure case (2026-03-06):** Clicking a `surfaceType: "slide"` comment in the built-in panel opens the `.deck.md` file in markdown preview instead of the running Slidev `WebviewPanel`. The `slideIndex` coordinate is silently ignored.
-
-### 1.3 No access to the `focusInPreview` workaround
-
-The `accordo.comments.focusInPreview` command (registered in `native-comments.ts`) implements three-tier navigation — live webview first, text fallback second, `openWith` third. But the built-in panel cannot invoke this command on item click. There is no click-intercept hook in the `CommentController` API.
-
-### 1.4 Consequence
-
-The native Comments panel cannot be made into the unified control surface required for a human-agent collaboration workflow spanning text files, markdown previews, and slide decks. **A custom `vscode.TreeView` panel is required.**
+Therefore the authoritative panel architecture is now a **single `WebviewView` sidebar panel**.
 
 ---
 
-## 2. Solution Overview
+## 2. Solution overview
 
-Replace the built-in Comments panel as the primary navigation/triage surface with a custom `vscode.TreeView` panel in the Accordo activity bar sidebar. The panel is:
+Replace the current extension-contributed TreeView panel with a `WebviewView` registered at the **same view id**: `accordo-comments-panel`.
 
-- **Presentation-layer only.** `CommentStore` remains the single source of truth. The panel reads from the store and delegates all mutations to it. No new persistence model.
-- **Additive at the product surface.** The native `CommentController` (gutter icons, inline thread widgets) remains the text-surface projection, and the two-surface strategy (native API for text, Comment SDK for webviews) is preserved. This slice may still add shared sync/diagnostic seams in `NativeComments` so all projections converge from store state.
-- **Within the existing package.** The panel is implemented in `accordo-comments` with direct access to `CommentStore` and `NativeComments`. No inter-extension IPC overhead.
-- **Phase 1: TreeView only.** A rich `TreeView` with full context menus, filter state, and anchor-aware navigation. A `WebviewView` detail pane with markdown rendering is deferred to Phase 2.
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Accordo Activity Bar Sidebar                                        │
-│                                                                      │
-│  ┌── Accordo Comments ─────────────────────────────────────────┐    │
-│  │  🔍  filter chip: open  [×]           [↻ refresh]  [⋯]      │    │
-│  │                                                              │    │
-│  │  ▶ Open (3)                                                  │    │
-│  │    🔴 line 42 · auth.ts · 🔧 fix · 👤 2m ago  (1)           │    │
-│  │    🔴 Slide 4 · arch.deck.md · 🎨 design · 🤖 1h ago  (2)  │    │
-│  │    ⚠  heading: Intro · README.md · 👀 review · 👤 3h  (1) │    │
-│  │                                                              │    │
-│  │  ▶ Resolved (12)                                             │    │
-│  │    ✅ line 108 · api.ts · 🔧 fix · 🤖 1d ago  (3)           │    │
-│  │    ...                                                       │    │
-│  └──────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────┘
-```
+Key design rules:
+- `CommentStore` remains authoritative
+- native gutter/widgets remain active and converge through store-driven reconciliation
+- existing command ids remain authoritative
+- thread header click toggles inline expansion/collapse
+- explicit **Go** action performs navigation through the existing router/command path
+- no second detail pane and no center/right split
 
 ---
 
-## 3. Component Architecture
-
-The panel consists of five components, all living in `packages/comments/src/`:
+## 3. Components
 
 ```
 packages/comments/src/
-├── extension.ts                     (existing — add CommentsPanel wiring)
-├── comment-store.ts                 (existing — remains authoritative)
-├── native-comments.ts               (existing — projection gains reconcile/diagnostic seams)
-│
+├── comments-bootstrap.ts
+├── panel-bootstrap.ts
 ├── panel/
-│   ├── comments-tree-provider.ts    ← M45-TP  TreeDataProvider + CommentTreeItem
-│   ├── navigation-router.ts         ← M45-NR  anchor-aware navigation dispatch
-│   ├── panel-commands.ts            ← M45-CMD resolve/reopen/reply/delete/navigate
-│   ├── panel-filters.ts             ← M45-FLT filter state, quick picks, persistence
-│   └── __tests__/
-│       ├── comments-tree-provider.test.ts
-│       ├── navigation-router.test.ts
-│       ├── panel-commands.test.ts
-│       └── panel-filters.test.ts
+│   ├── comments-webview-contract.ts   ← M45-WVC
+│   ├── comments-webview-provider.ts   ← M45-WV
+│   ├── navigation-router.ts           ← M45-NR
+│   ├── panel-commands.ts              ← M45-CMD
+│   ├── panel-filters.ts               ← M45-FLT
+│   └── (projection builder module)    ← M45-PJ
 ```
 
-Extension integration lives in `extension.ts` (M45-EXT), not in a separate file.
+### 3.1 Projection builder
 
-### 3.1 CommentsTreeProvider (M45-TP)
+Pure derivation from:
+- `store.getAllThreads()`
+- `store.isThreadStale(id)`
+- `PanelFilters`
+- ephemeral UI state (`expandedThreadIds`, `collapsedGroupIds`)
 
-Implements `vscode.TreeDataProvider<CommentTreeItem>`.
+Output: webview-facing grouped view model.
 
-**Data source:** `store.getAllThreads()` — always reads fresh from the store.
+### 3.2 Webview provider
 
-**Grouping (three-level tree — supersedes earlier two-level design):**
-- Level 0: Group headers — format varies by `PanelFilters.groupMode`:
-  - `"by-status"` (default): `🔴 Open (N)` / `✅ Resolved (N)` headers; Open `Expanded`, Resolved `Collapsed`
-  - `"by-file"`: one header per distinct filename, e.g. `"auth.ts (3)"`; all `Expanded`
-  - `"by-activity"`: no group headers — flat sorted thread list sorted by `lastActivity` descending
-- Level 1: `CommentTreeItem` instances — one per `CommentThread`, sorted by location (URI then anchor position) within their group
-- Level 2: Individual `CommentTreeItem` comment items — children of thread items, shown when a thread is expanded (collapsible); each comment item shows author name, body preview (80 chars), and timestamp
+Responsibilities:
+- register the panel via `registerWebviewViewProvider(...)`
+- serve initial HTML shell
+- receive webview messages
+- publish `panel:state`
+- retain ephemeral UI state
 
-**Refresh cycle:** Subscribes to `store.onChanged(uri)`. On every notification, fires `this._onDidChangeTreeData.fire(undefined)` (full tree refresh). This is acceptable at 500-thread scale — `getAllThreads()` is an in-memory read, not I/O.
+### 3.3 Commands and router
 
-**Filter integration:** Before building tree items, passes the full thread list through `PanelFilters.apply(threads, activeFilters)`. The filtered result is what's rendered.
+Mutation and navigation authority stays where it already lives:
+- `panel-commands.ts`
+- `navigation-router.ts`
 
-**`CommentTreeItem` fields:**
+The webview is a presentation shell plus command launcher, not a second business-logic path.
 
-| Field | Value |
+---
+
+## 4. Data flow
+
+```
+CommentStore ──► projection builder ──► WebviewView provider ──► webview DOM
+     ▲                    │                     │                     │
+     │                    │                     └──── receives ───────┘
+     │                    │                           messages
+     │                    │
+     └──── panel commands ◄──── explicit action bridge ◄── user clicks/keys
+                    │
+                    └──── navigateToThread / store mutations
+```
+
+Semantics split:
+- **toggle thread/group** → provider UI state only
+- **Go / Reply / Resolve / Reopen / Delete / filters** → existing command ids
+
+---
+
+## 5. Coexistence with native comments
+
+The custom webview panel is additive.
+
+- native gutter `+` creation remains
+- native inline thread widgets remain
+- comment SDK/webview pins remain
+- all mutations still converge through `CommentStore` → native reconcile
+
+The panel does not replace the underlying comment system; it replaces only the old custom panel surface.
+
+---
+
+## 6. Risks
+
+| Risk | Mitigation |
 |---|---|
-| `label` | File basename of `thread.anchor.uri` (e.g. `"auth.ts"`) + optional `"⚠ "` stale prefix |
-| `description` | `"<status-badge> <anchor-label> · [<intent-emoji>] <N> replies · <date> [<first-sentence>]"` e.g. `"🔴 line 42 · 🔧 2 replies · Mar 6 10:00"` |
-| `tooltip` | First comment body + `"\n— "` + author name + `" · "` + ISO timestamp |
-| `iconPath` | File-type `ThemeIcon` based on anchor surface type (`play` for slides, `markdown` for md-preview, `globe` for browser) or extension-based fallback (`file-code` for `.ts`, `file-text` for `.md`) — not comment status icon |
-| `contextValue` | `"accordo-thread-open"` / `"accordo-thread-stale"` / `"accordo-thread-resolved"` for thread items; `"accordo-thread-<status>-comment"` for comment items |
-| `resourceUri` | File URI (for default file icon decoration; optional) |
-| `command` | `accordo.commentsPanel.navigateToAnchor` with `[thread]` arg — fires on single click |
-| `collapsibleState` | `Collapsed` for thread items (expand to reveal comment children); `None` for comment items |
-
-### 3.2 NavigationRouter (M45-NR)
-
-Pure async function module. No class, no state. Takes a `CommentThread` and executes the correct VS Code command to surface the thread's anchor.
-
-**Routing table (command-plan-driven via `buildNavigationDispatchPlan`):**
-
-| `anchor.kind` | `coordinates.type` / `surfaceType` | Action |
-|---|---|---|
-| `text` | n/a | `showTextDocument(uri, { selection: anchorRange, preserveFocus: false })` |
-| `surface` | `markdown-preview` | command `accordo_preview_internal_focusThread(uri, threadId, blockId)` |
-| `surface` | `slide` | command `accordo.presentation.internal.focusThread(uri, threadId, blockId)` with fallback `accordo_presentation_internal_goto` + delayed retry |
-| `surface` | `browser` | command `accordo_browser.focusThread(threadId)` + health probe via `accordo_browser_health` |
-| `surface` | `diagram` | command `accordo_diagram_focusThread(threadId, uri)` |
-| `file` | n/a | `showTextDocument(uri)` without range |
-| any | unknown | fallback to `showTextDocument(uri)` |
-
-**Error contract:** All navigation errors are caught. On failure, `vscode.window.showWarningMessage('Could not navigate to thread: <message>')`. The function never throws.
-
-**Current navigation model:** The router uses explicit command-dispatch planning (`buildNavigationDispatchPlan`) and does not require runtime registry acquisition for primary paths. Browser navigation uses `accordo_browser.focusThread` with an explicit `accordo_browser_health` probe; markdown preview uses `accordo_preview_internal_focusThread`; slide uses `accordo.presentation.internal.focusThread` with delayed fallback/retry. Generic `showTextDocument(uri)` fallback remains for unknown or non-surface anchors.
-
-**Reply UX:** The panel's `Reply` command uses the same navigation path as `navigateToAnchor` — it opens the anchor surface (text editor, slide deck, etc.) and the user replies via the native input UI at that surface. This is intentionally different from `showInputBox` (which would place a dialog at the top of the screen). In-context reply preserves spatial context and is the correct behavior for spatial comments.
-
-### 3.3 PanelCommands (M45-CMD)
-
-Registers VS Code commands. Each command receives a `CommentTreeItem` from the tree context menu (or directly from `tree.onDidChangeSelection`). Commands use dynamic imports to access `navigateToThread`.
-
-**Commands:**
-
-| Command ID | Trigger | Behavior |
-|---|---|---|
-| `accordo.commentsPanel.navigateToAnchor` | Tree item click (single) | Calls `navigateToThread(thread, navEnv, registry?)`; dispatch is command-plan-driven |
-| `accordo.commentsPanel.resolve` | Context menu (open threads) | `showInputBox` for resolution note → `store.resolve()` |
-| `accordo.commentsPanel.reopen` | Context menu (resolved threads) | `store.reopen()` |
-| `accordo.commentsPanel.reply` | Context menu (all threads) | Calls `navigateToThread(thread, navEnv, registry?)` — same in-context navigation as navigate |
-| `accordo.commentsPanel.delete` | Context menu (all threads) | `showWarningMessage` confirm dialog → `store.delete()` |
-| `accordo.commentsPanel.refresh` | View title toolbar | `provider.refresh()` |
-| `accordo.commentsPanel.filterByStatus` | View title toolbar | `showQuickPick(['open', 'resolved', 'all'])` → `filters.setStatus()` |
-| `accordo.commentsPanel.filterByIntent` | View title toolbar | `showQuickPick([...intents])` → `filters.setIntent()` |
-| `accordo.commentsPanel.clearFilters` | View title toolbar | `filters.clear()` |
-| `accordo.commentsPanel.groupBy` | View title toolbar | `showQuickPick(['by-status', 'by-file', 'by-activity'])` → `filters.setGroupMode()` |
-
-**Store sync:** `CommentStore` remains authoritative. Panel commands mutate the store only; native widgets converge through the canonical projection path (`store.onChanged` → native reconcile). Panel-local refresh calls are allowed for responsiveness, but correctness must not depend on bespoke per-command widget edits.
-
-**Idempotency:** Commands that operate on already-resolved/already-open threads show `showInformationMessage` with the current state rather than throwing.
-
-### 3.4 PanelFilters (M45-FLT)
-
-Manages active filter state. Persisted in `context.workspaceState` so filter choices survive VSCode reload.
-
-**Filter state shape:**
-
-```typescript
-interface CommentPanelFilters {
-  status?: "open" | "resolved";          // undefined = show all
-  intent?: CommentIntent;                // undefined = all intents
-  authorKind?: "user" | "agent";        // undefined = all authors
-  surfaceType?: SurfaceType;             // undefined = all surfaces
-  staleOnly?: boolean;                   // false by default
-}
-```
-
-**`apply(threads, filters)` — pure function, no side effects:**
-
-```typescript
-function applyFilters(threads: CommentThread[], f: CommentPanelFilters): CommentThread[] {
-  return threads.filter(t => {
-    if (f.status && t.status !== f.status) return false;
-    if (f.intent) {
-      const firstIntent = t.comments[0]?.intent;
-      if (firstIntent !== f.intent) return false;
-    }
-    if (f.authorKind) {
-      const lastAuthor = t.comments.at(-1)?.author.kind;
-      if (lastAuthor !== f.authorKind) return false;
-    }
-    if (f.surfaceType && t.anchor.kind === "surface") {
-      if ((t.anchor as CommentAnchorSurface).surfaceType !== f.surfaceType) return false;
-    }
-    if (f.staleOnly && !store.isThreadStale(t.id)) return false;
-    return true;
-  });
-}
-```
-
-**View description:** When any filter is active, `CommentsTreeProvider.description` is set to a human-readable summary (e.g., `"Showing: open, fix intent"`). When no filters active, description is empty.
-
-### 3.5 Anchor Label Derivation
-
-The anchor label is the key piece of display information that tells the user *where* a comment was placed. Derived in `CommentsTreeProvider.getAnchorLabel(anchor: CommentAnchor): string`:
-
-| Anchor kind | Coordinates type | Label |
-|---|---|---|
-| `text` | n/a | `"line {startLine + 1}"` (1-indexed for display) |
-| `surface` | `slide` | `"Slide {slideIndex + 1}"` (1-indexed) |
-| `surface` | `heading` | `"§ {headingText}"` (truncated to 40 chars) |
-| `surface` | `block` | `"block: {blockId}"` (blockId truncated to 30 chars) |
-| `surface` | `normalized` | `"({x%}, {y%})"` (percentages) |
-| `surface` | `diagram-node` | `"node: {nodeId}"` |
-| `surface` | `pdf-page` | `"p{page} ({x%}, {y%})"` |
-| `file` | n/a | `"(file-level)"` |
+| webview boot/CSP/postMessage issues pass mocked tests but fail in real VS Code | require real extension-host boundary proof |
+| expansion state lost on rerender | keep ephemeral UI state in provider, not in DOM only |
+| command ids drift between old panel and new webview | preserve existing commands as single source of truth |
+| accidental duplicate business logic in webview message handler | webview bridge delegates to existing commands/router/store paths |
 
 ---
 
-## 4. Extension Manifest Changes
+## 7. Strategic note
 
-The following additions are made to `packages/comments/package.json`:
+This migration is intentionally a **panel-shell replacement**.
 
-### 4.1 View Container (reuse existing or create new)
-
-```json
-"viewsContainers": {
-  "activitybar": [
-    {
-      "id": "accordo-comments",
-      "title": "Accordo Comments",
-      "icon": "$(comment-discussion)"
-    }
-  ]
-}
-```
-
-If an Accordo activity bar container already exists (e.g., from `accordo-bridge` or `accordo-editor`), the view should be added to that container instead.
-
-### 4.2 View
-
-```json
-"views": {
-  "accordo-comments": [
-    {
-      "id": "accordo-comments-panel",
-      "name": "Comments",
-      "contextualTitle": "Accordo Comments"
-    }
-  ]
-}
-```
-
-### 4.3 Commands
-
-```json
-"commands": [
-  { "command": "accordo.commentsPanel.navigateToAnchor",  "title": "Go to Anchor",     "icon": "$(go-to-file)" },
-  { "command": "accordo.commentsPanel.resolve",           "title": "Resolve Thread",    "icon": "$(pass)" },
-  { "command": "accordo.commentsPanel.reopen",            "title": "Reopen Thread",     "icon": "$(debug-restart)" },
-  { "command": "accordo.commentsPanel.reply",             "title": "Reply",             "icon": "$(reply)" },
-  { "command": "accordo.commentsPanel.delete",            "title": "Delete Thread",     "icon": "$(trash)" },
-  { "command": "accordo.commentsPanel.refresh",           "title": "Refresh",           "icon": "$(refresh)" },
-  { "command": "accordo.commentsPanel.filterByStatus",    "title": "Filter by Status",  "icon": "$(filter)" },
-  { "command": "accordo.commentsPanel.filterByIntent",    "title": "Filter by Intent",  "icon": "$(tag)" },
-  { "command": "accordo.commentsPanel.clearFilters",      "title": "Clear Filters",     "icon": "$(clear-all)" }
-]
-```
-
-### 4.4 Menus
-
-```json
-"menus": {
-  "view/title": [
-    { "command": "accordo.commentsPanel.refresh",        "when": "view == accordo-comments-panel", "group": "navigation" },
-    { "command": "accordo.commentsPanel.filterByStatus", "when": "view == accordo-comments-panel", "group": "navigation" },
-    { "command": "accordo.commentsPanel.filterByIntent", "when": "view == accordo-comments-panel", "group": "navigation" },
-    { "command": "accordo.commentsPanel.clearFilters",   "when": "view == accordo-comments-panel", "group": "navigation" }
-  ],
-  "view/item/context": [
-    { "command": "accordo.commentsPanel.navigateToAnchor", "when": "view == accordo-comments-panel && viewItem =~ /accordo-thread/", "group": "1_navigate@1" },
-    { "command": "accordo.commentsPanel.reply",            "when": "view == accordo-comments-panel && viewItem =~ /accordo-thread/", "group": "2_actions@1" },
-    { "command": "accordo.commentsPanel.resolve",          "when": "view == accordo-comments-panel && viewItem == accordo-thread-open || view == accordo-comments-panel && viewItem == accordo-thread-stale", "group": "2_actions@2" },
-    { "command": "accordo.commentsPanel.reopen",           "when": "view == accordo-comments-panel && viewItem == accordo-thread-resolved", "group": "2_actions@2" },
-    { "command": "accordo.commentsPanel.delete",           "when": "view == accordo-comments-panel && viewItem =~ /accordo-thread/", "group": "3_destructive@1" }
-  ]
-}
-```
-
----
-
-## 5. Data Flow
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     CommentStore                                │
-│  getAllThreads()  isThreadStale(id)  onChanged(→uri)            │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │ onChanged fires on any mutation
-                            ▼
-              ┌─────────────────────────┐
-              │  CommentsTreeProvider   │
-              │  - applyFilters()       │
-              │  - buildGroupHeaders()  │
-              │  - buildTreeItems()     │
-              │  - fires onDidChange    │
-              └────────────┬────────────┘
-                           │ getChildren / getTreeItem
-                           ▼
-              ┌─────────────────────────┐
-              │   vscode.TreeView       │
-              │  "accordo-comments-     │
-              │   panel"                │
-              └─────┬──────────┬────────┘
-                    │          │
-          item click│          │ context menu
-                    ▼          ▼
-        ┌───────────────┐  ┌────────────────────┐
-        │ Navigation    │  │  PanelCommands      │
-        │ Router        │  │  resolve/reopen/    │
-        │               │  │  reply/delete       │
-        │ routes by     │  │                     │
-        │ anchor.kind   │  │  → store.resolve()  │
-        └───────────────┘  │  → store.reply()    │
-              │            │  → store.reopen()   │
-              │            │  → store.delete()   │
-              │            └──────────┬──────────┘
-              │                       │
-              │  commands:            │ store mutation
-              │  - showTextDocument   │ → onChanged
-              │  - presentation.open  │ → tree refresh
-              │  - presentation.goto  │
-              │  - preview.focusThread│
-              ▼                       ▼
-         Surface opens          Store persists
-         + thread focused       + native widget synced
-```
-
----
-
-## 6. Coexistence with Native Comments API
-
-The native `vscode.CommentController` (`accordo-comments`) remains fully active:
-
-- **Gutter "+" icon** on all text lines → create new thread → stored → tree shows it
-- **Inline thread widget** in text editor → resolve/reopen/delete buttons → store mutates → tree refreshes
-- **Comment SDK pins** in webview surfaces → popover actions → store mutates → tree refreshes
-
-The tree panel is additive. It provides navigation and triage that the built-in panel cannot. It does not replace the gutter or inline widget.
-
-The built-in VS Code Comments panel (`workbench.panel.comments`) remains visible but secondary. We cannot hide it via the extension API. Users who prefer the custom sidebar will use it; the built-in panel continues to work for text-only comments.
-
----
-
-## 7. Phase 2: WebviewView Detail Pane (Deferred)
-
-Phase 1 delivers the TreeView list. Phase 2 adds an optional side panel that shows the full thread conversation when a tree item is selected.
-
-**Design (not implemented in Phase 1):**
-
-```
-┌─ Sidebar (TreeView) ─────┐  ┌─ Detail Pane (WebviewView) ───────────┐
-│  ▶ Open (3)              │  │  🔴 auth.ts — line 42                  │
-│    🔴 line 42 · auth.ts  │◀─│  ─────────────────────────────────     │
-│    🔴 Slide 4 · arch…    │  │  👤 Developer · 2 min ago              │
-│    ⚠  § Intro · README   │  │  This auth check doesn't handle        │
-│                          │  │  expired tokens.                       │
-│  ▶ Resolved (12)         │  │                                        │
-│    ✅ line 108 · api.ts  │  │  🤖 Agent · 1 min ago                 │
-│                          │  │  Added token expiry check with         │
-│                          │  │  refresh fallback.                     │
-│                          │  │  ─────────────────────────────────     │
-│                          │  │  [Reply...]  [Resolve ✅] [Delete 🗑] │
-└──────────────────────────┘  └────────────────────────────────────────┘
-```
-
-**Implementation note (historical/deferred):** The detail pane would be a `vscode.WebviewView` registered via `window.registerWebviewViewProvider('accordo-thread-detail', provider)`. It would render thread comments as markdown (reusing Comment SDK popover patterns) and update from `TreeView.onDidChangeSelection`. This requires an additional `M46-DETAIL` module and is not part of the current active architecture.
-
----
-
-## 8. Performance Considerations
-
-At the 500-thread cap:
-
-- `getAllThreads()` is a synchronous in-memory read — negligible cost
-- `applyFilters()` is a simple array filter — O(n) over 500 threads, < 1ms
-- `getAnchorLabel()` is a pure string derivation — no I/O
-- Tree refresh fires on every `onChanged` (every store mutation). Each mutation fires at most once per operation. No debouncing needed at this scale.
-- `isThreadStale(id)` is a Map lookup — O(1)
-
-If thread count ever exceeds 500 (store currently refuses new threads at the cap), the tree will need `getChildren` with lazy loading for the Resolved group. Not necessary for Phase 1.
-
----
-
-## 9. Risk Register
-
-| Risk | Severity | Mitigation |
-|---|---|---|
-| `view/item/context` `when` clause regex doesn't match `contextValue` correctly | High | Test `contextValue` strings in integration test; use `=~` regex operator in `when` for partial match |
-| `accordo.presentation.internal.focusThread` is unavailable (presentation extension inactive) | Medium | Route through fallback `accordo_presentation_internal_goto`; show graceful warning if focus still cannot complete |
-| 2s settling delay for slide fallback retry may still be too short on slow machines | Medium | Keep retry warning non-fatal and revisit delay constants if field reports show flakiness |
-| Filter state in `workspaceState` becomes stale across workspace changes | Low | Always validate persisted filter values against current allowed values on load; reset invalid fields to `undefined` |
-| Native Comments panel and custom panel show conflicting state briefly | Low | Both read from same `CommentStore`; any mutation fires `onChanged` which updates both. Race window is sub-millisecond. |
-| `TreeView.onDidChangeSelection` fires on programmatic selection | Low | Guard navigation command against programmatic selection using a flag set during tree refresh |
-
----
-
-## 10. Module Summary
-
-| Module | File | Req doc section |
-|---|---|---|
-| M45-TP | `panel/comments-tree-provider.ts` | requirements-comments-panel.md §3.1 |
-| M45-NR | `panel/navigation-router.ts` | requirements-comments-panel.md §3.2 |
-| M45-CMD | `panel/panel-commands.ts` | requirements-comments-panel.md §3.3 |
-| M45-FLT | `panel/panel-filters.ts` | requirements-comments-panel.md §3.4 |
-| M45-EXT | `extension.ts` (additions) | requirements-comments-panel.md §3.5 |
-
-**Test count target:** panel modules remain fully covered; the package test suite must stay green.
-
----
-
-## 11. Strategic Note
-
-The `NavigationRouter` is more than a panel detail. It is the **canonical cross-surface jump mechanism** for comments-owned navigation across Accordo surfaces. Surface integrations expose focus commands, and the router dispatch plan is the integration contract by `surfaceType`.
-
-This means the custom panel delivers two things, not one: the panel UI, and the navigation infrastructure that all future phases depend on.
+The critical architectural constraint is: the UI surface changes, but the command/store/navigation contracts remain authoritative. That is what makes the migration safe.

@@ -375,6 +375,73 @@ describe("M45-WV CommentsWebviewViewProvider", () => {
       expect(typeof provider.dispose).toBe("function");
       // No store.read, store.write, etc.
     });
+
+    it("getUiState and mutateUiState exist on provider (M45-WV-06)", () => {
+      const provider = new CommentsWebviewViewProvider(
+        makeMockHtmlRenderer(),
+        makeMockModelSource(),
+        makeMockMessageHandler(),
+      );
+      expect(typeof provider.getUiState).toBe("function");
+      expect(typeof provider.mutateUiState).toBe("function");
+    });
+
+    it("expanded thread persists across refresh() calls (M45-WV-06)", () => {
+      const modelSource = makeMockModelSource();
+      const mockView = createMockWebviewView();
+      const provider = new CommentsWebviewViewProvider(
+        makeMockHtmlRenderer(),
+        modelSource,
+        makeMockMessageHandler(),
+      );
+      const ctx = {} as vscode.WebviewViewResolveContext;
+      const token = {} as vscode.CancellationToken;
+
+      provider.resolveWebviewView(mockView as unknown as vscode.WebviewView, ctx, token);
+
+      // Toggle expand for t-99
+      provider.mutateUiState((s) => ({
+        ...s,
+        expandedThreadIds: new Set([...s.expandedThreadIds, "t-99"]),
+      }));
+
+      // First postMessage call (from resolveWebviewView → refresh)
+      const firstCallArgs = mockView.webview.postMessage.mock.calls[0]?.[0];
+      // After toggle + refresh, buildViewModel should be called with expanded t-99
+      provider.refresh();
+
+      // The last call to buildViewModel had uiState with t-99 expanded
+      const lastCall = modelSource.buildViewModel.mock.calls.at(-1);
+      const uiStateArg = lastCall?.[0] as CommentsPanelUiState;
+      expect(uiStateArg.expandedThreadIds.has("t-99")).toBe(true);
+    });
+
+    it("mutateUiState does not call modelSource or postMessage directly (M45-WV-07)", () => {
+      const modelSource = makeMockModelSource();
+      const mockView = createMockWebviewView();
+      const provider = new CommentsWebviewViewProvider(
+        makeMockHtmlRenderer(),
+        modelSource,
+        makeMockMessageHandler(),
+      );
+      const ctx = {} as vscode.WebviewViewResolveContext;
+      const token = {} as vscode.CancellationToken;
+
+      provider.resolveWebviewView(mockView as unknown as vscode.WebviewView, ctx, token);
+
+      // Clear calls from resolveWebviewView
+      mockView.webview.postMessage.mockClear();
+      modelSource.buildViewModel.mockClear();
+
+      // Mutate UI state — should NOT trigger buildViewModel or postMessage
+      provider.mutateUiState((s) => ({
+        ...s,
+        expandedThreadIds: new Set([...s.expandedThreadIds, "t-new"]),
+      }));
+
+      expect(modelSource.buildViewModel).not.toHaveBeenCalled();
+      expect(mockView.webview.postMessage).not.toHaveBeenCalled();
+    });
   });
 
   // ── M45-WV-08: message bridge delegates commands unchanged ───────────────────

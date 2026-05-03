@@ -77,6 +77,11 @@ This is the standard SKILL.md entry point that mirrors the runtime MCP resource
 - Use `comment_reply`, `comment_resolve`, and `comment_delete` for mutations.
 - `comment_list({})` is the unfiltered listing path; it returns open and
   resolved threads. Use `status: "all"` when you need to be explicit.
+- `comment_list` combines every provided filter with AND. Omit filters you are
+  unsure about; do not guess `intent`, `anchorKind`, or `lastAuthor` during
+  discovery. For first-pass browser discovery, use
+  `comment_list({ scope: { modality: "browser" }, status: "all" })`; add
+  `scope.url` only when you intentionally want one page URL.
 - For slide/Marp comments, use canonical slide coordinates, including the
   discriminant and zero-based slide index. The currently valid shape is:
   `comment_create({ scope: { modality: "slide", uri: "file:///abs/deck.md" }, anchor: { kind: "surface", surfaceType: "slide", coordinates: { type: "slide", slideIndex: 1, x: 0.5, y: 0.5 } }, body: "..." })`.

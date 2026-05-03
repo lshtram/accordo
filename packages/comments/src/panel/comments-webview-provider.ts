@@ -24,6 +24,9 @@ export interface CommentsPanelWebviewHtmlRenderer {
 
 export class CommentsWebviewViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private _view: vscode.WebviewView | undefined;
+  // Internally mutable; getUiState() exposes readonly projection
+  private _expandedThreadIds = new Set<string>();
+  private _collapsedGroupIds = new Set<string>();
 
   constructor(
     private readonly _htmlRenderer: CommentsPanelWebviewHtmlRenderer,
@@ -44,21 +47,44 @@ export class CommentsWebviewViewProvider implements vscode.WebviewViewProvider, 
     this._view.webview.onDidReceiveMessage((message: CommentsPanelWebviewMessage) => {
       void this._messageHandler.handleMessage(message);
     });
-    // Send initial panel state to the newly resolved webview
+    // Send initial panel state to the newly resolved webview (M45-WV-03)
     this.refresh();
   }
 
   /**
    * Refresh the panel by rebuilding the view model and posting to the webview.
+   * Uses the provider's owned UI state (expanded threads, collapsed groups)
+   * so expansion/collapse persists across refreshes (M45-WV-06).
    */
   refresh(): void {
     if (!this._view) return;
     const uiState: CommentsPanelUiState = {
-      expandedThreadIds: new Set(),
-      collapsedGroupIds: new Set(),
+      expandedThreadIds: this._expandedThreadIds,
+      collapsedGroupIds: this._collapsedGroupIds,
     };
     const model = this._modelSource.buildViewModel(uiState);
     void this._view.webview.postMessage({ type: "panel:state", model });
+  }
+
+  /**
+   * Returns the current ephemeral UI state (M45-WV-06).
+   * Exposed for the message handler to read/write toggle state.
+   */
+  getUiState(): CommentsPanelUiState {
+    return {
+      expandedThreadIds: this._expandedThreadIds,
+      collapsedGroupIds: this._collapsedGroupIds,
+    };
+  }
+
+  /**
+   * Mutates ephemeral UI state: expanded threads and collapsed groups.
+   * Does NOT mutate the store (M45-WV-07).
+   */
+  mutateUiState(fn: (s: CommentsPanelUiState) => CommentsPanelUiState): void {
+    const next = fn(this.getUiState());
+    this._expandedThreadIds = new Set(next.expandedThreadIds);
+    this._collapsedGroupIds = new Set(next.collapsedGroupIds);
   }
 
   /**
