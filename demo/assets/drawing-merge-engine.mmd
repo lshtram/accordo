@@ -1,0 +1,11 @@
+flowchart TB
+  N["new Mermaid source"] --> S["seed render\nmermaid-to-excalidraw"]
+  E["existing .excalidraw scene"] --> I["scene index\nby customData"]
+  S --> M["merge engine"]
+  I --> M
+  M --> P["preserve matched visuals"]
+  M --> A["add missing semantic elements"]
+  M --> R["remove deleted semantic visuals"]
+  P --> O["next .excalidraw scene"]
+  A --> O
+  R --> O

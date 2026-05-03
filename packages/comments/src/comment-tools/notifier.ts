@@ -30,6 +30,10 @@ import type { CommentThread } from "@accordo/bridge-types";
  * Exported for unit testing and agent helper use.
  */
 export function normalizeCommentUri(input: string, workspaceRoot: string): string {
+  // Preserve HTTP(S) URIs as-is — these are browser comment threads, not local files.
+  if (input.startsWith("http://") || input.startsWith("https://")) {
+    return input;
+  }
   if (input.startsWith("file://")) {
     try {
       return pathToFileURL(path.resolve(fileURLToPath(input))).href;

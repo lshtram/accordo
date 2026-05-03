@@ -84,7 +84,7 @@ export function buildCommentMutationHandlers(
         threadId,
         commentId,
       });
-      // Notify external observers (e.g. browser relay) only.
+      // Notify external observers only.
       // Native widget mutation happens via store.onChanged -> nc.reconcile (canonical path).
       const thread = store.getThread(result.threadId);
       if (_external && thread) _external.addThread(thread);
@@ -104,13 +104,12 @@ export function buildCommentMutationHandlers(
           ? { kind: "user" as const, name: authorName ?? "User" }
           : { kind: "agent" as const, name: "agent", agentId };
       const result = await store.reply({ threadId, body, commentId, author });
-      // Notify external observers only.
-      // Native widget mutation happens via store.onChanged -> nc.reconcile (canonical path).
+      // Notify external observers (browser relay).
+      // Browser sync wakeup happens via the central store.onChanged hook in
+      // comments-bootstrap.ts — NOT via a direct handler call here.
+      // Native widget mutation happens via store.onChanged -> nc.reconcile.
       const updatedThread = store.getThread(threadId);
       if (_external && updatedThread) _external.updateThread(updatedThread);
-      // Trigger full-state browser sync wakeup so the browser extension pulls
-      // the updated state via sync_comment_state.
-      if (_external) _external.scheduleWakeup("request_comment_state_sync");
       return { success: true, replied: true, commentId: result.commentId };
     },
 
@@ -163,6 +162,8 @@ export function buildCommentMutationHandlers(
       const commentId = normalizeOptionalId(args["commentId"] as string | undefined);
       // store.delete -> store.onChanged -> nc.reconcile handles widget update/removal.
       await store.delete({ threadId, commentId });
+      // Notify external observers so the browser extension removes the thread.
+      if (_external) _external.removeThread(threadId);
       return { success: true, deleted: true };
     },
   };

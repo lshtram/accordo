@@ -193,7 +193,8 @@ Standard asset workflow:
 
 1. Write Mermaid source to `./assets/<name>.mmd`
 2. Render it to `./assets/<name>.svg` with an explicit chart style (`calm` is a good default for most decks)
-3. Reference the SVG from the deck with normal Marp image syntax
+3. Open or preview the SVG and verify contrast before presenting: node fills and label text must be opposite luminance, never light text on light nodes or dark text on dark nodes
+4. Reference the SVG from the deck with normal Marp image syntax
 
 Example:
 
@@ -206,6 +207,8 @@ Then in the deck:
 ```markdown
 ![width:1000px](./assets/example-system-shape.svg)
 ```
+
+**Contrast rule for Mermaid assets:** if a diagram sits on a dark slide, prefer light node fills with dark label text and bright connector strokes. If any label is hard to read in the Marp preview, rerender or adjust the asset before the live presentation; do not rely on the audience to zoom.
 
 ### Step 2b — Add generated imagery when a slide needs atmosphere
 

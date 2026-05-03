@@ -1,0 +1,55 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://accordo.dev/drawing",
+  "elements": [
+    {
+      "id": "excal-auth-rect",
+      "type": "rectangle",
+      "x": 120,
+      "y": 160,
+      "width": 190,
+      "height": 72,
+      "strokeColor": "#0f172a",
+      "backgroundColor": "#bfdbfe",
+      "customData": {
+        "accordo": {
+          "version": 1,
+          "kind": "node",
+          "source": "mermaid",
+          "elementKey": "node:auth",
+          "semanticKey": "node:auth",
+          "mermaidId": "auth",
+          "mermaidLabel": "Auth Service",
+          "diagramType": "flowchart"
+        }
+      }
+    },
+    {
+      "id": "excal-auth-api-arrow",
+      "type": "arrow",
+      "x": 310,
+      "y": 196,
+      "width": 160,
+      "height": 0,
+      "points": [[0, 0], [160, 0]],
+      "strokeColor": "#f59e0b",
+      "customData": {
+        "accordo": {
+          "version": 1,
+          "kind": "edge",
+          "source": "mermaid",
+          "elementKey": "edge:auth->api:0",
+          "semanticKey": "edge:auth->api:0",
+          "edgeKey": "auth->api:0",
+          "fromId": "auth",
+          "toId": "api",
+          "ordinal": 0,
+          "mermaidLabel": "JWT"
+        }
+      }
+    }
+  ],
+  "appState": { "viewBackgroundColor": "#ffffff" },
+  "files": {}
+}

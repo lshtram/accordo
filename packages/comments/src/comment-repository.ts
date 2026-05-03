@@ -104,6 +104,11 @@ export class CommentRepository extends CommentRepositoryOps {
     this._threads.set(thread.id, thread);
   }
 
+  /** Return the mutable raw thread for internal sync mutation paths. */
+  getRawThread(threadId: string): import("@accordo/bridge-types").CommentThread | undefined {
+    return this._threads.get(threadId);
+  }
+
   /**
    * Add a comment to an existing thread (for browser sync merge).
    * Does NOT persist — caller (CommentStore) is responsible for that.
@@ -134,5 +139,19 @@ export class CommentRepository extends CommentRepositoryOps {
   removeThreadById(threadId: string): void {
     this._threads.delete(threadId);
     this._stale.delete(threadId);
+  }
+
+  /** Remove a comment directly by ID from any thread. Removes the thread if empty. */
+  removeCommentById(commentId: string): void {
+    for (const [threadId, thread] of this._threads) {
+      const index = thread.comments.findIndex((comment) => comment.id === commentId);
+      if (index === -1) continue;
+      thread.comments.splice(index, 1);
+      if (thread.comments.length === 0) {
+        this._threads.delete(threadId);
+        this._stale.delete(threadId);
+      }
+      return;
+    }
   }
 }

@@ -23,6 +23,7 @@ interface RelayServerOptions {
   token: string;
   onEvent?: (event: string, details?: Record<string, unknown>) => void;
   onRelayRequest?: BrowserRelayLike["onRelayRequest"];
+  onConnectionChange?: (connected: boolean) => void;
 }
 
 export class BrowserRelayServer implements BrowserRelayLike {
@@ -30,6 +31,8 @@ export class BrowserRelayServer implements BrowserRelayLike {
   private wsServer: WebSocketServer | null = null;
   private client: WebSocket | null = null;
   private pending = new Map<string, (value: BrowserRelayResponse) => void>();
+  /** Tracks whether Chrome has ever connected — used to fire onConnectionChange only on state transitions. */
+  private _prevConnected = false;
   onError?: (error: string) => void;
 
   constructor(private readonly options: RelayServerOptions) {}
@@ -57,11 +60,16 @@ export class BrowserRelayServer implements BrowserRelayLike {
       if (DEV_BROWSER_PAIRING_BYPASS && path === "/chrome") {
         if (this.client && this.client !== socket) this.client.close(1000, "replaced");
         this.client = socket;
+        const alreadyConnected = this._prevConnected;
+        this._prevConnected = true;
         this.emit("relay-client-connected", {
           remote: req.socket.remoteAddress ?? "unknown",
           devBypass: true,
           note: "PAIRING DISABLED — DEV ONLY",
         });
+        if (!alreadyConnected) {
+          this.options.onConnectionChange?.(true);
+        }
       } else {
         if (!isAuthorizedToken(token, this.options.token)) {
           this.emit("relay-unauthorized", { remote: req.socket.remoteAddress ?? "unknown" });
@@ -70,7 +78,12 @@ export class BrowserRelayServer implements BrowserRelayLike {
         }
         if (this.client && this.client !== socket) this.client.close(1000, "replaced");
         this.client = socket;
+        const alreadyConnected = this._prevConnected;
+        this._prevConnected = true;
         this.emit("relay-client-connected", { remote: req.socket.remoteAddress ?? "unknown" });
+        if (!alreadyConnected) {
+          this.options.onConnectionChange?.(true);
+        }
       }
       socket.on("message", (raw: Buffer): void => {
         void (async (): Promise<void> => {
@@ -108,8 +121,15 @@ export class BrowserRelayServer implements BrowserRelayLike {
         })().catch(() => {});
       });
       socket.on("close", () => {
-        if (this.client === socket) this.client = null;
-        this.emit("relay-client-disconnected");
+        if (this.client === socket) {
+          this.client = null;
+          const wasConnected = this._prevConnected;
+          this._prevConnected = false;
+          this.emit("relay-client-disconnected");
+          if (wasConnected) {
+            this.options.onConnectionChange?.(false);
+          }
+        }
       });
     });
 

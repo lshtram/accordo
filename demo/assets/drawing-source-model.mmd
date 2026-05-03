@@ -1,0 +1,6 @@
+flowchart LR
+  M["foo.mmd\nMeaning"] --> D["semantic parser\nids + topology"]
+  D --> B["customData bridge\nmermaidId / edgeKey / kind"]
+  B --> X["foo.excalidraw\nVisual truth"]
+  X --> A["agents query + patch\nthe real scene"]
+  X --> H["humans edit\ncanvas directly"]

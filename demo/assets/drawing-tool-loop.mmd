@@ -1,0 +1,6 @@
+flowchart LR
+  Create["create"] --> Query["query"]
+  Query --> Patch["patch visuals"]
+  Patch --> Merge["merge topology"]
+  Merge --> Render["render / export"]
+  Render --> Query

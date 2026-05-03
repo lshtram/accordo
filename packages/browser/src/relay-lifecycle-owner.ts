@@ -20,7 +20,7 @@ export async function startSharedRelayOwner(
     relay: SharedRelayClient,
     out?: vscode.OutputChannel,
   ) => Promise<BrowserRelayResponse>,
-): Promise<void> {
+): Promise<SharedRelayClient> {
   const server = new SharedBrowserRelayServer({
     port: RELAY_BASE_PORT,
     host: RELAY_HOST,
@@ -66,4 +66,5 @@ export async function startSharedRelayOwner(
   context.subscriptions.push({ dispose: () => ownerClient.stop() });
   out.appendLine(`[accordo-browser] SharedRelayClient started for owner hub ${ownerInfo.ownerHubId}`);
   registerRelayRuntime({ context, out, bridge, relay: ownerClient, modeLabel: "shared mode, owner" });
+  return ownerClient;
 }

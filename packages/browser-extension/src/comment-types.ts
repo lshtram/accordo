@@ -8,7 +8,7 @@ export interface BrowserComment {
   createdAt: string;
   /** Comment author */
   author: {
-    kind: "user";
+    kind: "user" | "agent";
     name: string;
   };
   /** Comment text (plain text in v1) */

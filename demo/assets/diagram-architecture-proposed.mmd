@@ -1,0 +1,8 @@
+flowchart LR
+  M["Mermaid\nsemantic source"] --> U["mermaid-to-excalidraw\nparse + layout + skeletons"]
+  U --> C["convertToExcalidrawElements\nregenerateIds: false"]
+  C --> X["diagram.excalidraw\nvisual source of truth"]
+  X --> Q["query + merge utilities\ncustomData identity index"]
+  Q --> X
+  X --> W["Accordo webview\nloads scene directly"]
+  M --> Q

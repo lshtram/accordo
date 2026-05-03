@@ -23,6 +23,7 @@ export {
   handleReopenThread,
   handleDeleteThread,
   handleNotifyCommentsUpdated,
+  handleFocusThread,
 } from "./relay-comment-handlers.js";
 
 export {

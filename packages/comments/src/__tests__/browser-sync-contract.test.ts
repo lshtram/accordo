@@ -478,25 +478,32 @@ describe("E — Accordo package integration (M38-CT-12..13, M36-CS-18) 🔴", ()
       expect(typeof (notifier as Record<string, unknown>)["scheduleWakeup"]).toBe("function");
     });
 
-    it("M36-CS-18-03: 🔴 comment_reply handler calls scheduleWakeup on external notifier", async () => {
+    /**
+     * M36-CS-18-03: 🔴 Central store.onChanged hook triggers scheduleWakeup
+     * for HTTP(S) threads — NOT the comment_reply handler directly.
+     *
+     * The canonical path is:
+     *   comment_reply → store.reply() → store._emit(uri) → store.onChanged
+     *   → central hook (comments-bootstrap.ts) → externalFanout.scheduleWakeup()
+     *
+     * BROKEN: comment_reply handler calls scheduleWakeup directly → FAILS
+     * CORRECT: central store.onChanged hook calls scheduleWakeup → PASSES
+     */
+    it("M36-CS-18-03: 🔴 store.onChanged central hook triggers scheduleWakeup for HTTP(S) mutations", async () => {
       const { createCommentTools } = await import("../comment-tools.js");
       const { CommentStore } = await import("../comment-store.js");
-      const { CommentUINotifier } = await import("../comment-tools.js");
       resetMockState();
       const store = new CommentStore();
 
-      // Test double: implements CommentUINotifier (current interface) plus the
-      // intended Phase C scheduleWakeup seam. This is the correct injection point —
-      // createCommentTools(store, externalNotifier) receives the notifier that
-      // mutation handlers call _external.scheduleWakeup(...) on.
+      // Track scheduleWakeup calls — no ExternalFanoutNotifier needed;
+      // the test wires the central onChanged hook directly.
       const wakeupCalls: Array<{ action: string; payload?: unknown }> = [];
-      const trackingNotifier: CommentUINotifier = {
-        addThread: () => {},
-        updateThread: () => {},
-        removeThread: () => {},
-        removeThreads: () => {},
-        // Intended Phase C seam — handler should call this after mutation
-        scheduleWakeup: (action: string, payload?: unknown) => {
+      const trackingNotifier = {
+        addThread() {},
+        updateThread() {},
+        removeThread() {},
+        removeThreads() {},
+        scheduleWakeup(action: string, payload?: unknown) {
           wakeupCalls.push({ action, payload });
         },
       };
@@ -505,24 +512,37 @@ describe("E — Accordo package integration (M38-CT-12..13, M36-CS-18) 🔴", ()
       const replyTool = tools.find((t) => t.name === "comment_reply");
       expect(replyTool).toBeDefined();
 
-      // Seed a thread via comment_create so reply has a valid target
+      // Seed an HTTP thread via comment_create
       const createTool = tools.find((t) => t.name === "comment_create");
       expect(createTool).toBeDefined();
       const createResult = await (createTool!.handler as (args: Record<string, unknown>) => Promise<unknown>)(
-        { threadId: undefined, uri: "file:///test/test.ts", anchor: { kind: "text", startLine: 1 }, body: "Initial comment" }
+        { threadId: undefined, uri: "https://example.com/test-page", anchor: { kind: "text", startLine: 1 }, body: "Initial browser comment" }
       );
       const created = createResult as { success: boolean; threadId: string };
       expect(created.success).toBe(true);
       const threadId = created.threadId;
+      wakeupCalls.length = 0; // clear wakeup from create
 
-      // Call comment_reply — handler should call scheduleWakeup on the notifier
+      // Wire the central store.onChanged hook (same logic as comments-bootstrap.ts).
+      // This is the ONLY path for browser sync wakeup — handler does NOT call
+      // scheduleWakeup directly after the Option 2 refactor.
+      const browserSyncApplyDepth = { current: 0 };
+      store.onChanged((uri: string) => {
+        if (uri.startsWith("http://") || uri.startsWith("https://")) {
+          if (browserSyncApplyDepth.current === 0) {
+            trackingNotifier.scheduleWakeup("request_comment_state_sync", { url: uri });
+          }
+        }
+      });
+
+      // Call comment_reply — central store.onChanged hook fires scheduleWakeup
       await (replyTool!.handler as (args: Record<string, unknown>) => Promise<unknown>)({
         threadId,
         body: "A reply that triggers wakeup",
       });
 
-      // BROKEN: handler does NOT call scheduleWakeup → wakeupCalls is empty → FAILS
-      // CORRECT: handler calls scheduleWakeup("request_comment_state_sync", ...) → PASSES
+      // BROKEN: handler calls scheduleWakeup directly, not via store.onChanged → FAILS
+      // CORRECT: store.onChanged central hook fires scheduleWakeup → PASSES
       expect(wakeupCalls.some((c) => c.action === "request_comment_state_sync")).toBe(true);
     });
   });

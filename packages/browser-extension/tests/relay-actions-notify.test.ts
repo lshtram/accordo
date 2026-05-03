@@ -110,4 +110,133 @@ describe("relay-actions — notify_comments_updated", () => {
       }),
     );
   });
+
+  /**
+   * BR-F-102: focus_thread matches tabs by normalized URL (origin + pathname),
+   * activates the correct tab, focuses its window, and sends scroll-to-thread.
+   */
+  it("BR-F-102: focus_thread activates exact normalized-URL match and skips same-origin wrong path", async () => {
+    const { createThread } = await import("../src/store.js");
+
+    // Create a thread on a specific page path
+    const thread = await createThread("https://example.com/products/widgets", "body:center", {
+      body: "focus test",
+      author: { kind: "user", name: "Alice" },
+    });
+
+    const correctTabId = 42;
+    const wrongPathTabId = 77;
+
+    // Mock chrome.tabs.query: one tab matches exact normalized URL, another has same origin but different path
+    chrome.tabs.query = vi.fn().mockResolvedValue([
+      { id: wrongPathTabId, url: "https://example.com/blog/post-123", windowId: 1, active: false },
+      { id: correctTabId, url: "https://example.com/products/widgets", windowId: 2, active: false },
+      { id: 99, url: "https://other.com/page", windowId: 3, active: true },
+    ]);
+    chrome.windows.update = vi.fn().mockResolvedValue({ id: 2 });
+    chrome.tabs.update = vi.fn().mockResolvedValue({ id: correctTabId });
+    chrome.tabs.sendMessage = vi.fn().mockResolvedValue(undefined);
+
+    const { handleRelayAction } = await import("../src/relay-actions.js");
+    const response = await handleRelayAction({
+      requestId: "req-focus-exact",
+      action: "focus_thread",
+      payload: { threadId: thread.id },
+    });
+
+    expect(response).toHaveProperty("success", true);
+    expect(response).toHaveProperty("requestId", "req-focus-exact");
+
+    // Window should be focused first (using correctTab's windowId = 2)
+    expect(chrome.windows.update).toHaveBeenCalledWith(2, { focused: true });
+    // Tab should then be activated
+    expect(chrome.tabs.update).toHaveBeenCalledWith(correctTabId, { active: true });
+    // scroll-to-thread should be sent to the correct tab (not wrongPathTabId)
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(correctTabId, {
+      type: "scroll-to-thread",
+      payload: { threadId: thread.id },
+    });
+    // Wrong-path tab must NOT have been activated
+    expect(chrome.tabs.update).not.toHaveBeenCalledWith(wrongPathTabId, expect.anything());
+  });
+
+  /**
+   * BR-F-102: focus_thread activates tab and sends scroll-to-thread when windowId is unavailable
+   * (chrome.windows.update is skipped gracefully).
+   */
+  it("BR-F-102: focus_thread works when tab has no windowId (window focus skipped)", async () => {
+    const { createThread } = await import("../src/store.js");
+
+    const thread = await createThread("https://example.com/only-tab", "body:center", {
+      body: "focus no windowId",
+      author: { kind: "user", name: "Bob" },
+    });
+
+    const tabId = 5;
+    // Tab has no windowId
+    chrome.tabs.query = vi.fn().mockResolvedValue([
+      { id: tabId, url: "https://example.com/only-tab", windowId: undefined, active: false },
+    ]);
+    chrome.tabs.update = vi.fn().mockResolvedValue({ id: tabId });
+    chrome.tabs.sendMessage = vi.fn().mockResolvedValue(undefined);
+
+    const { handleRelayAction } = await import("../src/relay-actions.js");
+    const response = await handleRelayAction({
+      requestId: "req-focus-no-window",
+      action: "focus_thread",
+      payload: { threadId: thread.id },
+    });
+
+    expect(response).toHaveProperty("success", true);
+    // windows.update should NOT be called (no windowId)
+    expect(chrome.windows.update).not.toHaveBeenCalled();
+    // Tab should still be activated
+    expect(chrome.tabs.update).toHaveBeenCalledWith(tabId, { active: true });
+    // scroll-to-thread should be sent
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(tabId, {
+      type: "scroll-to-thread",
+      payload: { threadId: thread.id },
+    });
+  });
+
+  /**
+   * BR-F-102: focus_thread returns action-failed when no tab matches the normalized URL.
+   */
+  it("BR-F-102: focus_thread returns error when no tab matches normalized URL", async () => {
+    const { createThread } = await import("../src/store.js");
+
+    const thread = await createThread("https://example.com/unique-page-xyz", "body:center", {
+      body: "unmatched",
+      author: { kind: "user", name: "Carol" },
+    });
+
+    chrome.tabs.query = vi.fn().mockResolvedValue([
+      { id: 1, url: "https://example.com/completely/different/path", windowId: 1, active: false },
+    ]);
+
+    const { handleRelayAction } = await import("../src/relay-actions.js");
+    const response = await handleRelayAction({
+      requestId: "req-focus-no-match",
+      action: "focus_thread",
+      payload: { threadId: thread.id },
+    });
+
+    expect(response).toHaveProperty("success", false);
+    expect(response).toHaveProperty("error", "action-failed");
+  });
+
+  /**
+   * BR-F-102: focus_thread returns action-failed when thread does not exist.
+   */
+  it("BR-F-102: focus_thread returns error when thread not found", async () => {
+    const { handleRelayAction } = await import("../src/relay-actions.js");
+    const response = await handleRelayAction({
+      requestId: "req-focus-missing",
+      action: "focus_thread",
+      payload: { threadId: "non-existent-thread-id" },
+    });
+
+    expect(response).toHaveProperty("success", false);
+    expect(response).toHaveProperty("error", "action-failed");
+  });
 });

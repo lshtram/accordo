@@ -31,6 +31,7 @@ import {
   loadBrowserCommentSyncDocument,
   type BrowserCommentSyncPage,
 } from "../src/browser-comment-sync-store.js";
+import { getAllThreads } from "../src/store.js";
 
 // ── Fake relay for testing ──────────────────────────────────────────────────────
 
@@ -136,7 +137,8 @@ function makeRelayRequest(action: RelayAction, payload: Record<string, unknown> 
 
 const fakeStorage = createFakeStorage();
 
-beforeEach(() => {
+beforeEach(async () => {
+  await chrome.storage.local.clear();
   _storedDoc = {
     meta: {
       lastSentBrowserRevision: 0,
@@ -312,6 +314,93 @@ describe("B — handleRequestCommentStateSync reads canonical store, sends full 
     expect(lastSend!.payload).toHaveProperty("browserRevision", 3);
     expect(lastSend!.payload).toHaveProperty("pages");
     expect((lastSend!.payload as { pages: unknown[] }).pages).toHaveLength(1);
+  });
+
+  it("BR-RT-WAKE-06: merged response updates GET_THREADS legacy read model and next outbound payload", async () => {
+    const relay = createFakeRelay(true);
+    const mergedState = makeState({
+      browserRevision: 4,
+      accordoRevision: 5,
+      emittedBy: "vscode-accordo",
+      pages: [{
+        pageUrl: "https://example.com/page1",
+        threads: [{
+          id: "t-merged-visible",
+          anchorKey: "body:0:center",
+          pageUrl: "https://example.com/page1",
+          status: "open",
+          comments: [{
+            id: "c-accordo-reply",
+            threadId: "t-merged-visible",
+            createdAt: "2026-01-01T00:00:01.000Z",
+            author: { kind: "agent" as const, name: "Agent" },
+            body: "reply from accordo",
+            anchorKey: "body:0:center",
+            status: "open",
+          }],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          lastActivity: "2026-01-01T00:00:01.000Z",
+        }],
+      }],
+    });
+    relay._setResponse({ success: true, data: mergedState });
+    _fakeRelay = relay;
+
+    await handleRequestCommentStateSync(makeRelayRequest("request_comment_state_sync", {}));
+
+    const visibleThreads = await getAllThreads("https://example.com/page1");
+    expect(visibleThreads[0]?.comments.map((comment) => comment.body)).toContain("reply from accordo");
+
+    const secondRelay = createFakeRelay(true);
+    secondRelay._setResponse({ success: true, data: mergedState });
+    _fakeRelay = secondRelay;
+    await handleRequestCommentStateSync(makeRelayRequest("request_comment_state_sync", {}));
+    const outbound = secondRelay._getLastSend()?.payload as { pages: BrowserCommentSyncPage[] };
+    expect(JSON.stringify(outbound.pages)).toContain("reply from accordo");
+  });
+
+  it("BR-RT-WAKE-07: next outbound sync reloads merged canonical state from chrome.storage after memory reset", async () => {
+    const mergedState = makeState({
+      browserRevision: 12,
+      accordoRevision: 13,
+      emittedBy: "vscode-accordo",
+      pages: [{
+        pageUrl: "https://example.com/persisted",
+        threads: [{
+          id: "t-persisted",
+          anchorKey: "css:main@1,1",
+          pageUrl: "https://example.com/persisted",
+          status: "open",
+          comments: [{
+            id: "c-persisted-reply",
+            threadId: "t-persisted",
+            createdAt: "2026-01-01T00:00:01.000Z",
+            author: { kind: "agent" as const, name: "Agent" },
+            body: "persisted reply from accordo",
+            anchorKey: "css:main@1,1",
+            status: "open",
+          }],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          lastActivity: "2026-01-01T00:00:01.000Z",
+        }],
+      }],
+    });
+    await persistMergedBrowserCommentSyncState(mergedState);
+
+    _storedDoc = {
+      meta: { lastSentBrowserRevision: 0, lastAckedBrowserRevision: 0, lastPersistedAccordoRevision: 0, nextBrowserRevision: 1 },
+      pages: [],
+    };
+
+    const relay = createFakeRelay(true);
+    relay._setResponse({ success: true, data: mergedState });
+    _fakeRelay = relay;
+    await handleRequestCommentStateSync(makeRelayRequest("request_comment_state_sync", {}));
+
+    const outbound = relay._getLastSend()?.payload as { browserRevision: number; accordoRevision: number; pages: BrowserCommentSyncPage[] };
+    expect(outbound.browserRevision).toBe(12);
+    expect(outbound.accordoRevision).toBe(13);
+    expect(JSON.stringify(outbound.pages)).toContain("persisted reply from accordo");
   });
 
   it("BR-RT-WAKE-02: sends sync_comment_state with empty pages when canonical store is empty", async () => {

@@ -107,7 +107,7 @@ Done when:
 
 Latest completed items have been moved to `docs/00-workplan/accomplished-tasks.md`, including Priority 0 voice live-baseline validation.
 
-**Note:** Browser and diagram priorities are intentionally excluded from this workplan. Browser work is owned by a separate team; diagram work is out of current scope.
+**Note:** Legacy browser work remains owned by a separate team. Legacy `accordo-diagram` feature expansion remains out of current scope. The new `accordo-drawing` package is now active work and owns the new `.mmd` + `.excalidraw` merge/placement architecture.
 
 ---
 
@@ -117,6 +117,47 @@ Latest completed items have been moved to `docs/00-workplan/accomplished-tasks.m
 **Observed:** `accordo_presentation_goto({ index: 2 })` navigates to the **3rd** slide (0-indexed internally), but users see and count slides as 1-indexed in the Marp UI. Agents and users are misaligned.
 
 **Fix needed:** `accordo_presentation_goto` tool descriptions and MCP runtime docs must clearly state slides are **0-indexed**. Consider whether a 1-based alias (`slideNumber`) would reduce user/agent misalignment.
+
+---
+
+### Drawing Package — Phase A Remediation and Activation
+
+**Status:** Open  
+**Scope:** New `accordo-drawing` package design and first TDD slice activation.
+
+This work is now active and is **not** part of the completed legacy `accordo-diagram` stream.
+
+**Why active now:**  
+Phase A review for the new drawing package failed on four blockers:
+
+1. missing authoritative contract set
+2. merge-time placement ownership was ambiguous
+3. placement algorithm was underspecified
+4. tool/runtime seams and first slice were too vague
+
+**Phase A done when:**
+
+- `docs/20-requirements/requirements-drawing.md` exists and is authoritative
+- `docs/10-architecture/drawing-architecture.md` exists and is authoritative
+- the docs explicitly state the two-file source of truth: `.mmd` + `.excalidraw`
+- the docs explicitly ban canonical `layout.json` for this package
+- the docs explicitly require Accordo-owned placement for merge-time additions into existing drawings
+- the docs define deterministic placement, collision resolution, and disconnected fallback
+- the docs define contracts for:
+  - `accordo_drawing_create`
+  - `accordo_drawing_merge`
+  - `accordo_drawing_query`
+  - `accordo_drawing_patch`
+  - `accordo_drawing_render`
+- the first TDD slice is narrowed to a precise, testable scope
+
+**First execution slice after Phase A approval:**
+
+- flowchart-only
+- create/query/merge/patch/render contracts
+- managed/unmanaged/orphan scene indexing
+- deterministic placement for new managed nodes into existing drawings
+- runtime proof for create + merge + render
 
 ---
 

@@ -1,0 +1,8 @@
+flowchart LR
+  M["Mermaid\nsemantic source"] --> P["Accordo parser\nParsedDiagram"]
+  P --> L["layout.json\npositions + styles"]
+  M --> U["mermaid-to-excalidraw\nplacement seed"]
+  U --> L
+  L --> G["Accordo canvas-generator\nshape + edge renderer"]
+  G --> E["Excalidraw scene\nwebview"]
+  E --> L

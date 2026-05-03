@@ -18,10 +18,10 @@
   "errPolicy": "abort",
   "steps": [
     { "type": "speak", "text": "Hello", "block": true },
-    { "type": "command", "command": "accordo_editor_open", "args": { "path": "README.md" } },
+    { "type": "open", "path": "README.md" },
     { "type": "delay", "ms": 500 },
-    { "type": "highlight", "file": "README.md", "startLine": 1, "endLine": 10 },
-    { "type": "clear-highlights" }
+    { "type": "highlight", "path": "README.md", "start": 1, "end": 10 },
+    { "type": "clear_highlights" }
   ]
 }
 ```
@@ -31,11 +31,14 @@
 | Step type | Fields | Behaviour |
 |---|---|---|
 | `speak` | `text`, `voice?`, `speed?`, `block?` | Text-to-speech. `block: true` (default) waits for playback. |
-| `subtitle` | `text`, `durationMs?` | Show text in status bar briefly. |
-| `command` | `command`, `args?` | Execute any Accordo tool or VS Code command. |
+| `call` | `tool`, `args?`, `after_ms?` | Execute any Accordo tool directly. |
+| `layout` | `area`, `action`, `view?`, `after_ms?` | Open/close VS Code sidebars and panels via `accordo_layout_panel`. |
+| `slide_open` | `deckUri`, `after_ms?` | Open a Marp deck via `accordo_presentation_open`. |
+| `slide_goto` | `index`, `after_ms?` | Navigate to a 1-based slide via `accordo_presentation_goto`. |
+| `slide_next` / `slide_prev` | `after_ms?` | Move one slide forward/back. |
 | `delay` | `ms` | Pause (1–30 000 ms). |
-| `highlight` | `file`, `startLine`, `endLine`, `durationMs?` | Highlight lines in an open text editor or already-open Accordo Markdown Preview. |
-| `clear-highlights` | — | Remove all highlights; omit `decorationId` for clear-all rather than passing an empty string. |
+| `highlight` | `path`, `start`, `end`, `color?` | Highlight lines in an open text editor or already-open Accordo Markdown Preview. |
+| `clear_highlights` | — | Remove all highlights; omit `decorationId` for clear-all rather than passing an empty string. |
 
 **Markdown preview highlighting:** `accordo_editor_highlight` supports Accordo Markdown Preview only when the preview is already open. It does not auto-open previews. If the same `.md` file is visible as a text editor, the text-editor decoration path is intentionally preferred.
 
@@ -54,7 +57,7 @@
 **Built-in engine removed (2026-04-16).** Scripts run via the external Python runner:
 
 ```bash
-python skills/script-authoring/accordo-run.py --script my-script.json [--voice af_emma] [--speed 1.0]
+python3 skills/script-authoring/accordo-run.py my-script.json
 ```
 
 The runner:
@@ -107,6 +110,13 @@ See full Type 0 template and rules in the **Golden Rules** section below.
 - Then map those narration texts into `speak` steps in the script.
 - Do not call narration generation once per slide unless you are selectively refreshing a changed slide.
 
+**One-shot live presentation rule:**
+- A narrated presentation has one real audience pass. Do **not** run a voice-only version and then rerun a corrected slide-moving version; hearing the same talk twice is a failure.
+- Before any live playback, dry-run the script with `python3 skills/script-authoring/accordo-run.py <script.json> --dry-run` and verify there are no `unknown step type` warnings.
+- The dry-run output must show slide navigation steps (`slide_open`, `slide_goto`, `slide_next`, or `slide_prev`) interleaved before `speak` steps.
+- Use the actual runner vocabulary: `layout`, `slide_open`, `slide_goto`, `slide_next`, `slide_prev`, `open`, `highlight`, `clear_highlights`, `speak`, `delay`, and `call`. Do not use the generic `command` step; the current runner skips it.
+- If the dry-run is wrong, fix the JSON before starting TTS. Never validate by playing narration aloud.
+
 ### Type 4: Code Review — Findings Report
 
 **Audience:** Technical team  
@@ -142,8 +152,8 @@ Every step follows a **reveal → narrate** pattern:
 Run these first in every script:
 
 ```json
-{ "type": "command", "command": "accordo_layout_panel", "args": { "area": "sidebar", "action": "close" }},
-{ "type": "command", "command": "accordo_layout_panel", "args": { "area": "panel",   "action": "close" }},
+{ "type": "layout", "area": "sidebar", "action": "close" },
+{ "type": "layout", "area": "panel", "action": "close" },
 { "type": "delay",   "ms": 300 }
 ```
 
@@ -174,23 +184,23 @@ Run these first in every script:
   "label": "D-02 Feature Demo: strokeDash Persists",
   "errPolicy": "abort",
   "steps": [
-    { "type": "command", "command": "accordo_layout_panel", "args": { "area": "sidebar", "action": "close" }},
-    { "type": "command", "command": "accordo_layout_panel", "args": { "area": "panel",   "action": "close" }},
+    { "type": "layout", "area": "sidebar", "action": "close" },
+    { "type": "layout", "area": "panel", "action": "close" },
     { "type": "delay",   "ms": 300 },
 
     { "type": "speak",  "text": "Before this fix, changing an arrow to dashed in the diagram editor would reset to solid on reopen. Let's see it in action.", "voice": "af_nicole", "block": true },
 
-    { "type": "command", "command": "accordo_editor_open", "args": { "path": "/path/to/diagram.mmd" }},
+    { "type": "open", "path": "/path/to/diagram.mmd" },
     { "type": "delay",   "ms": 800 },
     { "type": "speak",   "text": "Here's a flowchart with a solid arrow. I'll change it to dashed using the patch tool.", "voice": "af_nicole", "block": true },
 
-    { "type": "command", "command": "accordo_diagram_patch", "args": { ... }},
+    { "type": "call", "tool": "accordo_diagram_patch", "args": { ... }},
     { "type": "delay",   "ms": 800 },
     { "type": "speak",   "text": "Done. The arrow is now dashed. Now let's close and reopen to verify persistence.", "voice": "af_nicole", "block": true },
 
-    { "type": "command", "command": "accordo_editor_close", "args": { "path": "/path/to/diagram.mmd" }},
+    { "type": "close", "path": "/path/to/diagram.mmd" },
     { "type": "delay",   "ms": 400 },
-    { "type": "command", "command": "accordo_editor_open", "args": { "path": "/path/to/diagram.mmd" }},
+    { "type": "open", "path": "/path/to/diagram.mmd" },
     { "type": "delay",   "ms": 800 },
     { "type": "speak",   "text": "Reopened. The dashed style persisted. Before the fix it would have reverted.", "voice": "af_nicole", "block": true }
   ]
@@ -204,23 +214,23 @@ Run these first in every script:
   "label": "D-04 Code Walkthrough",
   "errPolicy": "abort",
   "steps": [
-    { "type": "command", "command": "accordo_layout_panel", "args": { "area": "sidebar", "action": "close" }},
-    { "type": "command", "command": "accordo_layout_panel", "args": { "area": "panel",   "action": "close" }},
+    { "type": "layout", "area": "sidebar", "action": "close" },
+    { "type": "layout", "area": "panel", "action": "close" },
     { "type": "delay",   "ms": 300 },
 
     { "type": "speak", "text": "D-04 implements Z-shape routing for orthogonal edges. Let's look at the tests first.", "voice": "af_nicole", "block": true },
 
-    { "type": "command", "command": "accordo_editor_open", "args": { "path": "/path/to/edge-router.test.ts", "line": 140 }},
+    { "type": "open", "path": "/path/to/edge-router.test.ts", "line": 140 },
     { "type": "delay",   "ms": 600 },
-    { "type": "highlight", "file": "/path/to/edge-router.test.ts", "startLine": 140, "endLine": 160, "durationMs": 10000 },
+    { "type": "highlight", "path": "/path/to/edge-router.test.ts", "start": 140, "end": 160 },
     { "type": "speak",   "text": "ER-16 tests that two waypoints produce a Z-shape with seven points.", "voice": "af_nicole", "block": true },
-    { "type": "clear-highlights" },
+    { "type": "clear_highlights" },
 
-    { "type": "command", "command": "accordo_editor_open", "args": { "path": "/path/to/edge-router.ts", "line": 177 }},
+    { "type": "open", "path": "/path/to/edge-router.ts", "line": 177 },
     { "type": "delay",   "ms": 600 },
-    { "type": "highlight", "file": "/path/to/edge-router.ts", "startLine": 177, "endLine": 210, "durationMs": 12000 },
+    { "type": "highlight", "path": "/path/to/edge-router.ts", "start": 177, "end": 210 },
     { "type": "speak",   "text": "The implementation builds a control chain from source through all waypoints.", "voice": "af_nicole", "block": true },
-    { "type": "clear-highlights" }
+    { "type": "clear_highlights" }
   ]
 }
 ```
@@ -232,14 +242,14 @@ Run these first in every script:
   "label": "Architecture Overview Deck",
   "errPolicy": "abort",
   "steps": [
-    { "type": "command", "command": "accordo_layout_panel", "args": { "area": "sidebar", "action": "close" }},
-    { "type": "command", "command": "accordo_layout_panel", "args": { "area": "panel",   "action": "close" }},
+    { "type": "layout", "area": "sidebar", "action": "close" },
+    { "type": "layout", "area": "panel", "action": "close" },
     { "type": "delay",   "ms": 300 },
-    { "type": "command", "command": "accordo_presentation_open", "args": { "deckUri": "/path/to/deck.md" }},
-    { "type": "command", "command": "accordo_presentation_goto", "args": { "index": 1 }},
+    { "type": "slide_open", "deckUri": "/path/to/deck.md", "after_ms": 600 },
+    { "type": "slide_goto", "index": 1, "after_ms": 500 },
     { "type": "delay",   "ms": 400 },
     { "type": "speak",  "text": "Three main components: the Hub, the Bridge, and the Editor tools.", "voice": "bf_emma", "block": true },
-    { "type": "command", "command": "accordo_presentation_next" },
+    { "type": "slide_next", "after_ms": 500 },
     { "type": "delay",   "ms": 500 },
     { "type": "speak",   "text": "The Hub manages AI sessions and routes tools.", "voice": "bf_emma", "block": true }
   ]
@@ -278,7 +288,7 @@ Run these first in every script:
 
 4. **Non-blocking narration in demos** — Always `block: true`. If the script continues while narration plays, the next action fires before the audience finishes listening.
 
-5. **Overlapping highlights** — Always `clear-highlights` before a new `highlight`, or set `durationMs`.
+5. **Overlapping highlights** — Always `clear_highlights` before a new `highlight`.
 
 6. **Long highlight durations** — Set `durationMs` to match narration length, not 20s.
 

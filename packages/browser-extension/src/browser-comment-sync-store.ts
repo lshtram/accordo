@@ -91,6 +91,18 @@ let _storage: BrowserCommentSyncStorage = {
   },
 };
 
+async function loadPersistedDocument(): Promise<ChromeBrowserCommentSyncDocument | null> {
+  if (typeof chrome === "undefined" || !chrome.storage?.local) return null;
+  const stored = await chrome.storage.local.get(CANONICAL_BROWSER_COMMENT_SYNC_KEY);
+  const doc = stored[CANONICAL_BROWSER_COMMENT_SYNC_KEY] as ChromeBrowserCommentSyncDocument | undefined;
+  return doc ?? null;
+}
+
+async function savePersistedDocument(doc: ChromeBrowserCommentSyncDocument): Promise<void> {
+  if (typeof chrome === "undefined" || !chrome.storage?.local) return;
+  await chrome.storage.local.set({ [CANONICAL_BROWSER_COMMENT_SYNC_KEY]: doc });
+}
+
 /**
  * Injection seam for tests. Call with a fakeStorage to observe reads/writes.
  */
@@ -103,6 +115,16 @@ export function configureBrowserCommentSyncStorage(storage: BrowserCommentSyncSt
  */
 export function getStoredMeta(): SyncMeta {
   return { ..._storage.loadDocument().meta };
+}
+
+export async function loadBrowserCommentSyncDocumentFromStorage(): Promise<ChromeBrowserCommentSyncDocument> {
+  const persisted = await loadPersistedDocument();
+  if (persisted) {
+    _document = persisted;
+    _storage.saveDocument(persisted);
+    return persisted;
+  }
+  return _storage.loadDocument();
 }
 
 // ── Core API ──────────────────────────────────────────────────────────────────
@@ -140,6 +162,7 @@ export async function applyMergedBrowserCommentSyncState(response: {
     // Pages come from the Accordo response — use those
     pages: response.pages as ChromeBrowserCommentSyncDocument["pages"],
   });
+  await savePersistedDocument(_storage.loadDocument());
 }
 
 /**
@@ -169,6 +192,7 @@ export async function persistMergedBrowserCommentSyncState(state: {
     meta: updatedMeta,
     pages: state.pages as ChromeBrowserCommentSyncDocument["pages"],
   });
+  await savePersistedDocument(_storage.loadDocument());
 }
 
 /**

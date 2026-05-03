@@ -238,6 +238,43 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(@types/debug@4.1.13)(@types/node@20.19.35)(happy-dom@20.9.0)(jsdom@26.1.0)(tsx@4.21.0)
 
+  packages/drawing:
+    dependencies:
+      '@accordo/bridge-types':
+        specifier: workspace:*
+        version: link:../bridge-types
+      '@accordo/capabilities':
+        specifier: workspace:*
+        version: link:../capabilities
+      '@excalidraw/excalidraw':
+        specifier: 0.17.6
+        version: 0.17.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@excalidraw/mermaid-to-excalidraw':
+        specifier: ^2.2.2
+        version: 2.2.2
+      mermaid:
+        specifier: 11.12.3
+        version: 11.12.3
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.35
+      '@types/vscode':
+        specifier: ^1.100.0
+        version: 1.109.0
+      happy-dom:
+        specifier: ^20.9.0
+        version: 20.9.0
+      jsdom:
+        specifier: ^26.1.0
+        version: 26.1.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@20.19.35)(happy-dom@20.9.0)(jsdom@26.1.0)(tsx@4.21.0)
+
   packages/editor:
     devDependencies:
       '@accordo/bridge-types':

@@ -55,7 +55,7 @@ export class CommentQueryOps {
 
   /** Lightweight snapshot of store state for sync drift detection. */
   getVersionInfo(): { version: number; threadCount: number; lastActivity: string | null } {
-    const threads = Array.from(this._threads.values());
+    const threads = this.getAllThreads();
     let lastActivity: string | null = null;
     for (const t of threads) {
       if (!lastActivity || t.lastActivity > lastActivity) lastActivity = t.lastActivity;
@@ -65,17 +65,22 @@ export class CommentQueryOps {
 
   /** Get a single thread by ID. Returns undefined if not found. */
   getThread(threadId: string): CommentThread | undefined {
-    return this._threads.get(threadId);
+    if (this._deletedThreadIds.has(threadId)) return undefined;
+    const thread = this._threads.get(threadId);
+    if (!thread) return undefined;
+    const comments = thread.comments.filter((comment) => !this._deletedCommentIds.has(comment.id));
+    if (comments.length === 0) return undefined;
+    return { ...thread, comments: comments.map((comment) => ({ ...comment })) };
   }
 
   /** Get all threads anchored to a specific URI. */
   getThreadsForUri(uri: string): CommentThread[] {
-    return Array.from(this._threads.values()).filter(t => t.anchor.uri === uri);
+    return this.getAllThreads().filter(t => t.anchor.uri === uri);
   }
 
   /** List threads with optional filtering, pagination, and summary projection. */
   listThreads(options: ListThreadsOptions = {}): ListThreadsResult {
-    let threads = Array.from(this._threads.values());
+    let threads = this.getAllThreads();
 
     threads = this._applyFilters(threads, options);
 
@@ -101,7 +106,7 @@ export class CommentQueryOps {
   getCounts(): { open: number; resolved: number } {
     let open = 0;
     let resolved = 0;
-    for (const t of this._threads.values()) {
+    for (const t of this.getAllThreads()) {
       if (t.status === "open") open++;
       else resolved++;
     }

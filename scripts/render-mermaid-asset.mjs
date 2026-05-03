@@ -40,8 +40,8 @@ const mermaidJsPath = resolve(
 const chartStyles = {
   vivid: {
     background: "#0b1220",
-    primaryColor: "#2dd4bf",
-    primaryTextColor: "#e2e8f0",
+    primaryColor: "#5eead4",
+    primaryTextColor: "#0b1220",
     primaryBorderColor: "#14b8a6",
     lineColor: "#f59e0b",
     secondaryColor: "#3b82f6",
@@ -56,8 +56,8 @@ const chartStyles = {
   },
   calm: {
     background: "#0f172a",
-    primaryColor: "#60a5fa",
-    primaryTextColor: "#e2e8f0",
+    primaryColor: "#bfdbfe",
+    primaryTextColor: "#0f172a",
     primaryBorderColor: "#93c5fd",
     lineColor: "#94a3b8",
     secondaryColor: "#34d399",
@@ -72,8 +72,8 @@ const chartStyles = {
   },
   neutral: {
     background: "#111827",
-    primaryColor: "#9ca3af",
-    primaryTextColor: "#f3f4f6",
+    primaryColor: "#e5e7eb",
+    primaryTextColor: "#111827",
     primaryBorderColor: "#d1d5db",
     lineColor: "#d1d5db",
     secondaryColor: "#6b7280",

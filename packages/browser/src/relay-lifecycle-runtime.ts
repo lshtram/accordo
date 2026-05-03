@@ -1,4 +1,4 @@
-import type * as vscode from "vscode";
+import * as vscode from "vscode";
 import type { BrowserBridgeAPI, BrowserRelayAction, BrowserRelayLike, BrowserRelayResponse } from "./types.js";
 import { SnapshotRetentionStore } from "./snapshot-retention.js";
 import { ScreenshotRetentionStore } from "./screenshot-retention.js";
@@ -54,9 +54,6 @@ export function createRelayRequestHandler<TRelay extends BrowserRelayLike>(
       // VSCode initiates sync: calls syncBrowserComments() which sends request_comment_state_sync.
       // Browser handler reads canonical store, calls back via sync_comment_state.
       // The merged state is returned in the request() response data.
-      // DEBUG: instrument sync cycle
-      const requestId = (payload["requestId"] as string | undefined) ?? "(none)";
-      options.out.appendLine(`[SYNC-A] request_comment_state_sync received requestId=${requestId}`);
       try {
         const syncResult = await syncBrowserComments(options.getRelay(), options.bridge, options.out);
         // Return the merged BrowserCommentSyncState in response data so the browser persists it.
@@ -77,51 +74,18 @@ export function createRelayRequestHandler<TRelay extends BrowserRelayLike>(
       // Apply the incoming state — do NOT call syncBrowserComments() here, which would
       // cause recursion: sync_comment_state → syncBrowserComments() → request_comment_state_sync
       // → this handler again.
-      // DEBUG: instrument sync cycle
-      const schemaVersion = (payload["schemaVersion"] as string | undefined) ?? "(none)";
-      const emittedBy = (payload["emittedBy"] as string | undefined) ?? "(none)";
-      const pages = payload["pages"] as Array<unknown> | undefined;
-      const pageCount = pages?.length ?? 0;
-      let threadCount = 0;
-      let commentCount = 0;
-      for (const page of pages ?? []) {
-        const p = page as { threads?: Array<unknown> };
-        for (const thread of p.threads ?? []) {
-          threadCount++;
-          const t = thread as { comments?: Array<unknown> };
-          commentCount += t.comments?.length ?? 0;
-        }
-      }
-      options.out.appendLine(
-        `[SYNC-F] sync_comment_state received from browser schemaVersion=${schemaVersion} pageCount=${pageCount} threadCount=${threadCount} commentCount=${commentCount} emittedBy=${emittedBy}`,
-      );
-      let applyResult: "success" | "partial" = "partial";
+      let applyResult: Awaited<ReturnType<typeof applyBrowserCommentSyncStateFromRelay>> = { status: "partial" };
       try {
         applyResult = await applyBrowserCommentSyncStateFromRelay(payload, options.out);
-        const dataPageCount = pages?.length ?? 0;
-        let dataThreadCount = 0;
-        let dataCommentCount = 0;
-        for (const page of pages ?? []) {
-          const p = page as { threads?: Array<unknown> };
-          for (const thread of p.threads ?? []) {
-            dataThreadCount++;
-            const t = thread as { comments?: Array<unknown> };
-            dataCommentCount += t.comments?.length ?? 0;
-          }
-        }
-        options.out.appendLine(
-          `[SYNC-F2] sync_comment_state returning success=${applyResult === "success"} applyResult=${applyResult} dataPageCount=${dataPageCount} dataThreadCount=${dataThreadCount} dataCommentCount=${dataCommentCount}`,
-        );
         // Return the merged state so the browser can persist it.
         // The merged state IS the payload (browser's state, now reconciled by VSCode).
         return {
           requestId: "",
-          success: applyResult === "success",
-          error: applyResult === "partial" ? "action-failed" : undefined,
-          data: payload,
+          success: applyResult.status === "success",
+          error: applyResult.status === "partial" ? "action-failed" : undefined,
+          data: applyResult.status === "success" ? applyResult.state : payload,
         };
       } catch {
-        options.out.appendLine(`[SYNC-F2] sync_comment_state returning success=false applyResult=threw`);
         return { requestId: "", success: false, error: "action-failed" };
       }
     }
@@ -179,6 +143,8 @@ interface RegisterRelayRuntimeOptions {
   bridge: BrowserBridgeAPI;
   relay: BrowserRelayLike;
   modeLabel?: string;
+  /** Called when the relay transitions to connected (Chrome paired). */
+  onConnectionChange?: (connected: boolean) => void;
 }
 
 export function registerRelayRuntime(options: RegisterRelayRuntimeOptions): void {
@@ -193,9 +159,17 @@ export function registerRelayRuntime(options: RegisterRelayRuntimeOptions): void
     `[accordo-browser] registered ${allBrowserTools.length} browser MCP tools${options.modeLabel ? ` (${options.modeLabel})` : ""}`,
   );
 
+  const healthCommandDisposable = vscode.commands.registerCommand("accordo_browser_health", () => ({
+    connected: options.relay.isConnected(),
+  }));
+  options.context.subscriptions.push(healthCommandDisposable);
+  options.out.appendLine("[accordo-browser] registered accordo_browser_health command");
+
   registerBrowserNotifier(options.context, options.out, options.relay);
 
   const scheduler = new BrowserCommentSyncScheduler(options.relay, options.bridge, options.out);
   scheduler.start();
   options.context.subscriptions.push({ dispose: () => scheduler.stop() });
+
+  options.onConnectionChange?.(options.relay.isConnected());
 }

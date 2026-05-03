@@ -21,6 +21,11 @@ import {
   pruneVolatileBrowserThreads,
   resetStaleTombstones,
   applyBrowserStatePages,
+  exportBrowserCommentSyncState,
+  recordLocalBrowserDelete,
+  loadBrowserSyncTombstones,
+  exportBrowserSyncTombstones,
+  type BrowserSyncTombstoneStoreFile,
 } from "./comment-store-browser-sync.js";
 
 // ── StorageAdapter ────────────────────────────────────────────────────────────
@@ -123,6 +128,10 @@ import type {
 
 import type { CommentThread } from "@accordo/bridge-types";
 
+interface PersistedCommentStoreFile extends CommentStoreFile {
+  browserSyncTombstones?: BrowserSyncTombstoneStoreFile;
+}
+
 // ── CommentStore class ───────────────────────────────────────────────────────
 
 export class CommentStore {
@@ -171,6 +180,7 @@ export class CommentStore {
     const file = await this._adapter.read();
     if (file !== null) {
       this._repo.loadFromStoreFile(file);
+      loadBrowserSyncTombstones(this._repo, (file as PersistedCommentStoreFile).browserSyncTombstones);
     }
   }
 
@@ -180,7 +190,9 @@ export class CommentStore {
     // preventing concurrent rename() calls on comments.json.tmp.
     this._writeQueue = this._writeQueue.then(async () => {
       if (!this._workspaceRoot || !this._adapter) return;
-      await this._adapter.write(this._repo.toStoreFile());
+      const file = this._repo.toStoreFile() as PersistedCommentStoreFile;
+      file.browserSyncTombstones = exportBrowserSyncTombstones(this._repo);
+      await this._adapter.write(file);
     });
     await this._writeQueue;
   }
@@ -303,6 +315,7 @@ export class CommentStore {
   async delete(params: DeleteParams): Promise<void> {
     // M36-CS-13: validate threadId; commentId optional but if present must be non-whitespace
     assertValidMutationIds({ threadId: params.threadId, commentId: params.commentId });
+    recordLocalBrowserDelete(this._repo, this._repo.getThread(params.threadId), params.commentId);
     const result = this._repo.delete(params);
     await this._persist();
     this._emit(result.affectedUri);
@@ -316,6 +329,11 @@ export class CommentStore {
    * Source: comments-architecture.md §10.5, requirements-comments.md M38-CT-07
    */
   async deleteAllByModality(surfaceType: string): Promise<{ count: number; deletedIds: string[] }> {
+    if (surfaceType === "browser") {
+      for (const thread of this._repo.getAllThreads()) {
+        recordLocalBrowserDelete(this._repo, thread);
+      }
+    }
     const result = this._repo.deleteAllByModality(surfaceType);
     if (result.count > 0) {
       await this._persist();
@@ -328,6 +346,9 @@ export class CommentStore {
 
   /** Delete every thread in the store. */
   async deleteAll(): Promise<{ count: number; deletedIds: string[] }> {
+    for (const thread of this._repo.getAllThreads()) {
+      recordLocalBrowserDelete(this._repo, thread);
+    }
     const result = this._repo.deleteAll();
     if (result.count > 0) {
       await this._persist();
@@ -422,6 +443,12 @@ export class CommentStore {
     }
 
     const repo = this._repo;
+    const affectedUris = new Set(
+      repo.getAllThreads()
+        .filter((thread) => thread.retention === "volatile-browser")
+        .map((thread) => thread.anchor.uri),
+    );
+    for (const page of state.pages) affectedUris.add(page.pageUrl);
 
     const { incomingThreadIds, incomingCommentIds } = collectBrowserStateIds(state);
     pruneVolatileBrowserThreads(repo, incomingThreadIds);
@@ -429,6 +456,18 @@ export class CommentStore {
     applyBrowserStatePages(repo, state.pages);
 
     await this._persist();
+
+    // Emit for each page URL so native widgets and the Accordo Comments panel
+    // refresh after browser-origin full-state sync. The comments bootstrap
+    // wraps browser sync apply calls with a depth guard, so these emits do not
+    // schedule another browser wakeup and cannot create an apply/wakeup loop.
+    for (const uri of affectedUris) this._emit(uri);
+  }
+
+  exportBrowserCommentSyncState(
+    base?: Pick<BrowserCommentSyncState, "browserRevision" | "accordoRevision">,
+  ): BrowserCommentSyncState {
+    return exportBrowserCommentSyncState(this._repo, base);
   }
 
   // ── Change listener ────────────────────────────────────────────────────────
@@ -444,5 +483,3 @@ export class CommentStore {
     };
   }
 }
-
-

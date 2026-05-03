@@ -1,0 +1,6 @@
+flowchart LR
+  Core["core/\npure contracts\nmerge query patch"] --> Host["host/\nVS Code + MCP\npanel tools files"]
+  Core --> Web["webview/\nExcalidraw UI\ncomments export"]
+  Seed["seed/\nmermaid-to-excalidraw\ninitial visuals only"] --> Core
+  Host --> Hub["Accordo Hub\naccordo_drawing_* tools"]
+  Web --> Scene[".excalidraw\ncanonical visual file"]

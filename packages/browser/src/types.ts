@@ -139,6 +139,12 @@ export interface BrowserRelayLike {
    * Return a BrowserRelayResponse to short-circuit the Chrome round-trip.
    */
   onRelayRequest?: (action: BrowserRelayAction, payload: Record<string, unknown>) => Promise<BrowserRelayResponse>;
+  /**
+   * Optional connection-change listener: the relay calls this when the Chrome
+   * connection state changes (connected ↔ disconnected). Useful for triggering
+   * actions immediately after Chrome pairs, such as a comment sync on startup.
+   */
+  onConnectionChange?(connected: boolean): void;
 }
 
 export interface BrowserBridgeAPI {

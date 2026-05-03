@@ -98,6 +98,7 @@ type BrowserNotifier = {
   addThread(thread: { id?: string; anchor: { uri: string }; comments?: Array<Record<string, unknown>> }): void;
   updateThread(thread: { id?: string; anchor: { uri: string }; comments?: Array<Record<string, unknown>> }): void;
   removeThread(threadId: string): void;
+  scheduleWakeup?(action: "request_comment_state_sync", payload?: Record<string, unknown>): void;
 };
 
 beforeEach(() => {
@@ -293,6 +294,44 @@ describe("extension.ts — accordo-comments browser notifier registration", () =
     expect(pushMock).toHaveBeenCalledWith("request_comment_state_sync", {
       url: "https://example.com/page",
     });
+  });
+
+  /**
+   * SUB-01f: scheduleWakeup triggers request_comment_state_sync immediately.
+   *         This is the new canonical path for MCP tool mutations — after an
+   *         agent reply/resolve/reopen/delete, comment_reply handler calls
+   *         scheduleWakeup directly rather than only updateThread.
+   */
+  it("SUB-01f: scheduleWakeup triggers request_comment_state_sync with optional payload", async () => {
+    const bridge = makeBridge();
+    let capturedNotifier: BrowserNotifier | null = null;
+
+    const commentsExports = {
+      registerBrowserNotifier: vi.fn().mockImplementation((notifier: BrowserNotifier) => {
+        capturedNotifier = notifier;
+        return { dispose: vi.fn() };
+      }),
+    };
+
+    (extensions as Record<string, unknown>).getExtension = vi.fn().mockImplementation(
+      (id: string) => {
+        if (id === "accordo.accordo-bridge") return { exports: bridge };
+        if (id === "accordo.accordo-comments") return { exports: commentsExports };
+        return undefined;
+      },
+    );
+
+    const context = createExtensionContextMock();
+    await activate(context as never);
+
+    expect(capturedNotifier).not.toBeNull();
+
+    // scheduleWakeup is the new Phase C seam — called directly by mutation handlers
+    // after successful replies/creates/resolve/reopen/delete
+    if (capturedNotifier!.scheduleWakeup) {
+      capturedNotifier!.scheduleWakeup("request_comment_state_sync", { url: "https://example.com/page" });
+      expect(pushMock).toHaveBeenCalledWith("request_comment_state_sync", { url: "https://example.com/page" });
+    }
   });
 
   /**

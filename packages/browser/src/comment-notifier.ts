@@ -99,6 +99,7 @@ export function registerBrowserNotifier(
       addThread(thread: CommentThread): void;
       updateThread(thread: CommentThread): void;
       removeThread(threadId: string): void;
+      scheduleWakeup?(action: "request_comment_state_sync", payload?: unknown): void;
     }) => { dispose(): void };
   } | undefined;
   if (!commentsExports?.registerBrowserNotifier) {
@@ -121,6 +122,10 @@ export function registerBrowserNotifier(
     removeThread(threadId: string) {
       // Full-state sync wakeup — browser extension will do sync_comment_state
       pushBestEffort(relay, "request_comment_state_sync", { threadId });
+    },
+    scheduleWakeup(action: "request_comment_state_sync", payload?: unknown) {
+      // Immediate browser full-state sync — browser extension will do sync_comment_state
+      pushBestEffort(relay, "request_comment_state_sync", (payload as Record<string, unknown>) ?? {});
     },
   });
   context.subscriptions.push(sub);

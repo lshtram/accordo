@@ -49,31 +49,10 @@ export async function syncBrowserComments(
   try {
     // Step 1: Initiate via request_comment_state_sync (NOT sync_comment_state with {}).
     // This tells the browser to gather its full canonical state and call back.
-    out.appendLine("[SYNC-B] request_comment_state_sync sent"); // DEBUG:
     const syncResult = await relay.request(
       "request_comment_state_sync",
       {},
       COMMENT_SYNC_RELAY_TIMEOUT_MS,
-    );
-    // DEBUG: instrument response
-    const s = syncResult.success;
-    const hasData = !!syncResult.data && typeof syncResult.data === "object" && Object.keys(syncResult.data).length > 0;
-    let respPageCount = 0;
-    let respThreadCount = 0;
-    let respCommentCount = 0;
-    if (hasData) {
-      const data = syncResult.data as BrowserCommentSyncStateWire;
-      const respPages = data.pages;
-      respPageCount = respPages?.length ?? 0;
-      for (const page of respPages ?? []) {
-        for (const thread of page.threads ?? []) {
-          respThreadCount++;
-          respCommentCount += thread.comments?.length ?? 0;
-        }
-      }
-    }
-    out.appendLine(
-      `[SYNC-B2] request_comment_state_sync response received success=${s} hasData=${hasData} respPageCount=${respPageCount} respThreadCount=${respThreadCount} respCommentCount=${respCommentCount}`,
     );
     if (!syncResult.success) {
       out.appendLine(
@@ -88,14 +67,13 @@ export async function syncBrowserComments(
     const mergedState = syncResult.data as BrowserCommentSyncStateWire;
 
     // Step 3: Apply merged full-state to VS Code comment store via accordo-comments extension.
-    out.appendLine("[SYNC-B3] returned state apply result"); // DEBUG:
     const applyResult = await applyBrowserCommentSyncStateFromRelay(mergedState, out);
-    if (applyResult !== "success") {
-      out.appendLine(`[accordo-browser:comment-sync] applyBrowserCommentSyncState returned ${applyResult}`);
+    if (applyResult.status !== "success") {
+      out.appendLine(`[accordo-browser:comment-sync] applyBrowserCommentSyncState returned ${applyResult.status}`);
     }
 
     out.appendLine("[accordo-browser:comment-sync] full-state sync complete");
-    return { status: "success", syncResult: mergedState };
+    return { status: "success", syncResult: (applyResult.status === "success" ? applyResult.state : mergedState) as BrowserCommentSyncStateWire };
   } catch (err) {
     out.appendLine(
       `[accordo-browser:comment-sync] request_comment_state_sync request failed — ${err instanceof Error ? err.message : String(err)}`,
@@ -115,48 +93,28 @@ export async function syncBrowserComments(
 export async function applyBrowserCommentSyncStateFromRelay(
   mergedState: unknown,
   out: vscode.OutputChannel,
-): Promise<"success" | "partial"> {
-  // DEBUG: instrument extension lookup
+): Promise<{ status: "success"; state: unknown } | { status: "partial" }> {
   const commentsExt = vscode.extensions.getExtension("accordo.accordo-comments");
   const exports = commentsExt?.exports as {
-    applyBrowserCommentSyncState?(state: unknown): Promise<void>;
+    applyBrowserCommentSyncState?(state: unknown): Promise<unknown>;
   } | undefined;
-  out.appendLine(
-    `[SYNC-G] comments extension lookup commentsExt=${!!commentsExt} exports=${!!commentsExt?.exports} applyFn=${typeof exports?.applyBrowserCommentSyncState}`,
-  );
   try {
     if (!commentsExt || !commentsExt.exports) {
       out.appendLine("[accordo-browser:comment-sync] accordo-comments not installed — skipping apply");
-      return "partial";
+      return { status: "partial" };
     }
-    if (typeof exports!.applyBrowserCommentSyncState !== "function") {
+    const applyBrowserCommentSyncState = exports?.applyBrowserCommentSyncState;
+    if (typeof applyBrowserCommentSyncState !== "function") {
       out.appendLine("[accordo-browser:comment-sync] accordo-comments applyBrowserCommentSyncState not available — skipping apply");
-      return "partial";
+      return { status: "partial" };
     }
-    // DEBUG: instrument apply call
-    let pageCount = 0;
-    let threadCount = 0;
-    let commentCount = 0;
-    if (mergedState && typeof mergedState === "object" && "pages" in mergedState) {
-      const state = mergedState as { pages: Array<{ threads?: Array<{ comments?: Array<unknown> }> }> };
-      pageCount = state.pages?.length ?? 0;
-      for (const page of state.pages ?? []) {
-        for (const thread of page.threads ?? []) {
-          threadCount++;
-          commentCount += thread.comments?.length ?? 0;
-        }
-      }
-    }
-    out.appendLine(`[SYNC-G2] applyBrowserCommentSyncState called pageCount=${pageCount} threadCount=${threadCount} commentCount=${commentCount}`);
-    await exports!.applyBrowserCommentSyncState!(mergedState);
+    const state = await applyBrowserCommentSyncState(mergedState);
     out.appendLine("[accordo-browser:comment-sync] applied merged state to VS Code comment store");
-    out.appendLine(`[SYNC-G3] applyBrowserCommentSyncState returned result=success`); // DEBUG:
-    return "success";
+    return { status: "success", state: state ?? mergedState };
   } catch (err) {
     out.appendLine(
       `[accordo-browser:comment-sync] applyBrowserCommentSyncState failed — ${err instanceof Error ? err.message : String(err)}`,
     );
-    out.appendLine(`[SYNC-G3] applyBrowserCommentSyncState returned result=partial`); // DEBUG:
-    return "partial";
+    return { status: "partial" };
   }
 }

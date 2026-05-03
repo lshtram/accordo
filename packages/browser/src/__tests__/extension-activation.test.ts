@@ -180,6 +180,62 @@ describe("M83-BTOOLS extension activation", () => {
     expect(hasDisposable).toBe(true);
   });
 
+  it("registers accordo_browser_health command for comments navigation health checks", async () => {
+    const bridge = {
+      registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      publishState: vi.fn(),
+      invokeTool: invokeToolMock,
+    };
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+
+    const context = createExtensionContextMock();
+    await activate(context as never);
+
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith(
+      "accordo_browser_health",
+      expect.any(Function),
+    );
+  });
+
+  it("BR-F-102: accordo_browser.focusThread calls relay.push('focus_thread', { threadId })", async () => {
+    // Mock relay: capture the push function so we can verify it is called
+    const pushMock = vi.fn();
+    const mockRelayServerInstance = {
+      start: startMock,
+      stop: stopMock,
+      isConnected: isConnectedMock,
+      request: vi.fn(),
+      push: pushMock,
+    };
+
+    // Re-import relay-server module so the mock gets picked up
+    const relayServerModule = await import("../relay-server.js");
+    const MockRelayServerClass = relayServerModule.BrowserRelayServer as ReturnType<typeof vi.fn>;
+    // Override the constructor to return our mock with push
+    MockRelayServerClass.mockImplementation(() => mockRelayServerInstance as never);
+
+    const bridge = {
+      registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      publishState: vi.fn(),
+      invokeTool: invokeToolMock,
+    };
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
+
+    const context = createExtensionContextMock();
+    await activate(context as never);
+
+    // Find the accordo_browser.focusThread command registration
+    const focusThreadCall = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>)
+      .mock.calls.find(([cmd]: [string]) => cmd === "accordo_browser.focusThread");
+    expect(focusThreadCall).toBeDefined();
+
+    const [, handler] = focusThreadCall as [string, (threadId: string) => Promise<void>];
+    await handler("thread-abc-123");
+
+    expect(pushMock).toHaveBeenCalledOnce();
+    expect(pushMock).toHaveBeenCalledWith("focus_thread", { threadId: "thread-abc-123" });
+  });
+
   it("PU-E2E-01: browser_get_page_map handler calls relay.request('get_page_map', args, timeout)", async () => {
     // Set up relay mock to capture request() calls
     const requestMock = vi.fn().mockResolvedValue({

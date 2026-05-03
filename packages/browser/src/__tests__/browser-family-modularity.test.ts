@@ -93,6 +93,9 @@ vi.mock("vscode", () => {
         dispose: vi.fn(),
       })),
     },
+    commands: {
+      registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+    },
     Disposable: class Disposable {
       constructor(private readonly fn: () => void) {}
       dispose(): void { this.fn(); }
@@ -573,6 +576,114 @@ describe("comment-sync", () => {
       );
       scheduler.stop();
     });
+
+    it("SBR-SYNC-SCHED-06: scheduleImmediateSync() sets a timer and triggers syncNow after delay", async () => {
+      const { BrowserCommentSyncScheduler } = await import("../comment-sync.js");
+      const relay = createMockRelay();
+      relay.request.mockResolvedValue({ success: true, data: { pages: [] } });
+      const bridge = createMockBridge();
+      const out = { appendLine: vi.fn() };
+
+      const scheduler = new BrowserCommentSyncScheduler(
+        relay as unknown as BrowserRelayLike,
+        bridge as unknown as BrowserBridgeAPI,
+        out as unknown as vscode.OutputChannel,
+      );
+
+      // Mock Date.now to control timer firing — use fake timers
+      vi.useFakeTimers();
+
+      scheduler.scheduleImmediateSync(100);
+      // syncNow must not have been called yet (timer is pending)
+      expect(relay.request).not.toHaveBeenCalled();
+
+      // Advance time past the 100ms delay
+      await vi.advanceTimersByTimeAsync(100);
+      // Now syncNow should have been called
+      expect(relay.request).toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it("SBR-SYNC-SCHED-07: scheduleImmediateSync() is idempotent — second call clears first timer", async () => {
+      const { BrowserCommentSyncScheduler } = await import("../comment-sync.js");
+      const relay = createMockRelay();
+      relay.request.mockResolvedValue({ success: true, data: { pages: [] } });
+      const bridge = createMockBridge();
+      const out = { appendLine: vi.fn() };
+
+      const scheduler = new BrowserCommentSyncScheduler(
+        relay as unknown as BrowserRelayLike,
+        bridge as unknown as BrowserBridgeAPI,
+        out as unknown as vscode.OutputChannel,
+      );
+
+      vi.useFakeTimers();
+
+      scheduler.scheduleImmediateSync(200); // first timer, 200ms
+      scheduler.scheduleImmediateSync(50); // second call cancels first, sets 50ms timer
+
+      // Advance 100ms — only the second timer fires
+      await vi.advanceTimersByTimeAsync(100);
+      // syncNow must have been called exactly once (second call cancelled first)
+      expect(relay.request).toHaveBeenCalledTimes(1);
+
+      vi.useRealTimers();
+    });
+
+    it("SBR-SYNC-SCHED-08: stop() clears any pending immediate sync timer", async () => {
+      const { BrowserCommentSyncScheduler } = await import("../comment-sync.js");
+      const relay = createMockRelay();
+      relay.request.mockResolvedValue({ success: true, data: { pages: [] } });
+      const bridge = createMockBridge();
+      const out = { appendLine: vi.fn() };
+
+      const scheduler = new BrowserCommentSyncScheduler(
+        relay as unknown as BrowserRelayLike,
+        bridge as unknown as BrowserBridgeAPI,
+        out as unknown as vscode.OutputChannel,
+      );
+
+      vi.useFakeTimers();
+      scheduler.scheduleImmediateSync(500);
+      scheduler.stop(); // should clear the pending timer
+
+      // Advance well past the 500ms — syncNow must NOT fire
+      await vi.advanceTimersByTimeAsync(600);
+      expect(relay.request).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe("registerRelayRuntime startup sync", () => {
+    it("SBR-STARTUP-SYNC-01: registerRelayRuntime does not start a duplicate sync cycle by itself", async () => {
+      // Production connection/reconnect sync is owned by the relay lifecycle mode
+      // (shared or per-window), where Chrome connection state is known. The generic
+      // runtime must not also initiate a cycle or already-connected startup can
+      // double-send request_comment_state_sync.
+      const { registerRelayRuntime } = await import("../relay-lifecycle-runtime.js");
+      const relay = createMockRelay();
+      relay.isConnected = () => true; // Chrome already connected
+      relay.request.mockResolvedValue({ success: true, data: { pages: [] } });
+      const bridge = createMockBridge();
+      const out = { appendLine: vi.fn() };
+      const context = createExtensionContextMock();
+
+      vi.useFakeTimers();
+      registerRelayRuntime({
+        context: context as unknown as vscode.ExtensionContext,
+        out: out as unknown as vscode.OutputChannel,
+        bridge: bridge as unknown as BrowserBridgeAPI,
+        relay: relay as unknown as BrowserRelayLike,
+      });
+
+      await vi.advanceTimersByTimeAsync(250);
+
+      expect(relay.request).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
   });
 
   describe("comments-optional fallback matrix (§14-B.5)", () => {
@@ -878,40 +989,43 @@ describe("relay-lifecycle", () => {
   });
 
   describe("activateSharedRelay", () => {
-    it("SBR-F-SHARED-01: resolves without throwing (stub smoke test)", async () => {
+    it("SBR-F-SHARED-01: resolves to a BrowserRelayLike (shared mode client or server)", async () => {
       const { activateSharedRelay } = await import("../relay-lifecycle.js");
       const context = createExtensionContextMock();
       const out = { appendLine: vi.fn() };
       const bridge = createMockBridge();
 
-      await expect(
-        activateSharedRelay(
-          context as unknown as vscode.ExtensionContext,
-          out as unknown as vscode.OutputChannel,
-          bridge as unknown as BrowserBridgeAPI,
-          "test-token",
-          true,
-        ),
-      ).resolves.toBeUndefined();
+      const relay = await activateSharedRelay(
+        context as unknown as vscode.ExtensionContext,
+        out as unknown as vscode.OutputChannel,
+        bridge as unknown as BrowserBridgeAPI,
+        "test-token",
+        true,
+      );
+      // Returns a BrowserRelayLike: push and isConnected must be present
+      expect(relay).not.toBeUndefined();
+      expect(typeof (relay as { push?: unknown }).push).toBe("function");
+      expect(typeof (relay as { isConnected?: unknown }).isConnected).toBe("function");
     });
   });
 
   describe("activatePerWindowRelay", () => {
-    it("SBR-F-PERWINDOW-01: resolves without throwing (stub smoke test)", async () => {
+    it("SBR-F-PERWINDOW-01: resolves to a BrowserRelayServer", async () => {
       const { activatePerWindowRelay } = await import("../relay-lifecycle.js");
       const context = createExtensionContextMock();
       const out = { appendLine: vi.fn() };
       const bridge = createMockBridge();
 
-      await expect(
-        activatePerWindowRelay(
-          context as unknown as vscode.ExtensionContext,
-          out as unknown as vscode.OutputChannel,
-          bridge as unknown as BrowserBridgeAPI,
-          "test-token",
-          true,
-        ),
-      ).resolves.toBeUndefined();
+      const relay = await activatePerWindowRelay(
+        context as unknown as vscode.ExtensionContext,
+        out as unknown as vscode.OutputChannel,
+        bridge as unknown as BrowserBridgeAPI,
+        "test-token",
+        true,
+      );
+      expect(relay).not.toBeUndefined();
+      expect(typeof (relay as { push?: unknown }).push).toBe("function");
+      expect(typeof (relay as { isConnected?: unknown }).isConnected).toBe("function");
     });
   });
 });

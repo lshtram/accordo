@@ -1,6 +1,6 @@
 import type * as vscode from "vscode";
 import { randomUUID } from "node:crypto";
-import type { BrowserBridgeAPI, BrowserRelayAction, BrowserRelayResponse } from "./types.js";
+import type { BrowserBridgeAPI, BrowserRelayAction, BrowserRelayResponse, BrowserRelayLike } from "./types.js";
 import { SharedBrowserRelayServer } from "./shared-relay-server.js";
 import { SharedRelayClient } from "./shared-relay-client.js";
 import {
@@ -16,6 +16,7 @@ import { EXTENSION_ID, RELAY_BASE_PORT, RELAY_HOST } from "./relay-lifecycle-pri
 import { createRelayRequestHandler, registerRelayRuntime } from "./relay-lifecycle-runtime.js";
 import { activatePerWindowRelay } from "./relay-lifecycle-window.js";
 import { startSharedRelayOwner } from "./relay-lifecycle-owner.js";
+import { syncBrowserComments } from "./comment-sync-runtime.js";
 
 interface SharedState {
   relayConnected: boolean;
@@ -61,13 +62,29 @@ export async function activateSharedRelay(
     relay: SharedRelayClient,
     out?: vscode.OutputChannel,
   ) => Promise<BrowserRelayResponse>,
-): Promise<void> {
+): Promise<BrowserRelayLike> {
   let relayStartError: string | null = null;
   let relayPort = RELAY_BASE_PORT;
   const sharedState: SharedState = { relayConnected: false, chromeConnected: false };
+  let activeRelay: BrowserRelayLike | null = null;
+  let connectionSyncTimer: ReturnType<typeof setTimeout> | null = null;
+  let connectionSyncInFlight = false;
+  const scheduleConnectedSync = (): void => {
+    if (!activeRelay || !sharedState.relayConnected || !sharedState.chromeConnected) return;
+    if (connectionSyncTimer !== null) clearTimeout(connectionSyncTimer);
+    connectionSyncTimer = setTimeout(() => {
+      connectionSyncTimer = null;
+      if (!activeRelay || connectionSyncInFlight || !sharedState.relayConnected || !sharedState.chromeConnected) return;
+      connectionSyncInFlight = true;
+      void syncBrowserComments(activeRelay, bridge, out).finally(() => {
+        connectionSyncInFlight = false;
+      });
+    }, 200);
+  };
   const handleSharedClientEvent = (event: string, details?: Record<string, unknown>): void => {
     updateSharedState(event, details, sharedState);
     publishSharedState(bridge, relayPort, relayStartError, sharedState);
+    scheduleConnectedSync();
   };
 
   const existingInfo = readSharedRelayInfo();
@@ -86,32 +103,40 @@ export async function activateSharedRelay(
       },
       onRelayRequest: createRelayRequestHandler({ out, bridge, getRelay: (): SharedRelayClient => client, handleBrowserComment }),
     });
+    activeRelay = client;
     client.start();
-    context.subscriptions.push({ dispose: () => client.stop() });
+    context.subscriptions.push({
+      dispose: () => {
+        if (connectionSyncTimer !== null) clearTimeout(connectionSyncTimer);
+        client.stop();
+      },
+    });
     out.appendLine(`[accordo-browser] SharedRelayClient started for hub ${hubId}`);
     registerRelayRuntime({ context, out, bridge, relay: client, modeLabel: "shared mode" });
     publishSharedState(bridge, relayPort, relayStartError, sharedState);
-    return;
+    return client;
   }
 
   out.appendLine(`[accordo-browser] no running shared relay found — starting as Owner`);
   if (!acquireRelayLock()) {
     out.appendLine("[accordo-browser] could not acquire lock — falling back to per-window relay");
-    await activatePerWindowRelay(context, out, bridge, token, commentsAvailable);
-    return;
+    return await activatePerWindowRelay(context, out, bridge, token, commentsAvailable);
   }
 
+  let ownerClient: SharedRelayClient;
   try {
-    await startSharedRelayOwner(context, out, bridge, token, handleSharedClientEvent, handleBrowserComment);
+    ownerClient = await startSharedRelayOwner(context, out, bridge, token, handleSharedClientEvent, handleBrowserComment);
+    activeRelay = ownerClient;
     relayPort = RELAY_BASE_PORT;
     publishSharedState(bridge, relayPort, relayStartError, sharedState);
+    scheduleConnectedSync();
   } catch (err) {
     relayStartError = err instanceof Error ? err.message : String(err);
     out.appendLine(`[accordo-browser] SharedBrowserRelayServer start failed: ${relayStartError}`);
     releaseRelayLock();
-    await activatePerWindowRelay(context, out, bridge, token, commentsAvailable);
-    return;
+    return await activatePerWindowRelay(context, out, bridge, token, commentsAvailable);
   }
 
   publishSharedState(bridge, relayPort, relayStartError, sharedState);
+  return ownerClient;
 }

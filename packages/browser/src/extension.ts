@@ -8,6 +8,11 @@ import {
   activatePerWindowRelay,
 } from "./relay-lifecycle.js";
 import { handleBrowserCommentAction } from "./browser-comment-relay-handler.js";
+import type { BrowserRelayLike } from "./types.js";
+
+// Module-level relay reference captured during activation for use by
+// synchronously-registered commands (e.g. accordo_browser.focusThread).
+let relay: BrowserRelayLike | null = null;
 
 // Re-export BrowserCommentSyncScheduler from comment-sync.ts for backward
 // compatibility with existing consumers / tests.
@@ -65,6 +70,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       } else {
         out.appendLine("[accordo-browser] accordo-comments focusThread not available — panel focused but thread scroll skipped");
       }
+
+      // BR-F-102: Send focus_thread relay push so Chrome activates the tab and
+      // opens the thread popover via scroll-to-thread content script message.
+      if (relay) {
+        try {
+          relay.push("focus_thread", { threadId });
+        } catch {
+          // push is best-effort; Chrome tab activation is non-critical
+        }
+      }
     },
   );
   context.subscriptions.push(focusThreadDisposable);
@@ -76,9 +91,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     .get<boolean>("sharedRelay", true);
 
   if (sharedRelayEnabled) {
-    await activateSharedRelay(context, out, bridge as never, token, true, handleBrowserCommentAction);
+    relay = await activateSharedRelay(context, out, bridge as never, token, true, handleBrowserCommentAction);
   } else {
-    await activatePerWindowRelay(context, out, bridge as never, token, true);
+    relay = await activatePerWindowRelay(context, out, bridge as never, token, true);
   }
 
   out.appendLine("[accordo-browser] published modality state");

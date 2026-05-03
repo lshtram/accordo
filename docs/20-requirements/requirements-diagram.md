@@ -9,6 +9,8 @@
 **Architecture reference:** `docs/10-architecture/diagram-architecture.md` (ACTIVE)  
 **Workplan:** `docs/00-workplan/workplan.md`
 
+> **Ownership note:** The new `accordo-drawing` package owns the `.mmd` + `.excalidraw` merge/placement architecture for collaborative incremental drawings. Do not extend `accordo-diagram` with a second competing merge contract. Cross-file merge-preservation work belongs in `docs/20-requirements/requirements-drawing.md`.
+
 ---
 
 ## 1. Purpose
@@ -174,7 +176,7 @@ The modules below are still open backlog items (see `diagram-architecture.md §1
 | Undo/redo | Operation log (50-entry ring buffer) |
 | Full shape fidelity | hexagon, cylinder, parallelogram canvas approximations |
 | Draw-on animation | Progressive element loading at render time |
-| Dirty-canvas guard | Merge human layout + agent topology changes |
+| Dirty-canvas guard | Moved out of `accordo-diagram` ownership. New collaborative merge/preservation contract is owned by `accordo-drawing`; see `requirements-drawing.md` |
 
 ### D-01 — Shape Fidelity (DEFERRED)
 

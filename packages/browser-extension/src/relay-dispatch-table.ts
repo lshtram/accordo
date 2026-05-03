@@ -20,6 +20,7 @@ import {
   handleReopenThread,
   handleDeleteThread,
   handleNotifyCommentsUpdated,
+  handleFocusThread,
   handleGetPageMap,
   handleInspectElement,
   handleGetDomExcerpt,
@@ -62,6 +63,7 @@ export const dispatchMap: DispatchMap = {
   reopen_thread: handleReopenThread,
   delete_thread: handleDeleteThread,
   notify_comments_updated: handleNotifyCommentsUpdated,
+  focus_thread: handleFocusThread,
 
   // Page understanding actions
   get_page_map: handleGetPageMap,

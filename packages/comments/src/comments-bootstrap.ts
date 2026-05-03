@@ -29,6 +29,37 @@ import type { BridgeAPI } from "./bridge-integration.js";
 // Initialised once in activate() and never reassigned.
 let _activatedStore: CommentStore | null = null;
 
+// ── Browser sync depth counter ─────────────────────────────────────────────────
+// Tracks nested applyBrowserCommentSyncState calls so the central store.onChanged
+// hook does NOT fire scheduleWakeup when a browser-origin apply triggers _emit.
+// This prevents the ping-pong loop: apply -> _emit -> wakeup -> browser sync ->
+// apply again -> _emit -> wakeup ... ad infinitum.
+//
+// Increment before apply, decrement after (try/finally ensures decrement even
+// on error). The hook checks depth === 0 before scheduling wakeup.
+let _browserSyncApplyDepth = 0;
+
+/**
+ * Wrapper that increments browserSyncApplyDepth before calling
+ * store.applyBrowserCommentSyncState and decrements after, using try/finally
+ * so the counter is never left elevated on error.
+ */
+async function applyBrowserSyncState(
+  store: CommentStore,
+  state: BrowserCommentSyncState,
+): Promise<BrowserCommentSyncState> {
+  _browserSyncApplyDepth++;
+  try {
+    await store.applyBrowserCommentSyncState(state);
+    return store.exportBrowserCommentSyncState({
+      browserRevision: state.browserRevision,
+      accordoRevision: state.accordoRevision,
+    });
+  } finally {
+    _browserSyncApplyDepth--;
+  }
+}
+
 // ── Exports ───────────────────────────────────────────────────────────────────
 
 /** Exports returned by activate() for inter-extension consumption. */
@@ -43,7 +74,7 @@ export interface CommentsExtensionExports {
    *
    * @param state Full-state document from `sync_comment_state` response.
    */
-  applyBrowserCommentSyncState(state: BrowserCommentSyncState): Promise<void>;
+  applyBrowserCommentSyncState(state: BrowserCommentSyncState): Promise<BrowserCommentSyncState>;
 }
 
 // Re-export types so extension.ts doesn't need to import them directly
@@ -114,6 +145,26 @@ export async function activate(
   // Native widget mutation happens via store.onChanged -> nc.reconcile() ONLY.
   const externalFanout = new ExternalFanoutNotifier();
 
+  // Central browser sync wakeup — fires on any store mutation for HTTP(S) URIs.
+  // This is the single convergence point so panel replies, native commands,
+  // MCP tools, and direct store mutations all trigger browser extension sync
+  // without waiting for the periodic interval. File URIs are excluded.
+  //
+  // Ping-pong prevention: _browserSyncApplyDepth is incremented before
+  // applyBrowserCommentSyncState and decremented after (try/finally). When
+  // browser-origin apply calls _emit(pageUrl), this hook skips scheduleWakeup
+  // because _browserSyncApplyDepth > 0 at that point. This breaks the
+  // apply -> _emit -> wakeup -> apply loop.
+  context.subscriptions.push(
+    store.onChanged((uri: string) => {
+      if (uri.startsWith("http://") || uri.startsWith("https://")) {
+        if (_browserSyncApplyDepth === 0) {
+          externalFanout.scheduleWakeup("request_comment_state_sync", { url: uri });
+        }
+      }
+    }),
+  );
+
   // ── Panel wiring + user-facing commands ───────────────────────────────────
   const panelDisposables = wireWebviewPanelAndCommands(context, store, nc);
   context.subscriptions.push(...panelDisposables);
@@ -129,7 +180,8 @@ export async function activate(
     return {
       registerBrowserNotifier: (notifier) => externalFanout.add(notifier),
       applyBrowserCommentSyncState: async (state: BrowserCommentSyncState) => {
-        if (_activatedStore) await _activatedStore.applyBrowserCommentSyncState(state);
+        if (_activatedStore) return await applyBrowserSyncState(_activatedStore, state);
+        return state;
       },
     };
   }
@@ -142,7 +194,8 @@ export async function activate(
     return {
       registerBrowserNotifier: (notifier) => externalFanout.add(notifier),
       applyBrowserCommentSyncState: async (state: BrowserCommentSyncState) => {
-        if (_activatedStore) await _activatedStore.applyBrowserCommentSyncState(state);
+        if (_activatedStore) return await applyBrowserSyncState(_activatedStore, state);
+        return state;
       },
     };
   }
@@ -161,7 +214,7 @@ export async function activate(
   return {
     registerBrowserNotifier: (notifier) => externalFanout.add(notifier),
     applyBrowserCommentSyncState: async (state: BrowserCommentSyncState) => {
-      await store.applyBrowserCommentSyncState(state);
+      return await applyBrowserSyncState(store, state);
     },
   };
 }

@@ -69,6 +69,17 @@ flowchart TB
 
 ---
 
+## Package-specific active architecture documents
+
+The monorepo now has modality-specific architecture docs that are authoritative for their package-level contracts:
+
+- `docs/10-architecture/diagram-architecture.md` — legacy `accordo-diagram`
+- `docs/10-architecture/drawing-architecture.md` — new `accordo-drawing`
+
+When the two differ, do not treat the legacy diagram file model as automatically applicable to the drawing package. The drawing package owns its own persistence and merge contract.
+
+---
+
 ## 3. Component: accordo-hub
 
 ### 3.1 Role

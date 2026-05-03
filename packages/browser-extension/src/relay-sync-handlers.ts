@@ -13,13 +13,15 @@ import { getErrorMeta } from "./relay-definitions.js";
 import { getRelayClient } from "./relay-comment-runtime.js";
 import {
   persistMergedBrowserCommentSyncState,
-  loadBrowserCommentSyncDocument,
+  loadBrowserCommentSyncDocumentFromStorage,
   type BrowserCommentSyncPage,
   type BrowserCommentSyncThread,
   type BrowserCommentSyncComment,
 } from "./browser-comment-sync-store.js";
 import { getAllThreads, getCommentPageSummaries } from "./store.js";
 import type { BrowserComment, BrowserCommentThread } from "./types.js";
+import { getStorageKey, normalizeUrl } from "./store-keys.js";
+import { MESSAGE_TYPES } from "./constants.js";
 
 function countSyncStatePages(pages: BrowserCommentSyncPage[]): { pageCount: number; threadCount: number; commentCount: number } {
   const threadCount = pages.reduce((sum, page) => sum + page.threads.length, 0);
@@ -74,6 +76,77 @@ async function loadFullBrowserCommentSyncPages(): Promise<BrowserCommentSyncPage
   return pages;
 }
 
+function toLegacyThread(thread: BrowserCommentSyncThread): BrowserCommentThread {
+  return {
+    id: thread.id,
+    anchorKey: thread.anchorKey,
+    pageUrl: normalizeUrl(thread.pageUrl),
+    status: thread.status,
+    comments: thread.comments.map((comment) => ({
+      id: comment.id,
+      threadId: comment.threadId,
+      createdAt: comment.createdAt,
+      author: comment.author,
+      body: comment.body,
+      anchorKey: comment.anchorKey,
+      pageUrl: normalizeUrl(thread.pageUrl),
+      status: comment.status,
+      ...(comment.deletedAt ? { deletedAt: comment.deletedAt } : {}),
+    })),
+    createdAt: thread.createdAt,
+    lastActivity: thread.lastActivity,
+    ...(thread.deletedAt ? { deletedAt: thread.deletedAt } : {}),
+  };
+}
+
+async function replaceLegacyPageStoresFromSyncPages(pages: BrowserCommentSyncPage[]): Promise<void> {
+  const all = await chrome.storage.local.get(null);
+  const incomingKeys = new Set(pages.map((page) => getStorageKey(normalizeUrl(page.pageUrl))));
+  const staleKeys = Object.keys(all).filter((key) => key.startsWith("comments:") && !incomingKeys.has(key));
+  if (staleKeys.length > 0) await chrome.storage.local.remove(staleKeys);
+
+  const nextStores: Record<string, unknown> = {};
+  for (const page of pages) {
+    const normalized = normalizeUrl(page.pageUrl);
+    nextStores[getStorageKey(normalized)] = {
+      version: "1.0",
+      url: normalized,
+      threads: page.threads.map(toLegacyThread),
+    };
+  }
+  if (Object.keys(nextStores).length > 0) await chrome.storage.local.set(nextStores);
+}
+
+async function broadcastSyncPagesUpdated(pages: BrowserCommentSyncPage[]): Promise<void> {
+  const pageUrls = new Set(pages.map((page) => normalizeUrl(page.pageUrl)));
+  const tabs = await chrome.tabs.query({});
+  await Promise.all(tabs.map(async (tab) => {
+    if (!tab.id || !tab.url) return;
+    let normalized: string;
+    try {
+      normalized = normalizeUrl(tab.url);
+    } catch {
+      return;
+    }
+    if (!pageUrls.has(normalized)) return;
+    await chrome.tabs.sendMessage(tab.id, { type: MESSAGE_TYPES.COMMENTS_UPDATED, payload: { url: normalized } }).catch(() => {});
+  }));
+  await chrome.runtime.sendMessage({ type: MESSAGE_TYPES.COMMENTS_UPDATED }).catch(() => {});
+}
+
+async function persistMergedStateForRuntimeReaders(mergedState: {
+  schemaVersion: string;
+  browserRevision: number;
+  accordoRevision: number;
+  emittedBy: string;
+  generatedAt: string;
+  pages: BrowserCommentSyncPage[];
+}): Promise<void> {
+  await persistMergedBrowserCommentSyncState(mergedState);
+  await replaceLegacyPageStoresFromSyncPages(mergedState.pages);
+  await broadcastSyncPagesUpdated(mergedState.pages);
+}
+
 /**
  * Handle sync_comment_state from Accordo.
  *
@@ -125,7 +198,7 @@ export async function handleSyncCommentState(
       pages: BrowserCommentSyncPage[];
     };
 
-    await persistMergedBrowserCommentSyncState(mergedState);
+    await persistMergedStateForRuntimeReaders(mergedState);
     const counts = countSyncStatePages(mergedState.pages);
     console.warn("[Accordo Sync] persisted merged browser comment state", {
       browserRevision: mergedState.browserRevision,
@@ -180,7 +253,7 @@ export async function handleRequestCommentStateSync(
   try {
     // Read canonical store for the current full browser state to send to VSCode.
     // This is the state accumulated since the last sync response was received.
-    const doc = loadBrowserCommentSyncDocument();
+    const doc = await loadBrowserCommentSyncDocumentFromStorage();
     const livePages = await loadFullBrowserCommentSyncPages();
     const pages = livePages.length > 0 ? livePages : (doc.pages as BrowserCommentSyncPage[]);
     const fullState = {
@@ -222,7 +295,7 @@ export async function handleRequestCommentStateSync(
       pages: BrowserCommentSyncPage[];
     };
 
-    await persistMergedBrowserCommentSyncState(mergedState);
+    await persistMergedStateForRuntimeReaders(mergedState);
     console.warn("[Accordo Sync] persisted merged response after full-state roundtrip", {
       browserRevision: mergedState.browserRevision,
       accordoRevision: mergedState.accordoRevision,

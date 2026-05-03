@@ -7,6 +7,7 @@ export const SYNC_INTERVAL_MS = 30_000;
 
 export class BrowserCommentSyncScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
+  private immediateSyncTimer: ReturnType<typeof setTimeout> | null = null;
   private syncing = false;
   private channelClosed = false;
 
@@ -31,6 +32,31 @@ export class BrowserCommentSyncScheduler {
     this.timer = setInterval(() => {
       void this.runSync();
     }, SYNC_INTERVAL_MS);
+  }
+
+  /**
+   * Schedule an immediate sync after a short delay (default 200ms).
+   *
+   * Use this when the relay has just connected (e.g. after VS Code reload)
+   * to prompt a sync without waiting for the next periodic interval.
+   *
+   * The delay gives the Chrome extension's relay-client-connected handler
+   * time to complete before we send request_comment_state_sync.
+   *
+   * Idempotent — concurrent calls are deduplicated by the in-flight guard.
+   *
+   * @param delayMs  Delay before triggering sync (default 200ms)
+   */
+  scheduleImmediateSync(delayMs = 200): void {
+    // Clear any pending immediate sync so rapid successive calls don't stack timers.
+    if (this.immediateSyncTimer !== null) {
+      clearTimeout(this.immediateSyncTimer);
+      this.immediateSyncTimer = null;
+    }
+    this.immediateSyncTimer = setTimeout(() => {
+      this.immediateSyncTimer = null;
+      void this.syncNow();
+    }, delayMs);
   }
 
   async syncNow(): Promise<void> {
@@ -61,6 +87,10 @@ export class BrowserCommentSyncScheduler {
       clearInterval(this.timer);
       this.timer = null;
       this.log("[accordo-browser:comment-sync] scheduler stopped");
+    }
+    if (this.immediateSyncTimer !== null) {
+      clearTimeout(this.immediateSyncTimer);
+      this.immediateSyncTimer = null;
     }
   }
 }

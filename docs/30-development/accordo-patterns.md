@@ -6,6 +6,7 @@ patterns:
   P-21: "Custom editor cold-open needs onCustomEditor activation event alongside onStartupFinished"
   P-22: "TreeItem has no two-line layout — description renders beside label; need WebviewView for detail"
   P-23: "group field on ToolRegistration is metadata only — ALL tools always visible; no progressive disclosure"
+  P-24: "Narrated presentation scripts must dry-run cleanly before TTS — runner skips unsupported command steps"
 ---
 
 # accordo-patterns.md — Accordo-Specific Patterns
@@ -95,5 +96,19 @@ state, current policy, etc. They are not a gate to unlock other tools.
 - `docs/architecture.md` — §3.7 description
 - `docs/requirements-hub.md` — template structure section
 - Test comments mentioning "forwarded for progressive disclosure"
+
+---
+
+## P-24 — Narrated presentation scripts must dry-run cleanly before TTS
+
+`skills/script-authoring/accordo-run.py` does not accept the generic `command`
+step shown in older examples. It skips unknown step types and continues, which can
+produce a voice-only presentation where slides never advance.
+
+- **Rule:** Before live narrated playback, always run `python3 skills/script-authoring/accordo-run.py <script.json> --dry-run` and verify there are no `unknown step type` warnings.
+- **Rule:** Dry-run output must show slide navigation (`slide_open`, `slide_goto`, `slide_next`, or `slide_prev`) before each `speak` block.
+- **Rule:** Do not validate by playing narration aloud. A live narrated deck has one audience pass; rerunning a corrected version after a voice-only failed pass is not acceptable.
+- **Runner vocabulary:** use `layout`, `slide_open`, `slide_goto`, `slide_next`, `slide_prev`, `open`, `close`, `highlight`, `clear_highlights`, `speak`, `delay`, and `call`.
+- **Escape hatch:** use `{ "type": "call", "tool": "accordo_tool_name", "args": { ... } }` for arbitrary Accordo tools.
 
 ---

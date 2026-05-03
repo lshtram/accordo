@@ -29,6 +29,7 @@ export {
   handleCreateComment,
   handleDeleteComment,
   handleDeleteThread,
+  handleFocusThread,
   handleNotifyCommentsUpdated,
   handleReopenThread,
   handleReplyComment,

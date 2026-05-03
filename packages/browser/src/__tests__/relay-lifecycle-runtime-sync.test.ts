@@ -148,6 +148,62 @@ describe("sync_comment_state — applies payload directly, no recursion", () => 
     expect(mockApply).toHaveBeenCalledTimes(1);
   });
 
+  it("RT-SYNC-07: sync_comment_state returns merged state from accordo-comments export", async () => {
+    const { createRelayRequestHandler } = await import("../relay-lifecycle-runtime.js");
+
+    const relay = createMockRelay();
+    const bridge = createMockBridge();
+    const inboundPayload = {
+      schemaVersion: "2.0",
+      browserRevision: 2,
+      accordoRevision: 1,
+      emittedBy: "browser-extension",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      pages: [{ pageUrl: "https://example.com", threads: [] }],
+    };
+    const mergedPayload = {
+      ...inboundPayload,
+      emittedBy: "vscode-accordo",
+      pages: [{
+        pageUrl: "https://example.com",
+        threads: [{
+          id: "t1",
+          anchorKey: "body:0:center",
+          pageUrl: "https://example.com",
+          status: "open",
+          comments: [{
+            id: "c-accordo-reply",
+            threadId: "t1",
+            createdAt: "2026-01-01T00:00:01.000Z",
+            author: { kind: "user" as const, name: "User" },
+            body: "reply from accordo",
+            anchorKey: "body:0:center",
+            status: "open",
+          }],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          lastActivity: "2026-01-01T00:00:01.000Z",
+        }],
+      }],
+    };
+    const mockApply = vi.fn().mockResolvedValue(mergedPayload);
+    (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({
+      exports: { applyBrowserCommentSyncState: mockApply },
+    });
+
+    const handler = createRelayRequestHandler({
+      out: mockOutput,
+      bridge,
+      getRelay: () => relay,
+      logMappingDetails: false,
+    });
+
+    const result = await handler("sync_comment_state", inboundPayload as never);
+
+    expect(result.success).toBe(true);
+    expect(result.data).toBe(mergedPayload);
+    expect(JSON.stringify(result.data)).toContain("reply from accordo");
+  });
+
   it("RT-SYNC-04: sync_comment_state does NOT invoke VS Code comment tools", async () => {
     const { createRelayRequestHandler } = await import("../relay-lifecycle-runtime.js");
 
