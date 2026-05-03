@@ -125,9 +125,9 @@ describe("G — syncBrowserComments runtime behavior 🔴", () => {
     const requestCalls = (relay.request as ReturnType<typeof vi.fn>).mock.calls;
     const requestedActions = requestCalls.map(([action]: [string, unknown]) => action as string);
 
-    // BROKEN: relay calls get_all_comments → test FAILS
-    // CORRECT: relay calls sync_comment_state → test PASSES
-    expect(requestedActions).toContain("sync_comment_state"); // FAILS on broken
+    // BROKEN: relay calls sync_comment_state → test FAILS
+    // CORRECT: relay calls request_comment_state_sync → test PASSES
+    expect(requestedActions).toContain("request_comment_state_sync"); // FAILS on broken
   });
 
   it("G-02: 🔴 syncBrowserComments does NOT call get_all_comments for bulk sync", async () => {

@@ -1,7 +1,7 @@
 import { toggleCommentsMode, getCommentsMode } from "./state-machine.js";
 import { MESSAGE_TYPES } from "./constants.js";
 import { handleNavigationReset, type RelayActionRequest, type RelayActionResponse, handleRelayAction } from "./relay-actions.js";
-import { RELAY_TOKEN_STORAGE_KEY } from "./relay-bridge-constants.js";
+import { DEV_BROWSER_PAIRING_BYPASS, RELAY_TOKEN_STORAGE_KEY } from "./relay-bridge-constants.js";
 import { normalizeUrl } from "./store.js";
 import type { SwMessage, SwResponse } from "./sw-router.js";
 
@@ -92,6 +92,28 @@ export function registerRelayTokenReconnect(startRelay: () => void): void {
     if (areaName !== "local") return;
     if (!Object.prototype.hasOwnProperty.call(changes, RELAY_TOKEN_STORAGE_KEY)) return;
     startRelay();
+  });
+}
+
+/**
+ * Registers a startup reconnect trigger for the relay bridge.
+ *
+ * When DEV_BROWSER_PAIRING_BYPASS is enabled, the relay token storage change
+ * listener above never fires (no token is stored), so we need an explicit
+ * startup trigger to reconnect after VS Code reload / service worker wakeup.
+ *
+ * TODO: Remove this alongside DEV_BROWSER_PAIRING_BYPASS.
+ */
+export function registerStartupReconnect(startRelay: () => void): void {
+  // onStartup fires when the service worker first starts, including after a
+  // browser upgrade or after returning from an inactive state.
+  chrome.runtime.onStartup.addListener(() => {
+    startRelay();
+  });
+  // Alarm as a secondary fallback in case onStartup doesn't fire on reload.
+  void chrome.alarms.create("dev-bypass-reconnect", { delayInMinutes: 0.5, periodInMinutes: 1 });
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === "dev-bypass-reconnect") startRelay();
   });
 }
 

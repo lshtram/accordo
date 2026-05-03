@@ -1,6 +1,6 @@
 import type { RelayActionRequest, RelayActionResponse } from "./relay-actions.js";
 import type { RelayTransport } from "./relay-transport.js";
-import { DEFAULT_RELAY_HOST, DEFAULT_RELAY_PORT, RELAY_TOKEN_STORAGE_KEY } from "./relay-bridge-constants.js";
+import { DEFAULT_RELAY_HOST, DEFAULT_RELAY_PORT, DEV_BROWSER_PAIRING_BYPASS, RELAY_TOKEN_STORAGE_KEY } from "./relay-bridge-constants.js";
 import { routeIncomingRequest, tryResolvePending, type PendingResolver, type RelayActionHandler } from "./relay-bridge-routing.js";
 import { sendViaTransport, sendViaWebSocket } from "./relay-bridge-send.js";
 
@@ -69,14 +69,18 @@ export class RelayBridgeClient {
       if (this.stopped) return;
       if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
 
-      const token = result[RELAY_TOKEN_STORAGE_KEY] as string | undefined;
-      this.relayIdentitySecret = result[RELAY_IDENTITY_SECRET_STORAGE_KEY] as string | undefined;
-      if (!token) {
+      // TODO: Remove this bypass and reinstate proper pairing flow.
+      const token = DEV_BROWSER_PAIRING_BYPASS ? undefined : result[RELAY_TOKEN_STORAGE_KEY] as string | undefined;
+      this.relayIdentitySecret = DEV_BROWSER_PAIRING_BYPASS ? undefined : result[RELAY_IDENTITY_SECRET_STORAGE_KEY] as string | undefined;
+
+      if (!DEV_BROWSER_PAIRING_BYPASS && !token) {
         this.scheduleReconnect();
         return;
       }
 
-      const url = `ws://${DEFAULT_RELAY_HOST}:${DEFAULT_RELAY_PORT}/chrome?token=${encodeURIComponent(token)}`;
+      const url = token
+        ? `ws://${DEFAULT_RELAY_HOST}:${DEFAULT_RELAY_PORT}/chrome?token=${encodeURIComponent(token)}`
+        : `ws://${DEFAULT_RELAY_HOST}:${DEFAULT_RELAY_PORT}/chrome`;
       const socket = new WebSocket(url);
       this.ws = socket;
 
@@ -92,7 +96,10 @@ export class RelayBridgeClient {
       };
       socket.onopen = (): void => {
         this.startHeartbeat();
-        this.startRelayHelloHandshake(socket);
+        // TODO: Remove — relay-hello handshake is part of the pairing redesign.
+        if (!DEV_BROWSER_PAIRING_BYPASS) {
+          this.startRelayHelloHandshake(socket);
+        }
       };
       socket.onerror = (): void => { socket.close(); };
     }).catch(() => {

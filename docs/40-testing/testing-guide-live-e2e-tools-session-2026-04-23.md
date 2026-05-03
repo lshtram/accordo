@@ -7,7 +7,7 @@ Replay the exact manual MCP validation journey from the 2026-04-23 session after
 ## Scope
 
 - Included: editor, terminal, layout, comments, diagram, presentation/marp, voice
-- Deferred: full browser tool package (separate team in progress)
+- Included (new): browser comments sync E2E (user ↔ agent flows)
 
 ---
 
@@ -145,6 +145,83 @@ Historical failures to re-check:
 
 ---
 
+## 8) Browser comments E2E (user ↔ agent)
+
+### Goal
+
+Validate the full production browser-comments sync loop:
+
+1. Browser has source-of-truth full JSON state.
+2. Accordo initiates sync (`request_comment_state_sync`).
+3. Browser sends full state (`sync_comment_state` payload).
+4. Accordo merges and returns merged full state.
+5. Browser persists merged state.
+6. No recursive second cycle is triggered by completion.
+
+### Preconditions
+
+1. Browser extension connected to relay.
+2. Canonical browser sync storage key exists: `accordo:browser-comments-sync:v2`.
+3. Test page open in browser (same URL for user and agent checks).
+4. Start with known baseline (empty or captured baseline snapshot).
+
+### Flow A — User creates browser comment, agent sees it
+
+1. In browser UI, user creates a new comment on the page.
+2. Trigger/observe Accordo-initiated sync cycle.
+3. In Accordo comments tools, run `comment_list` and verify the new browser thread/comment appears.
+
+Expected:
+- Accordo receives non-empty browser full-state payload.
+- New thread/comment is visible to agent via comments tools.
+- No duplicate thread/comment IDs created.
+
+### Flow B — Agent replies, user sees it in browser
+
+1. Agent replies via `comment_reply` to the browser-origin thread.
+2. Verify wakeup action is `request_comment_state_sync`.
+3. Browser sends full state, receives merged state, persists it.
+4. Refresh/reopen browser comment UI and verify agent reply appears.
+
+Expected:
+- Reply is visible in browser thread after one cycle.
+- Browser canonical store contains merged state with both user + agent comments.
+- Cycle completes once (no recursive re-initiation).
+
+### Flow C — Resolve/reopen state sync both directions
+
+1. Resolve a thread from Accordo side.
+2. Verify resolved status in browser after sync.
+3. Reopen from browser side.
+4. Verify reopened status in Accordo after sync.
+
+Expected:
+- Status transitions are consistent across both surfaces.
+- Last update wins according to sync metadata/timestamps.
+
+### Flow D — Delete/tombstone behavior
+
+1. Delete comment/thread from one side.
+2. Sync.
+3. Verify active views hide deleted items on both sides.
+4. Verify tombstone metadata is preserved in underlying sync state (not resurrected on next cycle).
+
+Expected:
+- No ghost comments in UI.
+- Deleted items do not reappear after subsequent sync cycles.
+
+### Flow E — No-loop / one-cycle guard
+
+1. Trigger a single sync event.
+2. Observe relay/action logs.
+
+Expected:
+- Exactly one initiating `request_comment_state_sync` for the event.
+- Exactly one corresponding `sync_comment_state` exchange for that event.
+- No immediate second cycle unless a new mutation occurs.
+
+---
+
 ## Pass Criteria (for this replay)
 
 1. No session/auth failures while invoking non-browser tools.
@@ -152,3 +229,5 @@ Historical failures to re-check:
 3. Diagram exports are valid and usable.
 4. No stale artifacts remain after deletion flows.
 5. All previously logged Priority 0 failures above are either fixed or reproducibly re-confirmed with clear evidence.
+6. Browser comments user↔agent flows (create/reply/resolve/reopen/delete) are consistent across browser UI and Accordo tools.
+7. Sync cycles are single-pass and non-recursive under normal operation.

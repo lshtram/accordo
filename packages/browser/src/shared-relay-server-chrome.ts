@@ -8,6 +8,7 @@ interface ChromeConnectionOptions {
   hubs: ReadonlyMap<string, HubSocket>;
   requestIdToHub: Map<string, string>;
   pendingByHub: ReadonlyMap<string, Map<string, (value: BrowserRelayResponse) => void>>;
+  chromeOriginatedRequestIds: Set<string>;
   onChromeConnected: () => void;
   onChromeDisconnected: (socket: WebSocket) => void;
   emit: (event: string, details?: Record<string, unknown>) => void;
@@ -51,14 +52,30 @@ export function attachChromeConnection(options: ChromeConnectionOptions): void {
 
     if (typeof parsed["action"] === "string") {
       const hubId = parsed["hubId"] as string | undefined;
+      const requestId = parsed["requestId"] as string | undefined;
       options.emit("chrome-event", { action: parsed["action"], hubId });
+
+      // Targeted route: hubId explicitly specified → send to that hub only
       if (hubId) {
         const hub = options.hubs.get(hubId);
-        if (hub && hub.socket.readyState === WebSocket.OPEN) hub.socket.send(JSON.stringify(parsed));
-        return;
-      }
-      for (const [, hub] of options.hubs) {
-        if (hub.socket.readyState === WebSocket.OPEN) hub.socket.send(JSON.stringify(parsed));
+        if (hub && hub.socket.readyState === WebSocket.OPEN) {
+          if (requestId) {
+            options.chromeOriginatedRequestIds.add(requestId);
+            options.emit("chrome-request-tracked", { action: parsed["action"], requestId, hubId });
+          }
+          hub.socket.send(JSON.stringify(parsed));
+        }
+      } else {
+        // Broadcast: no hubId → broadcast to all connected hubs
+        for (const [, hub] of options.hubs) {
+          if (hub.socket.readyState === WebSocket.OPEN) {
+            if (requestId) {
+              options.chromeOriginatedRequestIds.add(requestId);
+              options.emit("chrome-request-tracked", { action: parsed["action"], requestId, hubId: undefined });
+            }
+            hub.socket.send(JSON.stringify(parsed));
+          }
+        }
       }
     }
   });

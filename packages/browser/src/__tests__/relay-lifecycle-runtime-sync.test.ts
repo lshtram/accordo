@@ -268,7 +268,7 @@ describe("request_comment_state_sync — triggers sync cycle once, no recursion"
     (vscode.extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue(null);
   });
 
-  it("RT-WAKE-01: request_comment_state_sync calls relay.request('sync_comment_state') once", async () => {
+  it("RT-WAKE-01: request_comment_state_sync calls relay.request('request_comment_state_sync') once (not sync_comment_state)", async () => {
     const { createRelayRequestHandler } = await import("../relay-lifecycle-runtime.js");
 
     const relay = createMockRelay();
@@ -284,25 +284,37 @@ describe("request_comment_state_sync — triggers sync cycle once, no recursion"
 
     await handler("request_comment_state_sync", { url: "https://example.com/page" });
 
+    // syncBrowserComments calls relay.request("request_comment_state_sync", {}) to initiate,
+    // NOT sync_comment_state with {}. The browser's handleRequestCommentStateSync then
+    // calls back via sync_comment_state with the full browser state.
+    const requestSyncCalls = requestSpy.mock.calls.filter(([action]: [string, unknown]) => action === "request_comment_state_sync");
+    expect(requestSyncCalls).toHaveLength(1); // exactly one call, no recursion
+
+    // sync_comment_state should NOT be called from VSCode side in this flow
     const syncCalls = requestSpy.mock.calls.filter(([action]: [string, unknown]) => action === "sync_comment_state");
-    expect(syncCalls).toHaveLength(1); // exactly one call, no recursion
+    expect(syncCalls).toHaveLength(0); // VSCode does NOT call sync_comment_state — browser calls back
   });
 
-  it("RT-WAKE-02: request_comment_state_sync returns success when sync succeeds", async () => {
+  it("RT-WAKE-02: request_comment_state_sync returns success with merged state when sync succeeds", async () => {
+    // In the correct protocol, syncBrowserComments calls relay.request("request_comment_state_sync", {})
+    // and the response data is the merged BrowserCommentSyncState (returned by handleRequestCommentStateSync
+    // which receives it from VSCode's sync_comment_state handler).
     const { createRelayRequestHandler } = await import("../relay-lifecycle-runtime.js");
+
+    const mergedState = {
+      schemaVersion: "2.0",
+      browserRevision: 1,
+      accordoRevision: 0,
+      emittedBy: "browser-extension",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      pages: [],
+    };
 
     const relay = createMockRelay({
       request: vi.fn(async () => ({
         success: true,
         requestId: "req-1",
-        data: {
-          schemaVersion: "2.0",
-          browserRevision: 1,
-          accordoRevision: 0,
-          emittedBy: "browser-extension",
-          generatedAt: "2026-01-01T00:00:00.000Z",
-          pages: [],
-        },
+        data: mergedState,
       })),
     });
     const bridge = createMockBridge();
@@ -322,6 +334,8 @@ describe("request_comment_state_sync — triggers sync cycle once, no recursion"
     const result = await handler("request_comment_state_sync", {});
 
     expect(result.success).toBe(true);
+    // Response data should be the merged state (from syncResult.syncResult)
+    expect(result.data).toEqual(mergedState);
   });
 
   it("RT-WAKE-03: request_comment_state_sync returns failure when relay.request throws", async () => {
@@ -381,7 +395,11 @@ describe("No recursion — nested sync calls", () => {
     expect(requestSpy.mock.calls).toHaveLength(0);
   });
 
-  it("RT-REC-02: handling request_comment_state_sync results in exactly one sync_comment_state call", async () => {
+  it("RT-REC-02: handling request_comment_state_sync results in zero sync_comment_state calls (request_comment_state_sync is called instead — no recursion)", async () => {
+    // Protocol: request_comment_state_sync handler calls syncBrowserComments() which calls
+    // relay.request("request_comment_state_sync", {}) to the browser. The browser's
+    // handleRequestCommentStateSync then calls back via sync_comment_state.
+    // VSCode's handler does NOT call sync_comment_state directly — no recursion.
     const { createRelayRequestHandler } = await import("../relay-lifecycle-runtime.js");
 
     const relay = createMockRelay();
@@ -397,8 +415,13 @@ describe("No recursion — nested sync calls", () => {
 
     await handler("request_comment_state_sync", {});
 
+    // sync_comment_state is NOT called from VSCode side — browser calls back via handleRequestCommentStateSync
     const syncCalls = requestSpy.mock.calls.filter(([action]: [string, unknown]) => action === "sync_comment_state");
-    expect(syncCalls).toHaveLength(1); // exactly one — no recursion
+    expect(syncCalls).toHaveLength(0); // no sync_comment_state from VSCode
+
+    // request_comment_state_sync IS called (via syncBrowserComments) — one call
+    const requestSyncCalls = requestSpy.mock.calls.filter(([action]: [string, unknown]) => action === "request_comment_state_sync");
+    expect(requestSyncCalls).toHaveLength(1); // one — no recursion
   });
 
   it("RT-REC-03: request_comment_state_sync does not push request_comment_state_sync during handling", async () => {
@@ -485,7 +508,9 @@ describe("Both relay modes — same non-recursive protocol", () => {
     expect(requestSpy.mock.calls).toHaveLength(0);
   });
 
-  it("RT-MODE-03: shared relay mode — request_comment_state_sync calls relay.request exactly once", async () => {
+  it("RT-MODE-03: shared relay mode — request_comment_state_sync calls relay.request('request_comment_state_sync') exactly once (not sync_comment_state)", async () => {
+    // syncBrowserComments now calls request_comment_state_sync (not sync_comment_state).
+    // The sync_comment_state call is made by the browser's handleRequestCommentStateSync, not VSCode.
     const { createRelayRequestHandler } = await import("../relay-lifecycle-runtime.js");
 
     const relay = createMockRelay();
@@ -502,7 +527,11 @@ describe("Both relay modes — same non-recursive protocol", () => {
 
     await handler("request_comment_state_sync", {});
 
+    const requestSyncCalls = requestSpy.mock.calls.filter(([action]: [string, unknown]) => action === "request_comment_state_sync");
+    expect(requestSyncCalls).toHaveLength(1);
+
+    // NO sync_comment_state from VSCode side
     const syncCalls = requestSpy.mock.calls.filter(([action]: [string, unknown]) => action === "sync_comment_state");
-    expect(syncCalls).toHaveLength(1);
+    expect(syncCalls).toHaveLength(0);
   });
 });

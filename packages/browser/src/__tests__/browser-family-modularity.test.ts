@@ -351,7 +351,7 @@ describe("comment-sync", () => {
         out as unknown as vscode.OutputChannel,
       );
 
-      expect(result).toBe("partial");
+      expect(result).toEqual({ status: "partial", syncResult: null });
       expect(bridge.invokeTool).not.toHaveBeenCalled();
     });
 
@@ -381,7 +381,7 @@ describe("comment-sync", () => {
         out as unknown as vscode.OutputChannel,
       );
 
-      expect(result).toBe("success");
+      expect(result).toEqual({ status: "success", syncResult: expect.objectContaining({ schemaVersion: "2.0", pages: [] }) });
       // No bridge mutation tools are called — full-state sync is a relay operation,
       // mutation logic is handled by the comments package
       expect(bridge.invokeTool).not.toHaveBeenCalledWith("comment_delete", expect.anything());
@@ -404,7 +404,7 @@ describe("comment-sync", () => {
         out as unknown as vscode.OutputChannel,
       );
 
-      expect(result).toBe("success");
+      expect(result).toEqual({ status: "success", syncResult: expect.objectContaining({ pages: expect.any(Array) }) });
     });
 
     it("SBR-SYNC-FN-04: skipped deletedAt threads — no create/delete call", async () => {
@@ -590,7 +590,7 @@ describe("comment-sync", () => {
           bridge as unknown as BrowserBridgeAPI,
           out as unknown as vscode.OutputChannel,
         ),
-      ).resolves.toBe("partial");
+      ).resolves.toEqual({ status: "partial", syncResult: null });
     });
 
     it("OPT-FB-02: when accordo-comments is absent, registerBrowserNotifier logs one line and returns undefined", async () => {

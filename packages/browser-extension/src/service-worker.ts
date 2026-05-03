@@ -21,11 +21,13 @@ import {
   handleRelayActionWithBroadcast,
   registerListeners as _registerListeners,
   registerRelayTokenReconnect,
+  registerStartupReconnect,
   onInstalled,
   checkAndSync,
   startPeriodicSync,
   stopPeriodicSync,
 } from "./sw-lifecycle.js";
+import { DEV_BROWSER_PAIRING_BYPASS } from "./relay-bridge-constants.js";
 import { mergeLocalAndHubThread } from "./sw-comment-sync.js";
 import type { SwMessage, SwResponse } from "./sw-router.js";
 
@@ -52,5 +54,13 @@ export function registerListeners(): void {
 registerListeners();
 registerRelayTokenReconnect(() => relayBridge.start());
 chrome.runtime.onInstalled.addListener((details) => { void onInstalled(details); });
+
+// When pairing bypass is active, register startup + alarm reconnect so the
+// extension reconnects reliably after a VS Code reload even without a stored token.
+// TODO: Remove alongside DEV_BROWSER_PAIRING_BYPASS.
+if (DEV_BROWSER_PAIRING_BYPASS) {
+  registerStartupReconnect(() => relayBridge.start());
+}
+
 relayBridge.start();
 startPeriodicSync();

@@ -5,6 +5,18 @@ import { isAuthorizedToken } from "./relay-auth.js";
 import { pushToBrowserClient, requestFromBrowserClient } from "./relay-server-requests.js";
 import { DEFAULT_RELAY_REQUEST_TIMEOUT_MS } from "./relay-transport-constants.js";
 
+/**
+ * DEV-BYPASS-FLAG — Temporary insecure dev-only pairing bypass.
+ *
+ * When true, /chrome WebSocket connections are accepted without a relay token.
+ * /hub connections remain token-protected.
+ *
+ * TODO: Remove this flag and reinstate redesigned pairing flow before any
+ * production release. This is intentionally insecure and must never be
+ * enabled outside of local development environments.
+ */
+const DEV_BROWSER_PAIRING_BYPASS = process.env.NODE_ENV !== "test";
+
 interface RelayServerOptions {
   port: number;
   host: string;
@@ -36,16 +48,30 @@ export class BrowserRelayServer implements BrowserRelayLike {
 
     this.wsServer.on("connection", (socket: WebSocket, req: IncomingMessage) => {
       const url = new URL(req.url ?? "/", `http://${this.options.host}:${this.options.port}`);
-      const token = url.searchParams.get("token");
-      if (!isAuthorizedToken(token, this.options.token)) {
-        this.emit("relay-unauthorized", { remote: req.socket.remoteAddress ?? "unknown" });
-        socket.close(1008, "unauthorized");
-        return;
-      }
+      const path = url.pathname.replace(/\/$/, "");
+      const token = DEV_BROWSER_PAIRING_BYPASS && path === "/chrome"
+        ? null
+        : url.searchParams.get("token");
 
-      if (this.client && this.client !== socket) this.client.close(1000, "replaced");
-      this.client = socket;
-      this.emit("relay-client-connected", { remote: req.socket.remoteAddress ?? "unknown" });
+      // TODO: Remove this bypass and reinstate proper pairing flow.
+      if (DEV_BROWSER_PAIRING_BYPASS && path === "/chrome") {
+        if (this.client && this.client !== socket) this.client.close(1000, "replaced");
+        this.client = socket;
+        this.emit("relay-client-connected", {
+          remote: req.socket.remoteAddress ?? "unknown",
+          devBypass: true,
+          note: "PAIRING DISABLED — DEV ONLY",
+        });
+      } else {
+        if (!isAuthorizedToken(token, this.options.token)) {
+          this.emit("relay-unauthorized", { remote: req.socket.remoteAddress ?? "unknown" });
+          socket.close(1008, "unauthorized");
+          return;
+        }
+        if (this.client && this.client !== socket) this.client.close(1000, "replaced");
+        this.client = socket;
+        this.emit("relay-client-connected", { remote: req.socket.remoteAddress ?? "unknown" });
+      }
       socket.on("message", (raw: Buffer): void => {
         void (async (): Promise<void> => {
           if (this.client !== socket) return;

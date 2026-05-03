@@ -39,24 +39,33 @@ export function createRelayRequestHandler<TRelay extends BrowserRelayLike>(
     options.out.appendLine(`${prefix} action=${action} payload=${JSON.stringify(payload)}`);
 
     // ── Full-state sync actions ─────────────────────────────────────────────────
-    // Protocol (canonical):
-    //   1. request_comment_state_sync: wakeup from browser → Accordo initiates sync
-    //      cycle by calling syncBrowserComments() → sends sync_comment_state to browser
-    //   2. sync_comment_state: browser sends full JSON state as payload → Accordo
-    //      applies it via applyBrowserCommentSyncStateFromRelay() and returns merged ack.
-    //      This path NEVER calls syncBrowserComments() (would cause self-request recursion).
+    // Protocol (canonical, Accordo-initiated):
+    //   1. VSCode calls syncBrowserComments() → sends request_comment_state_sync to browser
+    //   2. Browser handler reads canonical store, calls back via sync_comment_state (request())
+    //   3. VSCode applies browser's full state via applyBrowserCommentSyncStateFromRelay()
+    //   4. VSCode returns merged BrowserCommentSyncState in sync_comment_state response
+    //   5. Browser handler receives merged state in request() response, persists it
+    //   6. syncBrowserComments() returns merged state to caller
+    //
+    // sync_comment_state also arrives from the browser (step 2 above) — it applies state
+    // and returns merged. This path NEVER calls syncBrowserComments() (would cause recursion).
     //
     if (action === "request_comment_state_sync") {
-      // Browser signals new data → Accordo initiates one sync cycle.
-      // Calls syncBrowserComments() which sends sync_comment_state to browser,
-      // waits for browser's full-state response, applies it, and returns merged result.
+      // VSCode initiates sync: calls syncBrowserComments() which sends request_comment_state_sync.
+      // Browser handler reads canonical store, calls back via sync_comment_state.
+      // The merged state is returned in the request() response data.
+      // DEBUG: instrument sync cycle
+      const requestId = (payload["requestId"] as string | undefined) ?? "(none)";
+      options.out.appendLine(`[SYNC-A] request_comment_state_sync received requestId=${requestId}`);
       try {
         const syncResult = await syncBrowserComments(options.getRelay(), options.bridge, options.out);
+        // Return the merged BrowserCommentSyncState in response data so the browser persists it.
+        const data = syncResult.syncResult ?? { synced: syncResult.status === "success" };
         return {
           requestId: "",
-          success: syncResult === "success",
-          error: syncResult === "partial" ? "action-failed" : undefined,
-          data: { synced: syncResult === "success" },
+          success: syncResult.status === "success",
+          error: syncResult.status === "partial" ? "action-failed" : undefined,
+          data,
         };
       } catch {
         return { requestId: "", success: false, error: "action-failed" };
@@ -64,19 +73,55 @@ export function createRelayRequestHandler<TRelay extends BrowserRelayLike>(
     }
 
     if (action === "sync_comment_state") {
-      // Browser sends its full JSON state as payload (initiated by request_comment_state_sync
-      // wakeup, or by handleRequestCommentStateSync in the browser).
-      // Apply the incoming state directly — do NOT call syncBrowserComments() here,
-      // as that would send sync_comment_state back to this handler, creating recursion.
+      // Browser calls back with its full canonical state (in response to request_comment_state_sync).
+      // Apply the incoming state — do NOT call syncBrowserComments() here, which would
+      // cause recursion: sync_comment_state → syncBrowserComments() → request_comment_state_sync
+      // → this handler again.
+      // DEBUG: instrument sync cycle
+      const schemaVersion = (payload["schemaVersion"] as string | undefined) ?? "(none)";
+      const emittedBy = (payload["emittedBy"] as string | undefined) ?? "(none)";
+      const pages = payload["pages"] as Array<unknown> | undefined;
+      const pageCount = pages?.length ?? 0;
+      let threadCount = 0;
+      let commentCount = 0;
+      for (const page of pages ?? []) {
+        const p = page as { threads?: Array<unknown> };
+        for (const thread of p.threads ?? []) {
+          threadCount++;
+          const t = thread as { comments?: Array<unknown> };
+          commentCount += t.comments?.length ?? 0;
+        }
+      }
+      options.out.appendLine(
+        `[SYNC-F] sync_comment_state received from browser schemaVersion=${schemaVersion} pageCount=${pageCount} threadCount=${threadCount} commentCount=${commentCount} emittedBy=${emittedBy}`,
+      );
+      let applyResult: "success" | "partial" = "partial";
       try {
-        const applyResult = await applyBrowserCommentSyncStateFromRelay(payload, options.out);
+        applyResult = await applyBrowserCommentSyncStateFromRelay(payload, options.out);
+        const dataPageCount = pages?.length ?? 0;
+        let dataThreadCount = 0;
+        let dataCommentCount = 0;
+        for (const page of pages ?? []) {
+          const p = page as { threads?: Array<unknown> };
+          for (const thread of p.threads ?? []) {
+            dataThreadCount++;
+            const t = thread as { comments?: Array<unknown> };
+            dataCommentCount += t.comments?.length ?? 0;
+          }
+        }
+        options.out.appendLine(
+          `[SYNC-F2] sync_comment_state returning success=${applyResult === "success"} applyResult=${applyResult} dataPageCount=${dataPageCount} dataThreadCount=${dataThreadCount} dataCommentCount=${dataCommentCount}`,
+        );
+        // Return the merged state so the browser can persist it.
+        // The merged state IS the payload (browser's state, now reconciled by VSCode).
         return {
           requestId: "",
           success: applyResult === "success",
           error: applyResult === "partial" ? "action-failed" : undefined,
-          data: { synced: applyResult === "success" },
+          data: payload,
         };
       } catch {
+        options.out.appendLine(`[SYNC-F2] sync_comment_state returning success=false applyResult=threw`);
         return { requestId: "", success: false, error: "action-failed" };
       }
     }

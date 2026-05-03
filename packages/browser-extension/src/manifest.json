@@ -11,6 +11,7 @@
     "contextMenus",
     "scripting",
     "webNavigation",
+    "alarms",
     "debugger"
   ],
 

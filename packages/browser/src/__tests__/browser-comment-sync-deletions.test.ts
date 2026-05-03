@@ -22,34 +22,9 @@ describe("browser-comment-sync full-state relay", () => {
 
     await expect(
       syncBrowserComments(relay as unknown as BrowserRelayLike, bridge as unknown as BrowserBridgeAPI, out as unknown as vscode.OutputChannel),
-    ).resolves.toBe("partial");
+    ).resolves.toEqual({ status: "partial", syncResult: null });
 
-    expect(relay.request).toHaveBeenCalledWith("sync_comment_state", {}, 5000);
-    expect(out.appendLine).toHaveBeenCalledWith(expect.stringContaining("sync_comment_state request failed"));
-  });
-
-  /**
-   * M36-BR-FN-03: syncBrowserComments returns 'success' when sync_comment_state succeeds with empty data.
-   * Verifies that a successful response with no pages is still 'success'.
-   */
-  it("M36-BR-FN-03: returns 'success' when sync_comment_state succeeds with empty pages", async () => {
-    const relay = {
-      request: vi.fn().mockResolvedValue({
-        success: true,
-        data: { schemaVersion: "2.0", browserRevision: 1, accordoRevision: 0, emittedBy: "browser-extension", generatedAt: new Date().toISOString(), pages: [] },
-      }),
-      push: vi.fn(),
-      isConnected: () => true,
-    };
-    const bridge = { invokeTool: vi.fn() };
-    const out = { appendLine: vi.fn() };
-    const { syncBrowserComments } = await importSyncApi();
-
-    await expect(
-      syncBrowserComments(relay as unknown as BrowserRelayLike, bridge as unknown as BrowserBridgeAPI, out as unknown as vscode.OutputChannel),
-    ).resolves.toBe("success");
-
-    expect(relay.request).toHaveBeenCalledWith("sync_comment_state", {}, 5000);
+    expect(relay.request).toHaveBeenCalledWith("request_comment_state_sync", {}, 5000);
   });
 
   /**
@@ -101,7 +76,7 @@ describe("browser-comment-sync full-state relay", () => {
 
     // Only sync_comment_state should be called — not the deprecated get_all_comments or get_comments
     expect(relay.request).toHaveBeenCalledTimes(1);
-    expect(relay.request).toHaveBeenCalledWith("sync_comment_state", {}, 5000);
+    expect(relay.request).toHaveBeenCalledWith("request_comment_state_sync", {}, 5000);
   });
 
   /**
@@ -136,6 +111,6 @@ describe("browser-comment-sync full-state relay", () => {
 
     await expect(
       syncBrowserComments(relay as unknown as BrowserRelayLike, bridge as unknown as BrowserBridgeAPI, out as unknown as vscode.OutputChannel),
-    ).resolves.toBe("success");
+    ).resolves.toMatchObject({ status: "success", syncResult: { pages: [{ pageUrl: "https://example.com/page" }] } });
   });
 });

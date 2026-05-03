@@ -11,7 +11,68 @@
 import type { RelayActionRequest, RelayActionResponse } from "./relay-definitions.js";
 import { getErrorMeta } from "./relay-definitions.js";
 import { getRelayClient } from "./relay-comment-runtime.js";
-import { persistMergedBrowserCommentSyncState, type BrowserCommentSyncPage } from "./browser-comment-sync-store.js";
+import {
+  persistMergedBrowserCommentSyncState,
+  loadBrowserCommentSyncDocument,
+  type BrowserCommentSyncPage,
+  type BrowserCommentSyncThread,
+  type BrowserCommentSyncComment,
+} from "./browser-comment-sync-store.js";
+import { getAllThreads, getCommentPageSummaries } from "./store.js";
+import type { BrowserComment, BrowserCommentThread } from "./types.js";
+
+function countSyncStatePages(pages: BrowserCommentSyncPage[]): { pageCount: number; threadCount: number; commentCount: number } {
+  const threadCount = pages.reduce((sum, page) => sum + page.threads.length, 0);
+  const commentCount = pages.reduce(
+    (sum, page) => sum + page.threads.reduce((threadSum, thread) => threadSum + thread.comments.length, 0),
+    0,
+  );
+  return { pageCount: pages.length, threadCount, commentCount };
+}
+
+function toSyncComment(comment: BrowserComment): BrowserCommentSyncComment {
+  return {
+    id: comment.id,
+    threadId: comment.threadId,
+    createdAt: comment.createdAt,
+    author: {
+      kind: comment.author.kind,
+      name: comment.author.name,
+    },
+    body: comment.body,
+    anchorKey: comment.anchorKey,
+    status: comment.status,
+    ...(comment.deletedAt ? { deletedAt: comment.deletedAt } : {}),
+  };
+}
+
+function toSyncThread(thread: BrowserCommentThread): BrowserCommentSyncThread {
+  return {
+    id: thread.id,
+    anchorKey: thread.anchorKey,
+    pageUrl: thread.pageUrl,
+    status: thread.status,
+    ...(thread.deletedAt ? { deletedAt: thread.deletedAt } : {}),
+    comments: thread.comments.map(toSyncComment),
+    createdAt: thread.createdAt,
+    lastActivity: thread.lastActivity,
+  };
+}
+
+async function loadFullBrowserCommentSyncPages(): Promise<BrowserCommentSyncPage[]> {
+  const summaries = await getCommentPageSummaries();
+  const pages: BrowserCommentSyncPage[] = [];
+
+  for (const summary of summaries) {
+    const threads = await getAllThreads(summary.url);
+    pages.push({
+      pageUrl: summary.url,
+      threads: threads.map(toSyncThread),
+    });
+  }
+
+  return pages;
+}
 
 /**
  * Handle sync_comment_state from Accordo.
@@ -65,6 +126,13 @@ export async function handleSyncCommentState(
     };
 
     await persistMergedBrowserCommentSyncState(mergedState);
+    const counts = countSyncStatePages(mergedState.pages);
+    console.warn("[Accordo Sync] persisted merged browser comment state", {
+      browserRevision: mergedState.browserRevision,
+      accordoRevision: mergedState.accordoRevision,
+      ...counts,
+      firstThreadId: mergedState.pages[0]?.threads[0]?.id ?? null,
+    });
 
     return {
       requestId: request.requestId,
@@ -85,7 +153,16 @@ export async function handleSyncCommentState(
  * Handle request_comment_state_sync wakeup action.
  *
  * This is a control action that triggers a full-state sync cycle.
- * The browser extension should send sync_comment_state to Accordo and persist the result.
+ * The browser extension reads its canonical store, calls back to VSCode via
+ * sync_comment_state (using request() to wait for the merged response), persists
+ * the merged result, and returns the merged state as the response data.
+ *
+ * Canonical protocol (Accordo-initiated):
+ *   1. VSCode calls syncBrowserComments() → sends request_comment_state_sync to browser
+ *   2. This handler reads canonical store, calls back via sync_comment_state (request())
+ *   3. VSCode applies browser state and returns merged state in sync_comment_state response
+ *   4. This handler receives merged state in request() response, persists it
+ *   5. Returns merged state as response data so syncBrowserComments() receives it
  */
 export async function handleRequestCommentStateSync(
   request: RelayActionRequest,
@@ -101,8 +178,30 @@ export async function handleRequestCommentStateSync(
   }
 
   try {
-    // Trigger sync_comment_state to get merged state from Accordo
-    const response = await relay.send("sync_comment_state", {}, 10000);
+    // Read canonical store for the current full browser state to send to VSCode.
+    // This is the state accumulated since the last sync response was received.
+    const doc = loadBrowserCommentSyncDocument();
+    const livePages = await loadFullBrowserCommentSyncPages();
+    const pages = livePages.length > 0 ? livePages : (doc.pages as BrowserCommentSyncPage[]);
+    const fullState = {
+      schemaVersion: "2.0" as const,
+      browserRevision: doc.meta.lastSentBrowserRevision,
+      accordoRevision: doc.meta.lastPersistedAccordoRevision,
+      emittedBy: "browser-extension" as const,
+      generatedAt: new Date().toISOString(),
+      pages,
+    };
+    console.warn("[Accordo Sync] sending browser full comment state", {
+      browserRevision: fullState.browserRevision,
+      accordoRevision: fullState.accordoRevision,
+      ...countSyncStatePages(fullState.pages),
+      firstThreadId: fullState.pages[0]?.threads[0]?.id ?? null,
+    });
+
+    // Call back to VSCode via sync_comment_state to receive the merged response.
+    // VSCode's handler applies the browser state and returns merged state in response data.
+    // relay.send() is already a request-response call (waits for response), so we use it here.
+    const response = await relay.send("sync_comment_state", fullState, 10000);
 
     if (!response.success) {
       return {
@@ -113,7 +212,7 @@ export async function handleRequestCommentStateSync(
       };
     }
 
-    // Persist the merged state
+    // Persist the merged state returned by VSCode (in response.data)
     const mergedState = response.data as {
       schemaVersion: string;
       browserRevision: number;
@@ -124,14 +223,21 @@ export async function handleRequestCommentStateSync(
     };
 
     await persistMergedBrowserCommentSyncState(mergedState);
+    console.warn("[Accordo Sync] persisted merged response after full-state roundtrip", {
+      browserRevision: mergedState.browserRevision,
+      accordoRevision: mergedState.accordoRevision,
+      ...countSyncStatePages(mergedState.pages),
+      firstThreadId: mergedState.pages[0]?.threads[0]?.id ?? null,
+    });
 
     // Note: UI refresh is handled via chrome messaging / storage listeners in production.
     // The canonical storage is now updated; any UI component can read from it.
 
+    // Return the merged state as response data so syncBrowserComments() receives it.
     return {
       requestId: request.requestId,
       success: true,
-      data: { synced: true },
+      data: mergedState,
     };
   } catch (err) {
     return {

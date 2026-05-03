@@ -8,7 +8,7 @@ import { broadcastCommentsUpdated, handleRelayActionWithBroadcast, onInstalled, 
 import { checkAndSync, startPeriodicSync, stopPeriodicSync } from "./sw-lifecycle-sync.js";
 
 export { broadcastCommentsUpdated, onInstalled, registerListeners } from "./sw-lifecycle-listeners.js";
-export { registerRelayTokenReconnect } from "./sw-lifecycle-listeners.js";
+export { registerRelayTokenReconnect, registerStartupReconnect } from "./sw-lifecycle-listeners.js";
 export { handleRelayActionWithBroadcast } from "./sw-lifecycle-listeners.js";
 export { checkAndSync, startPeriodicSync, stopPeriodicSync } from "./sw-lifecycle-sync.js";
 

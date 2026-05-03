@@ -14,6 +14,7 @@ interface HubConnectionOptions {
   requestIdToHub: Map<string, string>;
   writeLease: WriteLeaseManager;
   getChromeSocket: () => WebSocket | null;
+  chromeOriginatedRequestIds: Set<string>;
   emit: (event: string, details?: Record<string, unknown>) => void;
 }
 
@@ -47,6 +48,25 @@ export function attachHubConnection(options: HubConnectionOptions): void {
       parsed = JSON.parse(String(raw)) as Record<string, unknown>;
     } catch {
       return;
+    }
+
+    // Detect Hub→Chrome response messages (no action field, has success + requestId)
+    const maybeSuccess = parsed["success"];
+    if (typeof maybeSuccess === "boolean") {
+      const requestId = parsed["requestId"] as string | undefined;
+      if (typeof requestId === "string" && options.chromeOriginatedRequestIds.has(requestId)) {
+        options.chromeOriginatedRequestIds.delete(requestId);
+        const chromeSocket = options.getChromeSocket();
+        options.emit("hub-response-to-chrome", {
+          requestId,
+          success: maybeSuccess,
+          chromeConnected: chromeSocket !== null && chromeSocket.readyState === WebSocket.OPEN,
+        });
+        if (chromeSocket && chromeSocket.readyState === WebSocket.OPEN) {
+          chromeSocket.send(JSON.stringify(parsed));
+        }
+        return;
+      }
     }
 
     const action = parsed["action"] as BrowserRelayAction | undefined;

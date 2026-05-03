@@ -10,6 +10,18 @@ import { attachHubConnection } from "./shared-relay-server-hub.js";
 import { createSharedRelayHttpServer } from "./shared-relay-server-http.js";
 import { buildConnectedHubInfo, broadcastChromeStatusToHubs, type HubSocket, pushToChrome, resolvePendingResponses, stopSharedRelayServer } from "./shared-relay-server-state.js";
 
+/**
+ * DEV-BYPASS-FLAG — Temporary insecure dev-only pairing bypass.
+ *
+ * When true, /chrome WebSocket connections are accepted without a relay token.
+ * /hub connections remain token-protected.
+ *
+ * TODO: Remove this flag and reinstate redesigned pairing flow before any
+ * production release. This is intentionally insecure and must never be
+ * enabled outside of local development environments.
+ */
+const DEV_BROWSER_PAIRING_BYPASS = process.env.NODE_ENV !== "test";
+
   export class SharedBrowserRelayServer {
   private httpServer: HttpServer | null = null;
   private wsServer: WebSocketServer | null = null;
@@ -18,6 +30,8 @@ import { buildConnectedHubInfo, broadcastChromeStatusToHubs, type HubSocket, pus
   private readonly requestIdToHub = new Map<string, string>();
   private readonly pendingByHub = new Map<string, Map<string, (value: BrowserRelayResponse) => void>>();
   private readonly writeLease: WriteLeaseManager = new WriteLeaseManager({});
+  /** Tracks requestIds that originated from Chrome and are awaiting a response from Hub. */
+  private readonly chromeOriginatedRequestIds = new Set<string>();
   private pairCode: string | null = null;
   private pairCodeExpiry = 0;
 
@@ -72,19 +86,28 @@ import { buildConnectedHubInfo, broadcastChromeStatusToHubs, type HubSocket, pus
   private handleSocketConnection(socket: WebSocket, req: IncomingMessage): void {
     const url = new URL(req.url ?? "/", `http://${this.options.host}:${this.options.port}`);
     const token = url.searchParams.get("token");
-    if (!isAuthorizedToken(token, this.options.token)) {
+    const isChromePath = url.pathname === "/chrome";
+    // TODO: Remove this bypass and reinstate proper pairing flow.
+    if (DEV_BROWSER_PAIRING_BYPASS && isChromePath) {
+      this.emit("relay-client-connected", {
+        remote: req.socket.remoteAddress ?? "unknown",
+        devBypass: true,
+        note: "PAIRING DISABLED — DEV ONLY",
+      });
+    } else if (!isAuthorizedToken(token, this.options.token)) {
       this.emit("relay-unauthorized", { remote: req.socket.remoteAddress ?? "unknown" });
       socket.close(1008, "unauthorized");
       return;
     }
 
-    if (url.pathname === "/chrome") {
+    if (isChromePath) {
       attachChromeConnection({
         socket,
         currentChromeSocket: this.chromeSocket,
         hubs: this.hubs,
         requestIdToHub: this.requestIdToHub,
         pendingByHub: this.pendingByHub,
+        chromeOriginatedRequestIds: this.chromeOriginatedRequestIds,
         onChromeConnected: () => {
           this.chromeSocket = socket;
           broadcastChromeStatusToHubs(this.hubs, true);
@@ -120,6 +143,7 @@ import { buildConnectedHubInfo, broadcastChromeStatusToHubs, type HubSocket, pus
       requestIdToHub: this.requestIdToHub,
       writeLease: this.writeLease,
       getChromeSocket: () => this.chromeSocket,
+      chromeOriginatedRequestIds: this.chromeOriginatedRequestIds,
       emit: (event, details) => this.emit(event, details),
     });
   }

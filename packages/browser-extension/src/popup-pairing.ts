@@ -1,4 +1,5 @@
 import { MESSAGE_TYPES } from "./constants.js";
+import { DEV_BROWSER_PAIRING_BYPASS } from "./relay-bridge-constants.js";
 
 const RELAY_TOKEN_STORAGE_KEY = "relayToken";
 const RELAY_PAIR_URL = "http://127.0.0.1:40111/pair/confirm";
@@ -12,6 +13,16 @@ export async function renderPairingSection(container: HTMLElement): Promise<void
   const banner = document.createElement("div");
   banner.setAttribute("data-accordo-pair", "");
   banner.style.cssText = "display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid #eee; gap: 8px;";
+
+  // TODO: Remove this branch and reinstate proper pairing UI once redesign is complete.
+  if (DEV_BROWSER_PAIRING_BYPASS) {
+    const label = document.createElement("span");
+    label.style.cssText = "font-size: 12px; font-weight: 600; color: #b45309;";
+    label.textContent = "VS Code: Dev pairing disabled";
+    banner.appendChild(label);
+    container.insertBefore(banner, container.firstChild);
+    return;
+  }
 
   if (token) {
     const label = document.createElement("span");
