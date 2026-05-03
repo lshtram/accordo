@@ -44,6 +44,8 @@ export class CommentsWebviewViewProvider implements vscode.WebviewViewProvider, 
     this._view.webview.onDidReceiveMessage((message: CommentsPanelWebviewMessage) => {
       void this._messageHandler.handleMessage(message);
     });
+    // Send initial panel state to the newly resolved webview
+    this.refresh();
   }
 
   /**
