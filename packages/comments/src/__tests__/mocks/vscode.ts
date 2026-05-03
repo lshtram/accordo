@@ -360,6 +360,9 @@ export const window = {
       dispose: vi.fn(),
     };
   }),
+  registerWebviewViewProvider: vi.fn().mockImplementation(
+    (_viewId: string, _provider: unknown) => ({ dispose: vi.fn() }),
+  ),
 };
 
 // ── workspace ────────────────────────────────────────────────────────────────

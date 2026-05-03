@@ -67,7 +67,7 @@ export class PanelFilters {
     void this._memento.update(FILTER_PERSISTENCE_KEY, this._state);
   }
 
-  apply(threads: CommentThread[], store?: StaleChecker): CommentThread[] {
+  apply(threads: readonly CommentThread[], store?: StaleChecker): CommentThread[] {
     return threads.filter(t => {
       if (this._state.status && t.status !== this._state.status) return false;
       if (this._state.intent && t.comments[0]?.intent !== this._state.intent) return false;

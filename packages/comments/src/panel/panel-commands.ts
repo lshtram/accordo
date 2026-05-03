@@ -10,7 +10,7 @@
 import type * as vscode from "vscode";
 import type { CommentThread, CommentAuthor } from "@accordo/bridge-types";
 import type { NavigationAdapterRegistry } from "@accordo/capabilities";
-import type { CommentsTreeProvider, CommentTreeItem } from "./comments-tree-provider.js";
+import type { CommentTreeItem } from "./comments-tree-provider.js";
 import type { NavigationEnv } from "./navigation-router.js";
 import type { PanelFilters } from "./panel-filters.js";
 import { commands, window } from "vscode";
@@ -41,6 +41,11 @@ export interface PanelCommandUI {
   showInformationMessage(message: string): Thenable<string | undefined>;
 }
 
+/** Shared panel surface seam for TreeView and WebviewView generations. */
+export interface PanelPresentationSurface {
+  refresh(): void;
+}
+
 // ── registerPanelCommands ────────────────────────────────────────────────────
 
 /**
@@ -64,7 +69,7 @@ export function registerPanelCommands(
   nc: NativeCommentsSync,
   navEnv: NavigationEnv,
   filters: PanelFilters,
-  provider: CommentsTreeProvider,
+  provider: PanelPresentationSurface,
   ui?: PanelCommandUI,
 ): { dispose(): void }[] {
   const PANEL_AUTHOR: CommentAuthor = { kind: "user", name: "User" };

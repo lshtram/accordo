@@ -20,7 +20,7 @@ import { NativeComments } from "./native-comments.js";
 import { createCommentTools, ExternalFanoutNotifier } from "./comment-tools.js";
 import type { CommentUINotifier } from "./comment-tools.js";
 import { startStateContribution } from "./state-contribution.js";
-import { wirePanelAndCommands } from "./panel-bootstrap.js";
+import { wireWebviewPanelAndCommands } from "./panel-bootstrap.js";
 import { registerBridgeIntegrationCommands } from "./bridge-integration.js";
 import type { BridgeAPI } from "./bridge-integration.js";
 
@@ -115,7 +115,7 @@ export async function activate(
   const externalFanout = new ExternalFanoutNotifier();
 
   // ── Panel wiring + user-facing commands ───────────────────────────────────
-  const panelDisposables = wirePanelAndCommands(context, store, nc);
+  const panelDisposables = wireWebviewPanelAndCommands(context, store, nc);
   context.subscriptions.push(...panelDisposables);
 
   // ── Internal commands (inter-extension API — no Bridge dependency) ─────────
