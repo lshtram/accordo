@@ -182,6 +182,40 @@ describe("M45-PJ CommentsPanelProjectionBuilder", () => {
       expect(authGroup!.count).toBe(2);
     });
 
+    it("by-file groups browser comments from the same page when one URL has a fragment", () => {
+      const threads = [
+        makeThread({ id: "t1", anchor: makeSurfaceAnchor("https://example.com/settings/analytics", "browser") }),
+        makeThread({ id: "t2", anchor: makeSurfaceAnchor("https://example.com/settings/analytics#usage", "browser") }),
+      ];
+      const store = createMockStore(threads);
+      const filters = makeFilters();
+      filters.setGroupMode("by-file");
+
+      const result = buildCommentsPanelViewModel(store, filters, emptyUiState());
+
+      expect(result.groups).toHaveLength(1);
+      expect(result.groups[0]?.groupId).toBe("browser:https://example.com/settings/analytics");
+      expect(result.groups[0]?.count).toBe(2);
+    });
+
+    it("by-file keeps different browser paths in separate groups", () => {
+      const threads = [
+        makeThread({ id: "t1", anchor: makeSurfaceAnchor("https://example.com/settings/analytics#usage", "browser") }),
+        makeThread({ id: "t2", anchor: makeSurfaceAnchor("https://example.com/settings/billing#usage", "browser") }),
+      ];
+      const store = createMockStore(threads);
+      const filters = makeFilters();
+      filters.setGroupMode("by-file");
+
+      const result = buildCommentsPanelViewModel(store, filters, emptyUiState());
+
+      expect(result.groups).toHaveLength(2);
+      expect(result.groups.map(group => group.groupId).sort()).toEqual([
+        "browser:https://example.com/settings/analytics",
+        "browser:https://example.com/settings/billing",
+      ]);
+    });
+
     it("by-activity groups by relative time bucket (day/week/month)", () => {
       const threads = [
         makeThread({ id: "t1", lastActivity: "2026-05-01T10:00:00Z" }),

@@ -32,6 +32,9 @@ function groupIdForStatus(status: CommentThread["status"]): string {
 }
 
 function groupIdForFile(uri: string): string {
+  const browserGroupId = groupIdForBrowserPage(uri);
+  if (browserGroupId) return browserGroupId;
+
   // Normalize file:/// prefix for stable grouping
   const fsPrefix = "file://";
   let label = uri;
@@ -42,6 +45,16 @@ function groupIdForFile(uri: string): string {
     label = path.replace(/^\/[A-Za-z]:/, (m) => m.slice(1));
   }
   return `file:${label}`;
+}
+
+function groupIdForBrowserPage(uri: string): string | undefined {
+  try {
+    const parsed = new URL(uri);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return undefined;
+    return `browser:${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return undefined;
+  }
 }
 
 function groupIdForActivity(lastActivity: string): string {

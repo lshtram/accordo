@@ -48,7 +48,11 @@ export function buildCommentMutationHandlers(
       }
       rateLimiter.record(agentId);
 
-      const retention: CommentRetention = modality === "browser" ? "volatile-browser" : "standard";
+      // Browser comments created from Accordo tools must persist locally until
+      // full-state sync round-trips them back from the browser extension.
+      // If created as volatile-browser they can be pruned before round-trip,
+      // causing comment_create to report success but immediately disappear.
+      const retention: CommentRetention = "standard";
       const finalUri = uri ?? (scope?.["url"] as string | undefined) ?? "";
       if (!finalUri) throw new Error("Either uri or scope.url is required");
 

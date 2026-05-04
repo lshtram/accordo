@@ -954,7 +954,7 @@ describe("M38-CT-01: comment_list detail=true returns full CommentThread[]", () 
 // ── M38-CT-03: browser modality retention ─────────────────────────────────────
 
 describe("M38-CT-03: comment_create browser modality retention", () => {
-  it("M38-CT-03: creates thread with retention=volatile-browser for browser modality", async () => {
+  it("M38-CT-03: creates thread with retention=standard for browser modality", async () => {
     const createTool = tools.find(t => t.name === "comment_create")!;
     const result = (await createTool.handler({
       scope: { modality: "browser", url: "https://example.com/page1" },
@@ -962,7 +962,7 @@ describe("M38-CT-03: comment_create browser modality retention", () => {
       body: "Browser comment",
     })) as { threadId: string };
     const thread = store.getThread(result.threadId)!;
-    expect(thread.retention).toBe("volatile-browser");
+    expect(thread.retention).toBe("standard");
   });
 
   it("M38-CT-03: creates thread with retention=standard for non-browser modality", async () => {
