@@ -5,6 +5,7 @@ import { ScreenshotRetentionStore } from "./screenshot-retention.js";
 import { buildBrowserTools } from "./tool-assembly.js";
 import { registerBrowserNotifier, browserActionToUnifiedTool } from "./comment-notifier.js";
 import { normalizeReadResult } from "./comment-relay-contract.js";
+import { hydrateBrowserCommentThreads } from "./comment-thread-hydration.js";
 import { BrowserCommentSyncScheduler, syncBrowserComments } from "./comment-sync.js";
 import { applyBrowserCommentSyncStateFromRelay } from "./comment-sync-runtime.js";
 import { EXTENSION_ID, getSecurityConfig } from "./relay-lifecycle-primitives.js";
@@ -107,7 +108,15 @@ export function createRelayRequestHandler<TRelay extends BrowserRelayLike>(
 
     let result: unknown;
     try {
-      result = await options.bridge.invokeTool(mapped.toolName, mapped.args);
+      if (action === "get_comments" || action === "get_all_comments") {
+        const scope = (mapped.args["scope"] as { modality: "browser"; url?: string } | undefined) ?? { modality: "browser" };
+        result = await hydrateBrowserCommentThreads(
+          { invokeTool: (toolName, args) => options.bridge.invokeTool(toolName, args) },
+          { scope },
+        );
+      } else {
+        result = await options.bridge.invokeTool(mapped.toolName, mapped.args);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (options.logMappingDetails) {

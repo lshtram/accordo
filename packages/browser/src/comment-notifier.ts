@@ -150,15 +150,15 @@ export function browserActionToUnifiedTool(
 ): { toolName: string; args: Record<string, unknown> } | null {
   switch (action) {
     case "get_all_comments":
-      return { toolName: "comment_list", args: { scope: { modality: "browser" }, detail: true } };
+      return { toolName: "comment_list", args: { scope: { modality: "browser" } } };
 
     case "get_comments": {
       const url = payload["url"] as string | undefined;
       return {
         toolName: "comment_list",
         args: url
-          ? { scope: { modality: "browser", url }, detail: true }
-          : { scope: { modality: "browser" }, detail: true },
+          ? { scope: { modality: "browser", url } }
+          : { scope: { modality: "browser" } },
       };
     }
 

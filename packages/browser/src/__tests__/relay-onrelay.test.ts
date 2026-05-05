@@ -53,6 +53,7 @@ vi.mock("../relay-server.js", () => ({
 
 beforeEach(() => {
   capturedRelayInstance = null;
+  invokeToolMock.mockReset();
   // Force per-window relay path so BrowserRelayServer is instantiated and capturable.
   // These tests exercise onRelayRequest behavior — the shared vs per-window branching
   // is covered by shared-relay-feature-flag.test.ts.
@@ -78,7 +79,7 @@ describe("BUG-1: onRelayRequest response shape for get_comments", () => {
    * Chrome would see zero Hub threads.
    */
   it("REQ-01: get_comments response.data must be { threads: CommentThread[] } (not a bare array)", async () => {
-    // Setup: bridge returns full CommentThread[] (what comment_list returns with detail:true)
+    // Setup: bridge returns summaries from comment_list, then full thread from comment_get
     const mockThreads = [
       {
         id: "t1",
@@ -103,7 +104,9 @@ describe("BUG-1: onRelayRequest response shape for get_comments", () => {
     const bridge = {
       registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
       publishState: vi.fn(),
-      invokeTool: invokeToolMock.mockResolvedValue(mockThreads),
+      invokeTool: invokeToolMock
+        .mockResolvedValueOnce({ threads: [{ id: "t1" }], total: 1, hasMore: false })
+        .mockResolvedValueOnce({ success: true, thread: mockThreads[0] }),
     };
     (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 
@@ -172,7 +175,9 @@ describe("BUG-1: onRelayRequest response shape for get_comments", () => {
     const bridge = {
       registerTools: vi.fn().mockReturnValue({ dispose: vi.fn() }),
       publishState: vi.fn(),
-      invokeTool: invokeToolMock.mockResolvedValue(mockThreads),
+      invokeTool: invokeToolMock
+        .mockResolvedValueOnce({ threads: [{ id: "t2" }], total: 1, hasMore: false })
+        .mockResolvedValueOnce({ success: true, thread: mockThreads[0] }),
     };
     (extensions as Record<string, unknown>).getExtension = vi.fn().mockReturnValue({ exports: bridge });
 

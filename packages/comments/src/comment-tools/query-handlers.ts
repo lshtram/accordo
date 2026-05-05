@@ -1,4 +1,4 @@
-import type { ExtensionToolDefinition, CommentThread } from "@accordo/bridge-types";
+import type { ExtensionToolDefinition } from "@accordo/bridge-types";
 import type { CommentStore } from "../comment-store.js";
 import type { CommentIntent } from "@accordo/bridge-types";
 import { normalizeCommentUri } from "./notifier.js";
@@ -21,7 +21,6 @@ export function buildCommentQueryHandlers(
         : undefined;
       let surfaceType: string | undefined;
       let browserUrl: string | undefined;
-      let isBrowserModality = false;
 
       if (!ignoreGatewayDefaultFilters && scope?.["modality"]) {
         const modality = scope["modality"] as string;
@@ -32,7 +31,6 @@ export function buildCommentQueryHandlers(
           surfaceType = modality;
         }
         if (modality === "browser") {
-          isBrowserModality = true;
           if (!rawUri) browserUrl = rawBrowserUrl;
         }
       }
@@ -43,7 +41,6 @@ export function buildCommentQueryHandlers(
           : rawUri !== undefined
           ? normalizeCommentUri(rawUri, store.getWorkspaceRoot())
           : undefined;
-      const detail = args["detail"] as boolean | undefined;
       const listParams = {
         uri,
         status,
@@ -59,16 +56,6 @@ export function buildCommentQueryHandlers(
         limit: args["limit"] as number | undefined,
         offset: args["offset"] as number | undefined,
       };
-
-      if (detail === true && isBrowserModality) {
-        const listResult = store.listThreads(listParams);
-        const fullThreads: CommentThread[] = [];
-        for (const summary of listResult.threads) {
-          const thread = store.getThread(summary.id);
-          if (thread !== undefined) fullThreads.push(thread);
-        }
-        return fullThreads;
-      }
 
       return store.listThreads(listParams);
     },

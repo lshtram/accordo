@@ -34,8 +34,11 @@ function makeDeps(overrides?: Partial<RelayDispatchDeps>): RelayDispatchDeps {
 
 describe("dispatchBrowserCommentAction — action routing", () => {
   describe("BR-F-122-01: get_comments", () => {
-    it("routes to comment_list with correct args", async () => {
+    it("hydrates threads via comment_list then comment_get", async () => {
       const deps = makeDeps();
+      (deps.invokeTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({ threads: [{ id: "t1" }] })
+        .mockResolvedValueOnce({ success: true, thread: { id: "t1", comments: [] } });
 
       await dispatchBrowserCommentAction(
         deps,
@@ -47,16 +50,23 @@ describe("dispatchBrowserCommentAction — action routing", () => {
         "comment_list",
         expect.objectContaining({
           scope: expect.objectContaining({ modality: "browser", url: "https://example.com/page" }),
-          detail: true,
         }),
+        undefined,
+      );
+      expect(deps.invokeTool).toHaveBeenCalledWith(
+        "comment_get",
+        { threadId: "t1" },
         undefined,
       );
     });
   });
 
   describe("BR-F-122-02: get_all_comments", () => {
-    it("routes to comment_list with allWindows: true", async () => {
+    it("routes to comment_list with browser scope and hydrates", async () => {
       const deps = makeDeps();
+      (deps.invokeTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({ threads: [{ id: "t1" }] })
+        .mockResolvedValueOnce({ success: true, thread: { id: "t1", comments: [] } });
 
       await dispatchBrowserCommentAction(
         deps,
@@ -68,10 +78,28 @@ describe("dispatchBrowserCommentAction — action routing", () => {
         "comment_list",
         expect.objectContaining({
           scope: expect.objectContaining({ modality: "browser" }),
-          detail: true,
         }),
         undefined,
       );
+    });
+
+    it("preserves list order and skips missing thread on hydration", async () => {
+      const deps = makeDeps();
+      (deps.invokeTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({ threads: [{ id: "t2" }, { id: "t1" }, { id: "gone" }] })
+        .mockResolvedValueOnce({ success: true, thread: { id: "t2", comments: [] } })
+        .mockResolvedValueOnce({ success: true, thread: { id: "t1", comments: [] } })
+        .mockRejectedValueOnce(new Error("Thread not found"));
+
+      const result = await dispatchBrowserCommentAction(
+        deps,
+        "get_all_comments" as Action,
+        {},
+      );
+
+      expect(result.success).toBe(true);
+      const threads = ((result.data as { threads: Array<{ id: string }> }).threads).map((t) => t.id);
+      expect(threads).toEqual(["t2", "t1"]);
     });
   });
 

@@ -901,9 +901,9 @@ describe("M38-CT-01: comment_list scope.modality routing", () => {
   });
 });
 
-// ── M38-CT-01: comment_list detail=true for browser modality ──────────────────
+// ── M38-CT-01/M38-CT-02: comment_list summaries + comment_get rich retrieval ──
 
-describe("M38-CT-01: comment_list detail=true returns full CommentThread[]", () => {
+describe("M38-CT-01/M38-CT-02: comment_list summary-only and comment_get rich retrieval", () => {
   beforeEach(async () => {
     const createTool = tools.find(t => t.name === "comment_create")!;
     await createTool.handler({
@@ -913,22 +913,27 @@ describe("M38-CT-01: comment_list detail=true returns full CommentThread[]", () 
     });
   });
 
-  it("returns a bare array (not ListThreadsResult) when detail=true and browser modality", async () => {
+  it("returns ListThreadsResult (not bare array) when detail=true and browser modality", async () => {
     const listTool = tools.find(t => t.name === "comment_list")!;
-    const result = await listTool.handler({ scope: { modality: "browser" }, detail: true });
-    expect(Array.isArray(result)).toBe(true);
+    const result = (await listTool.handler({ scope: { modality: "browser" }, detail: true })) as {
+      threads: Array<Record<string, unknown>>;
+      total: number;
+      hasMore: boolean;
+    };
+    expect(Array.isArray(result)).toBe(false);
+    expect(result).toHaveProperty("threads");
+    expect(result).toHaveProperty("total");
+    expect(result).toHaveProperty("hasMore");
   });
 
-  it("returned array contains full CommentThread objects with comments array", async () => {
+  it("detail=true still returns summaries only (no comments array on list items)", async () => {
     const listTool = tools.find(t => t.name === "comment_list")!;
-    const threads = await listTool.handler({ scope: { modality: "browser" }, detail: true }) as Array<Record<string, unknown>>;
-    expect(threads.length).toBe(1);
-    expect(threads[0]).toHaveProperty("id");
-    expect(threads[0]).toHaveProperty("comments");
-    expect(threads[0]).toHaveProperty("createdAt");
-    expect(Array.isArray(threads[0]["comments"])).toBe(true);
-    const comments = threads[0]["comments"] as Array<Record<string, unknown>>;
-    expect(comments[0]).toHaveProperty("body", "browser comment with full data");
+    const result = (await listTool.handler({ scope: { modality: "browser" }, detail: true })) as {
+      threads: Array<Record<string, unknown>>;
+    };
+    expect(result.threads.length).toBe(1);
+    expect(result.threads[0]).toHaveProperty("id");
+    expect(result.threads[0]).not.toHaveProperty("comments");
   });
 
   it("without detail=true, browser modality still returns ListThreadsResult", async () => {
@@ -943,11 +948,29 @@ describe("M38-CT-01: comment_list detail=true returns full CommentThread[]", () 
     const createTool = tools.find(t => t.name === "comment_create")!;
     await createTool.handler({ uri: "file:///project/src/a.ts", anchor: { kind: "file" }, body: "text comment" });
     const listTool = tools.find(t => t.name === "comment_list")!;
-    // detail=true without browser modality => normal ListThreadsResult
     const result = (await listTool.handler({ detail: true })) as { threads: unknown[]; total: number; hasMore: boolean };
     expect(result).toHaveProperty("threads");
     expect(result).toHaveProperty("total");
     expect(result).toHaveProperty("hasMore");
+  });
+
+  it("list -> comment_get retrieves full thread data", async () => {
+    const listTool = tools.find(t => t.name === "comment_list")!;
+    const getTool = tools.find(t => t.name === "comment_get")!;
+
+    const listResult = (await listTool.handler({ scope: { modality: "browser" }, detail: true })) as {
+      threads: Array<{ id: string }>;
+    };
+    expect(listResult.threads).toHaveLength(1);
+
+    const full = (await getTool.handler({ threadId: listResult.threads[0].id })) as {
+      success: boolean;
+      thread: Record<string, unknown>;
+    };
+    expect(full.success).toBe(true);
+    expect(full.thread).toHaveProperty("comments");
+    const comments = full.thread["comments"] as Array<Record<string, unknown>>;
+    expect(comments[0]).toHaveProperty("body", "browser comment with full data");
   });
 });
 

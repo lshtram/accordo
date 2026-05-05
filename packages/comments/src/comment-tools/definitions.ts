@@ -77,7 +77,7 @@ export const commentToolSchemas: ToolSchema[] = [
         offset: { type: "number", description: "Pagination offset (default 0)" },
         detail: {
           type: "boolean",
-          description: "When true, returns full CommentThread[] with all comments instead of summaries",
+          description: "Deprecated/ignored. comment_list always returns summaries; use comment_get(threadId) for full thread data",
         },
       },
       required: [],

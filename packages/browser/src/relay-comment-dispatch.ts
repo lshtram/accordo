@@ -2,6 +2,7 @@ import type {
   BrowserRelayCommentAction,
   BrowserRelayResponse,
 } from "./comment-relay-contract.js";
+import { hydrateBrowserCommentThreads } from "./comment-thread-hydration.js";
 
 /**
  * External dependency boundary for comment relay dispatch.
@@ -58,16 +59,37 @@ export async function dispatchBrowserCommentAction(
 
   switch (action) {
     case "get_comments":
-      toolName = "comment_list";
-      args = {
-        scope: { modality: "browser", url: (payload as Record<string, unknown>).url as string },
-        detail: true,
-      };
-      break;
+      try {
+        return {
+          requestId: correlationId ?? crypto.randomUUID(),
+          success: true,
+          data: await hydrateBrowserCommentThreads(deps, {
+            scope: { modality: "browser", url: (payload as Record<string, unknown>).url as string },
+          }),
+        };
+      } catch {
+        return {
+          requestId: correlationId ?? crypto.randomUUID(),
+          success: false,
+          error: "action-failed",
+        };
+      }
     case "get_all_comments":
-      toolName = "comment_list";
-      args = { scope: { modality: "browser" }, detail: true };
-      break;
+      try {
+        return {
+          requestId: correlationId ?? crypto.randomUUID(),
+          success: true,
+          data: await hydrateBrowserCommentThreads(deps, {
+            scope: { modality: "browser" },
+          }),
+        };
+      } catch {
+        return {
+          requestId: correlationId ?? crypto.randomUUID(),
+          success: false,
+          error: "action-failed",
+        };
+      }
     case "resolve_thread":
       toolName = "comment_resolve";
       args = {

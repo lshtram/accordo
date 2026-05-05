@@ -201,8 +201,9 @@ interface AccordoComment {
 - `comment_delete`
 - `comment_sync_version`
 
-> `comment_list` supports `detail: true` for callers that need full `CommentThread[]`
-> payloads instead of summaries.
+> `comment_list` is summary-only. The optional `detail` flag is deprecated and
+> ignored for compatibility. Use `comment_get({ threadId })` for full
+> `CommentThread` payloads.
 
 #### Tool Schema: `comment_list`
 

@@ -90,9 +90,11 @@ This is the standard SKILL.md entry point that mirrors the runtime MCP resource
   `coordinates: { x, y }`, `anchorKey`, or top-level `x`/`y` until the tool
   accepts and normalizes those aliases.
 - When verifying newly-created comments, avoid accidental filters. Prefer
-  `comment_list({ scope: { modality: "slide", uri: "file:///abs/deck.md" }, status: "all", detail: true })`
-  or `comment_list({})` for a fully unfiltered check. Only add `intent`,
-  `anchorKind`, or `lastAuthor` when you intentionally want to narrow results.
+  `comment_list({ scope: { modality: "slide", uri: "file:///abs/deck.md" }, status: "all" })`
+  or `comment_list({})` for a fully unfiltered check. `comment_list` always
+  returns summaries; call `comment_get({ threadId })` when full thread data is
+  needed. Only add `intent`, `anchorKind`, or `lastAuthor` when you
+  intentionally want to narrow results.
 - Delete comments carefully: delete a whole thread with `comment_delete({ threadId })`;
   delete one reply/comment with `comment_delete({ threadId, commentId })`; clean
   one modality with `comment_delete({ deleteScope: { modality, all: true } })`.

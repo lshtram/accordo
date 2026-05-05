@@ -56,8 +56,13 @@ Specific live failures that prompted this item:
   optional string filters; and add tests proving
   `comment_list({ scope: { modality: "browser" }, status: "all" })` discovers
   browser-imported threads without requiring `intent`, `lastAuthor`, or
-  `anchorKind` guesses. Treat `detail: true` response-shape normalization as a
-  separate compatibility cleanup.
+  `anchorKind` guesses.
+
+  **Compatibility cleanup scope (approved):** keep diagnostics/facets/discover
+  work deferred; only normalize response-shape/discovery flow by making
+  `comment_list` summary-only (including `detail: true`) and routing rich thread
+  retrieval through `comment_get` hydration where browser relay consumers need
+  `data: { threads: CommentThread[] }`.
 
 Root-cause notes:
 
