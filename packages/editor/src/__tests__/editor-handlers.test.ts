@@ -238,12 +238,12 @@ describe("openHandler — §4.1", () => {
     );
   });
 
-  it("OPEN-05: .mmd file opens in accordo-diagram, returns surface: 'diagram'", async () => {
+  it("OPEN-05: .mmd file opens in accordo-drawing, returns surface: 'drawing'", async () => {
     makeWorkspace();
     const result = await openHandler({ path: "/workspace/src/diagram.mmd" });
-    expect(result).toEqual({ opened: true, path: "/workspace/src/diagram.mmd", surface: "diagram" });
+    expect(result).toEqual({ opened: true, path: "/workspace/src/diagram.mmd", surface: "drawing" });
     expect(vi.mocked(commands.executeCommand)).toHaveBeenCalledWith(
-      "accordo-diagram.open",
+      "accordo-drawing.open",
       expect.any(vscodeMock.Uri),
     );
   });

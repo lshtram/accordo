@@ -5,27 +5,16 @@
  */
 import { readFile } from "node:fs/promises";
 import { parseMermaidSource, buildSceneIndex, type DrawingToolContext, type QueryReport, DrawingError } from "../core/types.js";
-
-function siblingExcalidraw(mmdPath: string): string {
-  return mmdPath.replace(/\.mmd$/, ".excalidraw");
-}
+import { resolveWorkspaceMmdPath, siblingExcalidrawPath } from "./path-utils.js";
 
 export async function queryDrawing(
   input: { path: string; includeOrphans?: boolean; includeElements?: boolean },
   ctx: DrawingToolContext
 ): Promise<QueryReport> {
-  const { path, includeOrphans = false } = input;
+  const { path: rawPath, includeOrphans = false } = input;
+  const { absolutePath: path } = resolveWorkspaceMmdPath(rawPath, ctx.workspaceRoot);
 
-  if (!path.endsWith(".mmd")) {
-    throw new DrawingError("invalid-argument", "path must end with .mmd");
-  }
-
-  const rel = path.replace(ctx.workspaceRoot, "");
-  if (rel.startsWith("..") || rel.startsWith("/")) {
-    throw new DrawingError("path-outside-workspace", "path is outside workspace root");
-  }
-
-  const scenePath = siblingExcalidraw(path);
+  const scenePath = siblingExcalidrawPath(path);
 
   // Parse source
   let sourceGraph: ReturnType<typeof parseMermaidSource>;
@@ -68,8 +57,14 @@ export async function queryDrawing(
   const totalUnmanaged = sceneIndex.unmanaged.length;
 
   // Determine sync status
-  const sourceIdentities = new Set(sourceGraph.nodes.map(n => n.id));
-  const sceneIdentities = new Set(sceneIndex.activeManaged.map(el => el.customData?.accordo?.identity));
+  const sourceIdentities = new Set([
+    ...sourceGraph.nodes.map((n) => `node:${n.id}`),
+    ...sourceGraph.edges.map((e) => `edge:${e.id}`),
+  ]);
+  const sceneIdentities = new Set(sceneIndex.activeManaged.map((el) => {
+    const accordo = el.customData?.accordo;
+    return `${accordo?.entityKind ?? "node"}:${accordo?.identity ?? ""}`;
+  }));
   const needsMerge = sourceIdentities.size !== sceneIdentities.size ||
     [...sourceIdentities].some(id => !sceneIdentities.has(id)) ||
     [...sceneIdentities].some(id => !sourceIdentities.has(id));

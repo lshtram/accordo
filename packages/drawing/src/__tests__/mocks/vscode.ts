@@ -96,6 +96,8 @@ export const window = {
   showErrorMessage: vi.fn().mockResolvedValue(undefined),
   showInputBox: vi.fn().mockResolvedValue(undefined),
   showOpenDialog: vi.fn().mockResolvedValue([]),
+  createOutputChannel: vi.fn().mockReturnValue({ appendLine: vi.fn(), show: vi.fn(), dispose: vi.fn() }),
+  registerCustomEditorProvider: vi.fn().mockReturnValue({ dispose: vi.fn() }),
   createWebviewPanel: vi.fn().mockReturnValue({
     webview: new MockWebview(),
     onDidDispose: vi.fn().mockReturnValue({ dispose: vi.fn() }),
@@ -110,6 +112,10 @@ export const window = {
 export const commands = {
   executeCommand: vi.fn().mockResolvedValue(undefined),
   registerCommand: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+};
+
+export const extensions = {
+  getExtension: vi.fn(),
 };
 
 // ── Disposable ─────────────────────────────────────────────────────────────

@@ -33,21 +33,29 @@ describe("core/source-graph", () => {
     expect(edge.from).toBe("A");
     expect(edge.to).toBe("B");
     expect(edge.ordinal).toBe(0);
+    expect(edge.id).toBe("A->B:0");
+  });
+
+  it("DRW-U04b: parse_multi_edges_assigns_stable_ordinals", () => {
+    const graph = parseMermaidSource("flowchart TD\nA-->B\nA-->B\n");
+    expect(graph.edges.map((edge) => edge.id)).toEqual(["A->B:0", "A->B:1"]);
   });
 
   /**
-   * DRW-U05 — Both TD and TB direction normalize to TD in SourceGraph.
-   * DRW-R12: placement algorithm derives direction; TB and TD both mean top-down.
+   * DRW-U05 — TD and TB both normalize to TD in SourceGraph (top-down grouping).
+   * DRW-R12: placement algorithm groups TD and TB as the same top-down direction.
+   * The source graph stores the original token so it can be rendered correctly.
    */
   it("DRW-U05: parse_flowchart_direction_TD_normalized", () => {
     const td = parseMermaidSource("flowchart TD\nA-->B\n");
     const tb = parseMermaidSource("flowchart TB\nA-->B\n");
 
-    // Both TB and TD normalize to TD in the SourceGraph
-    expect(td.direction).toBe("TB");
-    expect(tb.direction).toBe("TB");
+    // TD and TB are both top-down directions — normalized to TD for placement grouping
+    // (The original token is preserved so the diagram renders correctly)
+    expect(td.direction).toBe("TD");
+    expect(tb.direction).toBe("TD");
 
-    // BT is a distinct direction (bottom-top)
+    // BT is a distinct bottom-top direction
     const bt = parseMermaidSource("flowchart BT\nA-->B\n");
     expect(bt.direction).toBe("BT");
 

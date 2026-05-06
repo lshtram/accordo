@@ -11,7 +11,14 @@
  * Source: docs/20-requirements/requirements-drawing.md §8.3 (minimum real-boundary proof #1)
  */
 
-import { describe, it, expect } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { access, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
+import * as vscode from "vscode";
+import type { ExtensionToolDefinition } from "@accordo/bridge-types";
+import { activate } from "../../extension.js";
 
 /**
  * DRW-RT01: accordo_drawing_create creates both files through real MCP.
@@ -24,19 +31,37 @@ import { describe, it, expect } from "vitest";
  * through the Hub MCP dispatcher (or equivalent test bridge).
  */
 describe("runtime/create-runtime", () => {
-  // Gate: skip unless runtime tests are explicitly enabled
-  const runtimeEnabled = process.env.ACCORDO_DRAWING_RUNTIME_TESTS === "1";
+  let tmpDir: string;
+  let registered: ExtensionToolDefinition[] = [];
 
-  it.skipIf(!runtimeEnabled)("DRW-RT01: accordo_drawing_create through real MCP creates both files", async () => {
-    // The test harness must provide a connected Hub/Bridge environment.
-    // This test is infrastructure-gated — it will be skipped in normal unit runs.
-    //
-    // When enabled (ACCORDO_DRAWING_RUNTIME_TESTS=1), the harness:
-    //   1. Registers accordo-drawing tools with the Hub MCP server
-    //   2. Calls accordo_drawing_create with { path, content }
-    //   3. Verifies both .mmd and .excalidraw exist on disk
-    //
-    // For the stub phase: this test will fail because the tool is not registered.
-    expect(runtimeEnabled).toBe(true); // will be false → test SKIPPED (not failed)
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "drw-runtime-create-"));
+    registered = [];
+    (vscode.workspace.workspaceFolders as unknown as Array<{ uri: { fsPath: string } }>) = [{ uri: { fsPath: tmpDir } }];
+    (vscode.extensions.getExtension as ReturnType<typeof vi.fn>).mockReturnValue({
+      exports: {
+        registerTools: (_id: string, tools: ExtensionToolDefinition[]) => {
+          registered = tools;
+          return { dispose() {} };
+        },
+      },
+    });
+    activate({ subscriptions: [] } as never);
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("DRW-RT01: accordo_drawing_create through real MCP creates both files", async () => {
+    expect(registered).toHaveLength(5);
+    const create = registered.find((tool) => tool.name === "accordo_drawing_create");
+    expect(create).toBeDefined();
+    const path = join(tmpDir, "runtime-create.mmd");
+
+    const result = await create!.handler({ path, content: "flowchart TD\nA-->B\n" }) as { scenePath: string };
+
+    await expect(access(path)).resolves.toBeUndefined();
+    await expect(access(result.scenePath)).resolves.toBeUndefined();
   });
 });

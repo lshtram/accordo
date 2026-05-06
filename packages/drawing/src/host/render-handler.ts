@@ -4,31 +4,32 @@
  * Requires the drawing panel to be open.
  * Uses the panel's requestExport to produce PNG/SVG output.
  */
-import type { DrawingToolContext, RenderReport, DrawingError } from "../core/types.js";
+import { writeFile } from "node:fs/promises";
+import type { DrawingToolContext, RenderReport } from "../core/types.js";
+import { DrawingError } from "../core/types.js";
+import { resolveWorkspaceMmdPath, siblingExcalidrawPath } from "./path-utils.js";
 
-function siblingExcalidraw(mmdPath: string): string {
-  return mmdPath.replace(/\.mmd$/, ".excalidraw");
-}
+const EXCALIDRAW_PACKAGE_VERSION = "0.17.6";
 
 export async function renderDrawing(
   input: { path: string; format: "png" | "svg"; outputPath?: string },
   ctx: DrawingToolContext
 ): Promise<RenderReport> {
-  const { path, format, outputPath } = input;
-
-  if (!path.endsWith(".mmd")) {
-    throw new DrawingError("invalid-argument", "path must end with .mmd");
-  }
-
-  const rel = path.replace(ctx.workspaceRoot, "");
-  if (rel.startsWith("..") || rel.startsWith("/")) {
-    throw new DrawingError("path-outside-workspace", "path is outside workspace root");
-  }
-
-  const scenePath = siblingExcalidraw(path);
+  const { path: rawPath, format, outputPath } = input;
+  const { absolutePath: path } = resolveWorkspaceMmdPath(rawPath, ctx.workspaceRoot);
+  const scenePath = siblingExcalidrawPath(path);
 
   // Require panel to be open
-  const panel = ctx.getPanel(path);
+  let panel = ctx.getPanel(path);
+  const mayBeDesyncedVisiblePanel = panel === undefined && (ctx.hasVisiblePanelTab?.(path) ?? false);
+  if (!panel && mayBeDesyncedVisiblePanel && ctx.ensurePanelOpen) {
+    try {
+      await ctx.ensurePanelOpen(path);
+    } catch {
+      // fall through and keep panel-not-open contract if panel still unresolved
+    }
+    panel = ctx.getPanel(path);
+  }
   if (!panel) {
     throw new DrawingError("panel-not-open", "drawing panel is not open");
   }
@@ -41,10 +42,20 @@ export async function renderDrawing(
   }
 
   const finalPath = outputPath ?? scenePath.replace(/\.excalidraw$/, `.${format}`);
-
-  // Write output file
-  const { writeFile } = await import("node:fs/promises");
-  await writeFile(finalPath, output);
+  if (format === "svg") {
+    const svgText = output.toString("utf8")
+      .replaceAll(
+        "@undefined/dist/excalidraw-assets/",
+        `@${EXCALIDRAW_PACKAGE_VERSION}/dist/excalidraw-assets/`
+      )
+      .replaceAll(
+        "https://unpkg.com/@excalidraw/excalidraw@undefined/",
+        `https://unpkg.com/@excalidraw/excalidraw@${EXCALIDRAW_PACKAGE_VERSION}/`
+      );
+    await writeFile(finalPath, svgText, "utf8");
+  } else {
+    await writeFile(finalPath, output);
+  }
 
   return {
     rendered: true,

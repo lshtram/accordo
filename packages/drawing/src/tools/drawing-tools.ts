@@ -50,6 +50,7 @@ export function createDrawingTools(
         },
         required: ["path", "content"],
       },
+      dangerLevel: "safe",
       handler: (input: unknown) => createDrawing(input as Parameters<typeof createDrawing>[0], ctx),
     },
     {
@@ -77,6 +78,7 @@ export function createDrawingTools(
         },
         required: ["path"],
       },
+      dangerLevel: "moderate",
       handler: (input: unknown) => mergeDrawing(input as Parameters<typeof mergeDrawing>[0], ctx),
     },
     {
@@ -103,6 +105,7 @@ export function createDrawingTools(
         },
         required: ["path"],
       },
+      dangerLevel: "safe",
       handler: (input: unknown) => queryDrawing(input as Parameters<typeof queryDrawing>[0], ctx),
     },
     {
@@ -125,6 +128,7 @@ export function createDrawingTools(
         },
         required: ["path", "content"],
       },
+      dangerLevel: "moderate",
       handler: (input: unknown) => patchDrawing(input as Parameters<typeof patchDrawing>[0], ctx),
     },
     {
@@ -151,6 +155,7 @@ export function createDrawingTools(
         },
         required: ["path", "format"],
       },
+      dangerLevel: "moderate",
       handler: (input: unknown) => renderDrawing(input as Parameters<typeof renderDrawing>[0], ctx),
     },
   ];

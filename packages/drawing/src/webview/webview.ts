@@ -24,6 +24,15 @@ type RestoredScene = {
   generatedFromMermaid: boolean;
 };
 
+type DrawingWindow = Window & {
+  __accordoDrawingScene?: InitialScene;
+  __virgilFontUri?: string;
+  __cascadiaFontUri?: string;
+  __assistantFontUri?: string;
+};
+
+const HANDWRITING_FONT_FAMILY = 1; // Virgil
+
 const vscode = acquireVsCodeApi();
 
 function setBoot(message: string, isError = false): void {
@@ -38,7 +47,7 @@ function clearBoot(): void {
 }
 
 function readInitialScene(): InitialScene {
-  const win = window as Window & { __accordoDrawingScene?: InitialScene };
+  const win = window as DrawingWindow;
   if (win.__accordoDrawingScene) return win.__accordoDrawingScene;
   const raw = document.getElementById("drawing-scene")?.textContent;
   if (!raw) return {};
@@ -47,6 +56,47 @@ function readInitialScene(): InitialScene {
   } catch {
     return {};
   }
+}
+
+async function ensureExcalidrawFontsLoaded(): Promise<void> {
+  const win = window as DrawingWindow;
+  const fontSpecs: Array<{ family: string; uri?: string }> = [
+    { family: "Virgil", uri: win.__virgilFontUri },
+    { family: "Cascadia", uri: win.__cascadiaFontUri },
+    { family: "Assistant", uri: win.__assistantFontUri },
+  ];
+
+  await Promise.allSettled(fontSpecs.map(async ({ family, uri }) => {
+    if (uri) {
+      const face = new FontFace(family, `url(${uri}) format("woff2")`);
+      const loaded = await face.load();
+      document.fonts.add(loaded);
+      return;
+    }
+
+    // If host globals are unavailable in a stale/restarted webview, fall back
+    // to the @font-face rules injected into HTML. This must never fail drawing
+    // conversion: browser FontFace errors are reported as generic "network"
+    // errors even for local webview URIs.
+    await document.fonts.load(`16px "${family}"`);
+  }));
+
+  await Promise.race([
+    document.fonts.ready,
+    new Promise<void>((resolve) => window.setTimeout(resolve, 1500)),
+  ]);
+}
+
+function withFontReadyVisibility<T>(promise: Promise<T>): Promise<T> {
+  const root = document.getElementById("excalidraw-root");
+  if (root) {
+    root.style.visibility = "hidden";
+  }
+  return promise.finally(() => {
+    if (root) {
+      root.style.visibility = "visible";
+    }
+  });
 }
 
 function initialViewport(elements: readonly ExcalidrawElement[]): Record<string, unknown> {
@@ -66,21 +116,36 @@ async function restoreInitialElements(): Promise<RestoredScene> {
     setBoot("Converting Mermaid with mermaid-to-excalidraw...");
     const result = await parseMermaidToExcalidraw(scene.accordoSource.content, { startOnLoad: false });
     return {
-      elements: convertToExcalidrawElements(result.elements, { regenerateIds: false }) as readonly ExcalidrawElement[],
+      elements: forceHandwritingFont(
+        convertToExcalidrawElements(result.elements, { regenerateIds: false }) as readonly ExcalidrawElement[],
+      ),
       generatedFromMermaid: true,
     };
   }
   const elements = scene.elements ?? [];
   if (elements.every(isFullExcalidrawElement)) {
-    return { elements, generatedFromMermaid: false };
+    return { elements: forceHandwritingFont(elements), generatedFromMermaid: false };
   }
   return {
-    elements: convertToExcalidrawElements(
-      elements as Parameters<typeof convertToExcalidrawElements>[0],
-      { regenerateIds: false },
-    ) as readonly ExcalidrawElement[],
+    elements: forceHandwritingFont(
+      convertToExcalidrawElements(
+        elements as Parameters<typeof convertToExcalidrawElements>[0],
+        { regenerateIds: false },
+      ) as readonly ExcalidrawElement[],
+    ),
     generatedFromMermaid: false,
   };
+}
+
+function forceHandwritingFont(elements: readonly ExcalidrawElement[]): readonly ExcalidrawElement[] {
+  return elements.map((element) => {
+    if (element.type !== "text") return element;
+    if (element.fontFamily === HANDWRITING_FONT_FAMILY) return element;
+    return {
+      ...element,
+      fontFamily: HANDWRITING_FONT_FAMILY,
+    };
+  });
 }
 
 function isFullExcalidrawElement(element: ExcalidrawElement): boolean {
@@ -160,6 +225,17 @@ function DrawingApp({ restored, generatedFromMermaid }: { restored: readonly Exc
 
   return React.createElement(Excalidraw, {
     initialData,
+    onPointerDown: () => {
+      const api = apiRef.current;
+      if (!api) return;
+      const appState = api.getAppState();
+      if (appState.currentItemFontFamily === HANDWRITING_FONT_FAMILY) return;
+      api.updateScene({
+        appState: {
+          currentItemFontFamily: HANDWRITING_FONT_FAMILY,
+        },
+      });
+    },
     excalidrawAPI: handleApi,
     onChange: handleChange,
   });
@@ -210,7 +286,8 @@ if (!rootEl) {
 
 try {
   setBoot("Mounting Accordo Drawing...");
-  restoreInitialElements()
+  withFontReadyVisibility(ensureExcalidrawFontsLoaded())
+    .then(() => restoreInitialElements())
     .then((scene) => {
       createRoot(rootEl).render(React.createElement(DrawingApp, { restored: scene.elements, generatedFromMermaid: scene.generatedFromMermaid }));
     })

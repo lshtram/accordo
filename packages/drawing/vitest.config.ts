@@ -16,6 +16,7 @@ const base = defineConfig({
 });
 
 export default defineConfig({
+  resolve: base.resolve,
   test: {
     ...base.test,
     name: "drawing",

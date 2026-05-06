@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { computeMergePlan, type SourceGraph, type SceneIndex } from "../../core/types.js";
+import { computeMergePlan, placeNewNodes, type SourceGraph, type SceneIndex } from "../../core/types.js";
 
 /** Build a minimal SourceGraph */
 function makeSource(nodes: string[], edges: Array<[string, string]>): SourceGraph {
@@ -82,6 +82,27 @@ function makeSceneIndex(
       y: 50,
       // no customData.accordo
     })),
+  };
+}
+
+function makeManagedEdge(identity: string, label = identity): SceneIndex["activeManaged"][number] {
+  return {
+    id: `edge-${identity}`,
+    type: "line",
+    x: 0,
+    y: 0,
+    points: [[0, 0], [100, 0]],
+    customData: {
+      accordo: {
+        version: 1 as const,
+        entityKind: "edge" as const,
+        identity,
+        sceneRole: "primary" as const,
+        sourcePath: "foo.mmd",
+        status: "active" as const,
+        __label: label,
+      },
+    },
   };
 }
 
@@ -194,10 +215,41 @@ describe("core/merge-plan", () => {
     // Both added nodes must be in the plan
     expect(plan.added.length).toBeGreaterThanOrEqual(2);
 
+    // Run through placement engine — DRW-R15 requires collision-free placement
+    const placed = placeNewNodes(plan, source);
+
     // No two added nodes may collide with each other
     // (simplified check: added nodes have different coordinates)
-    const coords = plan.added.map((e) => ({ x: e.x, y: e.y }));
+    const coords = placed.added.map((e) => ({ x: e.x, y: e.y }));
     const unique = new Set(coords.map((c) => `${c.x},${c.y}`));
     expect(unique.size).toBe(coords.length); // all coords unique
+  });
+
+  it("DRW-U19: merge_preserves_managed_edges_with_same_identity", () => {
+    const source = makeSource(["A", "B"], [["A", "B"]]);
+    const scene = makeSceneIndex(["A", "B"]);
+    scene.activeManaged.push(makeManagedEdge("A->B:0"));
+
+    const plan = computeMergePlan(source, scene);
+    expect(plan.preserved.some((element) => element.customData?.accordo?.identity === "A->B:0")).toBe(true);
+  });
+
+  it("DRW-U20: merge_updates_managed_edge_when_semantics_change", () => {
+    const source = makeSource(["A", "B"], [["A", "B"]]);
+    source.edges[0]!.label = "new-edge-label";
+    const scene = makeSceneIndex(["A", "B"]);
+    scene.activeManaged.push(makeManagedEdge("A->B:0", "old-label"));
+
+    const plan = computeMergePlan(source, scene);
+    expect(plan.updated.some((element) => element.customData?.accordo?.identity === "A->B:0")).toBe(true);
+  });
+
+  it("DRW-U21: merge_removes_managed_edge_missing_from_source", () => {
+    const source = makeSource(["A", "B"], []);
+    const scene = makeSceneIndex(["A", "B"]);
+    scene.activeManaged.push(makeManagedEdge("A->B:0"));
+
+    const plan = computeMergePlan(source, scene);
+    expect(plan.removed.some((element) => element.customData?.accordo?.identity === "A->B:0")).toBe(true);
   });
 });

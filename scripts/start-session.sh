@@ -64,6 +64,11 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 sys.exit(0 if 'vscode' in d.get('engines', {}) else 1)
 " "$pkg/package.json" 2>/dev/null; then
+            # Legacy accordo-diagram package is intentionally excluded from
+            # active dev builds/sessions. Keep source in git for reference only.
+            if [[ "$(basename "$pkg")" == "diagram" ]]; then
+              continue
+            fi
             found+=("$pkg")
           fi
         fi
@@ -141,10 +146,10 @@ ACCORDO_PKG_DIR="$ACCORDO_DIR/packages"
 if [[ "$DO_BUILD" -eq 1 ]]; then
   if [[ "$DO_CLEAN" -eq 1 ]]; then
     echo "[start-session] Cleaning all accordo VS Code extensions..."
-    (cd "$ACCORDO_DIR" && pnpm -r --filter="./packages/*" --filter='!accordo-voice' run clean 2>/dev/null || true)
+    (cd "$ACCORDO_DIR" && pnpm -r --filter="./packages/*" --filter='!accordo-voice' --filter='!accordo-diagram' run clean 2>/dev/null || true)
   fi
   echo "[start-session] Building all accordo VS Code extensions..."
-  (cd "$ACCORDO_DIR" && pnpm -r --filter="./packages/*" --filter='!accordo-voice' run build)
+  (cd "$ACCORDO_DIR" && pnpm -r --filter="./packages/*" --filter='!accordo-voice' --filter='!accordo-diagram' run build)
 else
   echo "[start-session] Skipping build (--no-build)"
 fi

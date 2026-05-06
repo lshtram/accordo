@@ -128,4 +128,22 @@ describe("host/merge-handler", () => {
 
     expect(result.placementEngine).toBe("accordo");
   });
+
+  it("DRW-I14: merge_uses_bootstrap_when_sibling_scene_missing", async () => {
+    const mmdPath = join(tmpDir, "missing-scene.mmd");
+    await writeFile(mmdPath, "flowchart TD\nA-->B\n", "utf8");
+
+    const result = await mergeDrawing({ path: mmdPath }, ctx) as Record<string, unknown>;
+    expect(result.placementEngine).toBe("bootstrap");
+  });
+
+  it("DRW-I15: merge_uses_bootstrap_when_no_active_managed", async () => {
+    const mmdPath = join(tmpDir, "zero-active.mmd");
+    const excalidrawPath = join(tmpDir, "zero-active.excalidraw");
+    await writeFile(mmdPath, "flowchart TD\nA-->B\n", "utf8");
+    await writeFile(excalidrawPath, JSON.stringify({ elements: [], version: 2 }), "utf8");
+
+    const result = await mergeDrawing({ path: mmdPath }, ctx) as Record<string, unknown>;
+    expect(result.placementEngine).toBe("bootstrap");
+  });
 });

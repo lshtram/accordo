@@ -3,7 +3,7 @@
  *
  * Replaces .mmd content then merges. Returns PatchReport.
  */
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import {
   parseMermaidSource,
   buildSceneIndex,
@@ -13,30 +13,19 @@ import {
   type PatchReport,
   DrawingError,
 } from "../core/types.js";
-
-function siblingExcalidraw(mmdPath: string): string {
-  return mmdPath.replace(/\.mmd$/, ".excalidraw");
-}
+import { resolveWorkspaceMmdPath, siblingExcalidrawPath } from "./path-utils.js";
 
 export async function patchDrawing(
   input: { path: string; content: string },
   ctx: DrawingToolContext
 ): Promise<PatchReport> {
-  const { path, content } = input;
-
-  if (!path.endsWith(".mmd")) {
-    throw new DrawingError("invalid-argument", "path must end with .mmd");
-  }
-
-  const rel = path.replace(ctx.workspaceRoot, "");
-  if (rel.startsWith("..") || rel.startsWith("/")) {
-    throw new DrawingError("path-outside-workspace", "path is outside workspace root");
-  }
+  const { path: rawPath, content } = input;
+  const { absolutePath: path, sourcePath } = resolveWorkspaceMmdPath(rawPath, ctx.workspaceRoot);
 
   // Persist new .mmd content
   await writeFile(path, content, "utf8");
 
-  const scenePath = siblingExcalidraw(path);
+  const scenePath = siblingExcalidrawPath(path);
 
   // Parse new source
   let sourceGraph: ReturnType<typeof parseMermaidSource>;
@@ -49,23 +38,21 @@ export async function patchDrawing(
   // Read and index scene
   let sceneJson: unknown;
   try {
-    const { readFile } = await import("node:fs/promises");
     sceneJson = JSON.parse(await readFile(scenePath, "utf8"));
   } catch {
-    throw new DrawingError("scene-invalid", "could not parse .excalidraw file");
+    sceneJson = { elements: [], version: 2 };
   }
 
   const sceneIndex = buildSceneIndex(sceneJson);
 
   // Compute merge plan
-  let plan = computeMergePlan(sourceGraph, sceneIndex);
+  let plan = computeMergePlan(sourceGraph, sceneIndex, sourcePath);
 
   if (plan.placementEngine === "accordo") {
     plan = placeNewNodes(plan, sourceGraph);
   }
 
   // Write updated scene
-  const { readFile } = await import("node:fs/promises");
   const updatedScene = {
     elements: [
       ...plan.preserved,

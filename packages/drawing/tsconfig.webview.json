@@ -1,10 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
+    "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022", "DOM"],
-    "jsx": "react",
+    "jsx": "react-jsx",
     "strict": true,
     "noImplicitAny": true,
     "noImplicitReturns": true,
@@ -16,6 +16,6 @@
     "outDir": "./dist/webview",
     "rootDir": "./src/webview"
   },
-  "include": ["src/webview/**/*.ts"],
+  "include": ["src/webview/**/*.ts", "src/webview/**/*.tsx"],
   "exclude": ["dist/**"]
 }

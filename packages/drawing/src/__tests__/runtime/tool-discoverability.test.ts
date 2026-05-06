@@ -8,22 +8,40 @@
  * Source: docs/20-requirements/requirements-drawing.md §8.3
  */
 
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+import * as vscode from "vscode";
+import type { ExtensionToolDefinition } from "@accordo/bridge-types";
+import { activate } from "../../extension.js";
 
 describe("runtime/tool-discoverability", () => {
-  const runtimeEnabled = process.env.ACCORDO_DRAWING_RUNTIME_TESTS === "1";
+  let registered: ExtensionToolDefinition[] = [];
 
-  it.skipIf(!runtimeEnabled)(
+  beforeEach(() => {
+    registered = [];
+    (vscode.workspace.workspaceFolders as unknown as Array<{ uri: { fsPath: string } }>) = [{ uri: { fsPath: "/tmp/workspace" } }];
+    (vscode.extensions.getExtension as ReturnType<typeof vi.fn>).mockReturnValue({
+      exports: {
+        registerTools: (_id: string, tools: ExtensionToolDefinition[]) => {
+          registered = tools;
+          return { dispose() {} };
+        },
+      },
+    });
+    activate({ subscriptions: [] } as never);
+  });
+
+  it(
     "DRW-RT04: tools/list includes all 5 accordo_drawing_* tools",
     async () => {
-      // When enabled:
-      //   1. Connect MCP client to Hub
-      //   2. Call tools/list
-      //   3. Assert the response contains all 5 accordo_drawing_* tools
-      //   4. Assert no accordo_diagram_* tool is present
-      //
-      // Stub phase failure: tool list empty or only diagram tools present.
-      expect(runtimeEnabled).toBe(true);
+      const names = registered.map((tool) => tool.name);
+      expect(names).toEqual([
+        "accordo_drawing_create",
+        "accordo_drawing_merge",
+        "accordo_drawing_query",
+        "accordo_drawing_patch",
+        "accordo_drawing_render",
+      ]);
+      expect(names.some((name) => name.startsWith("accordo_diagram_"))).toBe(false);
     }
   );
 });

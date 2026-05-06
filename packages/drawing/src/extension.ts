@@ -120,6 +120,16 @@ function createDrawingToolContext(
   return {
     workspaceRoot,
     getPanel: (path: string) => panelsByPath.get(path),
+    ensurePanelOpen: async (path: string) => {
+      await vscode.commands.executeCommand("accordo-drawing.open", vscode.Uri.file(path));
+    },
+    hasVisiblePanelTab: (path: string) => {
+      const expectedLabel = `Drawing • ${basename(path)}`;
+      const groups = vscode.window.tabGroups?.all ?? [];
+      return groups.some((group) =>
+        group.tabs.some((tab) => tab.label === expectedLabel)
+      );
+    },
   };
 }
 
@@ -299,7 +309,9 @@ function renderDrawingHtml(sceneText: string, webview: vscode.Webview, extension
   const webviewRoot = vscode.Uri.joinPath(extensionUri, "dist", "webview");
   const bundleUri = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, "drawing-webview.js").with({ query: `v=${nonce}` })).toString();
   const assetRoot = webview.asWebviewUri(webviewRoot).toString();
-  const fontUri = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, "Virgil.woff2")).toString();
+  const virgilFontUri = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, "excalidraw-assets", "Virgil.woff2")).toString();
+  const cascadiaFontUri = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, "excalidraw-assets", "Cascadia.woff2")).toString();
+  const assistantFontUri = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, "excalidraw-assets", "Assistant-Regular.woff2")).toString();
 
   return `<!doctype html>
 <html>
@@ -307,6 +319,27 @@ function renderDrawingHtml(sceneText: string, webview: vscode.Webview, extension
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' ${webview.cspSource}; style-src ${webview.cspSource} 'unsafe-inline'; img-src data: blob: ${webview.cspSource}; font-src ${webview.cspSource} data:; connect-src ${webview.cspSource}; worker-src blob:;">
     <style>
+      @font-face {
+        font-family: "Virgil";
+        src: url("${virgilFontUri}") format("woff2");
+        font-weight: 400;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "Cascadia";
+        src: url("${cascadiaFontUri}") format("woff2");
+        font-weight: 400;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "Assistant";
+        src: url("${assistantFontUri}") format("woff2");
+        font-weight: 400;
+        font-style: normal;
+        font-display: block;
+      }
       html, body { width: 100%; height: 100%; }
       body, #excalidraw-root { margin: 0; overflow: hidden; width: 100%; height: 100%; }
       #drawing-boot { position: fixed; right: 12px; bottom: 12px; max-width: 520px; padding: 8px 10px; border-radius: 4px; box-sizing: border-box; font: 12px var(--vscode-font-family, sans-serif); color: var(--vscode-editor-foreground); background: var(--vscode-editorWidget-background, rgba(0,0,0,0.08)); z-index: 9999; white-space: pre-wrap; pointer-events: none; }
@@ -338,7 +371,10 @@ function renderDrawingHtml(sceneText: string, webview: vscode.Webview, extension
         }
       });
       window.EXCALIDRAW_ASSET_PATH = "${assetRoot}/";
-      window.__virgilFontUri = "${fontUri}";
+      window.EXCALIDRAW_PACKAGE_VERSION = "0.17.6";
+      window.__virgilFontUri = "${virgilFontUri}";
+      window.__cascadiaFontUri = "${cascadiaFontUri}";
+      window.__assistantFontUri = "${assistantFontUri}";
       window.__accordoDrawingScene = JSON.parse(document.getElementById("drawing-scene").textContent);
     </script>
     <script nonce="${nonce}" src="${bundleUri}"></script>

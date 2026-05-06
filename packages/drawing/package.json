@@ -4,36 +4,55 @@
   "publisher": "accordo",
   "version": "0.1.0",
   "description": "Accordo IDE Drawing Tools — collaborative Mermaid + Excalidraw drawings with merge/placement",
-  "categories": ["Other"],
-  "extensionKind": ["workspace"],
-  "activationEvents": ["onStartupFinished"],
-  "extensionDependencies": ["accordo.accordo-bridge"],
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCustomEditor:accordo-drawing.drawingEditor"
+  ],
+  "extensionDependencies": [
+    "accordo.accordo-bridge"
+  ],
   "type": "module",
   "main": "./dist/extension.js",
   "scripts": {
-    "build": "tsc -b && pnpm build:webview",
+    "build": "tsc -b && pnpm build:webview && node scripts/copy-excalidraw-assets.mjs",
     "build:host": "tsc -b",
-    "build:webview": "echo 'drawing webview stub'",
+    "build:webview": "esbuild src/webview/webview.ts --bundle --outfile=dist/webview/drawing-webview.js --platform=browser --format=iife --target=es2020 --jsx=automatic --jsx-import-source=react --minify --sourcemap --define:process.env.IS_PREACT='\"false\"' --define:process.env.NODE_ENV='\"production\"'",
     "clean": "rm -rf dist *.tsbuildinfo",
     "package": "vsce package --no-dependencies",
     "test": "vitest run",
     "test:watch": "vitest watch",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.webview.json --noEmit",
-    "lint": "echo 'no lint configured yet'"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@accordo/bridge-types": "workspace:*",
     "@accordo/capabilities": "workspace:*",
     "@excalidraw/excalidraw": "0.17.6",
     "@excalidraw/mermaid-to-excalidraw": "^2.2.2",
-    "mermaid": "11.12.3"
+    "mermaid": "11.12.3",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   },
   "devDependencies": {
     "@accordo/bridge-types": "workspace:*",
+    "accordo-hub": "workspace:*",
     "@types/node": "^20.0.0",
+    "@types/react": "18.3.28",
+    "@types/react-dom": "18.3.7",
     "@types/vscode": "^1.100.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "eslint": "^10.1.0",
+    "esbuild": "^0.27.4",
     "happy-dom": "^20.9.0",
     "jsdom": "^26.1.0",
+    "ws": "^8.18.3",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
@@ -42,7 +61,11 @@
       {
         "viewType": "accordo-drawing.drawingEditor",
         "displayName": "Accordo Drawing",
-        "selector": [{ "filenamePattern": "*.excalidraw" }],
+        "selector": [
+          {
+            "filenamePattern": "*.excalidraw"
+          }
+        ],
         "priority": "default"
       }
     ],

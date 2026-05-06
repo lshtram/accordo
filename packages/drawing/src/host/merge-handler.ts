@@ -5,27 +5,14 @@
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { parseMermaidSource, buildSceneIndex, computeMergePlan, placeNewNodes, type DrawingToolContext, type MergeReport, DrawingError } from "../core/types.js";
-
-function siblingExcalidraw(mmdPath: string): string {
-  return mmdPath.replace(/\.mmd$/, ".excalidraw");
-}
+import { resolveWorkspaceMmdPath, siblingExcalidrawPath } from "./path-utils.js";
 
 export async function mergeDrawing(
   input: { path: string; content?: string; open?: boolean },
   ctx: DrawingToolContext
 ): Promise<MergeReport> {
-  const { path, content, open = false } = input;
-
-  // Validate path extension
-  if (!path.endsWith(".mmd")) {
-    throw new DrawingError("invalid-argument", "path must end with .mmd");
-  }
-
-  // Check path is in workspace
-  const rel = path.replace(ctx.workspaceRoot, "");
-  if (rel.startsWith("..") || rel.startsWith("/")) {
-    throw new DrawingError("path-outside-workspace", "path is outside workspace root");
-  }
+  const { path: rawPath, content } = input;
+  const { absolutePath: path, sourcePath } = resolveWorkspaceMmdPath(rawPath, ctx.workspaceRoot);
 
   // Read .mmd (or use provided content)
   let mmdContent: string;
@@ -39,7 +26,7 @@ export async function mergeDrawing(
     }
   }
 
-  const scenePath = siblingExcalidraw(path);
+  const scenePath = siblingExcalidrawPath(path);
 
   // Write updated .mmd if content was provided
   if (content !== undefined) {
@@ -59,13 +46,13 @@ export async function mergeDrawing(
   try {
     sceneJson = JSON.parse(await readFile(scenePath, "utf8"));
   } catch {
-    throw new DrawingError("scene-invalid", "could not parse .excalidraw file");
+    sceneJson = { elements: [], version: 2 };
   }
 
   const sceneIndex = buildSceneIndex(sceneJson);
 
   // Compute merge plan
-  let plan = computeMergePlan(sourceGraph, sceneIndex);
+  let plan = computeMergePlan(sourceGraph, sceneIndex, sourcePath);
 
   // Apply placement engine to newly added nodes
   if (plan.placementEngine === "accordo") {

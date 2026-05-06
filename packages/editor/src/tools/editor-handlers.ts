@@ -55,7 +55,7 @@ export {
  */
 export async function openHandler(
   args: Record<string, unknown>,
-): Promise<{ opened: true; path: string; surface: "editor" | "preview" | "diagram" } | { error: string }> {
+): Promise<{ opened: true; path: string; surface: "editor" | "preview" | "drawing" } | { error: string }> {
   try {
     const p = argString(args, "path");
     const line = argNumberOpt(args, "line", 1);
@@ -75,9 +75,9 @@ export async function openHandler(
     }
 
     if (resolved.endsWith(".mmd")) {
-      // Open .mmd files in the Accordo diagram viewer.
-      await vscode.commands.executeCommand("accordo-diagram.open", uri);
-      return { opened: true, path: resolved, surface: "diagram" };
+      // Open .mmd files in the Accordo drawing viewer.
+      await vscode.commands.executeCommand("accordo-drawing.open", uri);
+      return { opened: true, path: resolved, surface: "drawing" };
     }
 
     const range = new vscode.Range(position, position);
