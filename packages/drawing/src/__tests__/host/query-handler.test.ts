@@ -20,12 +20,27 @@ let queryDrawing: (input: {
   includeOrphans?: boolean;
   includeElements?: boolean;
 }, ctx: DrawingToolContext) => Promise<unknown>;
+let createDrawing: (input: {
+  path: string;
+  content: string;
+  force?: boolean;
+  open?: boolean;
+}, ctx: DrawingToolContext) => Promise<unknown>;
 
 try {
   const m = await import("../../host/query-handler.js");
   queryDrawing = m.queryDrawing;
 } catch {
   queryDrawing = async () => {
+    throw new Error("not implemented");
+  };
+}
+
+try {
+  const m = await import("../../host/create-handler.js");
+  createDrawing = m.createDrawing;
+} catch {
+  createDrawing = async () => {
     throw new Error("not implemented");
   };
 }
@@ -103,5 +118,13 @@ describe("host/query-handler", () => {
     const result = await queryDrawing({ path: mmdPath }, ctx) as Record<string, unknown>;
 
     expect(result.status).toBe("scene-invalid");
+  });
+
+  it("DRW-I12: query_reports_needs_merge_for_bootstrap_placeholder_scene", async () => {
+    const mmdPath = join(tmpDir, "seeded.mmd");
+    await createDrawing({ path: mmdPath, content: "flowchart TD\nA-->B\n" }, ctx);
+
+    const result = await queryDrawing({ path: mmdPath }, ctx) as Record<string, unknown>;
+    expect(result.status).toBe("needs-merge");
   });
 });

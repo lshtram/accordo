@@ -72,6 +72,16 @@ describe("host/create-handler", () => {
 
     expect(mmdExists).toBe(true);
     expect(sceneExists).toBe(true);
+
+    const sceneJson = JSON.parse(await readFile(scenePath, "utf8")) as {
+      elements?: Array<unknown>;
+      accordoSource?: { kind?: string; content?: string; sourcePath?: string };
+    };
+    expect(Array.isArray(sceneJson.elements)).toBe(true);
+    expect(sceneJson.elements).toHaveLength(0);
+    expect(sceneJson.accordoSource?.kind).toBe("mermaid");
+    expect(sceneJson.accordoSource?.content).toBe(content);
+    expect(sceneJson.accordoSource?.sourcePath).toBe("new drawing.mmd");
   });
 
   /**
@@ -101,5 +111,30 @@ describe("host/create-handler", () => {
     await expect(
       createDrawing({ path, content }, ctx)
     ).rejects.toThrow();
+  });
+
+  it("DRW-I12: create_force_false_throws_already_exists", async () => {
+    const path = join(tmpDir, "existing.mmd");
+    const content = "flowchart TD\nA-->B\n";
+    await createDrawing({ path, content }, ctx);
+
+    await expect(createDrawing({ path, content, force: false }, ctx)).rejects.toMatchObject({ code: "already-exists" });
+  });
+
+  it("DRW-I13: create_rejects_path_outside_workspace_after_normalization", async () => {
+    const path = join(tmpDir, "..", "outside.mmd");
+    await expect(createDrawing({ path, content: "flowchart TD\nA-->B\n" }, ctx)).rejects.toMatchObject({ code: "path-outside-workspace" });
+  });
+
+  it("DRW-I16: create_persists_workspace_relative_source_path", async () => {
+    const path = join(tmpDir, "nested", "graph.mmd");
+    const content = "flowchart TD\nA-->B\n";
+    await import("node:fs/promises").then(({ mkdir }) => mkdir(join(tmpDir, "nested"), { recursive: true }));
+    const result = await createDrawing({ path, content }, ctx) as Record<string, unknown>;
+    const scene = JSON.parse(await readFile(String(result.scenePath), "utf8")) as {
+      accordoSource?: { sourcePath?: string };
+    };
+
+    expect(scene.accordoSource?.sourcePath).toBe("nested/graph.mmd");
   });
 });

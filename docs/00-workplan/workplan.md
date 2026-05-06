@@ -130,6 +130,26 @@ Latest completed items have been moved to `docs/00-workplan/accomplished-tasks.m
 **Status:** Open  
 **Scope:** New `accordo-drawing` package design and first TDD slice activation.
 
+**Completion roadmap:** `docs/00-workplan/drawing-completion-plan.md` now tracks the full path from the current flowchart-first slice to a rich Drawing feature set with broader Mermaid type support.
+
+**Deferred gap to address (observed in live demo):**
+
+- `accordo_drawing_patch` / merge output currently has major visual quality issues in some flows:
+  1. newly added blocks may lose/omit readable labels,
+  2. XY placement may appear non-logical relative to existing graph structure,
+  3. collisions/overlaps can still occur in the resulting scene,
+  4. opening `.excalidraw` often lands in text first and only then in drawing via explicit open command.
+
+**Decision:** defer this placement/label/collision/open-UX remediation to a dedicated Drawing module slice so current demo flow can proceed.
+
+**Done-when for deferred slice:**
+
+- Added/updated managed nodes and edges render with expected labels in Excalidraw.
+- Placement follows deterministic, human-sensible anchor/frontier rules and is validated against representative patched graphs.
+- Collision avoidance prevents overlaps in normal merge/patch scenarios; failing cases are surfaced explicitly.
+- Opening a drawing path uses a deterministic custom-editor-first UX (no confusing text-first behavior during normal workflows).
+- Tests cover label retention, anchor-based placement quality, collision cases, and open-command UX behavior.
+
 This work is now active and is **not** part of the completed legacy `accordo-diagram` stream.
 
 **Why active now:**  

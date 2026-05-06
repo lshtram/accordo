@@ -7,21 +7,20 @@
  * - file doesn't already exist (unless force)
  *
  * Then writes both .mmd and sibling .excalidraw.
+ *
+ * Bootstrap model:
+ * - create persists a bootstrap placeholder scene containing accordoSource mermaid
+ * - the drawing webview performs browser-side @excalidraw/mermaid-to-excalidraw conversion
+ *   on first open and then persists converted elements
  */
 import { writeFile, access } from "node:fs/promises";
-import { join } from "node:path";
 import {
   parseMermaidSource,
-  buildSceneIndex,
-  computeMergePlan,
   type DrawingToolContext,
   type CreateReport,
   DrawingError,
 } from "../core/types.js";
-
-function siblingExcalidraw(mmdPath: string): string {
-  return mmdPath.replace(/\.mmd$/, ".excalidraw");
-}
+import { resolveWorkspaceMmdPath, siblingExcalidrawPath } from "./path-utils.js";
 
 function isFlowchartType(graph: ReturnType<typeof parseMermaidSource>): boolean {
   return graph.type === "flowchart";
@@ -31,26 +30,16 @@ export async function createDrawing(
   input: { path: string; content: string; force?: boolean; open?: boolean },
   ctx: DrawingToolContext
 ): Promise<CreateReport> {
-  const { path, content, force = false, open = false } = input;
-
-  // Validate path extension
-  if (!path.endsWith(".mmd")) {
-    throw new DrawingError("invalid-argument", "path must end with .mmd");
-  }
-
-  // Check if path is in workspace
-  const rel = path.replace(ctx.workspaceRoot, "");
-  if (rel.startsWith("..") || rel.startsWith("/")) {
-    throw new DrawingError("path-outside-workspace", "path is outside workspace root");
-  }
+  const { path: rawPath, content, force = false, open = false } = input;
+  const { absolutePath: path, sourcePath } = resolveWorkspaceMmdPath(rawPath, ctx.workspaceRoot);
 
   // Check already exists (unless force)
   if (!force) {
     try {
       await access(path);
       throw new DrawingError("already-exists", "file already exists at path");
-    } catch {
-      // expected — file doesn't exist
+    } catch (error) {
+      if (error instanceof DrawingError) throw error;
     }
   }
 
@@ -66,45 +55,39 @@ export async function createDrawing(
     throw new DrawingError("unsupported-diagram-type", "only flowchart diagrams are supported");
   }
 
-  const scenePath = siblingExcalidraw(path);
+  const scenePath = siblingExcalidrawPath(path);
 
   // Write .mmd
   await writeFile(path, content, "utf8");
 
-  // Build initial excalidraw with positioned nodes (bootstrap mode)
+  // Build initial bootstrap strategy
   const bootstrapEngine: "mermaid-to-excalidraw" | "empty" =
     sourceGraph.nodes.length > 0 ? "mermaid-to-excalidraw" : "empty";
 
   if (bootstrapEngine === "mermaid-to-excalidraw") {
-    // Bootstrap: convert Mermaid nodes to initial excalidraw elements
-    const elements = sourceGraph.nodes.map((node, i) => {
-      const col = i % 4;
-      const row = Math.floor(i / 4);
-      return {
-        id: `-bootstrap-${node.id}-${Date.now()}`,
-        type: "rectangle",
-        x: 40 + col * PLACEMENT_GRID_PX * 4,
-        y: 40 + row * PLACEMENT_GRID_PX * 4,
-        width: 100,
-        height: 40,
-        customData: {
-          accordo: {
-            version: 1 as const,
-            entityKind: "node" as const,
-            identity: node.id,
-            sceneRole: "primary" as const,
-            sourcePath: path.replace(/^.*[/\\]/, ""),
-            status: "active" as const,
-          },
-        },
-      };
-    });
-
-    const sceneJson = { elements, version: 2 };
+    const sceneJson = {
+      type: "excalidraw",
+      version: 2,
+      source: "https://accordo.dev/drawing",
+      elements: [],
+      files: {},
+      accordoSource: {
+        kind: "mermaid",
+        path,
+        sourcePath,
+        content,
+      },
+    };
     await writeFile(scenePath, JSON.stringify(sceneJson), "utf8");
   } else {
     // Empty bootstrap
-    const sceneJson = { elements: [], version: 2 };
+    const sceneJson = {
+      type: "excalidraw",
+      version: 2,
+      source: "https://accordo.dev/drawing",
+      elements: [],
+      files: {},
+    };
     await writeFile(scenePath, JSON.stringify(sceneJson), "utf8");
   }
 
@@ -116,5 +99,3 @@ export async function createDrawing(
     opened: open,
   };
 }
-
-const PLACEMENT_GRID_PX = 40;
