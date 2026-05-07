@@ -619,11 +619,11 @@ describe("Priority Q — Surface Focus Navigation", () => {
       expect(args[1]).toBe("file:///project/diagram.mmd");
     });
 
-    it("includes disconnectedMessage for diagram surface", () => {
+    it("includes disconnectedMessage for drawing-backed diagram surface", () => {
       const thread = makeDiagramThread();
       const plan = buildNavigationDispatchPlan(thread);
       expect(plan.disconnectedMessage).toBeDefined();
-      expect(plan.disconnectedMessage).toContain("Diagram");
+      expect(plan.disconnectedMessage).toContain("Drawing");
     });
   });
 

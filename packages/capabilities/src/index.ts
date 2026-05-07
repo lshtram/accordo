@@ -221,13 +221,17 @@ export interface PreviewHighlightClearArgs {
 }
 
 /**
- * DiagramCapability — registered by accordo-diagram.
+ * DiagramCapability — legacy diagram-focus capability command.
+ *
+ * On current main, `accordo-drawing` is expected to produce the same command
+ * ID for compatibility while comment anchors continue to use
+ * `surfaceType: "diagram"`.
  *
  * Focuses a thread in an open diagram panel. If no panel is open for the
  * given URI, the command opens the panel first then focuses the thread.
  *
- * Source: accordo_diagram_focusThread handler in
- *         packages/diagram/src/extension.ts
+ * Source lineage: legacy `packages/diagram/src/extension.ts`; current producer
+ * is the drawing modality compatibility layer.
  */
 export interface DiagramCapability {
   /**

@@ -366,6 +366,18 @@ describe("AccordoCommentSDK", () => {
       expect(input).toBeNull();
       expect(callbacks.onCreate).not.toHaveBeenCalled();
     });
+
+    it("Alt+click can use blockIdFromEvent for canvas-backed surfaces", () => {
+      sdk.init({
+        ...makeInitOpts(container, callbacks, { x: 100, y: 200 }),
+        blockIdFromEvent: () => "node:A",
+      });
+
+      container.dispatchEvent(new MouseEvent("click", { bubbles: true, altKey: true }));
+
+      const input = container.querySelector(".accordo-inline-input");
+      expect(input).not.toBeNull();
+    });
   });
 
   // ── M41-SDK-08: Click pin → popover ──────────────────────────────────────

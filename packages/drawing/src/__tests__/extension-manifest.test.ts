@@ -25,11 +25,16 @@ const PKG_DIR = join(fileURLToPath(import.meta.url), "..", "..", "..");
 const PKG_JSON_PATH = join(PKG_DIR, "package.json");
 
 interface PackageJson {
+  activationEvents?: string[];
   contributes?: {
     customEditors?: Array<{
       viewType: string;
       displayName: string;
       selector?: Array<{ filenamePattern?: string }>;
+    }>;
+    commands?: Array<{
+      command: string;
+      title: string;
     }>;
   };
 }
@@ -76,5 +81,14 @@ describe("extension-manifest", () => {
       );
       expect(hasMmdOnlySelector).toBe(false);
     }
+  });
+
+  it("DRW-C07: manifest activates Drawing for compatibility focus command", async () => {
+    const pkg = await readPkg();
+
+    expect(pkg.activationEvents ?? []).toContain("onCommand:accordo_diagram_focusThread");
+    expect((pkg.contributes?.commands ?? []).map((command) => command.command)).toContain(
+      "accordo_diagram_focusThread",
+    );
   });
 });

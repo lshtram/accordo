@@ -156,7 +156,7 @@ export function buildNavigationDispatchPlan(
       target: "diagram",
       primaryCommand: SURFACE_FOCUS_COMMANDS.diagram,
       primaryArgs: [thread.id, anchor.uri],
-      disconnectedMessage: "Diagram extension not connected.",
+      disconnectedMessage: "Drawing extension not connected.",
     };
   }
 

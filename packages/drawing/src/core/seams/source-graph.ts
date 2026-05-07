@@ -102,11 +102,9 @@ export function parseMermaidSource(content: string): SourceGraph {
       const idx = line.indexOf(op);
       if (idx !== -1) {
         const rest = line.slice(idx + op.length).trim();
-        // Split on whitespace, comma, or close bracket
-        const toPart = rest.split(/[\s,\]]/)[0] ?? "";
-        const from = line.slice(0, idx).trim();
-        const to = toPart.replace(/[,\]]+/g, "");
-        if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(from) && /^[A-Za-z_][A-Za-z0-9_]*$/.test(to)) {
+        const from = extractFlowchartNodeId(line.slice(0, idx).trim());
+        const to = extractFlowchartNodeId(rest);
+        if (from && to) {
           const existingCount = edgesOut.filter(e => e.from === from && e.to === to).length;
           edgesOut.push({
             id: `${from}->${to}:${existingCount}`,
@@ -135,6 +133,11 @@ export function parseMermaidSource(content: string): SourceGraph {
     edges: edgesOut,
     clusters: [],
   };
+}
+
+function extractFlowchartNodeId(fragment: string): string | null {
+  const match = fragment.match(/^([A-Za-z_][A-Za-z0-9_]*)/);
+  return match?.[1] ?? null;
 }
 
 /**

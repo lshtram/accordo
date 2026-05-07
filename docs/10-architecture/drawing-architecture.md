@@ -495,6 +495,127 @@ Keep host/webview messages explicit and versioned. Minimum messages:
 - `webview:export-result`
 - `webview:error`
 
+## 9.6 Drawing comment bridge seam
+
+Comment parity is a three-part bridge:
+
+1. **comments package** remains the source of truth and exposes `SurfaceCommentAdapter`
+2. **drawing host bridge** translates webview comment messages into adapter mutations and pushes store reloads back to the panel
+3. **drawing webview overlay** renders pins/popovers against the live Excalidraw scene
+
+This is intentionally the same ownership split as legacy `packages/diagram`, but re-homed onto the Drawing custom-editor runtime.
+
+## 9.7 Anchor compatibility decision
+
+Phase-A compatibility decision:
+
+- keep `surfaceType: "diagram"`
+- keep `coordinates.type: "diagram-node"`
+- persist prefixed `nodeId` strings: `node:*`, `edge:*`, `cluster:*`
+
+Rationale:
+
+1. existing comment-store data, Comments panel projection, and routing logic already understand this shape
+2. shape/edge pins are the real user-visible contract; renaming the anchor taxonomy would create cross-package churn without user value
+3. Drawing-managed Excalidraw elements already have the metadata needed to derive stable prefixed IDs from `customData.accordo`
+
+`cluster:*` stays reserved in the contract even though slice 1 only requires node/edge parity.
+
+## 9.8 Focus-command compatibility strategy
+
+Slice-1 strategy: **Drawing produces the legacy command ID `accordo_diagram_focusThread`.**
+
+Why this is the correct short-term design:
+
+- the Comments panel/navigation router already dispatches diagram surface threads to that command
+- requiring a simultaneous router + capability + producer rename would enlarge the slice without adding user-visible value
+- real-boundary tests can therefore verify the existing production path end-to-end instead of a seam-only alias
+
+Implication for implementation:
+
+- no Comments panel routing change is required in slice 1
+- capability docs must describe the command as a legacy compatibility command, not as diagram-package-owned forever
+- a future cleanup slice may add a new drawing-native command ID only after all callers migrate
+
+## 9.9 Host/webview comment protocol
+
+**Canonical owner:** `@accordo/comment-sdk` is the single source of truth for
+the comment webview protocol (`WebviewMessage`, `HostMessage`, `SdkThread`).
+
+Drawing MUST NOT fork private wire message types for comment SDK traffic.
+Drawing may add host-only conversion seams, but once a message crosses the
+host/webview boundary it must use the canonical SDK contract.
+
+Drawing source files should therefore import these protocol types from the
+public package boundary `@accordo/comment-sdk`, not from local `dist/` files or
+private copied protocol definitions.
+
+Minimum additional comment messages:
+
+- webview → host
+  - `comment:create`
+  - `comment:reply`
+  - `comment:resolve`
+  - `comment:reopen`
+  - `comment:delete`
+- host → webview
+  - `comments:load`
+  - `comments:focus`
+
+Payload ownership is explicit:
+
+- host/store side: `CommentThread[]` from `packages/comments`
+- wire/webview side: `SdkThread[]` from `@accordo/comment-sdk`
+
+Therefore the required conversion seam lives in the Drawing host bridge:
+
+1. load raw `CommentThread[]` from the shared store
+2. convert them to canonical `SdkThread[]`
+3. post canonical `HostMessage` (`comments:load`, `comments:focus`, etc.)
+
+Phase-1 sync policy is **full reload on store change**. This matches the current `SurfaceCommentAdapter` event model and is good enough for parity, but the reload still posts canonical `SdkThread[]` rather than raw store threads.
+
+## 9.10 Webview overlay model
+
+The overlay owns four responsibilities only:
+
+1. build/refresh a managed-target lookup from live Excalidraw elements
+2. convert persisted comment threads into SDK/webview pin view-models
+3. map managed node/edge targets to screen coordinates using Excalidraw viewport state
+4. open/focus the thread popover on host request
+
+Important geometry/runtime rules:
+
+- **nodes** use their managed element bounds
+- **edges** use polyline geometry, not width/height boxes
+- **pan/zoom** tracking must come from Excalidraw viewport state changes (`scrollX`, `scrollY`, `zoom`), not DOM scroll listeners
+- unmanaged elements are never comment targets in the parity slice
+
+## 9.11 Custom-editor lifecycle integration
+
+Each resolved drawing custom editor owns:
+
+- one webview panel
+- one panel-registry entry
+- one drawing-comment bridge subscription
+
+Lifecycle order matters:
+
+1. resolve custom editor
+2. ensure `accordo.accordo-comments` dependency is active
+3. acquire comment adapter via `accordo_comments_internal_getSurfaceAdapter`
+4. connect host/webview message bridge
+5. load scene
+6. load comments
+7. on dispose, tear down adapter subscription before removing the panel-registry entry
+
+This order is what runtime tests must prove at the package boundary. Package
+tests prove provider construction, adapter acquisition, canonical webview
+messages, focus forwarding, and bridge disposal through mocked VS Code/webview
+objects. They cannot host the actual VS Code webview renderer or human Comments
+panel click path; those final visual behaviors are mandatory manual verification
+items before Checkpoint E.
+
 ---
 
 ## 10. First Implementation Slice for TDD
@@ -554,3 +675,9 @@ No implementation behavior should be hidden in the extension entrypoint.
 
 5. **Overly broad first slice**  
    Avoided by scoping to flowchart-only incremental merge.
+
+6. **Comment parity visual behavior escapes package tests**  
+   Mitigated by automated host/provider/webview-controller tests that verify the
+   canonical message boundary and SDK controller callbacks, plus mandatory manual
+   Checkpoint E verification in a live VS Code extension host for visible pins,
+   popover focus, pan/zoom tracking, and comment lifecycle UI behavior.

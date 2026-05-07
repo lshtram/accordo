@@ -93,8 +93,7 @@ export class AccordoCommentSDK {
       if (!e.altKey) return;
       e.preventDefault();
       const target = (e.target as Element).closest("[data-block-id]");
-      if (!target) return;
-      const blockId = target.getAttribute("data-block-id") ?? "";
+      const blockId = target?.getAttribute("data-block-id") ?? opts.blockIdFromEvent?.(e) ?? "";
       if (!blockId) return;
       showInlineInput(e, blockId, opts);
     };

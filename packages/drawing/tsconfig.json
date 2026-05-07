@@ -17,7 +17,11 @@
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@accordo/comment-sdk": ["../comment-sdk/dist/sdk.d.ts"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/__tests__/**", "src/webview/**", "dist/**"]

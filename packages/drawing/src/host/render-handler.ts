@@ -8,8 +8,7 @@ import { writeFile } from "node:fs/promises";
 import type { DrawingToolContext, RenderReport } from "../core/types.js";
 import { DrawingError } from "../core/types.js";
 import { resolveWorkspaceMmdPath, siblingExcalidrawPath } from "./path-utils.js";
-
-const EXCALIDRAW_PACKAGE_VERSION = "0.17.6";
+import { EXCALIDRAW_PACKAGE_VERSION } from "../core/excalidraw-fonts.js";
 
 export async function renderDrawing(
   input: { path: string; format: "png" | "svg"; outputPath?: string },

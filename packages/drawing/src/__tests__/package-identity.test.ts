@@ -69,4 +69,15 @@ describe("package-identity", () => {
     const deps = pkg.extensionDependencies ?? [];
     expect(deps).not.toContain("accordo.accordo-diagram");
   });
+
+  /**
+   * DRW-C09 — comments extension is an activation dependency for Drawing.
+   * Fails if: Drawing can activate before the comments extension registers
+   * accordo_comments_internal_getSurfaceAdapter, which leaves the bridge disabled.
+   */
+  it("DRW-B04/DRW-C09: depends on accordo-comments before drawing comment bridge activation", async () => {
+    const pkg = await readPkg();
+    const deps = pkg.extensionDependencies ?? [];
+    expect(deps).toContain("accordo.accordo-comments");
+  });
 });

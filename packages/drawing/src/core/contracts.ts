@@ -1,3 +1,4 @@
+import type { SdkThread } from "@accordo/comment-sdk";
 import type { SceneElement } from "./types.js";
 
 export const PLACEMENT_GRID_PX = 40;
@@ -77,6 +78,13 @@ export interface RenderReport {
 export interface DrawingPanelLike {
   mmdPath: string;
   requestExport: (format: "png" | "svg") => Promise<Buffer>;
+  /** Comment parity seam: focus one thread inside the live drawing surface. */
+  focusCommentThread?: (threadId: string) => Promise<void>;
+  /**
+   * Comment parity seam: push canonical SDK threads into the live drawing
+   * surface after host-side store-thread conversion.
+   */
+  syncCommentThreads?: (threads: readonly SdkThread[]) => Promise<void>;
 }
 
 export interface DrawingToolContext {

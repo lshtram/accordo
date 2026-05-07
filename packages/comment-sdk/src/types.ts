@@ -108,6 +108,14 @@ export interface SdkInitOptions {
 
   /** Callback handlers for user actions. */
   callbacks: SdkCallbacks;
+
+  /**
+   * Optional fallback for surfaces whose visual DOM does not carry
+   * `[data-block-id]` attributes (for example canvas/webview surfaces).
+   * The SDK still owns the inline input UI and callback flow; the host surface
+   * only resolves the Alt+click event to a logical block id.
+   */
+  blockIdFromEvent?: (event: MouseEvent) => string | null;
 }
 
 // ── postMessage protocol (webview ↔ extension host) ──────────────────────────
